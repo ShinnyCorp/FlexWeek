@@ -52,11 +52,13 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPlainTextEdit,
+    QProxyStyle,
     QPushButton,
     QRadioButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
+    QStyle,
     QTimeEdit,
     QVBoxLayout,
     QWidget,
@@ -80,6 +82,7 @@ from desktop.native.calendar import (
     span_clash,
     span_problem,
 )
+from desktop.native.fonts import time_font
 from desktop.native.motion import appear, settle, vanish
 from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
@@ -166,6 +169,37 @@ class WheelGuard(QObject):
 def steady_wheel(app: QApplication) -> None:
     if app.findChild(WheelGuard) is None:
         app.installEventFilter(WheelGuard(app))
+
+
+# How far a dialog's content sits in from its edges. Qt's styles give about 11 px.
+DIALOG_MARGIN = 24
+LAYOUT_MARGINS = (
+    QStyle.PixelMetric.PM_LayoutLeftMargin,
+    QStyle.PixelMetric.PM_LayoutTopMargin,
+    QStyle.PixelMetric.PM_LayoutRightMargin,
+    QStyle.PixelMetric.PM_LayoutBottomMargin,
+)
+
+
+class AppStyle(QProxyStyle):
+    """The platform's own style, with what a stylesheet cannot say: a dialog's content sits
+    DIALOG_MARGIN in from its edges, and a time box writes its figures at one width, so 11:11 and
+    20:00 line up. A layout given margins of its own keeps them."""
+
+    def pixelMetric(self, metric, option=None, widget=None):  # noqa: N802
+        if metric in LAYOUT_MARGINS and isinstance(widget, QDialog):
+            return DIALOG_MARGIN
+        return super().pixelMetric(metric, option, widget)
+
+    def polish(self, target):  # Qt names one method for a widget, a palette and the application.
+        if isinstance(target, QTimeEdit):
+            target.setFont(time_font(target.font()))
+        return super().polish(target)
+
+
+def use_app_style(app: QApplication) -> None:
+    if not isinstance(app.style(), AppStyle):
+        app.setStyle(AppStyle())
 
 
 def _validation_text(error: Exception) -> str:

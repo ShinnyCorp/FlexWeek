@@ -1,0 +1,121 @@
+[
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "a one-hour block's times need two bold lines",
+  "old": "        if room.height() < two_lines:\n",
+  "new": "        if room.height() < 2 * line:\n",
+  "test": "desktop/tests/test_hours_painter.py::test_a_one_hour_block_says_its_name_and_its_times_on_two_lines"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "half-hour rules drawn again",
+  "old": "        for minute in range(-(-track.first // 60) * 60, track.last + 1, 60):\n",
+  "new": "        for minute in range(-(-track.first // 60) * 60, track.last + 1, 30):\n",
+  "test": "desktop/tests/test_hours_painter.py::test_the_hours_have_a_rule_at_each_hour_and_none_at_the_half"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "dark looks' rules in the plain hairline",
+  "old": "rule = self.c(\"hairline_strong\" if self.colours.get(\"axis\") == \"dark\" else \"hairline\")",
+  "new": "rule = self.c(\"hairline\")",
+  "test": "desktop/tests/test_hours_painter.py::test_the_hours_have_a_rule_at_each_hour_and_none_at_the_half"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "today washed at 5 %",
+  "old": "            wash.setAlphaF(0.10)\n",
+  "new": "            wash.setAlphaF(0.05)\n",
+  "test": "desktop/tests/test_hours_painter.py::test_today_is_washed_in_a_tenth_of_the_accent"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "the now line without its time",
+  "old": "        painter.setFont(font)\n        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)\n",
+  "new": "        painter.setFont(font)\n",
+  "test": "desktop/tests/test_hours_painter.py::test_the_now_line_carries_the_time_on_a_pill_at_its_start"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "hour labels in proportional figures",
+  "old": "        painter.setFont(time_font(_small(painter.font())))\n        metrics = QFontMetricsF(painter.font())\n",
+  "new": "        painter.setFont(_small(painter.font()))\n        metrics = QFontMetricsF(painter.font())\n",
+  "test": "desktop/tests/test_hours_painter.py::test_every_time_on_the_hours_is_written_in_figures_of_one_width"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "block times in proportional figures",
+  "old": "        plain = time_font(_small(painter.font()))\n        line = QFontMetrics(bold).height()\n",
+  "new": "        plain = _small(painter.font())\n        line = QFontMetrics(bold).height()\n",
+  "test": "desktop/tests/test_hours_painter.py::test_every_time_on_the_hours_is_written_in_figures_of_one_width"
+ },
+ {
+  "file": "desktop/native/widgets.py",
+  "name": "time boxes in proportional figures",
+  "old": "        if isinstance(target, QTimeEdit):\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_fonts.py::test_every_time_box_writes_its_figures_at_one_width"
+ },
+ {
+  "file": "desktop/native/widgets.py",
+  "name": "dialogs keep Qt's margins",
+  "old": "        if metric in LAYOUT_MARGINS and isinstance(widget, QDialog):\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_look_widgets.py::test_a_dialogs_content_sits_24_px_in_from_its_edges"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "cards padded 8 px",
+  "old": "DENSITY_PAD = {\"comfortable\": 16, \"compact\": 8}\n",
+  "new": "DENSITY_PAD = {\"comfortable\": 8, \"compact\": 4}\n",
+  "test": "desktop/tests/test_look.py::test_cards_are_padded_16_or_8_and_controls_keep_their_size"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "controls grow with the cards",
+  "old": "    pad = CONTROL_PAD[knobs[\"density\"]]\n",
+  "new": "    pad = DENSITY_PAD[knobs[\"density\"]]\n",
+  "test": "desktop/tests/test_look.py::test_cards_are_padded_16_or_8_and_controls_keep_their_size"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "pale fills on a dark look",
+  "old": "if palette.get(\"axis\") == \"dark\" else category_color",
+  "new": "if False else category_color",
+  "test": "desktop/tests/test_look.py::test_a_filled_block_on_a_dark_look_is_its_colour_sunk_into_the_panel_with_light_ink"
+ },
+ {
+  "file": "desktop/native/calendar.py",
+  "name": "Activity pink again",
+  "old": "        \"color\": \"#a5f3fc\",\n",
+  "new": "        \"color\": \"#fbcfe8\",\n",
+  "test": "desktop/tests/test_look.py::test_homework_stands_apart_from_every_other_category"
+ },
+ {
+  "file": "desktop/native/hours/classic.py",
+  "name": "today's name not marked",
+  "old": "                label.setProperty(\"today\", day == today)\n",
+  "new": "                label.setProperty(\"today\", False)\n",
+  "test": "desktop/tests/test_look_widgets.py::test_todays_name_above_the_week_is_marked_and_no_other"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "the system's sans before Inter",
+  "old": "    \"sans\": \"Inter, Noto Sans, DejaVu Sans, sans-serif\",",
+  "new": "    \"sans\": \"Noto Sans, DejaVu Sans, sans-serif\",",
+  "test": "desktop/tests/test_look.py::test_the_app_asks_for_its_own_inter_first_and_the_system_sans_after"
+ },
+ {
+  "file": "desktop/native/fonts.py",
+  "name": "the fonts looked for in the wrong folder",
+  "old": "FONT_DIR = Path(__file__).resolve().parents[1] / \"assets\" / \"fonts\"\n",
+  "new": "FONT_DIR = Path(__file__).resolve().parents[1] / \"assets\"\n",
+  "test": "desktop/tests/test_fonts.py::test_every_bundled_face_loads_as_inter"
+ },
+ {
+  "file": "desktop/build_linux.sh",
+  "name": "the Linux build leaves the assets behind",
+  "old": "    --include-data-dir=\"$ROOT/desktop/assets=desktop/assets\" \\\n",
+  "new": "",
+  "test": "desktop/tests/test_native_packaging.py::test_both_builds_ship_the_icon_and_the_fonts_where_the_app_looks_for_them"
+ }
+]

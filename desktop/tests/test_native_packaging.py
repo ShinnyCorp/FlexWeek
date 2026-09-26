@@ -63,3 +63,14 @@ def test_the_windows_build_takes_its_icon_from_the_ico_with_every_size() -> None
     sides = [data[6 + 16 * index] or 256 for index in range(count)]
     assert sides == [256, 128, 64, 48, 32, 16]
     assert (ROOT / "desktop/assets/logo.png").read_bytes()[16:24] == struct.pack(">II", 512, 512)
+
+
+def test_both_builds_ship_the_icon_and_the_fonts_where_the_app_looks_for_them() -> None:
+    """Nuitka compiles code and leaves every other file behind unless told. The icon never shipped
+    before 0.16 for that reason, and the bundled Inter would not have either."""
+    assert '--include-data-dir="$ROOT/desktop/assets=desktop/assets"' in LINUX
+    assert "--include-data-dir=$(Join-Path $Root 'desktop\\assets')=desktop/assets" in WINDOWS
+    fonts = ROOT / "desktop/assets/fonts"
+    for face in ("Regular", "Medium", "SemiBold", "Bold"):
+        assert (fonts / f"Inter-{face}.ttf").is_file(), face
+    assert "SIL Open Font License" in (fonts / "LICENSE.txt").read_text(encoding="utf-8")

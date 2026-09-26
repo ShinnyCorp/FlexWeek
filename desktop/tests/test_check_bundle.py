@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import struct
+from pathlib import Path
 
-from desktop.check_bundle import linux_problems, parse_readelf, pe_imports, windows_problems
+from desktop.check_bundle import asset_problems, linux_problems, parse_readelf, pe_imports, windows_problems
 
 READELF_DYNAMIC = """
 Dynamic section at offset 0x1d8 contains 30 entries:
@@ -125,3 +126,19 @@ def test_pe_import_table_is_read_from_the_file_bytes() -> None:
 def test_non_pe_files_have_no_imports() -> None:
     assert pe_imports(b"\x7fELF" + bytes(100)) == []
     assert pe_imports(b"") == []
+
+
+def test_a_bundle_without_an_asset_fails_and_names_it(tmp_path: Path) -> None:
+    assets = tmp_path / "source"
+    (assets / "fonts").mkdir(parents=True)
+    (assets / "logo.png").write_bytes(b"png")
+    (assets / "fonts" / "Inter-Bold.ttf").write_bytes(b"ttf")
+    bundle = tmp_path / "bundle"
+    (bundle / "desktop" / "assets").mkdir(parents=True)
+    (bundle / "desktop" / "assets" / "logo.png").write_bytes(b"png")
+    assert asset_problems(assets, bundle) == [
+        "desktop/assets/fonts/Inter-Bold.ttf is missing, so the app draws without it"
+    ]
+    (bundle / "desktop" / "assets" / "fonts").mkdir()
+    (bundle / "desktop" / "assets" / "fonts" / "Inter-Bold.ttf").write_bytes(b"ttf")
+    assert asset_problems(assets, bundle) == []

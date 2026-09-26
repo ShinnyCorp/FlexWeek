@@ -114,14 +114,18 @@ TEXT_PT = {"small": 10, "normal": 12, "large": 15}
 # line edit has no minimum of its own worth the name, so the text inside gets sliced in half rather
 # than the dialog refusing to shrink. Measured against the app's own font at each size.
 FIELD_MIN_PX = {"small": 22, "normal": 26, "large": 34}
-DENSITY_PAD = {"comfortable": 8, "compact": 4}
+# A card's padding, and the smaller one of a button, a field, a list or a menu, which keep their heights.
+DENSITY_PAD = {"comfortable": 16, "compact": 8}
+CONTROL_PAD = {"comfortable": 8, "compact": 4}
 CORNER_RADIUS = {"round": 8, "sharp": 0, "pill": 16}
 FONT_FAMILIES = {
-    "sans": "Noto Sans, DejaVu Sans, sans-serif",
+    "sans": "Inter, Noto Sans, DejaVu Sans, sans-serif",
     "mono": "Noto Sans Mono, DejaVu Sans Mono, monospace",
     "serif": "Noto Serif, DejaVu Serif, serif",
 }
 AA_TEXT = 4.5
+# How much of a category's strong colour a block on a dark look takes over the panel.
+DARK_FILL = 0.35
 DARK_INK = "#0b1224"
 LIGHT_INK = "#ffffff"
 
@@ -534,7 +538,9 @@ def block_paint(
     """How one calendar block is drawn: its fill, its ink, and where the category colour goes.
 
     `category_color` is the pale fill; `mark` is the strong colour of the same category. A pale
-    outline vanishes on a light pack, so an outline or an edge is drawn with the mark.
+    outline vanishes on a light pack, so an outline or an edge is drawn with the mark. On a dark
+    look a pale fill glared off the page, so a filled block there is the mark sunk into the panel,
+    with light ink.
     """
     flexible = kind == "flexible"
     neutral = palette["block_flex" if flexible else "block_locked"]
@@ -552,13 +558,8 @@ def block_paint(
             "edge": mark,
         }
     if category_color:
-        return {
-            "mode": mode,
-            "fill": category_color,
-            "ink": readable_ink(category_color),
-            "outline": None,
-            "edge": None,
-        }
+        fill = mix(mark, palette["panel"], DARK_FILL) if palette.get("axis") == "dark" else category_color
+        return {"mode": mode, "fill": fill, "ink": readable_ink(fill), "outline": None, "edge": None}
     return {"mode": mode, "fill": neutral, "ink": neutral_ink, "outline": None, "edge": None}
 
 
@@ -775,7 +776,8 @@ def pack_stylesheet(
 ) -> str:
     palette = palette if palette is not None else resolved_palette(pack, system_dark, look, accent)
     knobs = effective_look(look)
-    pad = DENSITY_PAD[knobs["density"]]
+    card = DENSITY_PAD[knobs["density"]]
+    pad = CONTROL_PAD[knobs["density"]]
     size = TEXT_PT[knobs["text"]]
     family = FONT_FAMILIES[knobs["font"]]
     radius = CORNER_RADIUS[knobs["corners"]]
@@ -792,11 +794,13 @@ def pack_stylesheet(
         f"QMainWindow, QDialog, QWidget {{ background: {palette['window']}; color: {palette['text']}; "
         f"font-family: {family}; font-size: {size}pt; }}"
         f"QFrame, QGroupBox, QTableWidget, QListWidget {{ background: {palette['panel']}; "
-        f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; {edges} }}"
+        f"color: {palette['text']}; padding: {card}px; border-radius: {radius}px; {edges} }}"
+        # Lists, tables and scroll areas are frames too, but their padding is room around rows.
+        f"QAbstractScrollArea {{ padding: {pad}px; }}"
         # A group's title sits in the space above its frame. Without the room it was drawn on the
         # frame line, over the first row of what it names.
         f"QGroupBox {{ margin-top: {round(size * 1.9) + 4}px; }}"
-        f"QGroupBox::title {{ subcontrol-origin: margin; left: {pad + 4}px; padding: 0 4px; }}"
+        f"QGroupBox::title {{ subcontrol-origin: margin; left: {card + 4}px; padding: 0 4px; }}"
         f"QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {{ background: {palette['field']}; "
         f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; "
         f"min-height: {field_min}px; {edges} }}"
@@ -868,6 +872,11 @@ def pack_stylesheet(
         # something laid over the calendar rather than printed onto it.
         # The week you are on, said once and said large.
         f"QLabel#weekTitle {{ font-size: {size + 6}pt; font-weight: 700; color: {palette['text']}; }}"
+        # Today's name above the week, in the accent over a 2 px line. The others keep a clear line,
+        # so the row does not move when the day changes.
+        f'QLabel[today="false"] {{ border-bottom: 2px solid transparent; border-radius: 0; }}'
+        f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: 700; '
+        f'border-bottom: 2px solid {palette["accent"]}; border-radius: 0; }}'
         # Day / Week / Month read as one control rather than three buttons of equal weight.
         f"QPushButton#viewDay, QPushButton#viewWeek, QPushButton#viewMonth, QPushButton#viewMyDay {{ "
         f"background: transparent; color: {palette['muted']}; font-weight: 400; "

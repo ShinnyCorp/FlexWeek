@@ -61,6 +61,7 @@ from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import phase_duration_ms
 from desktop.native.focus_screen import FocusScreen
+from desktop.native.fonts import load_fonts
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
 from desktop.native.hours.geometry import Span, drag_step
@@ -143,6 +144,7 @@ from desktop.native.widgets import (
     control_art,
     steady_wheel,
     swatch,
+    use_app_style,
 )
 
 WINDOW_SIZE = (1280, 800)
@@ -270,6 +272,9 @@ class NativeWindow(QMainWindow):
         application = QApplication.instance()
         if isinstance(application, QApplication):
             steady_wheel(application)
+            use_app_style(application)
+        # main() has loaded them already; a window made anywhere else, as in the tests, is drawn alike.
+        load_fonts()
         self.session = NativeSession(origin, self, kept)
         self._instance_server: QLocalServer | None = None
         self.setWindowTitle("FlexWeek")
@@ -485,7 +490,7 @@ class NativeWindow(QMainWindow):
         outer.addStretch(1)
         middle = QHBoxLayout()
         middle.addStretch(1)
-        card = QWidget()
+        card = QFrame()
         card.setObjectName("authCard")
         card.setMaximumWidth(AUTH_CARD_WIDTH)
         card.setMinimumWidth(AUTH_CARD_WIDTH)
@@ -494,6 +499,8 @@ class NativeWindow(QMainWindow):
         outer.addLayout(middle)
         outer.addStretch(1)
         layout = QVBoxLayout(card)
+        # A frame, so the card's padding is the spacing knob's, as every card's is.
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(brand_row())
         self.auth_heading = QLabel()
         self.auth_heading.setObjectName("authHeading")
@@ -586,11 +593,12 @@ class NativeWindow(QMainWindow):
         outer.addStretch(1)
         middle = QHBoxLayout()
         middle.addStretch(1)
-        card = QWidget()
+        card = QFrame()
         card.setObjectName("authCard")
         card.setMaximumWidth(AUTH_CARD_WIDTH)
         card.setMinimumWidth(AUTH_CARD_WIDTH)
         layout = QVBoxLayout(card)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(brand_row())
         heading = QLabel("Save these recovery codes")
         heading.setObjectName("authHeading")

@@ -42,6 +42,7 @@ from backend.slots import SLOT_MIN
 from desktop.native import autostart
 from desktop.native.calendar import DAY_FULL
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
+from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import drag_step
 from desktop.native.layouts.dialog import SLOTS, LayoutSection
 from desktop.native.layouts.registry import MATCH, sanitize_layout
@@ -66,7 +67,7 @@ from desktop.native.spotify import SpotifyPlayer, open_in_app
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
 from desktop.native.weekmodel import hhmm_text, length_label, time_format
-from desktop.native.widgets import DIALOG_USABLE_HEIGHT, FlowLayout, fit_scroll_dialog
+from desktop.native.widgets import DIALOG_MARGIN, DIALOG_USABLE_HEIGHT, FlowLayout, fit_scroll_dialog
 
 UPDATE_MIN_WIDTH = 420
 ALARM_MIN_WIDTH = 380
@@ -75,6 +76,7 @@ ALARM_GAP = 12
 ALARM_BUTTON_HEIGHT = 44
 PREFS_MAX_BODY = 560
 PREFS_MIN_WIDTH = 640
+PREFS_SIDE = 11
 # Room beside the longest name in the Settings list, for its padding and selection edge.
 PREFS_NAV_PAD = 32
 ALARM_LIST_MAX_HEIGHT = 200
@@ -212,6 +214,7 @@ class FocusPanel(QWidget):
         self.now_next = QLabel()
         self.now_next.setObjectName("nowNext")
         self.now_next.setWordWrap(True)
+        self.now_next.setFont(time_font(self.now_next.font()))
         layout.addWidget(self.now_next)
         # One status line, not four stacked labels. Over a design of its own the timer used to
         # arrive as loose text: the homework, then "Focus session", then "30:00", each on its own row.
@@ -352,6 +355,9 @@ class PrefsDialog(QDialog):
         chosen_layout = sanitize_layout(week_layout)
         self._alarms = [deepcopy(item) for item in preferences.get("alarms") or []]
         layout = QVBoxLayout(self)
+        # The sides keep Qt's own margin: at large text the list and the widest page already need
+        # all but the 700 pixels a dialog on a laptop may take.
+        layout.setContentsMargins(PREFS_SIDE, DIALOG_MARGIN, PREFS_SIDE, DIALOG_MARGIN)
         # Eighteen rows in one undivided column stood 1056 pixels tall, taller than the laptop the
         # app is built for. Everything but the buttons scrolls, and the rows sit under headings.
         # The width has to be set too: a scroll area does not claim its content's width, so capping
