@@ -25,7 +25,9 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QAction,
     QColor,
+    QHideEvent,
     QIcon,
+    QMoveEvent,
     QPainter,
     QPen,
     QPixmap,
@@ -57,6 +59,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QSizePolicy,
+    QSpacerItem,
     QSpinBox,
     QStyle,
     QTimeEdit,
@@ -258,6 +261,9 @@ def fit_scroll_dialog(dialog: QDialog, *, min_height: int = DIALOG_USABLE_HEIGHT
 TOAST_MS = 6000
 TOAST_MARGIN = 24
 TOAST_MIN_WIDTH = 280
+# Between the toast's bottom edge and the foot of the hours, and between its words and its button.
+TOAST_FOOT = 16
+TOAST_GAP = 12
 
 
 class FittedLabel(QLabel):
@@ -445,57 +451,125 @@ class EndsLayout(QLayout):
         return top + self._gap + below + margins.top() + margins.bottom()
 
 
-class Toast(QLabel):
-    """A one-line notice under the top bar. The status line still holds the same words.
+class Toast(QFrame):
+    """One notice at a time, floating over the foot of the hours, with at most one button.
 
-    `top` says where the bar ends, since that moves with the text size."""
+    The frame and its words let the pointer through to the hours under them. The button is laid over
+    the frame as the window's own child, since Qt passes a widget's clicks on only with its children's.
+    `over` is the widget whose foot it floats over; while that is hidden, the window's.
+    """
 
-    def __init__(self, parent: QWidget, top: Callable[[], int]) -> None:
+    def __init__(self, parent: QWidget, over: QWidget) -> None:
         super().__init__(parent)
-        self._top = top
+        self._over = over
         self.setObjectName("toast")
-        # A notice never stands between the pointer and what is under it, hours included.
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self.setWordWrap(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.hide()
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(TOAST_GAP)
+        self.label = QLabel()
+        self.label.setObjectName("toastText")
+        self.label.setWordWrap(True)
+        row.addWidget(self.label, 1)
+        # Room for the button, which is not in this layout.
+        self._slot = QSpacerItem(0, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        row.addItem(self._slot)
+        self.button = QPushButton(parent)
+        self.button.setObjectName("toastButton")
+        self.button.hide()
+        self.button.clicked.connect(self._pressed)
+        self._callback: Callable[[], None] | None = None
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(TOAST_MS)
-        self._timer.timeout.connect(lambda: vanish(self, self.motion))
+        self._timer.timeout.connect(self._go)
         # The window's Animations level. A notice rises into place and fades when it goes.
         self.motion = "normal"
+        self.hide()
 
-    def show_message(self, text: str) -> None:
-        self.setText(text)
+    def text(self) -> str:
+        return self.label.text()
+
+    def show_message(self, text: str, button: str = "", callback: Callable[[], None] | None = None) -> None:
+        self.label.setText(text)
         self.setAccessibleName(text)
         self.setAccessibleDescription(text)
+        self.button.setText(button)
+        self._callback = callback if button else None
+        size = self.button.sizeHint() if button else QSize(0, 0)
+        self._slot.changeSize(size.width(), size.height(), QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.layout().invalidate()
         # A rise still running would carry the notice back to where the last one was meant to go.
         settle(self)
-        self.reposition()
+        settle(self.button)
         # A notice that arrives while the last one fades out takes its place instead of vanishing too.
-        if self.graphicsEffect() is not None:
-            self.setGraphicsEffect(None)
+        for widget in (self, self.button):
+            if widget.graphicsEffect() is not None:
+                widget.setGraphicsEffect(None)
         was_shown = self.isVisible()
         self.show()
+        self.reposition()
         self.raise_()
+        self.button.setVisible(bool(button))
+        self.button.raise_()
         if not was_shown:
             appear(self, self.motion, rise=True)
-        self._timer.start()
+            appear(self.button, self.motion)
+        # One with something to press stays long enough to reach for it.
+        self._timer.start(TOAST_MS * 2 if button else TOAST_MS)
 
     def reposition(self) -> None:
         host = self.parentWidget()
         if host is None:
             return
+        over = self._over
+        area = QRect(over.mapTo(host, QPoint(0, 0)), over.size()) if over.isVisible() else host.rect()
         # A wrapped label asks for a narrow width, which broke short notices after their
-        # second-last word. Measured unwrapped, a notice keeps one line until the window runs out.
-        self.setWordWrap(False)
+        # second-last word. Measured unwrapped, a notice keeps one line until the room runs out.
+        self.label.setWordWrap(False)
         natural = self.sizeHint().width()
-        self.setWordWrap(True)
-        width = min(max(natural, TOAST_MIN_WIDTH), max(120, host.width() - 2 * TOAST_MARGIN))
-        self.resize(width, self.heightForWidth(width))
-        self.move(max(TOAST_MARGIN, (host.width() - width) // 2), self._top())
+        self.label.setWordWrap(True)
+        width = min(max(natural, TOAST_MIN_WIDTH), max(120, area.width() - 2 * TOAST_MARGIN))
+        height = max(self.heightForWidth(width), self.minimumSizeHint().height())
+        # Over the foot of the hours, and never past the bottom of the window.
+        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT
+        self.setGeometry(area.left() + (area.width() - width) // 2, max(0, bottom - height), width, height)
+
+    def moveEvent(self, event: QMoveEvent) -> None:  # noqa: N802
+        super().moveEvent(event)
+        self._place_button()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._place_button()
+
+    def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802
+        super().hideEvent(event)
+        # Not when the window is: this notice comes back with it.
+        if self.isHidden():
+            self._timer.stop()
+            self.button.hide()
+
+    def _place_button(self) -> None:
+        inside = self.contentsRect()
+        size = self.button.sizeHint()
+        self.button.setGeometry(
+            self.x() + inside.right() + 1 - size.width(),
+            self.y() + inside.top() + (inside.height() - size.height()) // 2,
+            size.width(),
+            size.height(),
+        )
+
+    def _pressed(self) -> None:
+        callback = self._callback
+        self.hide()
+        if callback is not None:
+            callback()
+
+    def _go(self) -> None:
+        vanish(self, self.motion)
+        vanish(self.button, self.motion)
 
 
 class FlowLayout(QLayout):
@@ -576,16 +650,20 @@ class AddMenu(QMenu):
     category_chosen = Signal(str)
     homework_requested = Signal()
     fixed_requested = Signal()
+    school_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("addMenu")
-        homework = self.addAction("Homework…")
-        homework.setObjectName("addMenuHomework")
-        homework.triggered.connect(self.homework_requested.emit)
-        fixed = self.addAction("Fixed time…")
-        fixed.setObjectName("addMenuFixed")
-        fixed.triggered.connect(self.fixed_requested.emit)
+        self.setToolTipsVisible(True)
+        for name, words, asked in (
+            ("addMenuHomework", "Add homework…", self.homework_requested),
+            ("addMenuFixed", "Add fixed time…", self.fixed_requested),
+            ("addMenuSchool", "School hours…", self.school_requested),
+        ):
+            action = self.addAction(words)
+            action.setObjectName(name)
+            action.triggered.connect(asked.emit)
         self.addSeparator()
         add_heading(self, "Then drag on the calendar")
         self._actions: dict[str, QAction] = {}

@@ -200,7 +200,6 @@ def _heading(words: str) -> QLabel:
 
 
 class FocusPanel(QWidget):
-    start_requested = Signal(str, object)
     quick_requested = Signal()
     screen_requested = Signal()
     finished_requested = Signal()
@@ -262,27 +261,14 @@ class FocusPanel(QWidget):
             choices.addWidget(widget)
         choices.addStretch(1)
         layout.addLayout(choices)
-        self.tasks = QListWidget()
-        self.tasks.setObjectName("focusTasks")
-        self.tasks.setToolTip("Double-click homework to start a focus timer for it.")
-        self.tasks.itemActivated.connect(self._start_item)
-        tasks_row = QHBoxLayout()
-        self.tasks_label = QLabel("Start a focus timer:")
-        self.tasks_label.setObjectName("focusTasksLabel")
-        tasks_row.addWidget(self.tasks_label, 0, Qt.AlignmentFlag.AlignTop)
-        tasks_row.addWidget(self.tasks, 1)
-        layout.addLayout(tasks_row)
         self._ended_widgets = (self.finished, self.take_break, self.more_min, self.more)
-        # Nothing to show until a timer runs or the plan places work, and blank rows cost the calendar height.
-        for widget in (self.task, self.phase, self.time, self.screen, self.tasks, self.tasks_label):
+        # Nothing to show until a timer runs, and blank rows cost the calendar height. The homework to
+        # start one on is in Week's side.
+        for widget in (self.task, self.phase, self.time, self.screen):
             widget.setVisible(False)
 
     def _emit_more(self) -> None:
         self.more_requested.emit(int(self.more_min.currentData() or 0))
-
-    def _start_item(self, item: QListWidgetItem) -> None:
-        payload = item.data(Qt.ItemDataRole.UserRole) or {}
-        self.start_requested.emit(payload.get("id") or "", payload.get("day"))
 
     def show_now_next(self, text: str) -> None:
         self.now_next.setText(text)
@@ -307,27 +293,8 @@ class FocusPanel(QWidget):
         for widget in self._ended_widgets:
             widget.setVisible(ended)
         self.more.setEnabled(bool(choices))
-        tasks = [(item.get("id"), item.get("start"), item.get("title")) for item in session.focus_tasks()]
-        # The clock too, so a switch to the 12-hour clock rewrites the times.
-        shown = (time_format(), tasks)
-        if shown != getattr(self, "_shown_tasks", None):
-            self._shown_tasks = shown
-            self.tasks.clear()
-            for item in session.focus_tasks():
-                start = hhmm_text(item["start"]) if item.get("start") else ""
-                row = QListWidgetItem(f"{item['title']}  {start}".rstrip())
-                row.setData(Qt.ItemDataRole.UserRole, item)
-                self.tasks.addItem(row)
         for label in (self.task, self.phase, self.time):
             label.setVisible(bool(label.text()))
-        # An empty list still asks for about 190 pixels, and a long one would bury the calendar, so it
-        # is hidden when empty and never taller than four rows; the rest scrolls.
-        shown = min(self.tasks.count(), 4)
-        self.tasks.setVisible(shown > 0)
-        self.tasks_label.setVisible(shown > 0)
-        if shown:
-            rows = shown * self.tasks.sizeHintForRow(0)
-            self.tasks.setMaximumHeight(rows + 2 * self.tasks.frameWidth() + 8)
 
 
 class PrefsDialog(QDialog):

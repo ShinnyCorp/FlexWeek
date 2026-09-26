@@ -339,7 +339,7 @@ def test_plan_on_a_week_that_is_over_places_nothing_and_says_so(
     window.findChild(QPushButton, "solveButton").click()
     settled(qapp, window)
     assert not session_of(window, "late").get("start")
-    assert window.week_status.text() == PAST_WEEK
+    assert window.toast.text() == PAST_WEEK
 
 
 # Length
@@ -475,14 +475,14 @@ def test_plan_says_what_it_did_with_an_undo_that_takes_it_all_back(
     settled(qapp, window)
     planned = stored_blocks(window)
     assert planned != before
-    assert window.action_notice.isVisible()
-    assert window.action_notice_text.text() == "Planned 3 homework blocks."
-    assert window.action_notice_button.text() == "Undo"
+    assert window.toast.button.isVisible()
+    assert window.toast.text() == "Planned 3 homework blocks."
+    assert window.toast.button.text() == "Undo"
 
-    window.action_notice_button.click()
+    window.toast.button.click()
     settled(qapp, window)
     assert stored_blocks(window) == before, "one Undo takes back every block the plan placed"
-    assert not window.action_notice.isVisible()
+    assert not window.toast.button.isVisible()
     assert session.can_redo()
 
     session.redo()
@@ -502,8 +502,8 @@ def test_replan_all_is_one_undo_step(qapp: QApplication, window: NativeWindow) -
     window.findChild(QPushButton, "replanAll").click()
     settled(qapp, window)
     assert stored_blocks(window) != before
-    assert window.action_notice_button.text() == "Undo"
-    window.action_notice_button.click()
+    assert window.toast.button.text() == "Undo"
+    window.toast.button.click()
     settled(qapp, window)
     assert stored_blocks(window) == before
 
@@ -527,7 +527,7 @@ def test_automatic_plan_stays_in_the_add_homework_undo_step(
     added = next(item for item in session.assignments.values() if item["title"] == "Spanish vocab")
     assignment_id = added["id"]
     assert session_of(window, assignment_id).get("start")
-    assert not window.action_notice.isVisible(), "the added homework owns this Undo step"
+    assert not window.toast.button.isVisible(), "the added homework owns this Undo step"
 
     session.undo()
     settled(qapp, window)
@@ -545,13 +545,13 @@ def test_plan_undo_notice_disappears_after_a_later_save(
     session = window.session
     window.findChild(QPushButton, "solveButton").click()
     settled(qapp, window)
-    assert window.action_notice.isVisible()
+    assert window.toast.button.isVisible()
 
     session.add_homework({"id": "next", "title": "New assignment", "due": sunday_due(session.week_start),
                           "estimate_min": 30, "revision": 0})
     session.save()
     settled(qapp, window)
-    assert not window.action_notice.isVisible(), "the old Plan Undo must not undo the new assignment"
+    assert not window.toast.button.isVisible(), "the old Plan Undo must not undo the new assignment"
     session.undo()
     settled(qapp, window)
     assert "next" not in session.assignments
@@ -575,7 +575,7 @@ def test_a_plan_that_places_nothing_does_not_offer_a_false_undo(
     settled(qapp, window)
     assert stored_blocks(window) == before
     assert len(session._undo) == undo_steps, "no plan change means no Undo step"
-    assert not window.action_notice.isVisible(), "no Undo for a plan that could place nothing"
+    assert not window.toast.button.isVisible(), "no Undo for a plan that could place nothing"
 
 
 def test_plan_waits_for_a_failed_save_before_offering_undo(
@@ -588,7 +588,7 @@ def test_plan_waits_for_a_failed_save_before_offering_undo(
     qapp.processEvents()
     assert stored_blocks(window) == before
     assert session.message == "Wait a moment: your last change is still saving. Then plan again."
-    assert not window.action_notice.isVisible()
+    assert not window.toast.button.isVisible()
 
 
 @pytest.mark.parametrize(

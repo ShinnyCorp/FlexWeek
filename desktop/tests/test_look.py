@@ -189,9 +189,11 @@ def test_the_app_asks_for_its_own_inter_first_and_the_system_sans_after() -> Non
     assert FONT_FAMILIES["sans"].split(", ")[0] == "Inter"
     assert FONT_FAMILIES["sans"].endswith("sans-serif")
     assert "font-family: Inter, " in pack_stylesheet("slate", False, look_of("default"))
-    # Terminal and Paper keep their own faces.
-    assert "font-family: Inter" not in pack_stylesheet("slate", False, look_of("terminal"))
-    assert "font-family: Inter" not in pack_stylesheet("slate", False, look_of("paper"))
+    # Terminal and Paper keep their own faces for the app's words. The focus screen's countdown is
+    # drawn in the sans face whatever the look, so only the app-wide rule is read.
+    for name in ("terminal", "paper"):
+        app_wide = pack_stylesheet("slate", False, look_of(name)).split("QWidget {")[1].split("}")[0]
+        assert "font-family: Inter" not in app_wide, name
 
 
 def test_cards_are_padded_16_or_8_and_controls_keep_their_size() -> None:

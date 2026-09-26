@@ -205,7 +205,6 @@ def test_a_blocked_running_late_toasts_why(qapp: QApplication, window: NativeWin
     saving = "Your last change is still saving. Try again in a moment."
     assert window.toast.isVisible() is True
     assert window.toast.text() == saving
-    assert window.week_status.text() == saving
     assert window.toast._timer.interval() == TOAST_MS
 
     window.session.dirty = False
@@ -213,13 +212,12 @@ def test_a_blocked_running_late_toasts_why(qapp: QApplication, window: NativeWin
     window._open_late()
     conflict = "This week was changed somewhere else. Reload it first."
     assert window.toast.text() == conflict
-    assert window.week_status.text() == conflict
 
 
 def test_the_notice_sits_under_the_bar_on_one_line(qapp: QApplication, window: NativeWindow) -> None:
     """A notice short enough for one line stays on one line, and it never covers the bar. Sized from
-    a wrapped label it broke after "locked. 2", and pinned 52 pixels down it covered the bottom of
-    Day, Week, Month and My day once large text made the bar taller."""
+    a wrapped label it broke after "locked. 2". It sits over the foot of the hours now, far below the
+    bar at either text size."""
     said = "Running late: 16:30–17:00 is now locked. 2 moved."
     for text in ("normal", "large"):
         window._look = {**window._look, "knobs": {**(window._look.get("knobs") or {}), "text": text}}
@@ -254,9 +252,9 @@ def test_accepting_running_late_says_locked_once_it_is_saved(
 ) -> None:
     block, said = accept_late(qapp, window)
     assert window.session.selected_block_id == block["id"]
-    # Nothing is said before the save answers: until then the late start is not kept anywhere.
-    assert window.toast.isVisible() is False
-    wait_until(qapp, lambda: window.toast.isVisible())
+    # "Locked" is not said before the save answers: until then the late start is not kept anywhere.
+    assert not (window.toast.isVisible() and window.toast.text() == said)
+    wait_until(qapp, lambda: window.toast.isVisible() and window.toast.text() == said)
     assert window.toast.text() == said
     assert window.session.dirty is False
     assert any(item["id"] == block["id"] for item in window.session.blocks)
@@ -639,19 +637,17 @@ def test_plan_and_more_stay_on_the_bar_in_every_layout(qapp: QApplication, windo
     qapp.processEvents()
     assert window.planner.height() > window.height() * 0.8
     offered = more_actions(window)
-    assert more_sections(window) == ["Adding", "Planning"]
-    assert {"Add homework", "Add fixed time"} <= set(offered)
+    assert more_sections(window) == ["Planning"]
+    assert not {"Add homework", "Add fixed time", "School hours"} & set(offered), "adding is under Add"
     assert {"Running late", "Routines", "Reload", "Undo", "Redo", "Advanced", "Log out"} <= set(offered)
     assert "Settings" not in offered
     assert "Account" not in offered
     assert (offered["Undo"], offered["Redo"]) == (True, False)
 
 
-def _trigger_more(window: NativeWindow, text: str) -> None:
-    menu = window.more_button.menu()
-    menu.aboutToShow.emit()
-    action = next(action for action in menu.actions() if action.text() == text)
-    action.trigger()
+def _trigger_add(window: NativeWindow, words: str) -> None:
+    """Pick an entry in the Add button's menu, as a click on it does."""
+    next(action for action in window.add_menu.actions() if action.text() == words).trigger()
 
 
 def _school_dialogs(monkeypatch: pytest.MonkeyPatch, end: str | None = None) -> list[dict]:
@@ -690,11 +686,11 @@ def test_school_hours_adds_school_when_setup_skipped_it(
     window.session.save()
     settled(qapp, window)
     assert not any(block.get("category") == "class" for block in window.session.blocks)
-    assert "School hours" in more_actions(window)
+    assert "School hours…" in [action.text() for action in window.add_menu.actions()]
     # The last type used on the calendar, which is what "Add fixed time" opens.
     window.session.armed_category = "exercise"
     seen = _school_dialogs(monkeypatch)
-    _trigger_more(window, "School hours")
+    _trigger_add(window, "School hours…")
     settled(qapp, window)
     assert seen == [
         {
@@ -717,7 +713,7 @@ def test_school_hours_changes_the_school_already_there(
 ) -> None:
     """With School set, the same item edits it for every day rather than adding a second School."""
     seen = _school_dialogs(monkeypatch, end="15:15")
-    _trigger_more(window, "School hours")
+    _trigger_add(window, "School hours…")
     settled(qapp, window)
     assert seen[0]["window"] == "Edit event"
     assert (seen[0]["start"], seen[0]["end"], seen[0]["days"]) == ("08:00", "14:30", [0, 1, 2, 3, 4])
@@ -1208,9 +1204,9 @@ def test_a_commitment_over_planned_homework_offers_find_a_new_time(
         }
     )
     qapp.processEvents()
-    assert window.action_notice.isVisible()
-    assert window.action_notice_button.text() == "Find a new time"
-    assert "History essay" in window.action_notice_text.text()
+    assert window.toast.button.isVisible()
+    assert window.toast.button.text() == "Find a new time"
+    assert "History essay" in window.toast.text()
 
 
 def test_a_conflict_is_said_once_on_the_notice_not_again_in_a_toast(
@@ -1220,8 +1216,8 @@ def test_a_conflict_is_said_once_on_the_notice_not_again_in_a_toast(
         {"id": "club", "title": "Club", "kind": "locked", "start": "18:00", "duration_min": 120, "days": [3]}
     )
     qapp.processEvents()
-    assert window.action_notice.isVisible()
-    assert window.toast.isVisible() is False
+    assert window.toast.button.isVisible()
+    assert window.toast.button.text() == "Find a new time", "said once, with its button"
 
 
 def test_every_homework_that_lost_its_time_is_named_on_the_notice(
@@ -1235,11 +1231,11 @@ def test_every_homework_that_lost_its_time_is_named_on_the_notice(
     ]
     window._on_plan_conflicts(notes)
     qapp.processEvents()
-    shown = window.action_notice_text.text()
+    shown = window.toast.text()
     assert "Math worksheet" in shown and "English essay" in shown
 
 
-def test_the_status_line_counts_homework_blocks(qapp: QApplication, window: NativeWindow) -> None:
+def test_the_plan_notice_counts_homework_blocks(qapp: QApplication, window: NativeWindow) -> None:
     """Mutation that turns this red: plan_sentence says 'Placed 4 of 4'."""
     # The essay began at 18:45, before the clock's 19:00, so Replan all leaves it; this needs a time.
     due = sunday_due(window.session.week_start)
@@ -1249,8 +1245,8 @@ def test_the_status_line_counts_homework_blocks(qapp: QApplication, window: Nati
     window.session.solve(everything=True)
     wait_until(qapp, lambda: not window.session.busy)
     qapp.processEvents()
-    assert window.week_status.text().startswith("Planned ")
-    assert " of " not in window.week_status.text()
+    assert window.toast.text().startswith("Planned ")
+    assert " of " not in window.toast.text()
 
 
 def test_the_week_toolbar_keeps_only_what_is_reached_for(qapp: QApplication, window: NativeWindow) -> None:
@@ -1277,6 +1273,8 @@ def test_the_week_toolbar_keeps_only_what_is_reached_for(qapp: QApplication, win
         "viewWeek",
         "viewMonth",
         "viewMyDay",
+        "addButton",
+        "addArrow",
         "solveButton",
         "moreButton",
         "settingsGear",
@@ -1286,7 +1284,7 @@ def test_the_week_toolbar_keeps_only_what_is_reached_for(qapp: QApplication, win
     menu.aboutToShow.emit()
     sections = more_sections(window)
     items = more_actions(window)
-    assert sections == ["Adding", "Planning"]
+    assert sections == ["Planning"]
     assert {"Undo", "Redo", "Duplicate", "Running late", "Routines", "Advanced", "Log out"} <= set(items)
     assert "Settings" not in items
     assert "Account" not in items
@@ -1386,15 +1384,14 @@ def test_an_update_check_that_fails_says_so_only_when_asked(qapp: QApplication, 
     window._update_asked = False
     window._updater.unreachable.emit(CHECK_FAILED)
     qapp.processEvents()
-    assert window.action_notice.isVisible() is False, "a daily check that fails stays quiet"
+    assert window.toast.isVisible() is False, "a daily check that fails stays quiet"
 
     window._update_asked = True
     window._updater.unreachable.emit(CHECK_FAILED)
     qapp.processEvents()
-    assert window.week_status.text() == CHECK_FAILED
-    assert window.action_notice.isVisible() is True
-    assert window.action_notice_text.text() == CHECK_FAILED
-    assert window.action_notice_button.text() == "Open release page"
+    assert window.toast.button.isVisible() is True
+    assert window.toast.text() == CHECK_FAILED
+    assert window.toast.button.text() == "Open release page"
 
 
 def test_more_hides_spotify_until_there_is_a_link(qapp: QApplication, window: NativeWindow) -> None:
@@ -1972,9 +1969,9 @@ def test_finishing_from_my_day_offers_undo_on_the_notice(qapp: QApplication, win
     click(window, "oneFinished")
     settled(qapp, window)
     assert window.session.assignments["essay"]["completed"] is True
-    assert window.action_notice.isVisible()
-    assert window.action_notice_text.text() == "Finished History essay."
-    assert window.action_notice_button.text() == "Undo"
+    assert window.toast.button.isVisible()
+    assert window.toast.text() == "Finished History essay."
+    assert window.toast.button.text() == "Undo"
 
 
 FREE_TODAY = (

@@ -790,6 +790,8 @@ def pack_stylesheet(
         quiet_edge = f"background: {palette['hairline']}; border: none;"
     else:
         quiet_edge = f"background: transparent; border: 1px solid {palette['hairline_strong']};"
+    # A flat look draws no lines at all, so its segments are told apart by the raised one alone.
+    divider = "none" if knobs["depth"] == "flat" else f"1px solid {palette['hairline_strong']}"
     return (
         f"QMainWindow, QDialog, QWidget {{ background: {palette['window']}; color: {palette['text']}; "
         f"font-family: {family}; font-size: {size}pt; }}"
@@ -877,13 +879,18 @@ def pack_stylesheet(
         f'QLabel[today="false"] {{ border-bottom: 2px solid transparent; border-radius: 0; }}'
         f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: 700; '
         f'border-bottom: 2px solid {palette["accent"]}; border-radius: 0; }}'
-        # Day / Week / Month read as one control rather than three buttons of equal weight.
+        # Day / Week / Month / My day are one segmented control: a shared track, the chosen view
+        # raised in the panel colour, the others muted, a hairline between them.
         f"QPushButton#viewDay, QPushButton#viewWeek, QPushButton#viewMonth, QPushButton#viewMyDay {{ "
-        f"background: transparent; color: {palette['muted']}; font-weight: 400; "
-        f"padding: {pad}px {pad * 2}px; {edges} }}"
+        f"background: transparent; color: {palette['muted']}; font-weight: 500; "
+        f"padding: {pad}px {round(pad * 1.5)}px; border: none; border-radius: {max(radius - 2, 0)}px; "
+        f"border-left: {divider}; }}"
+        f'QPushButton[segment="first"] {{ border-left: none; }}'
+        f"QPushButton#viewDay:hover, QPushButton#viewWeek:hover, QPushButton#viewMonth:hover, "
+        f"QPushButton#viewMyDay:hover {{ color: {palette['text']}; }}"
         f"QPushButton#viewDay:checked, QPushButton#viewWeek:checked, QPushButton#viewMonth:checked, "
         f"QPushButton#viewMyDay:checked {{ background: {palette['panel']}; color: {palette['text']}; "
-        f"font-weight: 700; }}"
+        f"font-weight: 600; border-left: none; {edges} }}"
         # The arrows are navigation, not actions, so they carry no fill.
         f"QPushButton#prevWeek, QPushButton#nextWeek {{ background: transparent; "
         f"color: {palette['text']}; font-size: {size + 3}pt; font-weight: 700; "
@@ -915,7 +922,7 @@ def pack_stylesheet(
         # A ringing alarm is the one thing in the app that has to be read from across a room.
         f"QLabel#alarmTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
         f"QLabel#alarmDetail {{ font-size: {size + 2}pt; color: {palette['muted']}; }}"
-        f"QLabel#toast {{ background: {palette['panel']}; color: {palette['text']}; "
+        f"QFrame#toast {{ background: {palette['panel']}; color: {palette['text']}; "
         f"{edges} padding: {pad * 2}px {pad * 3}px; border-radius: {radius}px; }}"
         # A new account's empty week, the focus screen and the command bar.
         f"QLabel#emptyWeekHeading {{ font-size: {size + 8}pt; font-weight: 700; }}"
@@ -940,6 +947,28 @@ def pack_stylesheet(
         f"QListWidget#commandList {{ border: none; padding: 0; }}"
         f"QListWidget#commandList::item {{ padding: {pad}px; border-radius: {radius}px; }}"
         f"QLabel#commandNothing {{ color: {palette['muted']}; padding: {pad}px; }}"
+        # The view control's track, which the chosen segment sits in.
+        f"QFrame#segments {{ background: {palette['hairline']}; padding: 2px; border: none; "
+        f"border-radius: {radius}px; }}"
+        # Add and its arrow are one button split in two.
+        f"QPushButton#addButton {{ font-weight: 600; border-top-right-radius: 0; "
+        f"border-bottom-right-radius: 0; }}"
+        f"QPushButton#addArrow {{ padding: {pad}px {pad}px; border-top-left-radius: 0; "
+        f"border-bottom-left-radius: 0; margin-left: 1px; }}"
+        f"QPushButton#addArrow::menu-indicator {{ image: none; width: 0; }}"
+        # The toast's one button reads as part of its sentence.
+        f"QPushButton#toastButton {{ background: transparent; color: {palette['accent']}; border: none; "
+        f"font-weight: 700; padding: 2px {pad}px; min-height: 0; }}"
+        f"QPushButton#toastButton:hover {{ text-decoration: underline; }}"
+        # Week's side, as Day's: the panel colour, its headings in the accent, and folded, one line.
+        # Narrower at the sides than a card, so "Math worksheet · 45 min" is whole in its 250 pixels.
+        f"QFrame#weekSide {{ background: {palette['panel']}; border-radius: 0; "
+        f"padding: {card}px {pad}px; {edges} }}"
+        f'QFrame#weekSide[folded="true"] {{ padding: {pad // 2}px {pad}px; }}'
+        f"QLabel#weekNext, QLabel#weekSideLine {{ font-weight: 600; }}"
+        f"QLabel#focusTasksLabel, QLabel#classicWaitingLabel {{ color: {palette['accent']}; "
+        f"font-weight: 800; font-size: {max(size - 1, 7)}pt; margin-top: 6px; }}"
+        f"QLabel#weekNoneWaiting {{ color: {palette['muted']}; font-size: {max(size - 1, 7)}pt; }}"
     ) + (control_rules(palette, radius, size, art) if art is not None else "")
 
 
