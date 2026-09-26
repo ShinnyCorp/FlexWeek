@@ -46,7 +46,8 @@ class FocusScreen(QWidget):
         self.progress.setObjectName("focusScreenProgress")
         self.progress.setTextVisible(False)
         self.progress.setRange(0, PROGRESS_STEPS)
-        self.progress.setMaximumWidth(480)
+        # Centred, a bar takes only its hint's width, which is a sliver.
+        self.progress.setFixedWidth(360)
         self.task = self._label("focusScreenTask")
         self.task.setWordWrap(True)
         layout.addWidget(self.phase)

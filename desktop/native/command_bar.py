@@ -68,6 +68,8 @@ class CommandBar(QWidget):
         self.box.setObjectName("commandBox")
         self.box.setFixedWidth(BAR_WIDTH)
         column = QVBoxLayout(self.box)
+        # The box's own padding is the margin; the layout's would double it.
+        column.setContentsMargins(0, 0, 0, 0)
         self.input = QLineEdit()
         self.input.setObjectName("commandInput")
         self.input.setPlaceholderText(PLACEHOLDER)
@@ -118,7 +120,7 @@ class CommandBar(QWidget):
         if found:
             self.list.setCurrentRow(0)
             rows = min(found, VISIBLE_ROWS)
-            self.list.setFixedHeight(rows * self.list.sizeHintForRow(0) + 2 * self.list.frameWidth() + 8)
+            self.list.setFixedHeight(rows * self.list.sizeHintForRow(0) + 2 * self.list.frameWidth())
         self.box.adjustSize()
 
     def _place(self) -> None:
