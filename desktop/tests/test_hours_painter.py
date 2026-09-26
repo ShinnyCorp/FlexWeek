@@ -4,6 +4,7 @@ every block is written in the canvas's own font, whatever was drawn before it.""
 from __future__ import annotations
 
 import importlib.util
+import math
 import os
 from collections.abc import Iterator
 
@@ -285,14 +286,16 @@ def test_a_length_is_never_broken_between_its_number_and_unit(qapp) -> None:
 HOUR_PX = 48
 
 
-def three_days(now_min: int | None = None, blocks: tuple[dict, ...] = (ESSAY,)) -> HoursCanvas:
-    """Three days from 08:00 to 20:00 at Today's app's default 48 pixels an hour, in Inter at the
-    normal text size, with today on the first when there is a now."""
+def three_days(
+    now_min: int | None = None, blocks: tuple[dict, ...] = (ESSAY,), hour_px: int = HOUR_PX
+) -> HoursCanvas:
+    """Three days from 08:00 to 20:00, at Today's app's default 48 pixels an hour unless told, in
+    Inter at the normal text size, with today on the first when there is a now."""
     load_fonts()
 
     def columns(area: QRectF) -> list[LinearTrack]:
         return [
-            LinearTrack(day, QRectF(60 + 150 * day, 10, 140, 12 * HOUR_PX), first=8 * 60, last=20 * 60)
+            LinearTrack(day, QRectF(60 + 150 * day, 10, 140, 12 * hour_px), first=8 * 60, last=20 * 60)
             for day in range(3)
         ]
 
@@ -305,7 +308,7 @@ def three_days(now_min: int | None = None, blocks: tuple[dict, ...] = (ESSAY,)) 
         gutter=56,
     )
     canvas.setFont(QFont("Inter", 12))
-    canvas.resize(520, 12 * HOUR_PX + 20)
+    canvas.resize(520, 12 * hour_px + 20)
     occurrences = build_week("2026-09-21", list(blocks), {}, None).occurrences
     canvas.set_week(occurrences, 0 if now_min is not None else None, now_min)
     canvas.relayout()
@@ -334,13 +337,23 @@ CLUB = {"id": "club", "title": "Club", "kind": "locked", "days": [1], "start": "
 def test_a_one_hour_block_says_its_name_and_its_times_on_two_lines(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Club at 19:00 for an hour, at 48 pixels an hour, was one shortened line, "Club · 19:00–20:00 ·
-    …". Its name in bold and its times in the smaller font fit on two, so they are written there."""
+    """Club at 19:00 for an hour was one shortened line, "Club · 19:00–20:00 · …", when it had room
+    for its name in bold and its times in the smaller font below: the test asked for two bold lines.
+    Here it has just that room, which is less than two bold lines, and at the default 48 pixels an
+    hour it has more."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
-    canvas = three_days(blocks=(CLUB,))
-    Said.words = []
-    canvas.grab()
-    assert words_on(canvas, "club", 1) == ["Club", "19:00–20:00 · 1 h"]
+    font = QFont("Inter", 12)
+    bold = QFont(font)
+    bold.setBold(True)
+    bold_line = QFontMetricsF(bold).height()
+    just = math.ceil(bold_line + 1 + QFontMetricsF(canvas_module._small(font)).height())
+    assert just < 2 * bold_line
+    # A block's words have its height less 7 pixels: 2 between blocks, 3 above and 2 below.
+    for hour_px in (just + 7, HOUR_PX):
+        canvas = three_days(blocks=(CLUB,), hour_px=hour_px)
+        Said.words = []
+        canvas.grab()
+        assert words_on(canvas, "club", 1) == ["Club", "19:00–20:00 · 1 h"], hour_px
 
 
 def rows(palette: dict, today: bool) -> QImage:
