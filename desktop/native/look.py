@@ -924,8 +924,8 @@ def pack_stylesheet(
         f"padding: {pad + 2}px {pad * 3}px; }}"
         f"QLabel#focusScreenPhase {{ color: {palette['accent']}; font-size: {size + 2}pt; "
         f"font-weight: 700; letter-spacing: 2px; }}"
-        # The countdown is read from across a desk, and in the sans face whatever the text knob says.
-        f"QLabel#focusScreenTime {{ font-family: {FONT_FAMILIES['sans']}; font-size: 96pt; "
+        # The countdown is read from across a desk, in the look's own face at a size the text knob never sets.
+        f"QLabel#focusScreenTime {{ font-size: 96pt; "
         f"font-weight: 700; color: {palette['text']}; }}"
         f"QLabel#focusScreenTask {{ font-size: {size + 6}pt; font-weight: 600; }}"
         f"QLabel#focusScreenHint {{ color: {palette['muted']}; }}"
