@@ -189,9 +189,11 @@ def test_the_app_asks_for_its_own_inter_first_and_the_system_sans_after() -> Non
     assert FONT_FAMILIES["sans"].split(", ")[0] == "Inter"
     assert FONT_FAMILIES["sans"].endswith("sans-serif")
     assert "font-family: Inter, " in pack_stylesheet("slate", False, look_of("default"))
-    # Terminal and Paper keep their own faces.
-    assert "font-family: Inter" not in pack_stylesheet("slate", False, look_of("terminal"))
-    assert "font-family: Inter" not in pack_stylesheet("slate", False, look_of("paper"))
+    # Terminal and Paper keep their own faces. The focus screen's countdown is Inter in every look.
+    for preset in ("terminal", "paper"):
+        sheet = pack_stylesheet("slate", False, look_of(preset))
+        countdown = sheet.split("QLabel#focusScreenTime {")[1].split("}")[0]
+        assert "font-family: Inter" not in sheet.replace(countdown, ""), preset
 
 
 def test_cards_are_padded_16_or_8_and_controls_keep_their_size() -> None:
