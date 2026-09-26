@@ -1261,8 +1261,8 @@ class HomeworkDialog(QDialog):
         form = QFormLayout()
         body_layout.addLayout(form)
         self.title = _line("homeworkTitle", self._original["title"])
-        if info:
-            self.title.setPlaceholderText(info["label"])
+        # Homework saved with no category is still homework, so it gets the same hint.
+        self.title.setPlaceholderText((info or CATEGORIES["assignments"])["label"])
         form.addRow("Title", self.title)
         self.due = DueField(self._original["due"], "homeworkDue", stacked=True)
         form.addRow("Due", self.due)
@@ -1663,7 +1663,7 @@ class PreviewDialog(QDialog):
             start.setCurrentIndex(start.findData(current))
             row["block"]["start"] = start.currentData()
             start.setProperty("row", index)
-            start.currentIndexChanged.connect(lambda _index, box=start: self._set_start(box))
+            start.currentIndexChanged.connect(self._set_start)
             row_layout.addWidget(start)
             length = QComboBox()
             length.setObjectName(f"previewDuration{index}")
@@ -1700,9 +1700,10 @@ class PreviewDialog(QDialog):
             self._rows[index]["checked"] = True
         self._refresh()
 
-    def _set_start(self, box: QComboBox) -> None:
+    def _set_start(self, _index: int) -> None:
         if self._rebuilding:
             return
+        box = self.sender()
         index = box.property("row")
         self._rows[index]["block"]["start"] = box.currentData()
         self._rows[index]["invalid"] = ""

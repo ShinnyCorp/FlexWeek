@@ -26,10 +26,12 @@ from desktop.tests.window_support import (  # noqa: F401
 )
 
 
-@pytest.mark.parametrize(("category", "hint"), [("assignments", "Homework"), ("study", "Study")])
+@pytest.mark.parametrize(
+    ("category", "hint"), [("assignments", "Homework"), ("study", "Study"), (None, "Homework")]
+)
 def test_new_homework_has_an_empty_title_with_the_category_as_its_hint(
     qapp: QApplication,  # noqa: F811
-    category: str,
+    category: str | None,
     hint: str,
 ) -> None:
     dialog = HomeworkDialog(None, today="2026-09-24", category=category)

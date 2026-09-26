@@ -3,7 +3,7 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.16.0] - Unreleased
+## [Unreleased]
 
 ### Added
 - A 12-hour clock. Settings > This computer > Clock offers 24-hour (as before)
