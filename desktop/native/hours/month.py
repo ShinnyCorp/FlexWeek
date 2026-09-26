@@ -16,11 +16,12 @@ colour tokens.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
@@ -35,6 +36,10 @@ from desktop.native.weekmodel import WeekModel, clock_label, hhmm_text
 HEADER = 26
 # The fewest chips a date always has room for; past them the month scrolls rather than squeezing.
 LEAST_CHIPS = 2
+# A month opened on a week late in it still shows at least this many weeks.
+LEAST_AHEAD = 2
+# Layout passes to wait for the canvas's new height before scrolling to the opening week anyway.
+REVEAL_TRIES = 3
 FALLBACK_MARK = "#94a3b8"
 
 
@@ -229,11 +234,16 @@ class MonthCanvas(QWidget):
         self.hand, self.painter = hand, painter
         self.cells: list[MonthCell] = []
         self._pressed: str | None = None
+        # The row the month opened on, and the height of the view it scrolls in.
+        self._lead = 0
+        self._room = 0
         hand.preview_changed.connect(self.update)
 
     def set_cells(self, cells: list[MonthCell]) -> None:
+        if not cells or not self.cells or cells[0].iso != self.cells[0].iso:
+            self._lead = 0
         self.cells = cells
-        self.setMinimumHeight(self.rows() * self.least_row())
+        self._fit()
         self.setAccessibleDescription(
             "Click a date to open it. Drag a block with a time to another date to move it there."
         )
@@ -242,6 +252,26 @@ class MonthCanvas(QWidget):
     def set_painter(self, painter: MonthPainter) -> None:
         self.painter = painter
         self.update()
+
+    def set_room(self, room: int) -> None:
+        """The height the month scrolls in."""
+        if room != self._room:
+            self._room = room
+            self._fit()
+
+    def lead_with(self, row: int) -> None:
+        """Open on this row: the weeks from it to the month's end fill the view."""
+        self._lead = max(0, min(row, self.rows() - 1))
+        self._fit()
+
+    def _fit(self) -> None:
+        # A whole month fits a laptop's screen, so its first row is always on top. Opened on a later
+        # week, the rows grow until the weeks from that one on fill the view, and the ones before it
+        # are above, a scroll away.
+        rows = self.rows()
+        least = rows * self.least_row()
+        filled = math.ceil(self._room * rows / max(rows - self._lead, LEAST_AHEAD)) if self._lead else 0
+        self.setMinimumHeight(max(least, filled))
 
     # Where things are
 
@@ -477,6 +507,9 @@ class MonthScroll(QScrollArea):
     def viewportEvent(self, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize:
             self._place()
+            canvas = self.widget()
+            if isinstance(canvas, MonthCanvas):
+                canvas.set_room(self.viewport().height())
         return super().viewportEvent(event)
 
 
@@ -573,8 +606,21 @@ class MonthGrid(QWidget):
         label.setVisible(bool(words))
 
     def reveal(self, iso_day: str) -> None:
-        """Open the month on the week the student is in, not on its first row."""
-        self.canvas.reveal(iso_day)
+        """Open the month with the week the student is in as its first row."""
+        at = self.canvas.index_of(iso_day)
+        if at is None:
+            return
+        self.canvas.set_room(self.scroll.viewport().height())
+        self.canvas.lead_with(at // 7)
+        self._scroll_to(at // 7, REVEAL_TRIES)
+
+    def _scroll_to(self, row: int, tries: int) -> None:
+        canvas = self.canvas
+        if canvas.height() < canvas.minimumHeight() and tries > 0:
+            # The scroll area gives the canvas its new height on its next layout pass.
+            QTimer.singleShot(0, self, lambda: self._scroll_to(row, tries - 1))
+            return
+        self.scroll.verticalScrollBar().setValue(round(canvas.cell_rect(row * 7).top()))
 
     def month_surfaces(self) -> list[MonthCanvas]:
         return [self.canvas] if self.canvas.isVisible() else []
