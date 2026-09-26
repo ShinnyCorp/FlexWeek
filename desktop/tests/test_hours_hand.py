@@ -319,6 +319,41 @@ def test_a_double_click_opens_the_block_once_and_enter_opens_it(qapp: QApplicati
     assert rig.hand.selection == ("essay", 2)
 
 
+def test_a_double_clicks_second_click_does_nothing_on_the_editor_its_first_opened(
+    qapp: QApplication,
+) -> None:
+    """The first click opens the editor, so the second lands on it, over whatever is there."""
+    from PySide6.QtWidgets import QDialog
+
+    rig = Rig(qapp)
+    point = rig.at(2, 18 * 60 + 30)
+    editor = QDialog(rig.window)
+    editor.setModal(True)
+    button = QPushButton("Delete", editor)
+    pressed: list[bool] = []
+    button.pressed.connect(lambda: pressed.append(True))
+
+    def open_editor(_block_id: str) -> None:
+        editor.show()
+        editor.move(editor.pos() + point - button.mapToGlobal(button.rect().center()))
+        qapp.processEvents()
+
+    rig.hand.opened.connect(open_editor)
+    rig.send(rig.canvas, QEvent.Type.MouseButtonPress, point, True)
+    rig.send(rig.canvas, QEvent.Type.MouseButtonRelease, point, False)
+    assert QApplication.activeModalWidget() is editor
+    assert button.mapToGlobal(button.rect().center()) == point, "the editor's Delete is under the pointer"
+    rig.send(button, QEvent.Type.MouseButtonDblClick, point, True)
+    rig.send(button, QEvent.Type.MouseButtonPress, point, True)
+    rig.send(button, QEvent.Type.MouseButtonRelease, point, False)
+    assert pressed == [], "the second click pressed nothing"
+    QTest.qWait(QApplication.doubleClickInterval() + 50)
+    rig.send(button, QEvent.Type.MouseButtonPress, point, True)
+    rig.send(button, QEvent.Type.MouseButtonRelease, point, False)
+    assert pressed == [True], "a click after that is the student's own"
+    editor.close()
+
+
 def test_a_double_click_on_its_own_still_opens_the_block(qapp: QApplication) -> None:
     """Some input sends a double-click with no click before it; the block opens all the same."""
     rig = Rig(qapp)

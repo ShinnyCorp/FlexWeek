@@ -36,6 +36,7 @@ from desktop.native.weekmodel import clock_text, length_label
 # A drag near a scroll area's edge scrolls it only after resting there this long, so passing
 # through the edge on the way in never shifts the hours under the pointer.
 EDGE_PX, DWELL_S, SCROLL_STEP = 36, 0.3, 10
+SECOND_CLICK = (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick, QEvent.Type.MouseButtonRelease)
 
 
 class Gesture(Enum):
@@ -128,6 +129,33 @@ def surface_at(at: QPoint) -> QWidget | None:
     while widget is not None and not is_surface(widget):
         widget = widget.parentWidget()
     return widget
+
+
+class SecondClick(QObject):
+    """For a double-click's length after a tap, a click where the tap was does nothing to a dialog the
+    tap opened. A tap on a block opens its editor, so the second click of a double-click from habit
+    lands on that editor, where it would press whatever is under the pointer."""
+
+    def __init__(self, host: QObject, at: QPoint) -> None:
+        super().__init__(host)
+        self._at = at
+        QApplication.instance().installEventFilter(self)
+        ends = QTimer(self)
+        ends.setSingleShot(True)
+        ends.timeout.connect(self.stop)
+        ends.start(QApplication.doubleClickInterval())
+
+    def stop(self) -> None:
+        QApplication.instance().removeEventFilter(self)
+        self.deleteLater()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() not in SECOND_CLICK or not isinstance(event, QMouseEvent):
+            return False
+        away = (event.globalPosition().toPoint() - self._at).manhattanLength()
+        near = away <= QApplication.startDragDistance()
+        # Only over what the tap opened: a click on the hours again is a click like any other.
+        return near and QApplication.activeModalWidget() is not None
 
 
 def span_words(span: Span) -> str:
@@ -283,6 +311,8 @@ class Hand(QObject):
             return
         if not active:
             if tap is not None:
+                # Before the tap, which may open a dialog and wait in it.
+                SecondClick(self, self._last)
                 tap()
             return
         if held.kind is Gesture.MOVE_DATE:
