@@ -3,6 +3,31 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.0] - Unreleased
+
+### Added
+- FlexWeek brings its own typeface, Inter, in four weights, so it looks the same
+  on every computer. A computer without the files falls back to its own sans.
+- The now line carries the time, "15:40", on a small pill where it starts.
+
+### Changed
+- Every time is written in figures of one width: the hours, a block's times,
+  the Next line and every time box, so a column of times stays straight.
+- Cards are padded 16 px, or 8 at Compact spacing, and dialogs 24. Buttons,
+  fields, lists and menus keep their size.
+- Activity blocks are teal, so they no longer look like homework's coral.
+- On a dark look a block is its category's colour sunk into the page, written
+  on in white, instead of a pale fill that glared.
+- The hours have a rule at each hour and none at the half hour, and the rules
+  are stronger on a dark look. Today's column is washed a little more, and its
+  name above the week is in the accent with a line under it.
+
+### Fixed
+- A one-hour block, such as Club at 19:00, shows its name and its times on two
+  lines instead of one shortened line.
+- The Linux and Windows builds include the icon the window shows. The app looked
+  for it beside its code, and no package had ever put it there.
+
 ## [0.15.0] - 2026-09-25
 
 ### Added
