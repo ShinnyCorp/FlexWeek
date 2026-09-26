@@ -141,6 +141,8 @@ HELP_KEYS = (
     ("Ctrl and the mouse wheel", "Zoom the hours"),
     ("Esc while dragging", "Put the block back where it was"),
 )
+FOCUS_RUNNING_NOTE = "Work on this until the timer ends. Pause if something interrupts you."
+FOCUS_ENDED_NOTE = "Time is up. Mark it finished, take a break, or give it more time."
 BLOCK_SONG_NOTE = (
     "A block with a Spotify link plays it when the block starts. Dismiss or snooze it as you would an alarm."
 )
@@ -262,6 +264,14 @@ class FocusPanel(QWidget):
         self.now_next.setObjectName("nowNext")
         self.now_next.setWordWrap(True)
         layout.addWidget(self.now_next)
+        # A running timer is a card: what it is for, one sentence on what to do, and its buttons, of
+        # which only the next step is filled. Three filled buttons in a row read as three equal asks.
+        self.card = QFrame()
+        self.card.setObjectName("dialogCard")
+        card_box = QVBoxLayout(self.card)
+        card_box.setContentsMargins(16, 12, 16, 12)
+        card_box.setSpacing(6)
+        layout.addWidget(self.card)
         # One status line, not four stacked labels. Over a design of its own the timer used to
         # arrive as loose text: the homework, then "Focus session", then "30:00", each on its own row.
         status = QHBoxLayout()
@@ -274,7 +284,11 @@ class FocusPanel(QWidget):
         for widget in (self.task, self.phase, self.time):
             status.addWidget(widget)
         status.addStretch(1)
-        layout.addLayout(status)
+        card_box.addLayout(status)
+        self.note = QLabel()
+        self.note.setObjectName("cardNote")
+        self.note.setWordWrap(True)
+        card_box.addWidget(self.note)
         controls = QHBoxLayout()
         self.pause = QPushButton("Pause")
         self.pause.setObjectName("focusPause")
@@ -288,12 +302,14 @@ class FocusPanel(QWidget):
         self.quick = QPushButton("Quick focus")
         self.quick.setObjectName("focusQuick")
         self.quick.clicked.connect(self.quick_requested.emit)
+        for button in (self.skip, self.reset, self.quick):
+            button.setProperty("quiet", True)
         for button in (self.pause, self.skip, self.reset, self.quick):
             controls.addWidget(button)
         # Without this the four buttons split the window between them, 439px each over a layout
         # of its own. They keep their natural width and the row fills with space instead.
         controls.addStretch(1)
-        layout.addLayout(controls)
+        card_box.addLayout(controls)
         choices = QHBoxLayout()
         self.finished = QPushButton("Finished")
         self.finished.setObjectName("focusFinished")
@@ -306,10 +322,12 @@ class FocusPanel(QWidget):
         self.more = QPushButton("Need more time")
         self.more.setObjectName("focusMoreAdd")
         self.more.clicked.connect(self._emit_more)
+        self.take_break.setProperty("quiet", True)
+        self.more.setProperty("quiet", True)
         for widget in (self.finished, self.take_break, self.more_min, self.more):
             choices.addWidget(widget)
         choices.addStretch(1)
-        layout.addLayout(choices)
+        card_box.addLayout(choices)
         self.tasks = QListWidget()
         self.tasks.setObjectName("focusTasks")
         self.tasks.setToolTip("Double-click homework to start a focus timer for it.")
@@ -323,7 +341,7 @@ class FocusPanel(QWidget):
         self._ended_widgets = (self.finished, self.take_break, self.more_min, self.more)
         self._run_widgets = (self.pause, self.skip, self.reset)
         # Nothing to show until a timer runs or the plan places work, and blank rows cost the calendar height.
-        for widget in (self.task, self.phase, self.time, self.tasks, self.tasks_label):
+        for widget in (self.card, self.task, self.phase, self.time, self.tasks, self.tasks_label):
             widget.setVisible(False)
 
     def _emit_more(self) -> None:
@@ -358,6 +376,8 @@ class FocusPanel(QWidget):
             self.more_min.addItem(length_label(minutes), minutes)
         for widget in self._ended_widgets:
             widget.setVisible(ended)
+        self.card.setVisible(state is not None)
+        self.note.setText(FOCUS_ENDED_NOTE if ended else FOCUS_RUNNING_NOTE)
         self.more.setEnabled(bool(choices))
         tasks = [(item.get("id"), item.get("start"), item.get("title")) for item in session.focus_tasks()]
         if tasks != getattr(self, "_shown_tasks", None):
@@ -1064,6 +1084,7 @@ class RestoreDialog(QDialog):
         self.label.setPlaceholderText("Restore point name")
         layout.addWidget(self.label)
         create = QPushButton("Save restore point")
+        create.setProperty("quiet", True)
         create.setObjectName("restoreCreate")
         create.clicked.connect(self._create)
         layout.addWidget(create)
@@ -1091,6 +1112,7 @@ class RestoreDialog(QDialog):
         actions = QHBoxLayout()
         preview_btn = QPushButton("Preview")
         preview_btn.setObjectName("restorePreview")
+        preview_btn.setProperty("quiet", True)
         preview_btn.clicked.connect(self._preview)
         restore_btn = QPushButton("Restore")
         restore_btn.setObjectName("restoreApply")
@@ -1099,6 +1121,7 @@ class RestoreDialog(QDialog):
         actions.addWidget(restore_btn)
         layout.addLayout(actions)
         close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close.button(QDialogButtonBox.StandardButton.Close).setProperty("quiet", True)
         close.rejected.connect(self.reject)
         close.accepted.connect(self.reject)
         layout.addWidget(close)
@@ -1193,10 +1216,13 @@ class AccountDialog(QDialog):
             button = QPushButton(words)
             button.setObjectName(name)
             button.setProperty("action", action)
+            # Replace password is the answer to the two fields above; the rest open something else.
+            button.setProperty("quiet", action != "password")
             button.clicked.connect(self._set)
             row.addWidget(button)
         layout.addLayout(row)
         close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close.button(QDialogButtonBox.StandardButton.Close).setProperty("quiet", True)
         close.rejected.connect(self.reject)
         layout.addWidget(close)
 
@@ -1241,6 +1267,7 @@ class AlarmRingDialog(QDialog):
             layout.addWidget(link)
         snooze = QPushButton(f"Snooze {ALARM_SNOOZE_MIN} minutes")
         snooze.setObjectName("alarmSnooze")
+        snooze.setProperty("quiet", True)
         snooze.clicked.connect(self._snooze)
         dismiss = QPushButton("Dismiss")
         dismiss.setObjectName("alarmDismiss")
@@ -1282,6 +1309,7 @@ class TransferPreviewDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setProperty("quiet", True)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -1408,6 +1436,7 @@ class UpdateDialog(QDialog):
         self.install.clicked.connect(self._install)
         later = QPushButton("Not now")
         later.setObjectName("updateLater")
+        later.setProperty("quiet", True)
         later.clicked.connect(self.reject)
         skip = QPushButton("Skip this version")
         skip.setObjectName("updateSkip")

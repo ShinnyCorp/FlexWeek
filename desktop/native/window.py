@@ -479,6 +479,7 @@ class NativeWindow(QMainWindow):
         password_row.addWidget(self.password, 1)
         self.password_reveal = QPushButton("Show")
         self.password_reveal.setObjectName("passwordReveal")
+        self.password_reveal.setProperty("quiet", True)
         self.password_reveal.setCheckable(True)
         self.password_reveal.toggled.connect(self._toggle_password)
         password_row.addWidget(self.password_reveal)

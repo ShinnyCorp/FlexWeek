@@ -726,6 +726,7 @@ def control_rules(palette: dict, radius: int, size: int, art: dict[str, str]) ->
 
 def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> str:
     """Settings as a page: a list of sections on the left, cards on the right, and segmented choices.
+    Dialogs laid out in cards use the same card.
 
     A segmented control is a sunken track with the chosen segment raised on it, so two or three
     choices read as one control with one answer.
@@ -750,11 +751,12 @@ def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) 
         f"QListWidget#prefsNav::item:hover {{ background: {palette['hairline']}; color: {palette['text']}; }}"
         f"QListWidget#prefsNav::item:selected {{ background: {selected}; color: {palette['text']}; }}"
         f"QLabel#settingsTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
-        f"QFrame#settingsCard {{ background: {palette['panel']}; border-radius: {card_radius}px; "
-        f"padding: 0; {edges} }}"
-        "QLabel#prefsHeading, QLabel#layoutMainHeading, QLabel#layoutDayHeading { "
+        f"QFrame#settingsCard, QFrame#dialogCard {{ background: {palette['panel']}; "
+        f"border-radius: {card_radius}px; padding: 0; {edges} }}"
+        "QLabel#prefsHeading, QLabel#layoutMainHeading, QLabel#layoutDayHeading, QLabel#cardTitle { "
         f"font-size: {size + 1}pt; font-weight: 700; color: {palette['text']}; }}"
-        "QLabel#settingsCardNote, QLabel#settingsExperimental, QLabel#prefPlanningNote, QLabel#prefDndNote, "
+        "QLabel#settingsCardNote, QLabel#cardNote, QLabel#settingsExperimental, QLabel#prefPlanningNote, "
+        "QLabel#prefDndNote, "
         "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits { "
         f"color: {palette['muted']}; }}"
         "QLabel#settingsExperimental { font-weight: 700; margin-top: 6px; }"

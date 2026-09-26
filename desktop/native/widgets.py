@@ -735,6 +735,23 @@ class ChoiceCard(QFrame):
         super().keyPressEvent(event)
 
 
+def info_card(title: str, note: str) -> tuple[QFrame, QVBoxLayout]:
+    """A card in a dialog: what it is for, as a heading and a sentence, then its controls."""
+    card = QFrame()
+    card.setObjectName("dialogCard")
+    box = QVBoxLayout(card)
+    box.setContentsMargins(16, 16, 16, 16)
+    box.setSpacing(8)
+    heading = QLabel(title)
+    heading.setObjectName("cardTitle")
+    words = QLabel(note)
+    words.setObjectName("cardNote")
+    words.setWordWrap(True)
+    box.addWidget(heading)
+    box.addWidget(words)
+    return card, box
+
+
 class Switch(QCheckBox):
     """On or off, drawn as a toggle by the style sheet. Still a check box, so it is read, set and
     announced as one."""
@@ -1502,6 +1519,7 @@ class HomeworkDialog(QDialog):
                 continue
             button = QPushButton(text)
             button.setObjectName(name)
+            button.setProperty("quiet", True)
             button.setToolTip("Save these edits first.")
             button.setProperty("request", kind)
             button.clicked.connect(self._request_session)
@@ -1512,6 +1530,7 @@ class HomeworkDialog(QDialog):
             form.addRow("", session_row)
         self.more_details = QPushButton("More details")
         self.more_details.setObjectName("homeworkMoreDetails")
+        self.more_details.setProperty("quiet", True)
         self.more_details.setCheckable(True)
         form.addRow("", self.more_details)
         details = QWidget()
@@ -1807,6 +1826,7 @@ class PreviewDialog(QDialog):
         self.confirm = buttons.button(QDialogButtonBox.StandardButton.Save)
         self.confirm.setObjectName("stage3PreviewConfirm")
         self.confirm.setText("Save preview")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setProperty("quiet", True)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -2188,6 +2208,7 @@ class ChooseTimeDialog(QDialog):
         layout.addWidget(self.beside)
         choices = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         self.buttons = QDialogButtonBox(choices)
+        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setProperty("quiet", True)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)
@@ -2230,12 +2251,17 @@ class RoutineDialog(QDialog):
         self.destination = week_start
         self.days = list(range(7))
         layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        keep, keep_box = info_card(
+            "Save this week as a routine",
+            "Tick the fixed times to keep, give them a name, and copy them into any week later.",
+        )
         self.name = _line("routineName")
         self.name.setPlaceholderText("Routine name")
-        layout.addWidget(self.name)
+        keep_box.addWidget(self.name)
         self.choices = QListWidget()
         self.choices.setObjectName("routineBlocks")
-        layout.addWidget(self.choices)
+        keep_box.addWidget(self.choices)
         for block in self._blocks:
             item = QListWidgetItem(
                 f"{block['title']} · {', '.join(DAYS[day] for day in block['days'])} · {block['start']}"
@@ -2247,14 +2273,24 @@ class RoutineDialog(QDialog):
         save = QPushButton("Save this week as a routine")
         save.setObjectName("saveRoutine")
         save.clicked.connect(self._save)
-        layout.addWidget(save)
+        keep_box.addWidget(save, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(keep)
+        use, use_box = info_card(
+            "Use a saved routine",
+            "Pick a routine, the week to copy it into and the days to copy.",
+        )
+        self.empty = QLabel("No routines saved yet.")
+        self.empty.setObjectName("routineEmpty")
+        use_box.addWidget(self.empty)
         self.list = QListWidget()
         self.list.setObjectName("routineList")
-        layout.addWidget(self.list)
+        use_box.addWidget(self.list)
         for routine in routines.values():
             item = QListWidgetItem(f"{routine['name']} · {len(routine.get('blocks') or [])} fixed times")
             item.setData(Qt.ItemDataRole.UserRole, routine["id"])
             self.list.addItem(item)
+        self.empty.setVisible(not routines)
+        self.list.setVisible(bool(routines))
         dest = QDateEdit(QDate.fromString(week_start, "yyyy-MM-dd"))
         dest.setObjectName("routineDestination")
         dest.setDisplayFormat(DATE_FORMAT)
@@ -2262,7 +2298,11 @@ class RoutineDialog(QDialog):
         dest.setMinimumDate(QDate(2000, 1, 1))
         dest.setMaximumDate(QDate(2099, 12, 31))
         dest.dateChanged.connect(self._snap_destination)
-        layout.addWidget(dest)
+        week_row = QHBoxLayout()
+        week_row.addWidget(QLabel("Week of"))
+        week_row.addWidget(dest)
+        week_row.addStretch(1)
+        use_box.addLayout(week_row)
         self._dest = dest
         days_row = QHBoxLayout()
         self._days = []
@@ -2272,22 +2312,33 @@ class RoutineDialog(QDialog):
             check.setChecked(True)
             days_row.addWidget(check)
             self._days.append(check)
-        layout.addLayout(days_row)
+        days_row.addStretch(1)
+        use_box.addLayout(days_row)
         actions = QHBoxLayout()
         apply = QPushButton("Apply")
         apply.setObjectName("applyRoutine")
+        apply.setProperty("quiet", True)
         apply.clicked.connect(self._apply)
         delete = QPushButton("Delete")
         delete.setObjectName("deleteRoutine")
+        delete.setProperty("quiet", True)
         delete.clicked.connect(self._delete)
-        actions.addWidget(apply)
-        actions.addWidget(delete)
-        layout.addLayout(actions)
+        for button in (apply, delete):
+            button.setEnabled(bool(routines))
+            actions.addWidget(button)
+        actions.addStretch(1)
+        use_box.addLayout(actions)
+        layout.addWidget(use)
         self.error = _error_label()
         layout.addWidget(self.error)
+        close_row = QHBoxLayout()
+        close_row.addStretch(1)
         close = QPushButton("Close")
+        close.setObjectName("closeRoutines")
+        close.setProperty("quiet", True)
         close.clicked.connect(self.reject)
-        layout.addWidget(close)
+        close_row.addWidget(close)
+        layout.addLayout(close_row)
 
     def selected_block_ids(self) -> list[str]:
         ids = []
@@ -2346,35 +2397,45 @@ class LateDialog(QDialog):
         self.setObjectName("lateDialog")
         self.setWindowTitle("Running late")
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(context))
+        card, box = info_card(
+            "Running late",
+            "Say how late you are and preview what moves. Nothing changes until you accept it.",
+        )
+        box.addWidget(QLabel(context))
         self.minutes = QComboBox()
         self.minutes.setObjectName("lateMinutes")
         for value in LATE_MINUTES:
             self.minutes.addItem(f"{value} minutes", value)
         self.minutes.setCurrentIndex(1)
-        layout.addWidget(self.minutes)
+        box.addWidget(self.minutes, 0, Qt.AlignmentFlag.AlignLeft)
         self.summary = QLabel()
         self.summary.setObjectName("lateSummary")
         self.summary.setWordWrap(True)
-        layout.addWidget(self.summary)
+        box.addWidget(self.summary)
         self.changes = QListWidget()
         self.changes.setObjectName("lateChanges")
-        layout.addWidget(self.changes)
+        # Shown with the preview: before it, an empty box said nothing.
+        self.changes.setVisible(False)
+        box.addWidget(self.changes)
+        layout.addWidget(card)
         self.error = _error_label()
         layout.addWidget(self.error)
         buttons = QHBoxLayout()
         preview = QPushButton("Preview")
         preview.setObjectName("latePreview")
+        preview.setProperty("quiet", True)
         preview.clicked.connect(self.preview_requested.emit)
         self.accept_button = QPushButton("Accept late start")
         self.accept_button.setObjectName("lateAccept")
         self.accept_button.setEnabled(False)
         self.accept_button.clicked.connect(self.accept)
         cancel = QPushButton("Cancel")
+        cancel.setProperty("quiet", True)
         cancel.clicked.connect(self.reject)
         buttons.addWidget(preview)
-        buttons.addWidget(self.accept_button)
+        buttons.addStretch(1)
         buttons.addWidget(cancel)
+        buttons.addWidget(self.accept_button)
         layout.addLayout(buttons)
 
     def chosen_minutes(self) -> int:
@@ -2394,6 +2455,7 @@ class LateDialog(QDialog):
         moved = len(trace.get("moves") or [])
         unplaced = len(trace.get("unplaced") or [])
         self.summary.setText(f"{moved} tasks move · {unplaced} tasks no longer fit")
+        self.changes.setVisible(True)
         self.accept_button.setEnabled(True)
         self.minutes.setEnabled(False)
 
@@ -2462,6 +2524,7 @@ class AvailabilityDialog(QDialog):
         form.addWidget(self.protected_list)
         add_protected = QPushButton("Add protected time")
         add_protected.setObjectName("protectedAdd")
+        add_protected.setProperty("quiet", True)
         add_protected.clicked.connect(self._add_protected)
         form.addWidget(add_protected)
         form.addWidget(QLabel("Preferred study hours"))
@@ -2490,6 +2553,7 @@ class AvailabilityDialog(QDialog):
         form.addLayout(study_row)
         add_study = QPushButton("Add study window")
         add_study.setObjectName("studyAdd")
+        add_study.setProperty("quiet", True)
         add_study.clicked.connect(self._add_study)
         form.addWidget(add_study)
         self.cutoff = QComboBox()
@@ -2504,6 +2568,8 @@ class AvailabilityDialog(QDialog):
         form.addWidget(self.cutoff)
         form.addWidget(QLabel("When may FlexWeek plan homework?"))
         self.work_editor = WorkWindowsEditor(preferences.get("work_windows") or [], subjects, body)
+        # Save is this dialog's answer, so the editor's Add is plain here.
+        self.work_editor.add_button.setProperty("quiet", True)
         form.addWidget(self.work_editor)
         self.error = _error_label()
         form.addWidget(self.error)
