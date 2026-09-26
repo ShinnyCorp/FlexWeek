@@ -905,7 +905,7 @@ def pack_stylesheet(
         f"QLabel#alarmDetail {{ font-size: {size + 2}pt; color: {palette['muted']}; }}"
         f"QLabel#toast {{ background: {palette['panel']}; color: {palette['text']}; "
         f"{edges} padding: {pad * 2}px {pad * 3}px; border-radius: {radius}px; }}"
-        # A new account's empty week, and the focus screen.
+        # A new account's empty week, the focus screen and the command bar.
         f"QLabel#emptyWeekHeading {{ font-size: {size + 8}pt; font-weight: 700; }}"
         f"QLabel#emptyWeekLine {{ color: {palette['muted']}; font-size: {size + 1}pt; }}"
         f"QPushButton#emptyWeekAdd, QPushButton#focusScreenStart {{ font-weight: 600; "
@@ -920,6 +920,14 @@ def pack_stylesheet(
         f"QProgressBar#focusScreenProgress {{ background: {palette['hairline']}; border: none; "
         f"border-radius: 3px; min-height: 6px; max-height: 6px; padding: 0; }}"
         f"QProgressBar#focusScreenProgress::chunk {{ background: {palette['accent']}; border-radius: 3px; }}"
+        # Laid over the window, it dims what is behind so the box reads as the one thing to answer.
+        f"QWidget#commandBar {{ background: rgba(0, 0, 0, 90); }}"
+        f"QFrame#commandBox {{ background: {palette['panel']}; border-radius: {radius}px; "
+        f"border: 1px solid {palette['hairline_strong']}; padding: {pad}px; }}"
+        f"QLineEdit#commandInput {{ font-size: {size + 2}pt; }}"
+        f"QListWidget#commandList {{ border: none; padding: 0; }}"
+        f"QListWidget#commandList::item {{ padding: {pad}px; border-radius: {radius}px; }}"
+        f"QLabel#commandNothing {{ color: {palette['muted']}; padding: {pad}px; }}"
     ) + (control_rules(palette, radius, size, art) if art is not None else "")
 
 

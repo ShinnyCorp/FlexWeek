@@ -121,6 +121,7 @@ HELP_KEYS = (
     ("T", "My day"),
     ("B or Esc", "Back from My day"),
     ("F", "Focus screen"),
+    ("Ctrl+K", "Command bar"),
     ("Ctrl+Z", "Undo"),
     ("Ctrl+Y or Ctrl+Shift+Z", "Redo"),
     ("Ctrl+C, then Ctrl+V", "Copy the selected block, then paste it into the selected day"),

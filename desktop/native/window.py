@@ -55,6 +55,7 @@ from desktop.native.calendar import (
     sunday_due,
 )
 from desktop.native.client import PASSWORD_LENGTH_HINT, USERNAME_HINT, sign_in_problem, sign_up_problem
+from desktop.native.command_bar import Command, CommandBar
 from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import phase_duration_ms
@@ -297,6 +298,8 @@ class NativeWindow(QMainWindow):
         self._build_week()
         self._build_setup()
         self._build_focus_screen()
+        self.command_bar = CommandBar(self)
+        self.command_bar.chosen.connect(self._run_command)
         self.session.account_changed.connect(self._on_account)
         self.session.recovery_codes.connect(self._show_recovery)
         self.session.week_changed.connect(self._on_week)
@@ -2343,6 +2346,56 @@ class NativeWindow(QMainWindow):
         if self.session.finish_focused_homework():
             self._close_focus_screen()
 
+    def _commands(self) -> list[Command]:
+        """What the command bar offers: the actions a student reaches for most, then each homework."""
+        manual = (self.session.preferences or {}).get("planning_style") == "manual"
+        made = [
+            Command("addHomework", "Add homework", MORE_TIPS["addHomework"]),
+            Command("addFixed", "Add fixed time", MORE_TIPS["addFixed"]),
+            Command("schoolHours", "School hours", MORE_TIPS["schoolHours"]),
+            Command("day", "Day", "One day as a list"),
+            Command("week", "Week", "The week you are planning"),
+            Command("month", "Month", "The month as a calendar"),
+            Command("myDay", "My day", "Watch today"),
+            Command(
+                "solveButton", SUGGEST_LABEL if manual else PLAN_LABEL, SUGGEST_TIP if manual else PLAN_TIP
+            ),
+            Command("settingsGear", "Settings"),
+            Command("helpButton", "Help", MORE_TIPS["helpButton"]),
+            Command("focus", "Focus screen", "The focus timer on its own, large."),
+        ]
+        homework = sorted(
+            self.session.assignments.values(),
+            key=lambda item: (bool(item.get("completed")), item.get("due") or "", item.get("title") or ""),
+        )
+        made.extend(
+            Command("homework:" + item["id"], item.get("title") or "Homework", "Open this homework")
+            for item in homework
+        )
+        return made
+
+    def _open_command_bar(self) -> None:
+        if self.session.account is not None:
+            self.command_bar.open(self._commands())
+
+    def _run_command(self, key: str) -> None:
+        """As the button or the click the command stands for: a button greyed while FlexWeek is busy
+        does nothing here either."""
+        if key != "focus":
+            self._close_focus_screen()
+        if key.startswith("homework:"):
+            self._edit_homework(key.removeprefix("homework:"))
+        elif key in {"day", "week", "month"}:
+            self._choose_view(key)
+        elif key == "myDay":
+            self._enter_day()
+        elif key == "focus":
+            self._open_focus_screen()
+        else:
+            button = self.findChild(QPushButton, key)
+            if button is not None:
+                button.click()
+
     def _on_focus(self) -> None:
         self.focus_panel.set_state(self.session)
         self.focus_screen.set_state(self.session)
@@ -2832,6 +2885,10 @@ class NativeWindow(QMainWindow):
             if key in (Qt.Key.Key_W, Qt.Key.Key_D, Qt.Key.Key_M, Qt.Key.Key_T) and not mods:
                 self._close_focus_screen()
         if mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier):
+            if key == Qt.Key.Key_K and planning:
+                self._open_command_bar()
+                event.accept()
+                return
             if key == Qt.Key.Key_Z:
                 if mods & Qt.KeyboardModifier.ShiftModifier:
                     self._told(self.session.redo)
@@ -2918,6 +2975,7 @@ class NativeWindow(QMainWindow):
             Qt.Key.Key_Z,
             Qt.Key.Key_Y,
             Qt.Key.Key_S,
+            Qt.Key.Key_K,
         ):
             self.keyPressEvent(event)
             return True
