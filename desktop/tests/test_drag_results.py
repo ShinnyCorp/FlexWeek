@@ -402,6 +402,8 @@ def test_every_advanced_action_says_what_it_did_when_it_is_done(
 
     monkeypatch.setattr(PreviewDialog, "exec", preview)
     monkeypatch.setattr(RestoreDialog, "exec", restore)
+    # The click that picks Piano opens it too; the student closes it again.
+    monkeypatch.setattr(BlockDialog, "exec", lambda dialog: dialog.reject() or dialog.result())
     hours = window.week_table.hours
     hours.reveal(3, 16 * 60, 19 * 60)
     qapp.processEvents()
