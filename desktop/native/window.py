@@ -136,6 +136,7 @@ from desktop.native.widgets import (
     PlanReview,
     PreviewDialog,
     RoutineDialog,
+    SchoolHoursDialog,
     SpreadDialog,
     Toast,
     UnfinishedPanel,
@@ -1754,13 +1755,22 @@ class NativeWindow(QMainWindow):
         self._set_notice(f"Deleted {block.get('title') or 'the event'}.", "Undo", self._undo_from_notice)
 
     def _school_hours(self) -> None:
-        """School for a student who skipped it at setup, when nothing on the menu said school: their
-        School if they have one, otherwise School already filled in, Monday to Friday 08:00-14:30."""
+        """School's days and times, asked as setup asks them: the student's School if they have one,
+        otherwise Monday to Friday 08:00-14:30 to start from. Saved as any edit of a block is; no day
+        ticked takes School off the calendar."""
         locked = [item for item in self.session.blocks if item.get("kind") == "locked"]
         school = next((item for item in locked if item["id"] == "school"), None) or next(
             (item for item in locked if item.get("category") == "class"), None
         )
-        self._commit_block(BlockDialog(self, school) if school else BlockDialog(self, category="class"))
+        dialog = SchoolHoursDialog(self, school)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        made = dialog.block()
+        if made is not None:
+            self.session.add_block(made)
+            self.session.save()
+        elif school is not None:
+            self._delete_block(school, "series", None)
 
     def _add_homework(self) -> None:
         category = self.session.armed_category
