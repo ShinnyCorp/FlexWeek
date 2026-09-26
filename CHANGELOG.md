@@ -54,6 +54,28 @@ All notable changes to FlexWeek are documented here. Format follows
 - Running late's preview says "from 16:00 to 17:30", "placed at 18:00" or
   "moves off 19:00 and is not placed" instead of arrows, and setup's "Choose
   my own look instead" loses its arrow.
+- The top bar's Day, Week, Month and My day are one segmented control, the
+  chosen view raised in it.
+- Add is the top bar's one filled button: a click adds homework, and its arrow
+  offers Add fixed time, School hours and the types to drag onto the calendar.
+  Adding left the More menu. Plan my homework is a plain button beside it.
+- Week has a side, as Day does: the Next line, the homework to start a focus
+  timer on, and Not placed yet, beside the hours instead of stacked above
+  them. Above the hours only a running focus timer shows. On a window under
+  1150 pixels the side folds into one line above the hours, "Next: … · Not
+  placed yet: 2" with the chips after it, and blocks show their names only, on
+  two lines if they need them, so "Soccer practice" is not cut to "Soccer …".
+- One toast carries every notice: what a drag, Plan, Finished or Delete did,
+  with its Undo; Find a new time; Open release page; reminders; and anything
+  FlexWeek has to say. It floats over the foot of the hours, never below the
+  window, lets clicks through to the hours except on its button, and goes
+  after 6 seconds (12 with a button) or when the student changes view, week,
+  day or design. The status line under the hours is gone, and "Saved." is no
+  longer said after every change.
+- Month opens with the student's week as its first row, the weeks after it
+  filling the view and the weeks before a scroll away. In a month's last week
+  the week before stays above it, so two weeks always show.
+- The smallest window is 800 pixels wide.
 
 ### Fixed
 - A one-hour block, such as Club at 19:00, shows its name and its times on two
