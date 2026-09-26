@@ -14,8 +14,9 @@ import pytest
 
 pytest.importorskip("PySide6")
 
+from PySide6.QtCore import QSize
 from PySide6.QtGui import QFont, QFontMetrics
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
 from desktop.native.kept import KeptSession
 from desktop.native.window import NativeWindow
@@ -187,3 +188,19 @@ def test_the_default_file_name_is_offered_to_the_dialog(
     monkeypatch.setattr(window_module.QFileDialog, "getSaveFileName", staticmethod(answer))
     recovering.recovery_save.click()
     assert asked == ["flexweek-recovery-codes.txt"]
+
+
+def test_both_cards_show_the_icon_beside_the_wordmark(
+    qapp: QApplication,  # noqa: F811
+    recovering: NativeWindow,
+) -> None:
+    for name in ("authPage", "recoveryPage"):
+        card = next(page for page in recovering._stack.findChildren(QWidget) if page.objectName() == name)
+        icon = card.findChild(QLabel, "authLogo")
+        brand = card.findChild(QLabel, "authBrand")
+        assert brand.text() == "FlexWeek"
+        assert icon is not None and not icon.pixmap().isNull(), name
+        assert icon.pixmap().deviceIndependentSize().toSize() == QSize(28, 28)
+        assert icon.parentWidget() is brand.parentWidget()
+        assert icon.geometry().right() < brand.geometry().left(), "the icon comes first"
+        assert abs(icon.geometry().center().y() - brand.geometry().center().y()) <= 4

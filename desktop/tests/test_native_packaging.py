@@ -49,3 +49,17 @@ def test_both_builds_ship_the_plugin_that_makes_an_alarm_audible() -> None:
     alarm still shows its dialog, and it rings silently, which is the one thing an alarm must not do."""
     for text in (LINUX, WINDOWS):
         assert "include-qt-plugins=multimedia," in text
+
+
+def test_the_windows_build_takes_its_icon_from_the_ico_with_every_size() -> None:
+    """Nuitka's --windows-icon-from-ico was handed the PNG. The .ico carries each size Windows asks
+    for, drawn at that size by scripts/brand.py."""
+    import struct
+
+    assert "--windows-icon-from-ico=$(Join-Path $Root 'desktop\\assets\\logo.ico')" in WINDOWS
+    data = (ROOT / "desktop/assets/logo.ico").read_bytes()
+    reserved, kind, count = struct.unpack_from("<HHH", data)
+    assert (reserved, kind) == (0, 1)
+    sides = [data[6 + 16 * index] or 256 for index in range(count)]
+    assert sides == [256, 128, 64, 48, 32, 16]
+    assert (ROOT / "desktop/assets/logo.png").read_bytes()[16:24] == struct.pack(">II", 512, 512)

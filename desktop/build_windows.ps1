@@ -95,7 +95,7 @@ $NuitkaArgs = @(
     '--include-windows-runtime-dlls=yes',
     '--output-filename=FlexWeek.exe',
     "--output-dir=$Stage",
-    "--windows-icon-from-ico=$(Join-Path $Root 'desktop\assets\logo.png')",
+    "--windows-icon-from-ico=$(Join-Path $Root 'desktop\assets\logo.ico')",
     '--windows-console-mode=disable'
 )
 if ($AssumeYesForDownloads) {

@@ -16,6 +16,7 @@ from PySide6.QtGui import (
     QIcon,
     QKeyEvent,
     QPalette,
+    QPixmap,
     QResizeEvent,
 )
 from PySide6.QtNetwork import QLocalServer
@@ -212,6 +213,8 @@ TOAST_GAP = 8
 # How long Settings waits after the last change before saving it to the account. Long enough that
 # typing a number or clicking through a menu is one save.
 SETTINGS_SAVE_MS = 600
+LOGO = Path(__file__).resolve().parents[1] / "assets" / "logo.png"
+LOGO_PX = 28
 RECOVERY_COPY = "Copy"
 RECOVERY_SAVE = "Save…"
 RECOVERY_FILE = "flexweek-recovery-codes.txt"
@@ -219,6 +222,30 @@ RECOVERY_FILE = "flexweek-recovery-codes.txt"
 RECOVERY_SAID_MS = 2000
 # Homework named on a Find a new time notice before the rest is counted.
 NOTICE_LINES = 3
+
+
+def brand_row() -> QHBoxLayout:
+    """The icon beside the wordmark, as on the app's window and installer."""
+    row = QHBoxLayout()
+    row.setSpacing(10)
+    ratio = QGuiApplication.primaryScreen().devicePixelRatio() if QGuiApplication.primaryScreen() else 1.0
+    picture = QPixmap(str(LOGO))
+    if not picture.isNull():
+        side = round(LOGO_PX * ratio)
+        picture = picture.scaled(
+            side, side, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+        )
+        picture.setDevicePixelRatio(ratio)
+        icon = QLabel()
+        icon.setObjectName("authLogo")
+        icon.setPixmap(picture)
+        icon.setFixedSize(LOGO_PX, LOGO_PX)
+        row.addWidget(icon)
+    brand = QLabel("FlexWeek")
+    brand.setObjectName("authBrand")
+    row.addWidget(brand)
+    row.addStretch(1)
+    return row
 
 
 class NativeWindow(QMainWindow):
@@ -454,9 +481,7 @@ class NativeWindow(QMainWindow):
         outer.addLayout(middle)
         outer.addStretch(1)
         layout = QVBoxLayout(card)
-        brand = QLabel("FlexWeek")
-        brand.setObjectName("authBrand")
-        layout.addWidget(brand)
+        layout.addLayout(brand_row())
         self.auth_heading = QLabel()
         self.auth_heading.setObjectName("authHeading")
         layout.addWidget(self.auth_heading)
@@ -553,9 +578,7 @@ class NativeWindow(QMainWindow):
         card.setMaximumWidth(AUTH_CARD_WIDTH)
         card.setMinimumWidth(AUTH_CARD_WIDTH)
         layout = QVBoxLayout(card)
-        brand = QLabel("FlexWeek")
-        brand.setObjectName("authBrand")
-        layout.addWidget(brand)
+        layout.addLayout(brand_row())
         heading = QLabel("Save these recovery codes")
         heading.setObjectName("authHeading")
         layout.addWidget(heading)
