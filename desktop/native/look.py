@@ -870,6 +870,11 @@ def pack_stylesheet(
         # something laid over the calendar rather than printed onto it.
         # The week you are on, said once and said large.
         f"QLabel#weekTitle {{ font-size: {size + 6}pt; font-weight: 700; color: {palette['text']}; }}"
+        # Today's name above the week, in the accent over a 2 px line. The others keep a clear line,
+        # so the row does not move when the day changes.
+        f'QLabel[today="false"] {{ border-bottom: 2px solid transparent; }}'
+        f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: 700; '
+        f'border-bottom: 2px solid {palette["accent"]}; }}'
         # Day / Week / Month read as one control rather than three buttons of equal weight.
         f"QPushButton#viewDay, QPushButton#viewWeek, QPushButton#viewMonth, QPushButton#viewMyDay {{ "
         f"background: transparent; color: {palette['muted']}; font-weight: 400; "

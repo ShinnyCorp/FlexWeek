@@ -42,7 +42,7 @@ from desktop.native.hours.geometry import (
     snap,
 )
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
-from desktop.native.look import block_paint
+from desktop.native.look import block_paint, readable_ink
 from desktop.native.weekmodel import Occurrence, clock_label, length_label
 
 # A press this close to a block's start or end edge resizes it, on a block long enough to have edges.
@@ -88,7 +88,7 @@ class Drawn:
 
 class BlockPainter:
     """How hours and blocks look. This default is Daily Scheduler's: pale category fills, a strong
-    edge, hour rules with dashed half hours, a red now line. Designs subclass it."""
+    edge, a rule at each hour, a red now line carrying the time. Designs subclass it."""
 
     def __init__(self, colours: dict[str, str], look: dict | None = None) -> None:
         self.colours = colours
@@ -101,24 +101,17 @@ class BlockPainter:
         painter.fillRect(rect, self.c("window"))
 
     def track(self, painter: QPainter, track: LinearTrack, today: bool) -> None:
-        """Hour and half-hour rules, in the track's upright frame."""
+        """A rule at each hour, in the track's upright frame, over a wash of the accent on today."""
         area = track.area
         if today:
             wash = self.c("accent")
-            wash.setAlphaF(0.05)
+            wash.setAlphaF(0.10)
             painter.fillRect(area, wash)
-        for minute in range((track.first // 30) * 30, track.last + 1, 30):
-            if minute < track.first:
-                continue
+        # On a dark look the plain hairline barely shows against the page.
+        rule = self.c("hairline_strong" if self.colours.get("axis") == "dark" else "hairline")
+        painter.setPen(QPen(rule, 1))
+        for minute in range(-(-track.first // 60) * 60, track.last + 1, 60):
             offset = track.offset(minute)
-            half = minute % 60 != 0
-            painter.setPen(
-                QPen(
-                    self.c("grid" if half else "hairline"),
-                    1,
-                    Qt.PenStyle.DashLine if half else Qt.PenStyle.SolidLine,
-                )
-            )
             if track.axis is Axis.DOWN:
                 painter.drawLine(
                     QPointF(area.left(), area.top() + offset), QPointF(area.right(), area.top() + offset)
@@ -127,7 +120,6 @@ class BlockPainter:
                 painter.drawLine(
                     QPointF(area.left() + offset, area.top()), QPointF(area.left() + offset, area.bottom())
                 )
-        painter.setPen(QPen(self.c("hairline"), 1))
         if track.axis is Axis.DOWN:
             painter.drawLine(area.topLeft(), area.bottomLeft())
         else:
@@ -210,6 +202,8 @@ class BlockPainter:
         bold.setBold(True)
         plain = time_font(_small(painter.font()))
         line = QFontMetrics(bold).height()
+        # The name on a bold line and its times on one line of the smaller font under it.
+        two_lines = line + 1 + QFontMetricsF(plain).height()
         # The name stays in sight while the start of a long block is scrolled away, either way.
         start = QPointF(rect.left() + 8, rect.top() + 3)
         if drawn.axis is Axis.DOWN and rect.bottom() - visible.top() > 2 * line:
@@ -223,7 +217,7 @@ class BlockPainter:
         if drawn.held and QFontMetrics(plain).horizontalAdvance(detail) > room.width():
             detail = ""  # said in the label beside it instead
         painter.setPen(ink)
-        if room.height() < 2 * line:
+        if room.height() < two_lines:
             painter.setFont(plain)
             text = f"{drawn.title} · {detail}" if detail else drawn.title
             elided = QFontMetrics(plain).elidedText(text, Qt.TextElideMode.ElideRight, int(room.width()))
@@ -282,19 +276,29 @@ class BlockPainter:
             )
 
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
+        """A line across the track at `minute`, starting from a pill with the time on it."""
         colour = self.c("error")
+        font = time_font(_small(painter.font()))
+        font.setBold(True)
+        metrics = QFontMetricsF(font)
+        words = clock_label(minute)
+        width, height = metrics.horizontalAdvance(words) + 10, metrics.height() + 2
         at = track.offset(minute)
         area = track.area
+        if track.axis is Axis.DOWN:
+            pill = QRectF(area.left(), area.top() + at - height / 2, width, height)
+            ends = (QPointF(pill.right(), area.top() + at), QPointF(area.right(), area.top() + at))
+        else:
+            pill = QRectF(area.left() + at - width / 2, area.top(), width, height)
+            ends = (QPointF(area.left() + at, pill.bottom()), QPointF(area.left() + at, area.bottom()))
+        painter.setPen(QPen(colour, 2))
+        painter.drawLine(*ends)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(colour)
-        if track.axis is Axis.DOWN:
-            painter.drawEllipse(QPointF(area.left() + 1, area.top() + at), 4, 4)
-            painter.setPen(QPen(colour, 2))
-            painter.drawLine(QPointF(area.left(), area.top() + at), QPointF(area.right(), area.top() + at))
-        else:
-            painter.drawEllipse(QPointF(area.left() + at, area.top() + 1), 4, 4)
-            painter.setPen(QPen(colour, 2))
-            painter.drawLine(QPointF(area.left() + at, area.top()), QPointF(area.left() + at, area.bottom()))
+        painter.drawRoundedRect(pill, height / 2, height / 2)
+        painter.setPen(QColor(readable_ink(colour.name())))
+        painter.setFont(font)
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
 
     def label(self, painter: QPainter, beside: QRectF, words: str, ok: bool, room: QRectF) -> None:
         """The held block's words on a pill beside it, when the block is too small to say them, kept
@@ -318,6 +322,9 @@ class BlockPainter:
         painter.setFont(font)
         painter.setPen(self.c("accent" if today else "muted"))
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, words)
+        if today:
+            ink = QFontMetricsF(font).boundingRect(box, int(Qt.AlignmentFlag.AlignCenter), words)
+            painter.fillRect(QRectF(ink.left(), ink.bottom() + 1, ink.width(), 2), self.c("accent"))
 
 
 @contextmanager

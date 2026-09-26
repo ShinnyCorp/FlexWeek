@@ -30,7 +30,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.layouts.base import Scene
     from desktop.native.layouts.registry import options_for, tokens_for
     from desktop.native.layouts.timeline import TimelineView
-    from desktop.native.look import resolved_palette
+    from desktop.native.look import mix, resolved_palette
     from desktop.native.weekmodel import build_week, minute_of
 
 DETAIL = "16:00–17:30 · 1 h 30 min · Missed · Pinned"
@@ -326,3 +326,67 @@ def test_every_time_on_the_hours_is_written_in_figures_of_one_width(
     assert any("16:00–17:30" in text for text, _font in timed)
     for text, font in timed:
         assert font.featureValue(QFont.Tag(TABULAR)) == 1, text
+
+
+CLUB = {"id": "club", "title": "Club", "kind": "locked", "days": [1], "start": "19:00", "duration_min": 60}
+
+
+def test_a_one_hour_block_says_its_name_and_its_times_on_two_lines(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Club at 19:00 for an hour, at 48 pixels an hour, was one shortened line, "Club · 19:00–20:00 ·
+    …". Its name in bold and its times in the smaller font fit on two, so they are written there."""
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    canvas = three_days(blocks=(CLUB,))
+    Said.words = []
+    canvas.grab()
+    assert words_on(canvas, "club", 1) == ["Club", "19:00–20:00 · 1 h"]
+
+
+def rows(palette: dict, today: bool) -> QImage:
+    """One track from 08:00 to 10:00 at 48 pixels an hour, painted on the window colour."""
+    track = LinearTrack(0, QRectF(10, 10, 100, 2 * HOUR_PX), first=8 * 60, last=10 * 60)
+    image = QImage(120, 2 * HOUR_PX + 20, QImage.Format.Format_ARGB32)
+    image.fill(QColor(palette["window"]))
+    painter = QPainter(image)
+    BlockPainter(palette).track(painter, track, today)
+    painter.end()
+    return image
+
+
+def test_the_hours_have_a_rule_at_each_hour_and_none_at_the_half(qapp: QApplication) -> None:
+    """The dashed half-hour rules crowded the grid. On a dark look the hour rules take the stronger
+    hairline, since the plain one all but vanished on the page."""
+    for pack, dark, rule in (("slate", False, "hairline"), ("nocturne", True, "hairline_strong")):
+        palette = resolved_palette(pack, dark, None)
+        image = rows(palette, today=False)
+        at = {minute: 10 + (minute - 8 * 60) * HOUR_PX // 60 for minute in (8 * 60 + 30, 9 * 60)}
+        assert QColor(image.pixel(60, at[9 * 60])).name() == palette[rule], pack
+        assert QColor(image.pixel(60, at[8 * 60 + 30])).name() == palette["window"], pack
+
+
+def test_today_is_washed_in_a_tenth_of_the_accent(qapp: QApplication) -> None:
+    palette = resolved_palette("slate", False, None)
+    washed = QColor(rows(palette, today=True).pixel(60, 10 + HOUR_PX // 2))
+    wanted = QColor(mix(palette["accent"], palette["window"], 0.10))
+    for got, want in zip(washed.getRgb()[:3], wanted.getRgb()[:3], strict=True):
+        assert abs(got - want) <= 1, (washed.name(), wanted.name())
+
+
+def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The line said where now is but not what time it is. At 15:40 it starts from a pill in the
+    error colour reading "15:40", level with the line."""
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    canvas = three_days(now_min=15 * 60 + 40)
+    Said.inks = []
+    image = canvas.grab().toImage()
+    track = canvas.tracks[0]
+    line_y = track.area.top() + track.offset(15 * 60 + 40)
+    written = [where for text, where in Said.inks if text == "15:40"]
+    assert len(written) == 1
+    assert abs(written[0].center().y() - line_y) <= 2
+    assert track.area.left() <= written[0].left() < track.area.left() + 12
+    error = resolved_palette("system", False, None)["error"]
+    assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == error

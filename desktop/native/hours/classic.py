@@ -46,6 +46,8 @@ class DayName(QLabel):
         super().__init__(parent)
         self._day = day
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # The stylesheet underlines today's name; every name keeps room for the line.
+        self.setProperty("today", False)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
@@ -108,6 +110,10 @@ class ClassicWeek(QWidget):
         self.hours.set_week(week.occurrences, today, now_min)
         for day, label in enumerate(self._name_labels):
             label.setText(self._name(day))
+            if label.property("today") != (day == today):
+                label.setProperty("today", day == today)
+                label.style().unpolish(label)
+                label.style().polish(label)
         self.scroll.open_at(week.week_start, opening_minute(week, today, now_min))
 
     def hours_surfaces(self) -> list[HoursCanvas]:
