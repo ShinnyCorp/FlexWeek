@@ -2175,10 +2175,7 @@ class LateDialog(QDialog):
     def show_trace(self, trace: dict, titles: dict[str, str]) -> None:
         self.changes.clear()
         for move in trace.get("moves") or []:
-            self.changes.addItem(
-                f"{titles.get(move['block_id'], move['block_id'])}: "
-                f"{move.get('from_start') or 'unscheduled'} → {move.get('to_start') or 'unscheduled'}"
-            )
+            self.changes.addItem(f"{titles.get(move['block_id'], move['block_id'])}: {_late_move(move)}")
         for block in trace.get("unplaced") or []:
             self.changes.addItem(block["title"] + " no longer fits and will stay on the task list.")
         if self.changes.count() == 0:
@@ -2188,6 +2185,17 @@ class LateDialog(QDialog):
         self.summary.setText(f"{moved} tasks move · {unplaced} tasks no longer fit")
         self.accept_button.setEnabled(True)
         self.minutes.setEnabled(False)
+
+
+def _late_move(move: dict) -> str:
+    was, now = move.get("from_start"), move.get("to_start")
+    if was and now:
+        return f"from {was} to {now}"
+    if now:
+        return f"placed at {now}"
+    if was:
+        return f"moves off {was} and is not placed"
+    return "not placed"
 
 
 class SpreadDialog(QDialog):

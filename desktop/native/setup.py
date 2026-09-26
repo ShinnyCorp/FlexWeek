@@ -689,7 +689,7 @@ class SetupPage(QWidget):
             self.style_cards[style.key] = card
         grid.setColumnStretch(2, 1)
         box.addWidget(cards)
-        own = _quiet(OWN_LOOK_LABEL + "  →", "setupOwnLook")
+        own = _quiet(OWN_LOOK_LABEL, "setupOwnLook")
         own.clicked.connect(self._choose_own_look)
         box.addWidget(own, 0, Qt.AlignmentFlag.AlignLeft)
         return content

@@ -634,7 +634,10 @@ def test_choose_my_own_look_goes_through_look_and_colours(qapp: QApplication) ->
     setup = opened(qapp)
     kept: list[tuple[int, object]] = []
     setup.left.connect(lambda step, _to, answer: kept.append((step, answer)))
-    setup.findChild(QPushButton, "setupOwnLook").click()
+    own = setup.findChild(QPushButton, "setupOwnLook")
+    # Words, not an arrow drawn after them.
+    assert own.text() == "Choose my own look instead"
+    own.click()
     assert setup.step == LOOK
     setup.look_cards["timeline"].chosen.emit()
     setup.next.click()
