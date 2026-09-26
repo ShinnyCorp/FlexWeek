@@ -58,6 +58,32 @@ def test_a_focus_credit_is_not_lost_behind_a_failed_save(qapp: QApplication, ser
     assert item["notes"] == "Cite two sources"
 
 
+def test_finished_after_a_focus_session_finishes_the_homework_where_it_was(
+    qapp: QApplication, server: LocalServer
+) -> None:
+    """Finished used to write a finished day onto a session not yet marked finished, which the
+    homework's own check turned away, so nothing was finished and nothing was said."""
+    session = signed_in(qapp, server.origin, "alice", create=True)
+    session.add_homework(essay(session))
+    session.blocks[0]["start"] = "16:00"
+    session.blocks[0]["days"] = [0]
+    session.save()
+    settled(qapp, session)
+    session.now_ms = lambda: 1_000_000
+    assert session.start_focus(session.blocks[0]["id"], 0) is True
+    session.now_ms = lambda: 1_000_000 + 30 * 60_000
+    session.tick_focus()
+    settled(qapp, session)
+    assert session.focus["phase"] == "ended"
+    assert session.finish_focused_homework() is True
+    settled(qapp, session)
+    session.reload()
+    settled(qapp, session)
+    assert session.assignments["essay"]["completed"] is True
+    block = session.blocks[0]
+    assert (block["completed"], block["completed_day"], block["start"]) == (True, 0, "16:00")
+
+
 def test_completed_homework_can_be_reopened_after_a_reload(qapp: QApplication, server: LocalServer) -> None:
     session = signed_in(qapp, server.origin, "alice", create=True)
     session.add_homework(essay(session))
