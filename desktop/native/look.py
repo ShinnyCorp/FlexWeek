@@ -124,6 +124,8 @@ FONT_FAMILIES = {
     "serif": "Noto Serif, DejaVu Serif, serif",
 }
 AA_TEXT = 4.5
+# How much of a category's strong colour a block on a dark look takes over the panel.
+DARK_FILL = 0.35
 DARK_INK = "#0b1224"
 LIGHT_INK = "#ffffff"
 
@@ -536,7 +538,9 @@ def block_paint(
     """How one calendar block is drawn: its fill, its ink, and where the category colour goes.
 
     `category_color` is the pale fill; `mark` is the strong colour of the same category. A pale
-    outline vanishes on a light pack, so an outline or an edge is drawn with the mark.
+    outline vanishes on a light pack, so an outline or an edge is drawn with the mark. On a dark
+    look a pale fill glared off the page, so a filled block there is the mark sunk into the panel,
+    with light ink.
     """
     flexible = kind == "flexible"
     neutral = palette["block_flex" if flexible else "block_locked"]
@@ -554,13 +558,8 @@ def block_paint(
             "edge": mark,
         }
     if category_color:
-        return {
-            "mode": mode,
-            "fill": category_color,
-            "ink": readable_ink(category_color),
-            "outline": None,
-            "edge": None,
-        }
+        fill = mix(mark, palette["panel"], DARK_FILL) if palette.get("axis") == "dark" else category_color
+        return {"mode": mode, "fill": fill, "ink": readable_ink(fill), "outline": None, "edge": None}
     return {"mode": mode, "fill": neutral, "ink": neutral_ink, "outline": None, "edge": None}
 
 

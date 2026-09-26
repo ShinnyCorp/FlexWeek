@@ -32,9 +32,11 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.hours.hand import Hand, Verdict
     from desktop.native.hours.month import MonthGrid
     from desktop.native.look import (
+        DARK_FILL,
         LOOK_DEFAULTS,
         effective_look,
         look_menu_token,
+        mix,
         preset_knobs,
         resolved_palette,
     )
@@ -131,11 +133,20 @@ def test_the_category_table_is_what_these_tests_assume() -> None:
 
 
 def test_a_filled_block_is_the_pale_category_colour_with_ink_that_reads(qapp: QApplication) -> None:
-    calendar, palette = week(qapp, look_of())
+    calendar, palette = week(qapp, look_of(), pack="slate")
     assert shape(calendar, "school") == (PALE, "#000000", None, None)
     # No category: the palette's own block colours, not a fixed light grey that glares on a dark pack.
     assert shape(calendar, "club")[:2] == (palette["block_locked"], palette["block_locked_ink"])
     assert pixel(calendar, "school", "inside") == PALE
+
+
+def test_a_filled_block_on_a_dark_pack_is_deep_with_light_ink(qapp: QApplication) -> None:
+    """Pale blue on near-black glared, and its black ink read as a hole in the page."""
+    calendar, palette = week(qapp, look_of())
+    deep = mix(STRONG, palette["panel"], DARK_FILL)
+    assert shape(calendar, "school") == (deep, "#ffffff", None, None)
+    assert pixel(calendar, "school", "inside") == deep
+    assert shape(calendar, "club")[:2] == (palette["block_locked"], palette["block_locked_ink"])
 
 
 def test_an_outlined_block_is_drawn_as_one_outline_in_the_strong_colour(qapp: QApplication) -> None:
@@ -160,7 +171,7 @@ def test_the_outline_stays_visible_on_a_light_pack(qapp: QApplication) -> None:
 
 
 def test_changing_the_look_repaints_the_week_already_on_screen(qapp: QApplication) -> None:
-    calendar, palette = week(qapp, look_of())
+    calendar, palette = week(qapp, look_of(), pack="slate")
     assert shape(calendar, "school")[0] == PALE
     calendar.set_look(look_of(blocks="edge"), palette)
     fill, _ink, _outline, edge = shape(calendar, "school")
