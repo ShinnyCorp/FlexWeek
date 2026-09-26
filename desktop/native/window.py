@@ -916,6 +916,7 @@ class NativeWindow(QMainWindow):
         self.hand.committed.connect(self._apply_change)
         self.hand.refused.connect(self.session._say)
         self.hand.opened.connect(self._edit_block)
+        self.hand.menu_requested.connect(self._block_menu)
         self.hand.selected.connect(self.session.select_block)
         self.hand.holding.connect(self._hold_renders)
         self.hand.date_judge = self._date_judge
@@ -1697,11 +1698,7 @@ class NativeWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         if dialog.deleted():
-            gone = dialog.block()
-            self.session.delete_block(gone["id"], scope=dialog.scope(), day=dialog.occurrence_day())
-            self.session.save()
-            # The question before deleting promised an undo; this is where it is.
-            self._set_notice(f"Deleted {gone.get('title') or 'the event'}.", "Undo", self._undo_from_notice)
+            self._delete_block(dialog.block(), dialog.scope(), dialog.occurrence_day())
             return
         before = {item["id"] for item in self.session.blocks}
         self.session.add_block(dialog.block(), scope=dialog.scope(), day=dialog.occurrence_day())
@@ -1749,6 +1746,12 @@ class NativeWindow(QMainWindow):
         if category in FLEX_CATEGORIES:
             category = None
         self._commit_block(BlockDialog(self, category=category))
+
+    def _delete_block(self, block: dict, scope: str, day: int | None) -> None:
+        self.session.delete_block(block["id"], scope=scope, day=day)
+        self.session.save()
+        # The question before deleting promised an undo; this is where it is.
+        self._set_notice(f"Deleted {block.get('title') or 'the event'}.", "Undo", self._undo_from_notice)
 
     def _school_hours(self) -> None:
         """School for a student who skipped it at setup, when nothing on the menu said school: their
@@ -2135,6 +2138,9 @@ class NativeWindow(QMainWindow):
             self._say_when_saved(moved_words(block, origin, day, start, end))
 
     def _edit_block(self, block_id: str) -> None:
+        if QApplication.activeModalWidget() is not None:
+            # One editor at a time: a click that lands while one is opening opens nothing more.
+            return
         if self.session.planner_view == "day":
             self.session.select_block(block_id, date.fromisoformat(self.session.selected_day).weekday())
         block = next((item for item in self.session.blocks if item["id"] == block_id), None)
@@ -2152,6 +2158,40 @@ class NativeWindow(QMainWindow):
             occurrence_day=self.session.selected_occurrence_day,
         )
         self._commit_block(dialog)
+
+    def _block_menu(self, block_id: str, day: int, at: QPoint) -> None:
+        """A block's right-click menu: Open, Duplicate, Finished for homework, and Delete, each the
+        path its button or key already takes. `day` is -1 for homework with no time yet."""
+        block = next((item for item in self.session.blocks if item["id"] == block_id), None)
+        if block is None:
+            return
+        on = day if day >= 0 else None
+        self.session.select_block(block_id, on)
+        assignment = self.session.assignments.get(block.get("assignment_id") or "")
+        menu = QMenu(self)
+        menu.setObjectName("blockMenu")
+        offered = [("blockMenuOpen", "Open")]
+        if block.get("start"):
+            offered.append(("blockMenuDuplicate", "Duplicate\tCtrl+D"))
+        if assignment is not None and not assignment.get("completed"):
+            offered.append(("blockMenuFinished", "Finished"))
+        offered.append(("blockMenuDelete", "Delete"))
+        for name, words in offered:
+            menu.addAction(words).setObjectName(name)
+        chosen = menu.exec(at)
+        menu.deleteLater()
+        picked = chosen.objectName() if chosen is not None else ""
+        if picked == "blockMenuOpen":
+            self._edit_block(block_id)
+        elif picked == "blockMenuDuplicate":
+            self._duplicate_selected()
+        elif picked == "blockMenuFinished" and assignment is not None:
+            self._finish_homework(assignment["id"])
+        elif picked == "blockMenuDelete":
+            one_day = is_series(block) and on is not None
+            name = (block.get("title") or "this event") + (f" on {DAY_FULL[on]}" if one_day else "")
+            if confirm(self, "Delete event", f"Delete {name}? You can undo this.", "Delete"):
+                self._delete_block(block, "occurrence" if one_day else "series", on)
 
     def _show_preview(
         self,

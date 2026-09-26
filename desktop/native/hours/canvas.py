@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
+    QContextMenuEvent,
     QFont,
     QFontMetrics,
     QFontMetricsF,
@@ -436,7 +437,7 @@ class HoursCanvas(QWidget):
         self.setAccessibleName("Hours")
         self.setAccessibleDescription(
             "Drag a block to move it, its top or bottom edge to resize it, or empty time to add something."
-            " Double-click a block, or press Enter, to open it."
+            " Click a block, or press Enter, to open it. Right-click it for more."
         )
         self.hand, self.painter = hand, painter
         self._lay_out = lay_out
@@ -714,7 +715,8 @@ class HoursCanvas(QWidget):
                 round(minute - edge),
             )
             self.hand.select(drawn.block_id, drawn.span.day)
-            self.hand.press(self, held, at, home=(self, track))
+            # A click opens it; a drag moves or resizes it.
+            self.hand.press(self, held, at, tap=lambda: self.hand.open(drawn.block_id), home=(self, track))
             return
         track = self.track_at(point)
         if track is None:
@@ -758,7 +760,17 @@ class HoursCanvas(QWidget):
         if event.button() != Qt.MouseButton.LeftButton or hit is None:
             super().mouseDoubleClickEvent(event)
             return
-        self.hand.open(hit[0].block_id)
+        self.hand.open(hit[0].block_id, second_click=True)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """A right-click on a block asks for its menu. It picks nothing up, and on free time or while
+        something is carried it does nothing."""
+        hit = self._block_at(QPointF(event.pos()))
+        if hit is None or self.hand.busy:
+            event.ignore()
+            return
+        event.accept()
+        self.hand.ask_menu(hit[0].block_id, hit[0].span.day, event.globalPos())
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if self.hand.busy:

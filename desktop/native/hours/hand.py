@@ -7,7 +7,8 @@ edge, and on release reports one change. Moves arrive through Qt's implicit grab
 keeps receiving the mouse until release), so no system drag-and-drop is involved and X11 and
 Wayland behave alike.
 
-A press that never becomes a drag is a tap, handed back to whoever pressed. Escape lets go.
+A press that never becomes a drag is a tap, handed back to whoever pressed: on a block, a tap opens
+it. A right-click asks for a block's menu and never picks anything up. Escape lets go.
 
 What a block can land on is a surface: any widget that sets `takes_blocks` and answers `track_at`
 with a `Track` under a point of its own. `HoursCanvas` is one; My day's dial and anything a design
@@ -140,6 +141,8 @@ class Hand(QObject):
     refused = Signal(str)
     opened = Signal(str)
     selected = Signal(str, int)
+    # A block's menu asked for: its id, its day (-1 for homework with no time yet), where to show it.
+    menu_requested = Signal(str, int, QPoint)
     active_changed = Signal(bool)
     # From the press to the release: nothing the press started on may be rebuilt meanwhile.
     holding = Signal(bool)
@@ -158,6 +161,7 @@ class Hand(QObject):
         self.month_verdict: Verdict | None = None
         # The window's rule for dates; with none, every date is taken.
         self.date_judge: DateJudge | None = None
+        self._opened: tuple[str, float] | None = None
         self._held: Held | None = None
         self._source: QWidget | None = None
         self._tap: Callable[[], None] | None = None
@@ -209,9 +213,26 @@ class Hand(QObject):
         self.selected.emit(block_id, day)
         self.preview_changed.emit()
 
-    def open(self, block_id: str) -> None:
+    def open(self, block_id: str, second_click: bool = False) -> None:
+        """Open a block. `second_click` is a double-click's second: the first, a tap, has opened it
+        already, so it opens nothing more, and one double-click never makes two editors."""
+        now = time.monotonic()
+        last, self._opened = self._opened, (block_id, now)
+        soon = QApplication.doubleClickInterval() / 1000
+        if second_click and last is not None and last[0] == block_id and now - last[1] < soon:
+            return
         self._end(silent=True)
         self.opened.emit(block_id)
+
+    def ask_menu(self, block_id: str, day: int, at: QPoint) -> None:
+        """A right-click on a block: it becomes the selection, and the window shows its menu. While
+        something is carried, a right-click does nothing."""
+        if self._active:
+            return
+        self._end(silent=True)
+        if day >= 0:
+            self.select(block_id, day)
+        self.menu_requested.emit(block_id, day, at)
 
     def commit(self, change: Change) -> None:
         """For a tap that makes something, such as a click on free time."""

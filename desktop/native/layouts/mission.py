@@ -233,7 +233,7 @@ class MissionView(LayoutView):
             canvas.setAccessibleName("Scope lane" if is_day else "Seven day lanes")
             canvas.setAccessibleDescription(
                 "Drag a block to move it, pull its left or right end to resize it, "
-                "or drag empty time to add something. Double-click a block to open it."
+                "or drag empty time to add something. Click a block to open it."
             )
             canvas.day_opened.connect(
                 lambda target: self.day_activated.emit(self.scene.week.date_of(target).isoformat())
