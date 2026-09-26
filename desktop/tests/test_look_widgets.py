@@ -24,7 +24,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QRectF, QStandardPaths
     from PySide6.QtGui import QColor
-    from PySide6.QtWidgets import QApplication, QComboBox, QPushButton, QWidget
+    from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QPushButton, QVBoxLayout, QWidget
 
     from desktop.native.calendar import CATEGORIES
     from desktop.native.hours.canvas import Drawn
@@ -38,8 +38,9 @@ if importlib.util.find_spec("PySide6") is not None:
         preset_knobs,
         resolved_palette,
     )
-    from desktop.native.settings import PrefsDialog
+    from desktop.native.settings import AboutDialog, PrefsDialog
     from desktop.native.weekmodel import build_week
+    from desktop.native.widgets import DIALOG_MARGIN, use_app_style
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
     from desktop.tests.logic_support import past_setup
@@ -296,3 +297,23 @@ def test_a_look_chosen_in_the_window_reaches_the_calendar_not_only_the_styleshee
             window.session.client.reset()
         qapp.processEvents()
         server.stop()
+
+
+def test_a_dialogs_content_sits_24_px_in_from_its_edges(qapp: QApplication) -> None:
+    """Qt's styles give a dialog about 11 px. The app's style gives every dialog 24, and a layout
+    inside it, or one given margins of its own, keeps what it had."""
+    use_app_style(qapp)
+    host = QWidget()
+    HOSTS.append(host)
+    about = AboutDialog(host, None, "/tmp/flexweek")
+    margins = about.layout().contentsMargins()
+    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (DIALOG_MARGIN,) * 4
+    assert DIALOG_MARGIN == 24
+    plain = QDialog(host)
+    outer = QVBoxLayout(plain)
+    inner_host = QWidget()
+    inner = QVBoxLayout(inner_host)
+    outer.addWidget(inner_host)
+    assert inner.contentsMargins().left() < DIALOG_MARGIN
+    outer.setContentsMargins(0, 0, 0, 0)
+    assert outer.contentsMargins().left() == 0

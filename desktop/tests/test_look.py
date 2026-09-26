@@ -191,6 +191,20 @@ def test_the_app_asks_for_its_own_inter_first_and_the_system_sans_after() -> Non
     assert "font-family: Inter" not in pack_stylesheet("slate", False, look_of("paper"))
 
 
+def test_cards_are_padded_16_or_8_and_controls_keep_their_size() -> None:
+    """Cards and dialogs padded 8 px read as cramped. The padding grew; a button, a field or a list
+    kept its own, so none of them grew with it."""
+    for density, card, control in (("comfortable", 16, 8), ("compact", 8, 4)):
+        sheet = pack_stylesheet("slate", False, look_of("default", density=density))
+        frames = sheet.split("QFrame, QGroupBox, QTableWidget, QListWidget {")[1].split("}")[0]
+        assert f"padding: {card}px;" in frames, density
+        assert f"QAbstractScrollArea {{ padding: {control}px; }}" in sheet, density
+        button = sheet.split("QPushButton {")[1].split("}")[0]
+        assert f"padding: {control}px {control * 2}px;" in button, density
+        field = sheet.split("QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {")[1].split("}")[0]
+        assert f"padding: {control}px;" in field, density
+
+
 def test_every_look_keeps_its_text_readable() -> None:
     assert len(EVERY_LOOK) == 5 * 2 * 7 * 5 * 2
     for pack, system_dark, preset, accent, surface in EVERY_LOOK:

@@ -114,7 +114,9 @@ TEXT_PT = {"small": 10, "normal": 12, "large": 15}
 # line edit has no minimum of its own worth the name, so the text inside gets sliced in half rather
 # than the dialog refusing to shrink. Measured against the app's own font at each size.
 FIELD_MIN_PX = {"small": 22, "normal": 26, "large": 34}
-DENSITY_PAD = {"comfortable": 8, "compact": 4}
+# A card's padding, and the smaller one of a button, a field, a list or a menu, which keep their heights.
+DENSITY_PAD = {"comfortable": 16, "compact": 8}
+CONTROL_PAD = {"comfortable": 8, "compact": 4}
 CORNER_RADIUS = {"round": 8, "sharp": 0, "pill": 16}
 FONT_FAMILIES = {
     "sans": "Inter, Noto Sans, DejaVu Sans, sans-serif",
@@ -775,7 +777,8 @@ def pack_stylesheet(
 ) -> str:
     palette = palette if palette is not None else resolved_palette(pack, system_dark, look, accent)
     knobs = effective_look(look)
-    pad = DENSITY_PAD[knobs["density"]]
+    card = DENSITY_PAD[knobs["density"]]
+    pad = CONTROL_PAD[knobs["density"]]
     size = TEXT_PT[knobs["text"]]
     family = FONT_FAMILIES[knobs["font"]]
     radius = CORNER_RADIUS[knobs["corners"]]
@@ -792,11 +795,13 @@ def pack_stylesheet(
         f"QMainWindow, QDialog, QWidget {{ background: {palette['window']}; color: {palette['text']}; "
         f"font-family: {family}; font-size: {size}pt; }}"
         f"QFrame, QGroupBox, QTableWidget, QListWidget {{ background: {palette['panel']}; "
-        f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; {edges} }}"
+        f"color: {palette['text']}; padding: {card}px; border-radius: {radius}px; {edges} }}"
+        # Lists, tables and scroll areas are frames too, but their padding is room around rows.
+        f"QAbstractScrollArea {{ padding: {pad}px; }}"
         # A group's title sits in the space above its frame. Without the room it was drawn on the
         # frame line, over the first row of what it names.
         f"QGroupBox {{ margin-top: {round(size * 1.9) + 4}px; }}"
-        f"QGroupBox::title {{ subcontrol-origin: margin; left: {pad + 4}px; padding: 0 4px; }}"
+        f"QGroupBox::title {{ subcontrol-origin: margin; left: {card + 4}px; padding: 0 4px; }}"
         f"QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {{ background: {palette['field']}; "
         f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; "
         f"min-height: {field_min}px; {edges} }}"

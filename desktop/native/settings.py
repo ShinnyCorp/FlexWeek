@@ -65,7 +65,7 @@ from desktop.native.spotify import SpotifyPlayer, open_in_app
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
 from desktop.native.weekmodel import length_label
-from desktop.native.widgets import DIALOG_USABLE_HEIGHT, FlowLayout, fit_scroll_dialog
+from desktop.native.widgets import DIALOG_MARGIN, DIALOG_USABLE_HEIGHT, FlowLayout, fit_scroll_dialog
 
 UPDATE_MIN_WIDTH = 420
 ALARM_MIN_WIDTH = 380
@@ -74,6 +74,7 @@ ALARM_GAP = 12
 ALARM_BUTTON_HEIGHT = 44
 PREFS_MAX_BODY = 560
 PREFS_MIN_WIDTH = 640
+PREFS_SIDE = 11
 # Room beside the longest name in the Settings list, for its padding and selection edge.
 PREFS_NAV_PAD = 32
 ALARM_LIST_MAX_HEIGHT = 200
@@ -355,6 +356,9 @@ class PrefsDialog(QDialog):
         chosen_layout = sanitize_layout(week_layout)
         self._alarms = [deepcopy(item) for item in preferences.get("alarms") or []]
         layout = QVBoxLayout(self)
+        # The sides keep Qt's own margin: at large text the list and the widest page already need
+        # all but the 700 pixels a dialog on a laptop may take.
+        layout.setContentsMargins(PREFS_SIDE, DIALOG_MARGIN, PREFS_SIDE, DIALOG_MARGIN)
         # Eighteen rows in one undivided column stood 1056 pixels tall, taller than the laptop the
         # app is built for. Everything but the buttons scrolls, and the rows sit under headings.
         # The width has to be set too: a scroll area does not claim its content's width, so capping
