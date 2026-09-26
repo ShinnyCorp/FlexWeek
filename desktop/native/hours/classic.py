@@ -136,7 +136,8 @@ class ClassicDay(QWidget):
         self.side.setObjectName("daySide")
         self.side.setFixedWidth(250)
         side = QVBoxLayout(self.side)
-        side.setContentsMargins(12, 12, 12, 12)
+        # The card's padding is its margin, so the chips keep the width they had at 8 px.
+        side.setContentsMargins(0, 0, 0, 0)
         side.setSpacing(6)
         waiting = QLabel("Not placed yet")
         waiting.setObjectName("dayWaitingLabel")
