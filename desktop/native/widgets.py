@@ -1232,7 +1232,8 @@ class HomeworkDialog(QDialog):
             if assignment is not None
             else {
                 "id": str(uuid4()),
-                "title": info["label"] if info else "",
+                # Empty, with the category as its hint. Filled in with "Homework", typing added to the word.
+                "title": "",
                 # Today, whatever week is on screen: the Monday of that week was often already past.
                 "due": due or today or date.today().isoformat(),
                 "estimate_min": estimate_min or (info or {}).get("preset", {}).get("duration_min") or 60,
@@ -1260,6 +1261,8 @@ class HomeworkDialog(QDialog):
         form = QFormLayout()
         body_layout.addLayout(form)
         self.title = _line("homeworkTitle", self._original["title"])
+        if info:
+            self.title.setPlaceholderText(info["label"])
         form.addRow("Title", self.title)
         self.due = DueField(self._original["due"], "homeworkDue", stacked=True)
         form.addRow("Due", self.due)
