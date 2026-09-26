@@ -1,16 +1,17 @@
 """Main view and Day screen pickers, built from the registry so a new design needs no code here.
 
-A design's Style options stay in view under the pick, flat on the page under the section's heading.
-Fine-tune waits behind one checkbox so the first look stays short.
+Each is a card: the designs as pictures, the standard ones first and the experimental ones under a
+heading, then the picked design's Style options. Fine-tune waits behind one switch so the first look
+stays short.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -19,7 +20,16 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.native.layouts.base import empty
-from desktop.native.layouts.registry import LAYOUTS, LEVELS, MATCH, layouts_for, options_for
+from desktop.native.layouts.registry import (
+    EXPERIMENTAL,
+    LAYOUTS,
+    LEVELS,
+    MATCH,
+    layouts_for,
+    options_for,
+)
+from desktop.native.previews import Previews
+from desktop.native.widgets import ChoiceCard, Choices, FlowLayout, Segmented, Switch
 
 SLOTS = (
     ("main", "plan", "Main view", "Where you plan your week."),
@@ -31,50 +41,109 @@ DESIGN_LINE = (
 # Look and Accent are shown only for a design that uses them, so a design with colours of its own
 # says how to get them back, under the colours it is about.
 COLOUR_NOTE = "Pick Match my look to use your own Look and Accent."
+# The width setup's design cards are drawn at, so a picture drawn for one is ready for the other.
+PICTURE_WIDTH = 206
+# A choice of more than this many is a dropdown; up to it, the choices sit side by side.
+SEGMENTED_MOST = 3
 
 
-class LayoutSection(QWidget):
-    """One pick and the options of whatever is picked. Each design keeps its own settings while the
-    dialog is open, so trying another design and coming back loses nothing."""
+class DesignPicker(Choices):
+    """The designs for one role as cards with a picture of each, answering a dropdown's calls."""
+
+    def __init__(self, role: str, name: str, title: str, pack: str) -> None:
+        super().__init__()
+        self.setObjectName(name)
+        self.setProperty("designs", True)
+        self.setAccessibleName(title)
+        self._pack = pack
+        self.cards: list[ChoiceCard] = []
+        box = QVBoxLayout(self)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(8)
+        for experimental in (False, True):
+            specs = layouts_for(role, experimental)
+            if not specs:
+                continue
+            if experimental:
+                heading = QLabel(EXPERIMENTAL)
+                heading.setObjectName("settingsExperimental")
+                box.addWidget(heading)
+            holder = QWidget()
+            holder.setObjectName("settingsRow")
+            # A flow, so the cards stand two or three to a row and one at the narrowest window.
+            flow = FlowLayout(holder, gap=12)
+            flow.setContentsMargins(0, 0, 0, 0)
+            for spec in specs:
+                text = f"{spec.purpose} · {spec.label}" if spec.purpose else spec.label
+                index = self._remember(text, spec.id)
+                card = ChoiceCard(text, spec.summary, PICTURE_WIDTH)
+                card.setProperty("index", index)
+                card.chosen.connect(self._card_chosen)
+                flow.addWidget(card)
+                self.cards.append(card)
+            box.addWidget(holder)
+        # Drawn one at a time once the page is up, as setup does, so Settings opens at once.
+        self._waiting = list(range(len(self.cards)))
+        QTimer.singleShot(0, self._draw_next)
+
+    def _card_chosen(self) -> None:
+        self.setCurrentIndex(int(self.sender().property("index")))
+
+    def _draw_next(self) -> None:
+        if not self._waiting:
+            return
+        index = self._waiting.pop(0)
+        layout_id = str(self._data[index])
+        colourways = LAYOUTS[layout_id].colourways
+        colour = colourways[0][0] if colourways else None
+        self.cards[index].set_picture(Previews().get(layout_id, colour, self._pack, None, PICTURE_WIDTH))
+        if self._waiting:
+            QTimer.singleShot(0, self._draw_next)
+
+    def _show(self, index: int) -> None:
+        for at, card in enumerate(self.cards):
+            card.select(at == index)
+
+
+class LayoutSection(QFrame):
+    """One pick and the options of whatever is picked, as a card. Each design keeps its own settings
+    while Settings is open, so trying another design and coming back loses nothing."""
 
     changed = Signal()
 
-    def __init__(self, slot: str, role: str, title: str, blurb: str, choice: dict) -> None:
+    def __init__(
+        self, slot: str, role: str, title: str, blurb: str, choice: dict, pack: str = "system"
+    ) -> None:
         super().__init__()
         self.slot = slot
-        self.setObjectName(f"layout{slot.title()}Section")
+        self.setObjectName("settingsCard")
         self._options = {spec.id: options_for(choice, spec.id) for spec in layouts_for(role)}
         self._colour_note: QLabel | None = None
         body = QVBoxLayout(self)
-        body.setContentsMargins(0, 0, 0, 0)
-        heading = QLabel(title.upper())
+        body.setContentsMargins(16, 16, 16, 16)
+        body.setSpacing(8)
+        heading = QLabel(title)
         heading.setObjectName(f"layout{slot.title()}Heading")
         body.addWidget(heading)
         lines = (DESIGN_LINE, blurb) if slot == "main" else (blurb,)
         for line in lines:
             # Wrapped, or its one long line sets the width of the whole Settings page.
             intro = QLabel(line)
+            intro.setObjectName("settingsCardNote")
             intro.setWordWrap(True)
             body.addWidget(intro)
-        self.pick = QComboBox()
-        self.pick.setObjectName(f"layout{slot.title()}")
-        self.pick.setAccessibleName(title)
-        for spec in layouts_for(role):
-            self.pick.addItem(f"{spec.purpose} · {spec.label}" if spec.purpose else spec.label, spec.id)
+        self.pick = DesignPicker(role, f"layout{slot.title()}", title, pack)
         self.pick.setCurrentIndex(max(self.pick.findData(choice[slot]), 0))
         body.addWidget(self.pick)
-        self.summary = QLabel()
-        self.summary.setObjectName(f"layout{slot.title()}Summary")
-        self.summary.setWordWrap(True)
-        body.addWidget(self.summary)
         self._form_host = QWidget()
+        self._form_host.setObjectName("settingsRow")
         self._form = QFormLayout(self._form_host)
-        # Settings is narrower than the old dialog, so a long option drops its menu under its name
-        # rather than pushing the page wider than the room it has.
+        # A long option drops its choices under its name rather than pushing the page wider than the
+        # room it has.
         self._form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self._form.setContentsMargins(0, 0, 0, 0)
         body.addWidget(self._form_host)
-        self.more = QCheckBox("Fine-tune this design")
+        self.more = Switch("Fine-tune this design")
         self.more.setObjectName(f"layout{slot.title()}More")
         body.addWidget(self.more)
         self.reset = QPushButton("Reset this layout's options")
@@ -115,7 +184,6 @@ class LayoutSection(QWidget):
     def _rebuild(self, fresh: bool) -> None:
         spec = LAYOUTS[self.chosen()]
         values = self._options[spec.id]
-        self.summary.setText(spec.summary)
         detail = [option for option in spec.options if option.level == "detail"]
         if fresh:
             # Fine-tuning that is already in use must not be hidden from the student who set it.
@@ -134,8 +202,13 @@ class LayoutSection(QWidget):
             title.setObjectName(f"layout{self.slot.title()}Level-{level}")
             self._form.addRow(title)
             for option in rows:
-                box = QComboBox()
-                box.setObjectName(f"layout{self.slot.title()}-{option.key}")
+                name = f"layout{self.slot.title()}-{option.key}"
+                box: QComboBox | Segmented
+                if option.key == "colour" or len(option.choices) > SEGMENTED_MOST:
+                    box = QComboBox()
+                    box.setObjectName(name)
+                else:
+                    box = Segmented(name=name)
                 for entry in option.choices:
                     box.addItem(entry.label, entry.value)
                 box.blockSignals(True)

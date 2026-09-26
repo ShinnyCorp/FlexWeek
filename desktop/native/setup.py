@@ -13,8 +13,8 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from uuid import uuid4
 
-from PySide6.QtCore import QRect, QRectF, Qt, QTime, QTimer, Signal
-from PySide6.QtGui import QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPixmap, QResizeEvent, QShowEvent
+from PySide6.QtCore import QRect, Qt, QTime, QTimer, Signal
+from PySide6.QtGui import QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QButtonGroup,
@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
-    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QTimeEdit,
@@ -60,7 +59,7 @@ from desktop.native.settings import (
 )
 from desktop.native.sound import Bell
 from desktop.native.tones import FALLBACK, RECIPES
-from desktop.native.widgets import DAYS, DueField, FlowLayout
+from desktop.native.widgets import DAYS, ChoiceCard, DueField, FlowLayout, rounded_picture
 from desktop.native.work_windows import WorkWindowsEditor
 
 SETUP_VERSION = 1
@@ -231,22 +230,6 @@ def _repolish(widget: QWidget) -> None:
     widget.style().polish(widget)
 
 
-def _rounded(picture: QPixmap, radius: int) -> QPixmap:
-    """The picture with its corners rounded to match the card it sits in."""
-    ratio = picture.devicePixelRatio()
-    out = QPixmap(picture.size())
-    out.setDevicePixelRatio(ratio)
-    out.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(out)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    path = QPainterPath()
-    path.addRoundedRect(QRectF(0, 0, picture.width() / ratio, picture.height() / ratio), radius, radius)
-    painter.setClipPath(path)
-    painter.drawPixmap(0, 0, picture)
-    painter.end()
-    return out
-
-
 def _quiet(text: str, name: str = "setupQuiet") -> QPushButton:
     button = QPushButton(text)
     button.setObjectName(name)
@@ -265,58 +248,6 @@ def _row(*widgets: QWidget, stretch: bool = True) -> QWidget:
     if stretch:
         line.addStretch(1)
     return holder
-
-
-class ChoiceCard(QFrame):
-    """A picture and a name the student picks by clicking, or by Space or Enter."""
-
-    chosen = Signal()
-
-    def __init__(self, name: str, note: str, width: int) -> None:
-        super().__init__()
-        self.setObjectName("setupChoice")
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setAccessibleName(name)
-        self.setAccessibleDescription(note)
-        self._width = width
-        box = QVBoxLayout(self)
-        box.setContentsMargins(10, 10, 10, 12)
-        box.setSpacing(6)
-        self.picture = QLabel()
-        self.picture.setObjectName("setupChoicePicture")
-        self.picture.setFixedSize(width, round(width * 0.625))
-        box.addWidget(self.picture)
-        box.addWidget(_label(name, "setupChoiceName"))
-        self.note = _label(note, "setupChoiceNote")
-        box.addWidget(self.note)
-        box.addStretch(1)
-        self.setFixedWidth(width + 22)
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
-        self.select(False)
-
-    def set_picture(self, picture: QPixmap) -> None:
-        self.picture.setPixmap(_rounded(picture, 6))
-
-    def select(self, on: bool) -> None:
-        self.setProperty("selected", on)
-        _repolish(self)
-
-    def is_selected(self) -> bool:
-        return bool(self.property("selected"))
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
-            self.setFocus(Qt.FocusReason.MouseFocusReason)
-            self.chosen.emit()
-            return
-        super().mouseReleaseEvent(event)
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
-        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            self.chosen.emit()
-            return
-        super().keyPressEvent(event)
 
 
 class Chips(QWidget):
@@ -1238,7 +1169,7 @@ class SetupPage(QWidget):
         colour = options_for(self._layout, main).get("colour") if LAYOUTS[main].colourways else None
         picture = hold_picture(self.colour_preview, self.motion) if fade else None
         self.colour_preview.setPixmap(
-            _rounded(self._previews.get(main, colour, self._pack, self._look, COLOUR_THUMB), 8)
+            rounded_picture(self._previews.get(main, colour, self._pack, self._look, COLOUR_THUMB), 8)
         )
         fade_away(picture, self.motion)
 

@@ -23,7 +23,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtWidgets import QApplication, QPushButton
 
-    from desktop.native.settings import PrefsDialog
+    from desktop.native.settings import SettingsPage
     from desktop.native.sound import Bell
 
 
@@ -56,7 +56,7 @@ def qapp() -> Any:
 
 def prefs_dialog(qapp: Any, **extra: Any) -> Any:
     preferences = {"alert_volume": 80, "reminder_sound": True, "alarms": [], **extra}
-    return PrefsDialog(None, preferences, {}, {})
+    return SettingsPage(None, preferences, {}, {})
 
 
 def test_a_bell_says_whether_it_reached_the_sound_card_and_never_raises(qapp: Any) -> None:
@@ -180,7 +180,7 @@ def test_a_half_typed_length_is_saved_rounded_while_splitting(qapp: Any) -> None
 def test_closing_settings_rounds_a_length_typed_while_splitting(qapp: Any) -> None:
     dialog = prefs_dialog(qapp, auto_split_pomodoro=True, timer_work_min=30)
     dialog.work.setValue(40)
-    dialog.reject()
+    dialog.close_page()
     assert dialog.work.value() == 45
 
 
@@ -189,7 +189,7 @@ def test_off_grid_lengths_are_fine_when_splitting_is_off(qapp: Any) -> None:
     dialog = prefs_dialog(qapp)
     dialog.auto_split.setChecked(False)
     dialog.work.setValue(25)
-    dialog.reject()
+    dialog.close_page()
     assert dialog.work.value() == 25
     assert dialog.updates()["timer_work_min"] == 25
 
@@ -203,12 +203,21 @@ def test_a_bad_default_spotify_link_is_not_saved_and_says_why(qapp: Any) -> None
     assert dialog.save_state.text() == "That link was not saved. Use an https://open.spotify.com link."
 
 
-def test_settings_has_one_close_button_and_no_ok_or_cancel(qapp: Any) -> None:
-    from PySide6.QtWidgets import QDialogButtonBox
+def test_settings_has_one_done_button_and_no_ok_or_cancel(qapp: Any) -> None:
+    from PySide6.QtWidgets import QDialogButtonBox, QPushButton
 
     dialog = prefs_dialog(qapp)
-    boxes = dialog.findChildren(QDialogButtonBox)
-    assert [box.standardButtons() for box in boxes] == [QDialogButtonBox.StandardButton.Close]
+    assert dialog.findChildren(QDialogButtonBox) == []
+    filled = [
+        button.text()
+        for button in dialog.findChildren(QPushButton)
+        if not button.property("quiet") and not button.property("segment")
+    ]
+    assert filled == ["Done"]
+    closed: list[bool] = []
+    dialog.closed.connect(lambda: closed.append(True))
+    dialog.done.click()
+    assert closed == [True]
 
 
 def test_release_notes_are_readable_rather_than_raw_markdown(qapp: Any) -> None:

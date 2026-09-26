@@ -49,7 +49,8 @@ def test_the_two_roles_hold_the_designs_the_owner_picked() -> None:
 def test_two_main_views_and_one_day_screen_are_standard_and_the_rest_experimental() -> None:
     """Decision 3 of 0.16: one polished default and Timeline beside it; the rest stay, offered after."""
     assert [spec.id for spec in layouts_for("plan", experimental=False)] == ["classic", "timeline"]
-    assert [spec.id for spec in layouts_for("plan", experimental=True)] == ["mission", "bento", "retro", "clay"]
+    experimental = [spec.id for spec in layouts_for("plan", experimental=True)]
+    assert experimental == ["mission", "bento", "retro", "clay"]
     assert [spec.id for spec in layouts_for("day", experimental=False)] == ["dial"]
     assert [spec.id for spec in layouts_for("day", experimental=True)] == ["one"]
     for spec in LAYOUTS.values():

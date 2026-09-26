@@ -28,7 +28,6 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.calendar import monday_of, sunday_due
     from desktop.native.layouts.registry import sanitize_layout
     from desktop.native.look import pack_stylesheet
-    from desktop.native.settings import PrefsDialog
     from desktop.native.setup import (
         COLOURS,
         DONE,
@@ -471,25 +470,9 @@ def test_run_setup_again_opens_filled_in_with_the_current_choices(
     written(qapp, window)
     assert page(window) == "weekPage"
 
-    tries = [0]
-
-    def run_again() -> None:
-        # This window's own Settings, not any dialog left open by an earlier test: pressing a button in
-        # the wrong one left Settings waiting forever and the whole run with it.
-        dialog = next((item for item in window.findChildren(PrefsDialog) if item.isVisible()), None)
-        tries[0] += 1
-        if dialog is None:
-            if tries[0] < 100:
-                QTimer.singleShot(50, run_again)
-            return
-        button = dialog.findChild(QPushButton, "prefsRunSetup")
-        if button is None:
-            dialog.reject()
-            return
-        button.click()
-
-    QTimer.singleShot(50, run_again)
     window._open_settings()
+    assert page(window) == "settingsPage"
+    window._settings.findChild(QPushButton, "prefsRunSetup").click()
     wait_until(qapp, lambda: page(window) == "setupPage")
     assert setup.step == STYLE
     assert setup.style_cards["night"].is_selected(), "the style in use shows as picked"
