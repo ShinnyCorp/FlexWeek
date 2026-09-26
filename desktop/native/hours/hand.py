@@ -161,6 +161,9 @@ class Hand(QObject):
         self.month_verdict: Verdict | None = None
         # The window's rule for dates; with none, every date is taken.
         self.date_judge: DateJudge | None = None
+        # The block the last drop moved or placed. It is already where it was let go, so the hours
+        # draw it there at once rather than sliding it from where it was picked up.
+        self.dropped: str | None = None
         self._opened: tuple[str, float] | None = None
         self._held: Held | None = None
         self._source: QWidget | None = None
@@ -203,6 +206,7 @@ class Hand(QObject):
     ) -> None:
         """Pick something up at a global point. `home` is the surface and track it came from."""
         self._end(silent=True)
+        self.dropped = None
         self._held, self._source, self._tap, self._home = held, source, tap, home
         self._pressed_at = self._last = at
         QApplication.instance().installEventFilter(self)
@@ -298,8 +302,10 @@ class Hand(QObject):
         if held.kind is Gesture.CREATE:
             self.committed.emit(Create(preview.span))
         elif held.kind is Gesture.PLACE and held.block_id:
+            self.dropped = held.block_id
             self.committed.emit(Place(held.block_id, preview.span))
         elif held.block_id and held.origin is not None and preview.span != held.origin:
+            self.dropped = held.block_id
             self.committed.emit(Move(held.block_id, held.from_day, preview.span))
 
     # Where the pointer is

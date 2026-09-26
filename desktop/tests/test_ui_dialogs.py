@@ -531,6 +531,7 @@ def test_every_dialog_is_freed_once_it_has_closed_and_is_let_go(qapp: QApplicati
         "checked": True,
     }
     made = {
+        widgets.Dialog: [lambda host: widgets.Dialog(host)],
         widgets.BlockDialog: [lambda host: widgets.BlockDialog(host, school(), occurrence_day=1)],
         widgets.HomeworkDialog: [
             lambda host: widgets.HomeworkDialog(host, homework, "2026-09-21", waiting=True, pinned=True),

@@ -35,6 +35,9 @@ SLIDE_PX = {"off": 0, "normal": 28, "extra": 48}
 FADE_THROUGH_OUT, FADE_THROUGH_DELAY = 0.6, 0.3
 FADE_NAME = "motionFade"
 
+# The level the whole app runs at, for what has no window to ask: dialogs and painted hours.
+_app_level = "normal"
+
 
 def motion_level(preference: object, look_default: object) -> str:
     """The student's Animations setting, or the look's own when they never chose one."""
@@ -44,8 +47,11 @@ def motion_level(preference: object, look_default: object) -> str:
 
 
 def apply_ui_effects(level: str) -> None:
-    """Qt's own fades for menus, dropdown lists and tooltips, on unless animations are off."""
-    on = level != "off"
+    """The app's level: Qt's own fades for menus, dropdown lists and tooltips, on unless animations
+    are off, and the level `app_level` gives dialogs and the hours."""
+    global _app_level
+    _app_level = level if level in LEVELS else "normal"
+    on = _app_level != "off"
     for effect in (
         Qt.UIEffect.UI_AnimateMenu,
         Qt.UIEffect.UI_FadeMenu,
@@ -54,6 +60,10 @@ def apply_ui_effects(level: str) -> None:
         Qt.UIEffect.UI_FadeTooltip,
     ):
         QApplication.setEffectEnabled(effect, on)
+
+
+def app_level() -> str:
+    return _app_level
 
 
 def clear_fades(host: QWidget) -> None:
@@ -108,11 +118,14 @@ def fade_away(picture: QLabel | None, level: str, direction: int = 0, share: flo
 
 
 def switch_page(stack: QStackedWidget, page: QWidget, level: str) -> None:
-    """Show `page` at once and fade the page it replaces away above it."""
+    """Show `page` at once, fading in under a picture of the page it replaces as that fades away: a
+    crossfade, so a page that lays itself out a moment late is never hidden by a stale picture."""
     if stack.currentWidget() is page:
         return
     picture = hold_picture(stack, level)
     stack.setCurrentWidget(page)
+    if picture is not None:
+        appear(page, level)
     fade_away(picture, level)
 
 
@@ -156,9 +169,22 @@ def _track(widget: QWidget, animation: QAbstractAnimation, done: Callable[[], No
 
 def appear(widget: QWidget, level: str, *, rise: bool = False, shift: int = 0, delay_ms: int = 0) -> None:
     """Fade `widget` in where it already is. A free-floating widget can also rise into place, and a
-    page can come in from `shift` pixels to the side. `delay_ms` staggers a list of them."""
+    page can come in from `shift` pixels to the side. `delay_ms` staggers a list of them. A window,
+    such as a dialog, fades in as a whole."""
     duration = DURATION_MS.get(level, 0)
     if duration == 0 or not widget.isVisible():
+        return
+    if widget.isWindow():
+        # An opacity effect draws a window's insides over nothing; the window's own opacity fades it.
+        # Nothing here holds the window: a dialog is freed with its last reference, even mid-fade,
+        # and its child animation with it.
+        widget.setWindowOpacity(0.0)
+        show = QPropertyAnimation(widget, b"windowOpacity", widget)
+        show.setDuration(duration)
+        show.setStartValue(0.0)
+        show.setEndValue(1.0)
+        show.setEasingCurve(QEasingCurve.Type.OutCubic)
+        show.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
         return
     settle(widget)
     effect = QGraphicsOpacityEffect(widget)

@@ -42,6 +42,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.layouts.one_thing import OneThingView
     from desktop.native.layouts.registry import LAYOUTS, sanitize_layout
     from desktop.native.layouts.views import VIEW_CLASSES
+    from desktop.native.motion import DURATION_MS
     from desktop.native.settings import PrefsDialog
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
@@ -136,6 +137,11 @@ def window(qapp: QApplication, tmp_path: Path) -> Iterator[NativeWindow]:
 
 def click(window: NativeWindow, name: str) -> None:
     window.findChild(QPushButton, name).click()
+
+
+def faded_in() -> None:
+    """A new page fades in; a picture of it is what the student sees once it has."""
+    QTest.qWait(DURATION_MS["extra"] + 100)
 
 
 def test_my_day_puts_planning_away_and_back_brings_it_back(qapp: QApplication, window: NativeWindow) -> None:
@@ -338,6 +344,7 @@ def test_the_choice_is_saved_on_this_device_beside_the_look(qapp: QApplication, 
     assert window._look == {"preset": "paper", "knobs": {"corners": "pill"}}
     assert window._layout["options"] == {"one": {"colour": "paper"}}
     click(window, "viewMyDay")
+    faded_in()
     assert window.planner.currentWidget().grab().toImage().pixelColor(4, 4).name() == "#f7f1e3"
 
 
@@ -362,6 +369,7 @@ def test_saving_the_look_from_settings_keeps_the_layout(qapp: QApplication, wind
 def test_a_changed_look_repaints_a_design_that_matches_it(qapp: QApplication, window: NativeWindow) -> None:
     window._layout = {"main": "classic", "day": "one", "options": {"one": {"colour": "match"}}}
     click(window, "viewMyDay")
+    faded_in()
     view = window.planner.currentWidget()
     before = view.grab().toImage().pixelColor(4, 4).name()
     window._look = {"preset": "terminal", "knobs": {}}
@@ -461,8 +469,7 @@ def test_the_knobs_settings_hides_for_a_design_change_nothing_in_it(
         window._layout = sanitize_layout({"main": main, "day": "one"})
         window._apply_appearance()
         window._on_week()
-        for _ in range(20):
-            qapp.processEvents()
+        faded_in()
         return window.planner.currentWidget().grab().toImage()
 
     base = dict(window.session.preferences or {})

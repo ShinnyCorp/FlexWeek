@@ -83,7 +83,7 @@ from desktop.native.calendar import (
     span_problem,
 )
 from desktop.native.fonts import time_font
-from desktop.native.motion import appear, settle, vanish
+from desktop.native.motion import app_level, appear, settle, vanish
 from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
     LATE_MINUTES,
@@ -910,7 +910,19 @@ def _preset_locked(category: str | None, day: int, start: str, duration_min: int
     }
 
 
-class BlockDialog(QDialog):
+class Dialog(QDialog):
+    """A dialog that eases in the first time it shows, at the app's motion level."""
+
+    _appeared = False
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        super().showEvent(event)
+        if not self._appeared:
+            self._appeared = True
+            appear(self, app_level())
+
+
+class BlockDialog(Dialog):
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -1246,7 +1258,7 @@ class DueField(QWidget):
         self.changed.emit()
 
 
-class HomeworkDialog(QDialog):
+class HomeworkDialog(Dialog):
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -1594,7 +1606,7 @@ def _grid_starts() -> list[str]:
     return [minutes_to_hhmm(minute) for minute in range(DAY_START_MIN, DAY_END_MIN, SLOT_MIN)]
 
 
-class PreviewDialog(QDialog):
+class PreviewDialog(Dialog):
     def __init__(
         self,
         parent: QWidget | None,
@@ -1965,7 +1977,7 @@ def _when(day: object, start: object) -> str:
     return f"{DAYS[day]} {hhmm_text(str(start))}"
 
 
-class ChooseTimeDialog(QDialog):
+class ChooseTimeDialog(Dialog):
     """A time for homework that needs one, without dragging: for the keyboard, and for designs that have
     no time grid to drop on. It refuses the same times a drop on the Calendar refuses."""
 
@@ -2038,7 +2050,7 @@ class ChooseTimeDialog(QDialog):
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(problem is None)
 
 
-class RoutineDialog(QDialog):
+class RoutineDialog(Dialog):
     def __init__(
         self,
         parent: QWidget | None,
@@ -2164,7 +2176,7 @@ class RoutineDialog(QDialog):
         super().accept()
 
 
-class LateDialog(QDialog):
+class LateDialog(Dialog):
     preview_requested = Signal()
 
     def __init__(self, parent: QWidget | None, context: str) -> None:
@@ -2232,7 +2244,7 @@ def _late_move(move: dict) -> str:
     return "not placed"
 
 
-class SpreadDialog(QDialog):
+class SpreadDialog(Dialog):
     def __init__(self, parent: QWidget | None, assignment: dict, from_date: str) -> None:
         super().__init__(parent)
         self.setObjectName("spreadDialog")
@@ -2271,7 +2283,7 @@ class SpreadDialog(QDialog):
         return self.from_date.date().toString("yyyy-MM-dd")
 
 
-class AvailabilityDialog(QDialog):
+class AvailabilityDialog(Dialog):
     def __init__(self, parent: QWidget | None, preferences: dict, subjects: list[str] | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("availabilityDialog")

@@ -15,19 +15,28 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QRect
+    from PySide6.QtCore import QPropertyAnimation, QRect, QRectF
+    from PySide6.QtGui import QImage
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QStackedWidget, QWidget
+    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QStackedWidget, QVBoxLayout, QWidget
 
+    from desktop.native.hours.canvas import BlockPainter, HoursCanvas
+    from desktop.native.hours.geometry import LinearTrack
+    from desktop.native.hours.hand import Hand, Verdict
+    from desktop.native.look import resolved_palette
     from desktop.native.motion import (
         DURATION_MS,
         FADE_NAME,
+        app_level,
         appear,
+        apply_ui_effects,
         glide,
         motion_level,
         slide_page,
         switch_page,
     )
+    from desktop.native.weekmodel import Occurrence
+    from desktop.native.widgets import Dialog
 
 
 @pytest.fixture(scope="module")
@@ -65,6 +74,18 @@ def test_a_switch_is_immediate_and_its_fade_clears_itself(qapp: QApplication) ->
     assert len(pictures(stack)) == 1
     QTest.qWait(DURATION_MS["normal"] + 150)
     assert pictures(stack) == []
+    stack.close()
+
+
+def test_a_switch_crossfades_the_new_page_in_under_the_old_one(qapp: QApplication) -> None:
+    stack, _first, second = two_pages(qapp)
+    switch_page(stack, second, "normal")
+    QTest.qWait(40)
+    effect = second.graphicsEffect()
+    assert effect is not None and 0 < effect.opacity() < 1, "the new page is on its way in"
+    assert len(pictures(stack)) == 1, "while the old one is on its way out"
+    QTest.qWait(DURATION_MS["normal"] + 150)
+    assert second.graphicsEffect() is None, "an effect left in place slows every later repaint"
     stack.close()
 
 
@@ -172,3 +193,107 @@ def test_a_notice_that_arrives_while_the_last_one_rises_lands_where_it_belongs(q
     QTest.qWait(DURATION_MS["extra"] + 150)
     assert toast.y() == 72
     host.close()
+
+
+def occurrence(block_id: str, day: int, start: int, end: int) -> Occurrence:
+    title = block_id.title()
+    return Occurrence(block_id, title, "class", day, start, end, False, False, False, None, None, None)
+
+
+class Hours:
+    """A week of hours on screen, with the hand that the window would own."""
+
+    def __init__(self, qapp: QApplication) -> None:
+        self.window = QWidget()
+        self.window.resize(420, 500)
+        self.hand = Hand(lambda block_id, from_day, span: Verdict(True, ""), self.window)
+        self.canvas = HoursCanvas(
+            self.hand,
+            BlockPainter(resolved_palette("system", False, None)),
+            lambda area: [
+                LinearTrack(day, QRectF(area.left() + day * 60, area.top(), 60, area.height()), first=480)
+                for day in range(7)
+            ],
+        )
+        QVBoxLayout(self.window).addWidget(self.canvas)
+        self.canvas.set_week([occurrence("essay", 1, 9 * 60, 10 * 60)])
+        self.window.show()
+        qapp.processEvents()
+
+    def picture(self) -> QImage:
+        return self.canvas.grab().toImage()
+
+    def settled_picture(self, week: list[Occurrence]) -> QImage:
+        """The week as it looks with nothing moving: drawn on a fresh canvas of the same size."""
+        other = Hours.__new__(Hours)
+        other.window = QWidget()
+        other.window.resize(self.window.size())
+        other.hand = Hand(lambda block_id, from_day, span: Verdict(True, ""), other.window)
+        other.canvas = HoursCanvas(other.hand, self.canvas.painter, self.canvas._lay_out)
+        QVBoxLayout(other.window).addWidget(other.canvas)
+        other.window.show()
+        QApplication.processEvents()
+        other.canvas.set_week(week)
+        picture = other.picture()
+        other.window.close()
+        return picture
+
+
+LATER = [occurrence("essay", 3, 15 * 60, 16 * 60), occurrence("club", 5, 12 * 60, 13 * 60)]
+
+
+def test_after_a_plan_blocks_slide_to_their_places_and_new_ones_fade_in(qapp: QApplication) -> None:
+    hours = Hours(qapp)
+    final = hours.settled_picture(LATER)
+    hours.canvas.set_week(LATER)
+    QTest.qWait(40)
+    assert hours.picture() != final, "partway there, not already there"
+    QTest.qWait(DURATION_MS[app_level()] + 150)
+    assert hours.picture() == final
+    hours.window.close()
+
+
+def test_a_block_let_go_by_hand_is_already_where_it_belongs(qapp: QApplication) -> None:
+    hours = Hours(qapp)
+    moved = [occurrence("essay", 3, 15 * 60, 16 * 60)]
+    final = hours.settled_picture(moved)
+    hours.hand.dropped = "essay"
+    hours.canvas.set_week(moved)
+    assert hours.picture() == final, "it does not jump back to slide from where it was picked up"
+    hours.window.close()
+
+
+def test_animations_off_means_no_animation_anywhere(qapp: QApplication) -> None:
+    apply_ui_effects("off")
+    try:
+        hours = Hours(qapp)
+        final = hours.settled_picture(LATER)
+        hours.canvas.set_week(LATER)
+        assert hours.picture() == final, "blocks are simply where they are"
+        hours.window.close()
+        stack, _first, second = two_pages(qapp)
+        switch_page(stack, second, app_level())
+        assert pictures(stack) == [] and second.graphicsEffect() is None
+        stack.close()
+        dialog = Dialog()
+        dialog.show()
+        qapp.processEvents()
+        assert dialog.windowOpacity() == 1.0
+        assert dialog.findChildren(QPropertyAnimation) == []
+        dialog.close()
+    finally:
+        apply_ui_effects("normal")
+
+
+def test_a_dialog_eases_in_once(qapp: QApplication) -> None:
+    dialog = Dialog()
+    dialog.resize(300, 200)
+    dialog.show()
+    QTest.qWait(40)
+    assert 0 < dialog.windowOpacity() < 1
+    QTest.qWait(DURATION_MS[app_level()] + 150)
+    assert dialog.windowOpacity() == 1.0
+    dialog.hide()
+    dialog.show()
+    assert dialog.windowOpacity() == 1.0, "shown again, it is simply there"
+    dialog.close()
