@@ -3,6 +3,30 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.0] - Unreleased
+
+### Added
+- A new account's empty week says "Nothing here yet." with one button, "Add
+  your first homework", in place of empty hours on Week and Day. The hours come
+  back with the first block or homework. A student who has homework keeps the
+  hours on every week.
+- A focus screen: Start focus, Quick focus or F shows the timer on its own, the
+  countdown large, with the phase, the homework, and Pause, Skip and Finish.
+  With no timer running it offers Start. Back or Esc returns to the week and
+  the timer keeps running.
+- Ctrl+K opens a command bar: type a few letters of Add homework, Add fixed
+  time, School hours, Day, Week, Month, My day, Plan my homework, Settings,
+  Help, Focus screen or any homework's name, and press Enter. Help lists F and
+  Ctrl+K.
+
+### Changed
+- While a focus timer runs, the strip above the hours shows one line and a
+  Focus screen button; Pause, Skip and Reset are on the focus screen.
+
+### Fixed
+- Finished, after a focus session on homework, finishes the homework. It did
+  nothing before.
+
 ## [0.15.0] - 2026-09-25
 
 ### Added
