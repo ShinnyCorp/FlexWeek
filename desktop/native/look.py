@@ -923,7 +923,7 @@ def pack_stylesheet(
         # Laid over the window, it dims what is behind so the box reads as the one thing to answer.
         f"QWidget#commandBar {{ background: rgba(0, 0, 0, 90); }}"
         f"QFrame#commandBox {{ background: {palette['panel']}; border-radius: {radius}px; "
-        f"border: 1px solid {palette['hairline_strong']}; padding: {pad}px; }}"
+        f"{edges} padding: {pad}px; }}"
         f"QLineEdit#commandInput {{ font-size: {size + 2}pt; }}"
         f"QListWidget#commandList {{ border: none; padding: 0; }}"
         f"QListWidget#commandList::item {{ padding: {pad}px; border-radius: {radius}px; }}"
