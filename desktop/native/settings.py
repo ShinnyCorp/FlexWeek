@@ -5,9 +5,10 @@ from __future__ import annotations
 from copy import deepcopy
 from uuid import uuid4
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QShowEvent
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QShowEvent
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -47,6 +48,7 @@ from desktop.native.layouts.registry import MATCH, sanitize_layout
 from desktop.native.look import (
     ACCENTS,
     LOOK_KNOBS,
+    TEXT_PT,
     effective_look,
     known_pack,
     look_menu_items,
@@ -103,23 +105,26 @@ FINE_TUNE_LOOK = "Fine-tune this look"
 FINE_TUNE_OTHER = "Fine-tune fonts, spacing and shadows"
 ABOUT_MIN_WIDTH = 420
 HELP_MIN_WIDTH = 600
+# Screens on the left and shortcuts on the right, over a window at least this wide.
+HELP_TWO_COLUMN_WIDTH = 900
 SECTION_GAP = 14
 ABOUT_LINE = "FlexWeek plans your homework around school, sports and everything else in your week."
+ABOUT_HERE = "Your plans are saved on this computer."
 HELP_INTRO = (
     "A tutorial and short guides are coming in a later version. Until then, this is the short version."
 )
 HELP_SCREENS = (
-    "Day shows one day, hour by hour. Homework that is not placed yet waits beside it, ready to drag in.",
-    "Week shows Monday to Sunday. Drag a block to move it, or drag across empty time to add one.",
-    "Month shows the whole month: each date's blocks and the homework due that day. Click a date to open "
-    "it in Day.",
-    "My day is a simple screen to follow once your plan is made: what is on now, and what comes next. "
-    "Open it with My day at the top.",
+    ("Day", "One day hour by hour, with homework that is not placed yet beside it, ready to drag in."),
+    ("Week", "Monday to Sunday: drag a block to move it, or drag across empty time to add one."),
+    ("Month", "Each date's blocks and the homework due that day; click a date to open it in Day."),
+    ("My day", "What is on now and what comes next, to follow once your plan is made."),
 )
 HELP_KEYS = (
     ("D, W, M", "Day, Week, Month"),
     ("T", "My day"),
     ("B or Esc", "Back from My day"),
+    ("Ctrl+K", "Command bar"),
+    ("F", "Focus screen"),
     ("Ctrl+Z", "Undo"),
     ("Ctrl+Y or Ctrl+Shift+Z", "Redo"),
     ("Ctrl+C, then Ctrl+V", "Copy the selected block, then paste it into the selected day"),
@@ -1289,34 +1294,64 @@ class AboutDialog(QDialog):
         layout.addWidget(_line(f"FlexWeek {VERSION}", "aboutVersion"))
         layout.addWidget(_line(ABOUT_LINE, "aboutWhat"))
         if (storage or {}).get("mode") == "hosted":
-            where = f"Your plans are saved on your FlexWeek server, {(storage or {}).get('origin') or ''}."
+            saved = _line(
+                f"Your plans are saved on your FlexWeek server, {(storage or {}).get('origin') or ''}.",
+                "aboutWhere",
+            )
+            saved.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            layout.addWidget(saved)
         else:
-            where = f"Your plans are saved on this computer, in {folder}."
-        saved = _line(where, "aboutWhere")
-        saved.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(saved)
+            # The folder as a button, not a path: a path is read, copied and pasted into a file
+            # manager, and a student only ever wants to look inside it.
+            layout.addWidget(_line(ABOUT_HERE, "aboutWhere"))
+            open_folder = _page_button("Open folder", "aboutOpenFolder")
+            open_folder.setToolTip(folder)
+            open_folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(folder)))
+            layout.addWidget(open_folder)
         layout.addWidget(_close_row(self))
 
 
 class HelpDialog(QDialog):
-    """Enough to find your way until the tutorial and guides exist."""
+    """Enough to find your way until the tutorial and guides exist: the screens on the left, the
+    keys on the right. One column at large text or over a narrow window, where two would each be
+    too narrow to read."""
 
     def __init__(self, parent: QWidget | None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Help")
-        self.setMinimumWidth(HELP_MIN_WIDTH)
+        self.ensurePolished()
+        large = self.font().pointSizeF() >= TEXT_PT["large"]
+        wide = parent is not None and parent.window().width() >= HELP_TWO_COLUMN_WIDTH
+        self.columns = 2 if wide and not large else 1
+        self.setMinimumWidth(HELP_TWO_COLUMN_WIDTH if self.columns == 2 else HELP_MIN_WIDTH)
         body = QWidget()
         column = QVBoxLayout(body)
         column.setContentsMargins(0, 0, 0, 0)
         column.addWidget(_line(HELP_INTRO, "helpIntro"))
         column.addSpacing(SECTION_GAP)
-        column.addWidget(_heading("The screens"))
-        for index, words in enumerate(HELP_SCREENS):
-            column.addWidget(_line(words, f"helpScreen{index}"))
-        column.addSpacing(SECTION_GAP)
-        column.addWidget(_heading("Keyboard shortcuts"))
+        sides = QBoxLayout(
+            QBoxLayout.Direction.LeftToRight if self.columns == 2 else QBoxLayout.Direction.TopToBottom
+        )
+        sides.setSpacing(SECTION_GAP * 2)
+        column.addLayout(sides)
+        screens = QVBoxLayout()
+        screens.addWidget(_heading("The screens"))
+        for index, (name, words) in enumerate(HELP_SCREENS):
+            card = QFrame()
+            card.setObjectName("helpCard")
+            inside = QVBoxLayout(card)
+            title = QLabel(name)
+            title.setObjectName("helpScreenName")
+            inside.addWidget(title)
+            inside.addWidget(_line(words, f"helpScreen{index}"))
+            screens.addWidget(card)
+        screens.addStretch(1)
+        sides.addLayout(screens, 1)
+        keys_side = QVBoxLayout()
+        keys_side.addWidget(_heading("Keyboard shortcuts"))
         # A form, not a grid: a grid gave a two-line description one line and a bit, and cut it.
         key_list = QWidget()
+        key_list.setObjectName("helpKeys")
         keys = QFormLayout(key_list)
         keys.setContentsMargins(0, 0, 0, 0)
         keys.setHorizontalSpacing(SECTION_GAP)
@@ -1326,7 +1361,9 @@ class HelpDialog(QDialog):
             name.setObjectName("helpKey")
             name.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
             keys.addRow(name, _line(what, "helpKeyDoes"))
-        column.addWidget(key_list)
+        keys_side.addWidget(key_list)
+        keys_side.addStretch(1)
+        sides.addLayout(keys_side, 1)
         column.addStretch(1)
         # A dialog's minimum counts a wrapped line as one line, so at large text on a laptop, Help at
         # its minimum squeezed the shortcuts to half their height. A scroll area gives the words the

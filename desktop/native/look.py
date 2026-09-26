@@ -892,6 +892,7 @@ def pack_stylesheet(
         f"color: {palette['muted']}; }}"
         f"QLabel#aboutVersion {{ font-size: {size + 4}pt; font-weight: 700; }}"
         f"QLabel#helpKey {{ font-weight: 600; }}"
+        f"QLabel#helpScreenName {{ font-weight: 700; }}"
         f"QPushButton#moreButton, QPushButton#settingsGear {{ background: transparent; "
         f"color: {palette['muted']}; {edges} }}"
         + setup_rules(palette, radius, size, pad, knobs["depth"])
