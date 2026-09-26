@@ -67,6 +67,7 @@ from desktop.native.hours.month import MonthGrid
 from desktop.native.hours.zoom import ZOOM_KEYS, HoursScroll, sanitize_zoom
 from desktop.native.kept import KeptSession
 from desktop.native.layouts.base import LayoutView, Scene
+from desktop.native.layouts.empty import EmptyWeek, nothing_yet
 from desktop.native.layouts.registry import options_for, sanitize_layout, tokens_for
 from desktop.native.layouts.views import VIEW_CLASSES
 from desktop.native.look import (
@@ -858,6 +859,9 @@ class NativeWindow(QMainWindow):
         self.month_grid = MonthGrid(hand=self.hand)
         self.month_grid.day_activated.connect(self.session.open_day)
         self.planner.addWidget(self.month_grid)
+        self.empty_week = EmptyWeek()
+        self.empty_week.add_requested.connect(self._add_homework)
+        self.planner.addWidget(self.empty_week)
         for widget in (
             self.week_table.hours,
             self.day_view.hours,
@@ -917,13 +921,20 @@ class NativeWindow(QMainWindow):
 
         Today's app keeps the clock-order Day list and the chip Month. My day is still its own
         screen. A design of its own rebuilds Day and Month in that design, so the app is not two
-        programs once you leave the week.
+        programs once you leave the week. A new account's empty week shows Today's app one button
+        instead of empty hours.
         """
         if self._day_mode:
             return self._layout_view(self._layout["day"])
         main = self._layout["main"]
         if main in VIEW_CLASSES and view in {"week", "day", "month"}:
             return self._layout_view(main)
+        session = self.session
+        if view in {"week", "day"} and nothing_yet(
+            build_week(session.week_start, session.blocks, session.assignments, session.trace),
+            session.assignments,
+        ):
+            return self.empty_week
         return {"day": self.day_view, "month": self.month_grid}.get(view, self.week_table)
 
     def _layout_view(self, layout_id: str) -> LayoutView:

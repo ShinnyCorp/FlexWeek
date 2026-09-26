@@ -2082,6 +2082,10 @@ def test_the_next_week_slides_in_as_the_last_one_drifts_away(
 
 
 def test_animations_off_turns_every_fade_off(qapp: QApplication, window: NativeWindow) -> None:
+    from desktop.native.motion import DURATION_MS
+
+    # The fixture's first homework swaps the new account's empty week for the hours, with a fade.
+    QTest.qWait(DURATION_MS["normal"] + 200)
     window.session.preferences = {**(window.session.preferences or {}), "motion": "off"}
     window._apply_appearance()
     assert window._motion == "off"

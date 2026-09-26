@@ -905,6 +905,11 @@ def pack_stylesheet(
         f"QLabel#alarmDetail {{ font-size: {size + 2}pt; color: {palette['muted']}; }}"
         f"QLabel#toast {{ background: {palette['panel']}; color: {palette['text']}; "
         f"{edges} padding: {pad * 2}px {pad * 3}px; border-radius: {radius}px; }}"
+        # A new account's empty week.
+        f"QLabel#emptyWeekHeading {{ font-size: {size + 8}pt; font-weight: 700; }}"
+        f"QLabel#emptyWeekLine {{ color: {palette['muted']}; font-size: {size + 1}pt; }}"
+        f"QPushButton#emptyWeekAdd {{ font-weight: 600; "
+        f"padding: {pad + 2}px {pad * 3}px; }}"
     ) + (control_rules(palette, radius, size, art) if art is not None else "")
 
 
