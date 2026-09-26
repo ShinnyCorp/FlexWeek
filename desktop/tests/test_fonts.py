@@ -16,9 +16,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtGui import QFont, QFontDatabase, QFontInfo, QFontMetricsF
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QLineEdit, QTimeEdit
 
-    from desktop.native.fonts import FACES, FONT_DIR, load_fonts, time_font
+    from desktop.native.fonts import FACES, FONT_DIR, TABULAR, load_fonts, time_font
+    from desktop.native.widgets import use_app_style
 
 
 @pytest.fixture(scope="module")
@@ -54,3 +55,12 @@ def test_a_time_takes_as_much_room_whatever_its_figures(qapp: QApplication) -> N
     even = QFontMetricsF(time_font(plain))
     assert even.horizontalAdvance(ones) == even.horizontalAdvance(zeros)
     assert time_font(plain).pointSizeF() == plain.pointSizeF() and time_font(plain).family() == "Inter"
+
+
+def test_every_time_box_writes_its_figures_at_one_width(qapp: QApplication) -> None:
+    use_app_style(qapp)
+    time, line = QTimeEdit(), QLineEdit()
+    for box in (time, line):
+        box.ensurePolished()
+    assert time.font().featureValue(QFont.Tag(TABULAR)) == 1
+    assert QFont.Tag(TABULAR) not in line.font().featureTags()

@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPlainTextEdit,
+    QProxyStyle,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -80,6 +81,7 @@ from desktop.native.calendar import (
     span_clash,
     span_problem,
 )
+from desktop.native.fonts import time_font
 from desktop.native.motion import appear, settle, vanish
 from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
@@ -166,6 +168,21 @@ class WheelGuard(QObject):
 def steady_wheel(app: QApplication) -> None:
     if app.findChild(WheelGuard) is None:
         app.installEventFilter(WheelGuard(app))
+
+
+class AppStyle(QProxyStyle):
+    """The platform's own style, with what a stylesheet cannot say: a time box writes its figures at
+    one width, so 11:11 and 20:00 line up."""
+
+    def polish(self, target):  # Qt names one method for a widget, a palette and the application.
+        if isinstance(target, QTimeEdit):
+            target.setFont(time_font(target.font()))
+        return super().polish(target)
+
+
+def use_app_style(app: QApplication) -> None:
+    if not isinstance(app.style(), AppStyle):
+        app.setStyle(AppStyle())
 
 
 def _validation_text(error: Exception) -> str:

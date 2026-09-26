@@ -133,6 +133,7 @@ from desktop.native.widgets import (
     control_art,
     steady_wheel,
     swatch,
+    use_app_style,
 )
 
 WINDOW_SIZE = (1280, 800)
@@ -229,6 +230,7 @@ class NativeWindow(QMainWindow):
         application = QApplication.instance()
         if isinstance(application, QApplication):
             steady_wheel(application)
+            use_app_style(application)
         # main() has loaded them already; a window made anywhere else, as in the tests, is drawn alike.
         load_fonts()
         self.session = NativeSession(origin, self, kept)

@@ -22,6 +22,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter
     from PySide6.QtWidgets import QApplication, QWidget
 
+    from desktop.native.fonts import TABULAR, load_fonts
     from desktop.native.hours import canvas as canvas_module
     from desktop.native.hours.canvas import BlockPainter, Drawn, HoursCanvas, fit_lines
     from desktop.native.hours.geometry import LinearTrack
@@ -188,6 +189,7 @@ if importlib.util.find_spec("PySide6") is not None:
 
         words: list[tuple[str, QRectF]] = []
         inks: list[tuple[str, QRectF]] = []
+        fonts: list[tuple[str, QFont]] = []
 
         def drawText(self, *args: object) -> None:  # noqa: N802
             text = next(arg for arg in reversed(args) if isinstance(arg, str))
@@ -197,6 +199,7 @@ if importlib.util.find_spec("PySide6") is not None:
             ink = QFontMetricsF(self.font()).boundingRect(box, int(flags), text)
             Said.words.append((text, self.worldTransform().mapRect(box)))
             Said.inks.append((text, self.worldTransform().mapRect(ink)))
+            Said.fonts.append((text, QFont(self.font())))
             super().drawText(*args)
 
 
@@ -277,3 +280,49 @@ def test_a_length_is_never_broken_between_its_number_and_unit(qapp) -> None:
     width = metrics.horizontalAdvance("08:00–14:30 · 6") + 2
     lines = fit_lines("08:00–14:30 · 6 h 30 min", font, width, metrics.lineSpacing() * 4)
     assert lines == ["08:00–14:30 ·", "6 h 30 min"], lines
+
+
+HOUR_PX = 48
+
+
+def three_days(now_min: int | None = None, blocks: tuple[dict, ...] = (ESSAY,)) -> HoursCanvas:
+    """Three days from 08:00 to 20:00 at Today's app's default 48 pixels an hour, in Inter at the
+    normal text size, with today on the first when there is a now."""
+    load_fonts()
+
+    def columns(area: QRectF) -> list[LinearTrack]:
+        return [
+            LinearTrack(day, QRectF(60 + 150 * day, 10, 140, 12 * HOUR_PX), first=8 * 60, last=20 * 60)
+            for day in range(3)
+        ]
+
+    host = QWidget()
+    HOSTS.append(host)
+    canvas = HoursCanvas(
+        Hand(lambda block_id, from_day, span: Verdict(True, ""), host),
+        BlockPainter(resolved_palette("system", False, None)),
+        columns,
+        gutter=56,
+    )
+    canvas.setFont(QFont("Inter", 12))
+    canvas.resize(520, 12 * HOUR_PX + 20)
+    occurrences = build_week("2026-09-21", list(blocks), {}, None).occurrences
+    canvas.set_week(occurrences, 0 if now_min is not None else None, now_min)
+    canvas.relayout()
+    return canvas
+
+
+def test_every_time_on_the_hours_is_written_in_figures_of_one_width(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Inter's figures are proportional: without tabular ones, 11:00 is narrower than 20:00 and a
+    column of hours or a block's times wobble."""
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    canvas = three_days(now_min=15 * 60 + 40)
+    Said.fonts = []
+    canvas.grab()
+    timed = [(text, font) for text, font in Said.fonts if any(letter.isdigit() for letter in text)]
+    assert {"08:00", "20:00"} <= {text for text, _font in timed}
+    assert any("16:00–17:30" in text for text, _font in timed)
+    for text, font in timed:
+        assert font.featureValue(QFont.Tag(TABULAR)) == 1, text

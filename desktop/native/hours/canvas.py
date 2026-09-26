@@ -33,6 +33,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QScrollArea, QWidget
 
 from desktop.native.calendar import CATEGORIES, DAYS, create_click_range
+from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import (
     Axis,
     LinearTrack,
@@ -144,7 +145,7 @@ class BlockPainter:
         the edge of `visible`, the part on screen, would cut is moved inside it, as a long block's
         name is."""
         painter.setPen(self.c("muted"))
-        painter.setFont(_small(painter.font()))
+        painter.setFont(time_font(_small(painter.font())))
         metrics = QFontMetricsF(painter.font())
         for minute in range(((track.first + every - 1) // every) * every, track.last + 1, every):
             at = track.offset(minute)
@@ -207,7 +208,7 @@ class BlockPainter:
     def words(self, painter: QPainter, rect: QRectF, drawn: Drawn, ink: QColor, visible: QRectF) -> None:
         bold = QFont(painter.font())
         bold.setBold(True)
-        plain = _small(painter.font())
+        plain = time_font(_small(painter.font()))
         line = QFontMetrics(bold).height()
         # The name stays in sight while the start of a long block is scrolled away, either way.
         start = QPointF(rect.left() + 8, rect.top() + 3)
@@ -256,7 +257,7 @@ class BlockPainter:
         painter.setBrush(wash)
         painter.setPen(QPen(colour, 2))
         painter.drawRoundedRect(rect, 5, 5)
-        bold = QFont(painter.font())
+        bold = time_font(painter.font())
         bold.setBold(True)
         painter.setPen(self.c("text"))
         _write_lines(painter, words, bold, rect.adjusted(8, 3, -6, -3))
@@ -298,7 +299,7 @@ class BlockPainter:
     def label(self, painter: QPainter, beside: QRectF, words: str, ok: bool, room: QRectF) -> None:
         """The held block's words on a pill beside it, when the block is too small to say them, kept
         in `room`, the part of the hours on screen."""
-        plain = _small(painter.font())
+        plain = time_font(_small(painter.font()))
         metrics = QFontMetrics(plain)
         width, height = metrics.horizontalAdvance(words) + 20, metrics.height() + 10
         left = beside.right() + 6 if beside.right() + 6 + width <= room.right() else beside.left() - 6 - width
@@ -646,7 +647,8 @@ class HoursCanvas(QWidget):
                 if not drawn.held:
                     continue
                 words = preview.verdict.words
-                small = QFontMetrics(_small(painter.font())).horizontalAdvance(words) > rect.width() - 14
+                metrics = QFontMetrics(time_font(_small(painter.font())))
+                small = metrics.horizontalAdvance(words) > rect.width() - 14
                 if small or rect.height() < 30:
                     self.painter.label(
                         painter, track.transform.mapRect(rect), words, preview.verdict.ok, self._visible()
