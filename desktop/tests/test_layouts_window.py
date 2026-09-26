@@ -180,6 +180,9 @@ def test_start_focus_keeps_the_timer_in_view_on_a_day_screen(
     click(window, "oneFocus")
     wait_until(qapp, lambda: window.session.focus is not None)
     assert window.session.focus["title"] == "History essay"
+    assert window._stack.currentWidget() is window.focus_screen
+    QTest.keyClick(window.focus_screen, Qt.Key.Key_Escape)
+    assert window._stack.currentWidget().objectName() == "weekPage"
     assert window.focus_panel.isVisible() is True
     assert window.solve_button.isVisible() is True
 
@@ -2082,6 +2085,10 @@ def test_the_next_week_slides_in_as_the_last_one_drifts_away(
 
 
 def test_animations_off_turns_every_fade_off(qapp: QApplication, window: NativeWindow) -> None:
+    from desktop.native.motion import DURATION_MS
+
+    # The fixture's first homework swaps the new account's empty week for the hours, with a fade.
+    QTest.qWait(DURATION_MS["normal"] + 200)
     window.session.preferences = {**(window.session.preferences or {}), "motion": "off"}
     window._apply_appearance()
     assert window._motion == "off"

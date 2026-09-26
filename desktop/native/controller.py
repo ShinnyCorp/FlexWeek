@@ -2633,6 +2633,9 @@ class NativeSession(QObject):
                 and state["day"] in (block.get("days") or [])
             ):
                 block["start"] = state["start"]
+                # A finished day is only valid on a finished block, and finishing the homework below
+                # checks every session it has before marking any of them.
+                block["completed"] = True
                 block["completed_day"] = state["day"]
             elif not isinstance(block.get("completed_day"), int):
                 block["start"] = None

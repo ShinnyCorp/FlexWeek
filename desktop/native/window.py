@@ -55,9 +55,11 @@ from desktop.native.calendar import (
     sunday_due,
 )
 from desktop.native.client import PASSWORD_LENGTH_HINT, USERNAME_HINT, sign_in_problem, sign_up_problem
+from desktop.native.command_bar import Command, CommandBar
 from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import phase_duration_ms
+from desktop.native.focus_screen import FocusScreen
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
 from desktop.native.hours.geometry import Span, drag_step
@@ -67,6 +69,7 @@ from desktop.native.hours.month import MonthGrid
 from desktop.native.hours.zoom import ZOOM_KEYS, HoursScroll, sanitize_zoom
 from desktop.native.kept import KeptSession
 from desktop.native.layouts.base import LayoutView, Scene
+from desktop.native.layouts.empty import EmptyWeek, nothing_yet
 from desktop.native.layouts.registry import options_for, sanitize_layout, tokens_for
 from desktop.native.layouts.views import VIEW_CLASSES
 from desktop.native.look import (
@@ -294,6 +297,9 @@ class NativeWindow(QMainWindow):
         self._build_recovery()
         self._build_week()
         self._build_setup()
+        self._build_focus_screen()
+        self.command_bar = CommandBar(self)
+        self.command_bar.chosen.connect(self._run_command)
         self.session.account_changed.connect(self._on_account)
         self.session.recovery_codes.connect(self._show_recovery)
         self.session.week_changed.connect(self._on_week)
@@ -740,7 +746,7 @@ class NativeWindow(QMainWindow):
         self._spotify_action = None
         self.quick_focus = QPushButton("Quick focus")
         self.quick_focus.setObjectName("quickFocusAction")
-        self.quick_focus.clicked.connect(self.session.start_quick_focus)
+        self.quick_focus.clicked.connect(self._quick_focus)
         self._groups = (
             ("Adding", (add_homework, school_hours, add_fixed)),
             ("Planning", (late, unfinished, routines, self.quick_focus, spotify, replan)),
@@ -818,10 +824,8 @@ class NativeWindow(QMainWindow):
         chrome.addWidget(self.clipboard_summary)
         self.focus_panel = FocusPanel()
         self.focus_panel.start_requested.connect(self._start_focus)
-        self.focus_panel.quick_requested.connect(self.session.start_quick_focus)
-        self.focus_panel.pause_requested.connect(self.session.toggle_focus_pause)
-        self.focus_panel.skip_requested.connect(lambda: self.session.advance_focus(False))
-        self.focus_panel.reset_requested.connect(self.session.reset_focus)
+        self.focus_panel.quick_requested.connect(self._quick_focus)
+        self.focus_panel.screen_requested.connect(self._open_focus_screen)
         self.focus_panel.finished_requested.connect(self.session.finish_focused_homework)
         self.focus_panel.break_requested.connect(self.session.take_focus_break)
         self.focus_panel.more_requested.connect(self.session.add_focus_time)
@@ -858,6 +862,9 @@ class NativeWindow(QMainWindow):
         self.month_grid = MonthGrid(hand=self.hand)
         self.month_grid.day_activated.connect(self.session.open_day)
         self.planner.addWidget(self.month_grid)
+        self.empty_week = EmptyWeek()
+        self.empty_week.add_requested.connect(self._add_homework)
+        self.planner.addWidget(self.empty_week)
         for widget in (
             self.week_table.hours,
             self.day_view.hours,
@@ -917,13 +924,20 @@ class NativeWindow(QMainWindow):
 
         Today's app keeps the clock-order Day list and the chip Month. My day is still its own
         screen. A design of its own rebuilds Day and Month in that design, so the app is not two
-        programs once you leave the week.
+        programs once you leave the week. A new account's empty week shows Today's app one button
+        instead of empty hours.
         """
         if self._day_mode:
             return self._layout_view(self._layout["day"])
         main = self._layout["main"]
         if main in VIEW_CLASSES and view in {"week", "day", "month"}:
             return self._layout_view(main)
+        session = self.session
+        if view in {"week", "day"} and nothing_yet(
+            build_week(session.week_start, session.blocks, session.assignments, session.trace),
+            session.assignments,
+        ):
+            return self.empty_week
         return {"day": self.day_view, "month": self.month_grid}.get(view, self.week_table)
 
     def _layout_view(self, layout_id: str) -> LayoutView:
@@ -1322,7 +1336,7 @@ class NativeWindow(QMainWindow):
             # The account's preferences may only now have arrived, and what setup kept before they did,
             # a skip included, is written with them.
             QTimer.singleShot(0, self._flush_setup)
-        if not self._setup_active:
+        if not self._setup_active and self._stack.currentWidget() is not self.focus_screen:
             self._show_page("weekPage")
         can_retry = self.session.pending_save is not None and not self.session.conflict
         # Hidden, not merely greyed: a button that is never pressable is a permanent piece of
@@ -2285,7 +2299,12 @@ class NativeWindow(QMainWindow):
         )
 
     def _start_focus(self, block_id: str, day: object) -> None:
-        self.session.start_focus(block_id or None, day if isinstance(day, int) else None)
+        if self.session.start_focus(block_id or None, day if isinstance(day, int) else None):
+            self._open_focus_screen()
+
+    def _quick_focus(self) -> None:
+        if self.session.start_quick_focus():
+            self._open_focus_screen()
 
     def _confirm_replace_focus(self, current: str, incoming: str) -> None:
         answer = QMessageBox.question(
@@ -2293,11 +2312,93 @@ class NativeWindow(QMainWindow):
             "Replace timer",
             f"Stop the timer for {current} and start {incoming} instead?",
         )
-        if answer == QMessageBox.StandardButton.Yes:
-            self.session.confirm_replace_focus()
+        if answer == QMessageBox.StandardButton.Yes and self.session.confirm_replace_focus():
+            self._open_focus_screen()
+
+    def _build_focus_screen(self) -> None:
+        self.focus_screen = FocusScreen()
+        screen = self.focus_screen
+        screen.back_requested.connect(self._close_focus_screen)
+        screen.start_requested.connect(self._quick_focus)
+        screen.pause_requested.connect(self.session.toggle_focus_pause)
+        screen.skip_requested.connect(lambda: self.session.advance_focus(False))
+        screen.stop_requested.connect(self._stop_focus)
+        screen.finished_requested.connect(self._finish_focus_homework)
+        screen.break_requested.connect(self.session.take_focus_break)
+        self._stack.addWidget(screen)
+
+    def _open_focus_screen(self) -> None:
+        if self.session.account is None:
+            return
+        self.focus_screen.set_state(self.session)
+        self._show_page("focusPage")
+        self.focus_screen.setFocus()
+
+    def _close_focus_screen(self) -> None:
+        if self._stack.currentWidget() is self.focus_screen:
+            self._show_page("weekPage")
+
+    def _stop_focus(self) -> None:
+        self.session.reset_focus()
+        self._close_focus_screen()
+
+    def _finish_focus_homework(self) -> None:
+        if self.session.finish_focused_homework():
+            self._close_focus_screen()
+
+    def _commands(self) -> list[Command]:
+        """What the command bar offers: the actions a student reaches for most, then each homework."""
+        manual = (self.session.preferences or {}).get("planning_style") == "manual"
+        made = [
+            Command("addHomework", "Add homework", MORE_TIPS["addHomework"]),
+            Command("addFixed", "Add fixed time", MORE_TIPS["addFixed"]),
+            Command("schoolHours", "School hours", MORE_TIPS["schoolHours"]),
+            Command("day", "Day", "One day as a list"),
+            Command("week", "Week", "The week you are planning"),
+            Command("month", "Month", "The month as a calendar"),
+            Command("myDay", "My day", "Watch today"),
+            Command(
+                "solveButton", SUGGEST_LABEL if manual else PLAN_LABEL, SUGGEST_TIP if manual else PLAN_TIP
+            ),
+            Command("settingsGear", "Settings"),
+            Command("helpButton", "Help", MORE_TIPS["helpButton"]),
+            Command("focus", "Focus screen", "The focus timer on its own, large."),
+        ]
+        homework = sorted(
+            self.session.assignments.values(),
+            key=lambda item: (bool(item.get("completed")), item.get("due") or "", item.get("title") or ""),
+        )
+        made.extend(
+            Command("homework:" + item["id"], item.get("title") or "Homework", "Open this homework")
+            for item in homework
+        )
+        return made
+
+    def _open_command_bar(self) -> None:
+        if self.session.account is not None:
+            self.command_bar.open(self._commands())
+
+    def _run_command(self, key: str) -> None:
+        """As the button or the click the command stands for: a button greyed while FlexWeek is busy
+        does nothing here either."""
+        if key != "focus":
+            self._close_focus_screen()
+        if key.startswith("homework:"):
+            self._edit_homework(key.removeprefix("homework:"))
+        elif key in {"day", "week", "month"}:
+            self._choose_view(key)
+        elif key == "myDay":
+            self._enter_day()
+        elif key == "focus":
+            self._open_focus_screen()
+        else:
+            button = self.findChild(QPushButton, key)
+            if button is not None:
+                button.click()
 
     def _on_focus(self) -> None:
         self.focus_panel.set_state(self.session)
+        self.focus_screen.set_state(self.session)
         self._sync_chrome()
         self._refresh_layout()
 
@@ -2775,7 +2876,19 @@ class NativeWindow(QMainWindow):
             return
         key = event.key()
         mods = event.modifiers()
+        planning = self._stack.currentWidget() in (self.focus_screen, self.findChild(QWidget, "weekPage"))
+        if self._stack.currentWidget() is self.focus_screen:
+            if key == Qt.Key.Key_Escape:
+                self._close_focus_screen()
+                event.accept()
+                return
+            if key in (Qt.Key.Key_W, Qt.Key.Key_D, Qt.Key.Key_M, Qt.Key.Key_T) and not mods:
+                self._close_focus_screen()
         if mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier):
+            if key == Qt.Key.Key_K and planning:
+                self._open_command_bar()
+                event.accept()
+                return
             if key == Qt.Key.Key_Z:
                 if mods & Qt.KeyboardModifier.ShiftModifier:
                     self._told(self.session.redo)
@@ -2817,6 +2930,10 @@ class NativeWindow(QMainWindow):
             self._enter_day()
             event.accept()
             return
+        if key == Qt.Key.Key_F and planning:
+            self._open_focus_screen()
+            event.accept()
+            return
         if self._day_mode and key in (Qt.Key.Key_B, Qt.Key.Key_Escape):
             self._leave_day()
             event.accept()
@@ -2846,6 +2963,7 @@ class NativeWindow(QMainWindow):
             Qt.Key.Key_D,
             Qt.Key.Key_M,
             Qt.Key.Key_T,
+            Qt.Key.Key_F,
             Qt.Key.Key_Delete,
         ):
             self.keyPressEvent(event)
@@ -2857,6 +2975,7 @@ class NativeWindow(QMainWindow):
             Qt.Key.Key_Z,
             Qt.Key.Key_Y,
             Qt.Key.Key_S,
+            Qt.Key.Key_K,
         ):
             self.keyPressEvent(event)
             return True

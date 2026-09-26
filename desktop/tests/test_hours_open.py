@@ -144,7 +144,11 @@ def test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_o
         press("viewWeek")
         opens_at(qapp, window, NOW, f"{design} Week")
         press("nextWeek")
-        opens_at(qapp, window, 8 * 60, f"{design} next Week, empty")
+        if design == "classic":
+            # With no homework yet, Today's app shows an empty week one button, not hours.
+            assert window.planner.currentWidget() is window.empty_week
+        else:
+            opens_at(qapp, window, 8 * 60, f"{design} next Week, empty")
         press("prevWeek")
         opens_at(qapp, window, NOW, f"{design} Week again")
         press("viewDay")
