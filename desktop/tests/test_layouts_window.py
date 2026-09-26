@@ -180,6 +180,9 @@ def test_start_focus_keeps_the_timer_in_view_on_a_day_screen(
     click(window, "oneFocus")
     wait_until(qapp, lambda: window.session.focus is not None)
     assert window.session.focus["title"] == "History essay"
+    assert window._stack.currentWidget() is window.focus_screen
+    QTest.keyClick(window.focus_screen, Qt.Key.Key_Escape)
+    assert window._stack.currentWidget().objectName() == "weekPage"
     assert window.focus_panel.isVisible() is True
     assert window.solve_button.isVisible() is True
 

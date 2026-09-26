@@ -120,6 +120,7 @@ HELP_KEYS = (
     ("D, W, M", "Day, Week, Month"),
     ("T", "My day"),
     ("B or Esc", "Back from My day"),
+    ("F", "Focus screen"),
     ("Ctrl+Z", "Undo"),
     ("Ctrl+Y or Ctrl+Shift+Z", "Redo"),
     ("Ctrl+C, then Ctrl+V", "Copy the selected block, then paste it into the selected day"),
@@ -195,9 +196,7 @@ def _heading(words: str) -> QLabel:
 class FocusPanel(QWidget):
     start_requested = Signal(str, object)
     quick_requested = Signal()
-    pause_requested = Signal()
-    skip_requested = Signal()
-    reset_requested = Signal()
+    screen_requested = Signal()
     finished_requested = Signal()
     break_requested = Signal()
     more_requested = Signal(int)
@@ -223,23 +222,21 @@ class FocusPanel(QWidget):
             status.addWidget(widget)
         status.addStretch(1)
         layout.addLayout(status)
+        # Pause, Skip and Finish are on the focus screen, where the timer is large; here the running
+        # timer is one line and a way to that screen.
+        self.screen = QPushButton("Focus screen")
+        self.screen.setObjectName("focusScreenOpen")
+        self.screen.setProperty("quiet", True)
+        self.screen.setToolTip("Show the timer on its own, large. F")
+        self.screen.clicked.connect(self.screen_requested.emit)
+        status.insertWidget(status.count() - 1, self.screen)
         controls = QHBoxLayout()
-        self.pause = QPushButton("Pause")
-        self.pause.setObjectName("focusPause")
-        self.pause.clicked.connect(self.pause_requested.emit)
-        self.skip = QPushButton("Skip")
-        self.skip.setObjectName("focusSkip")
-        self.skip.clicked.connect(self.skip_requested.emit)
-        self.reset = QPushButton("Reset")
-        self.reset.setObjectName("focusReset")
-        self.reset.clicked.connect(self.reset_requested.emit)
         self.quick = QPushButton("Quick focus")
         self.quick.setObjectName("focusQuick")
         self.quick.clicked.connect(self.quick_requested.emit)
-        for button in (self.pause, self.skip, self.reset, self.quick):
-            controls.addWidget(button)
-        # Without this the four buttons split the window between them, 439px each over a layout
-        # of its own. They keep their natural width and the row fills with space instead.
+        controls.addWidget(self.quick)
+        # Without this the button takes the window's width over a layout of its own. It keeps its
+        # natural width and the row fills with space instead.
         controls.addStretch(1)
         layout.addLayout(controls)
         choices = QHBoxLayout()
@@ -269,9 +266,8 @@ class FocusPanel(QWidget):
         tasks_row.addWidget(self.tasks, 1)
         layout.addLayout(tasks_row)
         self._ended_widgets = (self.finished, self.take_break, self.more_min, self.more)
-        self._run_widgets = (self.pause, self.skip, self.reset)
         # Nothing to show until a timer runs or the plan places work, and blank rows cost the calendar height.
-        for widget in (self.task, self.phase, self.time, self.tasks, self.tasks_label):
+        for widget in (self.task, self.phase, self.time, self.screen, self.tasks, self.tasks_label):
             widget.setVisible(False)
 
     def _emit_more(self) -> None:
@@ -288,7 +284,6 @@ class FocusPanel(QWidget):
     def set_state(self, session) -> None:
         self.show_now_next(session.now_next_text())
         state = session.focus
-        running = state is not None and state.get("phase") != "ended"
         ended = state is not None and state.get("phase") == "ended"
         self.task.setText("" if state is None else state.get("title") or "")
         self.phase.setText("" if state is None else FOCUS_PHASE_LABEL.get(state.get("phase"), ""))
@@ -296,9 +291,7 @@ class FocusPanel(QWidget):
             self.time.setText("")
         else:
             self.time.setText(format_countdown(remaining_ms(state, session.now_ms())))
-        self.pause.setText("Pause" if state and state.get("running") else "Resume")
-        for widget in self._run_widgets:
-            widget.setVisible(running)
+        self.screen.setVisible(state is not None)
         assignment = None if state is None else session.assignments.get(state.get("assignmentId"))
         choices = more_time_choices(int((assignment or {}).get("estimate_min") or 0)) if ended else []
         self.more_min.clear()

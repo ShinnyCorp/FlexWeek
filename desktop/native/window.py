@@ -58,6 +58,7 @@ from desktop.native.client import PASSWORD_LENGTH_HINT, USERNAME_HINT, sign_in_p
 from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import phase_duration_ms
+from desktop.native.focus_screen import FocusScreen
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
 from desktop.native.hours.geometry import Span, drag_step
@@ -295,6 +296,7 @@ class NativeWindow(QMainWindow):
         self._build_recovery()
         self._build_week()
         self._build_setup()
+        self._build_focus_screen()
         self.session.account_changed.connect(self._on_account)
         self.session.recovery_codes.connect(self._show_recovery)
         self.session.week_changed.connect(self._on_week)
@@ -741,7 +743,7 @@ class NativeWindow(QMainWindow):
         self._spotify_action = None
         self.quick_focus = QPushButton("Quick focus")
         self.quick_focus.setObjectName("quickFocusAction")
-        self.quick_focus.clicked.connect(self.session.start_quick_focus)
+        self.quick_focus.clicked.connect(self._quick_focus)
         self._groups = (
             ("Adding", (add_homework, school_hours, add_fixed)),
             ("Planning", (late, unfinished, routines, self.quick_focus, spotify, replan)),
@@ -819,10 +821,8 @@ class NativeWindow(QMainWindow):
         chrome.addWidget(self.clipboard_summary)
         self.focus_panel = FocusPanel()
         self.focus_panel.start_requested.connect(self._start_focus)
-        self.focus_panel.quick_requested.connect(self.session.start_quick_focus)
-        self.focus_panel.pause_requested.connect(self.session.toggle_focus_pause)
-        self.focus_panel.skip_requested.connect(lambda: self.session.advance_focus(False))
-        self.focus_panel.reset_requested.connect(self.session.reset_focus)
+        self.focus_panel.quick_requested.connect(self._quick_focus)
+        self.focus_panel.screen_requested.connect(self._open_focus_screen)
         self.focus_panel.finished_requested.connect(self.session.finish_focused_homework)
         self.focus_panel.break_requested.connect(self.session.take_focus_break)
         self.focus_panel.more_requested.connect(self.session.add_focus_time)
@@ -1333,7 +1333,7 @@ class NativeWindow(QMainWindow):
             # The account's preferences may only now have arrived, and what setup kept before they did,
             # a skip included, is written with them.
             QTimer.singleShot(0, self._flush_setup)
-        if not self._setup_active:
+        if not self._setup_active and self._stack.currentWidget() is not self.focus_screen:
             self._show_page("weekPage")
         can_retry = self.session.pending_save is not None and not self.session.conflict
         # Hidden, not merely greyed: a button that is never pressable is a permanent piece of
@@ -2296,7 +2296,12 @@ class NativeWindow(QMainWindow):
         )
 
     def _start_focus(self, block_id: str, day: object) -> None:
-        self.session.start_focus(block_id or None, day if isinstance(day, int) else None)
+        if self.session.start_focus(block_id or None, day if isinstance(day, int) else None):
+            self._open_focus_screen()
+
+    def _quick_focus(self) -> None:
+        if self.session.start_quick_focus():
+            self._open_focus_screen()
 
     def _confirm_replace_focus(self, current: str, incoming: str) -> None:
         answer = QMessageBox.question(
@@ -2304,11 +2309,43 @@ class NativeWindow(QMainWindow):
             "Replace timer",
             f"Stop the timer for {current} and start {incoming} instead?",
         )
-        if answer == QMessageBox.StandardButton.Yes:
-            self.session.confirm_replace_focus()
+        if answer == QMessageBox.StandardButton.Yes and self.session.confirm_replace_focus():
+            self._open_focus_screen()
+
+    def _build_focus_screen(self) -> None:
+        self.focus_screen = FocusScreen()
+        screen = self.focus_screen
+        screen.back_requested.connect(self._close_focus_screen)
+        screen.start_requested.connect(self._quick_focus)
+        screen.pause_requested.connect(self.session.toggle_focus_pause)
+        screen.skip_requested.connect(lambda: self.session.advance_focus(False))
+        screen.stop_requested.connect(self._stop_focus)
+        screen.finished_requested.connect(self._finish_focus_homework)
+        screen.break_requested.connect(self.session.take_focus_break)
+        self._stack.addWidget(screen)
+
+    def _open_focus_screen(self) -> None:
+        if self.session.account is None:
+            return
+        self.focus_screen.set_state(self.session)
+        self._show_page("focusPage")
+        self.focus_screen.setFocus()
+
+    def _close_focus_screen(self) -> None:
+        if self._stack.currentWidget() is self.focus_screen:
+            self._show_page("weekPage")
+
+    def _stop_focus(self) -> None:
+        self.session.reset_focus()
+        self._close_focus_screen()
+
+    def _finish_focus_homework(self) -> None:
+        if self.session.finish_focused_homework():
+            self._close_focus_screen()
 
     def _on_focus(self) -> None:
         self.focus_panel.set_state(self.session)
+        self.focus_screen.set_state(self.session)
         self._sync_chrome()
         self._refresh_layout()
 
@@ -2786,6 +2823,14 @@ class NativeWindow(QMainWindow):
             return
         key = event.key()
         mods = event.modifiers()
+        planning = self._stack.currentWidget() in (self.focus_screen, self.findChild(QWidget, "weekPage"))
+        if self._stack.currentWidget() is self.focus_screen:
+            if key == Qt.Key.Key_Escape:
+                self._close_focus_screen()
+                event.accept()
+                return
+            if key in (Qt.Key.Key_W, Qt.Key.Key_D, Qt.Key.Key_M, Qt.Key.Key_T) and not mods:
+                self._close_focus_screen()
         if mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier):
             if key == Qt.Key.Key_Z:
                 if mods & Qt.KeyboardModifier.ShiftModifier:
@@ -2828,6 +2873,10 @@ class NativeWindow(QMainWindow):
             self._enter_day()
             event.accept()
             return
+        if key == Qt.Key.Key_F and planning:
+            self._open_focus_screen()
+            event.accept()
+            return
         if self._day_mode and key in (Qt.Key.Key_B, Qt.Key.Key_Escape):
             self._leave_day()
             event.accept()
@@ -2857,6 +2906,7 @@ class NativeWindow(QMainWindow):
             Qt.Key.Key_D,
             Qt.Key.Key_M,
             Qt.Key.Key_T,
+            Qt.Key.Key_F,
             Qt.Key.Key_Delete,
         ):
             self.keyPressEvent(event)
