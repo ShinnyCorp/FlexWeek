@@ -25,6 +25,7 @@ PRESETS = (
     ("Evenings", [0, 1, 2, 3, 4], "19:00", "21:00"),
     ("Weekend mornings", [5, 6], "10:00", "12:00"),
 )
+PRESETS_NOTE = "Each adds a row of hours you can change."
 
 
 class _WorkWindowRow(QFrame):
@@ -94,6 +95,7 @@ class _WorkWindowRow(QFrame):
 
         remove = QPushButton("Remove")
         remove.setObjectName("workWindowRemove")
+        remove.setProperty("quiet", True)
         remove.setAccessibleName("Remove work window")
         remove.clicked.connect(on_remove)
         fields.addWidget(remove)
@@ -143,11 +145,19 @@ class WorkWindowsEditor(QWidget):
         self.message.setObjectName("workWindowsMessage")
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
+        # These add rows; they are not choices. Drawn as filled pills they read as options to pick, and
+        # nothing showed as picked.
+        presets_note = QLabel(PRESETS_NOTE)
+        presets_note.setObjectName("workWindowsPresetsNote")
+        presets_note.setWordWrap(True)
+        layout.addWidget(presets_note)
         presets = QHBoxLayout()
         self._add_buttons = []
         for name, days, start, end in PRESETS:
-            button = QPushButton(name)
+            button = QPushButton(f"+ {name}")
             button.setObjectName("workWindowPreset" + name.replace(" ", ""))
+            button.setProperty("quiet", True)
+            button.setAccessibleName(f"Add {name.lower()}")
             button.clicked.connect(
                 lambda _checked=False, d=days, s=start, e=end: self._add_window(
                     {"days": d, "start": s, "end": e}

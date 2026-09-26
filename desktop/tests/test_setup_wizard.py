@@ -26,7 +26,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtWidgets import QApplication, QComboBox, QDateTimeEdit, QLabel, QPushButton, QWidget
 
     from desktop.native.calendar import monday_of, sunday_due
-    from desktop.native.layouts.registry import sanitize_layout
+    from desktop.native.layouts.registry import EXPERIMENTAL, sanitize_layout
     from desktop.native.look import pack_stylesheet
     from desktop.native.setup import (
         COLOURS,
@@ -745,3 +745,79 @@ def test_time_labels_sit_level_with_their_fields(qapp: QApplication, size: str) 
         field_mid = field.mapTo(row, QPoint(0, field.height() // 2)).y()
         assert abs(label_mid - field_mid) <= 3, (size, label.text())
     host.close()
+
+
+def _top(widget: QWidget, within: QWidget) -> int:
+    return widget.mapTo(within, QPoint(0, 0)).y()
+
+
+def test_the_experimental_styles_and_designs_come_after_their_heading(qapp: QApplication) -> None:
+    """Decision 3 of 0.16: Plain calendar and Night owl first, Dashboard and Retro under
+    "Experimental styles"; on the next page Today's app and Timeline first, the other four after."""
+    setup = opened(qapp)
+    style_page = setup.pages[STYLE]
+    heading = next(label for label in style_page.findChildren(QLabel) if label.text() == EXPERIMENTAL)
+    line = _top(heading, style_page)
+    above = sorted(key for key, card in setup.style_cards.items() if _top(card, style_page) < line)
+    below = sorted(key for key, card in setup.style_cards.items() if _top(card, style_page) > line)
+    assert (above, below) == (["night", "plain"], ["dashboard", "retro"])
+    setup._show(LOOK)
+    qapp.processEvents()
+    look_page = setup.pages[LOOK]
+    heading = next(label for label in look_page.findChildren(QLabel) if label.text() == EXPERIMENTAL)
+    line = _top(heading, look_page)
+    above = [key for key, card in setup.look_cards.items() if _top(card, look_page) < line]
+    assert above == ["classic", "timeline"]
+    setup.close()
+
+
+def test_the_day_screen_chips_are_one_choice_across_two_rows(qapp: QApplication) -> None:
+    setup = opened(qapp)
+    setup._show(LOOK)
+    setup._show(COLOURS)
+    qapp.processEvents()
+    chips = setup.day_screen
+    assert chips.experimental_heading.text() == "Experimental styles"
+    assert chips.experimental_heading.isVisibleTo(setup)
+    dial, one = chips.buttons()
+    assert _top(dial, setup) < _top(chips.experimental_heading, setup) < _top(one, setup)
+    one.click()
+    assert chips.value() == "one" and not dial.isChecked()
+    dial.click()
+    assert chips.value() == "dial" and not one.isChecked()
+    assert setup._layout["day"] == "dial"
+    setup.close()
+
+
+def test_the_planning_hours_presets_are_quiet_buttons_that_add_a_row(qapp: QApplication) -> None:
+    """R21: drawn as filled pills they read as choices, and none showed as chosen."""
+    setup = opened(qapp)
+    setup._show(HOMEWORK)
+    qapp.processEvents()
+    editor = setup.work_editor
+    note = editor.findChild(QLabel, "workWindowsPresetsNote")
+    assert note.text() == "Each adds a row of hours you can change."
+    after = editor.findChild(QPushButton, "workWindowPresetAfterschool")
+    assert after.text() == "+ After school" and after.property("quiet") is True
+    assert editor.add_button.property("quiet") is not True, "Add custom hours stays the filled one"
+    after.click()
+    assert editor.windows() == [{"days": [0, 1, 2, 3, 4], "start": "15:30", "end": "18:00"}]
+    setup.close()
+
+
+def test_the_alarm_sounds_are_a_form_with_play_in_its_own_column(qapp: QApplication) -> None:
+    """R21: the Play buttons sat in a three-column grid beside their names and did not line up."""
+    setup = opened(qapp)
+    setup._show(REMINDERS)
+    qapp.processEvents()
+    body = setup.pages[REMINDERS]
+    plays = [button for button in body.findChildren(QPushButton, "setupPlay") if button.isVisibleTo(setup)]
+    tones = [key for key in setup.tone_buttons if key != "spotify"]
+    assert len(plays) == len(tones)
+    assert len({button.mapTo(body, QPoint(0, 0)).x() for button in plays}) == 1, "one column"
+    for tone, play in zip(tones, plays, strict=True):
+        radio = setup.tone_buttons[tone]
+        assert play.accessibleName() == f"Play {radio.text()}"
+        middle = radio.mapTo(body, QPoint(0, radio.height() // 2)).y()
+        assert abs(play.mapTo(body, QPoint(0, play.height() // 2)).y() - middle) <= 2, tone
+    setup.close()
