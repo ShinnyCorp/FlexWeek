@@ -43,7 +43,7 @@ from desktop.native.calendar import DAY_FULL
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
 from desktop.native.hours.geometry import drag_step
 from desktop.native.layouts.dialog import SLOTS, LayoutSection
-from desktop.native.layouts.registry import MATCH, sanitize_layout
+from desktop.native.layouts.registry import EXPERIMENTAL, MATCH, sanitize_layout
 from desktop.native.look import (
     ACCENTS,
     LOOK_KNOBS,
@@ -183,6 +183,14 @@ def _page_button(words: str, name: str) -> QPushButton:
     made.setProperty("quiet", True)
     made.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     return made
+
+
+def _add_heading_item(box: QComboBox, words: str) -> None:
+    """A row in a dropdown that names the rows under it and cannot be picked."""
+    box.addItem(words, None)
+    item = box.model().item(box.count() - 1)
+    item.setEnabled(False)
+    item.setSelectable(False)
 
 
 def _heading(words: str) -> QLabel:
@@ -363,7 +371,11 @@ class PrefsDialog(QDialog):
         self._pack = known_pack(preferences.get("theme_pack"))
         self.look = QComboBox()
         self.look.setObjectName("prefTheme")
-        for name, label, kind in look_menu_items():
+        standard, experimental = look_menu_items()
+        for name, label, kind in standard:
+            self.look.addItem(label, look_menu_token(kind, name))
+        _add_heading_item(self.look, EXPERIMENTAL)
+        for name, label, kind in experimental:
             self.look.addItem(label, look_menu_token(kind, name))
         index = self.look.findData(look_menu_value(self._pack, self._look))
         self.look.setCurrentIndex(max(0, index))

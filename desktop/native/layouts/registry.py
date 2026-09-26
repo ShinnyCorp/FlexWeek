@@ -56,6 +56,9 @@ class LayoutSpec:
     # What the view is for, in a student's words. The style name alone ("Bento", "Today's app") did
     # not say that one is a dashboard and the other the plain calendar.
     purpose: str = ""
+    # Offered after the standard designs, under EXPERIMENTAL. Kept, never deleted: a saved choice of
+    # one still opens.
+    experimental: bool = False
 
 
 def _colour(spec_colourways: Colourways) -> Option:
@@ -114,6 +117,7 @@ LAYOUTS: dict[str, LayoutSpec] = {
             (_colour(MISSION), _HOURS, _show("side", "Deadline radar and load")),
             MISSION,
             purpose="Dashboard",
+            experimental=True,
         ),
         LayoutSpec(
             "bento",
@@ -132,6 +136,7 @@ LAYOUTS: dict[str, LayoutSpec] = {
             ),
             BENTO,
             purpose="Dashboard",
+            experimental=True,
         ),
         LayoutSpec(
             "retro",
@@ -149,6 +154,7 @@ LAYOUTS: dict[str, LayoutSpec] = {
             ),
             RETRO,
             purpose="Dashboard",
+            experimental=True,
         ),
         LayoutSpec(
             "clay",
@@ -161,6 +167,21 @@ LAYOUTS: dict[str, LayoutSpec] = {
             ),
             CLAY,
             purpose="Agenda",
+            experimental=True,
+        ),
+        LayoutSpec(
+            "dial",
+            "day",
+            "Day dial",
+            "The day as a clock face, read out hour by hour beside it.",
+            (
+                _colour(DIAL),
+                _HOURS,
+                _show("list", "Hour by hour list"),
+                _show("week", "Small dials for the week"),
+            ),
+            DIAL,
+            purpose="Clock",
         ),
         LayoutSpec(
             "one",
@@ -180,29 +201,21 @@ LAYOUTS: dict[str, LayoutSpec] = {
             ),
             ONE,
             purpose="Focus",
-        ),
-        LayoutSpec(
-            "dial",
-            "day",
-            "Day dial",
-            "The day as a clock face, read out hour by hour beside it.",
-            (
-                _colour(DIAL),
-                _HOURS,
-                _show("list", "Hour by hour list"),
-                _show("week", "Small dials for the week"),
-            ),
-            DIAL,
-            purpose="Clock",
+            experimental=True,
         ),
     )
 }
-MAIN_DEFAULT, DAY_DEFAULT = "classic", "one"
+MAIN_DEFAULT, DAY_DEFAULT = "classic", "dial"
 LEVELS = (("style", "Style"), ("detail", "Fine-tune"))
+EXPERIMENTAL = "Experimental styles"
 
 
-def layouts_for(role: str) -> tuple[LayoutSpec, ...]:
-    return tuple(spec for spec in LAYOUTS.values() if spec.role == role)
+def layouts_for(role: str, experimental: bool | None = None) -> tuple[LayoutSpec, ...]:
+    """The designs for `role`, the standard ones first; only one kind when `experimental` is given."""
+    chosen = [spec for spec in LAYOUTS.values() if spec.role == role]
+    if experimental is not None:
+        chosen = [spec for spec in chosen if spec.experimental == experimental]
+    return tuple(sorted(chosen, key=lambda spec: spec.experimental))
 
 
 def sanitize_layout(raw: object) -> dict:

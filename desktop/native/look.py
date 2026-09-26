@@ -101,8 +101,8 @@ LOOK_PRESET_LABELS = {
 }
 PACK_LABELS = {
     "system": "System",
-    "light-frost": "Light frost",
-    "dark-frost": "Dark frost",
+    "light-frost": "Light",
+    "dark-frost": "Dark",
     "nocturne": "Nocturne",
     "slate": "Slate",
 }
@@ -432,11 +432,32 @@ def resolved_pack_theme(pack: object, system_dark: bool) -> str:
     return chosen
 
 
-def look_menu_items() -> list[tuple[str, str, str]]:
-    """One Look list: account packs first, then device presets. Pack default is the pack itself."""
-    items = [(name, PACK_LABELS[name], "pack") for name in PACKS]
-    items.extend((name, LOOK_PRESET_LABELS[name], "preset") for name in LOOK_PRESETS if name != "default")
-    return items
+# The looks offered first, as (kind, name); every other pack and preset is experimental.
+STANDARD_LOOKS = (
+    ("pack", "system"),
+    ("pack", "light-frost"),
+    ("pack", "dark-frost"),
+    ("preset", "high-contrast"),
+)
+EXPERIMENTAL_LOOKS = (
+    ("pack", "nocturne"),
+    ("pack", "slate"),
+    ("preset", "poster"),
+    ("preset", "terminal"),
+    ("preset", "paper"),
+    ("preset", "ink"),
+    ("preset", "pastel"),
+)
+
+
+def look_menu_items() -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
+    """The Look list in two groups, standard then experimental, each item (name, label, kind). A pack
+    is the pack with its own knobs; a preset is a bundle of knobs on the account's pack."""
+
+    def item(kind: str, name: str) -> tuple[str, str, str]:
+        return name, (PACK_LABELS if kind == "pack" else LOOK_PRESET_LABELS)[name], kind
+
+    return [item(*entry) for entry in STANDARD_LOOKS], [item(*entry) for entry in EXPERIMENTAL_LOOKS]
 
 
 def look_menu_token(kind: str, name: str) -> str:
