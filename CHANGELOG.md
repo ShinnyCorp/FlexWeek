@@ -3,7 +3,7 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.16.0] - Unreleased
+## [Unreleased]
 
 ### Added
 - A new account's empty week says "Nothing here yet." with one button, "Add
