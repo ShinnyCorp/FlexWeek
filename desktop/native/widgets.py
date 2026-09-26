@@ -125,6 +125,7 @@ HOMEWORK_REFUSED = "Check the homework details and try again."
 PLAN_REVIEW_MAX = 132
 UNFINISHED_MAX = 132
 REPEAT_NOTE = "Tick more days to repeat it this week."
+ROUTINE_LIST_MIN_HEIGHT = 130
 REPLAN_TIP = (
     "Find new times for all of this week's homework, as if none had a time yet. Homework you placed "
     "yourself stays put. Use it when your week has changed a lot."
@@ -744,9 +745,10 @@ def info_card(title: str, note: str) -> tuple[QFrame, QVBoxLayout]:
     box.setSpacing(8)
     heading = QLabel(title)
     heading.setObjectName("cardTitle")
+    # One line, not wrapped: a dialog's height is fixed before its words wrap, so a sentence that
+    # took two lines squeezed the card and drew its list over its button.
     words = QLabel(note)
     words.setObjectName("cardNote")
-    words.setWordWrap(True)
     box.addWidget(heading)
     box.addWidget(words)
     return card, box
@@ -2261,6 +2263,8 @@ class RoutineDialog(QDialog):
         keep_box.addWidget(self.name)
         self.choices = QListWidget()
         self.choices.setObjectName("routineBlocks")
+        # Room for about four fixed times before it scrolls; squeezed, it showed one and a half.
+        self.choices.setMinimumHeight(ROUTINE_LIST_MIN_HEIGHT)
         keep_box.addWidget(self.choices)
         for block in self._blocks:
             item = QListWidgetItem(
