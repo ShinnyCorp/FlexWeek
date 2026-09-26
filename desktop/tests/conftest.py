@@ -21,3 +21,13 @@ def nothing_leaves_the_test(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         monkeypatch.setattr(spotify, "system_remote", spotify.NoRemote)
         monkeypatch.setattr(QDesktopServices, "openUrl", staticmethod(lambda _url: False))
     yield
+
+
+@pytest.fixture(autouse=True)
+def the_clock_starts_at_24_hours() -> Iterator[None]:
+    """The clock is one setting for the whole app, so a test that chose 12-hour would leave it for the
+    next test."""
+    from desktop.native.weekmodel import set_clock_24h
+
+    yield
+    set_clock_24h(True)

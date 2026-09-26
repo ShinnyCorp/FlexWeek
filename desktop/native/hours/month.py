@@ -29,7 +29,7 @@ from desktop.native.calendar import CATEGORIES, DAYS
 from desktop.native.hours.geometry import Span
 from desktop.native.hours.hand import Gesture, Hand, Held, Verdict
 from desktop.native.look import resolved_palette
-from desktop.native.weekmodel import WeekModel, clock_label
+from desktop.native.weekmodel import WeekModel, clock_label, hhmm_text
 
 # The row of day names, kept above the dates while they scroll.
 HEADER = 26
@@ -60,7 +60,7 @@ class MonthChip:
     @property
     def words(self) -> str:
         if self.due:
-            return f"Due {self.due_time} {self.title}" if self.due_time else f"Due {self.title}"
+            return f"Due {hhmm_text(self.due_time)} {self.title}" if self.due_time else f"Due {self.title}"
         return f"{clock_label(self.start or 0)} {self.title}"
 
 

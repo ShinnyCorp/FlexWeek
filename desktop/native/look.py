@@ -850,6 +850,8 @@ def pack_stylesheet(
         f"QLabel#focusTask {{ font-weight: 600; }}"
         f"QLabel#focusPhase {{ color: {palette['muted']}; }}"
         f"QLabel#focusTime {{ font-family: {MONO_FAMILY}; font-weight: 700; }}"
+        f"QLabel#recoveryList {{ font-family: {MONO_FAMILY}; }}"
+        f"QLabel#recoveryStatus {{ color: {palette['error']}; }}"
         f"QWidget#authCard {{ background: {palette['panel']}; border-radius: {radius}px; {edges} }}"
         f"QLabel#authBrand {{ font-size: {size + 8}pt; font-weight: 700; color: {palette['accent']}; }}"
         f"QLabel#authHeading {{ font-weight: 600; font-size: {size + 3}pt; }}"
@@ -890,6 +892,7 @@ def pack_stylesheet(
         f"color: {palette['muted']}; }}"
         f"QLabel#aboutVersion {{ font-size: {size + 4}pt; font-weight: 700; }}"
         f"QLabel#helpKey {{ font-weight: 600; }}"
+        f"QLabel#helpScreenName {{ font-weight: 700; }}"
         f"QPushButton#moreButton, QPushButton#settingsGear {{ background: transparent; "
         f"color: {palette['muted']}; {edges} }}"
         + setup_rules(palette, radius, size, pad, knobs["depth"])

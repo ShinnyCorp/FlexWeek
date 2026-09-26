@@ -8,7 +8,7 @@ from backend.models import ESTIMATE_MAX_MIN
 from backend.slots import hhmm_to_minutes
 from backend.weeks import is_week_start
 from desktop.native.reuse import occurrence_days
-from desktop.native.weekmodel import length_label
+from desktop.native.weekmodel import hhmm_text, length_label
 
 FOCUS_PHASES = ("work", "break", "long_break", "ended")
 FOCUS_PHASE_LABEL = {
@@ -240,5 +240,5 @@ def now_next_line(result: dict, minute: int) -> str:
     if following:
         wait = hhmm_to_minutes(following["start"]) - minute
         suffix = "" if current else f" (in {length_label(wait)})"
-        parts.append(f"Next: {following['title']} at {following['start']}{suffix}")
+        parts.append(f"Next: {following['title']} at {hhmm_text(following['start'])}{suffix}")
     return "  →  ".join(parts)

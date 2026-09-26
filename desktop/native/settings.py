@@ -5,9 +5,10 @@ from __future__ import annotations
 from copy import deepcopy
 from uuid import uuid4
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QShowEvent
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QShowEvent
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -47,6 +48,7 @@ from desktop.native.layouts.registry import MATCH, sanitize_layout
 from desktop.native.look import (
     ACCENTS,
     LOOK_KNOBS,
+    TEXT_PT,
     effective_look,
     known_pack,
     look_menu_items,
@@ -63,7 +65,7 @@ from desktop.native.sound import Bell
 from desktop.native.spotify import SpotifyPlayer, open_in_app
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
-from desktop.native.weekmodel import length_label
+from desktop.native.weekmodel import hhmm_text, length_label, time_format
 from desktop.native.widgets import DIALOG_USABLE_HEIGHT, FlowLayout, fit_scroll_dialog
 
 UPDATE_MIN_WIDTH = 420
@@ -103,18 +105,19 @@ FINE_TUNE_LOOK = "Fine-tune this look"
 FINE_TUNE_OTHER = "Fine-tune fonts, spacing and shadows"
 ABOUT_MIN_WIDTH = 420
 HELP_MIN_WIDTH = 600
+# Screens on the left and shortcuts on the right, over a window at least this wide.
+HELP_TWO_COLUMN_WIDTH = 900
 SECTION_GAP = 14
 ABOUT_LINE = "FlexWeek plans your homework around school, sports and everything else in your week."
+ABOUT_HERE = "Your plans are saved on this computer."
 HELP_INTRO = (
     "A tutorial and short guides are coming in a later version. Until then, this is the short version."
 )
 HELP_SCREENS = (
-    "Day shows one day, hour by hour. Homework that is not placed yet waits beside it, ready to drag in.",
-    "Week shows Monday to Sunday. Drag a block to move it, or drag across empty time to add one.",
-    "Month shows the whole month: each date's blocks and the homework due that day. Click a date to open "
-    "it in Day.",
-    "My day is a simple screen to follow once your plan is made: what is on now, and what comes next. "
-    "Open it with My day at the top.",
+    ("Day", "One day hour by hour, with homework that is not placed yet beside it, ready to drag in."),
+    ("Week", "Monday to Sunday: drag a block to move it, or drag across empty time to add one."),
+    ("Month", "Each date's blocks and the homework due that day; click a date to open it in Day."),
+    ("My day", "What is on now and what comes next, to follow once your plan is made."),
 )
 HELP_KEYS = (
     ("D, W, M", "Day, Week, Month"),
@@ -302,11 +305,13 @@ class FocusPanel(QWidget):
             widget.setVisible(ended)
         self.more.setEnabled(bool(choices))
         tasks = [(item.get("id"), item.get("start"), item.get("title")) for item in session.focus_tasks()]
-        if tasks != getattr(self, "_shown_tasks", None):
-            self._shown_tasks = tasks
+        # The clock too, so a switch to the 12-hour clock rewrites the times.
+        shown = (time_format(), tasks)
+        if shown != getattr(self, "_shown_tasks", None):
+            self._shown_tasks = shown
             self.tasks.clear()
             for item in session.focus_tasks():
-                start = item.get("start") or ""
+                start = hhmm_text(item["start"]) if item.get("start") else ""
                 row = QListWidgetItem(f"{item['title']}  {start}".rstrip())
                 row.setData(Qt.ItemDataRole.UserRole, item)
                 self.tasks.addItem(row)
@@ -471,6 +476,11 @@ class PrefsDialog(QDialog):
         self.preferred_view.setCurrentIndex(
             max(0, self.preferred_view.findData(preferences.get("preferred_view")))
         )
+        self.clock = QComboBox()
+        self.clock.setObjectName("prefClock")
+        self.clock.addItem("24-hour", True)
+        self.clock.addItem("12-hour", False)
+        self.clock.setCurrentIndex(0 if preferences.get("clock_24h", True) is not False else 1)
         self.spotify = QLineEdit(preferences.get("default_spotify_url") or "")
         self.spotify.setObjectName("prefSpotify")
         self.spotify.setPlaceholderText("Paste a Spotify link")
@@ -611,7 +621,7 @@ class PrefsDialog(QDialog):
         self.alarm_name.setObjectName("alarmName")
         self.alarm_name.setPlaceholderText("Alarm name")
         self.alarm_time = QTimeEdit()
-        self.alarm_time.setDisplayFormat("HH:mm")
+        self.alarm_time.setDisplayFormat(time_format())
         self.alarm_sound = QComboBox()
         self.alarm_sound.setObjectName("alarmSound")
         self.alarm_name.setMinimumWidth(120)
@@ -671,6 +681,7 @@ class PrefsDialog(QDialog):
         computer_form.addRow("Account", open_account)
         computer_form.addRow(self.start_at_login)
         computer_form.addRow("Open on", self.preferred_view)
+        computer_form.addRow("Clock", self.clock)
         run_setup = _page_button("Run setup again", "prefsRunSetup")
         run_setup.setToolTip("Style, your week, homework time and reminders, filled in as they are now.")
         run_setup.clicked.connect(self.setup_requested.emit)
@@ -731,7 +742,7 @@ class PrefsDialog(QDialog):
         self.spotify.editingFinished.connect(self._check_spotify)
         # Every choice says it changed. Connected last, so building the dialog says nothing, and after
         # the handlers above, so a look or a timer preset has filled in its knobs by then.
-        choices = (self.look, self.accent, self.preferred_view, self.motion, self.alarm_tone)
+        choices = (self.look, self.accent, self.preferred_view, self.clock, self.motion, self.alarm_tone)
         for box in (*choices, *self.knobs.values()):
             box.currentIndexChanged.connect(self._announce)
         for spin in (self.work, self.break_min, self.long_break, self.long_every, self.lead, self.volume):
@@ -901,7 +912,7 @@ class PrefsDialog(QDialog):
             sound = str(alarm.get("sound") or FALLBACK)
             label = "Spotify" if sound == "spotify" else sound.title()
             off = "" if alarm.get("enabled", True) else " · off"
-            when = f"Rings at {alarm.get('time')}, {ring_days(alarm.get('days') or [])}"
+            when = f"Rings at {hhmm_text(str(alarm.get('time')))}, {ring_days(alarm.get('days') or [])}"
             self.alarm_list.addItem(f"{alarm.get('name')} · {label}{off}\n{when}")
         self._alarms_form.setRowVisible(self.alarm_list, bool(self._alarms))
         self._alarms_form.setRowVisible(self.alarm_empty, not self._alarms)
@@ -971,6 +982,7 @@ class PrefsDialog(QDialog):
             "accent_chips": self.accent_chips.isChecked(),
             "start_at_login": self.start_at_login.isChecked(),
             "preferred_view": self.preferred_view.currentData(),
+            "clock_24h": bool(self.clock.currentData()),
             "motion": self.motion.currentData(),
             "alarm_tone": self.alarm_tone.currentData(),
             "planning_style": self._planning_style(),
@@ -1283,34 +1295,68 @@ class AboutDialog(QDialog):
         layout.addWidget(_line(f"FlexWeek {VERSION}", "aboutVersion"))
         layout.addWidget(_line(ABOUT_LINE, "aboutWhat"))
         if (storage or {}).get("mode") == "hosted":
-            where = f"Your plans are saved on your FlexWeek server, {(storage or {}).get('origin') or ''}."
+            saved = _line(
+                f"Your plans are saved on your FlexWeek server, {(storage or {}).get('origin') or ''}.",
+                "aboutWhere",
+            )
+            saved.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            layout.addWidget(saved)
         else:
-            where = f"Your plans are saved on this computer, in {folder}."
-        saved = _line(where, "aboutWhere")
-        saved.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(saved)
+            # The folder as a button, not a path: a path is read, copied and pasted into a file
+            # manager, and a student only ever wants to look inside it.
+            layout.addWidget(_line(ABOUT_HERE, "aboutWhere"))
+            open_folder = _page_button("Open folder", "aboutOpenFolder")
+            open_folder.setToolTip(folder)
+            open_folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(folder)))
+            layout.addWidget(open_folder)
         layout.addWidget(_close_row(self))
 
 
 class HelpDialog(QDialog):
-    """Enough to find your way until the tutorial and guides exist."""
+    """Enough to find your way until the tutorial and guides exist: the screens on the left, the
+    keys on the right. One column at large text or over a narrow window, where two would each be
+    too narrow to read."""
 
     def __init__(self, parent: QWidget | None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Help")
-        self.setMinimumWidth(HELP_MIN_WIDTH)
+        self.ensurePolished()
+        large = self.font().pointSizeF() >= TEXT_PT["large"]
+        wide = parent is not None and parent.window().width() >= HELP_TWO_COLUMN_WIDTH
+        self.columns = 2 if wide and not large else 1
+        self.setMinimumWidth(HELP_TWO_COLUMN_WIDTH if self.columns == 2 else HELP_MIN_WIDTH)
         body = QWidget()
         column = QVBoxLayout(body)
         column.setContentsMargins(0, 0, 0, 0)
         column.addWidget(_line(HELP_INTRO, "helpIntro"))
         column.addSpacing(SECTION_GAP)
-        column.addWidget(_heading("The screens"))
-        for index, words in enumerate(HELP_SCREENS):
-            column.addWidget(_line(words, f"helpScreen{index}"))
-        column.addSpacing(SECTION_GAP)
-        column.addWidget(_heading("Keyboard shortcuts"))
+        sides = QBoxLayout(
+            QBoxLayout.Direction.LeftToRight if self.columns == 2 else QBoxLayout.Direction.TopToBottom
+        )
+        sides.setSpacing(SECTION_GAP * 2)
+        column.addLayout(sides)
+        screens = QVBoxLayout()
+        screens.setSpacing(SECTION_GAP // 2)
+        screens.addWidget(_heading("The screens"))
+        for index, (name, words) in enumerate(HELP_SCREENS):
+            card = QFrame()
+            card.setObjectName("helpCard")
+            inside = QVBoxLayout(card)
+            # The frame's own padding is the card's margin; the layout's default doubled it.
+            inside.setContentsMargins(4, 2, 4, 2)
+            inside.setSpacing(2)
+            title = QLabel(name)
+            title.setObjectName("helpScreenName")
+            inside.addWidget(title)
+            inside.addWidget(_line(words, f"helpScreen{index}"))
+            screens.addWidget(card)
+        screens.addStretch(1)
+        sides.addLayout(screens, 1)
+        keys_side = QVBoxLayout()
+        keys_side.addWidget(_heading("Keyboard shortcuts"))
         # A form, not a grid: a grid gave a two-line description one line and a bit, and cut it.
         key_list = QWidget()
+        key_list.setObjectName("helpKeys")
         keys = QFormLayout(key_list)
         keys.setContentsMargins(0, 0, 0, 0)
         keys.setHorizontalSpacing(SECTION_GAP)
@@ -1320,7 +1366,9 @@ class HelpDialog(QDialog):
             name.setObjectName("helpKey")
             name.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
             keys.addRow(name, _line(what, "helpKeyDoes"))
-        column.addWidget(key_list)
+        keys_side.addWidget(key_list)
+        keys_side.addStretch(1)
+        sides.addLayout(keys_side, 1)
         column.addStretch(1)
         # A dialog's minimum counts a wrapped line as one line, so at large text on a laptop, Help at
         # its minimum squeezed the shortcuts to half their height. A scroll area gives the words the

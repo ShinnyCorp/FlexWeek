@@ -35,8 +35,39 @@ def minute_of(hhmm: str) -> int:
     return int(hours) * 60 + int(minutes)
 
 
+# Settings > This computer > Clock, set by the window from the account's preferences. Every time on
+# screen is written by clock_text, so one switch changes them all; what is saved stays HH:MM.
+_clock = {"24h": True}
+
+
+def set_clock_24h(on: bool) -> bool:
+    """Whether this changed the clock, so the caller knows to redraw."""
+    changed = _clock["24h"] != on
+    _clock["24h"] = on
+    return changed
+
+
+def clock_text(minute: int) -> str:
+    """16:00, or 4:00 PM on the 12-hour clock. The end of the day, 24:00, is 12:00 AM."""
+    hours, minutes = divmod(minute, 60)
+    if _clock["24h"]:
+        return f"{hours:02d}:{minutes:02d}"
+    half = "AM" if hours % 24 < 12 else "PM"
+    return f"{hours % 12 or 12}:{minutes:02d} {half}"
+
+
+def hhmm_text(hhmm: str) -> str:
+    """A saved "16:00" as the clock writes it."""
+    return clock_text(minute_of(hhmm))
+
+
+def time_format() -> str:
+    """For a QTimeEdit, which draws its own time rather than asking clock_text."""
+    return "HH:mm" if _clock["24h"] else "h:mm AP"
+
+
 def clock_label(minute: int) -> str:
-    return f"{minute // 60:02d}:{minute % 60:02d}"
+    return clock_text(minute)
 
 
 def length_label(minutes: int) -> str:
@@ -60,7 +91,7 @@ def due_label(due: str | None, week_start: str) -> str:
     day = date.fromisoformat(due[:10])
     words = f"{DAYS[day.weekday()]} {day.day} {_MONTHS[day.month - 1]}"
     if due_is_timed(due):
-        words += f", {due[11:16]}"
+        words += f", {hhmm_text(due[11:16])}"
     return words
 
 
@@ -89,7 +120,7 @@ def added_words(block: dict) -> str:
     title = block.get("title") or "a block"
     days = block.get("days") or []
     if block.get("start") and len(days) == 1:
-        return f"Added {title} on {DAYS[days[0]]} {block['start']}."
+        return f"Added {title} on {DAYS[days[0]]} {hhmm_text(block['start'])}."
     return f"Added {title}."
 
 

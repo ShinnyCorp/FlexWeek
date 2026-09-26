@@ -48,6 +48,25 @@ def test_the_next_line_says_min_like_every_design() -> None:
     )
 
 
+def test_running_late_says_where_each_block_goes_in_words(qapp: QApplication) -> None:  # noqa: F811
+    """Its rows read "16:00 → 17:30" and "unscheduled → 18:00"."""
+    dialog = LateDialog(None, "Starting from 16:00 today (Thursday).")
+    trace = {
+        "moves": [
+            {"block_id": "essay", "from_start": "16:00", "to_start": "17:30"},
+            {"block_id": "maths", "from_start": None, "to_start": "18:00"},
+            {"block_id": "club", "from_start": "19:00", "to_start": None},
+        ]
+    }
+    dialog.show_trace(trace, {"essay": "History essay", "maths": "Maths", "club": "Club"})
+    rows = [dialog.changes.item(index).text() for index in range(dialog.changes.count())]
+    assert rows == [
+        "History essay: from 16:00 to 17:30",
+        "Maths: placed at 18:00",
+        "Club: moves off 19:00 and is not placed",
+    ]
+
+
 def test_a_finished_block_says_finished() -> None:
     block = Drawn("essay", "History essay", "", True, Span(3, 19 * 60, 20 * 60), 0, 1, done=True)
     assert block.detail == "19:00–20:00 · 1 h · Finished"

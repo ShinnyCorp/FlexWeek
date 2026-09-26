@@ -16,6 +16,7 @@ from PySide6.QtGui import (
     QIcon,
     QKeyEvent,
     QPalette,
+    QPixmap,
     QResizeEvent,
 )
 from PySide6.QtNetwork import QLocalServer
@@ -110,7 +111,14 @@ from desktop.native.tones import FALLBACK
 from desktop.native.update import RELEASE_PAGE, due_for_check, sanitize_updates
 from desktop.native.updater import Updater, apply_update
 from desktop.native.version import VERSION
-from desktop.native.weekmodel import added_words, build_week, dated_words, moved_words
+from desktop.native.weekmodel import (
+    added_words,
+    build_week,
+    dated_words,
+    hhmm_text,
+    moved_words,
+    set_clock_24h,
+)
 from desktop.native.widgets import (
     REPLAN_TIP,
     AddMenu,
@@ -215,8 +223,39 @@ TOAST_GAP = 8
 # How long Settings waits after the last change before saving it to the account. Long enough that
 # typing a number or clicking through a menu is one save.
 SETTINGS_SAVE_MS = 600
+LOGO = Path(__file__).resolve().parents[1] / "assets" / "logo.png"
+LOGO_PX = 28
+RECOVERY_COPY = "Copy"
+RECOVERY_SAVE = "Save…"
+RECOVERY_FILE = "flexweek-recovery-codes.txt"
+# How long Copy says Copied, and Save says Saved.
+RECOVERY_SAID_MS = 2000
 # Homework named on a Find a new time notice before the rest is counted.
 NOTICE_LINES = 3
+
+
+def brand_row() -> QHBoxLayout:
+    """The icon beside the wordmark, as on the app's window and installer."""
+    row = QHBoxLayout()
+    row.setSpacing(10)
+    ratio = QGuiApplication.primaryScreen().devicePixelRatio() if QGuiApplication.primaryScreen() else 1.0
+    picture = QPixmap(str(LOGO))
+    if not picture.isNull():
+        side = round(LOGO_PX * ratio)
+        picture = picture.scaled(
+            side, side, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+        )
+        picture.setDevicePixelRatio(ratio)
+        icon = QLabel()
+        icon.setObjectName("authLogo")
+        icon.setPixmap(picture)
+        icon.setFixedSize(LOGO_PX, LOGO_PX)
+        row.addWidget(icon)
+    brand = QLabel("FlexWeek")
+    brand.setObjectName("authBrand")
+    row.addWidget(brand)
+    row.addStretch(1)
+    return row
 
 
 class NativeWindow(QMainWindow):
@@ -391,12 +430,14 @@ class NativeWindow(QMainWindow):
         """Sign in is the door, and creating an account is the small print under it: a student signs
         in many times and creates an account once."""
         making = self._making_account
+        kept = self.session.kept
+        back = kept is not None and kept.signed_in_before()
         self.auth_heading.setText("Create your account" if making else "Sign in")
-        self.auth_note.setText(
-            "FlexWeek fits homework around school and sports. Your week is saved to your account."
-            if making
-            else "Welcome back."
-        )
+        if making:
+            note = "FlexWeek fits homework around school and sports. Your week is saved to your account."
+        else:
+            note = "Welcome back." if back else "Welcome."
+        self.auth_note.setText(note)
         self.create_button.setVisible(making)
         self.sign_in_button.setVisible(not making)
         self.password_hint.setVisible(making)
@@ -453,9 +494,7 @@ class NativeWindow(QMainWindow):
         outer.addLayout(middle)
         outer.addStretch(1)
         layout = QVBoxLayout(card)
-        brand = QLabel("FlexWeek")
-        brand.setObjectName("authBrand")
-        layout.addWidget(brand)
+        layout.addLayout(brand_row())
         self.auth_heading = QLabel()
         self.auth_heading.setObjectName("authHeading")
         layout.addWidget(self.auth_heading)
@@ -552,9 +591,7 @@ class NativeWindow(QMainWindow):
         card.setMaximumWidth(AUTH_CARD_WIDTH)
         card.setMinimumWidth(AUTH_CARD_WIDTH)
         layout = QVBoxLayout(card)
-        brand = QLabel("FlexWeek")
-        brand.setObjectName("authBrand")
-        layout.addWidget(brand)
+        layout.addLayout(brand_row())
         heading = QLabel("Save these recovery codes")
         heading.setObjectName("authHeading")
         layout.addWidget(heading)
@@ -569,6 +606,29 @@ class NativeWindow(QMainWindow):
         self.recovery_list.setObjectName("recoveryList")
         self.recovery_list.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.recovery_list)
+        # Selecting eight lines by mouse was the only way to keep them.
+        keep_row = QHBoxLayout()
+        self.recovery_copy = QPushButton(RECOVERY_COPY)
+        self.recovery_copy.setObjectName("recoveryCopy")
+        self.recovery_copy.setProperty("quiet", True)
+        self.recovery_copy.clicked.connect(self._copy_recovery_codes)
+        keep_row.addWidget(self.recovery_copy)
+        self.recovery_save = QPushButton(RECOVERY_SAVE)
+        self.recovery_save.setObjectName("recoverySave")
+        self.recovery_save.setProperty("quiet", True)
+        self.recovery_save.clicked.connect(self._save_recovery_codes)
+        keep_row.addWidget(self.recovery_save)
+        keep_row.addStretch(1)
+        layout.addLayout(keep_row)
+        self._recovery_said = QTimer(self)
+        self._recovery_said.setSingleShot(True)
+        self._recovery_said.setInterval(RECOVERY_SAID_MS)
+        self._recovery_said.timeout.connect(self._reset_recovery_buttons)
+        self.recovery_status = QLabel()
+        self.recovery_status.setObjectName("recoveryStatus")
+        self.recovery_status.setWordWrap(True)
+        self.recovery_status.setVisible(False)
+        layout.addWidget(self.recovery_status)
         self.recovery_ack = QCheckBox("I have saved these codes")
         self.recovery_ack.setObjectName("recoveryAck")
         self.recovery_ack.toggled.connect(self._on_recovery_ack)
@@ -1037,7 +1097,9 @@ class NativeWindow(QMainWindow):
     def _sync_chrome(self) -> None:
         """Planning chips and the clipboard line step aside for a design of its own. Plan my
         homework and More stay in the top bar in every layout, every view, and My day. The hand
-        drags in the step the student chose."""
+        drags in the step the student chose, and times are written on the clock they chose."""
+        if self._set_clock():
+            self._on_week()
         self.hand.step = drag_step((self.session.preferences or {}).get("drag_step_min"))
         manual = (self.session.preferences or {}).get("planning_style") == "manual"
         # A student who places homework by hand asks for ideas; the plan is theirs.
@@ -1055,6 +1117,11 @@ class NativeWindow(QMainWindow):
         # Quick focus is in the action row whenever there is one, so the panel's own copy would be
         # the same button twice; it belongs to the panel only where no action row is shown.
         self.focus_panel.quick.setVisible(own and self._day_mode)
+
+    def _set_clock(self) -> bool:
+        """Whether the clock changed. Only a change redraws the week, so this is safe to call from
+        the redraw itself."""
+        return set_clock_24h((self.session.preferences or {}).get("clock_24h", True) is not False)
 
     def _keep_bar_whole(self) -> None:
         """The window is never narrower than the top bar's buttons at their smallest, which large
@@ -1284,9 +1351,44 @@ class NativeWindow(QMainWindow):
     def _show_recovery(self, codes: list) -> None:
         self._allow_week_page = False
         self.recovery_list.setText("\n".join(str(code) for code in codes))
+        self._reset_recovery_buttons()
+        self.recovery_status.setVisible(False)
         self.recovery_ack.setChecked(False)
         self.recovery_continue.setEnabled(False)
         self._show_page("recoveryPage")
+
+    def _copy_recovery_codes(self) -> None:
+        QApplication.clipboard().setText(self.recovery_list.text() + "\n")
+        self._reset_recovery_buttons()
+        self.recovery_copy.setText("Copied")
+        self._recovery_said.start()
+
+    def _save_recovery_codes(self) -> None:
+        path = self._choose_recovery_file()
+        if not path:
+            return
+        try:
+            Path(path).write_text(self.recovery_list.text() + "\n")
+        except OSError:
+            self.recovery_status.setText("FlexWeek could not save the codes there. Try another folder.")
+            self.recovery_status.setVisible(True)
+            return
+        self.recovery_status.setVisible(False)
+        self._reset_recovery_buttons()
+        self.recovery_save.setText("Saved")
+        self._recovery_said.start()
+
+    def _choose_recovery_file(self) -> str:
+        """Its own method so a test can answer it without a file dialog on screen."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save recovery codes", RECOVERY_FILE, "Text (*.txt)"
+        )
+        return path
+
+    def _reset_recovery_buttons(self) -> None:
+        self._recovery_said.stop()
+        self.recovery_copy.setText(RECOVERY_COPY)
+        self.recovery_save.setText(RECOVERY_SAVE)
 
     def _on_week(self) -> None:
         if self.session.account is None:
@@ -1303,6 +1405,7 @@ class NativeWindow(QMainWindow):
         if self._on_recovery() and not self._allow_week_page:
             return
         self._honour_preferred_view()
+        self._set_clock()
         self._check_updates(asked=False)
         self._fill_classic()
         self.month_grid.set_month(self.session.month_data, self.session.dirty)
@@ -2204,7 +2307,7 @@ class NativeWindow(QMainWindow):
             self.toast.show_message(refusal)
             return
         from_start = late_from_start(now.hour * 60 + now.minute)
-        dialog = LateDialog(self, f"Starting from {from_start} today ({DAY_FULL[now.weekday()]}).")
+        dialog = LateDialog(self, f"Starting from {hhmm_text(from_start)} today ({DAY_FULL[now.weekday()]}).")
         dialog.preview_requested.connect(
             lambda: self.session.preview_running_late(dialog.chosen_minutes(), now)
         )
@@ -2602,6 +2705,7 @@ class NativeWindow(QMainWindow):
                     "alarm_tone",
                     "planning_style",
                     "drag_step_min",
+                    "clock_24h",
                 )
                 shown = {key: wanted[key] for key in live}
                 self.session.preferences = {**self.session.preferences, **shown}

@@ -18,14 +18,37 @@ All notable changes to FlexWeek are documented here. Format follows
   time, School hours, Day, Week, Month, My day, Plan my homework, Settings,
   Help, Focus screen or any homework's name, and press Enter. Help lists F and
   Ctrl+K.
+- A 12-hour clock. Settings > This computer > Clock offers 24-hour (as before)
+  or 12-hour, and every time FlexWeek writes follows it: "4:00 PM" on the
+  hours, blocks, Month, due dates, the Next line, reminders, Running late,
+  setup and the time boxes. Times are still saved as 16:00.
+- Recovery codes have Copy, which puts all eight on the clipboard, and Save…,
+  which writes them to a text file, one per line. They are drawn in a
+  fixed-width face so 0 and O, 1 and l read apart.
+- FlexWeek's own icon: a blue rounded square with three white week blocks,
+  drawn by `scripts/brand.py` into `desktop/assets/logo.png` and a
+  multi-size `logo.ico` the Windows build now uses. Sign in and the recovery
+  codes page show it beside the wordmark.
+- Help lists Ctrl+K (Command bar) and F (Focus screen).
 
 ### Changed
 - While a focus timer runs, the strip above the hours shows one line and a
   Focus screen button; Pause, Skip and Reset are on the focus screen.
+- Help is two columns over a wide window: the screens as short cards on the
+  left, the keyboard shortcuts on the right. At large text it is one column.
+- About says "Your plans are saved on this computer." with an Open folder
+  button, instead of printing the folder's path.
+- Running late's preview says "from 16:00 to 17:30", "placed at 18:00" or
+  "moves off 19:00 and is not placed" instead of arrows, and setup's "Choose
+  my own look instead" loses its arrow.
 
 ### Fixed
 - Finished, after a focus session on homework, finishes the homework. It did
   nothing before.
+- Sign in said "Welcome back." on the very first launch. It says "Welcome."
+  until someone has signed in on this computer.
+- Add homework's Title started as the word "Homework", so typing a title gave
+  "HomeworkMath worksheet". It starts empty, with "Homework" as a grey hint.
 
 ## [0.15.0] - 2026-09-25
 

@@ -89,7 +89,7 @@ from desktop.native.reuse import (
     routine_source_blocks,
     row_conflict,
 )
-from desktop.native.weekmodel import due_label, length_label
+from desktop.native.weekmodel import due_label, hhmm_text, length_label, time_format
 from desktop.native.work_windows import WorkWindowsEditor
 
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -743,7 +743,7 @@ class DayAgenda(QWidget):
             block = row["block"]
             duration = int(block.get("duration_min") or 0)
             item = self._row(
-                f"{row['start']} · {block['title']} · {length_label(duration)}",
+                f"{hhmm_text(row['start'])} · {block['title']} · {length_label(duration)}",
                 block.get("category") or "",
             )
             item.setData(Qt.ItemDataRole.UserRole, {"kind": "block", "id": block["id"]})
@@ -958,14 +958,14 @@ class BlockDialog(QDialog):
         form.addRow(days_label, days_field)
         self.scope_occurrence.toggled.connect(self._sync_scope)
         self.start = QTimeEdit(QTime.fromString(self._original.get("start") or start, "HH:mm"))
-        self.start.setDisplayFormat("HH:mm")
+        self.start.setDisplayFormat(time_format())
         self.start.setObjectName("blockStart")
         form.addRow("Start", self.start)
         # Start and End are what a student knows ("08:00 to 14:30"); the length is worked out from
         # them. A Duration box beside End was a second way to say the same thing, and could disagree.
         self._length = int(self._original["duration_min"])
         self.end = QTimeEdit(self._minutes_clock(self._clock_minutes(self.start.time()) + self._length))
-        self.end.setDisplayFormat("HH:mm")
+        self.end.setDisplayFormat(time_format())
         self.end.setObjectName("blockEnd")
         form.addRow("End", self.end)
         self.duration_line = QLabel()
@@ -1168,7 +1168,7 @@ class DueField(QWidget):
         self.timed.setAccessibleName("Due at a set time")
         self.time = QTimeEdit()
         self.time.setObjectName(f"{name}Time")
-        self.time.setDisplayFormat("HH:mm")
+        self.time.setDisplayFormat(time_format())
         self.time.setAccessibleName("Due time")
         row.addWidget(self.date)
         if stacked:
@@ -1232,7 +1232,8 @@ class HomeworkDialog(QDialog):
             if assignment is not None
             else {
                 "id": str(uuid4()),
-                "title": info["label"] if info else "",
+                # Empty, with the category as its hint. Filled in with "Homework", typing added to the word.
+                "title": "",
                 # Today, whatever week is on screen: the Monday of that week was often already past.
                 "due": due or today or date.today().isoformat(),
                 "estimate_min": estimate_min or (info or {}).get("preset", {}).get("duration_min") or 60,
@@ -1260,6 +1261,8 @@ class HomeworkDialog(QDialog):
         form = QFormLayout()
         body_layout.addLayout(form)
         self.title = _line("homeworkTitle", self._original["title"])
+        # Homework saved with no category is still homework, so it gets the same hint.
+        self.title.setPlaceholderText((info or CATEGORIES["assignments"])["label"])
         form.addRow("Title", self.title)
         self.due = DueField(self._original["due"], "homeworkDue", stacked=True)
         form.addRow("Due", self.due)
@@ -1655,12 +1658,12 @@ class PreviewDialog(QDialog):
             current = row["block"].get("start") or minutes_to_hhmm(DAY_START_MIN)
             # Quarter hours to move it to, and its own time among them when it is not on one.
             offered = {minutes_to_hhmm(minute) for minute in range(DAY_START_MIN, last + 1, SLOT_MIN)}
-            for label in sorted(offered | {current}):
-                start.addItem(label, label)
-            start.setCurrentText(current)
-            row["block"]["start"] = start.currentText()
+            for value in sorted(offered | {current}):
+                start.addItem(hhmm_text(value), value)
+            start.setCurrentIndex(start.findData(current))
+            row["block"]["start"] = start.currentData()
             start.setProperty("row", index)
-            start.currentTextChanged.connect(self._set_start)
+            start.currentIndexChanged.connect(self._set_start)
             row_layout.addWidget(start)
             length = QComboBox()
             length.setObjectName(f"previewDuration{index}")
@@ -1697,11 +1700,12 @@ class PreviewDialog(QDialog):
             self._rows[index]["checked"] = True
         self._refresh()
 
-    def _set_start(self, start: str) -> None:
+    def _set_start(self, _index: int) -> None:
         if self._rebuilding:
             return
-        index = self.sender().property("row")
-        self._rows[index]["block"]["start"] = start
+        box = self.sender()
+        index = box.property("row")
+        self._rows[index]["block"]["start"] = box.currentData()
         self._rows[index]["invalid"] = ""
         if not row_conflict(self._rows[index], self._rows, self._existing):
             self._rows[index]["checked"] = True
@@ -1924,7 +1928,7 @@ class PlanReview(QWidget):
 def _when(day: object, start: object) -> str:
     if not isinstance(day, int) or not start:
         return "no time"
-    return f"{DAYS[day]} {start}"
+    return f"{DAYS[day]} {hhmm_text(str(start))}"
 
 
 class ChooseTimeDialog(QDialog):
@@ -1959,7 +1963,7 @@ class ChooseTimeDialog(QDialog):
         form.addRow("Day", self.day)
         self.start = QTimeEdit(QTime(16, 0))
         self.start.setObjectName("chooseTimeStart")
-        self.start.setDisplayFormat("HH:mm")
+        self.start.setDisplayFormat(time_format())
         self.start.setMinimumTime(QTime(6, 0))
         latest = DAY_END_MIN - self._duration
         self.start.setMaximumTime(QTime(latest // 60, latest % 60))
@@ -2026,9 +2030,8 @@ class RoutineDialog(QDialog):
         self.choices.setObjectName("routineBlocks")
         layout.addWidget(self.choices)
         for block in self._blocks:
-            item = QListWidgetItem(
-                f"{block['title']} · {', '.join(DAYS[day] for day in block['days'])} · {block['start']}"
-            )
+            days = ", ".join(DAYS[day] for day in block["days"])
+            item = QListWidgetItem(f"{block['title']} · {days} · {hhmm_text(block['start'])}")
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked)
             item.setData(Qt.ItemDataRole.UserRole, block["id"])
@@ -2172,10 +2175,7 @@ class LateDialog(QDialog):
     def show_trace(self, trace: dict, titles: dict[str, str]) -> None:
         self.changes.clear()
         for move in trace.get("moves") or []:
-            self.changes.addItem(
-                f"{titles.get(move['block_id'], move['block_id'])}: "
-                f"{move.get('from_start') or 'unscheduled'} → {move.get('to_start') or 'unscheduled'}"
-            )
+            self.changes.addItem(f"{titles.get(move['block_id'], move['block_id'])}: {_late_move(move)}")
         for block in trace.get("unplaced") or []:
             self.changes.addItem(block["title"] + " no longer fits and will stay on the task list.")
         if self.changes.count() == 0:
@@ -2185,6 +2185,17 @@ class LateDialog(QDialog):
         self.summary.setText(f"{moved} tasks move · {unplaced} tasks no longer fit")
         self.accept_button.setEnabled(True)
         self.minutes.setEnabled(False)
+
+
+def _late_move(move: dict) -> str:
+    was, now = move.get("from_start"), move.get("to_start")
+    if was and now:
+        return f"from {hhmm_text(was)} to {hhmm_text(now)}"
+    if now:
+        return f"placed at {hhmm_text(now)}"
+    if was:
+        return f"moves off {hhmm_text(was)} and is not placed"
+    return "not placed"
 
 
 class SpreadDialog(QDialog):
@@ -2262,10 +2273,10 @@ class AvailabilityDialog(QDialog):
         study_row = QHBoxLayout()
         self.study_start = QTimeEdit(QTime(19, 0))
         self.study_start.setObjectName("studyStart")
-        self.study_start.setDisplayFormat("HH:mm")
+        self.study_start.setDisplayFormat(time_format())
         self.study_end = QTimeEdit(QTime(21, 0))
         self.study_end.setObjectName("studyEnd")
-        self.study_end.setDisplayFormat("HH:mm")
+        self.study_end.setDisplayFormat(time_format())
         self.study_subject = QComboBox()
         self.study_subject.setObjectName("studySubject")
         self.study_subject.setEditable(True)
@@ -2287,7 +2298,7 @@ class AvailabilityDialog(QDialog):
         for start in _grid_starts():
             if start < "06:15":
                 continue
-            self.cutoff.addItem(start, start)
+            self.cutoff.addItem(hhmm_text(start), start)
         current = preferences.get("day_cutoff")
         self.cutoff.setCurrentIndex(max(0, self.cutoff.findData(current)))
         form.addWidget(self.cutoff)
@@ -2329,13 +2340,13 @@ class AvailabilityDialog(QDialog):
         self.protected_list.clear()
         for window in self._protected:
             item = QListWidgetItem(
-                f"{window.get('kind')} · {window['start']} · {window['duration_min']}m · "
+                f"{window.get('kind')} · {hhmm_text(window['start'])} · {window['duration_min']}m · "
                 + ",".join(DAYS[day] for day in window["days"])
             )
             self.protected_list.addItem(item)
         self.study_list.clear()
         for window in self._study:
-            text = f"{window['start']} · {length_label(window['duration_min'])} · " + ",".join(
+            text = f"{hhmm_text(window['start'])} · {length_label(window['duration_min'])} · " + ",".join(
                 DAYS[day] for day in window["days"]
             )
             if window.get("subject"):

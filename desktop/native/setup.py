@@ -60,6 +60,7 @@ from desktop.native.settings import (
 )
 from desktop.native.sound import Bell
 from desktop.native.tones import FALLBACK, RECIPES
+from desktop.native.weekmodel import clock_text, hhmm_text, time_format
 from desktop.native.widgets import DAYS, DueField, FlowLayout
 from desktop.native.work_windows import WorkWindowsEditor
 
@@ -215,7 +216,7 @@ def days_label(days: list[int]) -> str:
 
 
 def span_label(start: str, minutes: int) -> str:
-    return f"{start}–{minutes_to_hhmm(hhmm_to_minutes(start) + minutes)}"
+    return f"{hhmm_text(start)}–{clock_text(hhmm_to_minutes(start) + minutes)}"
 
 
 def _label(text: str, name: str = "", wrap: bool = True) -> QLabel:
@@ -405,7 +406,7 @@ class QuarterTime(QTimeEdit):
     def __init__(self, hhmm: str) -> None:
         super().__init__(QTime.fromString(hhmm, "HH:mm"))
         self.setObjectName("setupTime")
-        self.setDisplayFormat("HH:mm")
+        self.setDisplayFormat(time_format())
         self.setCorrectionMode(QAbstractSpinBox.CorrectionMode.CorrectToNearestValue)
 
     def minutes(self) -> int:
@@ -689,7 +690,7 @@ class SetupPage(QWidget):
             self.style_cards[style.key] = card
         grid.setColumnStretch(2, 1)
         box.addWidget(cards)
-        own = _quiet(OWN_LOOK_LABEL + "  →", "setupOwnLook")
+        own = _quiet(OWN_LOOK_LABEL, "setupOwnLook")
         own.clicked.connect(self._choose_own_look)
         box.addWidget(own, 0, Qt.AlignmentFlag.AlignLeft)
         return content
@@ -798,7 +799,7 @@ class SetupPage(QWidget):
         self.cutoff.setAccessibleName("No homework after")
         self.cutoff.addItem("No limit", None)
         for hhmm in CUTOFFS:
-            self.cutoff.addItem(hhmm, hhmm)
+            self.cutoff.addItem(hhmm_text(hhmm), hhmm)
         box.addWidget(_row(_label("No homework after", "setupFieldLabel", wrap=False), self.cutoff))
         return content
 
@@ -1476,7 +1477,7 @@ class SetupPage(QWidget):
                 week_parts.append(f"{block['title']} {days_label(block['days'])} {when}")
         cutoff = state.preferences.get("day_cutoff")
         if cutoff:
-            week_parts.append(f"no homework after {cutoff}")
+            week_parts.append(f"no homework after {hhmm_text(cutoff)}")
         prefs = state.preferences
         planning = next(
             (
@@ -1489,7 +1490,7 @@ class SetupPage(QWidget):
         work_windows = prefs.get("work_windows") or []
         if work_windows:
             shown = [
-                f"{days_label(window['days'])} {window['start']}–{window['end']}"
+                f"{days_label(window['days'])} {hhmm_text(window['start'])}–{hhmm_text(window['end'])}"
                 for window in work_windows[:2]
             ]
             planning += " · homework only " + ", ".join(shown)
