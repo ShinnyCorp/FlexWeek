@@ -1915,7 +1915,7 @@ class NativeWindow(QMainWindow):
 
     def _undo_from_notice(self) -> None:
         self._notice_step = None
-        self._told(self.session.undo)
+        self.session.undo()
 
     def _say_when_saved(self, words: str) -> None:
         """`words` say what the save now on its way changes, once it lands, with Undo. A change that

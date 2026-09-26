@@ -608,18 +608,18 @@ class MonthGrid(QWidget):
     def reveal(self, iso_day: str) -> None:
         """Open the month with the week the student is in as its first row."""
         at = self.canvas.index_of(iso_day)
-        if at is None:
-            return
-        self.canvas.set_room(self.scroll.viewport().height())
-        self.canvas.lead_with(at // 7)
-        self._scroll_to(at // 7, REVEAL_TRIES)
+        if at is not None:
+            self._scroll_to(at // 7, REVEAL_TRIES)
 
     def _scroll_to(self, row: int, tries: int) -> None:
         canvas = self.canvas
-        if canvas.height() < canvas.minimumHeight() and tries > 0:
-            # The scroll area gives the canvas its new height on its next layout pass.
+        if not self.scroll.viewport().isVisible() and tries > 0:
+            # A month just switched to has no height of its own until its first layout pass, and
+            # rows sized to fill the wrong height put another week on top.
             QTimer.singleShot(0, self, lambda: self._scroll_to(row, tries - 1))
             return
+        canvas.set_room(self.scroll.viewport().height())
+        canvas.lead_with(row)
         self.scroll.verticalScrollBar().setValue(round(canvas.cell_rect(row * 7).top()))
 
     def month_surfaces(self) -> list[MonthCanvas]:

@@ -168,8 +168,9 @@ def test_the_top_bar_is_never_cut_mid_word(qapp: QApplication, window: NativeWin
                 assert window.solve_button.text() in ("Plan my homework", "Plan"), where
                 right = max(item.mapTo(window, item.rect().topRight()).x() for item in bar_widgets(window))
                 assert right < window.width(), f"{where}: the bar runs to {right}"
-    # Suggest times, wider than Plan, is whole or "Suggest" at the narrowest window, never cut.
+    # Suggest times and Retry save, which widen the bar, are never cut at the narrowest window.
     session.preferences = {**(session.preferences or {}), "planning_style": "manual"}
+    window.retry_button.setVisible(True)
     window._sync_chrome()
     text_size(window, "large")
     window.resize(640, 768)
@@ -178,6 +179,7 @@ def test_the_top_bar_is_never_cut_mid_word(qapp: QApplication, window: NativeWin
     assert window.solve_button.text() in ("Suggest times", "Suggest")
     assert cut_on_the_bar(window) == [], f"large text, Suggest, {window.width()} px"
     session.preferences = {**session.preferences, "planning_style": "auto"}
+    window.retry_button.setVisible(False)
     window._sync_chrome()
     text_size(window, "normal")
     window.resize(1150, 768)

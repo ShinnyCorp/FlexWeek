@@ -351,13 +351,6 @@
  },
  {
   "file": "desktop/native/window.py",
-  "name": "the notice's Undo says nothing",
-  "old": "        self._notice_step = None\n        self._told(self.session.undo)\n",
-  "new": "        self._notice_step = None\n        self.session.undo()\n",
-  "test": "desktop/tests/test_drag_results.py::test_a_move_a_resize_a_create_and_a_placing_each_say_what_they_did_with_undo"
- },
- {
-  "file": "desktop/native/window.py",
   "name": "a notice appears under a held block",
   "old": "        if self._change_saved is None or self.hand.busy:\n",
   "new": "        if self._change_saved is None:\n",

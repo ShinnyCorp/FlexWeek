@@ -409,12 +409,23 @@ def test_every_advanced_action_says_what_it_did_when_it_is_done(
     qapp.processEvents()
     click(qapp, hours, hours.point_for(3, 17 * 60 + 15))
     assert window.session.selected_block_id == "piano"
+    shown: list[str] = []
+    real = window.toast.show_message
+
+    def noted(text: str, *more: object) -> None:
+        shown.append(text)
+        real(text, *more)
+
+    monkeypatch.setattr(window.toast, "show_message", noted)
     said = []
     for words in ("Copy", "Paste", "Duplicate", "Copy Thursday", "Save", "Undo", "Redo", "Restore", "Reload"):
         window.toast.hide()
+        shown.clear()
         advanced(window, words)
         settled(qapp, window)
-        said.append((words, toast(window)))
+        # Everything the toast said on the way, not only its last words: Duplicate once said "Piano
+        # copied" first.
+        said.append((words, " / ".join(shown) if shown[1:] else toast(window)))
     assert said == [
         ("Copy", "Piano copied. Choose a destination and paste."),
         ("Paste", "Pasted Piano."),

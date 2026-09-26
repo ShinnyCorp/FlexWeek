@@ -128,15 +128,15 @@
  {
   "file": "desktop/native/hours/month.py",
   "name": "Month opens with past weeks on top",
-  "old": "        self.canvas.lead_with(at // 7)\n",
+  "old": "        canvas.lead_with(row)\n",
   "new": "",
   "test": "desktop/tests/test_hours_month.py::test_month_opens_with_the_students_week_as_its_first_row"
  },
  {
   "file": "desktop/native/hours/month.py",
-  "name": "Month scrolls before the canvas has its height",
-  "old": "        if canvas.height() < canvas.minimumHeight() and tries > 0:\n",
+  "name": "Month sizes its rows before it has a height",
+  "old": "        if not self.scroll.viewport().isVisible() and tries > 0:\n",
   "new": "        if False:\n",
-  "test": "desktop/tests/test_hours_month.py::test_month_opens_with_the_students_week_as_its_first_row"
+  "test": "desktop/tests/test_hours_month.py::test_a_month_revealed_before_its_first_layout_still_opens_on_the_week"
  }
 ]

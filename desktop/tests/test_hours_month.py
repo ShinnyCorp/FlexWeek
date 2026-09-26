@@ -286,3 +286,21 @@ def test_month_opens_with_the_students_week_as_its_first_row(qapp: QApplication)
         # The month's last row: the week before it stays above, so two weeks show.
         ("2026-09-30", 3, True, True, False),
     ]
+
+
+def test_a_month_revealed_before_its_first_layout_still_opens_on_the_week(qapp: QApplication) -> None:
+    """The window asks as the month is switched to, before it has a height of its own. Rows sized to
+    that height put another week on top once the month was laid out."""
+    from PySide6.QtTest import QTest
+
+    grid = MonthGrid()
+    grid.resize(900, 700)
+    grid.set_month(september(), False)
+    grid.reveal("2026-09-24")
+    grid.show()
+    QTest.qWait(50)
+    shown = first_row_shown(grid)
+    below = grid.canvas.height() - grid.scroll.verticalScrollBar().value()
+    room = grid.scroll.viewport().height()
+    grid.close()
+    assert (shown, below >= room) == (3, True)
