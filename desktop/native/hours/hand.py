@@ -30,7 +30,7 @@ from shiboken6 import isValid
 
 from desktop.native.calendar import DAYS
 from desktop.native.hours.geometry import DRAG_STEPS, Span, Track, snap
-from desktop.native.weekmodel import length_label
+from desktop.native.weekmodel import clock_text, length_label
 
 # A drag near a scroll area's edge scrolls it only after resting there this long, so passing
 # through the edge on the way in never shifts the hours under the pointer.
@@ -130,11 +130,7 @@ def surface_at(at: QPoint) -> QWidget | None:
 
 
 def span_words(span: Span) -> str:
-    return f"{DAYS[span.day]} {_clock(span.start)}–{_clock(span.end)} · {length_label(span.minutes)}"
-
-
-def _clock(minute: int) -> str:
-    return f"{minute // 60:02d}:{minute % 60:02d}"
+    return f"{DAYS[span.day]} {clock_text(span.start)}–{clock_text(span.end)} · {length_label(span.minutes)}"
 
 
 class Hand(QObject):
@@ -377,7 +373,7 @@ class Hand(QObject):
         verdict = None
         if target and held.block_id and target != held.from_iso and self.date_judge is not None:
             verdict = self.date_judge(held.block_id, held.from_iso, target)
-        words = f"{_clock(held.origin.start) if held.origin else ''} {held.title}".strip()
+        words = f"{clock_text(held.origin.start) if held.origin else ''} {held.title}".strip()
         if verdict is not None and not verdict.ok and verdict.words:
             words = verdict.words
         elif target and target != held.from_iso:

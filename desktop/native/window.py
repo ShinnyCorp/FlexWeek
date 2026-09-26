@@ -108,7 +108,14 @@ from desktop.native.tones import FALLBACK
 from desktop.native.update import RELEASE_PAGE, due_for_check, sanitize_updates
 from desktop.native.updater import Updater, apply_update
 from desktop.native.version import VERSION
-from desktop.native.weekmodel import added_words, build_week, dated_words, moved_words
+from desktop.native.weekmodel import (
+    added_words,
+    build_week,
+    dated_words,
+    hhmm_text,
+    moved_words,
+    set_clock_24h,
+)
 from desktop.native.widgets import (
     REPLAN_TIP,
     AddMenu,
@@ -1076,7 +1083,9 @@ class NativeWindow(QMainWindow):
     def _sync_chrome(self) -> None:
         """Planning chips and the clipboard line step aside for a design of its own. Plan my
         homework and More stay in the top bar in every layout, every view, and My day. The hand
-        drags in the step the student chose."""
+        drags in the step the student chose, and times are written on the clock they chose."""
+        if self._set_clock():
+            self._on_week()
         self.hand.step = drag_step((self.session.preferences or {}).get("drag_step_min"))
         manual = (self.session.preferences or {}).get("planning_style") == "manual"
         # A student who places homework by hand asks for ideas; the plan is theirs.
@@ -1094,6 +1103,11 @@ class NativeWindow(QMainWindow):
         # Quick focus is in the action row whenever there is one, so the panel's own copy would be
         # the same button twice; it belongs to the panel only where no action row is shown.
         self.focus_panel.quick.setVisible(own and self._day_mode)
+
+    def _set_clock(self) -> bool:
+        """Whether the clock changed. Only a change redraws the week, so this is safe to call from
+        the redraw itself."""
+        return set_clock_24h((self.session.preferences or {}).get("clock_24h", True) is not False)
 
     def _keep_bar_whole(self) -> None:
         """The window is never narrower than the top bar's buttons at their smallest, which large
@@ -1377,6 +1391,7 @@ class NativeWindow(QMainWindow):
         if self._on_recovery() and not self._allow_week_page:
             return
         self._honour_preferred_view()
+        self._set_clock()
         self._check_updates(asked=False)
         self._fill_classic()
         self.month_grid.set_month(self.session.month_data, self.session.dirty)
@@ -2278,7 +2293,7 @@ class NativeWindow(QMainWindow):
             self.toast.show_message(refusal)
             return
         from_start = late_from_start(now.hour * 60 + now.minute)
-        dialog = LateDialog(self, f"Starting from {from_start} today ({DAY_FULL[now.weekday()]}).")
+        dialog = LateDialog(self, f"Starting from {hhmm_text(from_start)} today ({DAY_FULL[now.weekday()]}).")
         dialog.preview_requested.connect(
             lambda: self.session.preview_running_late(dialog.chosen_minutes(), now)
         )
@@ -2589,6 +2604,7 @@ class NativeWindow(QMainWindow):
                     "alarm_tone",
                     "planning_style",
                     "drag_step_min",
+                    "clock_24h",
                 )
                 shown = {key: wanted[key] for key in live}
                 self.session.preferences = {**self.session.preferences, **shown}

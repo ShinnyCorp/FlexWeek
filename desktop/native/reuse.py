@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from backend.models import due_sort_key, parse_due
 from backend.slots import DAY_END_MIN, DAY_START_MIN, SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm
 from desktop.native.calendar import DAY_FULL
-from desktop.native.weekmodel import length_label
+from desktop.native.weekmodel import clock_text, hhmm_text, length_label
 
 MAX_WEEK_BLOCKS = 100
 AVAILABILITY_LIMIT = 21
@@ -282,7 +282,7 @@ def settle_placements(
             "title": title,
             "day": day,
             "start": block["start"],
-            "message": f"{title} no longer fits {DAY_FULL[day]} at {block['start']}: {why}.",
+            "message": f"{title} no longer fits {DAY_FULL[day]} at {hhmm_text(block['start'])}: {why}.",
         }
     if not lost:
         return blocks, []
@@ -656,10 +656,10 @@ def running_late_refusal(
 
 
 def late_locked_line(block: dict, moved: int) -> str:
-    start = str(block["start"])
-    end = minutes_to_hhmm(hhmm_to_minutes(start) + int(block["duration_min"]))
+    start = hhmm_to_minutes(str(block["start"]))
+    end = start + int(block["duration_min"])
     extra = f"{moved} moved." if moved else "Nothing had to move."
-    return f"Running late: {start}–{end} is now locked. {extra}"
+    return f"Running late: {clock_text(start)}–{clock_text(end)} is now locked. {extra}"
 
 
 def late_id(operation_id: str) -> str:

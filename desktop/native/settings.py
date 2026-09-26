@@ -65,7 +65,7 @@ from desktop.native.sound import Bell
 from desktop.native.spotify import SpotifyPlayer, open_in_app
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
-from desktop.native.weekmodel import length_label
+from desktop.native.weekmodel import hhmm_text, length_label, time_format
 from desktop.native.widgets import DIALOG_USABLE_HEIGHT, FlowLayout, fit_scroll_dialog
 
 UPDATE_MIN_WIDTH = 420
@@ -313,11 +313,13 @@ class FocusPanel(QWidget):
             widget.setVisible(ended)
         self.more.setEnabled(bool(choices))
         tasks = [(item.get("id"), item.get("start"), item.get("title")) for item in session.focus_tasks()]
-        if tasks != getattr(self, "_shown_tasks", None):
-            self._shown_tasks = tasks
+        # The clock too, so a switch to the 12-hour clock rewrites the times.
+        shown = (time_format(), tasks)
+        if shown != getattr(self, "_shown_tasks", None):
+            self._shown_tasks = shown
             self.tasks.clear()
             for item in session.focus_tasks():
-                start = item.get("start") or ""
+                start = hhmm_text(item["start"]) if item.get("start") else ""
                 row = QListWidgetItem(f"{item['title']}  {start}".rstrip())
                 row.setData(Qt.ItemDataRole.UserRole, item)
                 self.tasks.addItem(row)
@@ -482,6 +484,11 @@ class PrefsDialog(QDialog):
         self.preferred_view.setCurrentIndex(
             max(0, self.preferred_view.findData(preferences.get("preferred_view")))
         )
+        self.clock = QComboBox()
+        self.clock.setObjectName("prefClock")
+        self.clock.addItem("24-hour", True)
+        self.clock.addItem("12-hour", False)
+        self.clock.setCurrentIndex(0 if preferences.get("clock_24h", True) is not False else 1)
         self.spotify = QLineEdit(preferences.get("default_spotify_url") or "")
         self.spotify.setObjectName("prefSpotify")
         self.spotify.setPlaceholderText("Paste a Spotify link")
@@ -622,7 +629,7 @@ class PrefsDialog(QDialog):
         self.alarm_name.setObjectName("alarmName")
         self.alarm_name.setPlaceholderText("Alarm name")
         self.alarm_time = QTimeEdit()
-        self.alarm_time.setDisplayFormat("HH:mm")
+        self.alarm_time.setDisplayFormat(time_format())
         self.alarm_sound = QComboBox()
         self.alarm_sound.setObjectName("alarmSound")
         self.alarm_name.setMinimumWidth(120)
@@ -682,6 +689,7 @@ class PrefsDialog(QDialog):
         computer_form.addRow("Account", open_account)
         computer_form.addRow(self.start_at_login)
         computer_form.addRow("Open on", self.preferred_view)
+        computer_form.addRow("Clock", self.clock)
         run_setup = _page_button("Run setup again", "prefsRunSetup")
         run_setup.setToolTip("Style, your week, homework time and reminders, filled in as they are now.")
         run_setup.clicked.connect(self.setup_requested.emit)
@@ -742,7 +750,7 @@ class PrefsDialog(QDialog):
         self.spotify.editingFinished.connect(self._check_spotify)
         # Every choice says it changed. Connected last, so building the dialog says nothing, and after
         # the handlers above, so a look or a timer preset has filled in its knobs by then.
-        choices = (self.look, self.accent, self.preferred_view, self.motion, self.alarm_tone)
+        choices = (self.look, self.accent, self.preferred_view, self.clock, self.motion, self.alarm_tone)
         for box in (*choices, *self.knobs.values()):
             box.currentIndexChanged.connect(self._announce)
         for spin in (self.work, self.break_min, self.long_break, self.long_every, self.lead, self.volume):
@@ -912,7 +920,7 @@ class PrefsDialog(QDialog):
             sound = str(alarm.get("sound") or FALLBACK)
             label = "Spotify" if sound == "spotify" else sound.title()
             off = "" if alarm.get("enabled", True) else " · off"
-            when = f"Rings at {alarm.get('time')}, {ring_days(alarm.get('days') or [])}"
+            when = f"Rings at {hhmm_text(str(alarm.get('time')))}, {ring_days(alarm.get('days') or [])}"
             self.alarm_list.addItem(f"{alarm.get('name')} · {label}{off}\n{when}")
         self._alarms_form.setRowVisible(self.alarm_list, bool(self._alarms))
         self._alarms_form.setRowVisible(self.alarm_empty, not self._alarms)
@@ -982,6 +990,7 @@ class PrefsDialog(QDialog):
             "accent_chips": self.accent_chips.isChecked(),
             "start_at_login": self.start_at_login.isChecked(),
             "preferred_view": self.preferred_view.currentData(),
+            "clock_24h": bool(self.clock.currentData()),
             "motion": self.motion.currentData(),
             "alarm_tone": self.alarm_tone.currentData(),
             "planning_style": self._planning_style(),
