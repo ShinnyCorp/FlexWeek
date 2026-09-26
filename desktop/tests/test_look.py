@@ -48,10 +48,24 @@ def look_of(preset: str, **knobs: str) -> dict:
     return {"preset": preset, "knobs": knobs}
 
 
-def test_the_look_menu_lists_packs_then_device_presets() -> None:
-    items = look_menu_items()
-    assert [kind for _name, _label, kind in items[:5]] == ["pack"] * 5
-    assert all(kind == "preset" for _name, _label, kind in items[5:])
+def test_the_look_menu_offers_four_looks_then_the_experimental_ones() -> None:
+    """Decision 3 of 0.16: System, Light, Dark and High contrast, and the other seven under
+    Experimental styles. Every pack and preset is still offered once, so a saved look can be picked."""
+    standard, experimental = look_menu_items()
+    assert [label for _name, label, _kind in standard] == ["System", "Light", "Dark", "High contrast"]
+    assert [label for _name, label, _kind in experimental] == [
+        "Nocturne",
+        "Slate",
+        "Poster",
+        "Terminal",
+        "Paper",
+        "Ink",
+        "Pastel",
+    ]
+    offered = [(kind, name) for name, _label, kind in standard + experimental]
+    assert sorted(offered) == sorted(
+        [("pack", name) for name in PACKS] + [("preset", name) for name in LOOK_PRESETS if name != "default"]
+    )
     assert look_menu_value("nocturne", {"preset": "default", "knobs": {}}) == look_menu_token(
         "pack", "nocturne"
     )
@@ -345,14 +359,8 @@ def test_every_category_has_a_mark_of_its_own() -> None:
 
 
 def test_paper_and_pastel_are_light_looks_on_any_pack_and_close_the_menu() -> None:
-    assert [name for name, _label, kind in look_menu_items() if kind == "preset"] == [
-        "terminal",
-        "poster",
-        "ink",
-        "high-contrast",
-        "paper",
-        "pastel",
-    ]
+    standard, experimental = look_menu_items()
+    assert [name for name, _label, _kind in experimental][-3:] == ["paper", "ink", "pastel"]
     for preset, accent in (("paper", "#8a4b2a"), ("pastel", "#7a3e9d")):
         for pack, system_dark in (("nocturne", True), ("dark-frost", True), ("slate", False)):
             palette = resolved_palette(pack, system_dark, look_of(preset))

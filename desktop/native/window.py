@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+from collections.abc import Callable
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -100,8 +101,8 @@ from desktop.native.settings import (
     AlarmRingDialog,
     FocusPanel,
     HelpDialog,
-    PrefsDialog,
     RestoreDialog,
+    SettingsPage,
     TransferPreviewDialog,
     UpdateDialog,
 )
@@ -318,6 +319,9 @@ class NativeWindow(QMainWindow):
         self._setup_prefs: dict = {}
         self._setup_work_windows: list[dict] | None = None
         self._setup_week = False
+        # Settings while it is on screen, and what closing it has to save.
+        self._settings: SettingsPage | None = None
+        self._settings_finish: Callable[[bool], None] | None = None
         # A block let go while a save is under way, moved once it is done: the save's reply replaces
         # the week, so a move made before it arrived would be lost.
         self._move_waiting: tuple[str, int, int, int, int] | None = None
@@ -527,6 +531,7 @@ class NativeWindow(QMainWindow):
         password_row.addWidget(self.password, 1)
         self.password_reveal = QPushButton("Show")
         self.password_reveal.setObjectName("passwordReveal")
+        self.password_reveal.setProperty("quiet", True)
         self.password_reveal.setCheckable(True)
         self.password_reveal.toggled.connect(self._toggle_password)
         password_row.addWidget(self.password_reveal)
@@ -1168,6 +1173,7 @@ class NativeWindow(QMainWindow):
 
     def _on_account(self, account: object) -> None:
         if account is None:
+            self._close_settings(save=False)
             self._day_mode = False
             self._opened_on_preference = False
             self._making_account = False
@@ -1242,6 +1248,7 @@ class NativeWindow(QMainWindow):
         )
 
     def _open_setup(self, step: int, *, first_run: bool) -> None:
+        self._close_settings(show_week=False)
         self._setup_active = True
         self.setup_page.motion = self._motion
         self.setup_page.open(self._setup_state(first_run), step)
@@ -1447,7 +1454,8 @@ class NativeWindow(QMainWindow):
             # The account's preferences may only now have arrived, and what setup kept before they did,
             # a skip included, is written with them.
             QTimer.singleShot(0, self._flush_setup)
-        if not self._setup_active and self._stack.currentWidget() is not self.focus_screen:
+        on_focus = self._stack.currentWidget() is self.focus_screen
+        if not self._setup_active and not on_focus and self._settings is None:
             self._show_page("weekPage")
         can_retry = self.session.pending_save is not None and not self.session.conflict
         # Hidden, not merely greyed: a button that is never pressable is a permanent piece of
@@ -2668,40 +2676,44 @@ class NativeWindow(QMainWindow):
         open_in_app(url)
 
     def _open_settings(self) -> None:
-        """Every change shows the moment it is made; there is no OK. The look and layout live on this
-        device and are written at once. The account's choices are saved a moment after the last
-        change, so typing "45" saves once rather than twice, and closing saves whatever is left."""
+        """Settings fill the window in place of the week. Every change shows the moment it is made;
+        there is no OK. The look and layout live on this device and are written at once. The
+        account's choices are saved a moment after the last change, so typing "45" saves once rather
+        than twice, and going back to the week saves whatever is left."""
         if self.session.preferences is None:
             self.session._say("Still loading your settings…")
             return
-        dialog = PrefsDialog(
+        if self._settings is not None:
+            self._show_page("settingsPage")
+            return
+        page = SettingsPage(
             self, self.session.preferences, self._look, self.session.reminder_limits, self._layout
         )
-        dialog.motion_level = self._motion
-        dialog.account_requested.connect(self._open_account)
-        dialog.availability_requested.connect(self._open_availability)
-        dialog.updates_requested.connect(lambda: self._check_updates(asked=True))
-        rerun: list[bool] = []
-        dialog.setup_requested.connect(lambda: (rerun.append(True), dialog.reject()))
-        stored = dialog.updates()
+        page.motion_level = self._motion
+        page.account_requested.connect(self._open_account)
+        page.availability_requested.connect(self._open_availability)
+        page.updates_requested.connect(lambda: self._check_updates(asked=True))
+        page.setup_requested.connect(self._run_setup_again)
+        page.closed.connect(self._close_settings)
+        stored = page.updates()
         login = bool(stored["start_at_login"])
 
         def save() -> None:
             nonlocal stored
-            wanted = dialog.updates()
+            wanted = page.updates()
             if wanted != stored and self.session.save_preferences(wanted):
                 stored = wanted
 
         def apply() -> None:
             nonlocal login
-            look, layout = dialog.look_choice(), dialog.layout_choice()
+            look, layout = page.look_choice(), page.layout_choice()
             if look != self._look or layout != self._layout:
                 self._look = look
                 self.session.look = look
                 self._layout = layout
                 self._save_look()
                 self._on_week()
-            wanted = dialog.updates()
+            wanted = page.updates()
             if self.session.preferences is not None:
                 # Pack and accent belong to the account but are seen like the look: at once. The save
                 # that follows stores them.
@@ -2724,21 +2736,37 @@ class NativeWindow(QMainWindow):
             self._sync_chrome()
             saver.start()
 
-        saver = QTimer(dialog)
+        def finish(keep: bool) -> None:
+            saver.stop()
+            with contextlib.suppress(RuntimeError, TypeError):
+                self.session.status.disconnect(page.save_state.setText)
+            if keep:
+                save()
+
+        saver = QTimer(page)
         saver.setSingleShot(True)
         saver.setInterval(SETTINGS_SAVE_MS)
         saver.timeout.connect(save)
-        dialog.changed.connect(apply)
-        self.session.status.connect(dialog.save_state.setText)
-        try:
-            dialog.exec()
-        finally:
-            with contextlib.suppress(RuntimeError, TypeError):
-                self.session.status.disconnect(dialog.save_state.setText)
-        saver.stop()
-        save()
-        if rerun:
-            self._run_setup_again()
+        page.changed.connect(apply)
+        self.session.status.connect(page.save_state.setText)
+        self._settings = page
+        self._settings_finish = finish
+        self._stack.addWidget(page)
+        self._show_page("settingsPage")
+        page.nav.setFocus()
+
+    def _close_settings(self, *, save: bool = True, show_week: bool = True) -> None:
+        """Back from Settings: what is not saved yet is saved, and the page is let go, so the next
+        Settings opens on what the account holds then."""
+        page, finish = self._settings, self._settings_finish
+        if page is None or finish is None:
+            return
+        self._settings, self._settings_finish = None, None
+        finish(save and self.session.account is not None)
+        if show_week and self.session.account is not None:
+            self._show_page("weekPage")
+        self._stack.removeWidget(page)
+        page.deleteLater()
 
     def _apply_start_at_login(self, wanted: bool) -> None:
         """The setting used to be stored on the account and obeyed by nothing. It is applied to this
@@ -2977,6 +3005,10 @@ class NativeWindow(QMainWindow):
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if self.session.account is None or QApplication.activeModalWidget() is not None:
+            super().keyPressEvent(event)
+            return
+        if self._settings is not None and self._stack.currentWidget() is self._settings:
+            # The week's keys do nothing to a week that is not on screen; Esc is Settings' own.
             super().keyPressEvent(event)
             return
         if self._on_recovery():

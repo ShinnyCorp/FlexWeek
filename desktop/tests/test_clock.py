@@ -32,7 +32,7 @@ from desktop.native.weekmodel import (
     set_clock_24h,
     time_format,
 )
-from desktop.native.widgets import BlockDialog, LateDialog, PreviewDialog
+from desktop.native.widgets import BlockDialog, LateDialog, PreviewDialog, Segmented
 from desktop.native.window import NativeWindow
 from desktop.native.work_windows import WorkWindowsEditor
 from desktop.tests.window_support import (  # noqa: F401
@@ -166,8 +166,8 @@ def test_settings_offers_the_clock_under_this_computer_and_saves_it(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
-    dialog = settings.PrefsDialog(window, window.session.preferences or {}, window._look, window._layout)
-    clock = dialog.findChild(QComboBox, "prefClock")
+    dialog = settings.SettingsPage(window, window.session.preferences or {}, window._look, window._layout)
+    clock = dialog.findChild(Segmented, "prefClock")
     assert [clock.itemText(index) for index in range(clock.count())] == ["24-hour", "12-hour"]
     assert clock.currentText() == "24-hour"
     assert dialog.updates()["clock_24h"] is True

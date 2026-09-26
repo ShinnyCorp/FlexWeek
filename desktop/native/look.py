@@ -101,8 +101,8 @@ LOOK_PRESET_LABELS = {
 }
 PACK_LABELS = {
     "system": "System",
-    "light-frost": "Light frost",
-    "dark-frost": "Dark frost",
+    "light-frost": "Light",
+    "dark-frost": "Dark",
     "nocturne": "Nocturne",
     "slate": "Slate",
 }
@@ -436,11 +436,32 @@ def resolved_pack_theme(pack: object, system_dark: bool) -> str:
     return chosen
 
 
-def look_menu_items() -> list[tuple[str, str, str]]:
-    """One Look list: account packs first, then device presets. Pack default is the pack itself."""
-    items = [(name, PACK_LABELS[name], "pack") for name in PACKS]
-    items.extend((name, LOOK_PRESET_LABELS[name], "preset") for name in LOOK_PRESETS if name != "default")
-    return items
+# The looks offered first, as (kind, name); every other pack and preset is experimental.
+STANDARD_LOOKS = (
+    ("pack", "system"),
+    ("pack", "light-frost"),
+    ("pack", "dark-frost"),
+    ("preset", "high-contrast"),
+)
+EXPERIMENTAL_LOOKS = (
+    ("pack", "nocturne"),
+    ("pack", "slate"),
+    ("preset", "poster"),
+    ("preset", "terminal"),
+    ("preset", "paper"),
+    ("preset", "ink"),
+    ("preset", "pastel"),
+)
+
+
+def look_menu_items() -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
+    """The Look list in two groups, standard then experimental, each item (name, label, kind). A pack
+    is the pack with its own knobs; a preset is a bundle of knobs on the account's pack."""
+
+    def item(kind: str, name: str) -> tuple[str, str, str]:
+        return name, (PACK_LABELS if kind == "pack" else LOOK_PRESET_LABELS)[name], kind
+
+    return [item(*entry) for entry in STANDARD_LOOKS], [item(*entry) for entry in EXPERIMENTAL_LOOKS]
 
 
 def look_menu_token(kind: str, name: str) -> str:
@@ -694,6 +715,63 @@ def control_rules(palette: dict, radius: int, size: int, art: dict[str, str]) ->
         f"QProgressBar::chunk {{ background: {palette['accent']}; border-radius: 4px; }}"
         f"QLineEdit:focus, QComboBox:focus, QAbstractSpinBox:focus, QPlainTextEdit:focus {{ "
         f"border: 1px solid {palette['accent']}; }}"
+        # A switch is a check box whose box is a pill with a knob, drawn whole by `control_art`.
+        'QCheckBox[switch="true"] { spacing: 10px; }'
+        'QCheckBox[switch="true"]::indicator { width: 34px; height: 20px; border: none; '
+        f"background: transparent; border-radius: 10px; image: url({art['switch_off']}); }}"
+        f'QCheckBox[switch="true"]::indicator:checked {{ image: url({art["switch_on"]}); }}'
+        f'QCheckBox[switch="true"]::indicator:disabled {{ image: url({art["switch_off_off"]}); }}'
+        f'QCheckBox[switch="true"]::indicator:checked:disabled {{ image: url({art["switch_on_off"]}); }}'
+    )
+
+
+def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> str:
+    """Settings as a page: a list of sections on the left, cards on the right, and segmented choices.
+    Dialogs laid out in cards use the same card.
+
+    A segmented control is a sunken track with the chosen segment raised on it, so two or three
+    choices read as one control with one answer.
+    """
+    edges = _depth_rules(depth, palette)
+    card_radius = max(radius, 10)
+    track = mix(palette["text"], palette["panel"], 0.07)
+    chosen_edge = "none" if depth == "flat" else f"1px solid {palette['hairline_strong']}"
+    selected = mix(palette["accent"], palette["panel"], 0.16)
+    return (
+        f"QWidget#settingsPage {{ background: {palette['window']}; }}"
+        # Bare widgets inside a card, which the app-wide rule would paint as a band of page colour.
+        "QWidget#settingsRow, QWidget#settingsBody, QWidget#settingsFooter, QWidget#prefFineHost, "
+        "QWidget#prefReminderControls, QFrame[designs=\"true\"] { background: transparent; "
+        "border: none; padding: 0; }"
+        f"QWidget#settingsRail {{ background: {palette['panel']}; }}"
+        "QScrollArea#settingsScroll { background: transparent; border: none; padding: 0; border-radius: 0; }"
+        f"QListWidget#prefsNav {{ background: {palette['panel']}; border: none; border-radius: 0; "
+        "padding: 16px 8px; }"
+        f"QListWidget#prefsNav::item {{ color: {palette['muted']}; padding: {pad + 4}px 12px; "
+        f"border-radius: {max(radius - 2, 4)}px; }}"
+        f"QListWidget#prefsNav::item:hover {{ background: {palette['hairline']}; color: {palette['text']}; }}"
+        f"QListWidget#prefsNav::item:selected {{ background: {selected}; color: {palette['text']}; }}"
+        f"QLabel#settingsTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
+        f"QFrame#settingsCard, QFrame#dialogCard {{ background: {palette['panel']}; "
+        f"border-radius: {card_radius}px; padding: 0; {edges} }}"
+        "QLabel#prefsHeading, QLabel#layoutMainHeading, QLabel#layoutDayHeading, QLabel#cardTitle { "
+        f"font-size: {size + 1}pt; font-weight: 700; color: {palette['text']}; }}"
+        "QLabel#settingsCardNote, QLabel#cardNote, QLabel#settingsExperimental, QLabel#prefPlanningNote, "
+        "QLabel#prefDndNote, "
+        "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits { "
+        f"color: {palette['muted']}; }}"
+        "QLabel#settingsExperimental { font-weight: 700; margin-top: 6px; }"
+        f'QFrame[segmented="true"] {{ background: {track}; border: none; '
+        f"border-radius: {max(radius, 6) + 2}px; padding: 0; }}"
+        f'QPushButton[segment="true"] {{ background: transparent; color: {palette["muted"]}; border: none; '
+        # One weight whether chosen or not: a bolder chosen segment was wider than the room it was given.
+        f"border-radius: {max(radius, 6)}px; padding: {max(pad - 2, 3)}px {pad + 8}px; font-weight: 600; "
+        "min-height: 0; }"
+        f'QPushButton[segment="true"]:hover {{ color: {palette["text"]}; }}'
+        f'QPushButton[segment="true"]:checked {{ background: {palette["field"]}; color: {palette["text"]}; '
+        f"border: {chosen_edge}; }}"
+        'QPushButton[segment="true"]:disabled { background: transparent; '
+        f'color: {palette["hairline_strong"]}; }}'
     )
 
 
@@ -905,6 +983,7 @@ def pack_stylesheet(
         f"QPushButton#moreButton, QPushButton#settingsGear {{ background: transparent; "
         f"color: {palette['muted']}; {edges} }}"
         + setup_rules(palette, radius, size, pad, knobs["depth"])
+        + settings_rules(palette, radius, size, pad, knobs["depth"])
         + f"QPushButton#authSwitch, QPushButton#forgotPassword, QPushButton#updateSkip {{ "
         f"background: transparent; "
         f"color: {palette['accent']}; border: none; padding: {pad}px 0; "

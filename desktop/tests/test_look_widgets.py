@@ -41,7 +41,7 @@ if importlib.util.find_spec("PySide6") is not None:
         preset_knobs,
         resolved_palette,
     )
-    from desktop.native.settings import AboutDialog, PrefsDialog
+    from desktop.native.settings import AboutDialog, SettingsPage
     from desktop.native.weekmodel import build_week
     from desktop.native.widgets import DIALOG_MARGIN, use_app_style
     from desktop.native.window import NativeWindow
@@ -198,8 +198,8 @@ def test_days_outside_the_month_use_the_palettes_muted_ink(qapp: QApplication) -
     assert grid.canvas.painter.c("muted").name() == terminal["muted"] == "#7fbf7f"
 
 
-def settings(look: dict) -> PrefsDialog:
-    return PrefsDialog(None, {}, look, {})
+def settings(look: dict) -> SettingsPage:
+    return SettingsPage(None, {}, look, {})
 
 
 def test_settings_opens_on_appearance_with_fine_tune_closed(qapp: QApplication) -> None:
@@ -210,17 +210,17 @@ def test_settings_opens_on_appearance_with_fine_tune_closed(qapp: QApplication) 
     assert dialog.fine_host.isHidden() is False
 
 
-def choose(dialog: PrefsDialog, token: str) -> None:
+def choose(dialog: SettingsPage, token: str) -> None:
     index = dialog.look.findData(token)
     assert index >= 0, token
     dialog.look.setCurrentIndex(index)
 
 
-def move(dialog: PrefsDialog, knob: str, value: str) -> None:
+def move(dialog: SettingsPage, knob: str, value: str) -> None:
     dialog.knobs[knob].setCurrentIndex(dialog.knobs[knob].findData(value))
 
 
-def shown(dialog: PrefsDialog) -> dict:
+def shown(dialog: SettingsPage) -> dict:
     return {knob: box.currentData() for knob, box in dialog.knobs.items()}
 
 

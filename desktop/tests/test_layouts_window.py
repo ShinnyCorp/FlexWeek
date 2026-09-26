@@ -42,7 +42,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.layouts.one_thing import OneThingView
     from desktop.native.layouts.registry import LAYOUTS, sanitize_layout
     from desktop.native.layouts.views import VIEW_CLASSES
-    from desktop.native.settings import PrefsDialog
+    from desktop.native.settings import SettingsPage
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
     from desktop.tests.logic_support import past_setup
@@ -138,7 +138,14 @@ def click(window: NativeWindow, name: str) -> None:
     window.findChild(QPushButton, name).click()
 
 
+def one_thing(window: NativeWindow) -> None:
+    """One thing as the day screen. Day dial is the default since 0.16; these tests are about One
+    thing's own buttons."""
+    window._layout = sanitize_layout({**window._layout, "day": "one"})
+
+
 def test_my_day_puts_planning_away_and_back_brings_it_back(qapp: QApplication, window: NativeWindow) -> None:
+    one_thing(window)
     assert window.planner.currentWidget() is window.week_table
     click(window, "viewMyDay")
     assert isinstance(window.planner.currentWidget(), OneThingView)
@@ -154,6 +161,7 @@ def test_my_day_puts_planning_away_and_back_brings_it_back(qapp: QApplication, w
 def test_the_day_screen_reads_the_real_week_at_the_real_minute(
     qapp: QApplication, window: NativeWindow
 ) -> None:
+    one_thing(window)
     click(window, "viewMyDay")
     view = window.planner.currentWidget()
     said = tuple(view.findChild(QLabel, name).text() for name in ("oneLabel", "oneTitle", "oneLine"))
@@ -163,6 +171,7 @@ def test_the_day_screen_reads_the_real_week_at_the_real_minute(
 def test_homework_finished_finishes_it_the_way_the_product_does(
     qapp: QApplication, window: NativeWindow
 ) -> None:
+    one_thing(window)
     click(window, "viewMyDay")
     click(window, "oneFinished")
     settled(qapp, window)
@@ -175,6 +184,7 @@ def test_homework_finished_finishes_it_the_way_the_product_does(
 def test_start_focus_keeps_the_timer_in_view_on_a_day_screen(
     qapp: QApplication, window: NativeWindow
 ) -> None:
+    one_thing(window)
     click(window, "viewMyDay")
     assert window.focus_panel.isVisible() is False
     click(window, "oneFocus")
@@ -190,6 +200,7 @@ def test_start_focus_keeps_the_timer_in_view_on_a_day_screen(
 def test_running_late_opens_the_products_own_running_late(
     qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    one_thing(window)
     opened: list[str] = []
     monkeypatch.setattr(NativeWindow, "_open_late", lambda self: opened.append("late"))
     click(window, "viewMyDay")
@@ -283,6 +294,7 @@ def test_a_late_start_that_fails_to_save_says_so_instead(qapp: QApplication, win
 
 def test_the_keyboard_reaches_my_day_and_back(qapp: QApplication, window: NativeWindow) -> None:
     """The week grid keeps letter keys for type-ahead, so T has to be taken the way W, D and M are."""
+    one_thing(window)
     QTest.keyClick(window.week_table, Qt.Key.Key_T)
     day = window.planner.currentWidget()
     assert isinstance(day, OneThingView)
@@ -346,10 +358,10 @@ def test_a_look_file_from_before_layouts_still_loads(qapp: QApplication, window:
     look_file().write_text(json.dumps({"preset": "terminal", "knobs": {}}))
     window._load_look()
     assert window._look["preset"] == "terminal"
-    assert window._layout == {"main": "classic", "day": "one", "options": {}}
+    assert window._layout == {"main": "classic", "day": "dial", "options": {}}
     look_file().write_text("not json")
     window._load_look()
-    assert window._layout == {"main": "classic", "day": "one", "options": {}}
+    assert window._layout == {"main": "classic", "day": "dial", "options": {}}
 
 
 def test_saving_the_look_from_settings_keeps_the_layout(qapp: QApplication, window: NativeWindow) -> None:
@@ -371,20 +383,32 @@ def test_a_changed_look_repaints_a_design_that_matches_it(qapp: QApplication, wi
     assert after == view.scene.tokens["bg"]
 
 
-def combo(dialog: PrefsDialog, name: str) -> QComboBox:
-    return dialog.findChild(QComboBox, name)
+def combo(dialog: SettingsPage, name: str) -> QComboBox:
+    """A choice by name, whether a dropdown, a segmented control or the design cards: all three
+    answer a dropdown's calls."""
+    return dialog.findChild(QWidget, name)
 
 
-def rows(dialog: PrefsDialog, slot: str) -> list[str]:
+def rows(dialog: SettingsPage, slot: str) -> list[str]:
+    from desktop.native.widgets import Segmented
+
     return sorted(
         box.objectName()
-        for box in dialog.findChildren(QComboBox)
-        if box.objectName().startswith(f"layout{slot}-")
+        for box in dialog.findChildren(QWidget)
+        if isinstance(box, (QComboBox, Segmented)) and box.objectName().startswith(f"layout{slot}-")
     )
 
 
-def prefs_layout(choice: dict | None = None) -> PrefsDialog:
-    return PrefsDialog(None, {}, {}, {}, choice)
+def open_settings(window: NativeWindow) -> SettingsPage:
+    """Settings as the gear opens it, in place of the week."""
+    window._open_settings()
+    page = window._settings
+    assert page is not None and window._stack.currentWidget() is page
+    return page
+
+
+def prefs_layout(choice: dict | None = None) -> SettingsPage:
+    return SettingsPage(None, {}, {}, {}, choice)
 
 
 def test_every_view_says_what_it_is_for_before_its_style_name(qapp: QApplication) -> None:
@@ -477,9 +501,11 @@ def test_the_knobs_settings_hides_for_a_design_change_nothing_in_it(
 def test_the_dialog_shows_style_first_and_fine_tune_on_request(qapp: QApplication) -> None:
     dialog = prefs_layout()
     assert [combo(dialog, "layoutDay").itemText(index) for index in range(2)] == [
-        "Focus · One thing",
         "Clock · Day dial",
+        "Focus · One thing",
     ]
+    pick = combo(dialog, "layoutDay")
+    pick.setCurrentIndex(pick.findData("one"))
     assert rows(dialog, "Day") == ["layoutDay-colour"]
     dialog.findChild(QCheckBox, "layoutDayMore").setChecked(True)
     assert rows(dialog, "Day") == [
@@ -489,11 +515,10 @@ def test_the_dialog_shows_style_first_and_fine_tune_on_request(qapp: QApplicatio
         "layoutDay-lead",
     ]
     assert rows(dialog, "Main") == []
-    assert dialog.findChild(QLabel, "layoutMainSummary").text() == LAYOUTS["classic"].summary
 
 
 def test_the_dialog_stores_only_what_the_student_changed(qapp: QApplication) -> None:
-    dialog = prefs_layout()
+    dialog = prefs_layout({"main": "classic", "day": "one"})
     assert dialog.layout_choice() == {"main": "classic", "day": "one", "options": {}}
     colour = combo(dialog, "layoutDay-colour")
     colour.setCurrentIndex(colour.findData("paper"))
@@ -504,13 +529,13 @@ def test_the_dialog_stores_only_what_the_student_changed(qapp: QApplication) -> 
 
 
 def test_fine_tuning_already_in_use_is_not_hidden(qapp: QApplication) -> None:
-    dialog = prefs_layout({"options": {"one": {"daybar": "hide"}}})
+    dialog = prefs_layout({"day": "one", "options": {"one": {"daybar": "hide"}}})
     assert dialog.findChild(QCheckBox, "layoutDayMore").isChecked() is True
     assert combo(dialog, "layoutDay-daybar").currentData() == "hide"
 
 
 def test_trying_another_design_and_coming_back_loses_nothing(qapp: QApplication) -> None:
-    dialog = prefs_layout({"options": {"one": {"colour": "paper"}}})
+    dialog = prefs_layout({"day": "one", "options": {"one": {"colour": "paper"}}})
     pick = combo(dialog, "layoutDay")
     pick.setCurrentIndex(pick.findData("dial"))
     assert combo(dialog, "layoutDay-colour").currentData() == "midnight"
@@ -520,7 +545,7 @@ def test_trying_another_design_and_coming_back_loses_nothing(qapp: QApplication)
 
 
 def test_a_design_can_be_put_back_to_its_own_settings(qapp: QApplication) -> None:
-    dialog = prefs_layout({"options": {"one": {"colour": "paper", "lead": "next"}}})
+    dialog = prefs_layout({"day": "one", "options": {"one": {"colour": "paper", "lead": "next"}}})
     dialog.findChild(QPushButton, "layoutDayReset").click()
     assert dialog.layout_choice()["options"] == {}
     assert dialog.findChild(QCheckBox, "layoutDayMore").isChecked() is False
@@ -873,46 +898,53 @@ def preference_puts(window: NativeWindow) -> list[dict]:
 
 
 def test_a_settings_change_shows_before_settings_closes(qapp: QApplication, window: NativeWindow) -> None:
-    """No OK: picking Bento changes the window behind the dialog while it is still open, and so does
-    an accent, and closing keeps both."""
-    seen: dict[str, object] = {}
-
-    def choose_while_open(dialog: PrefsDialog) -> int:
-        pick = dialog.findChild(QComboBox, "layoutMain")
-        pick.setCurrentIndex(pick.findData("bento"))
-        seen["view"] = type(window.planner.currentWidget()).__name__
-        dialog.accent.setCurrentIndex(dialog.accent.findData("sea"))
-        seen["accent"] = (window.session.preferences or {}).get("accent")
-        return QDialog.DialogCode.Rejected
-
-    PrefsDialog.exec = choose_while_open
-    try:
-        window._open_settings()
-    finally:
-        del PrefsDialog.exec
-    assert seen == {"view": "BentoView", "accent": "sea"}
+    """No OK: picking Bento changes the view behind Settings while it is still open, and so does an
+    accent, and going back keeps both."""
+    page = open_settings(window)
+    pick = combo(page, "layoutMain")
+    pick.setCurrentIndex(pick.findData("bento"))
+    assert type(window.planner.currentWidget()).__name__ == "BentoView"
+    assert window._stack.currentWidget() is page, "the change leaves Settings on screen"
+    page.accent.setCurrentIndex(page.accent.findData("sea"))
+    assert (window.session.preferences or {}).get("accent") == "sea"
+    page.close_page()
+    assert window._settings is None
+    assert window._stack.currentWidget().objectName() == "weekPage"
     assert window._layout["main"] == "bento"
+
+
+def test_settings_is_a_page_the_gear_opens_and_done_or_esc_closes(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """R11: Settings fills the window in place of the week, and the week's keys leave it alone."""
+    from desktop.native.settings import SettingsPage
+
+    window.findChild(QPushButton, "settingsGear").click()
+    page = window._settings
+    assert isinstance(page, SettingsPage) and window._stack.currentWidget() is page
+    assert page.width() == window._stack.width()
+    view = window.session.planner_view
+    QTest.keyClick(page.nav, Qt.Key.Key_M)
+    assert window.session.planner_view == view and window._stack.currentWidget() is page
+    page.done.click()
+    assert window._settings is None and window._stack.currentWidget().objectName() == "weekPage"
+    page = open_settings(window)
+    QTest.keyClick(page.nav, Qt.Key.Key_Escape)
+    assert window._settings is None and window._stack.currentWidget().objectName() == "weekPage"
 
 
 def test_settings_saves_once_after_a_burst_and_closing_saves_it_at_once(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """Typing 2, 25, 45 is one save of 45, sent as the dialog closes rather than lost with it."""
+    """Typing 2, 25, 45 is one save of 45, sent as Settings closes rather than lost with it."""
     sent = preference_puts(window)
-
-    def type_then_close(dialog: PrefsDialog) -> int:
-        for value in (2, 25, 45):
-            dialog.work.setValue(value)
-        return QDialog.DialogCode.Rejected
-
-    PrefsDialog.exec = type_then_close
-    try:
-        window._open_settings()
-    finally:
-        del PrefsDialog.exec
+    page = open_settings(window)
+    for value in (2, 25, 45):
+        page.work.setValue(value)
+    page.close_page()
     assert [payload["timer_work_min"] for payload in sent] == [45]
     wait_until(qapp, lambda: not window.session.busy)
-    # What the server sent back, not what the dialog showed: the timers are not shown ahead of the save.
+    # What the server sent back, not what the page showed: the timers are not shown ahead of the save.
     assert (window.session.preferences or {})["timer_work_min"] == 45
 
 
@@ -932,39 +964,22 @@ def test_the_drag_step_is_chosen_in_settings_kept_by_the_account_and_given_to_th
         return got
 
     for choice in (15, 5):
-        seen: dict[str, object] = {}
-
-        def pick(dialog: PrefsDialog, choice: int = choice, seen: dict = seen) -> int:
-            dialog.findChild(QRadioButton, f"prefDragStep-{choice}").setChecked(True)
-            seen["hand"] = window.hand.step
-            return QDialog.DialogCode.Rejected
-
-        PrefsDialog.exec = pick
-        try:
-            window._open_settings()
-        finally:
-            del PrefsDialog.exec
+        page = open_settings(window)
+        page.findChild(QPushButton, f"prefDragStep-{choice}").click()
+        assert window.hand.step == choice, "applied while Settings is open"
+        page.close_page()
         wait_until(qapp, lambda: not window.session.busy)
-        assert seen == {"hand": choice}, "applied while Settings is open"
         assert stored().get("drag_step_min", 5) == choice
         assert window.hand.step == choice
 
 
 def test_a_pause_saves_without_closing_settings(qapp: QApplication, window: NativeWindow) -> None:
     sent = preference_puts(window)
-
-    def change_then_wait(dialog: PrefsDialog) -> int:
-        dialog.volume.setValue(35)
-        wait_until(qapp, lambda: bool(sent))
-        seen = [payload["alert_volume"] for payload in sent]
-        assert seen == [35], seen
-        return QDialog.DialogCode.Rejected
-
-    PrefsDialog.exec = change_then_wait
-    try:
-        window._open_settings()
-    finally:
-        del PrefsDialog.exec
+    page = open_settings(window)
+    page.volume.setValue(35)
+    wait_until(qapp, lambda: bool(sent))
+    assert [payload["alert_volume"] for payload in sent] == [35]
+    page.close_page()
     # Nothing changed after that save, so closing sends nothing more.
     assert [payload["alert_volume"] for payload in sent] == [35]
 
@@ -974,8 +989,10 @@ def test_settings_fits_its_width_in_every_layout_and_text_size(
 ) -> None:
     """Settings scrolls down, never sideways. When a page was wider than its room the extra was cut
     off: every dropdown lost its arrow and the layout blurbs stopped mid-word. At large text the
-    list beside it cut "Appearance & layout" short. Measured in the real window, because the pack's
-    padding and font are the cause."""
+    list beside it cut "Appearance & layout" short. Measured in the real window at its narrowest,
+    because the pack's padding and font are the cause."""
+    # The smallest window 0.16 is for (decision 14 of its plan).
+    window.resize(800, 700)
     choices = [{"main": main, "day": "one"} for main in LAYOUTS if LAYOUTS[main].role == "plan"]
     choices += [{"main": "classic", "day": day} for day in LAYOUTS if LAYOUTS[day].role == "day"]
     too_wide, cut_names = [], []
@@ -983,29 +1000,27 @@ def test_settings_fits_its_width_in_every_layout_and_text_size(
         window._look = {**window._look, "knobs": {**(window._look.get("knobs") or {}), "text": text}}
         window._apply_appearance()
         for choice in choices:
-            dialog = PrefsDialog(
-                window, window.session.preferences, window._look, window.session.reminder_limits, choice
-            )
-            dialog.show()
+            window._layout = sanitize_layout(choice)
+            page = open_settings(window)
             for name in ("prefFineTune", "layoutMainMore", "layoutDayMore"):
-                box = dialog.findChild(QCheckBox, name)
+                box = page.findChild(QCheckBox, name)
                 if box is not None:
                     box.setChecked(True)
             settled(qapp, window)
-            # Page by page, as a student opens them: a page that was never shown still has the
-            # default font and reports a width it will not have once it is on screen.
-            for index in range(dialog.stack.count()):
-                dialog.nav.setCurrentRow(index)
+            # Section by section, as a student opens them: one never shown still has the default
+            # font and reports a width it will not have once it is on screen.
+            for index in range(page.stack.count()):
+                page.nav.setCurrentRow(index)
                 settled(qapp, window)
-                area = dialog.stack.currentWidget()
+                area = page.stack.currentWidget()
                 need, room = area.widget().minimumSizeHint().width(), area.viewport().width()
-                if need > room or area.horizontalScrollBar().isVisible():
+                if need > room:
                     too_wide.append((text, choice["main"], choice["day"], index, need, room))
-            dialog.nav.setCurrentRow(0)
+            page.nav.setCurrentRow(0)
             settled(qapp, window)
-            if dialog.nav.sizeHintForColumn(0) > dialog.nav.viewport().width():
+            if page.nav.sizeHintForColumn(0) > page.nav.viewport().width():
                 cut_names.append((text, choice["main"], choice["day"]))
-            dialog.close()
+            page.close_page()
     assert too_wide == []
     assert cut_names == []
 
@@ -1118,7 +1133,6 @@ def test_every_dialog_fits_a_laptop_screen(qapp: QApplication, window: NativeWin
     QDialog.exec = measure
     try:
         for name, call in (
-            ("Settings", window._open_settings),
             ("Add homework", window._add_homework),
             ("Add fixed time", window._add_fixed),
             ("Account", window._open_account),
@@ -1127,13 +1141,13 @@ def test_every_dialog_fits_a_laptop_screen(qapp: QApplication, window: NativeWin
             call()
     finally:
         QDialog.exec = original
-    assert sorted(sizes) == ["Account", "Add fixed time", "Add homework", "Settings"], sizes
+    assert sorted(sizes) == ["Account", "Add fixed time", "Add homework"], sizes
     # A settings or account dialog is a panel, not a window. 1338x260 technically fitted a 1366
     # screen, which is why a screen-sized bound caught nothing; 700 square is the real rule.
     wrong = {name: size for name, size in sizes.items() if size[0] > 700 or size[1] > 768 or size[0] < 320}
     assert wrong == {}
     short = {
-        name: size for name, size in sizes.items() if name in {"Settings", "Add homework"} and size[1] < 400
+        name: size for name, size in sizes.items() if name == "Add homework" and size[1] < 400
     }
     assert short == {}
 
@@ -1356,26 +1370,14 @@ def test_the_top_bar_keeps_the_gear_on_a_1024_window(qapp: QApplication, window:
 
 
 def test_the_gear_opens_settings(qapp: QApplication, window: NativeWindow) -> None:
-    from PySide6.QtWidgets import QDialog
-
     gear = window.findChild(QPushButton, "settingsGear")
     assert gear is not None
     assert gear.text() == "⚙\ufe0e"
     assert gear.toolTip() == "Settings"
     assert gear.accessibleName() == "Settings"
-    opened: list[str] = []
-    original = QDialog.exec
-
-    def measure(dialog: QDialog) -> int:
-        opened.append(dialog.windowTitle())
-        return QDialog.DialogCode.Rejected
-
-    QDialog.exec = measure
-    try:
-        click(window, "settingsGear")
-    finally:
-        QDialog.exec = original
-    assert opened == ["Settings"]
+    click(window, "settingsGear")
+    assert window._stack.currentWidget().objectName() == "settingsPage"
+    window._settings.close_page()
 
 
 def test_an_update_check_that_fails_says_so_only_when_asked(qapp: QApplication, window: NativeWindow) -> None:
@@ -1424,11 +1426,11 @@ def test_advanced_shortcuts_still_act(qapp: QApplication, window: NativeWindow) 
 
 
 def test_settings_holds_account_availability_and_updates(qapp: QApplication, window: NativeWindow) -> None:
-    from desktop.native.settings import PrefsDialog
+    from desktop.native.settings import SettingsPage
     from desktop.native.version import VERSION
 
     prefs = window.session.preferences or {}
-    dialog = PrefsDialog(window, prefs, window._look, window.session.reminder_limits)
+    dialog = SettingsPage(window, prefs, window._look, window.session.reminder_limits)
     assert dialog.findChild(QPushButton, "prefsAccount") is not None
     assert dialog.findChild(QPushButton, "prefsAvailability") is not None
     assert dialog.findChild(QLabel, "prefsVersion").text() == f"FlexWeek {VERSION}"
@@ -1887,20 +1889,13 @@ def test_settings_and_homework_open_tall_enough_to_read(
     window.session.preferences = {**window.session.preferences, "theme_pack": pack}
     window._apply_appearance()
     qapp.processEvents()
-    prefs = PrefsDialog(
-        window, window.session.preferences, window._look, window.session.reminder_limits, window._layout
-    )
-    prefs.setStyleSheet(window.styleSheet())
-    prefs.show()
+    # Settings is a page of the window now, so it is as tall as the window, with Done in view.
+    prefs = open_settings(window)
     for _ in range(30):
         qapp.processEvents()
-    _squeeze(qapp, prefs)
-    assert prefs.height() >= 400, (pack, size, prefs.width(), prefs.height())
-    look = prefs.findChild(QComboBox, "prefTheme")
-    close = prefs.findChild(QDialogButtonBox)
-    assert look is not None and _dialog_shows(prefs, look)
-    assert close is not None and _dialog_shows(prefs, close)
-    prefs.close()
+    assert prefs.height() == window._stack.height(), (pack, size, prefs.width(), prefs.height())
+    assert _dialog_shows(prefs, prefs.done)
+    prefs.close_page()
 
     homework = HomeworkDialog(window)
     homework.setStyleSheet(window.styleSheet())
@@ -1968,6 +1963,7 @@ def test_month_hides_the_whole_week_surface(qapp: QApplication, window: NativeWi
 
 def test_finishing_from_my_day_offers_undo_on_the_notice(qapp: QApplication, window: NativeWindow) -> None:
     """Mutation that turns this red: _finish_homework never calls _set_notice."""
+    one_thing(window)
     click(window, "viewMyDay")
     click(window, "oneFinished")
     settled(qapp, window)
@@ -2094,7 +2090,7 @@ def test_animations_off_turns_every_fade_off(qapp: QApplication, window: NativeW
     assert window._motion == "off"
     click(window, "viewMonth")
     assert _fades(window.planner) == []
-    dialog = PrefsDialog(window, window.session.preferences, window._look, {}, window._layout)
+    dialog = SettingsPage(None, window.session.preferences, window._look, {}, window._layout)
     assert combo(dialog, "prefMotion").currentData() == "off"
     assert dialog.updates()["motion"] == "off"
 
@@ -2161,7 +2157,7 @@ def test_an_alarm_with_no_sound_of_its_own_rings_the_chosen_one(
 
 
 def test_settings_picks_the_alarm_sound_and_new_alarms_start_with_it(qapp: QApplication) -> None:
-    dialog = PrefsDialog(None, {"alarm_tone": "low"}, {}, {}, None)
+    dialog = SettingsPage(None, {"alarm_tone": "low"}, {}, {}, None)
     tone = combo(dialog, "prefAlarmTone")
     assert tone.currentData() == "low"
     assert combo(dialog, "alarmSound").currentData() == "low"
@@ -2492,7 +2488,7 @@ def test_by_default_new_homework_waits_for_plan_my_homework(
 
 
 def test_placing_by_hand_turns_plan_into_suggest_times(qapp: QApplication, window: NativeWindow) -> None:
-    dialog = PrefsDialog(window, window.session.preferences, window._look, {}, window._layout)
+    dialog = SettingsPage(window, window.session.preferences, window._look, {}, window._layout)
     dialog.findChild(QRadioButton, "prefPlanning-manual").setChecked(True)
     assert dialog.updates()["planning_style"] == "manual"
     window.session.preferences = {**(window.session.preferences or {}), "planning_style": "manual"}

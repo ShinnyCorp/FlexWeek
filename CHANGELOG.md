@@ -54,6 +54,26 @@ All notable changes to FlexWeek are documented here. Format follows
 - Running late's preview says "from 16:00 to 17:30", "placed at 18:00" or
   "moves off 19:00 and is not placed" instead of arrows, and setup's "Choose
   my own look instead" loses its arrow.
+- Settings fills the window in place of the week instead of opening as a
+  dialog: the sections on the left, each one's settings in cards on the right,
+  and Done or Esc goes back. Changes still show at once and save themselves.
+  On or off is a switch; two or three choices sit side by side, such as
+  Spacing: Comfortable | Compact. The main view and the day screen are picked
+  from pictures of each design.
+- Today's app and Timeline are the main views offered first, and Day dial is
+  the day screen a new account starts with. Mission control, Bento, Retro
+  desktop, Clay deck and One thing are under "Experimental styles" in setup
+  and Settings. Looks are System, Light, Dark and High contrast, with Nocturne,
+  Slate, Poster, Terminal, Paper, Ink and Pastel under the same heading. Every
+  saved choice still opens.
+- Each dialog has one filled button, its answer. More details, sign in's
+  Show, Cancel, Close, Not now, Snooze, Preview, the Account dialog's other
+  actions and Routines' Apply and Delete are plain.
+- Routines is two cards, "Save this week as a routine" and "Use a saved
+  routine", each saying what it does, and says "No routines saved yet." rather
+  than showing an empty box. Running late is a card that says nothing changes
+  until you accept, and shows its list of moves once there is a preview. A
+  running focus timer is a card with Pause as its one filled button.
 
 ### Fixed
 - A one-hour block, such as Club at 19:00, shows its name and its times on two
@@ -66,6 +86,11 @@ All notable changes to FlexWeek are documented here. Format follows
   until someone has signed in on this computer.
 - Add homework's Title started as the word "Homework", so typing a title gave
   "HomeworkMath worksheet". It starts empty, with "Homework" as a grey hint.
+- Setup's planning-hours presets read as choices that never showed as chosen.
+  They are "+ After school", "+ Evenings" and "+ Weekend mornings" buttons
+  under "Each adds a row of hours you can change."
+- Setup's alarm sounds line up: each Play is level with its sound's name, all
+  of them in one column.
 
 ## [0.15.0] - 2026-09-25
 

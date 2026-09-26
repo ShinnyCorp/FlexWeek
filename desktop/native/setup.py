@@ -13,8 +13,8 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from uuid import uuid4
 
-from PySide6.QtCore import QRect, QRectF, Qt, QTime, QTimer, Signal
-from PySide6.QtGui import QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPixmap, QResizeEvent, QShowEvent
+from PySide6.QtCore import QRect, Qt, QTime, QTimer, Signal
+from PySide6.QtGui import QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QButtonGroup,
@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
-    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QTimeEdit,
@@ -47,8 +46,15 @@ from desktop.native.calendar import (
     sunday_due,
 )
 from desktop.native.hours.geometry import drag_step
-from desktop.native.layouts.registry import LAYOUTS, layouts_for, options_for, sanitize_layout
-from desktop.native.look import PACK_LABELS, PACKS, effective_look, sanitize_look
+from desktop.native.layouts.registry import (
+    EXPERIMENTAL,
+    LAYOUTS,
+    LayoutSpec,
+    layouts_for,
+    options_for,
+    sanitize_layout,
+)
+from desktop.native.look import PACK_LABELS, PACKS, effective_look, look_menu_items, sanitize_look
 from desktop.native.motion import appear, fade_away, glide, hold_picture, slide_page
 from desktop.native.previews import Previews
 from desktop.native.settings import (
@@ -61,7 +67,7 @@ from desktop.native.settings import (
 from desktop.native.sound import Bell
 from desktop.native.tones import FALLBACK, RECIPES
 from desktop.native.weekmodel import clock_text, hhmm_text, time_format
-from desktop.native.widgets import DAYS, DueField, FlowLayout
+from desktop.native.widgets import DAYS, ChoiceCard, DueField, FlowLayout, rounded_picture
 from desktop.native.work_windows import WorkWindowsEditor
 
 SETUP_VERSION = 1
@@ -215,6 +221,10 @@ def days_label(days: list[int]) -> str:
     return ", ".join(DAYS[day] for day in ordered)
 
 
+def _design_chips(specs: tuple[LayoutSpec, ...]) -> tuple[tuple[str, str], ...]:
+    return tuple((spec.id, f"{spec.purpose} · {spec.label}") for spec in specs)
+
+
 def span_label(start: str, minutes: int) -> str:
     return f"{hhmm_text(start)}–{clock_text(hhmm_to_minutes(start) + minutes)}"
 
@@ -232,27 +242,23 @@ def _repolish(widget: QWidget) -> None:
     widget.style().polish(widget)
 
 
-def _rounded(picture: QPixmap, radius: int) -> QPixmap:
-    """The picture with its corners rounded to match the card it sits in."""
-    ratio = picture.devicePixelRatio()
-    out = QPixmap(picture.size())
-    out.setDevicePixelRatio(ratio)
-    out.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(out)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    path = QPainterPath()
-    path.addRoundedRect(QRectF(0, 0, picture.width() / ratio, picture.height() / ratio), radius, radius)
-    painter.setClipPath(path)
-    painter.drawPixmap(0, 0, picture)
-    painter.end()
-    return out
-
-
 def _quiet(text: str, name: str = "setupQuiet") -> QPushButton:
     button = QPushButton(text)
     button.setObjectName(name)
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     return button
+
+
+def _card_grid(box: QVBoxLayout) -> QGridLayout:
+    """A grid for picture cards, added to `box`. A grid, not a flow: a flow sizes each card by its
+    hint and cannot give a name that wraps its second line, so the name was drawn over the picture."""
+    cards = QWidget()
+    cards.setObjectName("setupRow")
+    grid = QGridLayout(cards)
+    grid.setContentsMargins(0, 0, 0, 0)
+    grid.setSpacing(14)
+    box.addWidget(cards)
+    return grid
 
 
 def _row(*widgets: QWidget, stretch: bool = True) -> QWidget:
@@ -268,89 +274,61 @@ def _row(*widgets: QWidget, stretch: bool = True) -> QWidget:
     return holder
 
 
-class ChoiceCard(QFrame):
-    """A picture and a name the student picks by clicking, or by Space or Enter."""
-
-    chosen = Signal()
-
-    def __init__(self, name: str, note: str, width: int) -> None:
-        super().__init__()
-        self.setObjectName("setupChoice")
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setAccessibleName(name)
-        self.setAccessibleDescription(note)
-        self._width = width
-        box = QVBoxLayout(self)
-        box.setContentsMargins(10, 10, 10, 12)
-        box.setSpacing(6)
-        self.picture = QLabel()
-        self.picture.setObjectName("setupChoicePicture")
-        self.picture.setFixedSize(width, round(width * 0.625))
-        box.addWidget(self.picture)
-        box.addWidget(_label(name, "setupChoiceName"))
-        self.note = _label(note, "setupChoiceNote")
-        box.addWidget(self.note)
-        box.addStretch(1)
-        self.setFixedWidth(width + 22)
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
-        self.select(False)
-
-    def set_picture(self, picture: QPixmap) -> None:
-        self.picture.setPixmap(_rounded(picture, 6))
-
-    def select(self, on: bool) -> None:
-        self.setProperty("selected", on)
-        _repolish(self)
-
-    def is_selected(self) -> bool:
-        return bool(self.property("selected"))
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
-            self.setFocus(Qt.FocusReason.MouseFocusReason)
-            self.chosen.emit()
-            return
-        super().mouseReleaseEvent(event)
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
-        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            self.chosen.emit()
-            return
-        super().keyPressEvent(event)
-
-
 class Chips(QWidget):
-    """One of a few choices, as a row of pills."""
+    """One of a few choices, as a row of pills. Experimental choices, when there are any, sit in a
+    second row under their own heading; the two rows are still one choice."""
 
     changed = Signal()
 
-    def __init__(self, choices: tuple[tuple[str, str], ...], name: str) -> None:
+    def __init__(
+        self,
+        choices: tuple[tuple[str, str], ...],
+        name: str,
+        experimental: tuple[tuple[str, str], ...] = (),
+    ) -> None:
         super().__init__()
         self.setObjectName("setupRow")
-        self._line = FlowLayout(self, gap=6)
-        self._line.setContentsMargins(0, 0, 0, 0)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(6)
+        self._lines: list[FlowLayout] = []
+        for index in range(2):
+            holder = QWidget()
+            holder.setObjectName("setupRow")
+            line = FlowLayout(holder, gap=6)
+            line.setContentsMargins(0, 0, 0, 0)
+            self._lines.append(line)
+            if index:
+                self.experimental_heading = _label(EXPERIMENTAL, "setupFieldLabel")
+                column.addWidget(self.experimental_heading)
+            column.addWidget(holder)
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
         self._name = name
-        self.set_choices(choices)
+        self.set_choices(choices, experimental)
 
-    def set_choices(self, choices: tuple[tuple[str, str], ...]) -> None:
+    def set_choices(
+        self, choices: tuple[tuple[str, str], ...], experimental: tuple[tuple[str, str], ...] = ()
+    ) -> None:
         for button in self._group.buttons():
             self._group.removeButton(button)
-            self._line.removeWidget(button)
+            for line in self._lines:
+                line.removeWidget(button)
             button.setParent(None)
             button.deleteLater()
-        for value, text in choices:
-            button = QPushButton(text)
-            button.setObjectName("setupChip")
-            button.setCheckable(True)
-            button.setProperty("value", value)
-            button.setAccessibleName(f"{self._name}: {text}")
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.clicked.connect(self.changed)
-            self._group.addButton(button)
-            self._line.addWidget(button)
+        for line, entries in zip(self._lines, (choices, experimental), strict=True):
+            for value, text in entries:
+                button = QPushButton(text)
+                button.setObjectName("setupChip")
+                button.setCheckable(True)
+                button.setProperty("value", value)
+                button.setAccessibleName(f"{self._name}: {text}")
+                button.setCursor(Qt.CursorShape.PointingHandCursor)
+                button.clicked.connect(self.changed)
+                self._group.addButton(button)
+                line.addWidget(button)
+            line.parentWidget().setVisible(bool(entries))
+        self.experimental_heading.setVisible(bool(experimental))
         self.updateGeometry()
 
     def value(self) -> str | None:
@@ -675,21 +653,18 @@ class SetupPage(QWidget):
         content.setObjectName("setupRow")
         box = QVBoxLayout(content)
         box.setContentsMargins(0, 0, 0, 0)
-        cards = QWidget()
-        cards.setObjectName("setupRow")
-        # A grid, not a flow: a flow sizes each card by its hint and cannot give a name that wraps its
-        # second line, so the name was drawn over the picture.
-        grid = QGridLayout(cards)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(14)
         self.style_cards: dict[str, ChoiceCard] = {}
-        for index, style in enumerate(STYLES):
-            card = ChoiceCard(style.name, style.note, STYLE_THUMB)
-            card.chosen.connect(lambda style=style: self._choose_style(style))
-            grid.addWidget(card, index // 2, index % 2)
-            self.style_cards[style.key] = card
-        grid.setColumnStretch(2, 1)
-        box.addWidget(cards)
+        for experimental in (False, True):
+            styles = [style for style in STYLES if LAYOUTS[style.main].experimental == experimental]
+            if experimental:
+                self._section(box, EXPERIMENTAL)
+            grid = _card_grid(box)
+            for index, style in enumerate(styles):
+                card = ChoiceCard(style.name, style.note, STYLE_THUMB)
+                card.chosen.connect(lambda style=style: self._choose_style(style))
+                grid.addWidget(card, index // 2, index % 2)
+                self.style_cards[style.key] = card
+            grid.setColumnStretch(2, 1)
         own = _quiet(OWN_LOOK_LABEL, "setupOwnLook")
         own.clicked.connect(self._choose_own_look)
         box.addWidget(own, 0, Qt.AlignmentFlag.AlignLeft)
@@ -698,16 +673,19 @@ class SetupPage(QWidget):
     def _build_look(self) -> QWidget:
         content = QWidget()
         content.setObjectName("setupRow")
-        grid = QGridLayout(content)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(14)
+        box = QVBoxLayout(content)
+        box.setContentsMargins(0, 0, 0, 0)
         self.look_cards: dict[str, ChoiceCard] = {}
-        for index, spec in enumerate(layouts_for("plan")):
-            card = ChoiceCard(f"{spec.purpose} · {spec.label}", spec.summary, LOOK_THUMB)
-            card.chosen.connect(lambda layout_id=spec.id: self._choose_main(layout_id))
-            grid.addWidget(card, index // 3, index % 3)
-            self.look_cards[spec.id] = card
-        grid.setColumnStretch(3, 1)
+        for experimental in (False, True):
+            if experimental:
+                self._section(box, EXPERIMENTAL)
+            grid = _card_grid(box)
+            for index, spec in enumerate(layouts_for("plan", experimental)):
+                card = ChoiceCard(f"{spec.purpose} · {spec.label}", spec.summary, LOOK_THUMB)
+                card.chosen.connect(lambda layout_id=spec.id: self._choose_main(layout_id))
+                grid.addWidget(card, index // 3, index % 3)
+                self.look_cards[spec.id] = card
+            grid.setColumnStretch(3, 1)
         return content
 
     def _build_colours(self) -> QWidget:
@@ -750,7 +728,7 @@ class SetupPage(QWidget):
         left.addWidget(self.fine)
         left.addWidget(_label("Day screen, for when you are doing the plan", "setupSection"))
         self.day_screen = Chips(
-            tuple((spec.id, f"{spec.purpose} · {spec.label}") for spec in layouts_for("day")), "Day screen"
+            _design_chips(layouts_for("day", False)), "Day screen", _design_chips(layouts_for("day", True))
         )
         self.day_screen.changed.connect(self._colours_changed)
         left.addWidget(self.day_screen)
@@ -854,20 +832,20 @@ class SetupPage(QWidget):
         self._section(box, "Alarm sound")
         self.tones = QButtonGroup(content)
         grid = QGridLayout()
-        grid.setHorizontalSpacing(6)
-        grid.setVerticalSpacing(6)
+        grid.setHorizontalSpacing(24)
+        grid.setVerticalSpacing(2)
         self.tone_buttons: dict[str, QRadioButton] = {}
-        for index, tone in enumerate(RECIPES):
+        for row, tone in enumerate(RECIPES):
             button = QRadioButton(TONE_NAMES[tone])
             button.setObjectName(f"setupTone-{tone}")
-            button.setMinimumWidth(96)
             self.tones.addButton(button)
             self.tone_buttons[tone] = button
             play = _quiet("▶ Play", "setupPlay")
             play.setAccessibleName(f"Play {TONE_NAMES[tone]}")
             play.clicked.connect(lambda _checked=False, tone=tone: self._bell.once(tone, self.volume))
-            grid.addWidget(_row(button, play), index // 3, index % 3)
-        grid.setColumnStretch(3, 1)
+            grid.addWidget(button, row, 0, Qt.AlignmentFlag.AlignVCenter)
+            grid.addWidget(play, row, 1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        grid.setColumnStretch(2, 1)
         box.addLayout(grid)
         spotify = QRadioButton("A Spotify song or playlist")
         spotify.setObjectName("setupTone-spotify")
@@ -1188,16 +1166,21 @@ class SetupPage(QWidget):
         self._layout = sanitize_layout({**self._layout, "main": layout_id})
         self._preview()
 
-    def _colour_choices(self) -> tuple[tuple[str, str], ...]:
+    def _colour_choices(self) -> tuple[tuple[tuple[str, str], ...], tuple[tuple[str, str], ...]]:
+        """The colours on offer, standard then experimental."""
         main = self._layout["main"]
         spec = LAYOUTS[main]
         if not spec.colourways:
-            return tuple((pack, PACK_LABELS[pack]) for pack in PACKS)
-        return tuple((value, label) for value, label, _tokens in spec.colourways)
+            standard, experimental = look_menu_items()
+            return (
+                tuple((name, label) for name, label, kind in standard if kind == "pack"),
+                tuple((name, label) for name, label, kind in experimental if kind == "pack"),
+            )
+        return tuple((value, label) for value, label, _tokens in spec.colourways), ()
 
     def _fill_colours(self) -> None:
         main = self._layout["main"]
-        self.colours.set_choices(self._colour_choices())
+        self.colours.set_choices(*self._colour_choices())
         if LAYOUTS[main].colourways:
             self.colours.set_value(options_for(self._layout, main).get("colour"))
         else:
@@ -1239,7 +1222,7 @@ class SetupPage(QWidget):
         colour = options_for(self._layout, main).get("colour") if LAYOUTS[main].colourways else None
         picture = hold_picture(self.colour_preview, self.motion) if fade else None
         self.colour_preview.setPixmap(
-            _rounded(self._previews.get(main, colour, self._pack, self._look, COLOUR_THUMB), 8)
+            rounded_picture(self._previews.get(main, colour, self._pack, self._look, COLOUR_THUMB), 8)
         )
         fade_away(picture, self.motion)
 

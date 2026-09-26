@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton
 from desktop.native.calendar import sunday_due
 from desktop.native.focus import format_countdown, phase_duration_ms, remaining_ms
 from desktop.native.focus_screen import READY
+from desktop.native.layouts.registry import sanitize_layout
 from desktop.native.window import NativeWindow
 from desktop.server import LocalServer
 from desktop.tests.logic_support import past_setup
@@ -162,6 +163,8 @@ def test_start_focus_from_the_strip_opens_it_on_that_homework(
 
 
 def test_start_focus_on_my_day_opens_it(qapp: QApplication, window: NativeWindow) -> None:
+    # One thing has the Start focus button; Day dial, the default since 0.16, has none.
+    window._layout = sanitize_layout({**window._layout, "day": "one"})
     window.findChild(QPushButton, "viewMyDay").click()
     window.findChild(QPushButton, "oneFocus").click()
     wait_until(qapp, lambda: window.session.focus is not None)
