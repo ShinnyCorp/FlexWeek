@@ -15,6 +15,7 @@ from desktop.native.calendar import CATEGORIES
 from desktop.native.look import (
     AA_TEXT,
     ACCENTS,
+    FONT_FAMILIES,
     LOOK_DEFAULTS,
     LOOK_KNOBS,
     LOOK_PRESETS,
@@ -179,6 +180,15 @@ TEXT_PAIRS = [
     ("block_locked_ink", "block_locked"),
     ("block_flex_ink", "block_flex"),
 ]
+
+
+def test_the_app_asks_for_its_own_inter_first_and_the_system_sans_after() -> None:
+    assert FONT_FAMILIES["sans"].split(", ")[0] == "Inter"
+    assert FONT_FAMILIES["sans"].endswith("sans-serif")
+    assert "font-family: Inter, " in pack_stylesheet("slate", False, look_of("default"))
+    # Terminal and Paper keep their own faces.
+    assert "font-family: Inter" not in pack_stylesheet("slate", False, look_of("terminal"))
+    assert "font-family: Inter" not in pack_stylesheet("slate", False, look_of("paper"))
 
 
 def test_every_look_keeps_its_text_readable() -> None:

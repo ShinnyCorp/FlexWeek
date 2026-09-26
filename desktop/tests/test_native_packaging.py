@@ -49,3 +49,14 @@ def test_both_builds_ship_the_plugin_that_makes_an_alarm_audible() -> None:
     alarm still shows its dialog, and it rings silently, which is the one thing an alarm must not do."""
     for text in (LINUX, WINDOWS):
         assert "include-qt-plugins=multimedia," in text
+
+
+def test_both_builds_ship_the_icon_and_the_fonts_where_the_app_looks_for_them() -> None:
+    """Nuitka compiles code and leaves every other file behind unless told. The icon never shipped
+    before 0.16 for that reason, and the bundled Inter would not have either."""
+    assert '--include-data-dir="$ROOT/desktop/assets=desktop/assets"' in LINUX
+    assert "--include-data-dir=$(Join-Path $Root 'desktop\\assets')=desktop/assets" in WINDOWS
+    fonts = ROOT / "desktop/assets/fonts"
+    for face in ("Regular", "Medium", "SemiBold", "Bold"):
+        assert (fonts / f"Inter-{face}.ttf").is_file(), face
+    assert "SIL Open Font License" in (fonts / "LICENSE.txt").read_text(encoding="utf-8")

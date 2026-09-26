@@ -58,6 +58,7 @@ from desktop.native.client import PASSWORD_LENGTH_HINT, USERNAME_HINT, sign_in_p
 from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import phase_duration_ms
+from desktop.native.fonts import load_fonts
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
 from desktop.native.hours.geometry import Span, drag_step
@@ -228,6 +229,8 @@ class NativeWindow(QMainWindow):
         application = QApplication.instance()
         if isinstance(application, QApplication):
             steady_wheel(application)
+        # main() has loaded them already; a window made anywhere else, as in the tests, is drawn alike.
+        load_fonts()
         self.session = NativeSession(origin, self, kept)
         self._instance_server: QLocalServer | None = None
         self.setWindowTitle("FlexWeek")

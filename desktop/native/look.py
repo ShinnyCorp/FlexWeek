@@ -117,7 +117,7 @@ FIELD_MIN_PX = {"small": 22, "normal": 26, "large": 34}
 DENSITY_PAD = {"comfortable": 8, "compact": 4}
 CORNER_RADIUS = {"round": 8, "sharp": 0, "pill": 16}
 FONT_FAMILIES = {
-    "sans": "Noto Sans, DejaVu Sans, sans-serif",
+    "sans": "Inter, Noto Sans, DejaVu Sans, sans-serif",
     "mono": "Noto Sans Mono, DejaVu Sans Mono, monospace",
     "serif": "Noto Serif, DejaVu Serif, serif",
 }
