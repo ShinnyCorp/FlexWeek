@@ -1344,11 +1344,15 @@ class HelpDialog(QDialog):
         sides.setSpacing(SECTION_GAP * 2)
         column.addLayout(sides)
         screens = QVBoxLayout()
+        screens.setSpacing(SECTION_GAP // 2)
         screens.addWidget(_heading("The screens"))
         for index, (name, words) in enumerate(HELP_SCREENS):
             card = QFrame()
             card.setObjectName("helpCard")
             inside = QVBoxLayout(card)
+            # The frame's own padding is the card's margin; the layout's default doubled it.
+            inside.setContentsMargins(4, 2, 4, 2)
+            inside.setSpacing(2)
             title = QLabel(name)
             title.setObjectName("helpScreenName")
             inside.addWidget(title)
