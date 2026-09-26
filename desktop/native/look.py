@@ -850,6 +850,8 @@ def pack_stylesheet(
         f"QLabel#focusTask {{ font-weight: 600; }}"
         f"QLabel#focusPhase {{ color: {palette['muted']}; }}"
         f"QLabel#focusTime {{ font-family: {MONO_FAMILY}; font-weight: 700; }}"
+        f"QLabel#recoveryList {{ font-family: {MONO_FAMILY}; }}"
+        f"QLabel#recoveryStatus {{ color: {palette['error']}; }}"
         f"QWidget#authCard {{ background: {palette['panel']}; border-radius: {radius}px; {edges} }}"
         f"QLabel#authBrand {{ font-size: {size + 8}pt; font-weight: 700; color: {palette['accent']}; }}"
         f"QLabel#authHeading {{ font-weight: 600; font-size: {size + 3}pt; }}"

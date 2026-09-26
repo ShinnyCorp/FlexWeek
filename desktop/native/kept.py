@@ -21,6 +21,16 @@ _TOKEN = re.compile(r"[A-Za-z0-9_-]{20,128}")
 class KeptSession:
     def __init__(self, path: Path) -> None:
         self.path = path
+        # Someone has signed in here before, kept or not. Log out forgets the session, not this, so
+        # the sign-in card can greet a first launch differently from a return.
+        self.seen = path.with_name(path.stem + ".seen")
+
+    def signed_in_before(self) -> bool:
+        return self.seen.exists() or self.path.exists()
+
+    def note_sign_in(self) -> None:
+        self.seen.parent.mkdir(parents=True, exist_ok=True)
+        self.seen.touch()
 
     def token(self) -> str | None:
         try:

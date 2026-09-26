@@ -528,6 +528,7 @@ class NativeSession(QObject):
     def _keep_session(self) -> None:
         if self.kept is None:
             return
+        self.kept.note_sign_in()
         token = self.client.session_token() if self.keep_signed_in else None
         if token:
             self.kept.keep(token)
