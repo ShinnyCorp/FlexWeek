@@ -213,9 +213,11 @@ These hold for every design; the picked directions of Phase 2 build on them.
 
 As 0.16, on `feat/0.17-look` (from `claude/0-17-review`), each lane landed by Claude after review.
 
-1. **The mock-up** (Phase 2's options) is built first, on its own branch, and opened for Jonathan;
-   nothing native is built until he has picked.
-2. **Lane A, tokens and colour** (1 to 3, 5, 6, 8 to 10, 13, and the looks and knobs of Phase 2), first.
+1. **The mock-up** (Phase 2's options) is built first and opened for Jonathan; no design or look of
+   Phase 2 is built natively until he has picked.
+2. **Lane A, tokens and colour** (1 to 3, 5, 6, 8 to 10, 13, Light, Dark, System and High contrast)
+   runs beside the mock-up, since Phase 1 does not wait on the picks; the other looks and the knobs
+   join it once they are picked.
 3. **Then, at the same time**: B type, icons and controls (4, 7, 11, 12); C the week, blocks, side
    panel, Day, Month and plan bar (12 to 18, 34's scroll); D the focus screen, toast, Ctrl+K and menus
    (19 to 22); E sheets, dialogs and Settings (23, 24); G sign in, setup, Help and About (25 to 27);
