@@ -233,8 +233,8 @@
  {
   "file": "desktop/native/look.py",
   "name": "headings stand out",
-  "old": "f\"QLabel#prefsHeading, QLabel#layoutMainHeading, QLabel#layoutDayHeading {{ font-weight: 700; \"",
-  "new": "f\"QLabel#prefsHeading {{ font-weight: 700; \"",
+  "old": "f\"font-size: {size + 1}pt; font-weight: 700; color: {palette['text']}; }}\"",
+  "new": "f\"font-size: {size + 1}pt; color: {palette['text']}; }}\"",
   "test": "desktop/tests/test_settings_words.py::test_every_heading_on_appearance_stands_out_from_the_rows_under_it"
  },
  {

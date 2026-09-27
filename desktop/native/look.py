@@ -982,8 +982,6 @@ def pack_stylesheet(
         # One filled button on the page: the thing the app is for.
         f"QLabel#blockDurationLine {{ color: {palette['muted']}; }}"
         f"QLabel#blockDurationLine[problem=\"true\"] {{ color: {palette['error']}; font-weight: 600; }}"
-        f"QLabel#prefsHeading, QLabel#layoutMainHeading, QLabel#layoutDayHeading {{ font-weight: 700; "
-        f"color: {palette['muted']}; }}"
         f"QLabel#aboutVersion {{ font-size: {size + 4}pt; font-weight: 700; }}"
         f"QLabel#helpKey {{ font-weight: 600; }}"
         f"QLabel#helpScreenName {{ font-weight: 700; }}"
