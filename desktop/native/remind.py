@@ -8,6 +8,7 @@ from datetime import datetime
 from backend.slots import hhmm_to_minutes
 from desktop.native.calendar import DAYS, date_for_day, monday_of
 from desktop.native.reuse import occurrence_days
+from desktop.native.weekmodel import hhmm_text
 
 REMINDER_WINDOW_MIN = 2
 REMINDER_POLL_MS = 30_000
@@ -113,7 +114,7 @@ def due_reminders(
             {
                 "key": key,
                 "title": f"{block['title']} {'starts now' if started else 'starts soon'}",
-                "body": f"{block['start']} · {DAYS[day]}",
+                "body": f"{hhmm_text(block['start'])} · {DAYS[day]}",
             }
         )
     return due

@@ -68,8 +68,16 @@ def server(qapp: QApplication, tmp_path: Path) -> Iterator[LocalServer]:
     running.stop()
 
 
+def look_file() -> Path:
+    """The device look file, shared by every suite through ~/.qttest; a test that saved a knob would
+    otherwise hand it to the next."""
+    root = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
+    return Path(root) / "flexweek-look.json"
+
+
 @pytest.fixture()
 def signed_out(qapp: QApplication, server: LocalServer) -> Iterator[NativeWindow]:
+    look_file().unlink(missing_ok=True)
     window = NativeWindow(server.origin)
     window.show()
     try:

@@ -48,6 +48,25 @@ def test_the_next_line_says_min_like_every_design() -> None:
     )
 
 
+def test_running_late_says_where_each_block_goes_in_words(qapp: QApplication) -> None:  # noqa: F811
+    """Its rows read "16:00 → 17:30" and "unscheduled → 18:00"."""
+    dialog = LateDialog(None, "Starting from 16:00 today (Thursday).")
+    trace = {
+        "moves": [
+            {"block_id": "essay", "from_start": "16:00", "to_start": "17:30"},
+            {"block_id": "maths", "from_start": None, "to_start": "18:00"},
+            {"block_id": "club", "from_start": "19:00", "to_start": None},
+        ]
+    }
+    dialog.show_trace(trace, {"essay": "History essay", "maths": "Maths", "club": "Club"})
+    rows = [dialog.changes.item(index).text() for index in range(dialog.changes.count())]
+    assert rows == [
+        "History essay: from 16:00 to 17:30",
+        "Maths: placed at 18:00",
+        "Club: moves off 19:00 and is not placed",
+    ]
+
+
 def test_a_finished_block_says_finished() -> None:
     block = Drawn("essay", "History essay", "", True, Span(3, 19 * 60, 20 * 60), 0, 1, done=True)
     assert block.detail == "19:00–20:00 · 1 h · Finished"
@@ -88,10 +107,10 @@ def test_the_strip_under_next_says_what_it_is(
     session.add_block({**essay, "start": "19:00", "days": [0], "pinned": True})
     session.save()
     settled(qapp, window)
-    panel = window.focus_panel
+    panel = window.week_table.side
     assert panel.tasks.isVisibleTo(window)
     label = panel.findChild(QLabel, "focusTasksLabel")
-    assert label.text() == "Start a focus timer:"
+    assert label.text() == "Start a focus timer"
     assert label.isVisibleTo(window)
     assert panel.tasks.toolTip() == "Double-click homework to start a focus timer for it."
 
@@ -113,7 +132,7 @@ def test_cancelling_running_late_takes_its_preview_off_the_screen(
         dialog.show()
         dialog.preview_requested.emit()
         wait_until(qapp, lambda: session.late_preview is not None and not session.busy)
-        assert window.week_status.text().endswith("tasks no longer fit")
+        assert window.toast.text().endswith("tasks no longer fit")
         dialog.reject()
         return dialog.result()
 
@@ -121,4 +140,4 @@ def test_cancelling_running_late_takes_its_preview_off_the_screen(
     window._open_late()
     qapp.processEvents()
     assert session.late_preview is None
-    assert window.week_status.text() == ""
+    assert not window.toast.isVisible()

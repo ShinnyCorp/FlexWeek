@@ -16,7 +16,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+from desktop.native.weekmodel import hhmm_text
+
+DAYS =("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 START_TIMES = tuple(f"{minute // 60:02d}:{minute % 60:02d}" for minute in range(0, 1440, 15))
 END_TIMES = tuple(f"{minute // 60:02d}:{minute % 60:02d}" for minute in range(15, 1441, 15))
 MAX_WORK_WINDOWS = 21
@@ -25,6 +27,7 @@ PRESETS = (
     ("Evenings", [0, 1, 2, 3, 4], "19:00", "21:00"),
     ("Weekend mornings", [5, 6], "10:00", "12:00"),
 )
+PRESETS_NOTE = "Each adds a row of hours you can change."
 
 
 class _WorkWindowRow(QFrame):
@@ -57,18 +60,20 @@ class _WorkWindowRow(QFrame):
         self.start = QComboBox()
         self.start.setObjectName("workWindowStart")
         self.start.setAccessibleName("Work window start")
-        self.start.addItems(START_TIMES)
-        self.start.setCurrentText(window["start"])
-        self.start.currentTextChanged.connect(on_change)
+        for value in START_TIMES:
+            self.start.addItem(hhmm_text(value), value)
+        self.start.setCurrentIndex(max(0, self.start.findData(window["start"])))
+        self.start.currentIndexChanged.connect(on_change)
         fields.addWidget(QLabel("From"))
         fields.addWidget(self.start)
 
         self.end = QComboBox()
         self.end.setObjectName("workWindowEnd")
         self.end.setAccessibleName("Work window end")
-        self.end.addItems(END_TIMES)
-        self.end.setCurrentText(window["end"])
-        self.end.currentTextChanged.connect(on_change)
+        for value in END_TIMES:
+            self.end.addItem(hhmm_text(value), value)
+        self.end.setCurrentIndex(max(0, self.end.findData(window["end"])))
+        self.end.currentIndexChanged.connect(on_change)
         end_field = QVBoxLayout()
         end_choice = QHBoxLayout()
         end_choice.addWidget(QLabel("to"))
@@ -94,6 +99,7 @@ class _WorkWindowRow(QFrame):
 
         remove = QPushButton("Remove")
         remove.setObjectName("workWindowRemove")
+        remove.setProperty("quiet", True)
         remove.setAccessibleName("Remove work window")
         remove.clicked.connect(on_remove)
         fields.addWidget(remove)
@@ -113,8 +119,8 @@ class _WorkWindowRow(QFrame):
     def window(self) -> dict:
         window = {
             "days": [day for day, check in enumerate(self.days) if check.isChecked()],
-            "start": self.start.currentText(),
-            "end": self.end.currentText(),
+            "start": self.start.currentData(),
+            "end": self.end.currentData(),
         }
         subject = self.subject.currentText().strip()
         if subject:
@@ -122,8 +128,8 @@ class _WorkWindowRow(QFrame):
         return window
 
     def problem(self) -> str | None:
-        start = self.start.currentText()
-        end = self.end.currentText()
+        start = self.start.currentData()
+        end = self.end.currentData()
         problem = "End must be after Start." if end <= start else None
         self.end_error.setText(problem or "")
         self.end_error.setVisible(problem is not None)
@@ -143,11 +149,19 @@ class WorkWindowsEditor(QWidget):
         self.message.setObjectName("workWindowsMessage")
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
+        # These add rows; they are not choices. Drawn as filled pills they read as options to pick, and
+        # nothing showed as picked.
+        presets_note = QLabel(PRESETS_NOTE)
+        presets_note.setObjectName("workWindowsPresetsNote")
+        presets_note.setWordWrap(True)
+        layout.addWidget(presets_note)
         presets = QHBoxLayout()
         self._add_buttons = []
         for name, days, start, end in PRESETS:
-            button = QPushButton(name)
+            button = QPushButton(f"+ {name}")
             button.setObjectName("workWindowPreset" + name.replace(" ", ""))
+            button.setProperty("quiet", True)
+            button.setAccessibleName(f"Add {name.lower()}")
             button.clicked.connect(
                 lambda _checked=False, d=days, s=start, e=end: self._add_window(
                     {"days": d, "start": s, "end": e}

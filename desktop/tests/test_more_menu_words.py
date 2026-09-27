@@ -12,9 +12,18 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPoint, QStandardPaths
-from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QApplication, QLabel, QMenu, QPushButton, QScrollArea, QToolTip, QWidget
+from PySide6.QtCore import QPoint, QStandardPaths, QUrl
+from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QLabel,
+    QMenu,
+    QPushButton,
+    QScrollArea,
+    QToolTip,
+    QWidget,
+)
 
 from desktop.native import settings
 from desktop.native.layouts.registry import sanitize_layout
@@ -31,14 +40,16 @@ from desktop.tests.window_support import (  # noqa: F401
 )
 
 NOTHING_UNFINISHED = "Nothing is unfinished: no homework from earlier weeks still needs time."
-TOOLTIPS = {
-    "Add homework": (
+ADDING = {
+    "Add homework…": (
         "Add an assignment with its due date and how long it will take. FlexWeek finds time for it."
     ),
-    "School hours": "Set the days and times you are at school, so nothing is planned then.",
-    "Add fixed time": (
+    "Add fixed time…": (
         "Add something that happens at a set time, like practice or a lesson. Homework is planned around it."
     ),
+    "School hours…": "Set the days and times you are at school, so nothing is planned then.",
+}
+TOOLTIPS = {
     "Running late": (
         "Behind today? Say how late you are, and FlexWeek moves the rest of today's homework later."
     ),
@@ -101,6 +112,18 @@ def test_every_action_under_more_and_advanced_says_what_it_does(
     assert said == TOOLTIPS
 
 
+def test_the_add_menu_says_what_each_way_to_add_does(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """Adding left More for the Add button's menu, and its descriptions came with it."""
+    menu = window.add_menu
+    assert menu.toolTipsVisible()
+    said = {action.text(): action.toolTip() for action in menu.actions() if action.text() in ADDING}
+    assert said == ADDING
+    assert window.findChild(QPushButton, "addButton").toolTip() == ADDING["Add homework…"]
+
+
 def named(text: str) -> str:
     """Copy day and Paste name the selected day, which is today."""
     for verb in ("Copy ", "Paste into "):
@@ -136,7 +159,7 @@ def test_unfinished_with_nothing_unfinished_is_greyed_and_says_why(
     assert action.isEnabled() is False
     assert action.toolTip() == NOTHING_UNFINISHED
     window._show_unfinished()
-    assert window.week_status.text() == NOTHING_UNFINISHED
+    assert window.toast.text() == NOTHING_UNFINISHED
     assert not window.unfinished_panel.isVisibleTo(window)
 
 
@@ -175,20 +198,38 @@ def test_unfinished_opens_its_list_in_any_design(
     assert action.toolTip() == "Homework from earlier weeks that still needs time. Plan it into this week."
 
 
-def test_about_gives_the_version_what_flexweek_is_and_where_its_data_lives(
+def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_lives_in(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """It showed the folder as a path to read and copy; a student only wants to look inside it."""
     wait_until(qapp, lambda: window.session.storage_info is not None)
     folder = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
     dialog = settings.AboutDialog(window, window.session.storage_info, folder)
     said = [label.text() for label in dialog.findChildren(QLabel)]
     assert said == [
-        "FlexWeek 0.15.0",
+        "FlexWeek 0.16.0",
         "FlexWeek plans your homework around school, sports and everything else in your week.",
-        f"Your plans are saved on this computer, in {folder}.",
+        "Your plans are saved on this computer.",
     ]
     assert dialog.windowTitle() == "About FlexWeek"
+    opened: list[QUrl] = []
+    monkeypatch.setattr(QDesktopServices, "openUrl", staticmethod(lambda url: opened.append(url) or True))
+    button = dialog.findChild(QPushButton, "aboutOpenFolder")
+    assert button.text() == "Open folder"
+    button.click()
+    assert opened == [QUrl.fromLocalFile(folder)]
+
+
+def test_about_on_a_server_names_the_server_and_has_no_folder_to_open(
+    qapp: QApplication,  # noqa: F811
+    host: QWidget,  # noqa: F811
+) -> None:
+    dialog = settings.AboutDialog(host, {"mode": "hosted", "origin": "https://plans.example.org"}, "/nowhere")
+    said = [label.text() for label in dialog.findChildren(QLabel)]
+    assert said[-1] == "Your plans are saved on your FlexWeek server, https://plans.example.org."
+    assert dialog.findChild(QPushButton, "aboutOpenFolder") is None
 
 
 def test_help_says_guides_are_coming_and_explains_each_screen_and_the_keys(
@@ -199,12 +240,17 @@ def test_help_says_guides_are_coming_and_explains_each_screen_and_the_keys(
     said = "\n".join(label.text() for label in dialog.findChildren(QLabel))
     for line in (
         "A tutorial and short guides are coming in a later version. Until then, this is the short version.",
-        "Day shows one day, hour by hour. Homework that is not placed yet waits beside it, ready to drag in.",
-        "Week shows Monday to Sunday. Drag a block to move it, or drag across empty time to add one.",
-        "Month shows the whole month: each date's blocks and the homework due that day. Click a date to "
-        "open it in Day.",
-        "My day is a simple screen to follow once your plan is made: what is on now, and what comes next. "
-        "Open it with My day at the top.",
+        "Day",
+        "One day hour by hour, with homework that is not placed yet beside it, ready to drag in.",
+        "Week",
+        "Monday to Sunday: drag a block to move it, or drag across empty time to add one.",
+        "Month",
+        "Each date's blocks and the homework due that day; click a date to open it in Day.",
+        "My day",
+        "What is on now and what comes next, to follow once your plan is made.",
+        "Ctrl+K",
+        "Command bar",
+        "Focus screen",
         "D, W, M",
         "Day, Week, Month",
         "Ctrl+Z",
@@ -235,7 +281,8 @@ def test_help_shows_every_line_whole_at_large_text_and_fits_the_screen(
     dialog.show()
     qapp.processEvents()
     labels = dialog.findChildren(QLabel)
-    assert len(labels) == 1 + 2 + len(settings.HELP_SCREENS) + 2 * len(settings.HELP_KEYS)
+    assert dialog.columns == 1
+    assert len(labels) == 1 + 2 + 2 * len(settings.HELP_SCREENS) + 2 * len(settings.HELP_KEYS)
     assert [label.text() for label in labels if not shows_all_of_itself(label)] == []
     view = dialog.findChild(QScrollArea, "helpScroll").viewport()
     cut = [label.text() for label in labels if label.mapTo(view, label.rect().topRight()).x() > view.width()]
@@ -244,6 +291,48 @@ def test_help_shows_every_line_whole_at_large_text_and_fits_the_screen(
     picture = dialog.grab().toImage()
     inside = view.parentWidget().mapTo(dialog, QPoint(2, 2))
     assert picture.pixelColor(inside.x(), inside.y()) == picture.pixelColor(2, 2), "a box around the words"
+    dialog.close()
+
+
+def test_help_puts_the_screens_beside_the_shortcuts_over_a_wide_window(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    window.resize(1280, 800)
+    dialog = settings.HelpDialog(window)
+    dialog.show()
+    qapp.processEvents()
+    assert dialog.columns == 2
+    assert dialog.width() >= settings.HELP_TWO_COLUMN_WIDTH
+    cards = dialog.findChildren(QFrame, "helpCard")
+    keys = dialog.findChild(QWidget, "helpKeys")
+    assert [card.findChild(QLabel, "helpScreenName").text() for card in cards] == [
+        name for name, _words in settings.HELP_SCREENS
+    ]
+    body = keys.parentWidget()
+    card_right = max(card.mapTo(body, card.rect().topRight()).x() for card in cards)
+    assert card_right < keys.mapTo(body, keys.rect().topLeft()).x(), "shortcuts beside the screens"
+    first_top = cards[0].mapTo(body, cards[0].rect().topLeft()).y()
+    assert first_top < keys.mapTo(body, keys.rect().bottomLeft()).y(), "side by side, not one under the other"
+    labels = dialog.findChildren(QLabel)
+    assert [label.text() for label in labels if not shows_all_of_itself(label)] == []
+    dialog.close()
+
+
+def test_help_is_one_column_over_a_narrow_window(
+    qapp: QApplication,  # noqa: F811
+    host: QWidget,  # noqa: F811
+) -> None:
+    host.resize(settings.HELP_TWO_COLUMN_WIDTH - 1, 700)
+    dialog = settings.HelpDialog(host)
+    assert dialog.columns == 1
+    cards = dialog.findChildren(QFrame, "helpCard")
+    keys = dialog.findChild(QWidget, "helpKeys")
+    dialog.show()
+    qapp.processEvents()
+    body = keys.parentWidget()
+    last_bottom = cards[-1].mapTo(body, cards[-1].rect().bottomLeft()).y()
+    assert last_bottom < keys.mapTo(body, keys.rect().topLeft()).y(), "the shortcuts under the screens"
     dialog.close()
 
 

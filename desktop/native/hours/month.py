@@ -16,12 +16,22 @@ colour tokens.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPaintEvent, QPen
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QColor,
+    QContextMenuEvent,
+    QFont,
+    QFontMetrics,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
+)
 from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from backend.models import due_is_timed
@@ -29,12 +39,16 @@ from desktop.native.calendar import CATEGORIES, DAYS
 from desktop.native.hours.geometry import Span
 from desktop.native.hours.hand import Gesture, Hand, Held, Verdict
 from desktop.native.look import resolved_palette
-from desktop.native.weekmodel import WeekModel, clock_label
+from desktop.native.weekmodel import WeekModel, clock_label, hhmm_text
 
 # The row of day names, kept above the dates while they scroll.
 HEADER = 26
 # The fewest chips a date always has room for; past them the month scrolls rather than squeezing.
 LEAST_CHIPS = 2
+# A month opened on a week late in it still shows at least this many weeks.
+LEAST_AHEAD = 2
+# Layout passes to wait for the canvas's new height before scrolling to the opening week anyway.
+REVEAL_TRIES = 3
 FALLBACK_MARK = "#94a3b8"
 
 
@@ -60,7 +74,7 @@ class MonthChip:
     @property
     def words(self) -> str:
         if self.due:
-            return f"Due {self.due_time} {self.title}" if self.due_time else f"Due {self.title}"
+            return f"Due {hhmm_text(self.due_time)} {self.title}" if self.due_time else f"Due {self.title}"
         return f"{clock_label(self.start or 0)} {self.title}"
 
 
@@ -228,12 +242,20 @@ class MonthCanvas(QWidget):
         self.setAccessibleName("Month")
         self.hand, self.painter = hand, painter
         self.cells: list[MonthCell] = []
+        # The Monday of the week the window has open: only its blocks have a menu, since the same id
+        # can stand for a block on another week, such as School.
+        self.open_week: str | None = None
         self._pressed: str | None = None
+        # The row the month opened on, and the height of the view it scrolls in.
+        self._lead = 0
+        self._room = 0
         hand.preview_changed.connect(self.update)
 
     def set_cells(self, cells: list[MonthCell]) -> None:
+        if not cells or not self.cells or cells[0].iso != self.cells[0].iso:
+            self._lead = 0
         self.cells = cells
-        self.setMinimumHeight(self.rows() * self.least_row())
+        self._fit()
         self.setAccessibleDescription(
             "Click a date to open it. Drag a block with a time to another date to move it there."
         )
@@ -242,6 +264,26 @@ class MonthCanvas(QWidget):
     def set_painter(self, painter: MonthPainter) -> None:
         self.painter = painter
         self.update()
+
+    def set_room(self, room: int) -> None:
+        """The height the month scrolls in."""
+        if room != self._room:
+            self._room = room
+            self._fit()
+
+    def lead_with(self, row: int) -> None:
+        """Open on this row: the weeks from it to the month's end fill the view."""
+        self._lead = max(0, min(row, self.rows() - 1))
+        self._fit()
+
+    def _fit(self) -> None:
+        # A whole month fits a laptop's screen, so its first row is always on top. Opened on a later
+        # week, the rows grow until the weeks from that one on fill the view, and the ones before it
+        # are above, a scroll away.
+        rows = self.rows()
+        least = rows * self.least_row()
+        filled = math.ceil(self._room * rows / max(rows - self._lead, LEAST_AHEAD)) if self._lead else 0
+        self.setMinimumHeight(max(least, filled))
 
     # Where things are
 
@@ -369,6 +411,20 @@ class MonthCanvas(QWidget):
             return
         self._pressed = self.date_at(point)
 
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """A right-click on a block of the open week asks for its menu. A deadline has none."""
+        found = self._chip_at(QPointF(event.pos()))
+        if found is None or found[1].block_id is None or found[1].due or self.hand.busy:
+            event.ignore()
+            return
+        cell, chip, _box = found
+        day = date.fromisoformat(cell.iso)
+        if (day - timedelta(days=day.weekday())).isoformat() != self.open_week:
+            event.ignore()
+            return
+        event.accept()
+        self.hand.ask_menu(chip.block_id, day.weekday(), event.globalPos())
+
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         pressed, self._pressed = self._pressed, None
         if (
@@ -477,6 +533,9 @@ class MonthScroll(QScrollArea):
     def viewportEvent(self, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize:
             self._place()
+            canvas = self.widget()
+            if isinstance(canvas, MonthCanvas):
+                canvas.set_room(self.viewport().height())
         return super().viewportEvent(event)
 
 
@@ -561,6 +620,7 @@ class MonthGrid(QWidget):
         weeks = dict(self._unsaved)
         if self._week is not None and self._week.week_start:
             weeks[self._week.week_start] = self._week
+        self.canvas.open_week = self._week.week_start if self._week is not None else None
         self.canvas.set_cells(month_cells(snapshot, weeks, date.today().isoformat()))
         overdue = snapshot.get("overdue") or []
         titles = ", ".join(str(item.get("title") or item.get("id", "")) for item in overdue[:8])
@@ -573,8 +633,21 @@ class MonthGrid(QWidget):
         label.setVisible(bool(words))
 
     def reveal(self, iso_day: str) -> None:
-        """Open the month on the week the student is in, not on its first row."""
-        self.canvas.reveal(iso_day)
+        """Open the month with the week the student is in as its first row."""
+        at = self.canvas.index_of(iso_day)
+        if at is not None:
+            self._scroll_to(at // 7, REVEAL_TRIES)
+
+    def _scroll_to(self, row: int, tries: int) -> None:
+        canvas = self.canvas
+        if not self.scroll.viewport().isVisible() and tries > 0:
+            # A month just switched to has no height of its own until its first layout pass, and
+            # rows sized to fill the wrong height put another week on top.
+            QTimer.singleShot(0, self, lambda: self._scroll_to(row, tries - 1))
+            return
+        canvas.set_room(self.scroll.viewport().height())
+        canvas.lead_with(row)
+        self.scroll.verticalScrollBar().setValue(round(canvas.cell_rect(row * 7).top()))
 
     def month_surfaces(self) -> list[MonthCanvas]:
         return [self.canvas] if self.canvas.isVisible() else []

@@ -51,8 +51,8 @@ CATEGORIES = {
     },
     "extra": {
         "label": "Activity",
-        "color": "#fbcfe8",
-        "mark": "#ec4899",
+        "color": "#a5f3fc",
+        "mark": "#06b6d4",
         "kind": "locked",
         "preset": {"start": "17:00", "end": "18:00"},
     },

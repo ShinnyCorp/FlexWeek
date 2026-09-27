@@ -8,7 +8,8 @@ release notes promise, or a library that is neither inside the bundle nor part
 of a normal desktop install. A Windows bundle fails when a binary imports a DLL
 that is neither inside the bundle nor part of Windows 10 1809 or later. Windows
 system DLLs are checked for, never copied: Microsoft's own files are not ours
-to redistribute.
+to redistribute. Either fails when a file in desktop/assets, the icon and the
+fonts, is not in the bundle at the same place.
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ import subprocess
 import sys
 from collections.abc import Iterable
 from pathlib import Path
+
+ASSETS = Path(__file__).resolve().parent / "assets"
 
 # Libraries every desktop Linux with a GUI session already has. The glibc and
 # GCC runtime set, the X11 and Wayland client stack, GL/EGL from the graphics
@@ -309,6 +312,15 @@ def files(root: Path) -> Iterable[Path]:
     return (path for path in sorted(root.rglob("*")) if path.is_file() and not path.is_symlink())
 
 
+def asset_problems(assets: Path, root: Path) -> list[str]:
+    """Every file under `assets` must sit at desktop/assets in the bundle, where the app looks for it."""
+    return [
+        f"desktop/assets/{relative} is missing, so the app draws without it"
+        for relative in (path.relative_to(assets).as_posix() for path in files(assets))
+        if not (root / "desktop" / "assets" / relative).is_file()
+    ]
+
+
 def check_linux(root: Path, max_glibc: tuple[int, int]) -> list[str]:
     binaries = {}
     for path in files(root):
@@ -321,7 +333,7 @@ def check_linux(root: Path, max_glibc: tuple[int, int]) -> list[str]:
         )
         binaries[str(path.relative_to(root))] = parse_readelf(dynamic, versions)
     bundled = {path.name for path in root.rglob("*")}
-    return linux_problems(binaries, bundled, max_glibc)
+    return linux_problems(binaries, bundled, max_glibc) + asset_problems(ASSETS, root)
 
 
 def check_windows(root: Path) -> list[str]:
@@ -331,7 +343,7 @@ def check_windows(root: Path) -> list[str]:
         if path.suffix.lower() in {".dll", ".exe", ".pyd"}
     }
     bundled = {path.name.lower() for path in root.rglob("*")}
-    return windows_problems(binaries, bundled)
+    return windows_problems(binaries, bundled) + asset_problems(ASSETS, root)
 
 
 def main(argv: list[str] | None = None) -> int:

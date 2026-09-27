@@ -43,7 +43,19 @@ def test_the_two_roles_hold_the_designs_the_owner_picked() -> None:
         "retro",
         "clay",
     ]
-    assert [spec.id for spec in layouts_for("day")] == ["one", "dial"]
+    assert [spec.id for spec in layouts_for("day")] == ["dial", "one"]
+
+
+def test_two_main_views_and_one_day_screen_are_standard_and_the_rest_experimental() -> None:
+    """Decision 3 of 0.16: one polished default and Timeline beside it; the rest stay, offered after."""
+    assert [spec.id for spec in layouts_for("plan", experimental=False)] == ["classic", "timeline"]
+    experimental = [spec.id for spec in layouts_for("plan", experimental=True)]
+    assert experimental == ["mission", "bento", "retro", "clay"]
+    assert [spec.id for spec in layouts_for("day", experimental=False)] == ["dial"]
+    assert [spec.id for spec in layouts_for("day", experimental=True)] == ["one"]
+    for spec in LAYOUTS.values():
+        slot = "main" if spec.role == "plan" else "day"
+        assert sanitize_layout({slot: spec.id})[slot] == spec.id, "a saved experimental choice still loads"
 
 
 def test_every_design_offers_all_three_levels() -> None:
@@ -70,7 +82,7 @@ def test_option_keys_and_choices_are_unambiguous() -> None:
 
 
 def test_a_missing_or_broken_file_gives_the_shipped_choice() -> None:
-    shipped = {"main": "classic", "day": "one", "options": {}}
+    shipped = {"main": "classic", "day": "dial", "options": {}}
     for raw in (None, "bento", [], {"main": 7, "day": None, "options": "x"}):
         assert sanitize_layout(raw) == shipped
 
@@ -78,7 +90,7 @@ def test_a_missing_or_broken_file_gives_the_shipped_choice() -> None:
 def test_a_day_screen_cannot_be_the_main_view_nor_the_other_way_round() -> None:
     assert sanitize_layout({"main": "one", "day": "bento"}) == {
         "main": "classic",
-        "day": "one",
+        "day": "dial",
         "options": {},
     }
     assert sanitize_layout({"main": "bento", "day": "dial"}) == {

@@ -9,7 +9,16 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QMouseEvent, QPainter, QPaintEvent, QPen
+from PySide6.QtGui import (
+    QColor,
+    QContextMenuEvent,
+    QFont,
+    QFontMetricsF,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
+)
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 
 from desktop.native.calendar import DAY_FULL, DAYS
@@ -277,6 +286,14 @@ class DialFace(QWidget):
             tap=lambda: self.block_clicked.emit(item.block_id),
             home=(self, track),
         )
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        item = self.block_at(QPointF(event.pos())) if self.takes_blocks and not self.mini else None
+        if item is None or self.hand.busy:
+            event.ignore()
+            return
+        event.accept()
+        self.hand.ask_menu(item.block_id, item.day, event.globalPos())
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if self.takes_blocks and not self.hand.busy:

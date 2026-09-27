@@ -2,9 +2,9 @@
 
 Day is one full-width day that opens at 96 pixels an hour and scrolls, with the homework still
 waiting for a time and a summary of the day beside it. Week is seven columns that open at 48 pixels
-an hour and scroll, with the days' names kept at the top so each still opens its day. Both zoom, and
-remember how close they were. Both are painted hours on the one `Hand`, so every gesture works the
-same on each.
+an hour and scroll, with the days' names kept at the top so each still opens its day, and beside them
+what is next, homework to focus on and what still needs a time. Both zoom, and remember how close
+they were. Both are painted hours on the one `Hand`, so every gesture works the same on each.
 """
 
 from __future__ import annotations
@@ -13,15 +13,26 @@ from datetime import date, timedelta
 
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QListWidget,
+    QListWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 from desktop.native.calendar import CATEGORIES, DAYS
+from desktop.native.fonts import time_font
 from desktop.native.hours.canvas import BlockPainter, HoursCanvas
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.geometry import FIRST, LAST, LinearTrack
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import HoursScroll, Scale, opening_minute
-from desktop.native.weekmodel import WeekModel, length_label
+from desktop.native.weekmodel import Waiting, WeekModel, hhmm_text, length_label, time_format
+from desktop.native.widgets import FlowLayout
 
 # A Day never goes below 96 pixels an hour, where 15 minutes is 24 pixels. The Week opens at 48, where
 # an hour still has edges to resize, and can go further out to see more of the day at once.
@@ -31,6 +42,9 @@ DAY_HOUR_PX = DAY_SCALE.default
 WEEK_HOUR_PX = WEEK_SCALE.default
 PAD = 8
 GUTTER = 52
+SIDE_PX = 250
+# The most rows the focus list shows before it scrolls, so a long one never pushes the tray away.
+FOCUS_ROWS = 6
 
 
 def _hours_height(px_per_hour: int) -> int:
@@ -46,6 +60,8 @@ class DayName(QLabel):
         super().__init__(parent)
         self._day = day
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # The stylesheet underlines today's name; every name keeps room for the line.
+        self.setProperty("today", False)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
@@ -64,8 +80,152 @@ def _seven_columns(area: QRectF) -> list[LinearTrack]:
     ]
 
 
+class WeekSide(QFrame):
+    """Week's side, as Day has one: the Next line, homework to start a focus timer on, and what is
+    not placed yet. Folded, on a window too narrow for it, it is one line above the hours with the
+    chips after it."""
+
+    # Homework in the focus list was chosen: its block and its day.
+    focus_requested = Signal(str, object)
+
+    def __init__(self, hand: Hand, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("weekSide")
+        self.hand = hand
+        self.folded = False
+        self._next = ""
+        self._tasks: tuple = ()
+        self._waiting: tuple[Waiting, ...] = ()
+        self._chips: list[TrayChip] = []
+        side = QVBoxLayout(self)
+        # The card's padding is its margin, as on Day's side.
+        side.setContentsMargins(0, 0, 0, 0)
+        side.setSpacing(6)
+        self.next = QLabel()
+        self.next.setObjectName("weekNext")
+        self.next.setWordWrap(True)
+        self.next.setFont(time_font(self.next.font()))
+        side.addWidget(self.next)
+        self.tasks_label = QLabel("Start a focus timer")
+        self.tasks_label.setObjectName("focusTasksLabel")
+        side.addWidget(self.tasks_label)
+        self.tasks = QListWidget()
+        self.tasks.setObjectName("focusTasks")
+        self.tasks.setToolTip("Double-click homework to start a focus timer for it.")
+        self.tasks.itemActivated.connect(self._start_item)
+        side.addWidget(self.tasks)
+        self.waiting_label = QLabel("Not placed yet")
+        self.waiting_label.setObjectName("classicWaitingLabel")
+        side.addWidget(self.waiting_label)
+        self.tray = QVBoxLayout()
+        self.tray.setSpacing(6)
+        side.addLayout(self.tray)
+        self.none_waiting = QLabel("Everything has a time.")
+        self.none_waiting.setObjectName("weekNoneWaiting")
+        side.addWidget(self.none_waiting)
+        # Folded, the line and the chips after it share one row.
+        self.flow = FlowLayout()
+        self.line = QLabel()
+        self.line.setObjectName("weekSideLine")
+        self.line.setFont(time_font(self.line.font()))
+        self.line.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        self.flow.addWidget(self.line)
+        side.addLayout(self.flow)
+        side.addStretch(1)
+        self.set_folded(False)
+
+    def set_folded(self, folded: bool) -> None:
+        self.folded = folded
+        if folded:
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(16_777_215)
+        else:
+            self.setFixedWidth(SIDE_PX)
+        # The stylesheet pads a folded side less, so the line stays slim.
+        self.setProperty("folded", folded)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self._place_chips()
+        self._show()
+
+    def set_next(self, words: str) -> None:
+        if words != self._next:
+            self._next = words
+            self._show()
+
+    def set_tasks(self, tasks: list[dict]) -> None:
+        # The clock too, so a switch to the 12-hour clock rewrites the times.
+        listed = tuple((item.get("id"), item.get("start"), item.get("title")) for item in tasks)
+        shown = (time_format(), listed)
+        if shown == self._tasks:
+            return
+        self._tasks = shown
+        self.tasks.clear()
+        for item in tasks:
+            start = hhmm_text(item["start"]) if item.get("start") else ""
+            row = QListWidgetItem(f"{item['title']}  {start}".rstrip())
+            row.setData(Qt.ItemDataRole.UserRole, item)
+            self.tasks.addItem(row)
+        rows = min(self.tasks.count(), FOCUS_ROWS)
+        if rows:
+            self.tasks.setFixedHeight(rows * self.tasks.sizeHintForRow(0) + 2 * self.tasks.frameWidth() + 8)
+        self._show()
+
+    def set_waiting(self, waiting: tuple[Waiting, ...]) -> None:
+        if self.hand.busy:
+            # Rebuilding would delete the chip the pointer is holding. The release refreshes.
+            return
+        # Every save comes through here. Chips made again for the same homework were shown a frame
+        # after the old ones went, so the tray blinked empty on each save.
+        if waiting == self._waiting:
+            return
+        self._waiting = waiting
+        for chip in self._chips:
+            chip.setParent(None)
+            chip.deleteLater()
+        self._chips = []
+        for index, item in enumerate(waiting):
+            chip = TrayChip(self.hand, item)
+            chip.setObjectName(f"classicWaiting{index}")
+            chip.clicked.connect(lambda _=False, key=item.block_id: self.hand.open(key))
+            self._chips.append(chip)
+        self._place_chips()
+        self._show()
+
+    def _place_chips(self) -> None:
+        home: QLayout = self.flow if self.folded else self.tray
+        for chip in self._chips:
+            for layout in (self.tray, self.flow):
+                layout.removeWidget(chip)
+            home.addWidget(chip)
+            chip.show()
+
+    def _show(self) -> None:
+        wide = not self.folded
+        self.next.setText(self._next)
+        self.next.setVisible(wide and bool(self._next))
+        listed = self.tasks.count() > 0
+        self.tasks_label.setVisible(wide and listed)
+        self.tasks.setVisible(wide and listed)
+        self.waiting_label.setVisible(wide)
+        self.none_waiting.setVisible(wide and not self._chips)
+        said = [self._next] if self._next else []
+        if self._chips:
+            said.append(f"Not placed yet: {len(self._chips)}")
+        self.line.setText(" · ".join(said))
+        self.line.setVisible(self.folded and bool(said))
+        # As tall as a chip, so its words sit level with the chips' words.
+        self.line.setMinimumHeight(max((chip.sizeHint().height() for chip in self._chips), default=0))
+        # Folded with nothing to say, it takes no room at all.
+        self.setVisible(wide or bool(said))
+
+    def _start_item(self, item: QListWidgetItem) -> None:
+        payload = item.data(Qt.ItemDataRole.UserRole) or {}
+        self.focus_requested.emit(payload.get("id") or "", payload.get("day"))
+
+
 class ClassicWeek(QWidget):
-    """The week as a scrollable overview, names fixed at the top, still drags."""
+    """The week as a scrollable overview, names fixed at the top, still drags, with its side."""
 
     day_opened = Signal(int)
 
@@ -91,9 +251,32 @@ class ClassicWeek(QWidget):
             row.addWidget(name, 1)
             self._name_labels.append(name)
         self.scroll.set_header(names)
-        box = QVBoxLayout(self)
-        box.setContentsMargins(0, 0, 0, 0)
-        box.addWidget(self.scroll)
+        self.side = WeekSide(hand)
+        self._box = QVBoxLayout(self)
+        self._box.setContentsMargins(0, 0, 0, 0)
+        self._box.setSpacing(0)
+        self._row = QHBoxLayout()
+        self._row.setContentsMargins(0, 0, 0, 0)
+        self._row.setSpacing(0)
+        self._row.addWidget(self.scroll, 1)
+        self._row.addWidget(self.side)
+        self._box.addLayout(self._row, 1)
+
+    def set_narrow(self, narrow: bool) -> None:
+        """Short of room the side folds into one line above the hours, and blocks give their names
+        the room their times took."""
+        if narrow != self.hours.short_words:
+            self.hours.short_words = narrow
+            self.hours.update()
+        if narrow == self.side.folded:
+            return
+        for layout in (self._row, self._box):
+            layout.removeWidget(self.side)
+        if narrow:
+            self._box.insertWidget(0, self.side)
+        else:
+            self._row.addWidget(self.side)
+        self.side.set_folded(narrow)
 
     def _name(self, day: int) -> str:
         if not self.week_start:
@@ -106,8 +289,13 @@ class ClassicWeek(QWidget):
     def set_week(self, week: WeekModel, today: int | None, now_min: int | None) -> None:
         self.week_start = week.week_start
         self.hours.set_week(week.occurrences, today, now_min)
+        self.side.set_waiting(week.waiting)
         for day, label in enumerate(self._name_labels):
             label.setText(self._name(day))
+            if label.property("today") != (day == today):
+                label.setProperty("today", day == today)
+                label.style().unpolish(label)
+                label.style().polish(label)
         self.scroll.open_at(week.week_start, opening_minute(week, today, now_min))
 
     def hours_surfaces(self) -> list[HoursCanvas]:
@@ -130,7 +318,8 @@ class ClassicDay(QWidget):
         self.side.setObjectName("daySide")
         self.side.setFixedWidth(250)
         side = QVBoxLayout(self.side)
-        side.setContentsMargins(12, 12, 12, 12)
+        # The card's padding is its margin, so the chips keep the width they had at 8 px.
+        side.setContentsMargins(0, 0, 0, 0)
         side.setSpacing(6)
         waiting = QLabel("Not placed yet")
         waiting.setObjectName("dayWaitingLabel")

@@ -21,7 +21,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QStandardPaths
     from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QLineEdit, QWidget
 
-    from desktop.native.settings import PrefsDialog
+    from desktop.native.settings import SettingsPage
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
 
@@ -35,8 +35,8 @@ def qapp() -> Iterator[QApplication]:
     yield QApplication.instance() or QApplication(["flexweek-alerts-page-test"])
 
 
-def settings(qapp: QApplication, parent: QWidget | None = None, **preferences: Any) -> PrefsDialog:
-    dialog = PrefsDialog(parent, {"reminders_enabled": True, "alarms": [], **preferences}, {}, {})
+def settings(qapp: QApplication, parent: QWidget | None = None, **preferences: Any) -> SettingsPage:
+    dialog = SettingsPage(parent, {"reminders_enabled": True, "alarms": [], **preferences}, {}, {})
     dialog.show()
     dialog.nav.setCurrentRow(ALERTS)
     for _ in range(10):
@@ -44,11 +44,11 @@ def settings(qapp: QApplication, parent: QWidget | None = None, **preferences: A
     return dialog
 
 
-def page(dialog: PrefsDialog) -> QWidget:
+def page(dialog: SettingsPage) -> QWidget:
     return dialog.stack.widget(ALERTS).widget()
 
 
-def top(widget: QWidget, dialog: PrefsDialog) -> int:
+def top(widget: QWidget, dialog: SettingsPage) -> int:
     return widget.mapTo(page(dialog), widget.rect().topLeft()).y()
 
 
@@ -58,7 +58,7 @@ def test_reminders_come_first_with_their_switch_on_top(qapp: QApplication) -> No
         (label for label in page(dialog).findChildren(QLabel, "prefsHeading") if label.isVisible()),
         key=lambda label: top(label, dialog),
     )
-    assert [label.text() for label in headings][:2] == ["REMINDERS", "ALARMS"]
+    assert [label.text() for label in headings][:2] == ["Reminders", "Alarms"]
     assert dialog.reminders.text() == "Remind me before each block starts"
     below = [dialog.lead, dialog.alarm_tone, dialog.reminder_sound, dialog.dnd_override]
     assert all(top(dialog.reminders, dialog) < top(widget, dialog) for widget in below)

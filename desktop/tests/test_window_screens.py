@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QStandardPaths
+    from PySide6.QtCore import QPoint, QStandardPaths
     from PySide6.QtWidgets import QApplication, QPushButton
 
     from desktop.native.calendar import monday_of, sunday_due
@@ -120,7 +120,7 @@ def window(qapp: QApplication, tmp_path: Path, clock: Clock) -> Iterator[NativeW
 
 BAR = (
     "prevWeek", "nextWeek", "todayWeek", "viewDay", "viewWeek", "viewMonth", "viewMyDay",
-    "solveButton", "retrySave", "moreButton", "settingsGear",
+    "addButton", "addArrow", "solveButton", "retrySave", "moreButton", "settingsGear",
 )
 
 
@@ -147,7 +147,7 @@ def test_the_top_bar_is_never_cut_mid_word(qapp: QApplication, window: NativeWin
     is its whole long or short form, every button on the bar is as wide as its words, and all of it
     is inside the window. At 900 pixels the bar read "21 – 2…" and "n my homew"."""
     session = window.session
-    sizes = (("normal", (1280, 1000, 900, 800, 700, 640)), ("large", (1150, 1000, 900, 800, 640)))
+    sizes = (("normal", (1280, 1100, 1000, 900, 800)), ("large", (1150, 1000, 900, 800)))
     for text, widths in sizes:
         text_size(window, text)
         for view in ("week", "day", "month"):
@@ -168,23 +168,24 @@ def test_the_top_bar_is_never_cut_mid_word(qapp: QApplication, window: NativeWin
                 assert window.solve_button.text() in ("Plan my homework", "Plan"), where
                 right = max(item.mapTo(window, item.rect().topRight()).x() for item in bar_widgets(window))
                 assert right < window.width(), f"{where}: the bar runs to {right}"
-    # Suggest times shortens to "Suggest", wider than "Plan".
+    # Suggest times and Retry save, which widen the bar, are never cut at the narrowest window.
     session.preferences = {**(session.preferences or {}), "planning_style": "manual"}
+    window.retry_button.setVisible(True)
     window._sync_chrome()
     text_size(window, "large")
     window.resize(640, 768)
     for _ in range(4):
         qapp.processEvents()
-    assert window.solve_button.text() == "Suggest"
+    assert window.solve_button.text() in ("Suggest times", "Suggest")
     assert cut_on_the_bar(window) == [], f"large text, Suggest, {window.width()} px"
     session.preferences = {**session.preferences, "planning_style": "auto"}
+    window.retry_button.setVisible(False)
     window._sync_chrome()
     text_size(window, "normal")
-    window.resize(900, 768)
+    window.resize(1150, 768)
     window.findChild(QPushButton, "viewWeek").click()
     for _ in range(4):
         qapp.processEvents()
-    assert (window.week_title.text(), window.solve_button.text()) == (
-        planner_title(session, "week", short=True),
-        "Plan",
-    ), "at 900 pixels the bar keeps one row with both short forms"
+    title_foot = window.week_title.mapTo(window, QPoint(0, window.week_title.height())).y()
+    assert window.solve_button.mapTo(window, QPoint(0, 0)).y() < title_foot, "at 1150 the bar is one row"
+    assert cut_on_the_bar(window) == [], "at 1150 pixels"

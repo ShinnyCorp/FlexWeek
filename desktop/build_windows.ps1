@@ -82,6 +82,8 @@ $NuitkaArgs = @(
     '--enable-plugins=pyside6',
     '--include-package=desktop.native',
     '--include-package=backend',
+    # The window's icon and the Inter faces, found beside the code as they are in a checkout.
+    "--include-data-dir=$(Join-Path $Root 'desktop\assets')=desktop/assets",
     '--nofollow-import-to=desktop.tests,backend.tests',
     '--nofollow-import-to=PySide6.QtWebEngineCore,PySide6.QtWebEngineWidgets,PySide6.QtWebEngineQuick',
     # Type-checking tools and uvicorn extras desktop/server.py never enables;
@@ -95,7 +97,7 @@ $NuitkaArgs = @(
     '--include-windows-runtime-dlls=yes',
     '--output-filename=FlexWeek.exe',
     "--output-dir=$Stage",
-    "--windows-icon-from-ico=$(Join-Path $Root 'desktop\assets\logo.png')",
+    "--windows-icon-from-ico=$(Join-Path $Root 'desktop\assets\logo.ico')",
     '--windows-console-mode=disable'
 )
 if ($AssumeYesForDownloads) {

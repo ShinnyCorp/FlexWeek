@@ -4,6 +4,7 @@ every block is written in the canvas's own font, whatever was drawn before it.""
 from __future__ import annotations
 
 import importlib.util
+import math
 import os
 from collections.abc import Iterator
 
@@ -22,6 +23,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter
     from PySide6.QtWidgets import QApplication, QWidget
 
+    from desktop.native.fonts import TABULAR, load_fonts
     from desktop.native.hours import canvas as canvas_module
     from desktop.native.hours.canvas import BlockPainter, Drawn, HoursCanvas, fit_lines
     from desktop.native.hours.geometry import LinearTrack
@@ -29,7 +31,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.layouts.base import Scene
     from desktop.native.layouts.registry import options_for, tokens_for
     from desktop.native.layouts.timeline import TimelineView
-    from desktop.native.look import resolved_palette
+    from desktop.native.look import mix, resolved_palette
     from desktop.native.weekmodel import build_week, minute_of
 
 DETAIL = "16:00–17:30 · 1 h 30 min · Missed · Pinned"
@@ -188,6 +190,7 @@ if importlib.util.find_spec("PySide6") is not None:
 
         words: list[tuple[str, QRectF]] = []
         inks: list[tuple[str, QRectF]] = []
+        fonts: list[tuple[str, QFont]] = []
 
         def drawText(self, *args: object) -> None:  # noqa: N802
             text = next(arg for arg in reversed(args) if isinstance(arg, str))
@@ -197,6 +200,7 @@ if importlib.util.find_spec("PySide6") is not None:
             ink = QFontMetricsF(self.font()).boundingRect(box, int(flags), text)
             Said.words.append((text, self.worldTransform().mapRect(box)))
             Said.inks.append((text, self.worldTransform().mapRect(ink)))
+            Said.fonts.append((text, QFont(self.font())))
             super().drawText(*args)
 
 
@@ -277,3 +281,125 @@ def test_a_length_is_never_broken_between_its_number_and_unit(qapp) -> None:
     width = metrics.horizontalAdvance("08:00–14:30 · 6") + 2
     lines = fit_lines("08:00–14:30 · 6 h 30 min", font, width, metrics.lineSpacing() * 4)
     assert lines == ["08:00–14:30 ·", "6 h 30 min"], lines
+
+
+HOUR_PX = 48
+
+
+def three_days(
+    now_min: int | None = None, blocks: tuple[dict, ...] = (ESSAY,), hour_px: int = HOUR_PX
+) -> HoursCanvas:
+    """Three days from 08:00 to 20:00, at Today's app's default 48 pixels an hour unless told, in
+    Inter at the normal text size, with today on the first when there is a now."""
+    load_fonts()
+
+    def columns(area: QRectF) -> list[LinearTrack]:
+        return [
+            LinearTrack(day, QRectF(60 + 150 * day, 10, 140, 12 * hour_px), first=8 * 60, last=20 * 60)
+            for day in range(3)
+        ]
+
+    host = QWidget()
+    HOSTS.append(host)
+    canvas = HoursCanvas(
+        Hand(lambda block_id, from_day, span: Verdict(True, ""), host),
+        BlockPainter(resolved_palette("system", False, None)),
+        columns,
+        gutter=56,
+    )
+    canvas.setFont(QFont("Inter", 12))
+    canvas.resize(520, 12 * hour_px + 20)
+    occurrences = build_week("2026-09-21", list(blocks), {}, None).occurrences
+    canvas.set_week(occurrences, 0 if now_min is not None else None, now_min)
+    canvas.relayout()
+    return canvas
+
+
+def test_every_time_on_the_hours_is_written_in_figures_of_one_width(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Inter's figures are proportional: without tabular ones, 11:00 is narrower than 20:00 and a
+    column of hours or a block's times wobble."""
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    canvas = three_days(now_min=15 * 60 + 40)
+    Said.fonts = []
+    canvas.grab()
+    timed = [(text, font) for text, font in Said.fonts if any(letter.isdigit() for letter in text)]
+    assert {"08:00", "20:00"} <= {text for text, _font in timed}
+    assert any("16:00–17:30" in text for text, _font in timed)
+    for text, font in timed:
+        assert font.featureValue(QFont.Tag(TABULAR)) == 1, text
+
+
+CLUB = {"id": "club", "title": "Club", "kind": "locked", "days": [1], "start": "19:00", "duration_min": 60}
+
+
+def test_a_one_hour_block_says_its_name_and_its_times_on_two_lines(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Club at 19:00 for an hour was one shortened line, "Club · 19:00–20:00 · …", when it had room
+    for its name in bold and its times in the smaller font below: the test asked for two bold lines.
+    Here it has just that room, which is less than two bold lines, and at the default 48 pixels an
+    hour it has more."""
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    font = QFont("Inter", 12)
+    bold = QFont(font)
+    bold.setBold(True)
+    bold_line = QFontMetricsF(bold).height()
+    just = math.ceil(bold_line + 1 + QFontMetricsF(canvas_module._small(font)).height())
+    assert just < 2 * bold_line
+    # A block's words have its height less 7 pixels: 2 between blocks, 3 above and 2 below.
+    for hour_px in (just + 7, HOUR_PX):
+        canvas = three_days(blocks=(CLUB,), hour_px=hour_px)
+        Said.words = []
+        canvas.grab()
+        assert words_on(canvas, "club", 1) == ["Club", "19:00–20:00 · 1 h"], hour_px
+
+
+def rows(palette: dict, today: bool) -> QImage:
+    """One track from 08:00 to 10:00 at 48 pixels an hour, painted on the window colour."""
+    track = LinearTrack(0, QRectF(10, 10, 100, 2 * HOUR_PX), first=8 * 60, last=10 * 60)
+    image = QImage(120, 2 * HOUR_PX + 20, QImage.Format.Format_ARGB32)
+    image.fill(QColor(palette["window"]))
+    painter = QPainter(image)
+    BlockPainter(palette).track(painter, track, today)
+    painter.end()
+    return image
+
+
+def test_the_hours_have_a_rule_at_each_hour_and_none_at_the_half(qapp: QApplication) -> None:
+    """The dashed half-hour rules crowded the grid. On a dark look the hour rules take the stronger
+    hairline, since the plain one all but vanished on the page."""
+    for pack, dark, rule in (("slate", False, "hairline"), ("nocturne", True, "hairline_strong")):
+        palette = resolved_palette(pack, dark, None)
+        image = rows(palette, today=False)
+        at = {minute: 10 + (minute - 8 * 60) * HOUR_PX // 60 for minute in (8 * 60 + 30, 9 * 60)}
+        assert QColor(image.pixel(60, at[9 * 60])).name() == palette[rule], pack
+        assert QColor(image.pixel(60, at[8 * 60 + 30])).name() == palette["window"], pack
+
+
+def test_today_is_washed_in_a_tenth_of_the_accent(qapp: QApplication) -> None:
+    palette = resolved_palette("slate", False, None)
+    washed = QColor(rows(palette, today=True).pixel(60, 10 + HOUR_PX // 2))
+    wanted = QColor(mix(palette["accent"], palette["window"], 0.10))
+    for got, want in zip(washed.getRgb()[:3], wanted.getRgb()[:3], strict=True):
+        assert abs(got - want) <= 1, (washed.name(), wanted.name())
+
+
+def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The line said where now is but not what time it is. At 15:40 it starts from a pill in the
+    error colour reading "15:40", level with the line."""
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    canvas = three_days(now_min=15 * 60 + 40)
+    Said.inks = []
+    image = canvas.grab().toImage()
+    track = canvas.tracks[0]
+    line_y = track.area.top() + track.offset(15 * 60 + 40)
+    written = [where for text, where in Said.inks if text == "15:40"]
+    assert len(written) == 1
+    assert abs(written[0].center().y() - line_y) <= 2
+    assert track.area.left() <= written[0].left() < track.area.left() + 12
+    error = resolved_palette("system", False, None)["error"]
+    assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == error

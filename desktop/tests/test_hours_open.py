@@ -24,7 +24,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QPoint, QPointF, QStandardPaths
     from PySide6.QtWidgets import QApplication, QPushButton
 
-    from desktop.native.calendar import monday_of
+    from desktop.native.calendar import monday_of, sunday_due
     from desktop.native.hours.geometry import Axis
     from desktop.native.hours.zoom import HoursScroll
     from desktop.native.layouts.registry import sanitize_layout
@@ -127,6 +127,28 @@ def opens_at(qapp: QApplication, window: NativeWindow, minute: int, where: str) 
     assert minute - first <= 181 or at_end, f"{where}: opens {minute - first:.0f} minutes above it"
 
 
+def test_todays_app_opens_an_empty_next_week_at_eight_once_there_is_homework(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """With homework on the account an empty week keeps its hours, and they open at 08:00 even though
+    they grow as the page lays out."""
+    session = window.session
+    session.add_homework(
+        {"id": "essay", "title": "History essay", "due": sunday_due(session.week_start), "estimate_min": 60,
+         "revision": 0}
+    )
+    session.save()
+    wait_until(qapp, lambda: not session.busy and not session.dirty)
+    window._layout = sanitize_layout({"main": "classic", "day": "one"})
+    window._apply_appearance()
+    window._on_week()
+    for name in ("viewWeek", "nextWeek"):
+        window.findChild(QPushButton, name).click()
+        wait_until(qapp, lambda: not session.busy)
+    assert window.planner.currentWidget() is not window.empty_week
+    opens_at(qapp, window, 8 * 60, "classic next Week, empty")
+
+
 def test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_or_week(
     qapp: QApplication, window: NativeWindow
 ) -> None:
@@ -144,7 +166,11 @@ def test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_o
         press("viewWeek")
         opens_at(qapp, window, NOW, f"{design} Week")
         press("nextWeek")
-        opens_at(qapp, window, 8 * 60, f"{design} next Week, empty")
+        if design == "classic":
+            # With no homework yet, Today's app shows an empty week one button, not hours.
+            assert window.planner.currentWidget() is window.empty_week
+        else:
+            opens_at(qapp, window, 8 * 60, f"{design} next Week, empty")
         press("prevWeek")
         opens_at(qapp, window, NOW, f"{design} Week again")
         press("viewDay")

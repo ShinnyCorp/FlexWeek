@@ -7,7 +7,8 @@ edge, and on release reports one change. Moves arrive through Qt's implicit grab
 keeps receiving the mouse until release), so no system drag-and-drop is involved and X11 and
 Wayland behave alike.
 
-A press that never becomes a drag is a tap, handed back to whoever pressed. Escape lets go.
+A press that never becomes a drag is a tap, handed back to whoever pressed: on a block, a tap opens
+it. A right-click asks for a block's menu and never picks anything up. Escape lets go.
 
 What a block can land on is a surface: any widget that sets `takes_blocks` and answers `track_at`
 with a `Track` under a point of its own. `HoursCanvas` is one; My day's dial and anything a design
@@ -30,11 +31,12 @@ from shiboken6 import isValid
 
 from desktop.native.calendar import DAYS
 from desktop.native.hours.geometry import DRAG_STEPS, Span, Track, snap
-from desktop.native.weekmodel import length_label
+from desktop.native.weekmodel import clock_text, length_label
 
 # A drag near a scroll area's edge scrolls it only after resting there this long, so passing
 # through the edge on the way in never shifts the hours under the pointer.
 EDGE_PX, DWELL_S, SCROLL_STEP = 36, 0.3, 10
+SECOND_CLICK = (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick, QEvent.Type.MouseButtonRelease)
 
 
 class Gesture(Enum):
@@ -129,12 +131,35 @@ def surface_at(at: QPoint) -> QWidget | None:
     return widget
 
 
+class SecondClick(QObject):
+    """For a double-click's length after a tap, a click where the tap was does nothing to a dialog the
+    tap opened. A tap on a block opens its editor, so the second click of a double-click from habit
+    lands on that editor, where it would press whatever is under the pointer."""
+
+    def __init__(self, host: QObject, at: QPoint) -> None:
+        super().__init__(host)
+        self._at = at
+        QApplication.instance().installEventFilter(self)
+        ends = QTimer(self)
+        ends.setSingleShot(True)
+        ends.timeout.connect(self.stop)
+        ends.start(QApplication.doubleClickInterval())
+
+    def stop(self) -> None:
+        QApplication.instance().removeEventFilter(self)
+        self.deleteLater()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() not in SECOND_CLICK or not isinstance(event, QMouseEvent):
+            return False
+        away = (event.globalPosition().toPoint() - self._at).manhattanLength()
+        near = away <= QApplication.startDragDistance()
+        # Only over what the tap opened: a click on the hours again is a click like any other.
+        return near and QApplication.activeModalWidget() is not None
+
+
 def span_words(span: Span) -> str:
-    return f"{DAYS[span.day]} {_clock(span.start)}–{_clock(span.end)} · {length_label(span.minutes)}"
-
-
-def _clock(minute: int) -> str:
-    return f"{minute // 60:02d}:{minute % 60:02d}"
+    return f"{DAYS[span.day]} {clock_text(span.start)}–{clock_text(span.end)} · {length_label(span.minutes)}"
 
 
 class Hand(QObject):
@@ -144,6 +169,8 @@ class Hand(QObject):
     refused = Signal(str)
     opened = Signal(str)
     selected = Signal(str, int)
+    # A block's menu asked for: its id, its day (-1 for homework with no time yet), where to show it.
+    menu_requested = Signal(str, int, QPoint)
     active_changed = Signal(bool)
     # From the press to the release: nothing the press started on may be rebuilt meanwhile.
     holding = Signal(bool)
@@ -162,6 +189,10 @@ class Hand(QObject):
         self.month_verdict: Verdict | None = None
         # The window's rule for dates; with none, every date is taken.
         self.date_judge: DateJudge | None = None
+        # The block the last drop moved or placed. It is already where it was let go, so the hours
+        # draw it there at once rather than sliding it from where it was picked up.
+        self.dropped: str | None = None
+        self._opened: tuple[str, float] | None = None
         self._held: Held | None = None
         self._source: QWidget | None = None
         self._tap: Callable[[], None] | None = None
@@ -203,6 +234,7 @@ class Hand(QObject):
     ) -> None:
         """Pick something up at a global point. `home` is the surface and track it came from."""
         self._end(silent=True)
+        self.dropped = None
         self._held, self._source, self._tap, self._home = held, source, tap, home
         self._pressed_at = self._last = at
         QApplication.instance().installEventFilter(self)
@@ -213,9 +245,26 @@ class Hand(QObject):
         self.selected.emit(block_id, day)
         self.preview_changed.emit()
 
-    def open(self, block_id: str) -> None:
+    def open(self, block_id: str, second_click: bool = False) -> None:
+        """Open a block. `second_click` is a double-click's second: the first, a tap, has opened it
+        already, so it opens nothing more, and one double-click never makes two editors."""
+        now = time.monotonic()
+        last, self._opened = self._opened, (block_id, now)
+        soon = QApplication.doubleClickInterval() / 1000
+        if second_click and last is not None and last[0] == block_id and now - last[1] < soon:
+            return
         self._end(silent=True)
         self.opened.emit(block_id)
+
+    def ask_menu(self, block_id: str, day: int, at: QPoint) -> None:
+        """A right-click on a block: it becomes the selection, and the window shows its menu. While
+        something is carried, a right-click does nothing."""
+        if self._active:
+            return
+        self._end(silent=True)
+        if day >= 0:
+            self.select(block_id, day)
+        self.menu_requested.emit(block_id, day, at)
 
     def commit(self, change: Change) -> None:
         """For a tap that makes something, such as a click on free time."""
@@ -262,6 +311,8 @@ class Hand(QObject):
             return
         if not active:
             if tap is not None:
+                # Before the tap, which may open a dialog and wait in it.
+                SecondClick(self, self._last)
                 tap()
             return
         if held.kind is Gesture.MOVE_DATE:
@@ -281,8 +332,10 @@ class Hand(QObject):
         if held.kind is Gesture.CREATE:
             self.committed.emit(Create(preview.span))
         elif held.kind is Gesture.PLACE and held.block_id:
+            self.dropped = held.block_id
             self.committed.emit(Place(held.block_id, preview.span))
         elif held.block_id and held.origin is not None and preview.span != held.origin:
+            self.dropped = held.block_id
             self.committed.emit(Move(held.block_id, held.from_day, preview.span))
 
     # Where the pointer is
@@ -377,7 +430,7 @@ class Hand(QObject):
         verdict = None
         if target and held.block_id and target != held.from_iso and self.date_judge is not None:
             verdict = self.date_judge(held.block_id, held.from_iso, target)
-        words = f"{_clock(held.origin.start) if held.origin else ''} {held.title}".strip()
+        words = f"{clock_text(held.origin.start) if held.origin else ''} {held.title}".strip()
         if verdict is not None and not verdict.ok and verdict.words:
             words = verdict.words
         elif target and target != held.from_iso:

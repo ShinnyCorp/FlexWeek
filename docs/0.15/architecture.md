@@ -83,11 +83,11 @@ self.hand.holding.connect(self._hold_renders)       # from the press to the rele
 - A change goes to the controller: `_move_block` (waiting while a save is running), `place_session`,
   `_create_range`, or `move_to_date` (one write of both weeks through `/api/changes`, retry-safe,
   shown only once the server accepts it; a drop after a save that failed is refused in words).
-- Once a change's save lands, the notice under the hours says what it did ("Moved History essay to
-  Fri 18:00."), with Undo for that one change. It shares the status line's row, which keeps the
-  notice's height whether it shows or not, so its coming and going never moves the hours. One that
-  lands while something is held waits for the release, and it goes once a later save makes its
-  step no longer the last.
+- Once a change's save lands, the toast says what it did ("Moved History essay to Fri 18:00."),
+  with Undo for that one change. Since 0.16 it floats over the foot of the hours rather than
+  taking a row of the page, so its coming and going never moves the hours. One that lands while
+  something is held waits for the release, and it goes once a later save makes its step no longer
+  the last, or on a switch to another view.
 - Renders are held from the press, so nothing the press started on is deleted by a re-render; the
   last scene arrives on release.
 - Asking for anywhere else while a block is held (another view, week, day or design) cancels the
@@ -103,6 +103,12 @@ self.hand.holding.connect(self._hold_renders)       # from the press to the rele
   column it is on, not at midnight. A block longer than its track starts where the track starts.
 - Resize from within 7 pixels of an edge of a block at least 20 pixels long, but never more than a
   fifth of it, so a 15-minute block moves when pressed a quarter, half or three quarters in.
+- A press that never becomes a drag is a tap, and a tap on a block opens it (0.16). A double-click
+  opens one editor, not two, and its second click never lands on the editor the first opened. A
+  right-click selects the block under the pointer and asks for its menu through the hand
+  (`menu_requested`); it never picks the block up.
+- After a new week or plan, `HoursCanvas.set_week` slides each block that moved from where it was
+  and fades in the new ones, unless animations are off; a block just dropped does not slide.
 - Overlaps are allowed and drawn side by side.
 - The pointer resting 300 ms within 36 pixels of a scroll area's edge scrolls it; passing through
   does not. With scroll areas inside one another, the nearest one that has room to scroll that way

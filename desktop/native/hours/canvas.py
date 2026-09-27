@@ -4,7 +4,8 @@ An `HoursCanvas` is one painted widget holding one or more tracks: a day's colum
 lane per day, a card laid at an angle. It draws the week's blocks on them through a `BlockPainter`,
 which is the only thing a design replaces to look like itself, and passes every press to the window's
 `Hand`, which owns the gestures. While something is held, the canvas draws it where it would land,
-with its times written on it.
+with its times written on it. When a new week arrives with blocks somewhere else, such as after Plan,
+they slide from where they were to where they are, and blocks that were not there fade in.
 
 The canvas also answers the rig and the tests in global coordinates: where a day and minute are,
 where a block is drawn, and how to bring a stretch of hours into view.
@@ -16,9 +17,10 @@ from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import (
     QColor,
+    QContextMenuEvent,
     QFont,
     QFontMetrics,
     QFontMetricsF,
@@ -33,6 +35,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QScrollArea, QWidget
 
 from desktop.native.calendar import CATEGORIES, DAYS, create_click_range
+from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import (
     Axis,
     LinearTrack,
@@ -41,12 +44,16 @@ from desktop.native.hours.geometry import (
     snap,
 )
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
-from desktop.native.look import block_paint
+from desktop.native.look import block_paint, readable_ink
+from desktop.native.motion import DURATION_MS, app_level
 from desktop.native.weekmodel import Occurrence, clock_label, length_label
 
 # A press this close to a block's start or end edge resizes it, on a block long enough to have edges.
 EDGE_PX = 7
 FREE_HINT = "+ drag to create, or click"
+
+# A block as the canvas knows it between renders: its id and the day it is drawn on.
+Key = tuple[str, int]
 
 
 @dataclass(frozen=True)
@@ -67,6 +74,8 @@ class Drawn:
     missed: bool = False
     pinned: bool = False
     axis: Axis = Axis.DOWN
+    # Its name only, on hours too narrow for the name and its times.
+    short: bool = False
 
     @property
     def detail(self) -> str:
@@ -87,7 +96,7 @@ class Drawn:
 
 class BlockPainter:
     """How hours and blocks look. This default is Daily Scheduler's: pale category fills, a strong
-    edge, hour rules with dashed half hours, a red now line. Designs subclass it."""
+    edge, a rule at each hour, a red now line carrying the time. Designs subclass it."""
 
     def __init__(self, colours: dict[str, str], look: dict | None = None) -> None:
         self.colours = colours
@@ -100,24 +109,17 @@ class BlockPainter:
         painter.fillRect(rect, self.c("window"))
 
     def track(self, painter: QPainter, track: LinearTrack, today: bool) -> None:
-        """Hour and half-hour rules, in the track's upright frame."""
+        """A rule at each hour, in the track's upright frame, over a wash of the accent on today."""
         area = track.area
         if today:
             wash = self.c("accent")
-            wash.setAlphaF(0.05)
+            wash.setAlphaF(0.10)
             painter.fillRect(area, wash)
-        for minute in range((track.first // 30) * 30, track.last + 1, 30):
-            if minute < track.first:
-                continue
+        # On a dark look the plain hairline barely shows against the page.
+        rule = self.c("hairline_strong" if self.colours.get("axis") == "dark" else "hairline")
+        painter.setPen(QPen(rule, 1))
+        for minute in range(-(-track.first // 60) * 60, track.last + 1, 60):
             offset = track.offset(minute)
-            half = minute % 60 != 0
-            painter.setPen(
-                QPen(
-                    self.c("grid" if half else "hairline"),
-                    1,
-                    Qt.PenStyle.DashLine if half else Qt.PenStyle.SolidLine,
-                )
-            )
             if track.axis is Axis.DOWN:
                 painter.drawLine(
                     QPointF(area.left(), area.top() + offset), QPointF(area.right(), area.top() + offset)
@@ -126,7 +128,6 @@ class BlockPainter:
                 painter.drawLine(
                     QPointF(area.left() + offset, area.top()), QPointF(area.left() + offset, area.bottom())
                 )
-        painter.setPen(QPen(self.c("hairline"), 1))
         if track.axis is Axis.DOWN:
             painter.drawLine(area.topLeft(), area.bottomLeft())
         else:
@@ -144,7 +145,7 @@ class BlockPainter:
         the edge of `visible`, the part on screen, would cut is moved inside it, as a long block's
         name is."""
         painter.setPen(self.c("muted"))
-        painter.setFont(_small(painter.font()))
+        painter.setFont(time_font(_small(painter.font())))
         metrics = QFontMetricsF(painter.font())
         for minute in range(((track.first + every - 1) // every) * every, track.last + 1, every):
             at = track.offset(minute)
@@ -207,8 +208,10 @@ class BlockPainter:
     def words(self, painter: QPainter, rect: QRectF, drawn: Drawn, ink: QColor, visible: QRectF) -> None:
         bold = QFont(painter.font())
         bold.setBold(True)
-        plain = _small(painter.font())
+        plain = time_font(_small(painter.font()))
         line = QFontMetrics(bold).height()
+        # The name on a bold line and its times on one line of the smaller font under it.
+        two_lines = line + 1 + QFontMetricsF(plain).height()
         # The name stays in sight while the start of a long block is scrolled away, either way.
         start = QPointF(rect.left() + 8, rect.top() + 3)
         if drawn.axis is Axis.DOWN and rect.bottom() - visible.top() > 2 * line:
@@ -221,8 +224,21 @@ class BlockPainter:
         detail = drawn.detail
         if drawn.held and QFontMetrics(plain).horizontalAdvance(detail) > room.width():
             detail = ""  # said in the label beside it instead
+        elif QFontMetrics(plain).horizontalAdvance(detail.split(" · ")[0]) > room.width():
+            # A time cut in half, "08:00–1…", says less than none; the name alone reads whole.
+            detail = ""
         painter.setPen(ink)
-        if room.height() < 2 * line:
+        if drawn.short and not drawn.held:
+            # "Soccer practice" whole over two lines says more than "Soccer …" and its times.
+            font = bold if room.height() >= line else plain
+            if fit_lines(drawn.title, font, room.width(), room.height()):
+                _write_lines(painter, drawn.title, font, room)
+            else:
+                painter.setFont(font)
+                initial = _initial(drawn.title, QFontMetrics(font), room.width())
+                painter.drawText(room, Qt.AlignmentFlag.AlignLeft, initial)
+            return
+        if room.height() < two_lines:
             painter.setFont(plain)
             text = f"{drawn.title} · {detail}" if detail else drawn.title
             elided = QFontMetrics(plain).elidedText(text, Qt.TextElideMode.ElideRight, int(room.width()))
@@ -256,7 +272,7 @@ class BlockPainter:
         painter.setBrush(wash)
         painter.setPen(QPen(colour, 2))
         painter.drawRoundedRect(rect, 5, 5)
-        bold = QFont(painter.font())
+        bold = time_font(painter.font())
         bold.setBold(True)
         painter.setPen(self.c("text"))
         _write_lines(painter, words, bold, rect.adjusted(8, 3, -6, -3))
@@ -281,24 +297,34 @@ class BlockPainter:
             )
 
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
+        """A line across the track at `minute`, starting from a pill with the time on it."""
         colour = self.c("error")
+        font = time_font(_small(painter.font()))
+        font.setBold(True)
+        metrics = QFontMetricsF(font)
+        words = clock_label(minute)
+        width, height = metrics.horizontalAdvance(words) + 10, metrics.height() + 2
         at = track.offset(minute)
         area = track.area
+        if track.axis is Axis.DOWN:
+            pill = QRectF(area.left(), area.top() + at - height / 2, width, height)
+            ends = (QPointF(pill.right(), area.top() + at), QPointF(area.right(), area.top() + at))
+        else:
+            pill = QRectF(area.left() + at - width / 2, area.top(), width, height)
+            ends = (QPointF(area.left() + at, pill.bottom()), QPointF(area.left() + at, area.bottom()))
+        painter.setPen(QPen(colour, 2))
+        painter.drawLine(*ends)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(colour)
-        if track.axis is Axis.DOWN:
-            painter.drawEllipse(QPointF(area.left() + 1, area.top() + at), 4, 4)
-            painter.setPen(QPen(colour, 2))
-            painter.drawLine(QPointF(area.left(), area.top() + at), QPointF(area.right(), area.top() + at))
-        else:
-            painter.drawEllipse(QPointF(area.left() + at, area.top() + 1), 4, 4)
-            painter.setPen(QPen(colour, 2))
-            painter.drawLine(QPointF(area.left() + at, area.top()), QPointF(area.left() + at, area.bottom()))
+        painter.drawRoundedRect(pill, height / 2, height / 2)
+        painter.setPen(QColor(readable_ink(colour.name())))
+        painter.setFont(font)
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
 
     def label(self, painter: QPainter, beside: QRectF, words: str, ok: bool, room: QRectF) -> None:
         """The held block's words on a pill beside it, when the block is too small to say them, kept
         in `room`, the part of the hours on screen."""
-        plain = _small(painter.font())
+        plain = time_font(_small(painter.font()))
         metrics = QFontMetrics(plain)
         width, height = metrics.horizontalAdvance(words) + 20, metrics.height() + 10
         left = beside.right() + 6 if beside.right() + 6 + width <= room.right() else beside.left() - 6 - width
@@ -317,6 +343,9 @@ class BlockPainter:
         painter.setFont(font)
         painter.setPen(self.c("accent" if today else "muted"))
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, words)
+        if today:
+            ink = QFontMetricsF(font).boundingRect(box, int(Qt.AlignmentFlag.AlignCenter), words)
+            painter.fillRect(QRectF(ink.left(), ink.bottom() + 1, ink.width(), 2), self.c("accent"))
 
 
 @contextmanager
@@ -344,6 +373,16 @@ def _initial(title: str, metrics: QFontMetrics, width: float) -> str:
     colour already says a block is there; a lone "…" said nothing more."""
     first = title.strip()[:1]
     return first if first and metrics.horizontalAdvance(first) <= width else ""
+
+
+def _between(start: QRectF, end: QRectF, share: float) -> QRectF:
+    """The rectangle `share` of the way from `start` to `end`."""
+    return QRectF(
+        start.x() + (end.x() - start.x()) * share,
+        start.y() + (end.y() - start.y()) * share,
+        start.width() + (end.width() - start.width()) * share,
+        start.height() + (end.height() - start.height()) * share,
+    )
 
 
 def _small(font: QFont) -> QFont:
@@ -428,7 +467,7 @@ class HoursCanvas(QWidget):
         self.setAccessibleName("Hours")
         self.setAccessibleDescription(
             "Drag a block to move it, its top or bottom edge to resize it, or empty time to add something."
-            " Double-click a block, or press Enter, to open it."
+            " Click a block, or press Enter, to open it. Right-click it for more."
         )
         self.hand, self.painter = hand, painter
         self._lay_out = lay_out
@@ -438,8 +477,23 @@ class HoursCanvas(QWidget):
         self.occurrences: tuple[Occurrence, ...] = ()
         self.today: int | None = None
         self.now_min: int | None = None
+        # Blocks say their names only; the window sets it when the hours are narrow.
+        self.short_words = False
         self._hover: tuple[LinearTrack, int] | None = None
         self._wheel = 0
+        # Where each block was drawn at the last render, in the canvas's own coordinates, and, while
+        # they settle, where the moved ones started and which are new.
+        self._last_rects: dict[Key, QRectF] = {}
+        self._slides: dict[Key, QRectF] = {}
+        self._fresh: set[Key] = set()
+        self._progress = 1.0
+        # A child, so it goes with the canvas and never paints one that is gone.
+        self._settling = QVariantAnimation(self)
+        self._settling.setStartValue(0.0)
+        self._settling.setEndValue(1.0)
+        self._settling.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._settling.valueChanged.connect(self._settle_step)
+        self._settling.finished.connect(self._settled)
         hand.preview_changed.connect(self.update)
 
     # What it shows
@@ -447,9 +501,62 @@ class HoursCanvas(QWidget):
     def set_week(
         self, occurrences: Sequence[Occurrence], today: int | None = None, now_min: int | None = None
     ) -> None:
+        previous = self._last_rects
         self.occurrences = tuple(occurrences)
         self.today, self.now_min = today, now_min
+        self._last_rects = self._rects()
+        if self._last_rects != previous:
+            # From where each block is drawn now, which is partway along if it is still sliding.
+            self._settle_from({key: self._shown_rect(key, rect) for key, rect in previous.items()})
         self.update()
+
+    def _rects(self) -> dict[Key, QRectF]:
+        return {
+            (drawn.block_id, drawn.span.day): track.transform.mapRect(rect)
+            for track in self.tracks
+            for drawn, rect in self.drawn(track)
+            if not drawn.held
+        }
+
+    def _settle_from(self, before: dict[Key, QRectF]) -> None:
+        """Slide each block that moved from where it was drawn, and fade in each that is new. A week
+        with nothing in common with the last, such as another week or the first, simply shows."""
+        self._settling.stop()
+        self._slides, self._fresh, self._progress = {}, set(), 1.0
+        level = app_level()
+        now = self._last_rects
+        shared = {key[0] for key in before} & {key[0] for key in now}
+        if DURATION_MS.get(level, 0) == 0 or not self.isVisible() or not shared:
+            return
+        gone = {key[0]: rect for key, rect in before.items() if key not in now}
+        for key, rect in now.items():
+            if key[0] == self.hand.dropped:
+                continue
+            start = before.get(key)
+            if start is None:
+                # Carried to another day by a change that was not a drag, such as Plan.
+                start = gone.get(key[0])
+            if start is None:
+                self._fresh.add(key)
+            elif start != rect:
+                self._slides[key] = start
+        if self._slides or self._fresh:
+            self._progress = 0.0
+            self._settling.setDuration(DURATION_MS[level])
+            self._settling.start()
+
+    def _settle_step(self, value: object) -> None:
+        self._progress = float(value)
+        self.update()
+
+    def _settled(self) -> None:
+        self._slides, self._fresh, self._progress = {}, set(), 1.0
+        self.update()
+
+    def _shown_rect(self, key: Key, rect: QRectF) -> QRectF:
+        """Where a block is drawn at this moment of its slide, in the canvas's coordinates."""
+        start = self._slides.get(key)
+        return rect if start is None else _between(start, rect, self._progress)
 
     def set_clock(self, today: int | None, now_min: int | None) -> None:
         if (today, now_min) != (self.today, self.now_min):
@@ -468,7 +575,10 @@ class HoursCanvas(QWidget):
     def relayout(self) -> None:
         area = QRectF(self.rect()).adjusted(self.gutter, self.header, 0, 0)
         self.tracks = self.lay_out(area) if area.width() > 0 and area.height() > 0 else []
-        self.update()
+        # A zoom or a resize moves every block, and none of them should slide for it.
+        self._settling.stop()
+        self._settled()
+        self._last_rects = self._rects()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -519,6 +629,7 @@ class HoursCanvas(QWidget):
                     missed=item.missed,
                     pinned=item.pinned,
                     axis=track.axis,
+                    short=self.short_words,
                 )
             )
         if (
@@ -590,6 +701,12 @@ class HoursCanvas(QWidget):
             self._paint_hint(painter, track)
             for drawn, rect in self.drawn(track):
                 with _fresh(painter):
+                    key = (drawn.block_id, drawn.span.day)
+                    if not drawn.held and key in self._slides:
+                        start = track.transform.inverted()[0].mapRect(self._slides[key])
+                        rect = _between(start, rect, self._progress)
+                    elif not drawn.held and key in self._fresh:
+                        painter.setOpacity(self._progress)
                     self.painter.block(painter, rect, drawn, upright_visible)
             if (
                 preview is not None
@@ -646,7 +763,8 @@ class HoursCanvas(QWidget):
                 if not drawn.held:
                     continue
                 words = preview.verdict.words
-                small = QFontMetrics(_small(painter.font())).horizontalAdvance(words) > rect.width() - 14
+                metrics = QFontMetrics(time_font(_small(painter.font())))
+                small = metrics.horizontalAdvance(words) > rect.width() - 14
                 if small or rect.height() < 30:
                     self.painter.label(
                         painter, track.transform.mapRect(rect), words, preview.verdict.ok, self._visible()
@@ -705,7 +823,8 @@ class HoursCanvas(QWidget):
                 round(minute - edge),
             )
             self.hand.select(drawn.block_id, drawn.span.day)
-            self.hand.press(self, held, at, home=(self, track))
+            # A click opens it; a drag moves or resizes it.
+            self.hand.press(self, held, at, tap=lambda: self.hand.open(drawn.block_id), home=(self, track))
             return
         track = self.track_at(point)
         if track is None:
@@ -749,7 +868,17 @@ class HoursCanvas(QWidget):
         if event.button() != Qt.MouseButton.LeftButton or hit is None:
             super().mouseDoubleClickEvent(event)
             return
-        self.hand.open(hit[0].block_id)
+        self.hand.open(hit[0].block_id, second_click=True)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """A right-click on a block asks for its menu. It picks nothing up, and on free time or while
+        something is carried it does nothing."""
+        hit = self._block_at(QPointF(event.pos()))
+        if hit is None or self.hand.busy:
+            event.ignore()
+            return
+        event.accept()
+        self.hand.ask_menu(hit[0].block_id, hit[0].span.day, event.globalPos())
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if self.hand.busy:

@@ -807,21 +807,29 @@ def child_main(args: argparse.Namespace) -> int:
         expect(club_now["start"] == "12:00", f"club is {club_now['start']}")
 
     def day_open(r: Rig) -> Step:
+        """A click opens the essay. A double-click, from habit, opens it once: its second click lands
+        on the editor the first one opened and does nothing there."""
         yield from day_tab(r)
         yield from r.reveal(3, 18 * 60 + 30, 20 * 60 + 30)
-        yield from r.double_click(middle(r.block_rect(ids["essay"], 3)))
-        yield (
-            "until",
-            lambda: isinstance(QApplication.activeModalWidget(), QDialog),
-            3000,
-            "the essay to open",
-        )
-        dialog = QApplication.activeModalWidget()
-        title = dialog.findChild(QLineEdit, "homeworkTitle")
-        opened = title.text() if title is not None else dialog.windowTitle()
-        dialog.reject()
-        yield ("wait", 300)
-        expect(opened == "History essay", f"opened {opened!r}")
+        for how in ("click", "double-click"):
+            point = middle(r.block_rect(ids["essay"], 3))
+            yield from (r.click(point) if how == "click" else r.double_click(point))
+            yield (
+                "until",
+                lambda: isinstance(QApplication.activeModalWidget(), QDialog),
+                3000,
+                f"the essay to open on a {how}",
+            )
+            dialog = QApplication.activeModalWidget()
+            title = dialog.findChild(QLineEdit, "homeworkTitle")
+            opened = title.text() if title is not None else dialog.windowTitle()
+            dialog.reject()
+            yield ("wait", 600)
+            expect(opened == "History essay", f"a {how} opened {opened!r}")
+            second = QApplication.activeModalWidget()
+            expect(second is None, f"a {how} opened a second editor: {second!r}")
+        yield from r.settled()
+        expect(block(ids["essay"])["start"] == "19:00", "opening the essay moved it")
 
     def week_agrees_with_day(r: Rig) -> Step:
         """Moved on Week, the essay is on Friday's Day at that time, and no longer on Thursday."""

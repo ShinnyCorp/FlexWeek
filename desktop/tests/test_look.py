@@ -9,12 +9,15 @@ appearance contract.
 
 from __future__ import annotations
 
+import math
 from itertools import product
 
 from desktop.native.calendar import CATEGORIES
 from desktop.native.look import (
     AA_TEXT,
     ACCENTS,
+    DARK_FILL,
+    FONT_FAMILIES,
     LOOK_DEFAULTS,
     LOOK_KNOBS,
     LOOK_PRESETS,
@@ -26,6 +29,7 @@ from desktop.native.look import (
     look_menu_token,
     look_menu_value,
     look_overrides,
+    mix,
     pack_axis,
     pack_stylesheet,
     parse_look_menu_token,
@@ -44,10 +48,24 @@ def look_of(preset: str, **knobs: str) -> dict:
     return {"preset": preset, "knobs": knobs}
 
 
-def test_the_look_menu_lists_packs_then_device_presets() -> None:
-    items = look_menu_items()
-    assert [kind for _name, _label, kind in items[:5]] == ["pack"] * 5
-    assert all(kind == "preset" for _name, _label, kind in items[5:])
+def test_the_look_menu_offers_four_looks_then_the_experimental_ones() -> None:
+    """Decision 3 of 0.16: System, Light, Dark and High contrast, and the other seven under
+    Experimental styles. Every pack and preset is still offered once, so a saved look can be picked."""
+    standard, experimental = look_menu_items()
+    assert [label for _name, label, _kind in standard] == ["System", "Light", "Dark", "High contrast"]
+    assert [label for _name, label, _kind in experimental] == [
+        "Nocturne",
+        "Slate",
+        "Poster",
+        "Terminal",
+        "Paper",
+        "Ink",
+        "Pastel",
+    ]
+    offered = [(kind, name) for name, _label, kind in standard + experimental]
+    assert sorted(offered) == sorted(
+        [("pack", name) for name in PACKS] + [("preset", name) for name in LOOK_PRESETS if name != "default"]
+    )
     assert look_menu_value("nocturne", {"preset": "default", "knobs": {}}) == look_menu_token(
         "pack", "nocturne"
     )
@@ -181,6 +199,31 @@ TEXT_PAIRS = [
 ]
 
 
+def test_the_app_asks_for_its_own_inter_first_and_the_system_sans_after() -> None:
+    assert FONT_FAMILIES["sans"].split(", ")[0] == "Inter"
+    assert FONT_FAMILIES["sans"].endswith("sans-serif")
+    assert "font-family: Inter, " in pack_stylesheet("slate", False, look_of("default"))
+    # Terminal and Paper keep their own faces for the app's words. The focus screen's countdown is
+    # drawn in the sans face whatever the look, so only the app-wide rule is read.
+    for name in ("terminal", "paper"):
+        app_wide = pack_stylesheet("slate", False, look_of(name)).split("QWidget {")[1].split("}")[0]
+        assert "font-family: Inter" not in app_wide, name
+
+
+def test_cards_are_padded_16_or_8_and_controls_keep_their_size() -> None:
+    """Cards and dialogs padded 8 px read as cramped. The padding grew; a button, a field or a list
+    kept its own, so none of them grew with it."""
+    for density, card, control in (("comfortable", 16, 8), ("compact", 8, 4)):
+        sheet = pack_stylesheet("slate", False, look_of("default", density=density))
+        frames = sheet.split("QFrame, QGroupBox, QTableWidget, QListWidget {")[1].split("}")[0]
+        assert f"padding: {card}px;" in frames, density
+        assert f"QAbstractScrollArea {{ padding: {control}px; }}" in sheet, density
+        button = sheet.split("QPushButton {")[1].split("}")[0]
+        assert f"padding: {control}px {control * 2}px;" in button, density
+        field = sheet.split("QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {")[1].split("}")[0]
+        assert f"padding: {control}px;" in field, density
+
+
 def test_every_look_keeps_its_text_readable() -> None:
     assert len(EVERY_LOOK) == 5 * 2 * 7 * 5 * 2
     for pack, system_dark, preset, accent, surface in EVERY_LOOK:
@@ -250,7 +293,7 @@ def test_depth_is_drawn_with_edges_because_qt_has_no_shadows() -> None:
 def test_a_block_shows_its_category_colour_in_the_place_the_knob_names() -> None:
     palette = resolved_palette("nocturne", True, None)
     blue = "#3b82f6"
-    filled = block_paint(look_of("default"), palette, blue)
+    filled = block_paint(look_of("default"), resolved_palette("slate", False, None), blue)
     assert (filled["fill"], filled["outline"], filled["edge"]) == (blue, None, None)
     outlined = block_paint(look_of("default", blocks="outlined"), palette, blue)
     assert (outlined["fill"], outlined["outline"], outlined["edge"]) == (palette["grid"], blue, None)
@@ -264,7 +307,8 @@ def test_a_block_shows_its_category_colour_in_the_place_the_knob_names() -> None
     assert bare["outline"] == palette["block_edge"]
     # A pale fill makes a vanishing outline on a light pack, so an outline or an edge uses the strong mark.
     pale, strong = "#bfdbfe", "#3b82f6"
-    assert block_paint(look_of("default"), palette, pale, "locked", strong)["fill"] == pale
+    light = resolved_palette("slate", False, None)
+    assert block_paint(look_of("default"), light, pale, "locked", strong)["fill"] == pale
     outlined_pale = block_paint(look_of("default", blocks="outlined"), palette, pale, "locked", strong)
     assert outlined_pale["outline"] == strong
     assert block_paint(look_of("default", blocks="edge"), palette, pale, "locked", strong)["edge"] == strong
@@ -278,6 +322,36 @@ def test_a_filled_block_is_readable_on_every_category_colour() -> None:
         assert ratio >= AA_TEXT, f"{name} {color}: best ink is only {ratio:.2f} to 1"
 
 
+def test_a_filled_block_on_a_dark_look_is_its_colour_sunk_into_the_panel_with_light_ink() -> None:
+    """A pale fill on near-black glared off the page. Every dark look, packs and presets, fills a
+    block with the category's strong colour mixed into the panel, and writes on it in white."""
+    seen = 0
+    for pack, system_dark, preset, accent, surface in EVERY_LOOK:
+        palette = resolved_palette(pack, system_dark, look_of(preset, surface=surface), accent)
+        if palette["axis"] != "dark":
+            continue
+        seen += 1
+        filled = look_of(preset, blocks="filled")
+        for name, category in CATEGORIES.items():
+            drawn = block_paint(filled, palette, category["color"], "locked", category["mark"])
+            where = f"{pack}/{preset}/{surface} {name}"
+            assert drawn["fill"] == mix(category["mark"], palette["panel"], DARK_FILL), where
+            assert drawn["ink"] == "#ffffff", where
+            assert contrast(drawn["ink"], drawn["fill"]) >= AA_TEXT, where
+    assert seen
+
+
+def test_homework_stands_apart_from_every_other_category() -> None:
+    """Activity was pink beside Homework's coral, 14 apart; a student could not tell a club from an
+    essay. Homework's pale fill is now at least 20 from every other category's, Activity teal."""
+    homework = _lab(CATEGORIES["assignments"]["color"])
+    for name, category in CATEGORIES.items():
+        if name != "assignments":
+            gap = math.dist(homework, _lab(category["color"]))
+            assert gap >= 20, f"{name} {category['color']} is {gap:.1f} from Homework"
+    assert (CATEGORIES["extra"]["color"], CATEGORIES["extra"]["mark"]) == ("#a5f3fc", "#06b6d4")
+
+
 def test_every_category_has_a_mark_of_its_own() -> None:
     """These began as the retired web client's category colours. What has to hold now that they live
     only here is that there are eight and no two are the same, or two kinds of block look alike."""
@@ -287,14 +361,8 @@ def test_every_category_has_a_mark_of_its_own() -> None:
 
 
 def test_paper_and_pastel_are_light_looks_on_any_pack_and_close_the_menu() -> None:
-    assert [name for name, _label, kind in look_menu_items() if kind == "preset"] == [
-        "terminal",
-        "poster",
-        "ink",
-        "high-contrast",
-        "paper",
-        "pastel",
-    ]
+    standard, experimental = look_menu_items()
+    assert [name for name, _label, _kind in experimental][-3:] == ["paper", "ink", "pastel"]
     for preset, accent in (("paper", "#8a4b2a"), ("pastel", "#7a3e9d")):
         for pack, system_dark in (("nocturne", True), ("dark-frost", True), ("slate", False)):
             palette = resolved_palette(pack, system_dark, look_of(preset))
@@ -342,8 +410,6 @@ def test_every_accent_stays_clearly_apart_from_every_category_colour() -> None:
     category. The web client's theme-tokens test enforced this and was deleted with the client;
     nothing native replaced it until a documentation sweep noticed the rule's only guard was gone.
     School blue against the default light accent is the near miss, at about 18."""
-    import math
-
     reached = {}
     for pack, system_dark, preset, accent, surface in EVERY_LOOK:
         colour = resolved_palette(pack, system_dark, look_of(preset, surface=surface), accent)["accent"]

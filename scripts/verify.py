@@ -62,6 +62,9 @@ def main() -> int:
                     "-m",
                     "pytest",
                     "-q",
+                    # One worker a core: the suite took 461 s on one and about a minute on eight.
+                    "-n",
+                    "auto",
                     f"--junitxml={report}",
                     *(["backend/tests"] if args.backend_only else []),
                 ],

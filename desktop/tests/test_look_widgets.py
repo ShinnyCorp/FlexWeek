@@ -24,7 +24,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QRectF, QStandardPaths
     from PySide6.QtGui import QColor
-    from PySide6.QtWidgets import QApplication, QComboBox, QPushButton, QWidget
+    from PySide6.QtWidgets import QApplication, QComboBox, QDialog, QPushButton, QVBoxLayout, QWidget
 
     from desktop.native.calendar import CATEGORIES
     from desktop.native.hours.canvas import Drawn
@@ -32,14 +32,18 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.hours.hand import Hand, Verdict
     from desktop.native.hours.month import MonthGrid
     from desktop.native.look import (
+        DARK_FILL,
         LOOK_DEFAULTS,
         effective_look,
         look_menu_token,
+        mix,
+        pack_stylesheet,
         preset_knobs,
         resolved_palette,
     )
-    from desktop.native.settings import PrefsDialog
+    from desktop.native.settings import AboutDialog, SettingsPage
     from desktop.native.weekmodel import build_week
+    from desktop.native.widgets import DIALOG_MARGIN, use_app_style
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
     from desktop.tests.logic_support import past_setup
@@ -130,11 +134,20 @@ def test_the_category_table_is_what_these_tests_assume() -> None:
 
 
 def test_a_filled_block_is_the_pale_category_colour_with_ink_that_reads(qapp: QApplication) -> None:
-    calendar, palette = week(qapp, look_of())
+    calendar, palette = week(qapp, look_of(), pack="slate")
     assert shape(calendar, "school") == (PALE, "#000000", None, None)
     # No category: the palette's own block colours, not a fixed light grey that glares on a dark pack.
     assert shape(calendar, "club")[:2] == (palette["block_locked"], palette["block_locked_ink"])
     assert pixel(calendar, "school", "inside") == PALE
+
+
+def test_a_filled_block_on_a_dark_pack_is_deep_with_light_ink(qapp: QApplication) -> None:
+    """Pale blue on near-black glared, and its black ink read as a hole in the page."""
+    calendar, palette = week(qapp, look_of())
+    deep = mix(STRONG, palette["panel"], DARK_FILL)
+    assert shape(calendar, "school") == (deep, "#ffffff", None, None)
+    assert pixel(calendar, "school", "inside") == deep
+    assert shape(calendar, "club")[:2] == (palette["block_locked"], palette["block_locked_ink"])
 
 
 def test_an_outlined_block_is_drawn_as_one_outline_in_the_strong_colour(qapp: QApplication) -> None:
@@ -159,7 +172,7 @@ def test_the_outline_stays_visible_on_a_light_pack(qapp: QApplication) -> None:
 
 
 def test_changing_the_look_repaints_the_week_already_on_screen(qapp: QApplication) -> None:
-    calendar, palette = week(qapp, look_of())
+    calendar, palette = week(qapp, look_of(), pack="slate")
     assert shape(calendar, "school")[0] == PALE
     calendar.set_look(look_of(blocks="edge"), palette)
     fill, _ink, _outline, edge = shape(calendar, "school")
@@ -185,8 +198,8 @@ def test_days_outside_the_month_use_the_palettes_muted_ink(qapp: QApplication) -
     assert grid.canvas.painter.c("muted").name() == terminal["muted"] == "#7fbf7f"
 
 
-def settings(look: dict) -> PrefsDialog:
-    return PrefsDialog(None, {}, look, {})
+def settings(look: dict) -> SettingsPage:
+    return SettingsPage(None, {}, look, {})
 
 
 def test_settings_opens_on_appearance_with_fine_tune_closed(qapp: QApplication) -> None:
@@ -197,17 +210,17 @@ def test_settings_opens_on_appearance_with_fine_tune_closed(qapp: QApplication) 
     assert dialog.fine_host.isHidden() is False
 
 
-def choose(dialog: PrefsDialog, token: str) -> None:
+def choose(dialog: SettingsPage, token: str) -> None:
     index = dialog.look.findData(token)
     assert index >= 0, token
     dialog.look.setCurrentIndex(index)
 
 
-def move(dialog: PrefsDialog, knob: str, value: str) -> None:
+def move(dialog: SettingsPage, knob: str, value: str) -> None:
     dialog.knobs[knob].setCurrentIndex(dialog.knobs[knob].findData(value))
 
 
-def shown(dialog: PrefsDialog) -> dict:
+def shown(dialog: SettingsPage) -> dict:
     return {knob: box.currentData() for knob, box in dialog.knobs.items()}
 
 
@@ -296,3 +309,33 @@ def test_a_look_chosen_in_the_window_reaches_the_calendar_not_only_the_styleshee
             window.session.client.reset()
         qapp.processEvents()
         server.stop()
+
+
+def test_a_dialogs_content_sits_24_px_in_from_its_edges(qapp: QApplication) -> None:
+    """Qt's styles give a dialog about 11 px. The app's style gives every dialog 24, and a layout
+    inside it, or one given margins of its own, keeps what it had."""
+    use_app_style(qapp)
+    host = QWidget()
+    HOSTS.append(host)
+    about = AboutDialog(host, None, "/tmp/flexweek")
+    margins = about.layout().contentsMargins()
+    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (DIALOG_MARGIN,) * 4
+    assert DIALOG_MARGIN == 24
+    plain = QDialog(host)
+    outer = QVBoxLayout(plain)
+    inner_host = QWidget()
+    inner = QVBoxLayout(inner_host)
+    outer.addWidget(inner_host)
+    assert inner.contentsMargins().left() < DIALOG_MARGIN
+    outer.setContentsMargins(0, 0, 0, 0)
+    assert outer.contentsMargins().left() == 0
+
+
+def test_todays_name_above_the_week_is_marked_and_no_other(qapp: QApplication) -> None:
+    calendar, palette = week(qapp, look_of(), pack="slate")
+    assert [label.property("today") for label in calendar._name_labels] == [False] * 7
+    calendar.set_week(build_week(WEEK, [SCHOOL, CLUB], {}, None), 2, 7 * 60)
+    assert [label.property("today") for label in calendar._name_labels] == [False, False, True] + [False] * 4
+    sheet = pack_stylesheet("slate", False, look_of())
+    assert f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: 700; ' in sheet
+    assert f'border-bottom: 2px solid {palette["accent"]}; border-radius: 0; }}' in sheet

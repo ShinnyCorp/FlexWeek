@@ -658,6 +658,8 @@ class Preferences(BaseModel):
     )
     # Minutes a dragged, resized or drawn block moves by. Typed times are any minute either way.
     drag_step_min: Literal[5, 15] = Field(default=5, exclude_if=lambda value: value == 5)
+    # Times on screen as 16:00 or as 4:00 PM. Stored and sent as HH:MM either way.
+    clock_24h: bool = Field(default=True, exclude_if=lambda value: value is True)
     setup: SetupProgress | None = Field(default=None, exclude_if=lambda value: value is None)
 
     _spotify_url = field_validator("default_spotify_url")(valid_spotify_url)
@@ -889,6 +891,7 @@ def encode_comfort(preferences: Preferences) -> str:
             "alarm_tone": preferences.alarm_tone,
             "planning_style": preferences.planning_style,
             "drag_step_min": preferences.drag_step_min,
+            "clock_24h": preferences.clock_24h,
             "setup": preferences.setup.model_dump() if preferences.setup is not None else None,
         },
         separators=(",", ":"),
@@ -929,6 +932,7 @@ def preferences_from_row(row: sqlite3.Row) -> dict:
         alarm_tone=comfort.get("alarm_tone", "chime"),
         planning_style=comfort.get("planning_style", "suggest"),
         drag_step_min=comfort.get("drag_step_min", 5),
+        clock_24h=bool(comfort.get("clock_24h", True)),
         setup=comfort.get("setup"),
     ).model_dump()
 

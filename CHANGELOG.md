@@ -3,6 +3,133 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.0] - 2026-09-26
+
+### Added
+- Homework can be deleted: with Delete at the bottom left of its editor, with
+  Delete beside each homework under Unfinished, or with Delete homework on its
+  right-click menu, which is also how homework with no time yet goes. It asks
+  first. Its times go too, in every week, even weeks not open, and one Undo
+  brings the homework and all of them back.
+- FlexWeek brings its own typeface, Inter, in four weights, so it looks the same
+  on every computer. A computer without the files falls back to its own sans.
+- The now line carries the time, "15:40", on a small pill where it starts.
+- A new account's empty week says "Nothing here yet." with one button, "Add
+  your first homework", in place of empty hours on Week and Day. The hours come
+  back with the first block or homework. A student who has homework keeps the
+  hours on every week.
+- A focus screen: Start focus, Quick focus or F shows the timer on its own, the
+  countdown large, with the phase, the homework, and Pause, Skip and Finish.
+  With no timer running it offers Start. Back or Esc returns to the week and
+  the timer keeps running.
+- Ctrl+K opens a command bar: type a few letters of Add homework, Add fixed
+  time, School hours, Day, Week, Month, My day, Plan my homework, Settings,
+  Help, Focus screen or any homework's name, and press Enter. Help lists F and
+  Ctrl+K.
+- A 12-hour clock. Settings > This computer > Clock offers 24-hour (as before)
+  or 12-hour, and every time FlexWeek writes follows it: "4:00 PM" on the
+  hours, blocks, Month, due dates, the Next line, reminders, Running late,
+  setup and the time boxes. Times are still saved as 16:00.
+- Recovery codes have Copy, which puts all eight on the clipboard, and Save…,
+  which writes them to a text file, one per line. They are drawn in a
+  fixed-width face so 0 and O, 1 and l read apart.
+- FlexWeek's own icon: a blue rounded square with three white week blocks,
+  drawn by `scripts/brand.py` into `desktop/assets/logo.png` and a
+  multi-size `logo.ico` the Windows build now uses. Sign in and the recovery
+  codes page show it beside the wordmark.
+- Help lists Ctrl+K (Command bar) and F (Focus screen).
+- Right-click a block, on the hours, Month or among homework with no time yet,
+  for Open, Duplicate, Finished (homework) and Delete. Delete asks first and
+  can be undone; Duplicate shows the same preview as Ctrl+D.
+
+### Changed
+- Every time is written in figures of one width: the hours, a block's times,
+  the Next line and every time box, so a column of times stays straight.
+- Cards are padded 16 px, or 8 at Compact spacing, and dialogs 24. Buttons,
+  fields, lists and menus keep their size.
+- Activity blocks are teal, so they no longer look like homework's coral.
+- On a dark look a block is its category's colour sunk into the page, written
+  on in white, instead of a pale fill that glared.
+- The hours have a rule at each hour and none at the half hour, and the rules
+  are stronger on a dark look. Today's column is washed a little more, and its
+  name above the week is in the accent with a line under it.
+- While a focus timer runs, the strip above the hours shows one line and a
+  Focus screen button; Pause, Skip and Reset are on the focus screen.
+- Help is two columns over a wide window: the screens as short cards on the
+  left, the keyboard shortcuts on the right. At large text it is one column.
+- About says "Your plans are saved on this computer." with an Open folder
+  button, instead of printing the folder's path.
+- Running late's preview says "from 16:00 to 17:30", "placed at 18:00" or
+  "moves off 19:00 and is not placed" instead of arrows, and setup's "Choose
+  my own look instead" loses its arrow.
+- The top bar's Day, Week, Month and My day are one segmented control, the
+  chosen view raised in it.
+- Add is the top bar's one filled button: a click adds homework, and its arrow
+  offers Add fixed time, School hours and the types to drag onto the calendar.
+  Adding left the More menu. Plan my homework is a plain button beside it.
+- Week has a side, as Day does: the Next line, the homework to start a focus
+  timer on, and Not placed yet, beside the hours instead of stacked above
+  them. Above the hours only a running focus timer shows. On a window under
+  1150 pixels the side folds into one line above the hours, "Next: … · Not
+  placed yet: 2" with the chips after it, and blocks show their names only, on
+  two lines if they need them, so "Soccer practice" is not cut to "Soccer …".
+- One toast carries every notice: what a drag, Plan, Finished or Delete did,
+  with its Undo; Find a new time; Open release page; reminders; and anything
+  FlexWeek has to say. It floats over the foot of the hours, never below the
+  window, lets clicks through to the hours except on its button, and goes
+  after 6 seconds (12 with a button) or when the student changes view, week,
+  day or design. The status line under the hours is gone, and "Saved." is no
+  longer said after every change.
+- Month opens with the student's week as its first row, the weeks after it
+  filling the view and the weeks before a scroll away. In a month's last week
+  the week before stays above it, so two weeks always show.
+- The smallest window is 800 pixels wide.
+- Settings fills the window in place of the week instead of opening as a
+  dialog: the sections on the left, each one's settings in cards on the right,
+  and Done or Esc goes back. Changes still show at once and save themselves.
+  On or off is a switch; two or three choices sit side by side, such as
+  Spacing: Comfortable | Compact. The main view and the day screen are picked
+  from pictures of each design.
+- Today's app and Timeline are the main views offered first, and Day dial is
+  the day screen a new account starts with. Mission control, Bento, Retro
+  desktop, Clay deck and One thing are under "Experimental styles" in setup
+  and Settings. Looks are System, Light, Dark and High contrast, with Nocturne,
+  Slate, Poster, Terminal, Paper, Ink and Pastel under the same heading. Every
+  saved choice still opens.
+- Each dialog has one filled button, its answer. More details, sign in's
+  Show, Cancel, Close, Not now, Snooze, Preview, the Account dialog's other
+  actions and Routines' Apply and Delete are plain.
+- Routines is two cards, "Save this week as a routine" and "Use a saved
+  routine", each saying what it does, and says "No routines saved yet." rather
+  than showing an empty box. Running late is a card that says nothing changes
+  until you accept, and shows its list of moves once there is a preview. A
+  running focus timer is a card with Pause as its one filled button.
+- A click on a block opens it; a drag still moves or resizes it, and Enter
+  still opens the chosen block. A double-click opens it once, and its second
+  click does nothing to the editor the first opened.
+- School hours asks what setup asks: the days, and from and to. Ticking no day
+  takes School off the calendar. It used to open the Edit event dialog.
+- Switching views crossfades the new view in, dialogs ease in, and after Plan
+  the blocks that moved slide to their places and new ones fade in. A block
+  you drag is simply where you let it go. Animations Off turns all of it off.
+
+### Fixed
+- A one-hour block, such as Club at 19:00, shows its name and its times on two
+  lines instead of one shortened line.
+- The Linux and Windows builds include the icon the window shows. The app looked
+  for it beside its code, and no package had ever put it there.
+- Finished, after a focus session on homework, finishes the homework. It did
+  nothing before.
+- Sign in said "Welcome back." on the very first launch. It says "Welcome."
+  until someone has signed in on this computer.
+- Add homework's Title started as the word "Homework", so typing a title gave
+  "HomeworkMath worksheet". It starts empty, with "Homework" as a grey hint.
+- Setup's planning-hours presets read as choices that never showed as chosen.
+  They are "+ After school", "+ Evenings" and "+ Weekend mornings" buttons
+  under "Each adds a row of hours you can change."
+- Setup's alarm sounds line up: each Play is level with its sound's name, all
+  of them in one column.
+
 ## [0.15.0] - 2026-09-25
 
 ### Added

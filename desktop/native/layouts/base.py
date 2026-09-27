@@ -316,8 +316,9 @@ def day_buttons(
 
 
 def plan_buttons(view: LayoutView, prefix: str, add_words: str) -> list[QPushButton]:
-    """Add homework. Plan my homework and My day live in the top bar in every layout."""
-    add = button(add_words, f"{prefix}Add", "main")
+    """Add homework, drawn as a design's second button: the top bar's Add is the one filled action
+    in every layout since 0.16, and Plan my homework and My day live there too."""
+    add = button(add_words, f"{prefix}Add")
     add.clicked.connect(lambda _=False: view.add_requested.emit(""))
     return [add]
 

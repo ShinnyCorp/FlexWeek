@@ -49,3 +49,28 @@ def test_both_builds_ship_the_plugin_that_makes_an_alarm_audible() -> None:
     alarm still shows its dialog, and it rings silently, which is the one thing an alarm must not do."""
     for text in (LINUX, WINDOWS):
         assert "include-qt-plugins=multimedia," in text
+
+
+def test_the_windows_build_takes_its_icon_from_the_ico_with_every_size() -> None:
+    """Nuitka's --windows-icon-from-ico was handed the PNG. The .ico carries each size Windows asks
+    for, drawn at that size by scripts/brand.py."""
+    import struct
+
+    assert "--windows-icon-from-ico=$(Join-Path $Root 'desktop\\assets\\logo.ico')" in WINDOWS
+    data = (ROOT / "desktop/assets/logo.ico").read_bytes()
+    reserved, kind, count = struct.unpack_from("<HHH", data)
+    assert (reserved, kind) == (0, 1)
+    sides = [data[6 + 16 * index] or 256 for index in range(count)]
+    assert sides == [256, 128, 64, 48, 32, 16]
+    assert (ROOT / "desktop/assets/logo.png").read_bytes()[16:24] == struct.pack(">II", 512, 512)
+
+
+def test_both_builds_ship_the_icon_and_the_fonts_where_the_app_looks_for_them() -> None:
+    """Nuitka compiles code and leaves every other file behind unless told. The icon never shipped
+    before 0.16 for that reason, and the bundled Inter would not have either."""
+    assert '--include-data-dir="$ROOT/desktop/assets=desktop/assets"' in LINUX
+    assert "--include-data-dir=$(Join-Path $Root 'desktop\\assets')=desktop/assets" in WINDOWS
+    fonts = ROOT / "desktop/assets/fonts"
+    for face in ("Regular", "Medium", "SemiBold", "Bold"):
+        assert (fonts / f"Inter-{face}.ttf").is_file(), face
+    assert "SIL Open Font License" in (fonts / "LICENSE.txt").read_text(encoding="utf-8")

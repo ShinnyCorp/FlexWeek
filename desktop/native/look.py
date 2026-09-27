@@ -101,8 +101,8 @@ LOOK_PRESET_LABELS = {
 }
 PACK_LABELS = {
     "system": "System",
-    "light-frost": "Light frost",
-    "dark-frost": "Dark frost",
+    "light-frost": "Light",
+    "dark-frost": "Dark",
     "nocturne": "Nocturne",
     "slate": "Slate",
 }
@@ -114,14 +114,18 @@ TEXT_PT = {"small": 10, "normal": 12, "large": 15}
 # line edit has no minimum of its own worth the name, so the text inside gets sliced in half rather
 # than the dialog refusing to shrink. Measured against the app's own font at each size.
 FIELD_MIN_PX = {"small": 22, "normal": 26, "large": 34}
-DENSITY_PAD = {"comfortable": 8, "compact": 4}
+# A card's padding, and the smaller one of a button, a field, a list or a menu, which keep their heights.
+DENSITY_PAD = {"comfortable": 16, "compact": 8}
+CONTROL_PAD = {"comfortable": 8, "compact": 4}
 CORNER_RADIUS = {"round": 8, "sharp": 0, "pill": 16}
 FONT_FAMILIES = {
-    "sans": "Noto Sans, DejaVu Sans, sans-serif",
+    "sans": "Inter, Noto Sans, DejaVu Sans, sans-serif",
     "mono": "Noto Sans Mono, DejaVu Sans Mono, monospace",
     "serif": "Noto Serif, DejaVu Serif, serif",
 }
 AA_TEXT = 4.5
+# How much of a category's strong colour a block on a dark look takes over the panel.
+DARK_FILL = 0.35
 DARK_INK = "#0b1224"
 LIGHT_INK = "#ffffff"
 
@@ -432,11 +436,32 @@ def resolved_pack_theme(pack: object, system_dark: bool) -> str:
     return chosen
 
 
-def look_menu_items() -> list[tuple[str, str, str]]:
-    """One Look list: account packs first, then device presets. Pack default is the pack itself."""
-    items = [(name, PACK_LABELS[name], "pack") for name in PACKS]
-    items.extend((name, LOOK_PRESET_LABELS[name], "preset") for name in LOOK_PRESETS if name != "default")
-    return items
+# The looks offered first, as (kind, name); every other pack and preset is experimental.
+STANDARD_LOOKS = (
+    ("pack", "system"),
+    ("pack", "light-frost"),
+    ("pack", "dark-frost"),
+    ("preset", "high-contrast"),
+)
+EXPERIMENTAL_LOOKS = (
+    ("pack", "nocturne"),
+    ("pack", "slate"),
+    ("preset", "poster"),
+    ("preset", "terminal"),
+    ("preset", "paper"),
+    ("preset", "ink"),
+    ("preset", "pastel"),
+)
+
+
+def look_menu_items() -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
+    """The Look list in two groups, standard then experimental, each item (name, label, kind). A pack
+    is the pack with its own knobs; a preset is a bundle of knobs on the account's pack."""
+
+    def item(kind: str, name: str) -> tuple[str, str, str]:
+        return name, (PACK_LABELS if kind == "pack" else LOOK_PRESET_LABELS)[name], kind
+
+    return [item(*entry) for entry in STANDARD_LOOKS], [item(*entry) for entry in EXPERIMENTAL_LOOKS]
 
 
 def look_menu_token(kind: str, name: str) -> str:
@@ -534,7 +559,9 @@ def block_paint(
     """How one calendar block is drawn: its fill, its ink, and where the category colour goes.
 
     `category_color` is the pale fill; `mark` is the strong colour of the same category. A pale
-    outline vanishes on a light pack, so an outline or an edge is drawn with the mark.
+    outline vanishes on a light pack, so an outline or an edge is drawn with the mark. On a dark
+    look a pale fill glared off the page, so a filled block there is the mark sunk into the panel,
+    with light ink.
     """
     flexible = kind == "flexible"
     neutral = palette["block_flex" if flexible else "block_locked"]
@@ -552,13 +579,8 @@ def block_paint(
             "edge": mark,
         }
     if category_color:
-        return {
-            "mode": mode,
-            "fill": category_color,
-            "ink": readable_ink(category_color),
-            "outline": None,
-            "edge": None,
-        }
+        fill = mix(mark, palette["panel"], DARK_FILL) if palette.get("axis") == "dark" else category_color
+        return {"mode": mode, "fill": fill, "ink": readable_ink(fill), "outline": None, "edge": None}
     return {"mode": mode, "fill": neutral, "ink": neutral_ink, "outline": None, "edge": None}
 
 
@@ -693,6 +715,63 @@ def control_rules(palette: dict, radius: int, size: int, art: dict[str, str]) ->
         f"QProgressBar::chunk {{ background: {palette['accent']}; border-radius: 4px; }}"
         f"QLineEdit:focus, QComboBox:focus, QAbstractSpinBox:focus, QPlainTextEdit:focus {{ "
         f"border: 1px solid {palette['accent']}; }}"
+        # A switch is a check box whose box is a pill with a knob, drawn whole by `control_art`.
+        'QCheckBox[switch="true"] { spacing: 10px; }'
+        'QCheckBox[switch="true"]::indicator { width: 34px; height: 20px; border: none; '
+        f"background: transparent; border-radius: 10px; image: url({art['switch_off']}); }}"
+        f'QCheckBox[switch="true"]::indicator:checked {{ image: url({art["switch_on"]}); }}'
+        f'QCheckBox[switch="true"]::indicator:disabled {{ image: url({art["switch_off_off"]}); }}'
+        f'QCheckBox[switch="true"]::indicator:checked:disabled {{ image: url({art["switch_on_off"]}); }}'
+    )
+
+
+def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> str:
+    """Settings as a page: a list of sections on the left, cards on the right, and segmented choices.
+    Dialogs laid out in cards use the same card.
+
+    A segmented control is a sunken track with the chosen segment raised on it, so two or three
+    choices read as one control with one answer.
+    """
+    edges = _depth_rules(depth, palette)
+    card_radius = max(radius, 10)
+    track = mix(palette["text"], palette["panel"], 0.07)
+    chosen_edge = "none" if depth == "flat" else f"1px solid {palette['hairline_strong']}"
+    selected = mix(palette["accent"], palette["panel"], 0.16)
+    return (
+        f"QWidget#settingsPage {{ background: {palette['window']}; }}"
+        # Bare widgets inside a card, which the app-wide rule would paint as a band of page colour.
+        "QWidget#settingsRow, QWidget#settingsBody, QWidget#settingsFooter, QWidget#prefFineHost, "
+        "QWidget#prefReminderControls, QFrame[designs=\"true\"] { background: transparent; "
+        "border: none; padding: 0; }"
+        f"QWidget#settingsRail {{ background: {palette['panel']}; }}"
+        "QScrollArea#settingsScroll { background: transparent; border: none; padding: 0; border-radius: 0; }"
+        f"QListWidget#prefsNav {{ background: {palette['panel']}; border: none; border-radius: 0; "
+        "padding: 16px 8px; }"
+        f"QListWidget#prefsNav::item {{ color: {palette['muted']}; padding: {pad + 4}px 12px; "
+        f"border-radius: {max(radius - 2, 4)}px; }}"
+        f"QListWidget#prefsNav::item:hover {{ background: {palette['hairline']}; color: {palette['text']}; }}"
+        f"QListWidget#prefsNav::item:selected {{ background: {selected}; color: {palette['text']}; }}"
+        f"QLabel#settingsTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
+        f"QFrame#settingsCard, QFrame#dialogCard {{ background: {palette['panel']}; "
+        f"border-radius: {card_radius}px; padding: 0; {edges} }}"
+        "QLabel#prefsHeading, QLabel#layoutMainHeading, QLabel#layoutDayHeading, QLabel#cardTitle { "
+        f"font-size: {size + 1}pt; font-weight: 700; color: {palette['text']}; }}"
+        "QLabel#settingsCardNote, QLabel#cardNote, QLabel#settingsExperimental, QLabel#prefPlanningNote, "
+        "QLabel#prefDndNote, "
+        "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits { "
+        f"color: {palette['muted']}; }}"
+        "QLabel#settingsExperimental { font-weight: 700; margin-top: 6px; }"
+        f'QFrame[segmented="true"] {{ background: {track}; border: none; '
+        f"border-radius: {max(radius, 6) + 2}px; padding: 0; }}"
+        f'QPushButton[segment="true"] {{ background: transparent; color: {palette["muted"]}; border: none; '
+        # One weight whether chosen or not: a bolder chosen segment was wider than the room it was given.
+        f"border-radius: {max(radius, 6)}px; padding: {max(pad - 2, 3)}px {pad + 8}px; font-weight: 600; "
+        "min-height: 0; }"
+        f'QPushButton[segment="true"]:hover {{ color: {palette["text"]}; }}'
+        f'QPushButton[segment="true"]:checked {{ background: {palette["field"]}; color: {palette["text"]}; '
+        f"border: {chosen_edge}; }}"
+        'QPushButton[segment="true"]:disabled { background: transparent; '
+        f'color: {palette["hairline_strong"]}; }}'
     )
 
 
@@ -775,7 +854,8 @@ def pack_stylesheet(
 ) -> str:
     palette = palette if palette is not None else resolved_palette(pack, system_dark, look, accent)
     knobs = effective_look(look)
-    pad = DENSITY_PAD[knobs["density"]]
+    card = DENSITY_PAD[knobs["density"]]
+    pad = CONTROL_PAD[knobs["density"]]
     size = TEXT_PT[knobs["text"]]
     family = FONT_FAMILIES[knobs["font"]]
     radius = CORNER_RADIUS[knobs["corners"]]
@@ -788,15 +868,19 @@ def pack_stylesheet(
         quiet_edge = f"background: {palette['hairline']}; border: none;"
     else:
         quiet_edge = f"background: transparent; border: 1px solid {palette['hairline_strong']};"
+    # A flat look draws no lines at all, so its segments are told apart by the raised one alone.
+    divider = "none" if knobs["depth"] == "flat" else f"1px solid {palette['hairline_strong']}"
     return (
         f"QMainWindow, QDialog, QWidget {{ background: {palette['window']}; color: {palette['text']}; "
         f"font-family: {family}; font-size: {size}pt; }}"
         f"QFrame, QGroupBox, QTableWidget, QListWidget {{ background: {palette['panel']}; "
-        f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; {edges} }}"
+        f"color: {palette['text']}; padding: {card}px; border-radius: {radius}px; {edges} }}"
+        # Lists, tables and scroll areas are frames too, but their padding is room around rows.
+        f"QAbstractScrollArea {{ padding: {pad}px; }}"
         # A group's title sits in the space above its frame. Without the room it was drawn on the
         # frame line, over the first row of what it names.
         f"QGroupBox {{ margin-top: {round(size * 1.9) + 4}px; }}"
-        f"QGroupBox::title {{ subcontrol-origin: margin; left: {pad + 4}px; padding: 0 4px; }}"
+        f"QGroupBox::title {{ subcontrol-origin: margin; left: {card + 4}px; padding: 0 4px; }}"
         f"QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {{ background: {palette['field']}; "
         f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; "
         f"min-height: {field_min}px; {edges} }}"
@@ -838,9 +922,10 @@ def pack_stylesheet(
         f'QPushButton[quiet="true"]:hover {{ background: {palette["hairline"]}; }}'
         f'QPushButton[danger="true"] {{ background: {palette["error"]}; '
         f'color: {readable_ink(palette["error"])}; }}'
-        f"QPushButton#deleteBlock {{ background: transparent; color: {palette['error']}; border: none; "
+        f"QPushButton#deleteBlock, QPushButton#deleteHomework {{ background: transparent; "
+        f"color: {palette['error']}; border: none; "
         f"padding: {pad}px 2px; font-weight: 600; min-height: 0; }}"
-        f"QPushButton#deleteBlock:hover {{ text-decoration: underline; }}"
+        f"QPushButton#deleteBlock:hover, QPushButton#deleteHomework:hover {{ text-decoration: underline; }}"
         # Homework that still needs a time, to be dragged onto the hours: it looks like homework, not
         # like a button that does something when pressed.
         f"QPushButton[tray=\"true\"] {{ background: {palette['panel']}; color: {palette['text']}; "
@@ -850,6 +935,8 @@ def pack_stylesheet(
         f"QLabel#focusTask {{ font-weight: 600; }}"
         f"QLabel#focusPhase {{ color: {palette['muted']}; }}"
         f"QLabel#focusTime {{ font-family: {MONO_FAMILY}; font-weight: 700; }}"
+        f"QLabel#recoveryList {{ font-family: {MONO_FAMILY}; }}"
+        f"QLabel#recoveryStatus {{ color: {palette['error']}; }}"
         f"QWidget#authCard {{ background: {palette['panel']}; border-radius: {radius}px; {edges} }}"
         f"QLabel#authBrand {{ font-size: {size + 8}pt; font-weight: 700; color: {palette['accent']}; }}"
         f"QLabel#authHeading {{ font-weight: 600; font-size: {size + 3}pt; }}"
@@ -866,13 +953,23 @@ def pack_stylesheet(
         # something laid over the calendar rather than printed onto it.
         # The week you are on, said once and said large.
         f"QLabel#weekTitle {{ font-size: {size + 6}pt; font-weight: 700; color: {palette['text']}; }}"
-        # Day / Week / Month read as one control rather than three buttons of equal weight.
+        # Today's name above the week, in the accent over a 2 px line. The others keep a clear line,
+        # so the row does not move when the day changes.
+        f'QLabel[today="false"] {{ border-bottom: 2px solid transparent; border-radius: 0; }}'
+        f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: 700; '
+        f'border-bottom: 2px solid {palette["accent"]}; border-radius: 0; }}'
+        # Day / Week / Month / My day are one segmented control: a shared track, the chosen view
+        # raised in the panel colour, the others muted, a hairline between them.
         f"QPushButton#viewDay, QPushButton#viewWeek, QPushButton#viewMonth, QPushButton#viewMyDay {{ "
-        f"background: transparent; color: {palette['muted']}; font-weight: 400; "
-        f"padding: {pad}px {pad * 2}px; {edges} }}"
+        f"background: transparent; color: {palette['muted']}; font-weight: 500; "
+        f"padding: {pad}px {round(pad * 1.5)}px; border: none; border-radius: {max(radius - 2, 0)}px; "
+        f"border-left: {divider}; }}"
+        f'QPushButton[segment="first"] {{ border-left: none; }}'
+        f"QPushButton#viewDay:hover, QPushButton#viewWeek:hover, QPushButton#viewMonth:hover, "
+        f"QPushButton#viewMyDay:hover {{ color: {palette['text']}; }}"
         f"QPushButton#viewDay:checked, QPushButton#viewWeek:checked, QPushButton#viewMonth:checked, "
         f"QPushButton#viewMyDay:checked {{ background: {palette['panel']}; color: {palette['text']}; "
-        f"font-weight: 700; }}"
+        f"font-weight: 600; border-left: none; {edges} }}"
         # The arrows are navigation, not actions, so they carry no fill.
         f"QPushButton#prevWeek, QPushButton#nextWeek {{ background: transparent; "
         f"color: {palette['text']}; font-size: {size + 3}pt; font-weight: 700; "
@@ -886,13 +983,13 @@ def pack_stylesheet(
         # One filled button on the page: the thing the app is for.
         f"QLabel#blockDurationLine {{ color: {palette['muted']}; }}"
         f"QLabel#blockDurationLine[problem=\"true\"] {{ color: {palette['error']}; font-weight: 600; }}"
-        f"QLabel#prefsHeading, QLabel#layoutMainHeading, QLabel#layoutDayHeading {{ font-weight: 700; "
-        f"color: {palette['muted']}; }}"
         f"QLabel#aboutVersion {{ font-size: {size + 4}pt; font-weight: 700; }}"
         f"QLabel#helpKey {{ font-weight: 600; }}"
+        f"QLabel#helpScreenName {{ font-weight: 700; }}"
         f"QPushButton#moreButton, QPushButton#settingsGear {{ background: transparent; "
         f"color: {palette['muted']}; {edges} }}"
         + setup_rules(palette, radius, size, pad, knobs["depth"])
+        + settings_rules(palette, radius, size, pad, knobs["depth"])
         + f"QPushButton#authSwitch, QPushButton#forgotPassword, QPushButton#updateSkip {{ "
         f"background: transparent; "
         f"color: {palette['accent']}; border: none; padding: {pad}px 0; "
@@ -903,8 +1000,53 @@ def pack_stylesheet(
         # A ringing alarm is the one thing in the app that has to be read from across a room.
         f"QLabel#alarmTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
         f"QLabel#alarmDetail {{ font-size: {size + 2}pt; color: {palette['muted']}; }}"
-        f"QLabel#toast {{ background: {palette['panel']}; color: {palette['text']}; "
+        f"QFrame#toast {{ background: {palette['panel']}; color: {palette['text']}; "
         f"{edges} padding: {pad * 2}px {pad * 3}px; border-radius: {radius}px; }}"
+        # A new account's empty week, the focus screen and the command bar.
+        f"QLabel#emptyWeekHeading {{ font-size: {size + 8}pt; font-weight: 700; }}"
+        f"QLabel#emptyWeekLine {{ color: {palette['muted']}; font-size: {size + 1}pt; }}"
+        f"QPushButton#emptyWeekAdd, QPushButton#focusScreenStart {{ font-weight: 600; "
+        f"padding: {pad + 2}px {pad * 3}px; }}"
+        f"QLabel#focusScreenPhase {{ color: {palette['accent']}; font-size: {size + 2}pt; "
+        f"font-weight: 700; letter-spacing: 2px; }}"
+        # The countdown is read from across a desk, in the look's own face at a size the text knob never sets.
+        f"QLabel#focusScreenTime {{ font-size: 96pt; "
+        f"font-weight: 700; color: {palette['text']}; }}"
+        f"QLabel#focusScreenTask {{ font-size: {size + 6}pt; font-weight: 600; }}"
+        f"QLabel#focusScreenHint {{ color: {palette['muted']}; }}"
+        f"QProgressBar#focusScreenProgress {{ background: {palette['hairline']}; border: none; "
+        f"border-radius: 3px; min-height: 6px; max-height: 6px; padding: 0; }}"
+        f"QProgressBar#focusScreenProgress::chunk {{ background: {palette['accent']}; border-radius: 3px; }}"
+        # Laid over the window, it dims what is behind so the box reads as the one thing to answer.
+        f"QWidget#commandBar {{ background: rgba(0, 0, 0, 90); }}"
+        f"QFrame#commandBox {{ background: {palette['panel']}; border-radius: {radius}px; "
+        f"{edges} padding: {pad}px; }}"
+        f"QLineEdit#commandInput {{ font-size: {size + 2}pt; }}"
+        f"QListWidget#commandList {{ border: none; padding: 0; }}"
+        f"QListWidget#commandList::item {{ padding: {pad}px; border-radius: {radius}px; }}"
+        f"QLabel#commandNothing {{ color: {palette['muted']}; padding: {pad}px; }}"
+        # The view control's track, which the chosen segment sits in.
+        f"QFrame#segments {{ background: {palette['hairline']}; padding: 2px; border: none; "
+        f"border-radius: {radius}px; }}"
+        # Add and its arrow are one button split in two.
+        f"QPushButton#addButton {{ font-weight: 600; border-top-right-radius: 0; "
+        f"border-bottom-right-radius: 0; }}"
+        f"QPushButton#addArrow {{ padding: {pad}px {pad}px; border-top-left-radius: 0; "
+        f"border-bottom-left-radius: 0; margin-left: 1px; }}"
+        f"QPushButton#addArrow::menu-indicator {{ image: none; width: 0; }}"
+        # The toast's one button reads as part of its sentence.
+        f"QPushButton#toastButton {{ background: transparent; color: {palette['accent']}; border: none; "
+        f"font-weight: 700; padding: 2px {pad}px; min-height: 0; }}"
+        f"QPushButton#toastButton:hover {{ text-decoration: underline; }}"
+        # Week's side, as Day's: the panel colour, its headings in the accent, and folded, one line.
+        # Narrower at the sides than a card, so "Math worksheet · 45 min" is whole in its 250 pixels.
+        f"QFrame#weekSide {{ background: {palette['panel']}; border-radius: 0; "
+        f"padding: {card}px {pad}px; {edges} }}"
+        f'QFrame#weekSide[folded="true"] {{ padding: {pad // 2}px {pad}px; }}'
+        f"QLabel#weekNext, QLabel#weekSideLine {{ font-weight: 600; }}"
+        f"QLabel#focusTasksLabel, QLabel#classicWaitingLabel {{ color: {palette['accent']}; "
+        f"font-weight: 800; font-size: {max(size - 1, 7)}pt; margin-top: 6px; }}"
+        f"QLabel#weekNoneWaiting {{ color: {palette['muted']}; font-size: {max(size - 1, 7)}pt; }}"
     ) + (control_rules(palette, radius, size, art) if art is not None else "")
 
 

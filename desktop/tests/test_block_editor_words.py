@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 
 from desktop.native import widgets
 from desktop.native.look import resolved_palette, sanitize_look
-from desktop.native.widgets import BlockDialog
+from desktop.native.widgets import AppStyle, BlockDialog
 from desktop.native.window import NativeWindow
 from desktop.tests.window_support import (  # noqa: F401
     host,
@@ -66,10 +66,12 @@ class WantsIcons(QProxyStyle):
 
 @pytest.fixture()
 def icon_style(qapp: QApplication) -> Iterator[None]:  # noqa: F811
+    # The app's own style is a proxy with no name to restore it by.
+    ours = isinstance(qapp.style(), AppStyle)
     name = qapp.style().name()
     qapp.setStyle(WantsIcons(name))
     yield
-    qapp.setStyle(name)
+    qapp.setStyle(AppStyle() if ours else name)
 
 
 def test_the_editor_is_titled_as_a_student_says_it(qapp: QApplication, host: QWidget) -> None:  # noqa: F811
@@ -211,9 +213,9 @@ def test_a_deleted_block_can_be_undone_from_the_notice(
     window._commit_block(dialog)
     settled(qapp, window)
     assert session.blocks == []
-    assert window.action_notice_text.text() == "Deleted Soccer practice."
-    assert window.action_notice_button.text() == "Undo"
-    window.action_notice_button.click()
+    assert window.toast.text() == "Deleted Soccer practice."
+    assert window.toast.button.text() == "Undo"
+    window.toast.button.click()
     wait_until(qapp, lambda: [block["id"] for block in session.blocks] == ["soccer"])
 
 

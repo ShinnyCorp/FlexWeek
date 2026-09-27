@@ -247,3 +247,60 @@ def test_a_month_with_no_window_is_freed_without_the_garbage_collector(qapp: QAp
         assert gone() is None
     finally:
         gc.enable()
+
+
+def first_row_shown(grid: MonthGrid) -> int:
+    """The row at the top of the view: the one whose top the scroll bar stands at."""
+    canvas, value = grid.canvas, grid.scroll.verticalScrollBar().value()
+    return next(row for row in range(canvas.rows()) if round(canvas.cell_rect(row * 7).top()) == value)
+
+
+def test_month_opens_with_the_students_week_as_its_first_row(qapp: QApplication) -> None:
+    """A whole month fits a laptop's screen, so it opened with the weeks already gone on top. It opens
+    on the student's week now, the weeks after it filling the view and the ones before a scroll away;
+    a week late in the month still shows the week after it."""
+    from PySide6.QtTest import QTest
+
+    from desktop.native.hours.month import LEAST_AHEAD
+
+    grid = MonthGrid()
+    grid.resize(900, 700)
+    grid.set_month(september(), False)
+    grid.show()
+    qapp.processEvents()
+    room = grid.scroll.viewport().height()
+    canvas = grid.canvas
+    assert canvas.rows() * canvas.least_row() < room, "the whole month fits, as on a laptop"
+    shown = []
+    for iso in ("2026-09-03", "2026-09-24", "2026-09-30"):
+        grid.reveal(iso)
+        QTest.qWait(50)
+        row = canvas.index_of(iso) // 7
+        top = first_row_shown(grid)
+        below = canvas.height() - round(canvas.cell_rect(top * 7).top())
+        shown.append((iso, top, below >= room, canvas.rows() - top >= LEAST_AHEAD, top == row))
+    grid.close()
+    assert shown == [
+        ("2026-09-03", 0, True, True, True),
+        ("2026-09-24", 3, True, True, True),
+        # The month's last row: the week before it stays above, so two weeks show.
+        ("2026-09-30", 3, True, True, False),
+    ]
+
+
+def test_a_month_revealed_before_its_first_layout_still_opens_on_the_week(qapp: QApplication) -> None:
+    """The window asks as the month is switched to, before it has a height of its own. Rows sized to
+    that height put another week on top once the month was laid out."""
+    from PySide6.QtTest import QTest
+
+    grid = MonthGrid()
+    grid.resize(900, 700)
+    grid.set_month(september(), False)
+    grid.reveal("2026-09-24")
+    grid.show()
+    QTest.qWait(50)
+    shown = first_row_shown(grid)
+    below = grid.canvas.height() - grid.scroll.verticalScrollBar().value()
+    room = grid.scroll.viewport().height()
+    grid.close()
+    assert (shown, below >= room) == (3, True)

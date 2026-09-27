@@ -78,16 +78,22 @@ setup a page at a time: a style, the week (school, activities and a cutoff),
 how homework gets a time, reminders and the alarm sound, and up to three first
 homework. You can skip any page, and Settings can run it again.
 
-To add more, open **More** and choose **Add homework** or **Add fixed time**, or
-drag on the calendar. A **Fixed time** (school, practice) never moves when you
-plan; **Homework** is placed by Plan my homework in a free time before it is due.
-The type you picked determines which you get. Every change saves to your account
-on its own; planning previews placement without replacing what you entered.
+To add more, press **Add** in the top bar for homework, or its arrow for a fixed
+time or School hours, or drag on the calendar. A **Fixed time** (school,
+practice) never moves when you plan; **Homework** is placed by Plan my homework
+in a free time before it is due. The type you picked determines which you get. A
+click opens anything on the calendar and a right-click offers Open, Duplicate,
+Finished and Delete; homework, with all its times, is deleted from its editor,
+its right-click menu or the Unfinished list, and Undo brings it back. Ctrl+K
+finds any action or homework by typing. Every change saves to your account on
+its own; planning previews placement without replacing what you entered.
 
-The look starts on System, which follows your device's light or dark setting.
-The gear opens Settings, where look and layout live together, and every design
-can be dark: Today's app through its pack, the others through a dark colourway
-of their own. The week saves itself a moment after each change and retries on
+The look starts on System, which follows your device's light or dark setting,
+in Today's app with Day dial as the day screen. The gear opens Settings in
+place of the week, where look and layout live together; Timeline is the other
+standard design, and the rest are under Experimental styles. Every design can
+be dark: Today's app through its look, the others through a dark colourway of
+their own. The week saves itself a moment after each change and retries on
 its own if a save fails. A save that conflicts with another window is never written over: saving
 stops and FlexWeek asks you to reload the saved week. A forgotten password is recovered
 with one of the eight recovery codes shown when the account was made.

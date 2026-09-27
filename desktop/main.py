@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
 
 import backend
 from desktop.native.calendar import sunday_due
+from desktop.native.fonts import load_fonts
 from desktop.native.kept import KeptSession
 from desktop.native.setup import DONE as SETUP_DONE
 from desktop.native.window import NativeWindow
@@ -232,6 +233,7 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(arguments)
     app.setApplicationName("FlexWeek")
     app.setDesktopFileName(DESKTOP_FILE_NAME)
+    load_fonts()
 
     try:
         origin = configured_origin()

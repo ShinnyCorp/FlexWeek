@@ -223,10 +223,11 @@ def test_a_block_made_by_dragging_has_no_category_until_the_student_picks_one(
 
 
 def notice(window: NativeWindow) -> tuple[bool, str, str]:
-    """The notice over the hours: whether it shows, its words and its button."""
-    if not window.action_notice.isVisible():
+    """The toast with a button to press: whether it shows, its words and its button."""
+    toast = window.toast
+    if not toast.isVisible() or not toast.button.isVisible():
         return False, "", ""
-    return True, window.action_notice_text.text(), window.action_notice_button.text()
+    return True, toast.text(), toast.button.text()
 
 
 def toast(window: NativeWindow) -> str:
@@ -286,7 +287,7 @@ def test_a_move_a_resize_a_create_and_a_placing_each_say_what_they_did_with_undo
         (True, "Placed Math worksheet on Thu 18:00.", "Undo"),
     ]
 
-    QTest.mouseClick(window.findChild(QPushButton, "actionNoticeButton"), LEFT)
+    QTest.mouseClick(window.findChild(QPushButton, "toastButton"), LEFT)
     wait_until(qapp, lambda: not session_of(window, "math").get("start"))
     settled(qapp, window)
     assert (notice(window), toast(window)) == ((False, "", ""), "Undid placing Math worksheet.")
@@ -296,8 +297,9 @@ def test_a_move_a_resize_a_create_and_a_placing_each_say_what_they_did_with_undo
 def test_the_notice_waits_for_the_pointer_and_goes_once_its_change_is_no_longer_the_last(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """A notice pushes the hours down, so one that lands while a block is held waits for it to be let
-    go. Once a later change is saved, its Undo would take back that one instead, so it goes."""
+    """Nothing new appears under a held block, so a notice that lands while one is held waits for it
+    to be let go. Once a later change is saved, its Undo would take back that one instead, so it
+    goes."""
     session = window.session
     hours = window.week_table.hours
     hours.reveal(3, 16 * 60, 21 * 60)
@@ -402,17 +404,30 @@ def test_every_advanced_action_says_what_it_did_when_it_is_done(
 
     monkeypatch.setattr(PreviewDialog, "exec", preview)
     monkeypatch.setattr(RestoreDialog, "exec", restore)
+    # The click that picks Piano opens it too; the student closes it again.
+    monkeypatch.setattr(BlockDialog, "exec", lambda dialog: dialog.reject() or dialog.result())
     hours = window.week_table.hours
     hours.reveal(3, 16 * 60, 19 * 60)
     qapp.processEvents()
     click(qapp, hours, hours.point_for(3, 17 * 60 + 15))
     assert window.session.selected_block_id == "piano"
+    shown: list[str] = []
+    real = window.toast.show_message
+
+    def noted(text: str, *more: object) -> None:
+        shown.append(text)
+        real(text, *more)
+
+    monkeypatch.setattr(window.toast, "show_message", noted)
     said = []
     for words in ("Copy", "Paste", "Duplicate", "Copy Thursday", "Save", "Undo", "Redo", "Restore", "Reload"):
         window.toast.hide()
+        shown.clear()
         advanced(window, words)
         settled(qapp, window)
-        said.append((words, toast(window)))
+        # Everything the toast said on the way, not only its last words: Duplicate once said "Piano
+        # copied" first.
+        said.append((words, " / ".join(shown) if shown[1:] else toast(window)))
     assert said == [
         ("Copy", "Piano copied. Choose a destination and paste."),
         ("Paste", "Pasted Piano."),
@@ -443,15 +458,15 @@ def test_a_save_that_leaves_the_homework_waiting_keeps_the_same_chips(
 def test_a_notice_coming_and_going_never_moves_the_hours(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """Over the hours, each drag's notice pushed the page down under the pointer, and on a short
-    window put the next drop where the hours scroll by themselves."""
+    """A notice in a row of its own pushed the page down under the pointer, and on a short window put
+    the next drop where the hours scroll by themselves. The toast floats over the hours instead."""
     before = window.planner.geometry()
     window._set_notice("Moved History essay to Fri 18:00.", "Undo", lambda: None)
     for _ in range(5):
         qapp.processEvents()
-    assert window.action_notice.isVisible()
+    assert window.toast.isVisible()
     assert window.planner.geometry() == before
-    window.action_notice.hide()
+    window.toast.hide()
     for _ in range(5):
         qapp.processEvents()
     assert window.planner.geometry() == before
@@ -461,6 +476,61 @@ def test_a_short_notice_keeps_its_words_on_one_line(qapp: QApplication, window: 
     window._set_notice("Moved History essay to Fri 18:00.", "Undo", lambda: None)
     for _ in range(5):
         qapp.processEvents()
-    text = window.action_notice_text
+    text = window.toast.label
     words = text.fontMetrics().horizontalAdvance("Moved History essay to Fri 18:00.")
     assert text.width() >= words, "the notice's words wrap onto a second line"
+    assert window.toast.height() < 2 * text.fontMetrics().height() + 40
+
+
+def test_the_toast_floats_over_the_foot_of_the_hours_and_lets_the_pointer_through(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Centred over the hours, 16 pixels above their foot, inside the window at any height, and only
+    its button takes a click: the hours under its words still take a drag."""
+    from desktop.native.widgets import TOAST_FOOT
+
+    pressed = []
+    for height in (860, 600):
+        window.resize(1280, height)
+        for _ in range(5):
+            qapp.processEvents()
+        window._set_notice("Moved History essay to Fri 18:00.", "Undo", lambda: pressed.append(True))
+        # Past its rise into place.
+        QTest.qWait(400)
+        toast, planner = window.toast, window.planner
+        foot = planner.mapTo(window, QPoint(0, planner.height())).y()
+        middle = planner.mapTo(window, QPoint(planner.width() // 2, 0)).x()
+        assert toast.geometry().bottom() + 1 == foot - TOAST_FOOT, height
+        assert abs(toast.geometry().center().x() - middle) <= 1, height
+        assert toast.geometry().bottom() < window.height(), height
+        words = toast.geometry().topLeft() + QPoint(12, toast.height() // 2)
+        assert window.childAt(words) is not toast and not toast.isAncestorOf(window.childAt(words))
+        assert planner.isAncestorOf(window.childAt(words)), "the words take the hours' clicks"
+        button = toast.button
+        assert toast.geometry().contains(button.geometry()), "the button sits inside the toast"
+        assert window.childAt(button.geometry().center()) is button
+    QTest.mouseClick(window.toast.button, LEFT)
+    assert pressed == [True]
+    assert not window.toast.isVisible()
+
+
+def test_a_view_switch_takes_the_toast_away(qapp: QApplication, window: NativeWindow) -> None:
+    window._set_notice("Moved History essay to Fri 18:00.", "Undo", lambda: None)
+    qapp.processEvents()
+    assert window.toast.isVisible()
+    QTest.mouseClick(window.findChild(QPushButton, "viewMonth"), LEFT)
+    settled(qapp, window)
+    assert not window.toast.isVisible() and not window.toast.button.isVisible()
+
+
+def test_a_routine_save_says_nothing_and_a_refusal_says_why(qapp: QApplication, window: NativeWindow) -> None:
+    """The status line said "Saved." after every drag. The toast says only what the student needs."""
+    window.toast.hide()
+    window.session._say("Saving…")
+    window.session._say("Saved.")
+    window.session._say("Saved preferences.")
+    qapp.processEvents()
+    assert not window.toast.isVisible()
+    window.session._say("Select a block before copying it.")
+    qapp.processEvents()
+    assert toast(window) == "Select a block before copying it."

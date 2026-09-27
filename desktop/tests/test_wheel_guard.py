@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from desktop.native.settings import PrefsDialog
+from desktop.native.settings import SettingsPage
 from desktop.native.window import NativeWindow
 from desktop.tests.window_support import host, qapp, server, signed_out, window  # noqa: F401
 
@@ -91,16 +91,15 @@ def test_scrolling_down_settings_leaves_the_focus_minutes_alone(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
-    session = window.session
-    dialog = PrefsDialog(window, session.preferences, window._look, session.reminder_limits, window._layout)
-    dialog.show()
-    assert QTest.qWaitForWindowExposed(dialog)
+    window._open_settings()
+    dialog = window._settings
+    assert isinstance(dialog, SettingsPage)
     dialog.nav.setCurrentRow(2)
     qapp.processEvents()
     dialog.nav.setFocus()
     before = dialog.work.value()
-    at = QPointF(dialog.work.mapTo(dialog, QPoint(12, dialog.work.height() // 2)))
-    QTest.wheelEvent(dialog.windowHandle(), at, QPoint(0, -120))
+    at = QPointF(dialog.work.mapTo(window, QPoint(12, dialog.work.height() // 2)))
+    QTest.wheelEvent(window.windowHandle(), at, QPoint(0, -120))
     qapp.processEvents()
     assert dialog.work.value() == before
-    dialog.close()
+    dialog.close_page()

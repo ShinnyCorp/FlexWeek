@@ -123,7 +123,7 @@
   "name": "hours that grew while opening give up on now",
   "old": "            if self._bar().value() == min(self._short_at, self._bar().maximum()):\n",
   "new": "            if self._bar().value() == self._short_at:\n",
-  "test": "desktop/tests/test_hours_open.py::test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_or_week"
+  "test": "desktop/tests/test_hours_zoom.py::test_hours_that_grow_twice_while_opening_still_open_where_they_were_asked"
  },
  {
   "file": "desktop/native/layouts/mission.py",
