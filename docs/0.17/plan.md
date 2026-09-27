@@ -82,6 +82,28 @@ summary, its "What changes" list and its render), on top of Phase 3.
 - **Day dial: A, Dial.**
 - **The looks and knobs**: no objection to any, so all ten as the Looks tab draws them.
 
+### Customise (Jonathan, 27 September)
+
+"Can we make them more customizable directly in the settings menu for the users? That way the more
+power user type people can customize more for their personal liking." So a look becomes a starting
+point, not a fixed set: any of the ten can be customised in Settings and saved as the user's own.
+
+- **Kept simple for most people**: Look stays "Light | Dark | System" with More looks under it
+  (decision 24); everything below lives behind one "Customise" control, closed until opened.
+- **What can be changed**: the accent (the swatches or any colour); the page, card, text and line
+  colours; each category's colour; corners, spacing and shadows; the font, the heading font and the
+  text size; how blocks are drawn (edge, fill, outline, the edge's width, times and lengths shown);
+  the grid (hour lines, today's highlight, the now line); the motion level.
+- **Never unreadable**: a category's colour is chosen as a hue on the family's lightness, so it passes
+  the tokens test by construction; an exact colour is there for those who want it, and any colour
+  that fails 4.5:1 shows a warning with a one-click fix that moves its lightness until it passes.
+- **Saved looks**: save as a named look, which then sits beside the ten under More looks; rename,
+  duplicate, delete, reset; export to a small file and import one, so a look can be shared.
+- **How it is shown**: two layouts in the mock-up's Customise tab, working live on Today's app (the
+  Rail): *A, In Settings*, the controls opening in place under Look with a small live preview; *B,
+  Look editor*, a full-window editor with the controls on the left and the week at full size on the
+  right. Jonathan picks, then it is built in lanes A2 (the look model and saving) and E (Settings).
+
 ### What every revised design must pass
 
 The tokens test in every look; no clipped text at 1280x800, 1150x768 with large text, and 800 wide;
