@@ -1075,7 +1075,23 @@ def pack_stylesheet(
         f"QLabel#focusTasksLabel, QLabel#classicWaitingLabel {{ color: {palette['accent']}; "
         f"font-weight: 800; font-size: {max(size - 1, 7)}pt; margin-top: 6px; }}"
         f"QLabel#weekNoneWaiting {{ color: {palette['muted']}; font-size: {max(size - 1, 7)}pt; }}"
+        + (_contrast_rules(palette) if palette.get("family") == "contrast" else "")
     ) + (control_rules(palette, radius, size, art) if art is not None else "")
+
+
+def _contrast_rules(palette: dict) -> str:
+    """High contrast's segmented controls: a track outlined on the page, every choice in the text colour
+    and the chosen one filled with the accent. Yellow on light grey could not be read."""
+    views = ("viewDay", "viewWeek", "viewMonth", "viewMyDay")
+    selectors = [*(f"QPushButton#{name}" for name in views), 'QPushButton[segment="true"]']
+    segments = ", ".join(selectors)
+    chosen = ", ".join(f"{selector}:checked" for selector in selectors)
+    return (
+        f'QFrame#segments, QFrame[segmented="true"] {{ background: {palette["window"]}; '
+        f"border: 1px solid {palette['text']}; }}"
+        f"{segments} {{ color: {palette['text']}; border: none; }}"
+        f"{chosen} {{ background: {palette['accent']}; color: {palette['accent_ink']}; border: none; }}"
+    )
 
 
 def copy_look(choice: dict | None) -> dict:

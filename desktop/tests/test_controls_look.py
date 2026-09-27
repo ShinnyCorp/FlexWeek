@@ -182,3 +182,47 @@ def test_a_menu_heading_is_drawn_as_text(qapp: QApplication) -> None:
     assert heading is not None and heading.text() == "Adding"
     assert heading.isVisible() and heading.height() >= heading.fontMetrics().height()
     menu.hide()
+
+
+def view_control(qapp: QApplication, pack: str, dark: bool, look: dict | None) -> tuple[QImage, dict, list]:
+    """Day, Week and Month as the top bar builds them, Week chosen, in a look."""
+    from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton
+
+    palette = resolved_palette(pack, dark, look)
+    page = QWidget()
+    page.setStyleSheet(pack_stylesheet(pack, dark, look, "default", palette, control_art(palette)))
+    track = QFrame(page)
+    track.setObjectName("segments")
+    row = QHBoxLayout(track)
+    buttons = []
+    views = (("viewDay", "Day", "first"), ("viewWeek", "Week", "middle"), ("viewMonth", "Month", "last"))
+    for name, words, place in views:
+        button = QPushButton(words)
+        button.setObjectName(name)
+        button.setCheckable(True)
+        button.setChecked(name == "viewWeek")
+        button.setProperty("segment", place)
+        row.addWidget(button)
+        buttons.append(button)
+    track.adjustSize()
+    page.resize(track.size())
+    page.show()
+    qapp.processEvents()
+    return track.grab().toImage(), palette, [button.geometry() for button in buttons]
+
+
+def test_high_contrasts_view_control_reads_every_choice_and_fills_the_chosen_one(qapp: QApplication) -> None:
+    """Yellow on light grey could not be read. Every segment is in the text colour on the page, and the
+    chosen one is filled with the accent and written in its ink."""
+    image, palette, (day, week, _month) = view_control(
+        qapp, "system", False, {"preset": "high-contrast", "knobs": {}}
+    )
+    assert image.pixelColor(week.left() + 3, week.top() + 3).name() == palette["accent"] == "#ffd400"
+    assert image.pixelColor(day.left() + 3, day.top() + 3).name() == palette["window"]
+
+    def inks(box) -> set[str]:
+        columns, rows = range(box.left(), box.right()), range(box.top(), box.bottom())
+        return {image.pixelColor(x, y).name() for x in columns for y in rows}
+
+    assert max(inks(day)) == palette["text"], max(inks(day))
+    assert palette["accent_ink"] in inks(week)

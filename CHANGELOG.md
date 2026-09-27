@@ -25,7 +25,9 @@ All notable changes to FlexWeek are documented here. Format follows
   on Day. The now line and its time are in the accent: red is for what cannot
   be.
 - High contrast: text at 7 to 1 or more, the grid's rules and the hairlines at
-  40 % white instead of full white.
+  40 % white instead of full white. Day, Week, Month and My day, and every
+  choice of two or three in Settings, read in white on black with the chosen
+  one filled yellow, where the view control was yellow on light grey.
 - The top bar, the window's frame, dialogs and Today's app always wear your
   look and accent. A design's own colourway colours only the design's page, and
   every design starts in Match my look; its signature colourways are still
