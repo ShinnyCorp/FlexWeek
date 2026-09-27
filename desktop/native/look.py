@@ -32,7 +32,8 @@ LOOK_DEFAULTS = {
     "corners": "round",
     "depth": "soft",
     "font": "sans",
-    "blocks": "filled",
+    # Decision 14 of 0.17: the category's fill with a 3-pixel edge in its mark.
+    "blocks": "edge",
     "density": "comfortable",
     "text": "normal",
 }
@@ -580,7 +581,7 @@ def block_paint(
 
     `category_color` is the fill and `mark` the strong colour of the same category, both as
     `category_paint` gives them for the look. A pale outline vanishes on a light pack, so an outline
-    or an edge is drawn with the mark.
+    or an edge is drawn with the mark. Edge is Filled with the mark down the block's left side.
     """
     flexible = kind == "flexible"
     neutral = palette["block_flex" if flexible else "block_locked"]
@@ -589,19 +590,12 @@ def block_paint(
     mode = effective_look(look)["blocks"]
     if mode == "outlined":
         return {"mode": mode, "fill": palette["grid"], "ink": palette["text"], "outline": mark, "edge": None}
-    if mode == "edge":
-        return {
-            "mode": mode,
-            "fill": palette["panel"],
-            "ink": palette["text"],
-            "outline": palette["hairline"],
-            "edge": mark,
-        }
+    edge = mark if mode == "edge" else None
     if category_color:
         text = palette["text"]
         ink = text if contrast(text, category_color) >= AA_TEXT else readable_ink(category_color)
-        return {"mode": mode, "fill": category_color, "ink": ink, "outline": None, "edge": None}
-    return {"mode": mode, "fill": neutral, "ink": neutral_ink, "outline": None, "edge": None}
+        return {"mode": mode, "fill": category_color, "ink": ink, "outline": None, "edge": edge}
+    return {"mode": mode, "fill": neutral, "ink": neutral_ink, "outline": None, "edge": edge}
 
 
 def _depth_rules(depth: str, palette: dict) -> str:

@@ -4,7 +4,6 @@ every block is written in the canvas's own font, whatever was drawn before it.""
 from __future__ import annotations
 
 import importlib.util
-import math
 import os
 from collections.abc import Iterator
 
@@ -225,12 +224,12 @@ def words_on(canvas: HoursCanvas, block_id: str, day: int) -> list[str]:
 
 
 @pytest.mark.parametrize("points", [9, 13])
-def test_a_short_block_on_sideways_hours_is_its_first_letter_not_dots(
+def test_a_block_with_no_room_for_three_letters_is_its_colour_alone(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch, points: int
 ) -> None:
     """Timeline's Week at 64 pixels an hour draws the 30-minute Dinner 30 pixels wide: no room for
-    any of its name, in three lines of small text or one of large. It says "D", its first letter,
-    and nothing else; not lines of "…". A block with room still says its name."""
+    three letters of its name. Decision 14 of 0.17: below three letters, the colour alone, not "D"
+    seven times down the week and not lines of "…". A block with room still says its name."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
     usual = QFont(qapp.font())
     font = QFont(usual)
@@ -244,7 +243,7 @@ def test_a_short_block_on_sideways_hours_is_its_first_letter_not_dots(
     finally:
         qapp.setFont(usual)
     for day in range(7):
-        assert words_on(canvas, "dinner", day) == ["D"], f"Dinner on day {day}"
+        assert words_on(canvas, "dinner", day) == [], f"Dinner on day {day}"
     assert words_on(canvas, "school", 0)[0].startswith("School")
 
 
@@ -329,7 +328,7 @@ def test_every_time_on_the_hours_is_written_in_figures_of_one_width(
     Said.fonts = []
     canvas.grab()
     timed = [(text, font) for text, font in Said.fonts if any(letter.isdigit() for letter in text)]
-    assert {"08:00", "20:00"} <= {text for text, _font in timed}
+    assert {"09:00", "19:00"} <= {text for text, _font in timed}
     assert any("16:00–17:30" in text for text, _font in timed)
     for text, font in timed:
         assert font.featureValue(QFont.Tag(TABULAR)) == 1, text
@@ -338,26 +337,47 @@ def test_every_time_on_the_hours_is_written_in_figures_of_one_width(
 CLUB = {"id": "club", "title": "Club", "kind": "locked", "days": [1], "start": "19:00", "duration_min": 60}
 
 
-def test_a_one_hour_block_says_its_name_and_its_times_on_two_lines(
+DINNER = {"id": "dinner", "title": "Dinner", "kind": "locked", "days": [1], "start": "18:30",
+          "duration_min": 30}
+
+
+def test_a_block_says_the_most_it_can_without_cutting_a_word_or_ending_a_line_in_a_dot(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Club at 19:00 for an hour was one shortened line, "Club · 19:00–20:00 · …", when it had room
-    for its name in bold and its times in the smaller font below: the test asked for two bold lines.
-    Here it has just that room, which is less than two bold lines, and at the default 48 pixels an
-    hour it has more."""
+    """Decision 14 of 0.17. Club at 19:00 for an hour says its name and its times at the week's 48
+    pixels an hour, and its length on a line of its own once there is room; a half-hour Dinner says
+    "Dinner 18:30" on one line. No line ends in "·", which 0.16 left dangling after every time."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
-    font = QFont("Inter", 12)
-    bold = QFont(font)
-    bold.setBold(True)
-    bold_line = QFontMetricsF(bold).height()
-    just = math.ceil(bold_line + 1 + QFontMetricsF(canvas_module._small(font)).height())
-    assert just < 2 * bold_line
-    # A block's words have its height less 7 pixels: 2 between blocks, 3 above and 2 below.
-    for hour_px in (just + 7, HOUR_PX):
-        canvas = three_days(blocks=(CLUB,), hour_px=hour_px)
+    for hour_px, club in ((HOUR_PX, ["Club", "19:00–20:00"]), (96, ["Club", "19:00–20:00", "1 h"])):
+        canvas = three_days(blocks=(CLUB, DINNER), hour_px=hour_px)
         Said.words = []
         canvas.grab()
-        assert words_on(canvas, "club", 1) == ["Club", "19:00–20:00 · 1 h"], hour_px
+        assert words_on(canvas, "club", 1) == club, hour_px
+        assert not any(text.rstrip().endswith("·") for text, _where in Said.words)
+    canvas = three_days(blocks=(DINNER,))
+    Said.words = []
+    canvas.grab()
+    assert words_on(canvas, "dinner", 1) == ["Dinner", "18:30"]
+    dinner = [where for text, where in Said.words if text in ("Dinner", "18:30")]
+    assert abs(dinner[0].center().y() - dinner[1].center().y()) < 3, "Dinner and its time on one line"
+
+
+def test_a_word_too_wide_for_its_block_is_shortened_only_when_nothing_else_fits(qapp: QApplication) -> None:
+    """A word is never cut while a smaller arrangement would say it whole; with none, the title gives
+    way with "…", and with no room for three letters there are no words at all."""
+    from desktop.native.hours.canvas import block_layout
+    from desktop.native.hours.geometry import Span
+
+    title, small = BlockPainter(resolved_palette("system", False, None)).fonts(QFont("Inter", 12))
+    tall = QFontMetricsF(title).lineSpacing() * 4
+    drawn = Drawn("long", "Photosynthesis", "class", False, Span(1, 9 * 60, 10 * 60), 0, 1)
+    whole = QFontMetricsF(title).horizontalAdvance("Photosynthesis")
+    said = [line.text for line in block_layout(drawn, title, small, QRectF(0, 0, whole + 2, tall))]
+    assert said[0] == "Photosynthesis"
+    narrow = [line.text for line in block_layout(drawn, title, small, QRectF(0, 0, whole / 2, tall))]
+    assert narrow[0].endswith("…") and narrow[0] != "…"
+    three = QFontMetricsF(title).horizontalAdvance("Pho")
+    assert block_layout(drawn, title, small, QRectF(0, 0, three - 1, tall)) == []
 
 
 def rows(palette: dict, today: bool) -> QImage:

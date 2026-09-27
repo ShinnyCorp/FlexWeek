@@ -70,6 +70,32 @@ def clock_label(minute: int) -> str:
     return clock_text(minute)
 
 
+def _twelve(minute: int) -> tuple[str, str]:
+    """4 or 5:30, and its half of the day, as a short 12-hour time is written."""
+    hours, minutes = divmod(minute, 60)
+    shown = f"{hours % 12 or 12}" + (f":{minutes:02d}" if minutes else "")
+    return shown, "AM" if hours % 24 < 12 else "PM"
+
+
+def short_clock(minute: int) -> str:
+    """16:00, or 4 PM on the 12-hour clock: a time on a block, where room is short."""
+    if _clock["24h"]:
+        return clock_text(minute)
+    shown, half = _twelve(minute)
+    return f"{shown} {half}"
+
+
+def range_label(start: int, end: int) -> str:
+    """16:00–17:30, or on the 12-hour clock as short as it still reads: 4–5:30 PM, 11 AM–12:30 PM."""
+    if _clock["24h"]:
+        return f"{clock_text(start)}–{clock_text(end)}"
+    first, first_half = _twelve(start)
+    last, last_half = _twelve(end)
+    if first_half == last_half:
+        return f"{first}–{last} {last_half}"
+    return f"{first} {first_half}–{last} {last_half}"
+
+
 def length_label(minutes: int) -> str:
     hours, rest = divmod(max(minutes, 0), 60)
     if not hours:

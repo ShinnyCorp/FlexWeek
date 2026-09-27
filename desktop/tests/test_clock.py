@@ -29,6 +29,7 @@ from desktop.native.weekmodel import (
     due_label,
     hhmm_text,
     moved_words,
+    range_label,
     set_clock_24h,
     time_format,
 )
@@ -100,7 +101,10 @@ def test_the_week_model_words(twelve: None) -> None:
 
 def test_the_hours_words(twelve: None) -> None:
     drawn = Drawn("soccer", "Soccer practice", "sport", False, Span(3, 16 * 60, 17 * 60 + 30), 0, 1)
-    assert drawn.detail == "4:00 PM–5:30 PM · 1 h 30 min"
+    # Decision 14 of 0.17: as short as a range still reads.
+    assert drawn.detail == "4–5:30 PM · 1 h 30 min"
+    assert range_label(11 * 60, 12 * 60 + 30) == "11 AM–12:30 PM"
+    assert range_label(23 * 60, 24 * 60) == "11 PM–12 AM"
     assert span_words(Span(3, 16 * 60, 17 * 60 + 30)) == "Thu 4:00 PM–5:30 PM · 1 h 30 min"
     assert MonthChip("b", "Soccer practice", "sport", block_id="soccer", start=16 * 60).words == (
         "4:00 PM Soccer practice"
@@ -200,7 +204,7 @@ def test_the_week_says_4_pm_everywhere_once_the_12_hour_clock_is_chosen(
     window._sync_chrome()
     qapp.processEvents()
     drawn = canvas_words(window)
-    assert "4:00 PM–5:30 PM · 1 h 30 min" in drawn
+    assert "4–5:30 PM · 1 h 30 min" in drawn
     said = visible_words(window) + drawn
     assert [words for words in said if "16:00" in words or "17:30" in words] == []
     # The saved block is untouched.

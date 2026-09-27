@@ -302,7 +302,7 @@ class ClassicWeek(QWidget):
         return f"{DAYS[day]} {(date.fromisoformat(self.week_start) + timedelta(days=day)).day}"
 
     def set_look(self, look: dict | None, palette: dict) -> None:
-        self.hours.set_painter(BlockPainter(palette, look))
+        self.hours.set_painter(BlockPainter(palette, look, wide=self.hours.objectName() == "dayHours"))
 
     def set_week(self, week: WeekModel, today: int | None, now_min: int | None) -> None:
         self.week_start = week.week_start
@@ -370,7 +370,7 @@ class ClassicDay(QWidget):
         return [LinearTrack(self.day, area.adjusted(0, PAD, -PAD, -PAD))]
 
     def set_look(self, look: dict | None, palette: dict) -> None:
-        self.hours.set_painter(BlockPainter(palette, look))
+        self.hours.set_painter(BlockPainter(palette, look, wide=self.hours.objectName() == "dayHours"))
 
     def set_day(self, week: WeekModel, day: int, today: int | None, now_min: int | None) -> None:
         changed_day = day != self.day

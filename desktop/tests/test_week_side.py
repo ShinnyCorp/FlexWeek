@@ -10,11 +10,10 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, QRectF
-from PySide6.QtGui import QColor, QImage, QPainter
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QPushButton
 
 from desktop.native.calendar import sunday_due
-from desktop.native.hours import canvas as canvas_module
 from desktop.native.hours.canvas import BlockPainter, Drawn
 from desktop.native.hours.geometry import Span
 from desktop.native.layouts.registry import sanitize_layout
@@ -151,31 +150,14 @@ def test_the_window_is_never_narrower_than_800(
     assert window.width() == 800
 
 
-def written(monkeypatch: pytest.MonkeyPatch, drawn: Drawn, height: float) -> list[str]:
-    """What the block's words put in lines, painted into a column 96 pixels wide."""
-    said: list[str] = []
-    real = canvas_module._write_lines
-
-    def record(painter: QPainter, text: str, font, room: QRectF) -> None:
-        said.append(text)
-        real(painter, text, font, room)
-
-    monkeypatch.setattr(canvas_module, "_write_lines", record)
-    image = QImage(200, 200, QImage.Format.Format_ARGB32)
-    painter = QPainter(image)
-    rect = QRectF(0, 0, 96, height)
-    BlockPainter({"error": "#dc2626", "accent": "#2563eb"}).words(painter, rect, drawn, QColor("#000"), rect)
-    painter.end()
-    return said
-
-
-def test_a_short_block_word_gives_its_name_the_room_its_times_took(
-    qapp: QApplication,  # noqa: F811
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_a_short_block_word_gives_its_name_the_room_its_times_took(qapp: QApplication) -> None:  # noqa: F811
     """At 800 pixels "Soccer practice" read "Soccer …" above its times. Short of room its name is
     whole, over two lines, and the times are left to its editor."""
+    from desktop.native.hours.canvas import block_layout
+
+    title, small = BlockPainter({}).fonts(QFont("Inter", 12))
+    room = QRectF(0, 0, 120, 72)
     soccer = Drawn("soccer", "Soccer practice", "sport", False, Span(3, 16 * 60, 17 * 60 + 30), 0, 1)
-    assert any("16:00" in text for text in written(monkeypatch, soccer, 72))
+    assert any("16:00" in line.text for line in block_layout(soccer, title, small, room))
     short = Drawn(**{**soccer.__dict__, "short": True})
-    assert written(monkeypatch, short, 72) == ["Soccer practice"]
+    assert [line.text for line in block_layout(short, title, small, room)] == ["Soccer practice"]
