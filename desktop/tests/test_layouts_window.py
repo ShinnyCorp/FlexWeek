@@ -469,10 +469,12 @@ def test_the_knobs_settings_hides_for_a_design_change_nothing_in_it(
         window._layout = sanitize_layout({"main": main, "day": "one"})
         window._apply_appearance()
         window._on_week()
-        faded_in()
+        for _ in range(20):
+            qapp.processEvents()
         return window.planner.currentWidget().grab().toImage()
 
-    base = dict(window.session.preferences or {})
+    # Still pictures: with animations off, every picture is of the page as it settles.
+    base = {**(window.session.preferences or {}), "motion": "off"}
     plain = view_with({})
     for knob in TODAYS_APP_KNOBS:
         other = next(value for value in LOOK_KNOBS[knob] if value != LOOK_DEFAULTS[knob])
