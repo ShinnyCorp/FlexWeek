@@ -657,6 +657,12 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-26, `feat/0.16-polish`: 0.16.0 prepared on Jonathan's "let's finalize": version,
+  dated changelog, `docs/release-notes-v0.16.0.md` and README's usage text. Since the review round:
+  homework can be deleted with Undo across weeks (eaa326a), and the gate runs pytest on every core
+  with a private Qt test home per worker (401c41a), 1576 tests in about 38 s. The packages were
+  not built on this computer; the pull request's Release packages run builds and smoke-tests them
+  before the release is made. A Windows install was not hand-checked.
 - 2026-09-26, `feat/0.16-polish`: every row of Timmy and AL's 0.15.0 design review
   (`docs/0.16/design-review.md`) is built, on Jonathan's "Do all of them", in the six lanes of
   `docs/0.16/plan.md`, each merged after review. Fixed at integration: the focus countdown forced
