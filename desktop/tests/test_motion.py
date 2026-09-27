@@ -154,21 +154,22 @@ def test_a_glide_ends_on_its_target(qapp: QApplication) -> None:
 
 
 def test_a_notice_that_arrives_while_the_last_one_rises_lands_where_it_belongs(qapp: QApplication) -> None:
-    """With large text the bar grows, and so does the place under it. A rise still running from the
-    last notice carried the new one back up over the bar."""
-    from desktop.native.widgets import Toast
+    """The hours a notice floats over can move while one rises, as large text grows the bar. A rise
+    still running from the last notice carried the new one back to where the last was meant to go."""
+    from desktop.native.widgets import TOAST_FOOT, Toast
 
     host = QWidget()
     host.resize(600, 400)
-    top = [60]
-    toast = Toast(host, lambda: top[0])
+    hours = QWidget(host)
+    hours.setGeometry(0, 60, 600, 300)
+    toast = Toast(host, hours)
     toast.motion = "extra"
     host.show()
     qapp.processEvents()
-    toast.show_message("Saved.")
+    toast.show_message("Moved History essay to Fri 18:00.")
     QTest.qWait(30)
-    top[0] = 72
+    hours.setGeometry(0, 72, 600, 280)
     toast.show_message("Running late: 16:30-17:00 is now locked.")
     QTest.qWait(DURATION_MS["extra"] + 150)
-    assert toast.y() == 72
+    assert toast.y() + toast.height() == 72 + 280 - TOAST_FOOT
     host.close()

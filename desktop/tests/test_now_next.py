@@ -97,7 +97,8 @@ def test_the_next_and_now_countdowns_move_with_the_minute_without_a_focus_timer(
     qapp: QApplication, window: tuple[NativeWindow, list[datetime]]
 ) -> None:
     made, clock = window
-    line = made.findChild(QLabel, "nowNext")
+    # On the week, the line is in its side.
+    line = made.findChild(QLabel, "weekNext")
     assert made.session.focus is None
     assert line.isVisible()
     assert line.text() == "Next: Dinner at 18:00 (in 2 h 20 min)"

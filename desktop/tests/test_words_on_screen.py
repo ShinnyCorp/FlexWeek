@@ -107,10 +107,10 @@ def test_the_strip_under_next_says_what_it_is(
     session.add_block({**essay, "start": "19:00", "days": [0], "pinned": True})
     session.save()
     settled(qapp, window)
-    panel = window.focus_panel
+    panel = window.week_table.side
     assert panel.tasks.isVisibleTo(window)
     label = panel.findChild(QLabel, "focusTasksLabel")
-    assert label.text() == "Start a focus timer:"
+    assert label.text() == "Start a focus timer"
     assert label.isVisibleTo(window)
     assert panel.tasks.toolTip() == "Double-click homework to start a focus timer for it."
 
@@ -132,7 +132,7 @@ def test_cancelling_running_late_takes_its_preview_off_the_screen(
         dialog.show()
         dialog.preview_requested.emit()
         wait_until(qapp, lambda: session.late_preview is not None and not session.busy)
-        assert window.week_status.text().endswith("tasks no longer fit")
+        assert window.toast.text().endswith("tasks no longer fit")
         dialog.reject()
         return dialog.result()
 
@@ -140,4 +140,4 @@ def test_cancelling_running_late_takes_its_preview_off_the_screen(
     window._open_late()
     qapp.processEvents()
     assert session.late_preview is None
-    assert window.week_status.text() == ""
+    assert not window.toast.isVisible()

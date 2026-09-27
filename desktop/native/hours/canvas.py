@@ -68,6 +68,8 @@ class Drawn:
     missed: bool = False
     pinned: bool = False
     axis: Axis = Axis.DOWN
+    # Its name only, on hours too narrow for the name and its times.
+    short: bool = False
 
     @property
     def detail(self) -> str:
@@ -217,6 +219,16 @@ class BlockPainter:
         if drawn.held and QFontMetrics(plain).horizontalAdvance(detail) > room.width():
             detail = ""  # said in the label beside it instead
         painter.setPen(ink)
+        if drawn.short and not drawn.held:
+            # "Soccer practice" whole over two lines says more than "Soccer …" and its times.
+            font = bold if room.height() >= line else plain
+            if fit_lines(drawn.title, font, room.width(), room.height()):
+                _write_lines(painter, drawn.title, font, room)
+            else:
+                painter.setFont(font)
+                initial = _initial(drawn.title, QFontMetrics(font), room.width())
+                painter.drawText(room, Qt.AlignmentFlag.AlignLeft, initial)
+            return
         if room.height() < two_lines:
             painter.setFont(plain)
             text = f"{drawn.title} · {detail}" if detail else drawn.title
@@ -446,6 +458,8 @@ class HoursCanvas(QWidget):
         self.occurrences: tuple[Occurrence, ...] = ()
         self.today: int | None = None
         self.now_min: int | None = None
+        # Blocks say their names only; the window sets it when the hours are narrow.
+        self.short_words = False
         self._hover: tuple[LinearTrack, int] | None = None
         self._wheel = 0
         hand.preview_changed.connect(self.update)
@@ -527,6 +541,7 @@ class HoursCanvas(QWidget):
                     missed=item.missed,
                     pinned=item.pinned,
                     axis=track.axis,
+                    short=self.short_words,
                 )
             )
         if (

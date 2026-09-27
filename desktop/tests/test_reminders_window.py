@@ -272,7 +272,6 @@ def seen(window: NativeWindow) -> dict:
     return {
         "tray": list(window._tray_icon.shown),
         "toast": window.toast.text() if window.toast.isVisible() else "",
-        "status": window.week_status.text(),
     }
 
 
@@ -309,7 +308,6 @@ def test_a_block_saved_inside_its_lead_reminds_at_once_and_only_once(
     assert seen(window) == {
         "tray": [("Guitar practice starts soon", "18:45 · Thu")],
         "toast": REMINDER,
-        "status": REMINDER,
     }
     assert window._bell.once_rung == ["chime"]
     for minute in range(39, 49):
@@ -332,7 +330,6 @@ def test_a_block_saved_before_its_lead_reminds_when_the_lead_begins(
         assert window._bell.once_rung == [], f"reminded at 18:{minute}"
     tick(qapp, window, clock, 35)
     assert window.toast.isVisible() and window.toast.text() == REMINDER
-    assert window.week_status.text() == REMINDER
     for minute in range(36, 50):
         tick(qapp, window, clock, minute)
     assert window._bell.once_rung == ["chime"]
@@ -467,34 +464,34 @@ def test_a_block_without_a_link_plays_nothing_at_its_start(
     assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")]
 
 
-def test_the_status_line_keeps_a_reminder_until_something_more_important(
+def test_the_toast_keeps_a_reminder_until_something_more_important(
     qapp: QApplication, database: Path, opened: list
 ) -> None:
-    """"Saved preferences." wrote over the reminder. A save's confirmation is less than a reminder;
-    something the student has to read now is more."""
+    """"Saved preferences." wrote over the reminder. A save's confirmation is less than a reminder, so
+    it is not said at all; something the student has to read now is more."""
     window = launch(qapp, serve(database, opened), "status_reader", opened, create=True)
     clock = hold(window, 18, 30)
     choose(qapp, window, reminder_lead_min=10)
     add_practice(qapp, window)
     tick(qapp, window, clock, 35)
-    assert window.week_status.text() == REMINDER
+    assert window.toast.text() == REMINDER
     window.session.save_preferences({"alert_volume": 70})
     settled(qapp, window)
     assert window.session.message == "Saved preferences."
-    assert window.week_status.text() == REMINDER
+    assert window.toast.text() == REMINDER
     window.session.add_block(
         {"id": "dinner", "title": "Dinner", "kind": "locked", "category": "meals", "start": "19:30",
          "duration_min": 30, "days": [3]}
     )
     window.session.save()
     settled(qapp, window)
-    assert window.week_status.text() == REMINDER
+    assert window.toast.text() == REMINDER
     window.session.select_block(None, None)
     window.session.copy_selected()
-    assert window.week_status.text() == "Select a block before copying it."
+    assert window.toast.text() == "Select a block before copying it."
 
 
-def test_got_it_on_a_reminder_left_on_screen_clears_the_status_line_too(
+def test_got_it_on_a_reminder_left_on_screen_takes_its_toast_away_too(
     qapp: QApplication, database: Path, opened: list
 ) -> None:
     window = launch(qapp, serve(database, opened), "handler", opened, create=True)
@@ -502,7 +499,7 @@ def test_got_it_on_a_reminder_left_on_screen_clears_the_status_line_too(
     choose(qapp, window, reminder_lead_min=10, reminder_dnd_override=True)
     add_practice(qapp, window)
     tick(qapp, window, clock, 35)
-    assert window.alert_strip.isVisible() and window.week_status.text() == REMINDER
+    assert window.alert_strip.isVisible() and window.toast.text() == REMINDER
     window.alert_strip.dismiss.click()
     assert not window.alert_strip.isVisible()
-    assert window.week_status.text() == window.session.message != REMINDER
+    assert not window.toast.isVisible()

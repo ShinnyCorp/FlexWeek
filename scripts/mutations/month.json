@@ -124,5 +124,19 @@
   "old": "            assignment_id=chip.get(\"assignment_id\"),\n",
   "new": "",
   "test": "desktop/tests/test_layout_drag.py::test_a_chip_from_a_week_that_is_not_open_is_judged_by_its_own_time_and_homework"
+ },
+ {
+  "file": "desktop/native/hours/month.py",
+  "name": "Month opens with past weeks on top",
+  "old": "        canvas.lead_with(row)\n",
+  "new": "",
+  "test": "desktop/tests/test_hours_month.py::test_month_opens_with_the_students_week_as_its_first_row"
+ },
+ {
+  "file": "desktop/native/hours/month.py",
+  "name": "Month sizes its rows before it has a height",
+  "old": "        if not self.scroll.viewport().isVisible() and tries > 0:\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_hours_month.py::test_a_month_revealed_before_its_first_layout_still_opens_on_the_week"
  }
 ]

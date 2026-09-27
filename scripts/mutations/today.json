@@ -43,16 +43,16 @@
  },
  {
   "file": "desktop/native/window.py",
-  "name": "the status line keeps a reminder through a save",
-  "old": "        if self._held_reminder is not None and message in ROUTINE_STATUS:\n            return\n",
-  "new": "",
-  "test": "desktop/tests/test_reminders_window.py::test_the_status_line_keeps_a_reminder_until_something_more_important"
+  "name": "a routine save writes over a reminder",
+  "old": "        if (asked or message not in ROUTINE_STATUS) and self._stack.currentWidget() is self._week_page:\n",
+  "new": "        if self._stack.currentWidget() is self._week_page:\n",
+  "test": "desktop/tests/test_reminders_window.py::test_the_toast_keeps_a_reminder_until_something_more_important"
  },
  {
   "file": "desktop/native/window.py",
   "name": "a reminder shows in the window as well as the tray",
-  "old": "            self.toast.show_message(said)\n            self._held_reminder = said\n",
-  "new": "            self._held_reminder = said\n",
+  "old": "            self._say_in_toast(self._reminder_said)\n",
+  "new": "",
   "test": "desktop/tests/test_reminders_window.py::test_a_block_saved_inside_its_lead_reminds_at_once_and_only_once"
  },
  {
@@ -184,8 +184,8 @@
  {
   "file": "desktop/native/window.py",
   "name": "Unfinished opens its list",
-  "old": "            self.toast.show_message(NOTHING_UNFINISHED)\n        self.unfinished_panel.set_items(items)\n",
-  "new": "            self.toast.show_message(NOTHING_UNFINISHED)\n",
+  "old": "            self.session._say(NOTHING_UNFINISHED)\n        self.unfinished_panel.set_items(items)\n",
+  "new": "            self.session._say(NOTHING_UNFINISHED)\n",
   "test": "desktop/tests/test_more_menu_words.py::test_unfinished_opens_its_list_in_any_design"
  },
  {
@@ -261,7 +261,7 @@
  {
   "file": "desktop/native/hours/chips.py",
   "name": "a tray chip shortens its length before its title",
-  "old": "            if title.strip(\"\u2026\"):\n                fitted = title + self._length\n",
+  "old": "            if title.strip(\"…\"):\n                fitted = title + self._length\n",
   "new": "",
   "test": "desktop/tests/test_classic_hours.py::test_a_tray_chip_shortens_its_title_and_keeps_its_length_whole"
  },
@@ -308,10 +308,10 @@
   "test": "desktop/tests/test_now_next.py::test_the_next_and_now_countdowns_move_with_the_minute_without_a_focus_timer"
  },
  {
-  "file": "desktop/native/settings.py",
+  "file": "desktop/native/hours/classic.py",
   "name": "an empty now and next line still takes its row",
-  "old": "        self.now_next.setVisible(bool(text))\n",
-  "new": "        self.now_next.setVisible(True)\n",
+  "old": "        self.next.setVisible(wide and bool(self._next))\n",
+  "new": "        self.next.setVisible(wide)\n",
   "test": "desktop/tests/test_now_next.py::test_the_next_and_now_countdowns_move_with_the_minute_without_a_focus_timer"
  },
  {
@@ -351,14 +351,7 @@
  },
  {
   "file": "desktop/native/window.py",
-  "name": "the notice's Undo says nothing",
-  "old": "        self._notice_step = None\n        self._told(self.session.undo)\n",
-  "new": "        self._notice_step = None\n        self.session.undo()\n",
-  "test": "desktop/tests/test_drag_results.py::test_a_move_a_resize_a_create_and_a_placing_each_say_what_they_did_with_undo"
- },
- {
-  "file": "desktop/native/window.py",
-  "name": "a notice pushes the hours down under a held block",
+  "name": "a notice appears under a held block",
   "old": "        if self._change_saved is None or self.hand.busy:\n",
   "new": "        if self._change_saved is None:\n",
   "test": "desktop/tests/test_drag_results.py::test_the_notice_waits_for_the_pointer_and_goes_once_its_change_is_no_longer_the_last"
@@ -372,7 +365,7 @@
  },
  {
   "file": "desktop/native/window.py",
-  "name": "Advanced actions say what they did only in the status line",
+  "name": "Advanced actions go unanswered when their words are routine",
   "old": "            action.triggered.connect(lambda _=False, pressed=button: self._told(pressed.click))\n",
   "new": "            action.triggered.connect(button.click)\n",
   "test": "desktop/tests/test_drag_results.py::test_every_advanced_action_says_what_it_did_when_it_is_done"
@@ -380,8 +373,8 @@
  {
   "file": "desktop/native/window.py",
   "name": "the toast says an action is still going, not what it did",
-  "old": "        if self._telling and message and not message.endswith(\"\u2026\"):\n",
-  "new": "        if self._telling and message:\n",
+  "old": "        if message.endswith(\"…\"):\n            return\n",
+  "new": "",
   "test": "desktop/tests/test_drag_results.py::test_every_advanced_action_says_what_it_did_when_it_is_done"
  },
  {
@@ -404,5 +397,40 @@
   "old": "            said=said,\n        )\n",
   "new": "        )\n",
   "test": "desktop/tests/test_drag_results.py::test_every_advanced_action_says_what_it_did_when_it_is_done"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "a view switch leaves the toast up",
+  "old": "            self._toast_where = self._where()\n            self.toast.hide()\n",
+  "new": "            self._toast_where = self._where()\n",
+  "test": "desktop/tests/test_drag_results.py::test_a_view_switch_takes_the_toast_away"
+ },
+ {
+  "file": "desktop/native/widgets.py",
+  "name": "the toast takes the hours' clicks",
+  "old": "        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)\n        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)\n        row = QHBoxLayout(self)\n",
+  "new": "        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)\n        row = QHBoxLayout(self)\n",
+  "test": "desktop/tests/test_drag_results.py::test_the_toast_floats_over_the_foot_of_the_hours_and_lets_the_pointer_through"
+ },
+ {
+  "file": "desktop/native/widgets.py",
+  "name": "the toast runs off the bottom of a short window",
+  "old": "        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT\n",
+  "new": "        bottom = area.top() + area.height() + TOAST_FOOT * 4\n",
+  "test": "desktop/tests/test_drag_results.py::test_the_toast_floats_over_the_foot_of_the_hours_and_lets_the_pointer_through"
+ },
+ {
+  "file": "desktop/native/hours/classic.py",
+  "name": "Week's side never folds",
+  "old": "        if narrow == self.side.folded:\n            return\n",
+  "new": "        return\n",
+  "test": "desktop/tests/test_week_side.py::test_a_narrow_window_folds_the_side_into_one_line_and_blocks_say_their_names"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "a narrow block keeps its times and cuts its name",
+  "old": "        if drawn.short and not drawn.held:\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_week_side.py::test_a_short_block_word_gives_its_name_the_room_its_times_took"
  }
 ]

@@ -40,14 +40,16 @@ from desktop.tests.window_support import (  # noqa: F401
 )
 
 NOTHING_UNFINISHED = "Nothing is unfinished: no homework from earlier weeks still needs time."
-TOOLTIPS = {
-    "Add homework": (
+ADDING = {
+    "Add homework…": (
         "Add an assignment with its due date and how long it will take. FlexWeek finds time for it."
     ),
-    "School hours": "Set the days and times you are at school, so nothing is planned then.",
-    "Add fixed time": (
+    "Add fixed time…": (
         "Add something that happens at a set time, like practice or a lesson. Homework is planned around it."
     ),
+    "School hours…": "Set the days and times you are at school, so nothing is planned then.",
+}
+TOOLTIPS = {
     "Running late": (
         "Behind today? Say how late you are, and FlexWeek moves the rest of today's homework later."
     ),
@@ -110,6 +112,18 @@ def test_every_action_under_more_and_advanced_says_what_it_does(
     assert said == TOOLTIPS
 
 
+def test_the_add_menu_says_what_each_way_to_add_does(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """Adding left More for the Add button's menu, and its descriptions came with it."""
+    menu = window.add_menu
+    assert menu.toolTipsVisible()
+    said = {action.text(): action.toolTip() for action in menu.actions() if action.text() in ADDING}
+    assert said == ADDING
+    assert window.findChild(QPushButton, "addButton").toolTip() == ADDING["Add homework…"]
+
+
 def named(text: str) -> str:
     """Copy day and Paste name the selected day, which is today."""
     for verb in ("Copy ", "Paste into "):
@@ -145,7 +159,7 @@ def test_unfinished_with_nothing_unfinished_is_greyed_and_says_why(
     assert action.isEnabled() is False
     assert action.toolTip() == NOTHING_UNFINISHED
     window._show_unfinished()
-    assert window.week_status.text() == NOTHING_UNFINISHED
+    assert window.toast.text() == NOTHING_UNFINISHED
     assert not window.unfinished_panel.isVisibleTo(window)
 
 
