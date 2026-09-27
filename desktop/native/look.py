@@ -617,13 +617,14 @@ def _depth_rules(depth: str, palette: dict) -> str:
 
 
 def palette_from_tokens(tokens: dict[str, str], base: dict) -> dict:
-    """Read a layout's colourway back into the palette the window chrome is painted from.
+    """Read a layout's colourway back into a palette, for the design's own page.
 
-    A layout used to dress only itself, so Bento's indigo sat under a top bar in the pack's blue and
-    the focus timer arrived in default chrome. The chrome now follows whichever design is on screen.
-    Category colours stay on `base`: a block is School-blue in every design.
+    The chrome wears the student's look (decision 3 of 0.17); what sits on a design's page, its
+    panels, buttons and scroll bars, wears the design's colourway, so the page is one design and
+    not a light rail inside a dark one. A category keeps its hue in every design, in the family the
+    design's cards call for.
 
-    The chrome writes one text colour on the window, its panels and its fields. Where the page's ink
+    The page writes one text colour on the window, its panels and its fields. Where the page's ink
     cannot be read on the design's cards, as Retro's white desktop ink on its grey windows (1.82 to 1),
     the window takes the cards' colour and ink, as Retro's own windows do.
     """
@@ -634,6 +635,7 @@ def palette_from_tokens(tokens: dict[str, str], base: dict) -> dict:
         window, text, muted = tokens["surface"], tokens["text"], tokens["muted"]
     return {
         **base,
+        "family": "dark" if luminance(tokens["surface"]) < 0.2 else "light",
         "window": window,
         "panel": tokens["surface"],
         "field": tokens["surface"],
@@ -645,6 +647,7 @@ def palette_from_tokens(tokens: dict[str, str], base: dict) -> dict:
         "error": tokens["danger"],
         "hairline": line,
         "hairline_strong": mix(text, tokens["surface"], 0.30),
+        "rule": line,
     }
 
 

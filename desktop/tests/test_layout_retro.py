@@ -320,5 +320,5 @@ def test_option_colours_repaint_the_desktop_and_the_title_bars(qapp: QApplicatio
             2, view.height() // 2
         ).name(), bar.grab().toImage().pixelColor(2, 2).name()
 
-    assert seen(shown(qapp)) == ("#008080", "#000080")
+    assert seen(shown(qapp, colour="teal")) == ("#008080", "#000080")
     assert seen(shown(qapp, colour="plum")) == ("#5b2a6e", "#4b0082")

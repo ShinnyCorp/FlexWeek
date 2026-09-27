@@ -62,8 +62,10 @@ class LayoutSpec:
 
 
 def _colour(spec_colourways: Colourways) -> Option:
+    """Match my look first, so it is what a design wears until a student picks one of its own
+    colourways (decision 3 of 0.17). A colourway saved before then still loads as saved."""
     named = tuple(Choice(value, label) for value, label, _ in spec_colourways)
-    return Option("colour", "Colours", "style", (*named, Choice(MATCH, "Match my look")))
+    return Option("colour", "Colours", "style", (Choice(MATCH, "Match my look"), *named))
 
 
 def _show(key: str, label: str, level: str = "detail") -> Option:

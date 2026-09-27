@@ -26,6 +26,11 @@ All notable changes to FlexWeek are documented here. Format follows
   be.
 - High contrast: text at 7 to 1 or more, the grid's rules and the hairlines at
   40 % white instead of full white.
+- The top bar, the window's frame, dialogs and Today's app always wear your
+  look and accent. A design's own colourway colours only the design's page, and
+  every design starts in Match my look; its signature colourways are still
+  there to pick, and one saved before still loads. Look and Accent stay in
+  Settings whatever the design, since they dress the window in every one.
 
 ## [0.16.0] - 2026-09-26
 

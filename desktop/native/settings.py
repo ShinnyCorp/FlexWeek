@@ -44,7 +44,7 @@ from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_
 from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import drag_step
 from desktop.native.layouts.dialog import SLOTS, LayoutSection
-from desktop.native.layouts.registry import EXPERIMENTAL, MATCH, sanitize_layout
+from desktop.native.layouts.registry import EXPERIMENTAL, sanitize_layout
 from desktop.native.look import (
     ACCENTS,
     LOOK_KNOBS,
@@ -114,7 +114,6 @@ SPOTIFY_TONE_NOTE = (
 # nothing there (measured 2026-09-21: not the view, not the top bar, apart from Corners on the bar).
 TODAYS_APP_KNOBS = ("surface", "corners", "blocks")
 FINE_TUNE_LOOK = "Fine-tune this look"
-FINE_TUNE_OTHER = "Fine-tune fonts, spacing and shadows"
 ABOUT_MIN_WIDTH = 420
 HELP_MIN_WIDTH = 600
 # Screens on the left and shortcuts on the right, over a window at least this wide.
@@ -808,17 +807,13 @@ class SettingsPage(QWidget):
             self.save_state.setText(NO_SOUND)
 
     def _show_what_applies(self) -> None:
-        """Only the settings that change the chosen views. Look, Accent, Surface, Corners and Blocks
-        stayed on screen for every design while only Today's app read them, so a student changed them
-        in Bento and saw nothing happen. Look and Accent come back when a design matches the look."""
+        """Only the settings that change the chosen views. Surface, Corners and Blocks stayed on screen
+        for every design while only Today's app read them, so a student changed them in Bento and saw
+        nothing happen. Look and Accent stay: they dress the top bar and every window in any design."""
         main = next(section for section in self.layout_sections if section.slot == "main")
         todays_app = main.chosen() == "classic"
-        matched = any(section.values().get("colour") == MATCH for section in self.layout_sections)
-        coloured = todays_app or matched
-        self.colours_card.setVisible(coloured)
         for knob in TODAYS_APP_KNOBS:
             self._fine_form.setRowVisible(self.knobs[knob], todays_app)
-        self.fine_tune.setText(FINE_TUNE_LOOK if coloured else FINE_TUNE_OTHER)
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         """The list fits its longest name once the pack's font has arrived; at large text a fixed

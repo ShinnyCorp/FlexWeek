@@ -115,15 +115,19 @@ def test_appearance_opens_on_main_view_and_ends_with_animations_and_fine_tune(
     ]
     tops = [top(widget, appearance) for widget in order]
     assert tops == sorted(tops), tops
-    # What the note said, where it applies: under the colours it is about.
+    # What the note says, where it applies: under the colours it is about, once a design wears
+    # colours of its own rather than the student's look.
     colour = appearance.findChild(QComboBox, "layoutMain-colour")
     note = appearance.findChild(QLabel, "layoutMainColourNote")
-    assert note.text() == "Pick Match my look to use your own Look and Accent."
+    assert colour.currentData() == "match"
+    assert not note.isVisibleTo(dialog)
+    colour.setCurrentIndex(colour.findData("paper"))
+    qapp.processEvents()
+    assert note.text() == (
+        "Only the design's page takes these colours. The rest of FlexWeek keeps your Look and Accent."
+    )
     assert note.isVisibleTo(dialog)
     assert 0 < top(note, appearance) - top(colour, appearance) < 3 * colour.height()
-    colour.setCurrentIndex(colour.findData("match"))
-    qapp.processEvents()
-    assert not note.isVisibleTo(dialog)
     dialog.close_page()
 
 

@@ -38,9 +38,9 @@ SLOTS = (
 DESIGN_LINE = (
     "A design is how FlexWeek lays out your week. Your blocks and homework are the same in every one."
 )
-# Look and Accent are shown only for a design that uses them, so a design with colours of its own
-# says how to get them back, under the colours it is about.
-COLOUR_NOTE = "Pick Match my look to use your own Look and Accent."
+# A design in colours of its own wears them on its page only, so it says what keeps the student's,
+# under the colours it is about.
+COLOUR_NOTE = "Only the design's page takes these colours. The rest of FlexWeek keeps your Look and Accent."
 # The width setup's design cards are drawn at, so a picture drawn for one is ready for the other.
 PICTURE_WIDTH = 206
 # A choice of more than this many is a dropdown; up to it, the choices sit side by side.

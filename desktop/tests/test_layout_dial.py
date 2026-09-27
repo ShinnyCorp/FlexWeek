@@ -177,7 +177,7 @@ def test_option_colours_repaint_the_screen(qapp: QApplication) -> None:
     def corner(view: DayDialView) -> str:
         return view.grab().toImage().pixelColor(3, 3).name()
 
-    assert corner(shown(qapp, "19:00")) == "#0a0d1a"
+    assert corner(shown(qapp, "19:00", colour="midnight")) == "#0a0d1a"
     assert corner(shown(qapp, "19:00", colour="daylight")) == "#f4f6fb"
     assert (
         corner(shown(qapp, "19:00", colour="match"))

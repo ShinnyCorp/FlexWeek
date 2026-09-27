@@ -433,9 +433,11 @@ def test_every_view_says_what_it_is_for_before_its_style_name(qapp: QApplication
 
 
 def test_settings_shows_only_what_the_main_view_uses(qapp: QApplication) -> None:
-    """Look, Accent, Surface, Corners and Blocks stayed on screen for every design, though only
-    Today's app reads them, so a student changed them in Bento and nothing happened."""
-    from desktop.native.settings import FINE_TUNE_LOOK, FINE_TUNE_OTHER, TODAYS_APP_KNOBS
+    """Surface, Corners and Blocks stayed on screen for every design, though only Today's app reads
+    them, so a student changed them in Bento and nothing happened. Look and Accent stay for every
+    design: they dress the top bar and every window whatever the design (decision 3 of 0.17)."""
+    from desktop.native.layouts.dialog import COLOUR_NOTE
+    from desktop.native.settings import FINE_TUNE_LOOK, TODAYS_APP_KNOBS
 
     dialog = prefs_layout({"main": "classic", "day": "one", "options": {}})
     dialog.fine_tune.setChecked(True)
@@ -459,16 +461,17 @@ def test_settings_shows_only_what_the_main_view_uses(qapp: QApplication) -> None
     main = combo(dialog, "layoutMain")
     main.setCurrentIndex(main.findData("bento"))
     qapp.processEvents()
-    bento = shown()
-    assert {name for name, on in bento.items() if not on} == {"look", "accent", "chips", *TODAYS_APP_KNOBS}
-    assert note().text() == "Pick Match my look to use your own Look and Accent."
-    assert dialog.fine_tune.text() == FINE_TUNE_OTHER
-
-    colour = combo(dialog, "layoutMain-colour")
-    colour.setCurrentIndex(colour.findData("match"))
-    qapp.processEvents()
+    # Bento arrives in Match my look, so there is nothing to say about colours of its own.
     matched = shown()
     assert {name for name, on in matched.items() if not on} == {"note", *TODAYS_APP_KNOBS}
+    assert dialog.fine_tune.text() == FINE_TUNE_LOOK
+
+    colour = combo(dialog, "layoutMain-colour")
+    colour.setCurrentIndex(colour.findData(signature("bento")))
+    qapp.processEvents()
+    own = shown()
+    assert {name for name, on in own.items() if not on} == set(TODAYS_APP_KNOBS)
+    assert note().text() == COLOUR_NOTE
     assert dialog.fine_tune.text() == FINE_TUNE_LOOK
 
     main.setCurrentIndex(main.findData("classic"))
@@ -488,7 +491,9 @@ def test_the_knobs_settings_hides_for_a_design_change_nothing_in_it(
     def view_with(knobs: dict[str, str], prefs: dict | None = None) -> QImage:
         window.session.preferences = {**base, **(prefs or {})}
         window._look = sanitize_look({"preset": "default", "knobs": knobs})
-        window._layout = sanitize_layout({"main": main, "day": "one"})
+        # In its own colours: in Match my look a design wears the look, Surface included.
+        colour = {main: {"colour": signature(main)}}
+        window._layout = sanitize_layout({"main": main, "day": "one", "options": colour})
         window._apply_appearance()
         window._on_week()
         for _ in range(20):
@@ -531,7 +536,7 @@ def test_the_dialog_stores_only_what_the_student_changed(qapp: QApplication) -> 
     colour.setCurrentIndex(colour.findData("paper"))
     assert dialog.layout_choice()["options"] == {"one": {"colour": "paper"}}
     colour = combo(dialog, "layoutDay-colour")
-    colour.setCurrentIndex(colour.findData("black"))
+    colour.setCurrentIndex(colour.findData("match"))
     assert dialog.layout_choice()["options"] == {}
 
 
@@ -545,7 +550,7 @@ def test_trying_another_design_and_coming_back_loses_nothing(qapp: QApplication)
     dialog = prefs_layout({"day": "one", "options": {"one": {"colour": "paper"}}})
     pick = combo(dialog, "layoutDay")
     pick.setCurrentIndex(pick.findData("dial"))
-    assert combo(dialog, "layoutDay-colour").currentData() == "midnight"
+    assert combo(dialog, "layoutDay-colour").currentData() == "match"
     pick.setCurrentIndex(pick.findData("one"))
     assert combo(dialog, "layoutDay-colour").currentData() == "paper"
     assert dialog.layout_choice()["options"] == {"one": {"colour": "paper"}}
@@ -959,51 +964,63 @@ def chrome_colour(window: NativeWindow) -> str:
     return button.grab().toImage().pixelColor(button.width() // 2, button.height() // 2).name()
 
 
-def chrome_accent(window: NativeWindow) -> str:
+def signature(layout_id: str) -> str:
+    """A design's own first colourway, which a student has to pick now that Match my look is first."""
+    return LAYOUTS[layout_id].colourways[0][0]
+
+
+def test_the_chrome_follows_the_look_whatever_design_is_on_screen(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Decision 3 of 0.17: the top bar and the frame wear the look and its accent in every design and
+    every view, and a design's colourway colours only its own page. When the design dressed the
+    chrome, a student saw three accents before placing any homework."""
+    from desktop.native.layouts.registry import tokens_for
     from desktop.native.look import resolved_palette
 
-    base = resolved_palette("light-frost", False, None, "default")
-    return window._chrome_palette(base)["accent"]
-
-
-def test_the_chrome_follows_whichever_design_is_on_screen(qapp: QApplication, window: NativeWindow) -> None:
     window._layout = {"main": "classic", "day": "one", "options": {}}
     window._on_week()
     qapp.processEvents()
-    pack_accent, pack_pixels = chrome_accent(window), chrome_colour(window)
+    look_pixels = chrome_colour(window)
+    pack, system_dark, accent = window._look_inputs()
+    plain = resolved_palette(pack, system_dark, window._look, accent)
 
     for layout_id in ("bento", "mission", "clay"):
-        window._layout = {"main": layout_id, "day": "one", "options": {}}
+        colour = signature(layout_id)
+        window._layout = {"main": layout_id, "day": "one", "options": {layout_id: {"colour": colour}}}
         window._on_week()
-        qapp.processEvents()
-        wanted = window.planner.currentWidget().scene.tokens["accent"]
-        assert chrome_accent(window) == wanted, layout_id
-        assert chrome_colour(window) != pack_pixels, layout_id
+        for view in ("week", "day", "month"):
+            window.session.set_view(view)
+            qapp.processEvents()
+            page = window.planner.currentWidget().scene.tokens
+            assert page["accent"] == tokens_for(layout_id, colour, plain)["accent"] != plain["accent"]
+            assert chrome_colour(window) == look_pixels, (layout_id, view)
+        window.session.set_view("week")
 
     window._layout = {"main": "classic", "day": "one", "options": {}}
     window._on_week()
     qapp.processEvents()
-    assert chrome_accent(window) == pack_accent
-    assert chrome_colour(window) == pack_pixels
+    assert chrome_colour(window) == look_pixels
 
 
-def test_a_day_screen_dresses_the_chrome_too(qapp: QApplication, window: NativeWindow) -> None:
+def test_a_day_screen_colours_its_own_page_and_leaves_the_chrome_to_the_look(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    from desktop.native.layouts.registry import tokens_for
+    from desktop.native.look import resolved_palette
+
     window._layout = {"main": "classic", "day": "one", "options": {}}
+    window._on_week()
+    qapp.processEvents()
+    look_pixels = chrome_colour(window)
+    pack, system_dark, accent = window._look_inputs()
+    plain = resolved_palette(pack, system_dark, window._look, accent)
+    colour = signature("one")
+    window._layout = {"main": "classic", "day": "one", "options": {"one": {"colour": colour}}}
     click(window, "viewMyDay")
     qapp.processEvents()
-    assert chrome_accent(window) == window.planner.currentWidget().scene.tokens["accent"]
-
-
-def test_category_colours_survive_a_layouts_colourway(qapp: QApplication, window: NativeWindow) -> None:
-    """A block is School-blue in every design. Only the chrome follows the layout."""
-    from desktop.native.layouts.registry import tokens_for
-    from desktop.native.look import palette_from_tokens, resolved_palette
-
-    base = resolved_palette("light-frost", False, None, "default")
-    dressed = palette_from_tokens(tokens_for("bento", "sunset", base), base)
-    assert dressed["window"] != base["window"]
-    for key in ("block_locked", "block_flex", "block_edge"):
-        assert dressed[key] == base[key], key
+    assert window.planner.currentWidget().scene.tokens["bg"] == tokens_for("one", colour, plain)["bg"]
+    assert chrome_colour(window) == look_pixels
 
 
 def test_no_chrome_button_spreads_across_the_window(qapp: QApplication, window: NativeWindow) -> None:
@@ -1598,50 +1615,6 @@ def test_accent_chips_paints_every_type_in_the_accent(qapp: QApplication, window
     window._on_week()
     qapp.processEvents()
     assert len(set(menu_swatches(window).values())) == 1
-
-
-def test_day_and_month_wear_the_same_design_as_the_week(qapp: QApplication, window: NativeWindow) -> None:
-    """The design used to be read off whichever widget was on screen, so it dressed the week and
-    nothing else: pressing Day or Month dropped back to the pack's own blue and the app looked like
-    two programs. A layout is a whole way of showing a week, not a skin for one page of it."""
-    from desktop.native.look import resolved_palette
-
-    window._layout = sanitize_layout({"main": "bento", "day": "one"})
-    window._day_mode = False
-    pack, system_dark, accent = window._look_inputs()
-    plain = resolved_palette(pack, system_dark, window._look, accent)
-    seen = {}
-    for view in ("week", "day", "month"):
-        window.session.set_view(view)
-        qapp.processEvents()
-        seen[view] = window._chrome_palette(plain)["accent"]
-    assert len(set(seen.values())) == 1, seen
-    assert seen["week"] != plain["accent"], "the design never took effect at all"
-
-
-def test_classic_keeps_the_pack_it_is_made_of(qapp: QApplication, window: NativeWindow) -> None:
-    """Classic is the app's own look, so there is no design palette to derive."""
-    from desktop.native.look import resolved_palette
-
-    window._layout = sanitize_layout({"main": "classic", "day": "one"})
-    window._day_mode = False
-    pack, system_dark, accent = window._look_inputs()
-    plain = resolved_palette(pack, system_dark, window._look, accent)
-    assert window._chrome_palette(plain) == plain
-
-
-def test_the_day_screen_brings_its_own_design_with_it(qapp: QApplication, window: NativeWindow) -> None:
-    """My day picks a design of its own, and that one wins while it is showing."""
-    from desktop.native.look import resolved_palette
-
-    window._layout = sanitize_layout({"main": "bento", "day": "dial"})
-    pack, system_dark, accent = window._look_inputs()
-    plain = resolved_palette(pack, system_dark, window._look, accent)
-    window._day_mode = False
-    planning = window._chrome_palette(plain)["accent"]
-    window._day_mode = True
-    watching = window._chrome_palette(plain)["accent"]
-    assert planning != watching
 
 
 class FakeUpdater:

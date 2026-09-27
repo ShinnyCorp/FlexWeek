@@ -29,7 +29,7 @@ from desktop.native.look import (
     palette_from_tokens,
     resolved_palette,
 )
-from desktop.tests.test_look import EVERY_LOOK, TEXT_PAIRS, _lab
+from desktop.tests.test_look import TEXT_PAIRS, _lab
 
 DESIGNS = [spec.id for spec in LAYOUTS.values() if spec.options]
 
@@ -64,13 +64,18 @@ def test_every_design_offers_all_three_levels() -> None:
         assert levels == {"style", "detail"}, layout_id
 
 
-def test_every_design_ships_its_own_colours_first_and_can_follow_the_students_look() -> None:
+def test_every_design_follows_the_students_look_until_one_of_its_own_colourways_is_picked() -> None:
+    """Decision 3 of 0.17: a design's default is Match my look, and its signature colourways stay
+    as choices. A colourway saved before then still loads as saved."""
     for layout_id in DESIGNS:
         spec = LAYOUTS[layout_id]
         colour = spec.options[0]
         assert colour.key == "colour" and colour.level == "style", layout_id
-        assert colour.default == spec.colourways[0][0], layout_id
-        assert colour.values == (*[value for value, _, _ in spec.colourways], MATCH), layout_id
+        assert colour.default == MATCH, layout_id
+        assert colour.values == (MATCH, *[value for value, _, _ in spec.colourways]), layout_id
+        signature = spec.colourways[0][0]
+        saved = sanitize_layout({"options": {layout_id: {"colour": signature}}})
+        assert options_for(saved, layout_id)["colour"] == signature, layout_id
 
 
 def test_option_keys_and_choices_are_unambiguous() -> None:
@@ -121,7 +126,7 @@ def test_options_are_the_students_choice_over_the_designs_defaults() -> None:
         "actions": "hide",
         "daybar": "show",
     }
-    assert options_for(None, "dial") == {"colour": "midnight", "hours": "day", "list": "show", "week": "show"}
+    assert options_for(None, "dial") == {"colour": MATCH, "hours": "day", "list": "show", "week": "show"}
     assert options_for(choice, "classic") == {}
 
 
@@ -132,28 +137,23 @@ def test_every_shipped_colourway_is_readable(layout_id: str) -> None:
         assert contrast_failures(tokens_for(layout_id, value, palette)) == [], (layout_id, value)
 
 
-def test_every_design_dresses_the_window_in_colours_its_text_reads_on() -> None:
-    """A design's colours dress the whole window: the top bar, Day, Month and every dialog. Retro's
-    dark desktops put their white page text on its grey windows and fields, 1.82 to 1."""
-    bases = [
-        resolved_palette(pack, dark, {"preset": preset, "knobs": {"surface": surface}}, accent)
-        for pack, dark, preset, accent, surface in EVERY_LOOK
-    ]
-    # Match my look follows the look, so it is checked in every one; a design's own colours are fixed,
-    # and the look lends them only its block colours, so a light and a dark look are enough.
-    dressed = [(MATCH, palette_from_tokens(tokens_for(DESIGNS[0], MATCH, base), base)) for base in bases]
+def test_every_design_dresses_its_page_in_colours_its_text_reads_on() -> None:
+    """A design in its own colours dresses its whole page: its panels, buttons, fields and scroll
+    bars (the chrome keeps the look). Retro's dark desktops put their white page text on its grey
+    windows and fields, 1.82 to 1. A design's colours are fixed, and the look lends them only its
+    block colours, so a light and a dark look are enough."""
     light, dark = resolved_palette("light-frost", False, None), resolved_palette("nocturne", True, None)
-    dressed += [
+    dressed = [
         (f"{layout_id} {value}", palette_from_tokens(tokens_for(layout_id, value, base), base))
         for layout_id in DESIGNS
         for value, _, _ in LAYOUTS[layout_id].colourways
         for base in (light, dark)
     ]
     failures = {
-        (name, ink, paper, round(contrast(chrome[ink], chrome[paper]), 2))
-        for name, chrome in dressed
+        (name, ink, paper, round(contrast(page[ink], page[paper]), 2))
+        for name, page in dressed
         for ink, paper in TEXT_PAIRS
-        if contrast(chrome[ink], chrome[paper]) < AA_TEXT
+        if contrast(page[ink], page[paper]) < AA_TEXT
     }
     assert sorted(failures) == []
 
