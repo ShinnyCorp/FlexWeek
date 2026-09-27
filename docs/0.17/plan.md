@@ -80,6 +80,7 @@ summary, its "What changes" list and its render), on top of Phase 3.
 - **Clay deck: B, Card carousel.**
 - **One thing: B, Countdown.**
 - **Day dial: A, Dial.**
+- **The looks and knobs**: no objection to any, so all ten as the Looks tab draws them.
 
 ### What every revised design must pass
 
@@ -239,7 +240,8 @@ As 0.16, on `feat/0.17-look` (from `claude/0-17-review`), each lane landed by Cl
 3. **Then, at the same time, the screens**: B type, icons and controls (4, 7, 11, 12); C the week,
    blocks, side panel, Day, Month and plan bar (12 to 18, 34's scroll), with H1, Today's app's Rail,
    since the rail is the side panel moved; D the focus screen, toast, Ctrl+K and menus (19 to 22); E
-   sheets, dialogs and Settings (23, 24); G sign in, setup, Help and About (25 to 27).
+   sheets, dialogs and Settings (23, 24); G sign in, setup, Help and About (25 to 27); and A2, the other seven looks,
+   the knobs and the bundled Newsreader and JetBrains Mono.
 4. **Then the other picked designs**, at the same time, on the landed screens: H2 Timeline, H3
    Mission control, H4 Bento, H5 Retro desktop, H6 Clay deck, H7 One thing and Day dial.
 5. **Lane F, motion** (28 to 35), last.
