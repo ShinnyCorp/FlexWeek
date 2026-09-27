@@ -31,6 +31,12 @@ All notable changes to FlexWeek are documented here. Format follows
   every design starts in Match my look; its signature colourways are still
   there to pick, and one saved before still loads. Look and Accent stay in
   Settings whatever the design, since they dress the window in every one.
+- Red means a problem. Month's deadlines are quiet chips led by a bold "Due",
+  whose flag turns red only once the date has gone without the homework being
+  finished; the red outlined boxes are gone. Dates outside the month are
+  white like the rest, told apart by their dimmed numbers. Homework waiting for
+  a time is edged in homework's colour, not red, and Account says how many
+  recovery codes are left in the muted colour, in red only when none are.
 
 ## [0.16.0] - 2026-09-26
 

@@ -1158,7 +1158,8 @@ class AccountDialog(Dialog):
         elif isinstance(remaining, int):
             remaining_text = f"{remaining} unused recovery codes remain."
         status = QLabel(remaining_text)
-        status.setObjectName("recoveryStatus")
+        status.setObjectName("recoveryCount")
+        status.setProperty("problem", remaining == 0)
         layout.addWidget(status)
         form = QFormLayout()
         self.current_password = QLineEdit()

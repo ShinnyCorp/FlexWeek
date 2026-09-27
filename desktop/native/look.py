@@ -951,9 +951,10 @@ def pack_stylesheet(
         f"padding: {pad}px 2px; font-weight: 600; min-height: 0; }}"
         f"QPushButton#deleteBlock:hover, QPushButton#deleteHomework:hover {{ text-decoration: underline; }}"
         # Homework that still needs a time, to be dragged onto the hours: it looks like homework, not
-        # like a button that does something when pressed.
+        # like a button that does something when pressed. Its edge is homework's own colour; red would
+        # say something is wrong, and nothing is.
         f"QPushButton[tray=\"true\"] {{ background: {palette['panel']}; color: {palette['text']}; "
-        f"{edges} border-left: 4px solid #ef4444; text-align: left; }}"
+        f"{edges} border-left: 4px solid {category_paint('assignments', palette)[1]}; text-align: left; }}"
         f"QMenu::item {{ min-height: {item_h}px; padding: {pad}px {pad * 2}px; }}"
         f"QLabel#nowNext {{ font-weight: 600; }}"
         f"QLabel#focusTask {{ font-weight: 600; }}"
@@ -961,7 +962,10 @@ def pack_stylesheet(
         f"QLabel#focusTime {{ font-family: {MONO_FAMILY}; font-weight: 700; }}"
         f"QLabel#recoveryList {{ font-family: {MONO_FAMILY}; }}"
         f"QLabel#recoveryStatus {{ color: {palette['error']}; }}"
-        f"QWidget#authCard {{ background: {palette['panel']}; border-radius: {radius}px; {edges} }}"
+        # How many recovery codes are left is an ordinary fact until none are.
+        f"QLabel#recoveryCount {{ color: {palette['muted']}; }}"
+        f'QLabel#recoveryCount[problem="true"] {{ color: {palette["error"]}; font-weight: 600; }}'
+        f"QWidget#authCard {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
         f"QLabel#authBrand {{ font-size: {size + 8}pt; font-weight: 700; color: {palette['accent']}; }}"
         f"QLabel#authHeading {{ font-weight: 600; font-size: {size + 3}pt; }}"
         f"QLabel#authNote, QLabel#passwordHint, QLabel#usernameHint {{ color: {palette['muted']}; }}"

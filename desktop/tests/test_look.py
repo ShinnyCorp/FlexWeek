@@ -422,3 +422,19 @@ def _lab(colour: str) -> tuple[float, float, float]:
     z = (red * 0.0193 + green * 0.1192 + blue * 0.9505) / 1.08883
     fx, fy, fz = (t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116 for t in (x, y, z))
     return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
+
+
+def test_a_tray_chip_is_edged_in_homeworks_colour_not_in_red() -> None:
+    """Not placed yet is not a problem, so a tray chip's edge is homework's own mark in the look, not
+    the red that said something was wrong (decision 8 of 0.17)."""
+    homework = CATEGORIES["assignments"]
+    high_contrast = {"preset": "high-contrast", "knobs": {}}
+    for pack, dark, look, mark in (
+        ("light-frost", False, None, homework["mark"]),
+        ("dark-frost", True, None, homework["dark"][1]),
+        ("system", False, high_contrast, homework["contrast"][1]),
+    ):
+        palette = resolved_palette(pack, dark, look)
+        tray = pack_stylesheet(pack, dark, look).split('QPushButton[tray="true"] {')[1].split("}")[0]
+        assert f"border-left: 4px solid {mark};" in tray, pack
+        assert palette["error"] not in tray and "#ef4444" not in tray, pack

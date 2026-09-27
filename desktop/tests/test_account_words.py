@@ -194,3 +194,23 @@ def test_delete_account_names_the_account_and_keeps_it_when_refused(
     open_account_and_delete(window, monkeypatch)
     assert asked == [DELETE]
     assert deleted == [PASSWORD]
+
+
+def test_the_recovery_codes_left_are_an_ordinary_fact_until_none_are(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """"8 unused recovery codes remain." was in the error red. Red is for a problem (decision 8 of
+    0.17), and codes left are not one until there are none."""
+    from desktop.native.look import resolved_palette
+
+    pack, dark, accent = window._look_inputs()
+    palette = resolved_palette(pack, dark, window._look, accent)
+    for remaining, colour in ((8, palette["muted"]), (0, palette["error"])):
+        dialog = AccountDialog(window, remaining, {"username": "student"})
+        dialog.show()
+        qapp.processEvents()
+        label = dialog.findChild(QLabel, "recoveryCount")
+        label.ensurePolished()
+        assert label.palette().color(label.foregroundRole()).name() == colour, remaining
+        dialog.close()
