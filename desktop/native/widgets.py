@@ -84,6 +84,7 @@ from backend.slots import (
 )
 from desktop.native.calendar import (
     CATEGORIES,
+    SETUP_SCHOOL_ID,
     is_series,
     local_stamp,
     monday_of,
@@ -91,7 +92,7 @@ from desktop.native.calendar import (
     span_problem,
 )
 from desktop.native.fonts import time_font
-from desktop.native.motion import appear, settle, vanish
+from desktop.native.motion import app_level, appear, settle, vanish
 from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
     LATE_MINUTES,
@@ -1218,7 +1219,19 @@ def _preset_locked(category: str | None, day: int, start: str, duration_min: int
     }
 
 
-class BlockDialog(QDialog):
+class Dialog(QDialog):
+    """A dialog that eases in the first time it shows, at the app's motion level."""
+
+    _appeared = False
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        super().showEvent(event)
+        if not self._appeared:
+            self._appeared = True
+            appear(self, app_level())
+
+
+class BlockDialog(Dialog):
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -1472,6 +1485,75 @@ class BlockDialog(QDialog):
         return deepcopy(self._result if self._result is not None else self._original)
 
 
+class SchoolHoursDialog(Dialog):
+    """School's days and times, asked as setup's Your week page asks them. `block()` is the School to
+    save, or None when no day is ticked: no school on the calendar."""
+
+    def __init__(self, parent: QWidget | None, school: dict | None = None) -> None:
+        super().__init__(parent)
+        # Setup's own controls, imported here: setup imports this module.
+        from desktop.native.setup import DayPicker, TimeRange
+
+        self._original = deepcopy(school) if school is not None else None
+        self._result: dict | None = None
+        self.setObjectName("schoolHoursDialog")
+        self.setWindowTitle("School hours")
+        layout = QVBoxLayout(self)
+        heading = QLabel("School hours")
+        heading.setObjectName("setupSection")
+        layout.addWidget(heading)
+        note = QLabel("The days and times you are at school, so nothing is planned then.")
+        note.setObjectName("setupHint")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        start = (school or {}).get("start") or "08:00"
+        minutes = int((school or {}).get("duration_min") or 390)
+        self.days = DayPicker(list((school or {}).get("days") or ([] if school else [0, 1, 2, 3, 4])))
+        self.times = TimeRange(start, minutes_to_hhmm(hhmm_to_minutes(start) + minutes), "School")
+        layout.addWidget(self.days)
+        layout.addWidget(self.times)
+        hint = QLabel("No school days picked means no school on the calendar.")
+        hint.setObjectName("setupHint")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        self.error = _error_label()
+        layout.addWidget(self.error)
+        buttons = _buttons()
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def accept(self) -> None:
+        days = self.days.days()
+        start, minutes = self.times.span()
+        if not days:
+            self._result = None
+            super().accept()
+            return
+        if minutes <= 0:
+            self.error.setText("End must be after Start.")
+            self.times.end.setFocus()
+            return
+        school = deepcopy(self._original) if self._original is not None else {
+            "id": SETUP_SCHOOL_ID,
+            "kind": "locked",
+            "title": "School",
+            "category": "class",
+        }
+        school.update(days=days, start=start, duration_min=minutes)
+        school["missed_days"] = [day for day in school.get("missed_days", []) if day in days]
+        try:
+            WeekRequest(blocks=[TimeBlock.model_validate(school)])
+        except ValidationError as error:
+            self.error.setText(_block_problem(error))
+            return
+        self._result = school
+        super().accept()
+
+    def block(self) -> dict | None:
+        return deepcopy(self._result)
+
+
 def keep_on_screen(popup: QWidget, area: QRect) -> None:
     """Qt keeps a date's calendar on the screen under the field's corner, or on the main screen when
     that corner is on none, and leaves out any window frame, so it could open past the edge of the
@@ -1554,7 +1636,7 @@ class DueField(QWidget):
         self.changed.emit()
 
 
-class HomeworkDialog(QDialog):
+class HomeworkDialog(Dialog):
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -1904,7 +1986,7 @@ def _grid_starts() -> list[str]:
     return [minutes_to_hhmm(minute) for minute in range(DAY_START_MIN, DAY_END_MIN, SLOT_MIN)]
 
 
-class PreviewDialog(QDialog):
+class PreviewDialog(Dialog):
     def __init__(
         self,
         parent: QWidget | None,
@@ -2276,7 +2358,7 @@ def _when(day: object, start: object) -> str:
     return f"{DAYS[day]} {hhmm_text(str(start))}"
 
 
-class ChooseTimeDialog(QDialog):
+class ChooseTimeDialog(Dialog):
     """A time for homework that needs one, without dragging: for the keyboard, and for designs that have
     no time grid to drop on. It refuses the same times a drop on the Calendar refuses."""
 
@@ -2350,7 +2432,7 @@ class ChooseTimeDialog(QDialog):
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(problem is None)
 
 
-class RoutineDialog(QDialog):
+class RoutineDialog(Dialog):
     def __init__(
         self,
         parent: QWidget | None,
@@ -2508,7 +2590,7 @@ class RoutineDialog(QDialog):
         super().accept()
 
 
-class LateDialog(QDialog):
+class LateDialog(Dialog):
     preview_requested = Signal()
 
     def __init__(self, parent: QWidget | None, context: str) -> None:
@@ -2587,7 +2669,7 @@ def _late_move(move: dict) -> str:
     return "not placed"
 
 
-class SpreadDialog(QDialog):
+class SpreadDialog(Dialog):
     def __init__(self, parent: QWidget | None, assignment: dict, from_date: str) -> None:
         super().__init__(parent)
         self.setObjectName("spreadDialog")
@@ -2626,7 +2708,7 @@ class SpreadDialog(QDialog):
         return self.from_date.date().toString("yyyy-MM-dd")
 
 
-class AvailabilityDialog(QDialog):
+class AvailabilityDialog(Dialog):
     def __init__(self, parent: QWidget | None, preferences: dict, subjects: list[str] | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("availabilityDialog")

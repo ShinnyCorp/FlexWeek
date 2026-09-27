@@ -89,5 +89,33 @@
   "old": "        self.hand.step = drag_step((self.session.preferences or {}).get(\"drag_step_min\"))\n",
   "new": "",
   "test": "desktop/tests/test_layouts_window.py::test_the_drag_step_is_chosen_in_settings_kept_by_the_account_and_given_to_the_hand"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "a tap on a block opens nothing",
+  "old": "            self.hand.press(self, held, at, tap=lambda: self.hand.open(drawn.block_id), home=(self, track))\n",
+  "new": "            self.hand.press(self, held, at, home=(self, track))\n",
+  "test": "desktop/tests/test_hours_hand.py::test_a_click_on_a_block_opens_it_and_a_drag_only_moves_it"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "a right-click picks a block up and moves it",
+  "old": "    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802\n        if event.button() != Qt.MouseButton.LeftButton:\n",
+  "new": "    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802\n        if event.button() not in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):\n",
+  "test": "desktop/tests/test_hours_hand.py::test_a_right_click_asks_for_the_blocks_menu_and_never_moves_it"
+ },
+ {
+  "file": "desktop/native/hours/hand.py",
+  "name": "a double-click opens a second editor",
+  "old": "        if second_click and last is not None and last[0] == block_id and now - last[1] < soon:\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_hours_hand.py::test_a_double_click_opens_the_block_once_and_enter_opens_it"
+ },
+ {
+  "file": "desktop/native/hours/hand.py",
+  "name": "a double-click's second click presses the editor",
+  "old": "                SecondClick(self, self._last)\n",
+  "new": "",
+  "test": "desktop/tests/test_hours_hand.py::test_a_double_clicks_second_click_does_nothing_on_the_editor_its_first_opened"
  }
 ]

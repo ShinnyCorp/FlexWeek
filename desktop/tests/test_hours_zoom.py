@@ -224,6 +224,23 @@ def press_kind(view: ClassicWeek | ClassicDay, block_id: str, day: int, share: f
     return preview.held.kind
 
 
+def test_hours_that_grow_twice_while_opening_still_open_where_they_were_asked(qapp: QApplication) -> None:
+    """A page still laying out can show the hours taller than they end up, twice over. The bar stops
+    short of 10:00 each time it is pulled back by the growing hours; that is not the student
+    scrolling, so once the hours are their own height they start at 10:00."""
+    view = a_week(qapp)
+    view.resize(760, 900)
+    settle(qapp)
+    view.scroll.scroll_to(10 * 60, above=0)
+    settle(qapp)
+    view.resize(760, 1100)
+    settle(qapp)
+    view.resize(760, 520)
+    settle(qapp)
+    at = minute_at(view, 0)
+    assert 9 * 60 + 45 <= at <= 10 * 60 + 15, f"the hours start at {int(at) // 60:02d}:{int(at) % 60:02d}"
+
+
 @pytest.mark.parametrize("px", WEEK_SCALE.levels)
 def test_a_quarter_hour_on_the_week_moves_from_a_quarter_half_and_three_quarters_in(
     qapp: QApplication, px: int

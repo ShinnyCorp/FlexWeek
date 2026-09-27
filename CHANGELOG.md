@@ -33,6 +33,9 @@ All notable changes to FlexWeek are documented here. Format follows
   multi-size `logo.ico` the Windows build now uses. Sign in and the recovery
   codes page show it beside the wordmark.
 - Help lists Ctrl+K (Command bar) and F (Focus screen).
+- Right-click a block, on the hours, Month or among homework with no time yet,
+  for Open, Duplicate, Finished (homework) and Delete. Delete asks first and
+  can be undone; Duplicate shows the same preview as Ctrl+D.
 
 ### Changed
 - Every time is written in figures of one width: the hours, a block's times,
@@ -96,6 +99,14 @@ All notable changes to FlexWeek are documented here. Format follows
   than showing an empty box. Running late is a card that says nothing changes
   until you accept, and shows its list of moves once there is a preview. A
   running focus timer is a card with Pause as its one filled button.
+- A click on a block opens it; a drag still moves or resizes it, and Enter
+  still opens the chosen block. A double-click opens it once, and its second
+  click does nothing to the editor the first opened.
+- School hours asks what setup asks: the days, and from and to. Ticking no day
+  takes School off the calendar. It used to open the Edit event dialog.
+- Switching views crossfades the new view in, dialogs ease in, and after Plan
+  the blocks that moved slide to their places and new ones fade in. A block
+  you drag is simply where you let it go. Animations Off turns all of it off.
 
 ### Fixed
 - A one-hour block, such as Club at 19:00, shows its name and its times on two

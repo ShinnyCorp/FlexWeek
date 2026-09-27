@@ -42,6 +42,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.layouts.one_thing import OneThingView
     from desktop.native.layouts.registry import LAYOUTS, sanitize_layout
     from desktop.native.layouts.views import VIEW_CLASSES
+    from desktop.native.motion import DURATION_MS
     from desktop.native.settings import SettingsPage
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
@@ -142,6 +143,11 @@ def one_thing(window: NativeWindow) -> None:
     """One thing as the day screen. Day dial is the default since 0.16; these tests are about One
     thing's own buttons."""
     window._layout = sanitize_layout({**window._layout, "day": "one"})
+
+
+def faded_in() -> None:
+    """A new page fades in; a picture of it is what the student sees once it has."""
+    QTest.qWait(DURATION_MS["extra"] + 100)
 
 
 def test_my_day_puts_planning_away_and_back_brings_it_back(qapp: QApplication, window: NativeWindow) -> None:
@@ -348,6 +354,7 @@ def test_the_choice_is_saved_on_this_device_beside_the_look(qapp: QApplication, 
     assert window._look == {"preset": "paper", "knobs": {"corners": "pill"}}
     assert window._layout["options"] == {"one": {"colour": "paper"}}
     click(window, "viewMyDay")
+    faded_in()
     assert window.planner.currentWidget().grab().toImage().pixelColor(4, 4).name() == "#f7f1e3"
 
 
@@ -372,6 +379,7 @@ def test_saving_the_look_from_settings_keeps_the_layout(qapp: QApplication, wind
 def test_a_changed_look_repaints_a_design_that_matches_it(qapp: QApplication, window: NativeWindow) -> None:
     window._layout = {"main": "classic", "day": "one", "options": {"one": {"colour": "match"}}}
     click(window, "viewMyDay")
+    faded_in()
     view = window.planner.currentWidget()
     before = view.grab().toImage().pixelColor(4, 4).name()
     window._look = {"preset": "terminal", "knobs": {}}
@@ -487,7 +495,8 @@ def test_the_knobs_settings_hides_for_a_design_change_nothing_in_it(
             qapp.processEvents()
         return window.planner.currentWidget().grab().toImage()
 
-    base = dict(window.session.preferences or {})
+    # Still pictures: with animations off, every picture is of the page as it settles.
+    base = {**(window.session.preferences or {}), "motion": "off"}
     plain = view_with({})
     for knob in TODAYS_APP_KNOBS:
         other = next(value for value in LOOK_KNOBS[knob] if value != LOOK_DEFAULTS[knob])
@@ -668,84 +677,6 @@ def test_plan_and_more_stay_on_the_bar_in_every_layout(qapp: QApplication, windo
     assert "Settings" not in offered
     assert "Account" not in offered
     assert (offered["Undo"], offered["Redo"]) == (True, False)
-
-
-def _trigger_add(window: NativeWindow, words: str) -> None:
-    """Pick an entry in the Add button's menu, as a click on it does."""
-    next(action for action in window.add_menu.actions() if action.text() == words).trigger()
-
-
-def _school_dialogs(monkeypatch: pytest.MonkeyPatch, end: str | None = None) -> list[dict]:
-    """Opens School hours' dialog as the student would see it and saves it, with End moved if asked."""
-    from desktop.native.widgets import BlockDialog
-
-    seen: list[dict] = []
-
-    def run(dialog: BlockDialog) -> int:
-        seen.append(
-            {
-                "window": dialog.windowTitle(),
-                "title": dialog.title.text(),
-                "start": dialog.start.time().toString("HH:mm"),
-                "end": dialog.end.time().toString("HH:mm"),
-                "days": [index for index, box in enumerate(dialog.days) if box.isChecked()],
-            }
-        )
-        if end is not None:
-            from PySide6.QtCore import QTime
-
-            dialog.end.setTime(QTime.fromString(end, "HH:mm"))
-        dialog.accept()
-        return QDialog.DialogCode.Accepted
-
-    monkeypatch.setattr(BlockDialog, "exec", run)
-    return seen
-
-
-def test_school_hours_adds_school_when_setup_skipped_it(
-    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Skipping School at setup left nothing on the menu that said school. "Add fixed time" opened
-    whichever type was armed, so a student who wanted school found no way to add it."""
-    window.session.delete_block("school")
-    window.session.save()
-    settled(qapp, window)
-    assert not any(block.get("category") == "class" for block in window.session.blocks)
-    assert "School hours…" in [action.text() for action in window.add_menu.actions()]
-    # The last type used on the calendar, which is what "Add fixed time" opens.
-    window.session.armed_category = "exercise"
-    seen = _school_dialogs(monkeypatch)
-    _trigger_add(window, "School hours…")
-    settled(qapp, window)
-    assert seen == [
-        {
-            "window": "New event",
-            "title": "School",
-            "start": "08:00",
-            "end": "14:30",
-            "days": [0, 1, 2, 3, 4],
-        }
-    ]
-    school = [block for block in window.session.blocks if block.get("category") == "class"]
-    assert [(block["title"], block["start"], block["duration_min"], block["days"]) for block in school] == [
-        ("School", "08:00", 390, [0, 1, 2, 3, 4])
-    ]
-    assert window.session.dirty is False
-
-
-def test_school_hours_changes_the_school_already_there(
-    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """With School set, the same item edits it for every day rather than adding a second School."""
-    seen = _school_dialogs(monkeypatch, end="15:15")
-    _trigger_add(window, "School hours…")
-    settled(qapp, window)
-    assert seen[0]["window"] == "Edit event"
-    assert (seen[0]["start"], seen[0]["end"], seen[0]["days"]) == ("08:00", "14:30", [0, 1, 2, 3, 4])
-    school = [block for block in window.session.blocks if block.get("category") == "class"]
-    assert [(block["id"], block["duration_min"], block["days"]) for block in school] == [
-        ("school", 435, [0, 1, 2, 3, 4])
-    ]
 
 
 def test_a_more_item_does_what_its_button_does(qapp: QApplication, window: NativeWindow) -> None:

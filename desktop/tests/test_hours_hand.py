@@ -21,7 +21,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
-    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtGui import QContextMenuEvent, QMouseEvent
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
@@ -83,6 +83,7 @@ class Rig:
         self.hand.committed.connect(self.said.append)
         self.hand.refused.connect(lambda words: self.said.append(("refused", words)))
         self.hand.opened.connect(lambda block_id: self.said.append(("opened", block_id)))
+        self.hand.menu_requested.connect(lambda block_id, day, _at: self.said.append(("menu", block_id, day)))
         painter = BlockPainter(resolved_palette("system", False, None))
         self.canvas = HoursCanvas(
             self.hand,
@@ -283,16 +284,118 @@ def test_passing_through_an_edge_does_not_scroll_but_resting_there_does(qapp: QA
     rig.send(rig.canvas, QEvent.Type.MouseButtonRelease, bottom, False)
 
 
-def test_double_click_and_enter_open_the_block(qapp: QApplication) -> None:
+def test_a_click_on_a_block_opens_it_and_a_drag_only_moves_it(qapp: QApplication) -> None:
+    rig = Rig(qapp)
+    point = rig.at(2, 18 * 60 + 30)
+    rig.send(rig.canvas, QEvent.Type.MouseButtonPress, point, True)
+    assert rig.said == [], "a press may still become a drag, so nothing opens yet"
+    rig.send(rig.canvas, QEvent.Type.MouseButtonRelease, point, False)
+    assert rig.said == [("opened", "essay")]
+    assert rig.hand.selection == ("essay", 2)
+    rig.said.clear()
+    rig.drag(point, rig.at(3, 19 * 60 + 30))
+    assert rig.said == [Move("essay", 2, Span(3, 19 * 60, 20 * 60))], "a drag moves and opens nothing"
+
+
+def test_a_click_on_an_edge_opens_the_block_rather_than_resizing_it(qapp: QApplication) -> None:
+    rig = Rig(qapp)
+    edge = rig.canvas.block_rect("essay", 2).top() + 2
+    point = QPoint(rig.at(2, 18 * 60).x(), edge)
+    rig.send(rig.canvas, QEvent.Type.MouseButtonPress, point, True)
+    rig.send(rig.canvas, QEvent.Type.MouseButtonRelease, point, False)
+    assert rig.said == [("opened", "essay")]
+
+
+def test_a_double_click_opens_the_block_once_and_enter_opens_it(qapp: QApplication) -> None:
     rig = Rig(qapp)
     point = rig.at(2, 18 * 60 + 30)
     rig.send(rig.canvas, QEvent.Type.MouseButtonPress, point, True)
     rig.send(rig.canvas, QEvent.Type.MouseButtonRelease, point, False)
     rig.send(rig.canvas, QEvent.Type.MouseButtonDblClick, point, True)
     rig.send(rig.canvas, QEvent.Type.MouseButtonRelease, point, False)
+    assert rig.said == [("opened", "essay")], "the first click opened it; the second opens no other editor"
     QTest.keyClick(rig.canvas, Qt.Key.Key_Return)
     assert rig.said == [("opened", "essay"), ("opened", "essay")]
     assert rig.hand.selection == ("essay", 2)
+
+
+def test_a_double_clicks_second_click_does_nothing_on_the_editor_its_first_opened(
+    qapp: QApplication,
+) -> None:
+    """The first click opens the editor, so the second lands on it, over whatever is there."""
+    from PySide6.QtWidgets import QDialog
+
+    rig = Rig(qapp)
+    point = rig.at(2, 18 * 60 + 30)
+    editor = QDialog(rig.window)
+    editor.setModal(True)
+    button = QPushButton("Delete", editor)
+    pressed: list[bool] = []
+    button.pressed.connect(lambda: pressed.append(True))
+
+    def open_editor(_block_id: str) -> None:
+        editor.show()
+        editor.move(editor.pos() + point - button.mapToGlobal(button.rect().center()))
+        qapp.processEvents()
+
+    rig.hand.opened.connect(open_editor)
+    rig.send(rig.canvas, QEvent.Type.MouseButtonPress, point, True)
+    rig.send(rig.canvas, QEvent.Type.MouseButtonRelease, point, False)
+    assert QApplication.activeModalWidget() is editor
+    assert button.mapToGlobal(button.rect().center()) == point, "the editor's Delete is under the pointer"
+    rig.send(button, QEvent.Type.MouseButtonDblClick, point, True)
+    rig.send(button, QEvent.Type.MouseButtonPress, point, True)
+    rig.send(button, QEvent.Type.MouseButtonRelease, point, False)
+    assert pressed == [], "the second click pressed nothing"
+    QTest.qWait(QApplication.doubleClickInterval() + 50)
+    rig.send(button, QEvent.Type.MouseButtonPress, point, True)
+    rig.send(button, QEvent.Type.MouseButtonRelease, point, False)
+    assert pressed == [True], "a click after that is the student's own"
+    editor.close()
+
+
+def test_a_double_click_on_its_own_still_opens_the_block(qapp: QApplication) -> None:
+    """Some input sends a double-click with no click before it; the block opens all the same."""
+    rig = Rig(qapp)
+    rig.send(rig.canvas, QEvent.Type.MouseButtonDblClick, rig.at(2, 18 * 60 + 30), True)
+    assert rig.said == [("opened", "essay")]
+
+
+def right(rig: Rig, kind: QEvent.Type, at: QPoint, held: bool) -> None:
+    local = QPointF(rig.canvas.mapFromGlobal(at))
+    buttons = Qt.MouseButton.RightButton if held else Qt.MouseButton.NoButton
+    event = QMouseEvent(
+        kind, local, QPointF(at), Qt.MouseButton.RightButton, buttons, Qt.KeyboardModifier.NoModifier
+    )
+    QApplication.sendEvent(rig.canvas, event)
+
+
+def right_click(rig: Rig, at: QPoint, to: QPoint | None = None) -> None:
+    """A right press, a move while it is down if `to` is given, the release, and the menu request a
+    platform sends with it."""
+    right(rig, QEvent.Type.MouseButtonPress, at, True)
+    for step in range(1, 9) if to is not None else ():
+        right(rig, QEvent.Type.MouseMove, at + (to - at) * step / 8, True)
+    right(rig, QEvent.Type.MouseButtonRelease, to or at, False)
+    local = rig.canvas.mapFromGlobal(to or at)
+    QApplication.sendEvent(rig.canvas, QContextMenuEvent(QContextMenuEvent.Reason.Mouse, local, to or at))
+
+
+def test_a_right_click_asks_for_the_blocks_menu_and_never_moves_it(qapp: QApplication) -> None:
+    rig = Rig(qapp)
+    rig.hand.select("school", 0)
+    right_click(rig, rig.at(2, 18 * 60 + 30), rig.at(3, 19 * 60 + 30))
+    assert rig.hand.preview is None and not rig.hand.busy, "a right-drag carries nothing"
+    assert rig.said == [], "let go over free time: no menu, and nothing moved"
+    assert rig.hand.selection == ("school", 0)
+    right_click(rig, rig.at(2, 18 * 60 + 30))
+    assert rig.said == [("menu", "essay", 2)]
+    assert rig.hand.selection == ("essay", 2), "the block under the pointer becomes the selection"
+    right_click(rig, rig.at(6, 12 * 60))
+    assert rig.said == [("menu", "essay", 2)], "free time has no menu"
+    assert rig.hand.selection == ("essay", 2)
+    rig.send(rig.canvas, QEvent.Type.MouseMove, rig.at(3, 19 * 60 + 30), False)
+    assert rig.said == [("menu", "essay", 2)] and rig.hand.preview is None
 
 
 def test_the_rig_interface_points_at_what_is_drawn(qapp: QApplication) -> None:

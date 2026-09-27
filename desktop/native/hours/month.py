@@ -22,7 +22,16 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QMouseEvent, QPainter, QPaintEvent, QPen
+from PySide6.QtGui import (
+    QColor,
+    QContextMenuEvent,
+    QFont,
+    QFontMetrics,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
+)
 from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from backend.models import due_is_timed
@@ -233,6 +242,9 @@ class MonthCanvas(QWidget):
         self.setAccessibleName("Month")
         self.hand, self.painter = hand, painter
         self.cells: list[MonthCell] = []
+        # The Monday of the week the window has open: only its blocks have a menu, since the same id
+        # can stand for a block on another week, such as School.
+        self.open_week: str | None = None
         self._pressed: str | None = None
         # The row the month opened on, and the height of the view it scrolls in.
         self._lead = 0
@@ -398,6 +410,20 @@ class MonthCanvas(QWidget):
             )
             return
         self._pressed = self.date_at(point)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """A right-click on a block of the open week asks for its menu. A deadline has none."""
+        found = self._chip_at(QPointF(event.pos()))
+        if found is None or found[1].block_id is None or found[1].due or self.hand.busy:
+            event.ignore()
+            return
+        cell, chip, _box = found
+        day = date.fromisoformat(cell.iso)
+        if (day - timedelta(days=day.weekday())).isoformat() != self.open_week:
+            event.ignore()
+            return
+        event.accept()
+        self.hand.ask_menu(chip.block_id, day.weekday(), event.globalPos())
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         pressed, self._pressed = self._pressed, None
@@ -594,6 +620,7 @@ class MonthGrid(QWidget):
         weeks = dict(self._unsaved)
         if self._week is not None and self._week.week_start:
             weeks[self._week.week_start] = self._week
+        self.canvas.open_week = self._week.week_start if self._week is not None else None
         self.canvas.set_cells(month_cells(snapshot, weeks, date.today().isoformat()))
         overdue = snapshot.get("overdue") or []
         titles = ", ".join(str(item.get("title") or item.get("id", "")) for item in overdue[:8])

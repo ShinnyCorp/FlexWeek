@@ -486,8 +486,8 @@ class TimelineView(LayoutView):
             canvas.setAccessibleName("The week, a line of hours for each day")
             canvas.setAccessibleDescription(
                 "Drag along a day's line to change the time, or onto another day's line. Pull a block's "
-                "left or right end to resize it, or drag empty time to add something. Double-click a "
-                "block to open it."
+                "left or right end to resize it, or drag empty time to add something. Click a block to "
+                "open it."
             )
             scroll = self.keep_zoom(HoursScroll(
                 canvas, WEEK_SCALE, _line_length, name="timelineWeek", gutter=scene.px(170), axis=Axis.ACROSS,

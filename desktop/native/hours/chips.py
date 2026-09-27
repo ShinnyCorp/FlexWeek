@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QMouseEvent, QResizeEvent
+from PySide6.QtGui import QContextMenuEvent, QMouseEvent, QResizeEvent
 from PySide6.QtWidgets import QPushButton, QWidget
 
 from desktop.native.hours.hand import Gesture, Hand, Held
@@ -11,7 +11,8 @@ from desktop.native.weekmodel import Waiting, length_label
 
 
 class TrayChip(QPushButton):
-    """Homework with no time yet. Drag it onto any hours to give it that time; a click opens it.
+    """Homework with no time yet. Drag it onto any hours to give it that time; a click opens it and a
+    right-click shows its menu.
 
     Its words shorten to the room it has, with the whole title in its tooltip, rather than running
     off the edge of a narrow tray or large text. The title shortens first: the length is the number
@@ -63,3 +64,8 @@ class TrayChip(QPushButton):
             return
         # Not passed on: a press may be the start of a drag, so the click waits for the release.
         self.hand.press(self, self.held, event.globalPosition().toPoint(), tap=self.click)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        event.accept()
+        # It has no day until it is given a time.
+        self.hand.ask_menu(self.block_id, -1, event.globalPos())

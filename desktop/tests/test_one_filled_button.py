@@ -74,6 +74,11 @@ def makers() -> dict[type, list[Callable[[QWidget], QDialog]]]:
             lambda host: widgets.SpreadDialog(host, {**HOMEWORK, "unplanned_min": 120}, "2026-09-21")
         ],
         widgets.AvailabilityDialog: [lambda host: widgets.AvailabilityDialog(host, windows, ["Math"])],
+        widgets.SchoolHoursDialog: [
+            lambda host: widgets.SchoolHoursDialog(host, school()),
+            lambda host: widgets.SchoolHoursDialog(host, None),
+        ],
+        widgets.Dialog: [lambda host: widgets.Dialog(host)],
         settings.RestoreDialog: [
             lambda host: settings.RestoreDialog(host, [RESTORE_POINT], None, None)
         ],
@@ -95,6 +100,9 @@ def filled(dialog: QDialog, accent: str) -> list[str]:
     shown = []
     for button in dialog.findChildren(QPushButton):
         if not button.isVisibleTo(dialog) or button.width() < 8:
+            continue
+        # A ticked day is a choice shown, like a segment, not a second thing to press.
+        if button.isCheckable() and button.objectName() in {"setupDay", "setupChip"}:
             continue
         colour = button.grab().toImage().pixelColor(4, button.height() // 2)
         if colour == QColor(accent):

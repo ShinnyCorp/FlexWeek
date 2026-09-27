@@ -66,7 +66,7 @@ from desktop.native.spotify import SpotifyPlayer, open_in_app
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
 from desktop.native.weekmodel import hhmm_text, length_label, time_format
-from desktop.native.widgets import FlowLayout, Segmented, Switch, fit_scroll_dialog
+from desktop.native.widgets import Dialog, FlowLayout, Segmented, Switch, fit_scroll_dialog
 
 UPDATE_MIN_WIDTH = 420
 ALARM_MIN_WIDTH = 380
@@ -1138,7 +1138,7 @@ class RestoreDialog(QDialog):
         self.accept()
 
 
-class AccountDialog(QDialog):
+class AccountDialog(Dialog):
     def __init__(self, parent: QWidget | None, remaining: int | None, storage: dict | None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Account")
@@ -1304,7 +1304,7 @@ def _line(words: str, name: str) -> QLabel:
     return made
 
 
-class AboutDialog(QDialog):
+class AboutDialog(Dialog):
     def __init__(self, parent: QWidget | None, storage: dict | None, folder: str) -> None:
         super().__init__(parent)
         self.setWindowTitle("About FlexWeek")
@@ -1330,7 +1330,7 @@ class AboutDialog(QDialog):
         layout.addWidget(_close_row(self))
 
 
-class HelpDialog(QDialog):
+class HelpDialog(Dialog):
     """Enough to find your way until the tutorial and guides exist: the screens on the left, the
     keys on the right. One column at large text or over a narrow window, where two would each be
     too narrow to read."""
