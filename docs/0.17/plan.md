@@ -65,6 +65,22 @@ Today's app's Week, and a third the system itself (type scale, colours, controls
 short loop). Jonathan picks A, B or "keep as it is" for each; his picks are written into this file as
 decisions before Phase 3 starts.
 
+### Jonathan's picks (27 September)
+
+These are decisions. Each picked option is built as the mock-up draws it (`designs/<id>.js`: its
+summary, its "What changes" list and its render), on top of Phase 3.
+
+- **Today's app: B, Rail**, and the mini month can be hidden or shown: a control on the month's
+  header folds it away, the choice is remembered, and with it hidden the rail starts at Next.
+- **Timeline: B, Planner spread.**
+- **Mission control: B, Ops board.**
+- **Bento: both.** A (the week as the hero) and B (today as the hero, the other days as tiles) are
+  one design with a choice in its Settings, "Hero: Week | Today"; the week first, as Bento is now.
+- **Retro desktop: A, Windows 98, faithful.**
+- **Clay deck: B, Card carousel.**
+- **One thing: B, Countdown.**
+- **Day dial: A, Dial.**
+
 ### What every revised design must pass
 
 The tokens test in every look; no clipped text at 1280x800, 1150x768 with large text, and 800 wide;
@@ -220,12 +236,13 @@ As 0.16, on `feat/0.17-look` (from `claude/0-17-review`), each lane landed by Cl
 2. **Lane A, tokens and colour** (1 to 3, 5, 6, 8 to 10, 13, Light, Dark, System and High contrast)
    runs beside the mock-up, since Phase 1 does not wait on the picks; the other looks and the knobs
    join it once they are picked.
-3. **Then, at the same time**: B type, icons and controls (4, 7, 11, 12); C the week, blocks, side
-   panel, Day, Month and plan bar (12 to 18, 34's scroll); D the focus screen, toast, Ctrl+K and menus
-   (19 to 22); E sheets, dialogs and Settings (23, 24); G sign in, setup, Help and About (25 to 27);
-   and one lane per picked design (H1 Today's app, H2 Timeline, H3 Mission control, H4 Bento, H5
-   Retro desktop, H6 Clay deck, H7 One thing and Day dial).
-4. **Lane F, motion** (28 to 35), last.
+3. **Then, at the same time, the screens**: B type, icons and controls (4, 7, 11, 12); C the week,
+   blocks, side panel, Day, Month and plan bar (12 to 18, 34's scroll), with H1, Today's app's Rail,
+   since the rail is the side panel moved; D the focus screen, toast, Ctrl+K and menus (19 to 22); E
+   sheets, dialogs and Settings (23, 24); G sign in, setup, Help and About (25 to 27).
+4. **Then the other picked designs**, at the same time, on the landed screens: H2 Timeline, H3
+   Mission control, H4 Bento, H5 Retro desktop, H6 Clay deck, H7 One thing and Day dial.
+5. **Lane F, motion** (28 to 35), last.
 
 Each lane ends green on `scripts/verify.py` through `run-alone.sh`, on the mutation specs it touches,
 on the rig for every design it touches, and with its screens read from
@@ -234,7 +251,7 @@ only; the PR and release come last, on Jonathan's word.
 
 ## Integration and release
 
-- Land A, then the parallel lanes, then F.
+- Land A, then the screens with H1, then H2 to H7, then F.
 - The gate, every mutation spec, the rig on every design and both day screens, the tokens test in
   every look, and the tour and frames read against `look-review.md` and Phase 2's checklist.
 - Docs: `CHANGELOG.md` 0.17.0, `spec.md` (the system, the looks, the knobs, the motion levels),
