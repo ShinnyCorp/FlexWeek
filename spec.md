@@ -202,37 +202,61 @@ Contract for the finished app:
   first. Details live in `docs/stage7-contract.md`.
 
 ## User Experience
-Native desktop app, one window, designed at 1280px and usable down to 1150px,
-where the layouts switch to a narrow arrangement. PySide6 Qt widgets over a
+Native desktop app, one window, designed at 1280px and usable down to 800px.
+Under 1150px the layouts switch to a narrow arrangement: Week's side folds into
+one line above the hours, and blocks show their names without their times. PySide6 Qt widgets over a
 FastAPI backend started in-process on a loopback port. **No HTML, CSS or
 JavaScript, no npm, no build step, no framework.** There is no browser client:
 the web app was retired in September 2026 and `frontend/` deleted.
 
 First paint with no session is Sign in, with creating an account offered as a
-line of small print that switches the same card over. The card offers "Keep me
+line of small print that switches the same card over. It says "Welcome." until
+someone has signed in on this computer, and "Welcome back." after. The card offers "Keep me
 signed in on this computer", on by default. A kept session opens the week at
 the next launch until the server ends it (seven days after sign-in) or the
 student logs out.
-A new account must acknowledge its eight recovery codes, then goes to first-run
-setup, one page at a time: a starting style or its own look, the week (school
+A new account must acknowledge its eight recovery codes, shown in a fixed-width
+face with Copy and Save…, then goes to first-run setup, one page at a time: a
+starting style or its own look (the standard styles first, the rest under
+"Experimental styles"), the week (school
 days and hours, activities on their own days, and No homework after), how
 homework gets a time, reminders and the alarm sound, up to three first
 homework, and a summary. Every page can be skipped and is kept when the
 student leaves it, so a quit resumes on the same page. Finishing or skipping is
 stored in `setup`, and setup never returns unless the student picks Run setup
-again in Settings. School hours stays under More for later.
+again in Settings. School hours stays for later under Add, in a dialog of its
+own that asks the days and the times, as setup does; no day ticked takes School
+off the calendar.
+
+The top bar is the title and the week's arrows on the left; on the right, Day,
+Week, Month and My day as one segmented control, then Add, the one filled
+button (a click adds homework; its arrow offers a fixed time, School hours and
+the type the next drag makes), Plan my homework, More and the gear. Ctrl+K opens
+a command bar that adds, goes to any view or opens any homework by typing a few
+letters of it. Today's app's Week has a side, as Day does: the Next line, the
+homework a focus timer can start on, and Not placed yet. Everything FlexWeek
+says after an action (a move, a plan, a deletion, a reminder) is one toast over
+the foot of the hours, with Undo when the step can be undone; it goes after a
+few seconds or on a switch to another view. There is no status line. Month opens
+with the student's week as its first row. A new account with no homework sees
+"Nothing here yet." and one "Add your first homework" button in place of empty
+hours. A focus timer has a screen of its own (Start focus, Quick focus or F):
+the countdown large, the homework, Pause, Skip and Finish; Esc goes back and
+the timer keeps running.
 
 The week calendar is a painted timeline, as in Daily Scheduler: dragging a
 block moves it with the pointer in the student's 5- or 15-minute step and
 across days, its top or bottom edge resizes it, and dragging or clicking empty
-time opens an Add dialog for that range. Blocks may overlap; they sit side by
+time opens an Add dialog for that range. A click on a block opens it; a
+right-click offers Open, Duplicate, Finished (homework) and Delete. Hours have
+no half-hour rules; the now line carries the time, and today's column is washed
+and underlined in the accent. After a plan, blocks slide to their new places. Blocks may overlap; they sit side by
 side, each marked. A drop
 is refused only outside the day's hours or when homework would end after it is
 due. Dragging one day of a repeating block moves that day only. Dragging works
-in every design: a block can be picked up wherever a design shows it. Mission
-control's lanes, the Day dial and One thing's day bar take the drop at the time
-under the pointer; the other designs open that day's hours at the side while a
-block is dragged, where the drop lands at a time. Everywhere the drop says the
+in every design: a block can be picked up wherever a design shows it, and every
+design's Day and Week are its own hours, which take the drop at the time under
+the pointer. Everywhere the drop says the
 day, the time and any block it would sit beside, in the same words.
 
 Downloads from GitHub Releases:
@@ -334,8 +358,21 @@ full English weekday plus HH:MM, or HH:MM. An account holds at most 1000
 assignments. API write bodies are capped at 256 KiB.
 
 Preferences store `theme` as `system`, `slate` or `nocturne` for the light/dark
-axis. The menus offer appearance packs: System, Light frost, Dark frost,
-Nocturne and Slate. Light frost and Dark frost are new looks. `system` is the
+axis. The Look menu offers System, Light, Dark and High contrast, with an
+accent; Nocturne, Slate, Poster, Terminal, Paper, Ink and Pastel are under
+"Experimental styles". Today's app is the default main view and Day dial the
+default day screen, with Timeline the one standard alternative; Mission
+control, Bento, Retro desktop, Clay deck and One thing are experimental. Every
+saved choice still loads. The app draws in Inter, shipped with it (Regular,
+Medium, SemiBold, Bold), with figures of one width in times; a look with its
+own face keeps it. Cards pad 16 pixels, 8 at Compact, and dialogs 24. Activity
+blocks are teal, never near homework's coral; on a dark look blocks are deep
+fills with light ink. `clock_24h` (default true) chooses 16:00 or 4:00 PM for
+every time written on screen; times are still sent and saved as HH:MM.
+Settings is a page of the window, not a dialog: its sections on the left and
+cards on the right, a switch for each on or off, side-by-side segments for two
+or three choices, and pictures for the main view and day screen. Every dialog
+has at most one filled button. `system` is the
 default pack: the app follows the device's light or dark setting, uses Light
 when the device reports none, and switches when that setting changes. Choosing
 Slate, Nocturne or a frost pack keeps that look until the student chooses

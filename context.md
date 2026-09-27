@@ -657,6 +657,13 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-26, `feat/0.16-polish`: every row of Timmy and AL's 0.15.0 design review
+  (`docs/0.16/design-review.md`) is built, on Jonathan's "Do all of them", in the six lanes of
+  `docs/0.16/plan.md`, each merged after review. Fixed at integration: the focus countdown forced
+  Inter on mono looks; `window_support.signed_out` now deletes the device look file, which one
+  suite's saved knob had been handing to the next; a zoom mutation lane F's empty week had left
+  uncaught now has a unit test (`test_hours_that_grow_twice_while_opening_still_open_where_they_were_asked`).
+  Not released: version is still 0.15.0 and the changelog heading says Unreleased.
 - 2026-09-25, `feat/0.15-tabs`: 0.15.0 prepared on Jonathan's "make a PR,
   after the code checks are verified merge, and then make the releases": the
   changelog is dated, `docs/release-notes-v0.15.0.md` covers lanes C and D1,

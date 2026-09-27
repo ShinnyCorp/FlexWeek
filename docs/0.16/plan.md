@@ -60,6 +60,8 @@ Opus. Local commits only; the PR and release come last, on Jonathan's word.
 
 ## Lane A. Type, space and colour (foundation)
 
+*Done, merged at `7f51736`. `time_font` lives in `desktop/native/fonts.py`, since `look.py` has no Qt; Settings keeps 11 px at its sides so it fits a laptop at large text; dark looks mix the category's strong colour, not the pale one.*
+
 Files: `desktop/assets/fonts/`, `desktop/main.py`, `desktop/build_linux.sh`,
 `desktop/build_windows.ps1`, `desktop/native/look.py`, `desktop/native/calendar.py`,
 `desktop/native/hours/canvas.py`, `desktop/native/layouts/mission.py:67`, tests.
@@ -91,6 +93,8 @@ classic Day and Week; `audit_tour_2.py` read.
 
 ## Lane B. Chrome: the top bar, Week's sidebar, one toast, Month, the floor
 
+*Done, merged at `b4489f0`. Month grows its rows until the weeks from this one fill the view, so late in a month it shows two tall weeks. Add is a button beside a small arrow that holds its menu. At exactly 1150 px with large text blocks keep their times and are cut; only narrower windows get names alone.*
+
 Files: `desktop/native/window.py`, `desktop/native/widgets.py` (Toast, EndsLayout),
 `desktop/native/hours/classic.py`, `desktop/native/hours/month.py`, `desktop/native/look.py` (the
 segment and toast rules), tests, `scripts/rig/` selectors if a name changes.
@@ -120,6 +124,8 @@ row), a new `test_week_side.py`; the gate; rig classic Day, Week and Month; both
 1280x860, 1150x768 large text, 800 and 650.
 
 ## Lane C1. Settings as a page, Experimental styles, dialogs' buttons, setup
+
+*Done, merged at `569ad67`. One thing is experimental too, and Day dial the default day screen. The one-filled-button test found and fixed extra filled buttons in Account, Restore, Update, Alarm, Availability, Preview and Choose time.*
 
 Files: `desktop/native/settings.py`, `desktop/native/layouts/dialog.py`,
 `desktop/native/layouts/registry.py`, `desktop/native/look.py` (`look_menu_items`, switch and
@@ -151,6 +157,8 @@ Verify: `test_layouts_registry.py`, `test_settings_words.py`, `test_setup_wizard
 
 ## Lane C2. Sign in, words, Help, About, the brand, the clock
 
+*Done, merged at `f3b30af`. The icon is drawn from the default light accent, `#3d6fc4`. Running late's rows read "from 16:00 to 17:30", "placed at 18:00" and "moves off 19:00 and is not placed".*
+
 Files: `desktop/native/window.py` (the auth and recovery pages, `_open_about`), `desktop/native/
 settings.py` (`HelpDialog`, `AboutDialog`), `desktop/native/widgets.py` (`HomeworkDialog` title,
 Running late's rows), `desktop/native/setup.py` ("Choose my own look instead"), `desktop/assets/
@@ -181,6 +189,8 @@ recovery pictures read.
 
 ## Lane E. Opening blocks, the context menu, School hours, motion
 
+*Done, merged at `c3f43c1`. Month chips of another week get no menu, since an id such as "school" can stand for another week's block. Ticking no day in School hours takes School off the calendar, with Undo.*
+
 Files: `desktop/native/hours/hand.py`, `desktop/native/hours/canvas.py` (press paths, context
 menu, settle animation), `desktop/native/window.py` (`_edit_block`, the menu's actions, School
 hours), `desktop/native/widgets.py` (`SchoolHoursDialog`), `desktop/native/motion.py`, tests,
@@ -206,6 +216,8 @@ Verify: `test_hours_hand.py` (tap opens, drag still moves), `test_context_menu.p
 Day and Week (the rig's open-by-tap scenario changes from double to single click).
 
 ## Lane F. The empty week, the focus screen, Ctrl+K
+
+*Done, merged at `40461c5`. The empty week shows only while the account has no homework at all, since every week nobody has saved reads as empty. F with no timer running opens the screen ready to start rather than starting one.*
 
 Files: new `desktop/native/layouts/empty.py`, `desktop/native/focus_screen.py`,
 `desktop/native/command_bar.py`; `desktop/native/window.py` (the stack, `keyPressEvent`,
