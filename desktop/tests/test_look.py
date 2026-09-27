@@ -246,6 +246,18 @@ def test_cards_are_padded_16_or_8_and_controls_keep_their_size() -> None:
         assert f"padding: {control}px;" in field, density
 
 
+def test_round_corners_are_6_on_controls_and_10_on_cards() -> None:
+    """Decision 5 of 0.17: one shape for controls and one for cards. The other Corners keep theirs."""
+    for corners, control, card in (("round", 6, 10), ("sharp", 0, 0), ("pill", 16, 16)):
+        sheet = pack_stylesheet("light-frost", False, look_of("default", corners=corners))
+        frames = sheet.split("QFrame, QGroupBox, QTableWidget, QListWidget {")[1].split("}")[0]
+        button = sheet.split("QPushButton {")[1].split("}")[0]
+        field = sheet.split("QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {")[1].split("}")[0]
+        toast = sheet.split("QFrame#toast {")[1].split("}")[0]
+        assert f"border-radius: {card}px;" in frames and f"border-radius: {card}px;" in toast, corners
+        assert f"border-radius: {control}px;" in button and f"border-radius: {control}px;" in field, corners
+
+
 def test_every_look_keeps_its_text_readable() -> None:
     assert len(EVERY_LOOK) == 5 * 2 * 7 * 5 * 2
     for pack, system_dark, preset, accent, surface in EVERY_LOOK:
