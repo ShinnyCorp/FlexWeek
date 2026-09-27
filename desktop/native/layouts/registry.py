@@ -309,9 +309,15 @@ def complete(tokens: dict[str, str]) -> dict[str, str]:
 
 
 def match_tokens(palette: dict) -> dict[str, str]:
-    """A design in the student's own look: the colours the rest of the app is already wearing."""
+    """A design in the student's own look: the colours the rest of the app is already wearing. Its
+    cards are the look's cards, never tinted with the accent, which is not spread over anything larger
+    than a control (decision 1 of 0.17). On a flat look, where cards sit in the page, a little of the
+    text colour tells them from it."""
+    surface, page = palette["panel"], palette["window"]
+    card = surface if contrast(surface, page) >= 1.02 else mix(palette["text"], page, 0.05)
     return complete(
         {
+            **{f"card_{name}": card for name in "abcd"},
             "bg": palette["window"],
             "bg_ink": palette["text"],
             "bg_muted": palette["muted"],

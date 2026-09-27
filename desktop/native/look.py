@@ -13,6 +13,10 @@ readability and accent-distance audits, so both clients show the same look.
 from __future__ import annotations
 
 from copy import deepcopy
+from functools import lru_cache
+
+from desktop.native.calendar import CATEGORIES
+from desktop.native.tokens import RADIUS_CARD, RADIUS_CONTROL, SINK, mix_oklab
 
 LOOK_KNOBS = {
     "surface": ("frost", "flat"),
@@ -117,17 +121,27 @@ FIELD_MIN_PX = {"small": 22, "normal": 26, "large": 34}
 # A card's padding, and the smaller one of a button, a field, a list or a menu, which keep their heights.
 DENSITY_PAD = {"comfortable": 16, "compact": 8}
 CONTROL_PAD = {"comfortable": 8, "compact": 4}
-CORNER_RADIUS = {"round": 8, "sharp": 0, "pill": 16}
+# (controls, cards) at each Corners setting. Round is the system's own shape (decision 5 of 0.17).
+CORNER_RADIUS = {"round": (RADIUS_CONTROL, RADIUS_CARD), "sharp": (0, 0), "pill": (16, 16)}
 FONT_FAMILIES = {
     "sans": "Inter, Noto Sans, DejaVu Sans, sans-serif",
     "mono": "Noto Sans Mono, DejaVu Sans Mono, monospace",
     "serif": "Noto Serif, DejaVu Serif, serif",
 }
 AA_TEXT = 4.5
-# How much of a category's strong colour a block on a dark look takes over the panel.
-DARK_FILL = 0.35
 DARK_INK = "#0b1224"
 LIGHT_INK = "#ffffff"
+# Each accent has a dark-axis and a light-axis colour with its own ink, so it reads on either. The
+# default is FlexWeek's blue, the icon's, and every look but High contrast wears it (decision 1 of 0.17).
+ACCENT_COLORS = {
+    "default": {"dark": ("#7fa8ff", DARK_INK), "light": ("#3d6fc4", LIGHT_INK)},
+    "sky": {"dark": ("#38bdf8", DARK_INK), "light": ("#0369a1", LIGHT_INK)},
+    "gold": {"dark": ("#eab308", DARK_INK), "light": ("#a16207", LIGHT_INK)},
+    "sea": {"dark": ("#2dd4bf", DARK_INK), "light": ("#0f766e", LIGHT_INK)},
+    "sand": {"dark": ("#e7d5a3", DARK_INK), "light": ("#926a2a", LIGHT_INK)},
+}
+# Looks whose accent no swatch replaces: High contrast's yellow is part of its contrast.
+OWN_ACCENT = ("high-contrast",)
 
 
 def _channels(color: str) -> tuple[int, int, int]:
@@ -167,15 +181,23 @@ def readable_ink(background: str) -> str:
     return max(("#000000", LIGHT_INK), key=lambda ink: contrast(ink, background))
 
 
-def _palette(axis: str, tint: str, soft: float = 0.12, strong: float = 0.24, **colors: str) -> dict:
-    """A colour table. Hairlines are `tint` over the panel; the web's light themes use a weaker strong one."""
-    panel = colors["panel"]
-    return {
-        "axis": axis,
-        **colors,
-        "hairline": mix(tint, panel, soft),
-        "hairline_strong": mix(tint, panel, strong),
-    }
+def _palette(
+    axis: str, tint: str | None = None, soft: float = 0.12, strong: float = 0.24, **colors: str
+) -> dict:
+    """A colour table in the one accent. Hairlines are `tint` over the panel unless named outright.
+
+    `family` says which of a category's colours the look draws (light, dark or contrast), and `rule`
+    is the grid's hour rules, which take the stronger hairline on a dark look, where the plain one all
+    but vanished on the page.
+    """
+    accent, accent_ink = ACCENT_COLORS["default"][axis]
+    table = {"axis": axis, "family": axis, "accent": accent, "accent_ink": accent_ink}
+    if tint is not None:
+        panel = colors["panel"]
+        table.update(hairline=mix(tint, panel, soft), hairline_strong=mix(tint, panel, strong))
+    table.update(colors)
+    table.setdefault("rule", table["hairline_strong" if axis == "dark" else "hairline"])
+    return table
 
 
 # window is the page, panel the raised surface, field an input, grid the calendar cell.
@@ -189,8 +211,6 @@ PALETTES = {
         grid="#131a27",
         text="#e6ebf5",
         muted="#9ba6ba",
-        accent="#7fa8ff",
-        accent_ink="#0b1224",
         error="#ff9b9b",
         block_locked="#2b3a52",
         block_locked_ink="#eef2fa",
@@ -208,8 +228,6 @@ PALETTES = {
         grid="#fbfcff",
         text="#172033",
         muted="#536079",
-        accent="#3d6fc4",
-        accent_ink="#ffffff",
         error="#b42318",
         block_locked="#dde6f3",
         block_locked_ink="#18233a",
@@ -217,42 +235,41 @@ PALETTES = {
         block_flex_ink="#3b2a05",
         block_edge="#8a9bb8",
     ),
+    # Dark and Light (decision 2 of 0.17): neutral surfaces, so the categories are the only colour on the
+    # page. They keep the frost ids, so a look saved before 0.17 opens as these.
     "dark-frost": _palette(
         "dark",
-        "#a0e6f0",
-        window="#071018",
-        panel="#0f1c26",
-        field="#0b151c",
-        grid="#0d1820",
-        text="#e4f3f6",
-        muted="#8ea8b0",
-        accent="#5eead4",
-        accent_ink="#0b1224",
-        error="#ff9b9b",
-        block_locked="#234050",
-        block_locked_ink="#eef8fa",
+        window="#111315",
+        panel="#1a1d21",
+        field="#15171a",
+        grid="#15171a",
+        text="#e8eaed",
+        muted="#9aa1ab",
+        hairline="#2a2e34",
+        hairline_strong="#3a3f46",
+        error="#ff8a7a",
+        block_locked="#2c3137",
+        block_locked_ink="#eceef1",
         block_flex="#4a3c1c",
         block_flex_ink="#fff4dc",
-        block_edge="#6a93a0",
+        block_edge="#7c8591",
     ),
     "light-frost": _palette(
         "light",
-        "#0c4050",
-        strong=0.22,
-        window="#e7f4fa",
+        window="#f7f8fa",
         panel="#ffffff",
-        field="#f7fcfe",
-        grid="#f7fcfe",
-        text="#14303a",
-        muted="#4d6870",
-        accent="#0e7490",
-        accent_ink="#ffffff",
-        error="#b42318",
-        block_locked="#d7e8ee",
-        block_locked_ink="#14303a",
+        field="#ffffff",
+        grid="#ffffff",
+        text="#111827",
+        muted="#5b6474",
+        hairline="#e4e7ec",
+        hairline_strong="#d0d5dd",
+        error="#c42b1c",
+        block_locked="#eceff3",
+        block_locked_ink="#111827",
         block_flex="#f5e6c3",
         block_flex_ink="#3b2a05",
-        block_edge="#7a9aa4",
+        block_edge="#8a93a3",
     ),
 }
 # A preset may replace the pack's colours outright. Terminal is true black with phosphor text.
@@ -269,8 +286,6 @@ PRESET_PALETTES = {
         grid="#050505",
         text="#d6ffd6",
         muted="#7fbf7f",
-        accent="#ffb000",
-        accent_ink="#000000",
         error="#ff6b6b",
         block_locked="#0a0a0a",
         block_locked_ink="#d6ffd6",
@@ -289,8 +304,6 @@ PRESET_PALETTES = {
         grid="#ffe14d",
         text="#0b132b",
         muted="#5c3d2e",
-        accent="#8b0000",
-        accent_ink="#ffd60a",
         error="#a3004f",
         block_locked="#0b132b",
         block_locked_ink="#ffd60a",
@@ -301,22 +314,25 @@ PRESET_PALETTES = {
     "high-contrast": _palette(
         "dark",
         "#ffffff",
-        soft=0.95,
+        soft=0.4,
         strong=1.0,
+        family="contrast",
         window="#000000",
         panel="#000000",
         field="#000000",
         grid="#000000",
         text="#ffffff",
-        muted="#ffff00",
-        accent="#ffff00",
+        muted="#e6e6e6",
+        accent="#ffd400",
         accent_ink="#000000",
         error="#ff6b6b",
+        # Text at 7 to 1, not every line at full white: the hour rules are 40 % white, as the hairlines.
+        rule="#666666",
         block_locked="#000000",
         block_locked_ink="#ffffff",
         block_flex="#000000",
-        block_flex_ink="#ffff00",
-        block_edge="#ffff00",
+        block_flex_ink="#ffd400",
+        block_edge="#ffd400",
     ),
     # Light looks whatever pack sits underneath, as Poster is. Paper is warmer than Ink's light sheet
     # on purpose. Pastel's softness is in its surfaces; a pale lavender accent could not pass as text.
@@ -331,8 +347,6 @@ PRESET_PALETTES = {
         grid="#fffcf2",
         text="#2f2418",
         muted="#6a5a45",
-        accent="#8a4b2a",
-        accent_ink="#fdf8ea",
         error="#9b1b30",
         block_locked="#eadfc6",
         block_locked_ink="#2f2418",
@@ -351,8 +365,6 @@ PRESET_PALETTES = {
         grid="#fffafd",
         text="#3b2a4a",
         muted="#6b5a7a",
-        accent="#7a3e9d",
-        accent_ink="#ffffff",
         error="#b42318",
         block_locked="#ede4fb",
         block_locked_ink="#2e1f47",
@@ -372,8 +384,6 @@ PRESET_PALETTES = {
             grid="#161616",
             text="#eaeaea",
             muted="#9a9a9a",
-            accent="#eaeaea",
-            accent_ink="#111111",
             error="#ff6b6b",
             block_locked="#111111",
             block_locked_ink="#eaeaea",
@@ -391,8 +401,6 @@ PRESET_PALETTES = {
             grid="#efece4",
             text="#1a1a1a",
             muted="#5a5a5a",
-            accent="#1a1a1a",
-            accent_ink="#f4f1ea",
             error="#9b1b30",
             block_locked="#f4f1ea",
             block_locked_ink="#1a1a1a",
@@ -401,13 +409,6 @@ PRESET_PALETTES = {
             block_edge="#1a1a1a",
         ),
     },
-}
-# Each accent has a dark-axis and a light-axis colour with its own ink, so it reads on either.
-ACCENT_COLORS = {
-    "sky": {"dark": ("#38bdf8", DARK_INK), "light": ("#0369a1", LIGHT_INK)},
-    "gold": {"dark": ("#eab308", DARK_INK), "light": ("#a16207", LIGHT_INK)},
-    "sea": {"dark": ("#2dd4bf", DARK_INK), "light": ("#0f766e", LIGHT_INK)},
-    "sand": {"dark": ("#e7d5a3", DARK_INK), "light": ("#926a2a", LIGHT_INK)},
 }
 
 
@@ -432,7 +433,7 @@ def pack_motion(pack: object) -> str:
 def resolved_pack_theme(pack: object, system_dark: bool) -> str:
     chosen = known_pack(pack)
     if chosen == "system":
-        return "nocturne" if system_dark else "slate"
+        return "dark-frost" if system_dark else "light-frost"
     return chosen
 
 
@@ -538,15 +539,34 @@ def resolved_palette(pack: object, system_dark: bool, look: dict | None, accent:
     pack_colours = PALETTES[resolved_pack_theme(pack, system_dark)]
     base = _preset_palette(choice["preset"], pack, system_dark) or pack_colours
     palette = dict(base)
-    chosen = known_accent(accent)
-    if chosen != "default":
-        # A student's own accent wins over the pack's and the preset's, as it does in the web client.
-        palette["accent"], palette["accent_ink"] = ACCENT_COLORS[chosen][palette["axis"]]
+    if choice["preset"] not in OWN_ACCENT:
+        palette["accent"], palette["accent_ink"] = ACCENT_COLORS[known_accent(accent)][palette["axis"]]
     if effective_look(choice)["surface"] == "flat":
         # Flat has no raised surfaces: panels and inputs sit in the page and only hairlines divide them.
         palette["panel"] = palette["window"]
         palette["field"] = palette["window"]
     return palette
+
+
+def category_paint(category: str | None, palette: dict) -> tuple[str | None, str | None]:
+    """A category's fill and mark in this look, or (None, None) for none.
+
+    A light look fills with the pale colour. On a dark one a pale fill glared off the page, so the fill
+    there is the category's tone sunk into the look's own panel.
+    """
+    info = CATEGORIES.get(category or "")
+    if info is None:
+        return None, None
+    family = palette.get("family", "light")
+    if family == "light":
+        return info["color"], info["mark"]
+    tone, mark = info[family]
+    return _sunk(tone, palette["panel"]), mark
+
+
+@lru_cache(maxsize=256)
+def _sunk(tone: str, panel: str) -> str:
+    return mix_oklab(tone, panel, SINK)
 
 
 def block_paint(
@@ -558,10 +578,9 @@ def block_paint(
 ) -> dict:
     """How one calendar block is drawn: its fill, its ink, and where the category colour goes.
 
-    `category_color` is the pale fill; `mark` is the strong colour of the same category. A pale
-    outline vanishes on a light pack, so an outline or an edge is drawn with the mark. On a dark
-    look a pale fill glared off the page, so a filled block there is the mark sunk into the panel,
-    with light ink.
+    `category_color` is the fill and `mark` the strong colour of the same category, both as
+    `category_paint` gives them for the look. A pale outline vanishes on a light pack, so an outline
+    or an edge is drawn with the mark.
     """
     flexible = kind == "flexible"
     neutral = palette["block_flex" if flexible else "block_locked"]
@@ -579,8 +598,9 @@ def block_paint(
             "edge": mark,
         }
     if category_color:
-        fill = mix(mark, palette["panel"], DARK_FILL) if palette.get("axis") == "dark" else category_color
-        return {"mode": mode, "fill": fill, "ink": readable_ink(fill), "outline": None, "edge": None}
+        text = palette["text"]
+        ink = text if contrast(text, category_color) >= AA_TEXT else readable_ink(category_color)
+        return {"mode": mode, "fill": category_color, "ink": ink, "outline": None, "edge": None}
     return {"mode": mode, "fill": neutral, "ink": neutral_ink, "outline": None, "edge": None}
 
 
@@ -785,7 +805,8 @@ def setup_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> 
     edges = _depth_rules(depth, palette)
     card_radius = max(radius, 10)
     ring = "transparent" if depth == "flat" else mix(palette["hairline_strong"], palette["panel"], 0.6)
-    lift = mix(palette["accent"], palette["panel"], 0.08)
+    # A card is larger than a control, so it is lifted with the text colour, never the accent.
+    lift = mix(palette["text"], palette["panel"], 0.04)
     quiet = (
         "setupQuiet", "setupSkip", "setupSkipAll", "setupOwnLook", "setupAddActivity", "setupAddHomework",
         "setupSuggest", "setupPlay", "setupChange", "setupFineTune",
@@ -858,7 +879,7 @@ def pack_stylesheet(
     pad = CONTROL_PAD[knobs["density"]]
     size = TEXT_PT[knobs["text"]]
     family = FONT_FAMILIES[knobs["font"]]
-    radius = CORNER_RADIUS[knobs["corners"]]
+    radius, card_radius = CORNER_RADIUS[knobs["corners"]]
     edges = _depth_rules(knobs["depth"], palette)
     item_h = 36 if knobs["text"] == "large" else 22
     button_min = f" min-height: {item_h}px;" if knobs["text"] == "large" else ""
@@ -874,7 +895,7 @@ def pack_stylesheet(
         f"QMainWindow, QDialog, QWidget {{ background: {palette['window']}; color: {palette['text']}; "
         f"font-family: {family}; font-size: {size}pt; }}"
         f"QFrame, QGroupBox, QTableWidget, QListWidget {{ background: {palette['panel']}; "
-        f"color: {palette['text']}; padding: {card}px; border-radius: {radius}px; {edges} }}"
+        f"color: {palette['text']}; padding: {card}px; border-radius: {card_radius}px; {edges} }}"
         # Lists, tables and scroll areas are frames too, but their padding is room around rows.
         f"QAbstractScrollArea {{ padding: {pad}px; }}"
         # A group's title sits in the space above its frame. Without the room it was drawn on the
@@ -1001,7 +1022,7 @@ def pack_stylesheet(
         f"QLabel#alarmTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
         f"QLabel#alarmDetail {{ font-size: {size + 2}pt; color: {palette['muted']}; }}"
         f"QFrame#toast {{ background: {palette['panel']}; color: {palette['text']}; "
-        f"{edges} padding: {pad * 2}px {pad * 3}px; border-radius: {radius}px; }}"
+        f"{edges} padding: {pad * 2}px {pad * 3}px; border-radius: {card_radius}px; }}"
         # A new account's empty week, the focus screen and the command bar.
         f"QLabel#emptyWeekHeading {{ font-size: {size + 8}pt; font-weight: 700; }}"
         f"QLabel#emptyWeekLine {{ color: {palette['muted']}; font-size: {size + 1}pt; }}"
@@ -1019,7 +1040,7 @@ def pack_stylesheet(
         f"QProgressBar#focusScreenProgress::chunk {{ background: {palette['accent']}; border-radius: 3px; }}"
         # Laid over the window, it dims what is behind so the box reads as the one thing to answer.
         f"QWidget#commandBar {{ background: rgba(0, 0, 0, 90); }}"
-        f"QFrame#commandBox {{ background: {palette['panel']}; border-radius: {radius}px; "
+        f"QFrame#commandBox {{ background: {palette['panel']}; border-radius: {card_radius}px; "
         f"{edges} padding: {pad}px; }}"
         f"QLineEdit#commandInput {{ font-size: {size + 2}pt; }}"
         f"QListWidget#commandList {{ border: none; padding: 0; }}"

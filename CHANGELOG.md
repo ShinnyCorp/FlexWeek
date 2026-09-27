@@ -3,6 +3,30 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.0] - Unreleased
+
+### Changed
+- One accent: FlexWeek's blue, the icon's (`#3d6fc4` on light looks, `#7fa8ff`
+  on dark ones), in every look but High contrast, which keeps its yellow
+  (`#ffd400`) whatever swatch is picked. Sky, Sea, Gold and Sand still replace
+  it. The accent marks controls only: it no longer washes today's column or the
+  setup cards.
+- Light and Dark are neutral: a `#f7f8fa` page with white cards, and a
+  `#111315` page with `#1a1d21` cards. Light frost and Dark frost load as these,
+  and System follows the computer between them.
+- The categories are one family: every fill at one lightness and every mark at
+  another, worked out from OKLCH, so no category shouts over the others. On a
+  dark look a block is its category sunk into the card, written in the look's
+  own text colour. Homework's mark is darker than the rest, so it stays apart
+  from Sports for a student who cannot tell red from green.
+- Round corners are 6 pixels on controls and 10 on cards, the toast and the
+  command bar.
+- Today's column is washed with 3 % of the text colour on Week and not at all
+  on Day. The now line and its time are in the accent: red is for what cannot
+  be.
+- High contrast: text at 7 to 1 or more, the grid's rules and the hairlines at
+  40 % white instead of full white.
+
 ## [0.16.0] - 2026-09-26
 
 ### Added

@@ -34,7 +34,7 @@ if importlib.util.find_spec("PySide6") is not None:
     )
 
     from desktop.native.layouts.registry import tokens_for
-    from desktop.native.look import pack_stylesheet, palette_from_tokens, resolved_palette
+    from desktop.native.look import mix, pack_stylesheet, palette_from_tokens, resolved_palette
     from desktop.native.widgets import add_heading, control_art
 
 
@@ -46,9 +46,12 @@ def qapp() -> Iterator[QApplication]:
 
 def palettes() -> dict[str, tuple[str, bool, dict]]:
     light = resolved_palette("light-frost", False, None)
+    high_contrast = {"preset": "high-contrast", "knobs": {}}
     return {
         "light-frost": ("light-frost", False, light),
         "dark-frost": ("dark-frost", True, resolved_palette("dark-frost", True, None)),
+        "high-contrast": ("system", False, resolved_palette("system", False, high_contrast)),
+        # A design's page in its own dark colours, which the controls on it wear.
         "bento-midnight": (
             "light-frost",
             False,
@@ -76,7 +79,7 @@ def marks(image: QImage, background: str, columns: range) -> int:
     )
 
 
-@pytest.mark.parametrize("name", ["light-frost", "dark-frost", "bento-midnight"])
+@pytest.mark.parametrize("name", ["light-frost", "dark-frost", "high-contrast", "bento-midnight"])
 def test_an_unticked_box_and_an_unselected_radio_button_can_be_seen(qapp: QApplication, name: str) -> None:
     page, palette = styled(qapp, name)
     box, radio = QCheckBox("Play a sound"), QRadioButton("I'll place it")
@@ -97,7 +100,7 @@ def test_an_unticked_box_and_an_unselected_radio_button_can_be_seen(qapp: QAppli
     page.close()
 
 
-@pytest.mark.parametrize("name", ["light-frost", "dark-frost", "bento-midnight"])
+@pytest.mark.parametrize("name", ["light-frost", "dark-frost", "high-contrast", "bento-midnight"])
 def test_a_spin_box_shows_its_arrows(qapp: QApplication, name: str) -> None:
     page, palette = styled(qapp, name)
     spin = QSpinBox()
@@ -109,16 +112,19 @@ def test_a_spin_box_shows_its_arrows(qapp: QApplication, name: str) -> None:
     image = spin.grab().toImage()
     # In the design's muted ink, not only visible: Fusion's own arrows showed offscreen but took the
     # desktop palette on KDE and vanished on dark-frost there.
-    ink = QColor(palette["muted"])
+    # A thin chevron is smoothed into the field, so its strokes are the ink at most of its strength:
+    # bright ink on High contrast's black comes out 70 % of the way, which a fixed distance missed.
+    inks = [QColor(mix(palette["muted"], palette["field"], share / 100)) for share in range(60, 101, 5)]
 
     def near(colour: QColor) -> bool:
-        return (
+        return any(
             max(
                 abs(colour.red() - ink.red()),
                 abs(colour.green() - ink.green()),
                 abs(colour.blue() - ink.blue()),
             )
             < 40
+            for ink in inks
         )
 
     arrows = sum(
@@ -131,7 +137,7 @@ def test_a_spin_box_shows_its_arrows(qapp: QApplication, name: str) -> None:
     page.close()
 
 
-@pytest.mark.parametrize("name", ["light-frost", "dark-frost", "bento-midnight"])
+@pytest.mark.parametrize("name", ["light-frost", "dark-frost", "high-contrast", "bento-midnight"])
 def test_a_dropdown_list_uses_the_design_and_marks_the_choice(qapp: QApplication, name: str) -> None:
     page, palette = styled(qapp, name)
     combo = QComboBox()

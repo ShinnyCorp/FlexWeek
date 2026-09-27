@@ -34,7 +34,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QScrollArea, QWidget
 
-from desktop.native.calendar import CATEGORIES, DAYS, create_click_range
+from desktop.native.calendar import DAYS, create_click_range
 from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import (
     Axis,
@@ -44,13 +44,15 @@ from desktop.native.hours.geometry import (
     snap,
 )
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
-from desktop.native.look import block_paint, readable_ink
+from desktop.native.look import block_paint, category_paint, readable_ink
 from desktop.native.motion import DURATION_MS, app_level
 from desktop.native.weekmodel import Occurrence, clock_label, length_label
 
 # A press this close to a block's start or end edge resizes it, on a block long enough to have edges.
 EDGE_PX = 7
 FREE_HINT = "+ drag to create, or click"
+# How much of the text colour washes today's column when a week is shown (decision 13 of 0.17).
+TODAY_WASH = 0.03
 
 # A block as the canvas knows it between renders: its id and the day it is drawn on.
 Key = tuple[str, int]
@@ -96,7 +98,7 @@ class Drawn:
 
 class BlockPainter:
     """How hours and blocks look. This default is Daily Scheduler's: pale category fills, a strong
-    edge, a rule at each hour, a red now line carrying the time. Designs subclass it."""
+    edge, a rule at each hour, a now line in the accent carrying the time. Designs subclass it."""
 
     def __init__(self, colours: dict[str, str], look: dict | None = None) -> None:
         self.colours = colours
@@ -109,15 +111,14 @@ class BlockPainter:
         painter.fillRect(rect, self.c("window"))
 
     def track(self, painter: QPainter, track: LinearTrack, today: bool) -> None:
-        """A rule at each hour, in the track's upright frame, over a wash of the accent on today."""
+        """A rule at each hour, in the track's upright frame, over a faint wash of the text colour on
+        today. The accent is never spread over a column: picked as Gold, it turned today khaki."""
         area = track.area
         if today:
-            wash = self.c("accent")
-            wash.setAlphaF(0.10)
+            wash = self.c("text")
+            wash.setAlphaF(TODAY_WASH)
             painter.fillRect(area, wash)
-        # On a dark look the plain hairline barely shows against the page.
-        rule = self.c("hairline_strong" if self.colours.get("axis") == "dark" else "hairline")
-        painter.setPen(QPen(rule, 1))
+        painter.setPen(QPen(QColor(self.colours.get("rule") or self.colours["hairline"]), 1))
         for minute in range(-(-track.first // 60) * 60, track.last + 1, 60):
             offset = track.offset(minute)
             if track.axis is Axis.DOWN:
@@ -165,14 +166,8 @@ class BlockPainter:
 
     def fills(self, drawn: Drawn) -> tuple[QColor, QColor, QColor | None, QColor | None]:
         """Fill, ink, outline and edge for a block: the Blocks look knob and the category."""
-        category = CATEGORIES.get(drawn.category, {})
-        paint = block_paint(
-            self.look,
-            self.colours,
-            category.get("color"),
-            "flexible" if drawn.work else "locked",
-            category.get("mark"),
-        )
+        fill, mark = category_paint(drawn.category, self.colours)
+        paint = block_paint(self.look, self.colours, fill, "flexible" if drawn.work else "locked", mark)
         return (
             QColor(paint["fill"]),
             QColor(paint["ink"]),
@@ -199,9 +194,10 @@ class BlockPainter:
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 5, 5)
         if drawn.columns > 1 and not drawn.held:
-            # Shares its time with another block: allowed, and marked so it is not missed.
+            # Shares its time with another block: allowed, and marked so it is not missed. In its own
+            # ink, since red is for what cannot be.
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(self.c("error"))
+            painter.setBrush(ink)
             painter.drawEllipse(QPointF(rect.right() - 7, rect.top() + 7), 3.5, 3.5)
         self.words(painter, rect, drawn, ink, visible)
 
@@ -298,7 +294,7 @@ class BlockPainter:
 
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
         """A line across the track at `minute`, starting from a pill with the time on it."""
-        colour = self.c("error")
+        colour = self.c("accent")
         font = time_font(_small(painter.font()))
         font.setBold(True)
         metrics = QFontMetricsF(font)
@@ -686,12 +682,14 @@ class HoursCanvas(QWidget):
             self.painter.background(painter, QRectF(self.rect()))
         preview = self.hand.preview
         held = preview.held if preview is not None else None
+        # On hours of one day, washing today washes everything and marks nothing.
+        week = len({track.day for track in self.tracks}) > 1
         for index, track in enumerate(self.tracks):
             painter.save()
             painter.setTransform(track.transform, True)
             upright_visible = track.transform.inverted()[0].mapRect(visible)
             with _fresh(painter):
-                self.painter.track(painter, track, track.day == self.today)
+                self.painter.track(painter, track, week and track.day == self.today)
             if index == 0 and self.gutter and track.axis is Axis.DOWN:
                 with _fresh(painter):
                     self.painter.hour_labels(painter, track, self.gutter, visible=upright_visible)

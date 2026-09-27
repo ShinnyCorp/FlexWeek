@@ -287,7 +287,11 @@ HOUR_PX = 48
 
 
 def three_days(
-    now_min: int | None = None, blocks: tuple[dict, ...] = (ESSAY,), hour_px: int = HOUR_PX
+    now_min: int | None = None,
+    blocks: tuple[dict, ...] = (ESSAY,),
+    hour_px: int = HOUR_PX,
+    palette: dict | None = None,
+    days: int = 3,
 ) -> HoursCanvas:
     """Three days from 08:00 to 20:00, at Today's app's default 48 pixels an hour unless told, in
     Inter at the normal text size, with today on the first when there is a now."""
@@ -296,14 +300,14 @@ def three_days(
     def columns(area: QRectF) -> list[LinearTrack]:
         return [
             LinearTrack(day, QRectF(60 + 150 * day, 10, 140, 12 * hour_px), first=8 * 60, last=20 * 60)
-            for day in range(3)
+            for day in range(days)
         ]
 
     host = QWidget()
     HOSTS.append(host)
     canvas = HoursCanvas(
         Hand(lambda block_id, from_day, span: Verdict(True, ""), host),
-        BlockPainter(resolved_palette("system", False, None)),
+        BlockPainter(palette or resolved_palette("system", False, None)),
         columns,
         gutter=56,
     )
@@ -369,28 +373,45 @@ def rows(palette: dict, today: bool) -> QImage:
 
 def test_the_hours_have_a_rule_at_each_hour_and_none_at_the_half(qapp: QApplication) -> None:
     """The dashed half-hour rules crowded the grid. On a dark look the hour rules take the stronger
-    hairline, since the plain one all but vanished on the page."""
-    for pack, dark, rule in (("slate", False, "hairline"), ("nocturne", True, "hairline_strong")):
-        palette = resolved_palette(pack, dark, None)
+    hairline, since the plain one all but vanished on the page; High contrast's are 40 % white, since
+    full white turned the grid into graph paper."""
+    high_contrast = {"preset": "high-contrast", "knobs": {}}
+    for pack, dark, look, rule in (
+        ("slate", False, None, resolved_palette("slate", False, None)["hairline"]),
+        ("nocturne", True, None, resolved_palette("nocturne", True, None)["hairline_strong"]),
+        ("light-frost", False, high_contrast, "#666666"),
+    ):
+        palette = resolved_palette(pack, dark, look)
         image = rows(palette, today=False)
         at = {minute: 10 + (minute - 8 * 60) * HOUR_PX // 60 for minute in (8 * 60 + 30, 9 * 60)}
-        assert QColor(image.pixel(60, at[9 * 60])).name() == palette[rule], pack
+        assert QColor(image.pixel(60, at[9 * 60])).name() == rule, pack
         assert QColor(image.pixel(60, at[8 * 60 + 30])).name() == palette["window"], pack
 
 
-def test_today_is_washed_in_a_tenth_of_the_accent(qapp: QApplication) -> None:
-    palette = resolved_palette("slate", False, None)
-    washed = QColor(rows(palette, today=True).pixel(60, 10 + HOUR_PX // 2))
-    wanted = QColor(mix(palette["accent"], palette["window"], 0.10))
-    for got, want in zip(washed.getRgb()[:3], wanted.getRgb()[:3], strict=True):
-        assert abs(got - want) <= 1, (washed.name(), wanted.name())
+def _near(got: QColor, want: str) -> bool:
+    return all(abs(a - b) <= 1 for a, b in zip(got.getRgb()[:3], QColor(want).getRgb()[:3], strict=True))
+
+
+def test_today_is_washed_in_a_little_of_the_text_colour_on_a_week_and_not_at_all_on_a_day(
+    qapp: QApplication,
+) -> None:
+    """Decision 13 of 0.17: 3 % of the text colour at most, never the accent, which picked as Gold
+    turned today's column khaki; and none on Day, where washing the one day marks nothing."""
+    for pack, dark, accent in (("light-frost", False, "gold"), ("dark-frost", True, "default")):
+        palette = resolved_palette(pack, dark, None, accent)
+        y = 10 + HOUR_PX // 2
+        week = three_days(now_min=15 * 60 + 40, palette=palette).grab().toImage()
+        assert _near(week.pixelColor(130, y), mix(palette["text"], palette["window"], 0.03)), pack
+        assert _near(week.pixelColor(280, y), palette["window"]), pack
+        day = three_days(now_min=15 * 60 + 40, palette=palette, days=1).grab().toImage()
+        assert _near(day.pixelColor(130, y), palette["window"]), pack
 
 
 def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The line said where now is but not what time it is. At 15:40 it starts from a pill in the
-    error colour reading "15:40", level with the line."""
+    """The line said where now is but not what time it is. At 15:40 it starts from a pill reading
+    "15:40", level with the line, in the accent: red is for what cannot be, and now is not that."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
     canvas = three_days(now_min=15 * 60 + 40)
     Said.inks = []
@@ -401,5 +422,5 @@ def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
     assert len(written) == 1
     assert abs(written[0].center().y() - line_y) <= 2
     assert track.area.left() <= written[0].left() < track.area.left() + 12
-    error = resolved_palette("system", False, None)["error"]
-    assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == error
+    accent = resolved_palette("system", False, None)["accent"]
+    assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == accent
