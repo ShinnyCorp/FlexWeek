@@ -28,6 +28,12 @@ All notable changes to FlexWeek are documented here. Format follows
   40 % white instead of full white. Day, Week, Month and My day, and every
   choice of two or three in Settings, read in white on black with the chosen
   one filled yellow, where the view control was yellow on light grey.
+
+### Fixed
+- Changing the look with the week open, to High contrast above all, no longer
+  runs the words of the Not placed yet chips off their edge, and the focus
+  list beside the week no longer grows a sideways scroll bar or hides a row: a
+  long name gives up its middle and keeps its time.
 - The top bar, the window's frame, dialogs and Today's app always wear your
   look and accent. A design's own colourway colours only the design's page, and
   every design starts in Match my look; its signature colourways are still

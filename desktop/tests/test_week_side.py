@@ -78,6 +78,37 @@ def test_week_keeps_next_the_focus_list_and_not_placed_yet_beside_its_hours(
     assert window.planner.mapTo(window, QPoint(0, 0)).y() - bar_bottom < 32
 
 
+def test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """Switched to High contrast with the side already up, its larger text and thicker borders ran the
+    chips' words off their edge and gave the focus list a sideways scroll bar and a row short."""
+    from desktop.native.look import sanitize_look
+
+    seeded(qapp, window)
+    session = window.session
+    session.add_homework(
+        {"id": "poster", "title": "Science poster for the fair", "due": sunday_due(session.week_start),
+         "estimate_min": 90, "revision": 0}
+    )
+    session.save()
+    settled(qapp, window)
+    window._look = sanitize_look({"preset": "high-contrast", "knobs": {}})
+    window._apply_appearance()
+    for _ in range(5):
+        qapp.processEvents()
+    side = window.week_table.side
+    chips = [chip for chip in side.findChildren(QPushButton) if chip.property("tray") and chip.isVisible()]
+    assert len(chips) == 2 and any("…" in chip.text() for chip in chips)
+    for chip in chips:
+        assert QPushButton.sizeHint(chip).width() <= chip.width(), chip.text()
+    tasks = side.tasks
+    assert tasks.count() and not tasks.horizontalScrollBar().isVisible()
+    assert not tasks.verticalScrollBar().isVisible()
+    assert tasks.viewport().height() >= tasks.count() * tasks.sizeHintForRow(0)
+
+
 def chip_row(side) -> bool:
     """The folded line and every chip on one row."""
     chips = [chip for chip in side.findChildren(QPushButton) if chip.property("tray")]

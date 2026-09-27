@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QFrame,
@@ -111,6 +111,9 @@ class WeekSide(QFrame):
         side.addWidget(self.tasks_label)
         self.tasks = QListWidget()
         self.tasks.setObjectName("focusTasks")
+        # Never a sideways scroll bar: a name too long for the side gives up its middle, never its time.
+        self.tasks.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.tasks.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         self.tasks.setToolTip("Double-click homework to start a focus timer for it.")
         self.tasks.itemActivated.connect(self._start_item)
         side.addWidget(self.tasks)
@@ -166,10 +169,25 @@ class WeekSide(QFrame):
             row = QListWidgetItem(f"{item['title']}  {start}".rstrip())
             row.setData(Qt.ItemDataRole.UserRole, item)
             self.tasks.addItem(row)
+        self._fit_tasks()
+        self._show()
+
+    def _fit_tasks(self) -> None:
+        """As tall as its rows, up to FOCUS_ROWS, whatever the look puts around them. A fixed 8 pixels
+        for the padding and borders left High contrast's thicker ones a row short, behind scroll bars."""
         rows = min(self.tasks.count(), FOCUS_ROWS)
         if rows:
-            self.tasks.setFixedHeight(rows * self.tasks.sizeHintForRow(0) + 2 * self.tasks.frameWidth() + 8)
-        self._show()
+            self.tasks.ensurePolished()
+            # The stylesheet's border and padding, which is what the margins hold once polished.
+            margins = self.tasks.contentsMargins()
+            chrome = margins.top() + margins.bottom() + 2
+            self.tasks.setFixedHeight(rows * self.tasks.sizeHintForRow(0) + chrome)
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            # After the list has taken the new look's padding and borders.
+            QTimer.singleShot(0, self, self._fit_tasks)
 
     def set_waiting(self, waiting: tuple[Waiting, ...]) -> None:
         if self.hand.busy:
