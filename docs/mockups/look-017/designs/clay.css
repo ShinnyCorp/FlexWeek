@@ -1,0 +1,396 @@
+/* Clay deck. Claymorphism tempered by Soft UI Evolution: a card is the look's surface with an
+   inner highlight, a shade at its lower edge and a soft outer shadow, at twice the card radius
+   (20 at the default corners). Every colour comes from the look's variables. */
+
+.design-clay {
+  --cl-r: calc(var(--r-card) * 2);
+  --cl-rb: calc(var(--r-card) * 1.2);
+  --cl-surface: linear-gradient(180deg, var(--card) 0%, var(--card) 55%, color-mix(in oklab, var(--card) 93%, var(--card-2)) 100%);
+  --cl-ring: inset 0 0 0 1px color-mix(in oklab, var(--hairline) 70%, transparent);
+  --cl-in: inset 0 1.5px 0 var(--cl-highlight, var(--card)), inset 0 -3px 8px color-mix(in oklab, var(--text) 4%, transparent);
+  --cl-drop: 0 1px 2px color-mix(in oklab, var(--text) 6%, transparent), 0 12px 24px -14px color-mix(in oklab, var(--text) 24%, transparent);
+  --cl-lift: 0 2px 4px color-mix(in oklab, var(--text) 6%, transparent), 0 22px 40px -16px color-mix(in oklab, var(--text) 32%, transparent);
+  --cl-dish-bg: color-mix(in oklab, var(--card-2) 55%, var(--page));
+  --cl-dish-in: inset 0 2px 6px color-mix(in oklab, var(--text) 9%, transparent), inset 0 -1px 0 var(--card);
+}
+/* Block variables live on the block, where data-cat has set --fill and --mark. */
+.design-clay [data-cat] {
+  --cl-block-in: inset 0 1px 0 color-mix(in oklab, var(--card) 60%, transparent), 0 1px 2px color-mix(in oklab, var(--mark) 22%, transparent);
+  --cl-soft-ink: color-mix(in oklab, var(--block-ink) 74%, var(--fill));
+}
+.dark-family .design-clay [data-cat] {
+  --cl-block-in: inset 0 1px 0 color-mix(in oklab, var(--text) 9%, transparent), 0 1px 2px color-mix(in oklab, var(--page) 60%, transparent);
+}
+.look-high-contrast .design-clay [data-cat], .look-poster .design-clay [data-cat] { --cl-block-in: inset 0 0 0 0 var(--fill); }
+.dark-family .design-clay {
+  --cl-ring: inset 0 0 0 1px color-mix(in oklab, var(--hairline) 80%, transparent);
+  --cl-in: inset 0 1px 0 color-mix(in oklab, var(--text) 10%, transparent), inset 0 -3px 8px color-mix(in oklab, var(--page) 45%, transparent);
+  --cl-drop: var(--shadow-lg);
+  --cl-lift: var(--shadow-lg), 0 0 0 1px var(--hairline-strong);
+  --cl-dish-bg: color-mix(in oklab, var(--page) 55%, var(--card));
+  --cl-dish-in: inset 0 2px 8px color-mix(in oklab, var(--page) 90%, transparent), inset 0 -1px 0 color-mix(in oklab, var(--text) 7%, transparent);
+}
+/* E-Ink / Paper keeps no shadows: the ring and the dish's tone carry the shape. */
+.look-paper .design-clay {
+  --cl-in: inset 0 0 0 0 var(--card);
+  --cl-drop: 0 0 0 0 var(--page);
+  --cl-lift: 0 0 0 1px var(--hairline-strong);
+  --cl-dish-in: inset 0 0 0 1px var(--hairline);
+}
+/* Inclusive Design: outlines rather than shadows. */
+.look-high-contrast .design-clay {
+  --cl-ring: inset 0 0 0 1px var(--hairline);
+  --cl-in: inset 0 0 0 0 var(--card);
+  --cl-drop: 0 0 0 0 var(--page);
+  --cl-lift: 0 0 0 2px var(--text);
+  --cl-dish-bg: var(--page);
+  --cl-dish-in: inset 0 0 0 1px var(--hairline);
+}
+/* Neubrutalism: its border and offset shadow stand in for the clay. */
+.look-poster .design-clay {
+  --cl-ring: inset 0 0 0 2px var(--hairline);
+  --cl-in: inset 0 0 0 0 var(--card);
+  --cl-drop: var(--shadow-sm);
+  --cl-lift: var(--shadow-lg);
+  --cl-dish-in: inset 0 0 0 2px var(--hairline);
+}
+
+.cl-root {
+  position: relative;
+  height: 100%;
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.cl-root * { box-sizing: border-box; }
+
+/* Cards --------------------------------------------------------------------------------------- */
+
+.cl-card {
+  position: relative;
+  border-radius: var(--cl-r);
+  background: var(--cl-surface);
+  box-shadow: var(--cl-ring), var(--cl-in), var(--cl-drop);
+  display: flex;
+  flex-direction: column;
+}
+.cl-card.today { box-shadow: var(--cl-ring), var(--cl-in), var(--cl-lift); z-index: 1; }
+
+.cl-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 44px;
+  padding: 0 var(--s2);
+  flex: none;
+  min-width: 0;
+}
+.cl-dayname {
+  font-family: var(--font-head);
+  font-size: var(--t-heading);
+  font-weight: var(--w-strong);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.cl-head-note { color: var(--muted); font-size: var(--t-body); white-space: nowrap; }
+.cl-date {
+  margin-left: auto;
+  font-size: var(--t-body);
+  color: var(--muted);
+  min-width: 26px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--r-pill);
+}
+.cl-date.today {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: var(--w-strong);
+  padding: 0 var(--s2);
+}
+
+/* Hours and blocks ---------------------------------------------------------------------------- */
+
+.cl-hours { position: relative; flex: none; }
+.cl-rule { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--grid-rule); }
+.look-poster .design-clay .cl-rule { border-top-color: color-mix(in oklab, var(--hairline) 22%, transparent); }
+.cl-lane { position: absolute; inset: 0; }
+.cl-hl {
+  position: absolute;
+  transform: translateY(-50%);
+  font-size: var(--t-caption);
+  color: var(--muted);
+  line-height: 1;
+  white-space: nowrap;
+}
+.cl-hours .cl-hl { left: 0; width: 44px; text-align: right; }
+.cl-hours.labelled .cl-rule, .cl-hours.labelled .cl-lane { left: 56px; }
+
+.cl-block {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: var(--cl-rb);
+  background: var(--fill);
+  color: var(--block-ink);
+  box-shadow: var(--cl-block-in);
+  padding: 4px var(--s2) 3px 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: var(--t-caption);
+  line-height: 15px;
+}
+.cl-block::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--mark);
+}
+.cl-block.line::before { top: 3px; bottom: 3px; }
+.cl-block.bare::before { top: 2px; bottom: 2px; }
+.cl-block.wrap .cl-bt { white-space: normal; align-items: flex-start; }
+.cl-block.wrap .cl-bn { white-space: normal; overflow: visible; }
+.cl-block.wrap .cl-bk { margin-top: 1px; }
+.look-terminal .design-clay .cl-block { letter-spacing: -0.03em; }
+.look-terminal .cl-a-week .cl-card { padding-left: var(--s1); padding-right: var(--s1); }
+.look-terminal .cl-a-week .cl-block { padding-left: 11px; padding-right: var(--s1); }
+.look-terminal .cl-a-week .cl-block::before { left: 3px; }
+.cl-block.line { flex-direction: row; align-items: center; padding-top: 0; padding-bottom: 0; }
+.cl-bt { display: flex; align-items: center; gap: var(--s1); min-width: 0; font-weight: var(--w-strong); white-space: nowrap; }
+.cl-bn { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cl-bm { color: var(--cl-soft-ink); font-weight: var(--w-regular); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-block.line .cl-bm { margin-left: var(--s1); flex: none; }
+.cl-bk { display: inline-grid; flex: none; }
+.cl-bk .fw-icon { vertical-align: 0; }
+
+.cl-now {
+  position: absolute;
+  left: -2px;
+  right: 0;
+  height: 0;
+  border-top: 2px solid var(--accent);
+  z-index: 2;
+}
+.cl-now::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.cl-now-pill {
+  position: absolute;
+  left: var(--s2);
+  top: -10px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--t-caption);
+  font-weight: var(--w-strong);
+  line-height: 18px;
+}
+
+/* The dish and its chips ---------------------------------------------------------------------- */
+
+.cl-dish {
+  border-radius: var(--cl-r);
+  background: var(--cl-dish-bg);
+  box-shadow: var(--cl-dish-in);
+}
+.cl-dish.row {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  padding: 0 var(--s5);
+}
+.cl-dish-head { display: flex; flex-direction: column; gap: 2px; flex: none; }
+.cl-dish-t { font-weight: var(--w-strong); font-size: var(--t-body); }
+.cl-dish-sub { font-size: var(--t-caption); color: var(--muted); }
+.cl-dish-n {
+  margin-left: auto;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  box-shadow: var(--cl-ring);
+  font-size: var(--t-caption);
+  font-weight: var(--w-strong);
+}
+.cl-dish-chips { display: flex; gap: var(--s3); }
+.cl-dish-hint { margin: 0 0 0 auto; font-size: var(--t-caption); color: var(--muted); }
+
+.cl-chip {
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s2) 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--cl-surface);
+  box-shadow: var(--cl-ring), var(--cl-in), var(--cl-drop);
+  white-space: nowrap;
+}
+.cl-chip-ic {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  background: var(--fill);
+  color: var(--block-ink);
+  box-shadow: inset 0 0 0 1.5px var(--mark);
+  flex: none;
+}
+.cl-chip-text { display: inline-flex; align-items: baseline; gap: var(--s2); min-width: 0; }
+.cl-chip-grip { color: var(--muted); display: inline-grid; flex: none; }
+.cl-chip-grip .fw-icon { vertical-align: 0; }
+.cl-chip-ic .fw-icon { vertical-align: 0; }
+.cl-chip-t { font-weight: var(--w-strong); }
+.cl-chip-l { color: var(--muted); }
+
+.cl-dish.column { padding: var(--s4); display: flex; flex-direction: column; gap: var(--s3); }
+.cl-dish.column .cl-dish-head { flex-direction: row; align-items: center; }
+.cl-dish.column .cl-dish-chips { flex-direction: column; gap: var(--s2); }
+.cl-dish.column .cl-dish-sub { margin: calc(var(--s2) * -1) 0 0; }
+.cl-dish.column .cl-chip { width: 100%; height: 52px; padding: 0 var(--s2) 0 var(--s2); }
+.cl-dish.column .cl-chip-text { flex-direction: column; align-items: flex-start; gap: 0; flex: 1; }
+.cl-dish.column .cl-chip-l { font-size: var(--t-caption); }
+
+/* The day's hours by kind. */
+.cl-sum {
+  border-radius: var(--cl-r);
+  background: var(--cl-surface);
+  box-shadow: var(--cl-ring), var(--cl-in), var(--cl-drop);
+  padding: var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.cl-bar { display: flex; gap: 2px; height: 8px; border-radius: var(--r-pill); overflow: hidden; }
+.cl-bar span { background: var(--mark); }
+.cl-bar span[data-cat="free"] { background: color-mix(in oklab, var(--text) 14%, var(--card)); }
+.cl-sum ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.cl-sum li { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: var(--s2); height: 30px; white-space: nowrap; }
+.cl-sum li + li { border-top: 1px solid var(--hairline); }
+.cl-sum li .fw-icon { color: var(--muted); vertical-align: -2px; }
+.cl-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--mark); }
+.cl-sum li[data-cat="free"] .cl-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--hairline-strong); }
+.cl-sum-l { color: var(--muted); text-align: right; }
+.cl-left { margin-top: var(--s3); }
+.cl-left-list li { grid-template-columns: 14px 1fr auto; }
+.cl-ic { color: var(--muted); display: inline-grid; }
+.cl-ic .fw-icon { vertical-align: 0; }
+
+/* This week, for Day: one row per day with its blocks along 08:00 to 22:00. */
+.cl-week ul { gap: 0; }
+.cl-week li { grid-template-columns: 32px 26px 1fr; height: 22px; }
+.cl-week li + li { border-top: 0; }
+.cl-wk-d { color: var(--muted); font-size: var(--t-caption); }
+.cl-wk-n { font-size: var(--t-caption); font-weight: var(--w-strong); text-align: center; border-radius: var(--r-pill); line-height: 18px; }
+.cl-week li.on .cl-wk-d { color: var(--text); font-weight: var(--w-strong); }
+.cl-week li.on .cl-wk-n { background: var(--accent); color: var(--accent-ink); }
+.cl-wk-bar { position: relative; height: 8px; border-radius: var(--r-pill); background: color-mix(in oklab, var(--text) 9%, var(--card)); margin-left: var(--s1); }
+.cl-wk-bar span { position: absolute; top: 0; bottom: 0; border-radius: var(--r-pill); background: var(--mark); }
+
+/* A. Soft deck: week --------------------------------------------------------------------------- */
+
+.cl-a-week { padding: 22px 20px 16px; display: flex; flex-direction: column; gap: var(--s4); }
+.cl-a-week .cl-deck { position: relative; display: flex; height: 626px; flex: none; }
+.cl-a-week .cl-gutter { position: relative; width: 42px; flex: none; }
+.cl-a-week .cl-gutter .cl-hl { right: var(--s2); }
+.cl-a-week .cl-cards { display: flex; gap: var(--s2); align-items: flex-start; }
+.cl-a-week .cl-block { padding-left: 13px; padding-right: 6px; }
+.cl-a-week .cl-block::before { left: 4px; }
+.cl-a-week .cl-card { height: 626px; padding: 0 6px 8px; }
+.cl-a-week .cl-card.today { height: 638px; margin-top: -6px; padding-top: 6px; padding-bottom: 14px; }
+.cl-a-week .cl-head { padding: 0 var(--s1) 0 6px; }
+
+/* A. Soft deck: day ----------------------------------------------------------------------------- */
+
+.cl-a-day { padding: 22px 20px; display: flex; gap: var(--s5); align-items: flex-start; }
+.cl-a-day .cl-card.big { flex: 1; min-width: 0; height: 700px; padding: 0 var(--s4) var(--s3) var(--s3); }
+.cl-a-day .cl-card.big .cl-head { height: 58px; padding: 0 0 0 var(--s1); }
+.cl-a-day .cl-card.big .cl-dayname { font-size: var(--t-title); }
+.cl-a-day .cl-head-note { margin-left: var(--s1); }
+.cl-a-day .cl-side { width: 320px; flex: none; display: flex; flex-direction: column; gap: var(--s4); }
+.cl-a-day .cl-sum li { height: 26px; }
+.cl-a-day .cl-week li { height: 21px; }
+.cl-a-day .cl-block { font-size: var(--t-body); line-height: 18px; padding: 6px var(--s3) 6px 18px; }
+.cl-a-day .cl-block::before, .cl-b .cl-open .cl-block::before { left: 7px; top: 6px; bottom: 6px; }
+.cl-a-day .cl-block.line::before, .cl-b .cl-open .cl-block.line::before { top: 4px; bottom: 4px; }
+.cl-a-day .cl-block.line { padding-top: 0; padding-bottom: 0; }
+.cl-a-day .cl-bm { font-size: var(--t-body); }
+
+/* B. Card carousel ------------------------------------------------------------------------------ */
+
+.cl-b { padding: 16px 20px; display: flex; flex-direction: column; gap: var(--s4); }
+.cl-b .cl-stage {
+  position: relative;
+  height: 632px;
+  margin: 0 -20px;
+  flex: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 80px, #000 calc(100% - 80px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 80px, #000 calc(100% - 80px), transparent 100%);
+}
+.cl-b .cl-card { position: absolute; }
+.cl-b .cl-card.front { padding: 0 var(--s4) var(--s4) var(--s3); z-index: 2; box-shadow: var(--cl-ring), var(--cl-in), var(--cl-lift); }
+.cl-b .cl-card.front .cl-head { height: 60px; padding: 0 0 0 var(--s1); }
+.cl-b .cl-card.front .cl-dayname { font-size: var(--t-title); }
+.cl-b .cl-card.front .cl-head-note { margin-left: var(--s1); }
+.cl-b .cl-card.front .cl-block { font-size: var(--t-caption); }
+.cl-b .cl-card.peek { padding: 0 var(--s2) var(--s3); }
+.cl-b .cl-card.peek .cl-head { height: 48px; padding: 0 var(--s1) 0 6px; }
+.cl-b .cl-card.peek .cl-dayname { color: var(--text); }
+
+.cl-b .cl-open { display: flex; gap: var(--s5); align-items: flex-start; }
+.cl-b .cl-open .cl-hours { flex: 1; min-width: 0; }
+.cl-b .cl-card.front .cl-open .cl-block { font-size: var(--t-body); line-height: 18px; padding: 6px var(--s3) 6px 18px; }
+.cl-b .cl-card.front .cl-open .cl-block.line { padding-top: 0; padding-bottom: 0; }
+.cl-b .cl-card.front .cl-open .cl-bm { font-size: var(--t-body); }
+.cl-b .cl-open .cl-sum {
+  width: 280px;
+  flex: none;
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0 0 0 var(--s5);
+  border-left: 1px solid var(--hairline);
+}
+
+.cl-arrow {
+  position: absolute;
+  top: calc(16px + 316px - 22px);
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--cl-surface);
+  box-shadow: var(--cl-ring), var(--cl-in), var(--cl-lift);
+  color: var(--text);
+}
+.cl-b .cl-dish.row { flex: none; }
+
+/* Motion stays inside the design: the carousel slides, and nothing loops. */
+.cl-b .cl-card { transition: transform 240ms cubic-bezier(0.215, 0.61, 0.355, 1), left 240ms cubic-bezier(0.215, 0.61, 0.355, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .cl-b .cl-card { transition: none; }
+}
