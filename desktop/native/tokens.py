@@ -18,15 +18,31 @@ RADIUS_SHEET = 16
 
 @dataclass(frozen=True)
 class Shadow:
-    """A drop shadow as `QGraphicsDropShadowEffect` takes it: offset down, blur, and black's opacity."""
+    """A drop shadow as `QGraphicsDropShadowEffect` takes it: offset down, blur, and black's opacity on
+    a light look and on a dark one, where a faint shadow would not show."""
 
     y: int
     blur: int
     opacity: float
+    dark_opacity: float
 
 
-SHADOW_SMALL = Shadow(1, 3, 0.08)
-SHADOW_LARGE = Shadow(12, 32, 0.16)
+SHADOW_SMALL = Shadow(1, 3, 0.08, 0.40)
+SHADOW_LARGE = Shadow(12, 32, 0.16, 0.50)
+
+# Decision 4: five sizes in points at Normal text, which Small and Large scale together, and two
+# weights, with 700 only for display numbers.
+TYPE_PT = {"caption": 11, "body": 13, "heading": 15, "title": 20, "display": 28}
+TEXT_SCALE = {"small": 0.85, "normal": 1.0, "large": 1.2}
+WEIGHT_REGULAR = 400
+WEIGHT_STRONG = 600
+WEIGHT_NUMBER = 700
+
+
+def type_pt(role: str, scale: float | str = 1.0) -> float:
+    """The size of `role` in points, at a Text knob's name or a scale, to the nearest half point."""
+    factor = TEXT_SCALE[scale] if isinstance(scale, str) else scale
+    return round(TYPE_PT[role] * factor * 2) / 2
 
 
 def _decode(channel: float) -> float:
