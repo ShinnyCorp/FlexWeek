@@ -308,7 +308,7 @@
   function renderB(el, ctx) {
     const sig = ctx.colours === "signature" ? " bn-sig" : "";
     const d = W.days[TODAY];
-    const side = ctx.view === "day" ? daySummary(TODAY, DAY, true) : glance();
+    const side = ctx.view === "day" ? daySummary(TODAY, WEEK, true) : glance();
     const hero = `<section class="bn-tile bn-hero">
       <div class="bn-hero-body bn-hero-b">
         <div class="bn-panel">${hours([TODAY], DAY, { wide: true, heads: false })}</div>
