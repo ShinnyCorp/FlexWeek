@@ -20,6 +20,7 @@ from desktop.native.layouts.base import (
     base_sheet,
     css,
     empty,
+    family_fill,
     label,
     mark_of,
     plan_buttons,
@@ -68,7 +69,7 @@ class ClayPainter(BlockPainter):
 
     def fills(self, drawn: Drawn) -> tuple[QColor, QColor, QColor | None, QColor | None]:
         mark = QColor(mark_of(drawn.category))
-        fill = QColor(mark).lighter(175)
+        fill = QColor(family_fill(drawn.category, self.tokens))
         if drawn.done or drawn.missed:
             fill = QColor(self.tokens["surface"])
         return fill, QColor(self.tokens["text"]), QColor(self.tokens["surface"]), mark

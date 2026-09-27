@@ -46,7 +46,9 @@ All notable changes to FlexWeek are documented here. Format follows
   a time is edged in homework's colour, not red, and Account says how many
   recovery codes are left in the muted colour, in red only when none are.
 - Month draws each block in its category's fill, as the week does, rather than
-  the strong colour washed over the date.
+  the strong colour washed over the date. So do Clay deck and Mission control,
+  whose blocks were their category's mark lightened or darkened: pale on light
+  cards and sunk into dark ones, with words that read on them.
 
 ## [0.16.0] - 2026-09-26
 
