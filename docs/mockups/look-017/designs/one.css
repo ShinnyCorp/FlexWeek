@@ -1,0 +1,208 @@
+/* One thing. Exaggerated Minimalism: the page is the look's, one accent, the next thing's name
+   as large as the window allows. The poster heading alone goes past the scale's display size,
+   as a multiple of it (about 96 pt at Normal), so Small and Large text still scale it. */
+
+.design-one {
+  --one-poster: calc(var(--t-display) * 3.43);
+  --one-count: calc(var(--t-display) * 3.2);
+  --one-track: color-mix(in oklab, var(--text) 9%, var(--page));
+}
+.dark-family .design-one { --one-track: color-mix(in oklab, var(--text) 15%, var(--page)); }
+.look-high-contrast .design-one { --one-track: color-mix(in oklab, var(--text) 32%, var(--page)); }
+
+.one-root {
+  position: relative;
+  height: 100%;
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+  display: flex;
+  flex-direction: column;
+  font-variant-numeric: tabular-nums;
+}
+.one-root p { margin: 0; }
+
+.one-top {
+  display: flex;
+  justify-content: space-between;
+  align-self: stretch;
+  color: var(--muted);
+  font-size: var(--t-body);
+  line-height: 20px;
+}
+
+.one-kicker { font-size: var(--t-heading); font-weight: var(--w-strong); color: var(--muted); }
+
+.one-actions { display: flex; gap: var(--s3); }
+.one-btn {
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s5) 0 var(--s4);
+  border-radius: var(--r-card);
+  font-size: var(--t-body);
+  font-weight: var(--w-strong);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1.5px var(--hairline-strong);
+}
+.one-btn .fw-icon { vertical-align: 0; }
+.one-btn.primary { background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow-sm); }
+.look-poster .one-btn { box-shadow: inset 0 0 0 2px var(--hairline), var(--shadow-sm); }
+.look-high-contrast .one-btn { box-shadow: inset 0 0 0 2px var(--hairline-strong); }
+.look-high-contrast .one-btn.primary { box-shadow: none; }
+
+/* A. Poster ------------------------------------------------------------------------------------- */
+
+.one-a { padding: var(--s5) calc(var(--s6) * 2) var(--s6); }
+.one-a .one-main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-bottom: var(--s5); }
+.one-title {
+  margin: var(--s3) 0 0 -0.04em;
+  font-family: var(--font-head);
+  font-size: var(--one-poster);
+  font-weight: var(--w-strong);
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+  white-space: nowrap;
+}
+.look-terminal .one-title { letter-spacing: -0.06em; }
+.look-paper .one-title, .look-ink .one-title { letter-spacing: -0.02em; }
+.one-when {
+  margin-top: var(--s4) !important;
+  font-size: var(--t-display);
+  font-weight: var(--w-strong);
+  color: var(--accent);
+  letter-spacing: -0.01em;
+}
+.one-a .one-actions { margin-top: var(--s6); }
+
+.one-foot { flex: none; }
+.one-daybar { position: relative; }
+.one-track {
+  position: relative;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--one-track);
+}
+.one-done {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--r-pill);
+  background: color-mix(in oklab, var(--text) 18%, var(--page));
+}
+.dark-family .one-done { background: color-mix(in oklab, var(--text) 26%, var(--page)); }
+.one-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--r-pill);
+  background: var(--mark);
+}
+.one-seg.past { background: color-mix(in oklab, var(--mark) 40%, var(--page)); }
+.one-nowmark {
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--page);
+}
+.one-ticks { position: relative; height: 16px; margin-top: var(--s3); }
+.one-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: var(--t-caption);
+  color: var(--muted);
+  line-height: 16px;
+}
+.one-footrow { display: flex; justify-content: space-between; align-items: center; margin-top: var(--s4); }
+.one-then { font-size: var(--t-body); }
+.one-then span { color: var(--muted); }
+.one-keys { color: var(--muted); font-size: var(--t-body); display: flex; align-items: center; }
+.one-keys kbd {
+  font-family: var(--font-body);
+  font-size: var(--t-caption);
+  font-weight: var(--w-strong);
+  color: var(--text);
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--r-control);
+  box-shadow: inset 0 0 0 1px var(--hairline-strong), inset 0 -2px 0 var(--hairline-strong);
+  margin: 0 var(--s2) 0 var(--s5);
+}
+.one-keys kbd:first-child { margin-left: 0; }
+
+/* B. Countdown ---------------------------------------------------------------------------------- */
+
+.one-b { padding: var(--s5) calc(var(--s6) * 2) var(--s6); align-items: center; }
+.one-dial { position: relative; width: 440px; height: 440px; margin-top: var(--s4); flex: none; }
+.one-ring { display: block; }
+.one-rtrack { fill: none; stroke: var(--one-track); stroke-width: 18; }
+.one-rarc { fill: none; stroke: var(--accent); stroke-width: 18; stroke-linecap: round; }
+.one-rt { stroke: var(--hairline-strong); stroke-width: 2; stroke-linecap: round; }
+.one-rt.major { stroke: var(--muted); }
+.one-rl {
+  fill: var(--muted);
+  font-family: var(--font-body);
+  font-size: var(--t-caption);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.one-centre {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.one-name {
+  margin-top: var(--s1) !important;
+  font-family: var(--font-head);
+  font-size: var(--t-title);
+  font-weight: var(--w-strong);
+  letter-spacing: -0.01em;
+}
+.one-count { display: flex; align-items: baseline; gap: var(--s2); margin: var(--s1) 0 0 var(--s5) !important; }
+.one-count b {
+  font-size: var(--one-count);
+  font-weight: var(--w-number);
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}
+.one-count span { font-size: var(--t-title); font-weight: var(--w-strong); color: var(--muted); }
+.one-at { color: var(--muted); font-size: var(--t-body); }
+
+.one-list { width: 440px; margin-top: var(--s5); flex: none; }
+.one-list .one-kicker { font-size: var(--t-body); }
+.one-list ul { list-style: none; margin: var(--s2) 0 0; padding: 0; }
+.one-list li {
+  display: grid;
+  grid-template-columns: 44px 10px 1fr auto;
+  align-items: center;
+  gap: var(--s3);
+  height: 36px;
+  border-top: 1px solid var(--hairline);
+}
+.one-list li:last-child { border-bottom: 1px solid var(--hairline); }
+.one-lt { color: var(--muted); text-align: right; }
+.one-ld { width: 10px; height: 10px; border-radius: 50%; background: var(--mark); }
+.one-ln { font-weight: var(--w-strong); display: flex; align-items: center; gap: 6px; }
+.one-ln .fw-icon { vertical-align: 0; color: var(--muted); }
+.one-ll { color: var(--muted); text-align: right; }
+.one-b .one-actions { margin-top: var(--s5); }
+
+/* The arc eases as the minutes pass; it never loops. */
+.one-rarc { transition: stroke-dasharray 300ms cubic-bezier(0.215, 0.61, 0.355, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .one-rarc { transition: none; }
+}
