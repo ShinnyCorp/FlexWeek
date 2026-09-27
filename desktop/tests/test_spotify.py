@@ -24,6 +24,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native import spotify
     from desktop.native.settings import AlarmRingDialog
     from desktop.native.spotify import LISTENING, SHOWN, STARTING, SpotifyPlayer
+    from desktop.tests.logic_support import wait_until
 
 TRACK = "https://open.spotify.com/track/4LUJzSLpBtgH3dpOH7J7Nf?si=abc123"
 PLAYLIST = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
@@ -112,7 +113,8 @@ def test_a_running_spotify_is_told_to_play_and_is_heard(qapp: QApplication) -> N
     made.late.connect(lambda: late.append(True))
     assert made.play(TRACK) == LISTENING
     assert app.asked == ["spotify:track:4LUJzSLpBtgH3dpOH7J7Nf"]
-    QTest.qWait(80)
+    # Lateness is counted in the player's own polls, so a busy machine only delays the first one.
+    wait_until(qapp, lambda: heard, timeout=5)
     assert heard == ["Playing “Voices of the Chord” by Sawano Hiroyuki, mpi"]
     assert late == [], "heard in time, so the tone never rings"
 
