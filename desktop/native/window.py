@@ -1492,7 +1492,7 @@ class NativeWindow(QMainWindow):
         if fresh is not None:
             titles = {block["id"]: block["title"] for block in self.session.blocks}
             was_open = self.plan_review.isVisible()
-            self.plan_review.set_trace(fresh, titles, self.session.week_start)
+            self.plan_review.set_trace(fresh, titles, self.session.week_start, self.session.plan_counts)
             if self.plan_review.isVisible() and not was_open:
                 appear(self.plan_review, self._motion)
         self._sync_chrome()

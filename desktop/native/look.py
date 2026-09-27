@@ -16,7 +16,7 @@ from copy import deepcopy
 from functools import lru_cache
 
 from desktop.native.calendar import CATEGORIES
-from desktop.native.tokens import RADIUS_CARD, RADIUS_CONTROL, SINK, mix_oklab
+from desktop.native.tokens import RADIUS_CARD, RADIUS_CONTROL, SINK, WEIGHT_STRONG, mix_oklab, type_pt
 
 LOOK_KNOBS = {
     "surface": ("frost", "flat"),
@@ -1070,7 +1070,32 @@ def pack_stylesheet(
         f"font-weight: 800; font-size: {max(size - 1, 7)}pt; margin-top: 6px; }}"
         f"QLabel#weekNoneWaiting {{ color: {palette['muted']}; font-size: {max(size - 1, 7)}pt; }}"
         + (_contrast_rules(palette) if palette.get("family") == "contrast" else "")
+        + planner_rules(palette, knobs["text"], pad, card_radius, edges)
     ) + (control_rules(palette, radius, size, art) if art is not None else "")
+
+
+def planner_rules(palette: dict, text: str, pad: int, card_radius: int, edges: str) -> str:
+    """Today's app around its hours: the plan bar, the rail, Day's agenda (decisions 13 to 18 of 0.17).
+    Sizes from the type scale; section labels in the muted colour, never the accent, which read as
+    links."""
+    caption, body, heading = (f"{type_pt(role, text)}pt" for role in ("caption", "body", "heading"))
+    link = (
+        f"background: transparent; color: {palette['accent']}; border: none; "
+        f"padding: 2px {pad // 2}px; min-height: 0; font-weight: {WEIGHT_STRONG};"
+    )
+    return (
+        # One slim bar: its count, Details, Replan as text and Got it filled.
+        f"QFrame#planReview {{ background: {palette['panel']}; padding: {pad // 2}px {pad}px; "
+        f"border-radius: {card_radius}px; {edges} }}"
+        f"QLabel#planReviewHeading {{ font-weight: {WEIGHT_STRONG}; font-size: {body}; }}"
+        f"QPushButton#planReviewDetails, QPushButton#planReviewReplan {{ {link} }}"
+        f"QPushButton#planReviewDetails:hover, QPushButton#planReviewReplan:hover {{ "
+        f"text-decoration: underline; }}"
+        f"QListWidget#planReviewList {{ border: none; padding: 0; font-size: {caption}; }}"
+        f"QLabel[railLabel=\"true\"] {{ color: {palette['muted']}; font-size: {caption}; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel[railHeading=\"true\"] {{ font-size: {heading}; font-weight: {WEIGHT_STRONG}; }}"
+    )
 
 
 def _contrast_rules(palette: dict) -> str:

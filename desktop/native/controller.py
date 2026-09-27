@@ -224,6 +224,8 @@ class NativeSession(QObject):
         self._move_attempt: str | None = None
         self.focus: dict | None = None
         self._fresh_plan = False
+        # The last plan's homework given a time and still without one: what its toast and its bar say.
+        self.plan_counts: tuple[int, int] = (0, 0)
         self.needs_time: dict[str, str] = {}
         # Registered in this sitting, so setup can open before the account's preferences arrive.
         self.new_account = False
@@ -1640,6 +1642,7 @@ class NativeSession(QObject):
                 elif block_id in reasons:
                     self.needs_time[block_id] = reasons[block_id]
             self._fresh_plan = True
+            self.plan_counts = (placed, waiting)
             split_note = self._apply_auto_split(data)
             changed = self._dump_blocks() != before
             if not changed:
