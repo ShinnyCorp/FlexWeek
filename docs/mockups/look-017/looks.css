@@ -1,0 +1,242 @@
+/* The Phase 1 system as CSS variables (docs/0.17/plan.md, decisions 1 to 10), and the ten revised
+   looks of Phase 2. A design reads only these variables, never a colour of its own, except in its
+   signature colourway (FW.register's `signature.vars`). Sizes are in pt, as Qt's are. */
+
+@font-face { font-family: "Inter"; font-weight: 400; src: url("../../../desktop/assets/fonts/Inter-Regular.ttf"); }
+@font-face { font-family: "Inter"; font-weight: 500; src: url("../../../desktop/assets/fonts/Inter-Medium.ttf"); }
+@font-face { font-family: "Inter"; font-weight: 600; src: url("../../../desktop/assets/fonts/Inter-SemiBold.ttf"); }
+@font-face { font-family: "Inter"; font-weight: 700; src: url("../../../desktop/assets/fonts/Inter-Bold.ttf"); }
+@font-face { font-family: "Newsreader"; font-weight: 200 800; src: url("fonts/Newsreader.ttf"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 100 800; src: url("fonts/JetBrainsMono.ttf"); }
+@font-face { font-family: "Pixelify Sans"; font-weight: 400 700; src: url("fonts/PixelifySans.ttf"); }
+@font-face { font-family: "VT323"; font-weight: 400; src: url("fonts/VT323.ttf"); }
+
+.fw-stage {
+  /* Type scale (decision 4): caption, body, heading, title, display. Two weights, 400 and 600;
+     700 only for display numbers. */
+  --t-caption: 11pt;
+  --t-body: 13pt;
+  --t-heading: 15pt;
+  --t-title: 20pt;
+  --t-display: 28pt;
+  --w-regular: 400;
+  --w-strong: 600;
+  --w-number: 700;
+  /* Spacing (decision 5). */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  /* Shape. */
+  --r-control: 6px;
+  --r-card: 10px;
+  --r-sheet: 16px;
+  --r-pill: 999px;
+  /* Faces. */
+  --font-sans: "Inter", "Noto Sans", sans-serif;
+  --font-serif: "Newsreader", "Noto Serif", serif;
+  --font-mono: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+  --font-body: var(--font-sans);
+  --font-head: var(--font-sans);
+  /* Categories (decision 9): one family. Fills at one lightness and chroma, marks at another. */
+  --fill-l: 0.92; --fill-c: 0.045; --mark-l: 0.62; --mark-c: 0.14;
+  --c-class-mark: oklch(var(--mark-l) var(--mark-c) 255);
+  --c-assignments-mark: oklch(var(--mark-l) var(--mark-c) 25);
+  --c-study-mark: oklch(var(--mark-l) var(--mark-c) 295);
+  --c-exercise-mark: oklch(var(--mark-l) var(--mark-c) 150);
+  --c-extra-mark: oklch(var(--mark-l) var(--mark-c) 205);
+  --c-meals-mark: oklch(var(--mark-l) var(--mark-c) 60);
+  --c-sleep-mark: oklch(var(--mark-l) var(--mark-c) 275);
+  --c-free-mark: oklch(var(--mark-l) 0.01 250);
+  --c-class-fill: oklch(var(--fill-l) var(--fill-c) 255);
+  --c-assignments-fill: oklch(var(--fill-l) var(--fill-c) 25);
+  --c-study-fill: oklch(var(--fill-l) var(--fill-c) 295);
+  --c-exercise-fill: oklch(var(--fill-l) var(--fill-c) 150);
+  --c-extra-fill: oklch(var(--fill-l) var(--fill-c) 205);
+  --c-meals-fill: oklch(var(--fill-l) var(--fill-c) 60);
+  --c-sleep-fill: oklch(var(--fill-l) var(--fill-c) 275);
+  --c-free-fill: oklch(var(--fill-l) 0.01 250);
+  --block-ink: var(--text);
+
+  /* Light, the default (decision 2). */
+  --page: #f7f8fa;
+  --card: #ffffff;
+  --card-2: #f1f3f6;
+  --text: #111827;
+  --muted: #5b6474;
+  --hairline: #e4e7ec;
+  --hairline-strong: #d0d5dd;
+  --accent: #3d6fc4;
+  --accent-ink: #ffffff;
+  --danger: #c42b1c;
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.16);
+  --grid-rule: var(--hairline);
+  --accent-tint: color-mix(in oklab, var(--accent) 10%, var(--card));
+  --focus: color-mix(in oklab, var(--accent) 40%, transparent);
+
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+}
+
+/* A dark look sinks each category's mark into the card instead of a pale fill (0.16's rule). */
+.fw-stage.dark-family {
+  --block-ink: var(--text);
+  --c-class-fill: color-mix(in oklab, var(--c-class-mark) 34%, var(--card));
+  --c-assignments-fill: color-mix(in oklab, var(--c-assignments-mark) 34%, var(--card));
+  --c-study-fill: color-mix(in oklab, var(--c-study-mark) 34%, var(--card));
+  --c-exercise-fill: color-mix(in oklab, var(--c-exercise-mark) 34%, var(--card));
+  --c-extra-fill: color-mix(in oklab, var(--c-extra-mark) 34%, var(--card));
+  --c-meals-fill: color-mix(in oklab, var(--c-meals-mark) 34%, var(--card));
+  --c-sleep-fill: color-mix(in oklab, var(--c-sleep-mark) 34%, var(--card));
+  --c-free-fill: color-mix(in oklab, var(--c-free-mark) 34%, var(--card));
+  --mark-l: 0.72;
+  --accent: #7fa8ff;
+  --accent-ink: #0b1224;
+  --danger: #ff8a7a;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.fw-stage.look-light { }
+
+.fw-stage.look-dark {
+  --page: #111315;
+  --card: #1a1d21;
+  --card-2: #22262b;
+  --text: #e8eaed;
+  --muted: #9aa1ab;
+  --hairline: #2a2e34;
+  --hairline-strong: #3a3f46;
+  --grid-rule: rgba(255, 255, 255, 0.08);
+}
+
+/* Inclusive Design: 7:1 text, thick focus, outlines rather than fills, symbols with colour. */
+.fw-stage.look-high-contrast {
+  --page: #000000;
+  --card: #000000;
+  --card-2: #0d0d0d;
+  --text: #ffffff;
+  --muted: #e6e6e6;
+  --hairline: rgba(255, 255, 255, 0.4);
+  --hairline-strong: #ffffff;
+  --grid-rule: rgba(255, 255, 255, 0.4);
+  --accent: #ffd400;
+  --accent-ink: #000000;
+  --danger: #ff6b6b;
+  --focus: #ffd400;
+  --mark-l: 0.78; --mark-c: 0.16;
+  --shadow-sm: none;
+  --shadow-lg: none;
+  --r-control: 4px;
+}
+
+/* Swiss Modernism 2.0: cool, professional. */
+.fw-stage.look-slate {
+  --page: #eef1f5;
+  --card: #ffffff;
+  --card-2: #e7ebf1;
+  --text: #0f172a;
+  --muted: #475569;
+  --hairline: #dbe1ea;
+  --hairline-strong: #c3ccd9;
+}
+
+/* Dark Mode (OLED): midnight, low emission. */
+.fw-stage.look-nocturne {
+  --page: #0a0e27;
+  --card: #121633;
+  --card-2: #1a1f42;
+  --text: #e0e4f0;
+  --muted: #9aa3c0;
+  --hairline: #262b4d;
+  --hairline-strong: #343a63;
+  --grid-rule: rgba(224, 228, 240, 0.08);
+}
+
+/* E-Ink / Paper: matte, ink on off-white, serif headings, no shadows. */
+.fw-stage.look-paper {
+  --page: #fdfbf7;
+  --card: #fffdf9;
+  --card-2: #f6f1e8;
+  --text: #1a1a1a;
+  --muted: #5c5750;
+  --hairline: #e6e0d6;
+  --hairline-strong: #cfc7b9;
+  --font-head: var(--font-serif);
+  --shadow-sm: none;
+  --shadow-lg: 0 0 0 1px #cfc7b9;
+  --fill-c: 0.035;
+}
+
+/* Paper's night counterpart. */
+.fw-stage.look-ink {
+  --page: #1c1b19;
+  --card: #242320;
+  --card-2: #2c2a26;
+  --text: #f3eee3;
+  --muted: #b3ab9c;
+  --hairline: #3a3833;
+  --hairline-strong: #4a4740;
+  --grid-rule: rgba(243, 238, 227, 0.08);
+  --font-head: var(--font-serif);
+  --shadow-sm: none;
+}
+
+/* Developer Mono pairing, GitHub-dark surfaces, no glow. */
+.fw-stage.look-terminal {
+  --page: #0d1117;
+  --card: #161b22;
+  --card-2: #1c2129;
+  --text: #c9d1d9;
+  --muted: #8b949e;
+  --hairline: #30363d;
+  --hairline-strong: #484f58;
+  --grid-rule: rgba(201, 209, 217, 0.08);
+  --font-body: var(--font-mono);
+  --font-head: var(--font-mono);
+  --r-control: 4px;
+  --r-card: 6px;
+  --success: #3fb950;
+}
+
+/* Neubrutalism: black borders, offset shadows, flat colour on cream. */
+.fw-stage.look-poster {
+  --page: #fff8e7;
+  --card: #ffffff;
+  --card-2: #fff1cc;
+  --text: #111111;
+  --muted: #3d3d3d;
+  --hairline: #111111;
+  --hairline-strong: #111111;
+  --shadow-sm: 3px 3px 0 #111111;
+  --shadow-lg: 6px 6px 0 #111111;
+  --r-control: 0px;
+  --r-card: 0px;
+  --r-sheet: 0px;
+  --fill-l: 0.88; --fill-c: 0.09;
+}
+
+/* Soft UI Evolution: improved-contrast pastels on lavender. */
+.fw-stage.look-pastel {
+  --page: #f3f0ff;
+  --card: #ffffff;
+  --card-2: #ece7ff;
+  --text: #1e1b2e;
+  --muted: #4b4763;
+  --hairline: #e4ddfb;
+  --hairline-strong: #cfc5f5;
+  --r-card: 14px;
+  --shadow-sm: 0 2px 8px rgba(76, 60, 160, 0.10);
+  --shadow-lg: 0 16px 40px rgba(76, 60, 160, 0.18);
+}
+
+/* Blocks and chips in the category family, used by the shared helpers and by any design that
+   wants them. `data-cat` is the category id. */
+.fw-stage [data-cat="class"] { --fill: var(--c-class-fill); --mark: var(--c-class-mark); }
+.fw-stage [data-cat="assignments"] { --fill: var(--c-assignments-fill); --mark: var(--c-assignments-mark); }
+.fw-stage [data-cat="study"] { --fill: var(--c-study-fill); --mark: var(--c-study-mark); }
+.fw-stage [data-cat="exercise"] { --fill: var(--c-exercise-fill); --mark: var(--c-exercise-mark); }
+.fw-stage [data-cat="extra"] { --fill: var(--c-extra-fill); --mark: var(--c-extra-mark); }
+.fw-stage [data-cat="meals"] { --fill: var(--c-meals-fill); --mark: var(--c-meals-mark); }
+.fw-stage [data-cat="sleep"] { --fill: var(--c-sleep-fill); --mark: var(--c-sleep-mark); }
+.fw-stage [data-cat="free"] { --fill: var(--c-free-fill); --mark: var(--c-free-mark); }
