@@ -28,7 +28,7 @@
   --cl-drop: var(--shadow-lg);
   --cl-lift: var(--shadow-lg), 0 0 0 1px var(--hairline-strong);
   --cl-dish-bg: color-mix(in oklab, var(--page) 55%, var(--card));
-  --cl-dish-in: inset 0 2px 8px color-mix(in oklab, var(--page) 90%, transparent), inset 0 -1px 0 color-mix(in oklab, var(--text) 7%, transparent);
+  --cl-dish-in: inset 0 2px 8px color-mix(in oklab, var(--page) 90%, transparent), inset 0 0 0 1px color-mix(in oklab, var(--hairline) 70%, transparent);
 }
 /* E-Ink / Paper keeps no shadows: the ring and the dish's tone carry the shape. */
 .look-paper .design-clay {
