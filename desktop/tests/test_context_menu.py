@@ -139,7 +139,7 @@ def test_a_right_click_offers_four_things_and_finished_only_for_homework(
     at = centre(window, essay_id(window), 2)
     before = [dict(block) for block in window.session.blocks]
     right_click(hours, at)
-    assert menus["shown"] == [["Open", "Duplicate\tCtrl+D", "Finished", "Delete"]]
+    assert menus["shown"] == [["Open", "Duplicate\tCtrl+D", "Finished", "Delete", "Delete homework"]]
     assert menus["at"] == [at], "the menu opens where the pointer is"
     chosen = (window.session.selected_block_id, window.session.selected_occurrence_day)
     assert chosen == (essay_id(window), 2)
@@ -203,7 +203,31 @@ def test_homework_with_no_time_has_a_menu_too(qapp: QApplication, window: Native
         next(block["id"] for block in window.session.blocks if block.get("assignment_id") == "math")
     ]
     right_click(chips[0], chips[0].mapToGlobal(chips[0].rect().center()))
-    assert menus["shown"] == [["Open", "Finished", "Delete"]], "nothing to duplicate until it has a time"
+    # Nothing to duplicate until it has a time, and no one time to delete: the homework is the entry.
+    assert menus["shown"] == [["Open", "Finished", "Delete homework"]]
+
+
+def test_delete_homework_asks_first_and_takes_it_away_with_an_undo(
+    qapp: QApplication, window: NativeWindow, menus: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+
+    def answer(_parent: object, title: str, words: str, _yes: str) -> bool:
+        asked.append(title)
+        return True
+
+    monkeypatch.setattr(window_module, "confirm", answer)
+    chip = next(chip for chip in window.findChildren(TrayChip) if chip.isVisible())
+    menus["choose"] = "blockMenuDeleteHomework"
+    right_click(chip, chip.mapToGlobal(chip.rect().center()))
+    settled(qapp, window)
+    assert asked == ["Delete homework"]
+    assert "math" not in window.session.assignments
+    assert window.toast.text() == "Deleted Math worksheet."
+    assert window.toast.button.text() == "Undo"
+    window.toast.button.click()
+    settled(qapp, window)
+    assert window.session.assignments["math"]["title"] == "Math worksheet"
 
 
 def test_a_months_chip_has_the_same_menu_but_only_in_the_open_week(
@@ -217,7 +241,7 @@ def test_a_months_chip_has_the_same_menu_but_only_in_the_open_week(
     canvas.reveal(wednesday)
     qapp.processEvents()
     right_click(canvas, canvas.chip_point(essay_id(window), wednesday))
-    assert menus["shown"] == [["Open", "Duplicate\tCtrl+D", "Finished", "Delete"]]
+    assert menus["shown"] == [["Open", "Duplicate\tCtrl+D", "Finished", "Delete", "Delete homework"]]
     this_week = {(monday + timedelta(days=offset)).isoformat() for offset in range(7)}
     elsewhere = [cell for cell in canvas.cells if cell.iso not in this_week]
     assert elsewhere, "the month shows a week other than this one"

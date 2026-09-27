@@ -1149,6 +1149,110 @@ class NativeSession(QObject):
         self._post_pending(ticket)
         return True
 
+    def delete_homework(self, assignment_id: str) -> bool:
+        """Delete homework and every session of it, in every week. The server removes the sessions,
+        weeks this window has not loaded included, and says which it removed, so Undo can put each
+        back. One Undo step, whichever weeks it touched."""
+        item = self.assignments.get(assignment_id)
+        if item is None or self.account is None or self.conflict:
+            return False
+        if self.busy or self.dirty or self.pending_save is not None:
+            self._say("Wait a moment: your last change is still saving. Then delete it.")
+            return False
+        title = str(item.get("title") or "the homework")
+        before = deepcopy(self.blocks)
+        after = [block for block in self.blocks if block.get("assignment_id") != assignment_id]
+        key = f"delete-homework|{self.account['id']}|{assignment_id}|{int(item.get('revision') or 0)}"
+        payload = {
+            # This week goes as it will be once the sessions are gone. The server stores a week that
+            # already reads that way without asking for its revision, which the delete moves on.
+            "weeks": [_week_write(self.week_start, after, self.revision)],
+            "assignments": [_assignment_write(assignment_id, None, int(item.get("revision") or 0))],
+            "operation_id": self._operation(key),
+        }
+        ticket = self._begin()
+        self._say("Deleting " + title + "…")
+
+        def fail(error: ApiError) -> None:
+            if self._idle(ticket):
+                self._say("Not deleted. " + error.message)
+                self.save_finished.emit(False, self.message)
+
+        def ok(data: dict) -> None:
+            if not self._alive(ticket):
+                return
+            results = data.get("assignments") or []
+            result = next((entry for entry in results if entry["id"] == assignment_id), {})
+            removed: dict[str, list[dict]] = result.get("removed_sessions") or {}
+            revisions = {week["week_start"]: week["revision"] for week in result.get("changed_weeks") or []}
+            weeks = data.get("weeks") or []
+            current = next((week for week in weeks if week["week_start"] == self.week_start), None)
+            if current is not None:
+                self.blocks = list(current["blocks"])
+                self.revision = current["revision"]
+            self.assignments.pop(assignment_id, None)
+            self.dirty_assignments.discard(assignment_id)
+            self._committed_blocks = deepcopy(self.blocks)
+            self._committed_assignments = deepcopy(self.assignments)
+            for week_start, parked in self._drafts.items():
+                if week_start in revisions:
+                    kept = [b for b in parked["blocks"] if b.get("assignment_id") != assignment_id]
+                    parked["blocks"] = kept
+                    parked["revision"] = revisions[week_start]
+            step = {
+                "label": "deleting " + title,
+                "weeks": [
+                    {"week_start": self.week_start, "before": before, "after": deepcopy(self.blocks),
+                     "revision": self.revision}
+                ],
+                "assignments": [{"id": assignment_id, "before": deepcopy(item), "after": None}],
+                "stale": False,
+            }
+            others = [week for week in removed if week != self.week_start]
+
+            def finish() -> None:
+                if not self._idle(ticket):
+                    return
+                push_step(self._undo, step)
+                self._redo.clear()
+                self._attempts.pop(key, None)
+                self._say("Deleted " + title + ".")
+                self.save_finished.emit(True, self.message)
+                self._refresh_view()
+                self.week_changed.emit()
+                self._fetch_weeks()
+                self._refresh_assignments()
+
+            def next_week() -> None:
+                if not others:
+                    finish()
+                    return
+                week_start = others.pop(0)
+
+                def got(week: dict) -> None:
+                    if not self._alive(ticket):
+                        return
+                    kept = list(week.get("blocks") or [])
+                    step["weeks"].append(
+                        {
+                            "week_start": week_start,
+                            "before": kept + deepcopy(removed[week_start]),
+                            "after": kept,
+                            "revision": week["revision"],
+                        }
+                    )
+                    next_week()
+
+                # A week that cannot be read is left out of the step: Undo still brings the homework
+                # back, with its sessions in every week that could be read.
+                path = f"/api/week?week_start={week_start}"
+                self.client.request("GET", path, None, got, lambda _error: next_week())
+
+            next_week()
+
+        self.client.request("POST", "/api/changes", payload, ok, fail)
+        return True
+
     def unpin_assignment(self, assignment_id: str) -> bool:
         """Let FlexWeek move this homework's sessions again."""
         changed = False

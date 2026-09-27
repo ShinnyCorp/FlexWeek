@@ -1829,10 +1829,22 @@ class HomeworkDialog(Dialog):
         # A scroll area does not claim its content's width, so without this the dialog comes up narrow.
         self.setMinimumWidth(HOMEWORK_MIN_WIDTH)
         self._scroll = area
+        # Delete is not one of the dialog's answers: quiet words at the left, away from Save, as the
+        # block editor has it. Only homework that exists can go.
+        row = QHBoxLayout()
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.setObjectName("deleteHomework")
+        self.delete_button.setAutoDefault(False)
+        self.delete_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.delete_button.setVisible(assignment is not None)
+        self.delete_button.clicked.connect(self._delete)
+        row.addWidget(self.delete_button)
+        row.addStretch(1)
         buttons = _buttons()
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        row.addWidget(buttons)
+        layout.addLayout(row)
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         super().showEvent(event)
@@ -1884,6 +1896,15 @@ class HomeworkDialog(Dialog):
 
     def _request_session(self) -> None:
         self._request = self.sender().property("request")
+        self._result = deepcopy(self._original)
+        super().accept()
+
+    def _delete(self) -> None:
+        name = self._original.get("title") or "this homework"
+        words = f"Delete {name}? Its times on the calendar go too, in every week. You can undo this."
+        if not confirm(self, "Delete homework", words, "Delete"):
+            return
+        self._request = "delete"
         self._result = deepcopy(self._original)
         super().accept()
 
@@ -2151,6 +2172,7 @@ class PreviewDialog(Dialog):
 
 class UnfinishedPanel(QWidget):
     plan_requested = Signal(str)
+    delete_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -2186,6 +2208,14 @@ class UnfinishedPanel(QWidget):
                 lambda _checked=False, item_id=item["id"]: self.plan_requested.emit(item_id)
             )
             row_layout.addWidget(button)
+            delete = QPushButton("Delete")
+            delete.setObjectName(f"deleteUnfinished-{item['id']}")
+            delete.setProperty("quiet", True)
+            delete.setToolTip("Delete this homework and its times in every week. You can undo this.")
+            delete.clicked.connect(
+                lambda _checked=False, item_id=item["id"]: self.delete_requested.emit(item_id)
+            )
+            row_layout.addWidget(delete)
             wrapper = QListWidgetItem()
             wrapper.setSizeHint(row.sizeHint())
             self.list.addItem(wrapper)

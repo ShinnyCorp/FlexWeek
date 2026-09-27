@@ -922,9 +922,10 @@ def pack_stylesheet(
         f'QPushButton[quiet="true"]:hover {{ background: {palette["hairline"]}; }}'
         f'QPushButton[danger="true"] {{ background: {palette["error"]}; '
         f'color: {readable_ink(palette["error"])}; }}'
-        f"QPushButton#deleteBlock {{ background: transparent; color: {palette['error']}; border: none; "
+        f"QPushButton#deleteBlock, QPushButton#deleteHomework {{ background: transparent; "
+        f"color: {palette['error']}; border: none; "
         f"padding: {pad}px 2px; font-weight: 600; min-height: 0; }}"
-        f"QPushButton#deleteBlock:hover {{ text-decoration: underline; }}"
+        f"QPushButton#deleteBlock:hover, QPushButton#deleteHomework:hover {{ text-decoration: underline; }}"
         # Homework that still needs a time, to be dragged onto the hours: it looks like homework, not
         # like a button that does something when pressed.
         f"QPushButton[tray=\"true\"] {{ background: {palette['panel']}; color: {palette['text']}; "

@@ -248,7 +248,11 @@ The week calendar is a painted timeline, as in Daily Scheduler: dragging a
 block moves it with the pointer in the student's 5- or 15-minute step and
 across days, its top or bottom edge resizes it, and dragging or clicking empty
 time opens an Add dialog for that range. A click on a block opens it; a
-right-click offers Open, Duplicate, Finished (homework) and Delete. Hours have
+right-click offers Open, Duplicate, Finished (homework) and Delete, and on
+homework Delete homework. Homework is deleted from its editor, from its row
+under Unfinished or from that menu, after a question: the server removes it and
+its sessions from every week (`DELETE` in `/api/changes`) and says which it
+removed, so one Undo writes the homework and each of those sessions back. Hours have
 no half-hour rules; the now line carries the time, and today's column is washed
 and underlined in the accent. After a plan, blocks slide to their new places. Blocks may overlap; they sit side by
 side, each marked. A drop

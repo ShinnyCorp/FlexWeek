@@ -930,6 +930,7 @@ class NativeWindow(QMainWindow):
         # and Plan can be pressed from any design, and what they show is the point of pressing them.
         self.unfinished_panel = UnfinishedPanel()
         self.unfinished_panel.plan_requested.connect(self._plan_unfinished)
+        self.unfinished_panel.delete_requested.connect(self._delete_homework)
         layout.addWidget(self.unfinished_panel)
         self.plan_review = PlanReview()
         self.plan_review.replan_requested.connect(lambda: self.session.solve(everything=True))
@@ -1413,6 +1414,9 @@ class NativeWindow(QMainWindow):
             # Another view, week, day or design: what the toast said was about where the student was.
             self._toast_where = self._where()
             self.toast.hide()
+        if self.unfinished_panel.isVisible():
+            # A row deleted, planned or finished leaves the list, and an Undo brings it back.
+            self.unfinished_panel.set_items(self.session.unfinished())
         if self.session.dirty:
             # Every change reaches here, so this is where the clock on "stopped changing" restarts.
             self._changed_ms = self.session.now_ms()
@@ -1752,6 +1756,10 @@ class NativeWindow(QMainWindow):
             if self.session.unpin_assignment(dialog.assignment()["id"]):
                 self.session.save()
             return
+        if dialog.requested() == "delete":
+            # The editor has asked already.
+            self._delete_homework(dialog.assignment()["id"], ask=False)
+            return
         body = dialog.assignment()
         known = self.session.assignments.get(body.get("id") or "")
         self.session.add_homework(body, days=days)
@@ -2030,6 +2038,18 @@ class NativeWindow(QMainWindow):
             return None
         return due_point(assignment.get("due"), self.session.week_start)
 
+    def _delete_homework(self, assignment_id: str, ask: bool = True) -> None:
+        """Homework and its times in every week, gone in one step that Undo brings back."""
+        assignment = self.session.assignments.get(assignment_id)
+        if assignment is None:
+            return
+        title = assignment.get("title") or "this homework"
+        words = f"Delete {title}? Its times on the calendar go too, in every week. You can undo this."
+        if ask and not confirm(self, "Delete homework", words, "Delete"):
+            return
+        if self.session.delete_homework(assignment_id):
+            self._say_when_saved(f"Deleted {title}.")
+
     def _edit_homework(self, assignment_id: str) -> None:
         assignment = self.session.assignments.get(assignment_id)
         if assignment is None:
@@ -2140,7 +2160,11 @@ class NativeWindow(QMainWindow):
             offered.append(("blockMenuDuplicate", "Duplicate\tCtrl+D"))
         if assignment is not None and not assignment.get("completed"):
             offered.append(("blockMenuFinished", "Finished"))
-        offered.append(("blockMenuDelete", "Delete"))
+        if block.get("start") or assignment is None:
+            offered.append(("blockMenuDelete", "Delete"))
+        if assignment is not None:
+            # Delete takes away this one time; the homework, with all its times, is its own entry.
+            offered.append(("blockMenuDeleteHomework", "Delete homework"))
         for name, words in offered:
             menu.addAction(words).setObjectName(name)
         chosen = menu.exec(at)
@@ -2152,6 +2176,8 @@ class NativeWindow(QMainWindow):
             self._duplicate_selected()
         elif picked == "blockMenuFinished" and assignment is not None:
             self._finish_homework(assignment["id"])
+        elif picked == "blockMenuDeleteHomework" and assignment is not None:
+            self._delete_homework(assignment["id"])
         elif picked == "blockMenuDelete":
             one_day = is_series(block) and on is not None
             name = (block.get("title") or "this event") + (f" on {DAY_FULL[on]}" if one_day else "")

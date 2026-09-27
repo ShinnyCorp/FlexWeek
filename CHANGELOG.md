@@ -6,6 +6,11 @@ All notable changes to FlexWeek are documented here. Format follows
 ## [0.16.0] - Unreleased
 
 ### Added
+- Homework can be deleted: with Delete at the bottom left of its editor, with
+  Delete beside each homework under Unfinished, or with Delete homework on its
+  right-click menu, which is also how homework with no time yet goes. It asks
+  first. Its times go too, in every week, even weeks not open, and one Undo
+  brings the homework and all of them back.
 - FlexWeek brings its own typeface, Inter, in four weights, so it looks the same
   on every computer. A computer without the files falls back to its own sans.
 - The now line carries the time, "15:40", on a small pill where it starts.
