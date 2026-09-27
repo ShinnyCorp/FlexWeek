@@ -224,6 +224,9 @@ class BlockPainter:
         detail = drawn.detail
         if drawn.held and QFontMetrics(plain).horizontalAdvance(detail) > room.width():
             detail = ""  # said in the label beside it instead
+        elif QFontMetrics(plain).horizontalAdvance(detail.split(" · ")[0]) > room.width():
+            # A time cut in half, "08:00–1…", says less than none; the name alone reads whole.
+            detail = ""
         painter.setPen(ink)
         if drawn.short and not drawn.held:
             # "Soccer practice" whole over two lines says more than "Soccer …" and its times.
