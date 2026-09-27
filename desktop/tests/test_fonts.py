@@ -1,4 +1,4 @@
-"""Inter, shipped with the app, and times written in figures of one width."""
+"""Inter, Newsreader and JetBrains Mono, shipped with the app, and times written in figures of one width."""
 
 from __future__ import annotations
 
@@ -27,22 +27,25 @@ def qapp() -> Iterator[QApplication]:
     yield QApplication.instance() or QApplication(["flexweek-fonts-test"])
 
 
-def test_every_bundled_face_loads_as_inter(qapp: QApplication) -> None:
-    assert "Inter" in load_fonts()
-    for face in FACES:
-        # A second registration of a file Qt already holds still names its family.
-        ident = QFontDatabase.addApplicationFont(str(FONT_DIR / face))
-        assert ident >= 0, face
-        assert "Inter" in QFontDatabase.applicationFontFamilies(ident), face
-    for weight, style in (
-        (QFont.Weight.Normal, "Regular"),
-        (QFont.Weight.Medium, "Medium"),
-        (QFont.Weight.DemiBold, "SemiBold"),
-        (QFont.Weight.Bold, "Bold"),
-    ):
-        font = QFont("Inter", 12)
-        font.setWeight(weight)
-        assert (QFontInfo(font).family(), QFontInfo(font).styleName()) == ("Inter", style)
+def test_every_bundled_face_loads_as_its_family_at_its_weight(qapp: QApplication) -> None:
+    """Inter, and Newsreader and JetBrains Mono for the Serif and Mono fonts, each drawn at the weight
+    asked for. The mock-up's variable fonts, registered as they were, drew a 600 heading at 400."""
+    assert {"Inter", "Newsreader", "JetBrains Mono"} <= set(load_fonts())
+    for family, faces in FACES.items():
+        for face in faces:
+            # A second registration of a file Qt already holds still names its family.
+            ident = QFontDatabase.addApplicationFont(str(FONT_DIR / face))
+            assert ident >= 0, face
+            assert family in QFontDatabase.applicationFontFamilies(ident), face
+        for weight, style in (
+            (QFont.Weight.Normal, "Regular"),
+            (QFont.Weight.Medium, "Medium"),
+            (QFont.Weight.DemiBold, "SemiBold"),
+            (QFont.Weight.Bold, "Bold"),
+        ):
+            font = QFont(family, 12)
+            font.setWeight(weight)
+            assert (QFontInfo(font).family(), QFontInfo(font).styleName()) == (family, style)
 
 
 def test_a_time_takes_as_much_room_whatever_its_figures(qapp: QApplication) -> None:

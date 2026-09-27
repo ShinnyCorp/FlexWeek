@@ -109,7 +109,7 @@
   "name": "the fonts looked for in the wrong folder",
   "old": "FONT_DIR = Path(__file__).resolve().parents[1] / \"assets\" / \"fonts\"\n",
   "new": "FONT_DIR = Path(__file__).resolve().parents[1] / \"assets\"\n",
-  "test": "desktop/tests/test_fonts.py::test_every_bundled_face_loads_as_inter"
+  "test": "desktop/tests/test_fonts.py::test_every_bundled_face_loads_as_its_family_at_its_weight"
  },
  {
   "file": "desktop/build_linux.sh",
