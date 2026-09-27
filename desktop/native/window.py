@@ -76,6 +76,7 @@ from desktop.native.layouts.empty import EmptyWeek, nothing_yet
 from desktop.native.layouts.registry import MATCH, options_for, sanitize_layout, tokens_for
 from desktop.native.layouts.views import VIEW_CLASSES
 from desktop.native.look import (
+    CORNER_RADIUS,
     TEXT_PT,
     effective_look,
     pack_motion,
@@ -83,7 +84,9 @@ from desktop.native.look import (
     palette_from_tokens,
     resolved_palette,
     sanitize_look,
+    toast_colours,
 )
+from desktop.native.menus import Menu, mark, menu_colours
 from desktop.native.motion import appear, apply_ui_effects, fade_away, hold_picture, motion_level, switch_page
 from desktop.native.remind import REMINDER_POLL_MS, clock_parts
 from desktop.native.reuse import (
@@ -109,6 +112,7 @@ from desktop.native.settings import (
 from desktop.native.setup import REMINDERS, SETUP_VERSION, STYLE, SetupPage, SetupState
 from desktop.native.sound import Bell
 from desktop.native.spotify import LISTENING, STARTING, SpotifyPlayer, open_in_app
+from desktop.native.tokens import SHADOW_LARGE, SHADOW_SMALL, TEXT_SCALE
 from desktop.native.tones import FALLBACK
 from desktop.native.update import RELEASE_PAGE, due_for_check, sanitize_updates
 from desktop.native.updater import Updater, apply_update
@@ -163,10 +167,33 @@ PLAN_TIP = (
 SUGGEST_TIP = "Give homework without a time a suggested time. Drag any of them somewhere else if you like."
 NOTHING_UNFINISHED = "Nothing is unfinished: no homework from earlier weeks still needs time."
 QUICK_FOCUS_TIP = (
-    "Start a {minutes}-minute focus timer now, without picking homework. "
+    "Open the focus timer, ready to start {minutes} minutes without picking homework. "
     "Change its length in Settings > Focus."
 )
-# Hover words for More and Advanced, by the object name of the button each action presses.
+# The More menu's submenu, named for what it holds (decision 22 of 0.17); it was "Advanced".
+EDIT_MENU = "Undo, copy and save"
+# The icon on each row of More, by the object name of the button the row presses.
+MORE_ICONS = {
+    "runningLate": "clock",
+    "unfinishedOpen": "list-todo",
+    "routinesButton": "repeat",
+    "quickFocusAction": "timer",
+    "openSpotify": "circle-play",
+    "replanAll": "sparkles",
+    "undoButton": "undo-2",
+    "redoButton": "redo-2",
+    "copyBlock": "copy",
+    "pasteBlock": "clipboard-paste",
+    "duplicateBlock": "copy-plus",
+    "copyDay": "calendar-days",
+    "saveButton": "save",
+    "restoreButton": "archive-restore",
+    "reloadWeek": "rotate-ccw",
+    "helpButton": "circle-question-mark",
+    "aboutButton": "info",
+    "signOut": "log-out",
+}
+# Hover words for More and its submenu, by the object name of the button each action presses.
 MORE_TIPS = {
     "addHomework": (
         "Add an assignment with its due date and how long it will take. FlexWeek finds time for it."
@@ -479,6 +506,9 @@ class NativeWindow(QMainWindow):
         for index in range(self._stack.count()):
             page = self._stack.widget(index)
             if page.objectName() == name:
+                if page is not self._stack.currentWidget():
+                    # What the toast said was about the page the student is leaving.
+                    self.toast.hide()
                 switch_page(self._stack, page, self._motion)
                 return
 
@@ -838,8 +868,7 @@ class NativeWindow(QMainWindow):
         overflow = QWidget(page)
         overflow.setObjectName("moreOverflow")
         overflow.hide()
-        more_menu = QMenu(more)
-        more_menu.setToolTipsVisible(True)
+        more_menu = Menu(more)
         self._more_pairs = []
         self._spotify_action = None
         self.quick_focus = QPushButton("Quick focus")
@@ -869,17 +898,16 @@ class NativeWindow(QMainWindow):
             for button in buttons:
                 if button.parent() is not overflow:
                     button.setParent(overflow)
-                action = more_menu.addAction(button.text())
+                action = mark(more_menu.addAction(button.text()), MORE_ICONS[button.objectName()])
                 action.triggered.connect(button.click)
                 self._more_pairs.append((action, button))
                 if button is spotify:
                     self._spotify_action = action
-        advanced_menu = more_menu.addMenu("Advanced")
-        advanced_menu.setToolTipsVisible(True)
+        advanced_menu = more_menu.add_menu(EDIT_MENU, "pencil")
         for button in self._advanced:
             if button.parent() is not overflow:
                 button.setParent(overflow)
-            action = advanced_menu.addAction(button.text())
+            action = mark(advanced_menu.addAction(button.text()), MORE_ICONS[button.objectName()])
             action.triggered.connect(lambda _=False, pressed=button: self._told(pressed.click))
             self._more_pairs.append((action, button))
         help_button = QPushButton("Help")
@@ -893,11 +921,15 @@ class NativeWindow(QMainWindow):
             if button.parent() is not overflow:
                 button.setParent(overflow)
             button.hide()
-            action = more_menu.addAction(button.text())
+            if button is sign_out:
+                # Set apart from Help and About: leaving is not one of the things to look up.
+                more_menu.addSeparator()
+            action = mark(more_menu.addAction(button.text()), MORE_ICONS[button.objectName()])
             action.triggered.connect(button.click)
             self._more_pairs.append((action, button))
         more_menu.aboutToShow.connect(self._sync_more_menu)
         more.setMenu(more_menu)
+        self.more_menu = more_menu
         gear = QPushButton("⚙\ufe0e")
         gear.setObjectName("settingsGear")
         gear.setToolTip("Settings")
@@ -2139,20 +2171,21 @@ class NativeWindow(QMainWindow):
         on = day if day >= 0 else None
         self.session.select_block(block_id, on)
         assignment = self.session.assignments.get(block.get("assignment_id") or "")
-        menu = QMenu(self)
+        menu = Menu(self)
         menu.setObjectName("blockMenu")
-        offered = [("blockMenuOpen", "Open")]
+        menu.set_colours(self.more_menu.colours())
+        menu.add("Open", "pencil", keys="Enter", name="blockMenuOpen")
         if block.get("start"):
-            offered.append(("blockMenuDuplicate", "Duplicate\tCtrl+D"))
+            menu.add("Duplicate", "copy-plus", keys="Ctrl+D", name="blockMenuDuplicate")
         if assignment is not None and not assignment.get("completed"):
-            offered.append(("blockMenuFinished", "Finished"))
+            menu.add("Finished", "check", name="blockMenuFinished")
+        # The deletes after a line and in red, apart from what only changes a block.
+        menu.addSeparator()
         if block.get("start") or assignment is None:
-            offered.append(("blockMenuDelete", "Delete"))
+            menu.add("Delete", "trash", keys="Del", danger=True, name="blockMenuDelete")
         if assignment is not None:
             # Delete takes away this one time; the homework, with all its times, is its own entry.
-            offered.append(("blockMenuDeleteHomework", "Delete homework"))
-        for name, words in offered:
-            menu.addAction(words).setObjectName(name)
+            menu.add("Delete homework", "book-open", danger=True, name="blockMenuDeleteHomework")
         chosen = menu.exec(at)
         menu.deleteLater()
         picked = chosen.objectName() if chosen is not None else ""
@@ -2428,6 +2461,10 @@ class NativeWindow(QMainWindow):
             self._open_focus_screen()
 
     def _quick_focus(self) -> None:
+        """The focus screen, ready: nothing starts until Start, as with F (decision 19 of 0.17)."""
+        self._open_focus_screen()
+
+    def _start_quick_focus(self) -> None:
         if self.session.start_quick_focus():
             self._open_focus_screen()
 
@@ -2444,7 +2481,7 @@ class NativeWindow(QMainWindow):
         self.focus_screen = FocusScreen()
         screen = self.focus_screen
         screen.back_requested.connect(self._close_focus_screen)
-        screen.start_requested.connect(self._quick_focus)
+        screen.start_requested.connect(self._start_quick_focus)
         screen.pause_requested.connect(self.session.toggle_focus_pause)
         screen.skip_requested.connect(lambda: self.session.advance_focus(False))
         screen.stop_requested.connect(self._stop_focus)
@@ -2474,27 +2511,32 @@ class NativeWindow(QMainWindow):
     def _commands(self) -> list[Command]:
         """What the command bar offers: the actions a student reaches for most, then each homework."""
         manual = (self.session.preferences or {}).get("planning_style") == "manual"
+        plan = SUGGEST_LABEL if manual else PLAN_LABEL
         made = [
-            Command("addHomework", "Add homework", MORE_TIPS["addHomework"]),
-            Command("addFixed", "Add fixed time", MORE_TIPS["addFixed"]),
-            Command("schoolHours", "School hours", MORE_TIPS["schoolHours"]),
-            Command("day", "Day", "One day as a list"),
-            Command("week", "Week", "The week you are planning"),
-            Command("month", "Month", "The month as a calendar"),
-            Command("myDay", "My day", "Watch today"),
-            Command(
-                "solveButton", SUGGEST_LABEL if manual else PLAN_LABEL, SUGGEST_TIP if manual else PLAN_TIP
-            ),
-            Command("settingsGear", "Settings"),
-            Command("helpButton", "Help", MORE_TIPS["helpButton"]),
-            Command("focus", "Focus screen", "The focus timer on its own, large."),
+            Command("addHomework", "Add homework", MORE_TIPS["addHomework"], "Add", "book-open"),
+            Command("addFixed", "Add fixed time", MORE_TIPS["addFixed"], "Add", "clock"),
+            Command("schoolHours", "School hours", MORE_TIPS["schoolHours"], "Add", "school"),
+            Command("day", "Day", "One day as a list", "Go to", "list", "D"),
+            Command("week", "Week", "The week you are planning", "Go to", "calendar-days", "W"),
+            Command("month", "Month", "The month as a calendar", "Go to", "calendar", "M"),
+            Command("myDay", "My day", "Watch today", "Go to", "sun", "T"),
+            Command("focus", "Focus screen", "The focus timer on its own, large.", "Go to", "timer", "F"),
+            Command("settingsGear", "Settings", "", "Go to", "settings"),
+            Command("helpButton", "Help", MORE_TIPS["helpButton"], "Go to", "circle-question-mark"),
+            Command("solveButton", plan, SUGGEST_TIP if manual else PLAN_TIP, "Homework", "sparkles"),
         ]
         homework = sorted(
             self.session.assignments.values(),
             key=lambda item: (bool(item.get("completed")), item.get("due") or "", item.get("title") or ""),
         )
         made.extend(
-            Command("homework:" + item["id"], item.get("title") or "Homework", "Open this homework")
+            Command(
+                "homework:" + item["id"],
+                item.get("title") or "Homework",
+                "Open this homework",
+                "Homework",
+                "book-open",
+            )
             for item in homework
         )
         return made
@@ -2968,6 +3010,8 @@ class NativeWindow(QMainWindow):
             self._keep_bar_whole()
             apply_ui_effects(self._motion)
             self.toast.motion = self._motion
+            self.command_bar.motion = self._motion
+            self._dress_overlays(palette)
             self.week_table.set_look(self._look, palette)
             self.day_view.set_look(self._look, palette)
             self.month_grid.set_palette(palette)
@@ -2978,6 +3022,21 @@ class NativeWindow(QMainWindow):
             self.planner.setStyleSheet(page_sheet)
         self._sync_add_button()
         self._refresh_layout()
+
+    def _dress_overlays(self, palette: dict) -> None:
+        """What a style sheet cannot reach in the focus screen, the toast, Ctrl+K and the menus: the
+        ring's colours, icons in the text's colour, and shadows, which a look without depth goes
+        without (decisions 6 and 19 to 22 of 0.17)."""
+        knobs = effective_look(self._look)
+        lifted = knobs["depth"] == "soft"
+        dark = palette.get("axis") == "dark"
+        corner = CORNER_RADIUS[knobs["corners"]][1]
+        self.focus_screen.set_palette(palette, TEXT_SCALE[knobs["text"]])
+        self.toast.set_look(toast_colours(palette)["action"], SHADOW_SMALL if lifted else None, dark)
+        self.command_bar.set_look(palette, SHADOW_LARGE if lifted else None, dark)
+        colours = menu_colours(palette, lifted=lifted, corner=corner)
+        for menu in (self.more_menu, self.add_menu):
+            menu.set_colours(colours)
 
     def _install_tray(self) -> None:
         tray = QSystemTrayIcon(self._icon, self)

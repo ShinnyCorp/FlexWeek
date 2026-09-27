@@ -254,7 +254,9 @@ def test_round_corners_are_6_on_controls_and_10_on_cards() -> None:
         button = sheet.split("QPushButton {")[1].split("}")[0]
         field = sheet.split("QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {")[1].split("}")[0]
         toast = sheet.split("QFrame#toast {")[1].split("}")[0]
-        assert f"border-radius: {card}px;" in frames and f"border-radius: {card}px;" in toast, corners
+        sheet_radius = 16 if card else 0
+        assert f"border-radius: {card}px;" in frames, corners
+        assert f"border-radius: {sheet_radius}px;" in toast, "the toast is a sheet, at 16 (decision 20)"
         assert f"border-radius: {control}px;" in button and f"border-radius: {control}px;" in field, corners
 
 

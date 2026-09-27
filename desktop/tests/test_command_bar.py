@@ -17,7 +17,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
 from desktop.native.calendar import sunday_due
-from desktop.native.command_bar import BAR_WIDTH, Command, match_rank, ranked
+from desktop.native.command_bar import BAR_WIDTH, KEY_ROLE, KEYS_ROLE, Command, grouped, match_rank, ranked
 from desktop.native.settings import HELP_KEYS
 from desktop.native.widgets import HomeworkDialog
 from desktop.native.window import NativeWindow
@@ -122,9 +122,11 @@ def test_ctrl_k_opens_a_centred_box_listing_what_can_be_done(
     assert box.width() == BAR_WIDTH
     assert abs(box.center().x() - window.width() // 2) <= 1
     assert box.top() < window.height() / 3, "the box sits in the top third"
+    assert bar.shown_groups() == ["Add", "Go to", "Homework"]
     assert bar.shown_words() == [
-        "Add homework", "Add fixed time", "School hours", "Day", "Week", "Month", "My day",
-        "Plan my homework", "Settings", "Help", "Focus screen", "History essay", "Math worksheet",
+        "Add homework", "Add fixed time", "School hours",
+        "Day", "Week", "Month", "My day", "Focus screen", "Settings", "Help",
+        "Plan my homework", "History essay", "Math worksheet",
     ]
     QTest.keyClick(bar.input, Qt.Key.Key_Escape)
     assert bar.isVisible() is False
@@ -187,7 +189,9 @@ def test_a_click_on_a_row_runs_it(qapp: QApplication, window: NativeWindow) -> N
     bar = window.command_bar
     QTest.keyClicks(bar.input, "focus")
     assert bar.shown_words() == ["Focus screen"]
-    row = bar.list.visualItemRect(bar.list.item(0)).center()
+    rows = [bar.list.item(row) for row in range(bar.list.count())]
+    focus = next(item for item in rows if item.text() == "Focus screen")
+    row = bar.list.visualItemRect(focus).center()
     QTest.mouseClick(bar.list.viewport(), Qt.MouseButton.LeftButton, pos=row)
     assert window._stack.currentWidget() is window.focus_screen
 
@@ -204,3 +208,57 @@ def test_plan_says_suggest_times_for_a_student_who_plans_by_hand(
 def test_help_lists_both_keys() -> None:
     assert ("Ctrl+K", "Command bar") in HELP_KEYS
     assert ("F", "Focus screen") in HELP_KEYS
+
+
+def test_the_group_with_the_best_match_comes_first_so_enter_runs_it() -> None:
+    commands = [
+        Command("school", "School hours", group="Add"),
+        Command("chem", "Chem lab report", group="Homework"),
+        Command("month", "Month", group="Go to"),
+    ]
+    assert [group for group, _rows in grouped("", commands)] == ["Add", "Go to", "Homework"]
+    found = grouped("ch", commands)
+    assert [(group, [row.key for row in rows]) for group, rows in found] == [
+        ("Homework", ["chem"]),
+        ("Add", ["school"]),
+    ], "Chem starts with ch; School only holds it"
+
+
+def test_every_row_has_an_icon_and_the_views_their_keys(qapp: QApplication, window: NativeWindow) -> None:
+    open_bar(window)
+    bar = window.command_bar
+    rows = [bar.list.item(row) for row in range(bar.list.count())]
+    commands = [item for item in rows if item.data(KEY_ROLE)]
+    labels = [item for item in rows if not item.data(KEY_ROLE)]
+    assert all(not item.icon().isNull() for item in commands)
+    assert all(item.flags() == Qt.ItemFlag.NoItemFlags for item in labels), "a label cannot be chosen"
+    keys = {item.text(): item.data(KEYS_ROLE) for item in commands if item.data(KEYS_ROLE)}
+    assert keys == {"Day": "D", "Week": "W", "Month": "M", "My day": "T", "Focus screen": "F"}
+    assert bar.list.currentItem().text() == "Add homework", "the first command, not the label over it"
+    QTest.keyClick(bar.input, Qt.Key.Key_Up)
+    assert bar.list.currentItem().text() == "Math worksheet", "Up from the top goes round, past the label"
+    for _ in range(2):
+        QTest.keyClick(bar.input, Qt.Key.Key_Down)
+    assert bar.list.currentItem().text() == "Add fixed time", "Down steps over the Add label"
+    QTest.keyClick(bar.input, Qt.Key.Key_Down)
+    QTest.keyClick(bar.input, Qt.Key.Key_Down)
+    assert bar.list.currentItem().text() == "Day", "and over the Go to label"
+
+
+def test_the_window_is_dimmed_40_percent_and_the_box_is_lifted_with_the_large_shadow(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    from PySide6.QtWidgets import QGraphicsDropShadowEffect
+
+    from desktop.native.tokens import SHADOW_LARGE
+
+    open_bar(window)
+    bar = window.command_bar
+    assert "QWidget#commandBar { background: rgba(0, 0, 0, 102); }" in window.styleSheet()
+    shadow = bar.box.graphicsEffect()
+    assert isinstance(shadow, QGraphicsDropShadowEffect)
+    assert (shadow.offset().y(), shadow.blurRadius()) == (SHADOW_LARGE.y, SHADOW_LARGE.blur)
+    # It fades in with the level's fade, and nothing is left on it once it has.
+    assert bar.graphicsEffect() is not None
+    wait_until(qapp, lambda: bar.graphicsEffect() is None)
+    assert bar.box.graphicsEffect() is shadow, "the fade leaves the box's shadow alone"

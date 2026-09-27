@@ -16,7 +16,15 @@ from copy import deepcopy
 from functools import lru_cache
 
 from desktop.native.calendar import CATEGORIES
-from desktop.native.tokens import RADIUS_CARD, RADIUS_CONTROL, SINK, mix_oklab
+from desktop.native.tokens import (
+    RADIUS_CARD,
+    RADIUS_CONTROL,
+    RADIUS_SHEET,
+    SINK,
+    WEIGHT_STRONG,
+    mix_oklab,
+    type_pt,
+)
 
 LOOK_KNOBS = {
     "surface": ("frost", "flat"),
@@ -129,6 +137,11 @@ FONT_FAMILIES = {
     "serif": "Noto Serif, DejaVu Serif, serif",
 }
 AA_TEXT = 4.5
+# Room round a drawn menu's panel for its shadow: its window is this much larger on every side.
+MENU_EDGE = 24
+# How far High contrast lays its text over a row under the pointer; OKLab mixes 6 % of white on black
+# to a black no one can tell from the page, and more would dim Delete's red below 4.5 to 1.
+HIGH_CONTRAST_HOVER = 0.3
 DARK_INK = "#0b1224"
 LIGHT_INK = "#ffffff"
 # Each accent has a dark-axis and a light-axis colour with its own ink, so it reads on either. The
@@ -1028,31 +1041,11 @@ def pack_stylesheet(
         # A ringing alarm is the one thing in the app that has to be read from across a room.
         f"QLabel#alarmTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
         f"QLabel#alarmDetail {{ font-size: {size + 2}pt; color: {palette['muted']}; }}"
-        f"QFrame#toast {{ background: {palette['panel']}; color: {palette['text']}; "
-        f"{edges} padding: {pad * 2}px {pad * 3}px; border-radius: {card_radius}px; }}"
-        # A new account's empty week, the focus screen and the command bar.
+        # A new account's empty week.
         f"QLabel#emptyWeekHeading {{ font-size: {size + 8}pt; font-weight: 700; }}"
         f"QLabel#emptyWeekLine {{ color: {palette['muted']}; font-size: {size + 1}pt; }}"
-        f"QPushButton#emptyWeekAdd, QPushButton#focusScreenStart {{ font-weight: 600; "
+        f"QPushButton#emptyWeekAdd {{ font-weight: 600; "
         f"padding: {pad + 2}px {pad * 3}px; }}"
-        f"QLabel#focusScreenPhase {{ color: {palette['accent']}; font-size: {size + 2}pt; "
-        f"font-weight: 700; letter-spacing: 2px; }}"
-        # The countdown is read from across a desk, in the look's own face at a size the text knob never sets.
-        f"QLabel#focusScreenTime {{ font-size: 96pt; "
-        f"font-weight: 700; color: {palette['text']}; }}"
-        f"QLabel#focusScreenTask {{ font-size: {size + 6}pt; font-weight: 600; }}"
-        f"QLabel#focusScreenHint {{ color: {palette['muted']}; }}"
-        f"QProgressBar#focusScreenProgress {{ background: {palette['hairline']}; border: none; "
-        f"border-radius: 3px; min-height: 6px; max-height: 6px; padding: 0; }}"
-        f"QProgressBar#focusScreenProgress::chunk {{ background: {palette['accent']}; border-radius: 3px; }}"
-        # Laid over the window, it dims what is behind so the box reads as the one thing to answer.
-        f"QWidget#commandBar {{ background: rgba(0, 0, 0, 90); }}"
-        f"QFrame#commandBox {{ background: {palette['panel']}; border-radius: {card_radius}px; "
-        f"{edges} padding: {pad}px; }}"
-        f"QLineEdit#commandInput {{ font-size: {size + 2}pt; }}"
-        f"QListWidget#commandList {{ border: none; padding: 0; }}"
-        f"QListWidget#commandList::item {{ padding: {pad}px; border-radius: {radius}px; }}"
-        f"QLabel#commandNothing {{ color: {palette['muted']}; padding: {pad}px; }}"
         # The view control's track, which the chosen segment sits in.
         f"QFrame#segments {{ background: {palette['hairline']}; padding: 2px; border: none; "
         f"border-radius: {radius}px; }}"
@@ -1062,10 +1055,6 @@ def pack_stylesheet(
         f"QPushButton#addArrow {{ padding: {pad}px {pad}px; border-top-left-radius: 0; "
         f"border-bottom-left-radius: 0; margin-left: 1px; }}"
         f"QPushButton#addArrow::menu-indicator {{ image: none; width: 0; }}"
-        # The toast's one button reads as part of its sentence.
-        f"QPushButton#toastButton {{ background: transparent; color: {palette['accent']}; border: none; "
-        f"font-weight: 700; padding: 2px {pad}px; min-height: 0; }}"
-        f"QPushButton#toastButton:hover {{ text-decoration: underline; }}"
         # Week's side, as Day's: the panel colour, its headings in the accent, and folded, one line.
         # Narrower at the sides than a card, so "Math worksheet · 45 min" is whole in its 250 pixels.
         f"QFrame#weekSide {{ background: {palette['panel']}; border-radius: 0; "
@@ -1076,7 +1065,101 @@ def pack_stylesheet(
         f"font-weight: 800; font-size: {max(size - 1, 7)}pt; margin-top: 6px; }}"
         f"QLabel#weekNoneWaiting {{ color: {palette['muted']}; font-size: {max(size - 1, 7)}pt; }}"
         + (_contrast_rules(palette) if palette.get("family") == "contrast" else "")
-    ) + (control_rules(palette, radius, size, art) if art is not None else "")
+    ) + (control_rules(palette, radius, size, art) if art is not None else "") + overlay_rules(
+        palette, knobs, pad, card_radius
+    )
+
+
+def hover_tint(palette: dict, share: float = 0.06) -> str:
+    """A row or a text button under the pointer: the text laid thinly over the card. High contrast
+    takes more, as 6 % of white on black could not be seen."""
+    amount = max(share, HIGH_CONTRAST_HOVER) if palette.get("family") == "contrast" else share
+    return mix_oklab(palette["text"], palette["panel"], amount)
+
+
+def toast_colours(palette: dict) -> dict[str, str]:
+    """Decision 20: the toast is dark with light words. On a light look it is the text colour with the
+    page's words, and Undo the accent's light shade; on a dark look it is raised a step off the cards,
+    edged, with Undo in the dark look's accent, which is already a light shade."""
+    if palette.get("family", "light") == "light":
+        return {
+            "background": palette["text"],
+            "text": palette["window"],
+            "action": mix_oklab(palette["accent"], palette["window"], 0.45),
+            "edge": palette["text"],
+        }
+    return {
+        "background": mix_oklab(palette["text"], palette["panel"], 0.05),
+        "text": palette["text"],
+        "action": palette["accent"],
+        "edge": palette["hairline_strong"],
+    }
+
+
+# The focus screen's words-only buttons, beside its one filled button.
+FOCUS_TEXT_BUTTONS = ("focusScreenBack", "focusScreenSkip", "focusScreenFinish", "focusScreenBreak")
+
+
+def overlay_rules(palette: dict, knobs: dict, pad: int, card_radius: int) -> str:
+    """The toast, the focus screen, Ctrl+K and the menus (decisions 19 to 22 of 0.17).
+
+    The toast and Ctrl+K take the sheet's 16 corners, square only when the look's cards are. A menu
+    drawn by `menus.Menu` paints its own panel and rows; the sheet gives only its size, with room on
+    every side for its shadow.
+    """
+    text = knobs["text"]
+    sheet_radius = RADIUS_SHEET if card_radius else 0
+    toast = toast_colours(palette)
+    hover, pressed = hover_tint(palette), hover_tint(palette, 0.10)
+    words = ", ".join(f"QPushButton#{name}" for name in FOCUS_TEXT_BUTTONS)
+    words_hover = ", ".join(f"QPushButton#{name}:hover" for name in FOCUS_TEXT_BUTTONS)
+    words_pressed = ", ".join(f"QPushButton#{name}:pressed" for name in FOCUS_TEXT_BUTTONS)
+    row = 30 if text == "large" else 24
+    # A flat look draws no lines: its toast and Ctrl+K's box are told from the page by colour alone.
+    flat = knobs["depth"] == "flat"
+    toast_edge = "none" if flat else f"1px solid {toast['edge']}"
+    box_edge = "none" if flat else f"1px solid {palette['hairline']}"
+    return (
+        f"QFrame#toast {{ background: {toast['background']}; color: {toast['text']}; "
+        f"border: {toast_edge}; border-radius: {sheet_radius}px; padding: 8px 12px 8px 16px; }}"
+        f"QLabel#toastText {{ color: {toast['text']}; }}"
+        # The toast's one button reads as part of its sentence.
+        f"QPushButton#toastButton {{ background: transparent; color: {toast['action']}; border: none; "
+        f"font-weight: {WEIGHT_STRONG}; padding: 4px 8px; min-height: 0; "
+        f"border-radius: {RADIUS_CONTROL}px; }}"
+        f"QPushButton#toastButton:hover {{ "
+        f"background: {mix_oklab(toast['text'], toast['background'], 0.12)}; }}"
+        # The focus screen: the look's page, a muted phase over the ring and the homework under it.
+        f"QLabel#focusScreenPhase {{ color: {palette['muted']}; font-size: {type_pt('heading', text)}pt; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#focusScreenTask {{ color: {palette['text']}; font-size: {type_pt('title', text)}pt; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#focusScreenHint {{ color: {palette['muted']}; }}"
+        "QPushButton#focusScreenStart, QPushButton#focusScreenPause, QPushButton#focusScreenFinished { "
+        f"font-weight: {WEIGHT_STRONG}; padding: {pad + 2}px {pad * 3}px; }}"
+        f"{words} {{ background: transparent; color: {palette['text']}; border: none; "
+        f"font-weight: {WEIGHT_STRONG}; padding: {pad + 2}px {pad * 2}px; }}"
+        f"{words_hover} {{ background: {hover}; }}"
+        f"{words_pressed} {{ background: {pressed}; }}"
+        # Ctrl+K: the window dimmed 40 %, the box a sheet, its field borderless on the box.
+        "QWidget#commandBar { background: rgba(0, 0, 0, 102); }"
+        f"QFrame#commandBox {{ background: {palette['panel']}; border: {box_edge}; "
+        f"border-radius: {sheet_radius}px; padding: 8px; }}"
+        f"QLineEdit#commandInput, QLineEdit#commandInput:focus {{ background: transparent; border: none; "
+        f"font-size: {type_pt('heading', text)}pt; padding: 8px 4px; }}"
+        f"QFrame#commandRule {{ background: {palette['hairline']}; border: none; padding: 0; "
+        "border-radius: 0; min-height: 1px; max-height: 1px; }"
+        "QListWidget#commandList { background: transparent; border: none; padding: 0; }"
+        f"QListWidget#commandList::item {{ color: {palette['text']}; padding: 0 8px; "
+        f"border-radius: {RADIUS_CONTROL if card_radius else 0}px; }}"
+        f"QListWidget#commandList::item:hover, QListWidget#commandList::item:selected {{ "
+        f"background: {hover}; color: {palette['text']}; }}"
+        f"QLabel#commandNothing {{ color: {palette['muted']}; padding: 8px; }}"
+        # A drawn menu: transparent round its panel, which it paints itself, with the shadow's room.
+        f'QMenu[drawn="true"] {{ background: transparent; border: none; padding: {MENU_EDGE + 4}px; }}'
+        f'QMenu[drawn="true"]::item {{ padding: 4px 8px; min-height: {row}px; }}'
+        'QMenu[drawn="true"]::separator { height: 1px; margin: 4px 8px; }'
+    )
 
 
 def _contrast_rules(palette: dict) -> str:

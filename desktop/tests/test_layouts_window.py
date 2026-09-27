@@ -623,7 +623,7 @@ def test_summaries_speak_minutes_not_session_counts(qapp: QApplication, window: 
 
 def more_actions(window: NativeWindow) -> dict[str, bool]:
     """The items, without the section headings. addSection makes a separator that carries text.
-    Advanced is a submenu, so its entries are included under their own names."""
+    Undo, copy and save is a submenu, so its entries are included under their own names."""
     menu = window.more_button.menu()
     menu.aboutToShow.emit()
     offered: dict[str, bool] = {}
@@ -678,7 +678,8 @@ def test_plan_and_more_stay_on_the_bar_in_every_layout(qapp: QApplication, windo
     offered = more_actions(window)
     assert more_sections(window) == ["Planning"]
     assert not {"Add homework", "Add fixed time", "School hours"} & set(offered), "adding is under Add"
-    assert {"Running late", "Routines", "Reload", "Undo", "Redo", "Advanced", "Log out"} <= set(offered)
+    wanted = {"Running late", "Routines", "Reload", "Undo", "Redo", "Undo, copy and save", "Log out"}
+    assert wanted <= set(offered)
     assert "Settings" not in offered
     assert "Account" not in offered
     assert (offered["Undo"], offered["Redo"]) == (True, False)
@@ -690,7 +691,7 @@ def test_a_more_item_does_what_its_button_does(qapp: QApplication, window: Nativ
     before = len(window.session.blocks)
     menu = window.more_button.menu()
     menu.aboutToShow.emit()
-    advanced = next(action.menu() for action in menu.actions() if action.text() == "Advanced")
+    advanced = next(action.menu() for action in menu.actions() if action.text() == "Undo, copy and save")
     next(action for action in advanced.actions() if action.text() == "Undo").trigger()
     settled(qapp, window)
     assert len(window.session.blocks) != before or window.session.can_redo() is True
@@ -1247,7 +1248,8 @@ def test_the_week_toolbar_keeps_only_what_is_reached_for(qapp: QApplication, win
     sections = more_sections(window)
     items = more_actions(window)
     assert sections == ["Planning"]
-    assert {"Undo", "Redo", "Duplicate", "Running late", "Routines", "Advanced", "Log out"} <= set(items)
+    wanted = {"Undo", "Redo", "Duplicate", "Running late", "Routines", "Undo, copy and save", "Log out"}
+    assert wanted <= set(items)
     assert "Settings" not in items
     assert "Account" not in items
     assert "Replan all my homework" in items

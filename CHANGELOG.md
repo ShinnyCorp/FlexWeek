@@ -5,6 +5,16 @@ All notable changes to FlexWeek are documented here. Format follows
 
 ## [0.17.0] - Unreleased
 
+### Added
+- The focus screen counts down in a ring: the time left as an arc in the
+  accent, from the top clockwise, with the minutes large in the middle. One
+  thing's Countdown will draw the same ring.
+- Ctrl+K groups what it offers under Add, Go to and Homework, with an icon on
+  every row and the key on the right for Day, Week, Month, My day and the focus
+  screen. The group with the best match comes first, so Enter runs it.
+- Menus have an icon on every row. The right-click menu shows Enter, Ctrl+D and
+  Del beside what they do, and sets Delete and Delete homework apart, in red.
+
 ### Changed
 - One accent: FlexWeek's blue, the icon's (`#3d6fc4` on light looks, `#7fa8ff`
   on dark ones), in every look but High contrast, which keeps its yellow
@@ -19,8 +29,8 @@ All notable changes to FlexWeek are documented here. Format follows
   dark look a block is its category sunk into the card, written in the look's
   own text colour. Homework's mark is darker than the rest, so it stays apart
   from Sports for a student who cannot tell red from green.
-- Round corners are 6 pixels on controls and 10 on cards, the toast and the
-  command bar.
+- Round corners are 6 pixels on controls and 10 on cards; the toast and the
+  command bar take a sheet's 16.
 - Today's column is washed with 3 % of the text colour on Week and not at all
   on Day. The now line and its time are in the accent: red is for what cannot
   be.
@@ -28,6 +38,21 @@ All notable changes to FlexWeek are documented here. Format follows
   40 % white instead of full white. Day, Week, Month and My day, and every
   choice of two or three in Settings, read in white on black with the chosen
   one filled yellow, where the view control was yellow on light grey.
+- The focus screen wears the look. Pause, Start or Finished is the one filled
+  button; Skip, Finish and Take a break are words beside it, and Back has a
+  chevron.
+- Quick focus opens the focus screen ready, as F does: nothing starts until
+  Start.
+- The toast is dark with light words, 16-pixel corners and a small shadow, and
+  Undo is in the accent's light shade with its arrow. It sits bottom right,
+  over the side panel, and goes when the student leaves the page it was said
+  on: "Planned 2 homework blocks." no longer stays over the focus screen.
+- Ctrl+K dims the window by 40 % and fades in, and its box is a sheet with the
+  large shadow and a borderless search field.
+- Menus take the look's colours, with the large shadow where the look has
+  depth and a quiet tint on the row under the pointer instead of the accent.
+  Log out sits after a line of its own, and Advanced is now "Undo, copy and
+  save", for what it holds.
 
 ### Fixed
 - Changing the look with the week open, to High contrast above all, no longer
