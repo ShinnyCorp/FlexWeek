@@ -44,12 +44,14 @@ Readability (high), Continuous Animation (no decorative loops), Excessive Motion
    "No emoji icons"). QtSvg is in PySide6 and both builds already ship `vectorimageformats`.
 8. **Red means a problem**: "cannot go here", "past due" and destructive actions only.
 9. **One category family**: fills at OKLCH L 0.92, C 0.045; marks at L 0.62, C 0.14; hues School 255,
-   Homework 25, Study 295, Exercise 150, Activity 205, Meals 60, Sleep 275, Free (C 0.01). Homework also
-   carries a book icon (Color Only rule).
+   Homework 25, Study 295, Exercise 150, Activity 205, Meals 60, Sleep 275, Free (C 0.01). Homework's
+   mark alone is 0.22 darker (L 0.40): at one lightness a deuteranope sees its red and Exercise's green
+   as one colour, and no hue passes. Homework also carries a book icon (Color Only rule).
 10. **Checked by numbers** (`desktop/tests/test_tokens.py`), in every look: fills within 0.02 of each
     other in lightness; text on every fill and surface at 4.5:1 (7:1 in High contrast); homework's mark
     at least ΔE 20 from every other mark under a deuteranopia simulation; the accent never used as a
-    large fill; every font size and weight on the scale.
+    large fill, and at 3:1 over every block however blocks are drawn (it draws the now line and the
+    chosen block's ring); every font size and weight on the scale.
 
 ## Phase 2. Revised versions of every design and look
 

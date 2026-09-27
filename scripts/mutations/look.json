@@ -264,5 +264,12 @@
   "old": "            fill = QColor(family_fill(drawn.category, self.tokens))\n",
   "new": "            fill = QColor(mark).darker(350)\n",
   "test": "desktop/tests/test_layouts_main_views.py::test_a_designs_blocks_take_the_family_and_their_words_read_on_them[mission]"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "The default accent too pale to see over a block",
+  "old": "    \"default\": {\"dark\": (\"#7fa8ff\", DARK_INK), \"light\": (\"#3d6fc4\", LIGHT_INK)},\n",
+  "new": "    \"default\": {\"dark\": (\"#7fa8ff\", DARK_INK), \"light\": (\"#8fb0e8\", LIGHT_INK)},\n",
+  "test": "desktop/tests/test_tokens.py::test_the_now_line_and_the_selection_show_over_every_block"
  }
 ]

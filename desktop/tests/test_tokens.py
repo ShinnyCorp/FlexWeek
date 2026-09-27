@@ -165,3 +165,18 @@ def test_the_accent_is_never_a_page_card_or_wash(name: str, surface: str, accent
     match = tokens_for("clay", MATCH, palette)
     large = [key for key in match if key.startswith("card_") or key in {"bg", "surface"}]
     assert {key: match[key] for key in large if match[key] in washed} == {}
+
+
+@pytest.mark.parametrize(("name", "surface", "accent"), CASES)
+def test_the_now_line_and_the_selection_show_over_every_block(name: str, surface: str, accent: str) -> None:
+    """The accent draws the now line and the chosen block's ring across the blocks, so it holds 3 to 1
+    against every category however blocks are drawn (WCAG's non-text contrast). School's blue sits
+    beside FlexWeek's blue on purpose; lightness keeps them apart."""
+    palette = palette_for(name, surface, accent)
+    faint = []
+    for key, mode in product(CATEGORIES, ("filled", "outlined", "edge")):
+        fill, mark = category_paint(key, palette)
+        drawn = block_paint({"preset": "default", "knobs": {"blocks": mode}}, palette, fill, "locked", mark)
+        if contrast(palette["accent"], drawn["fill"]) < 3.0:
+            faint.append(f"{key} {mode} {contrast(palette['accent'], drawn['fill']):.2f}")
+    assert faint == [], (name, surface, accent)
