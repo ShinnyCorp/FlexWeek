@@ -1,8 +1,10 @@
 // The frame of the 0.17 mock-up: tabs, the design list, the switches, the shared top bar, the picks,
 // and the state in the URL's hash, so any screen can be opened or photographed by its address:
 //   #tab=designs&design=timeline&variant=B&view=week&look=dark&colours=signature
+//   #tab=customise&option=B&look=paper&cu=open:colours,accent:sea
 //   add &bare=1 for the 1280x800 stage alone, at full size.
-// Designs register themselves with FW.register (see README.md); this file never draws a design.
+// Designs register themselves with FW.register (see README.md), and the Customise tab with
+// FW.customise (designs/customise.js); this file never draws either.
 
 (function () {
   const ORDER = ["today", "timeline", "mission", "bento", "retro", "clay", "one", "dial"];
@@ -82,15 +84,22 @@
       view: s.view === "day" ? "day" : "week",
       look: LOOKS.some(([id]) => id === s.look) ? s.look : "light",
       colours: s.colours === "signature" ? "signature" : "look",
+      option: s.option === "B" ? "B" : "A",
+      cu: s.cu || "",
       bare: s.bare === "1",
     };
   }
   let state = readState();
-  function go(change) {
+  // The Customise tab's own state (`cu`) keeps ":", "," and "#" readable in the address.
+  function write(change) {
     state = { ...state, ...change };
     const out = new URLSearchParams();
-    for (const [k, v] of Object.entries(state)) if (k !== "bare" || v) out.set(k, v === true ? "1" : v);
-    history.replaceState(null, "", "#" + out.toString());
+    for (const [k, v] of Object.entries(state)) if (k !== "cu" && (k !== "bare" || v)) out.set(k, v === true ? "1" : v);
+    const cu = state.cu ? "&cu=" + encodeURIComponent(state.cu).replace(/%3A/g, ":").replace(/%2C/g, ",").replace(/%23/g, "#") : "";
+    history.replaceState(null, "", "#" + out.toString() + cu);
+  }
+  function go(change) {
+    write(change);
     render();
   }
   window.addEventListener("hashchange", () => { state = readState(); render(); });
@@ -258,12 +267,73 @@
     root.appendChild(main);
   }
 
+  // The Customise tab: the options, the look switch, the stage, and the option's panel with the pick.
+  function customiseStage() {
+    const stage = FW.el("div", { class: `fw-stage look-${state.look}${DARK.has(state.look) ? " dark-family" : ""}` });
+    stage.style.width = STAGE.width + "px";
+    stage.style.height = STAGE.height + "px";
+    const option = FW.customise && FW.customise.variants[state.option];
+    stage.innerHTML = topBar({ role: "main", view: "week" });
+    const content = FW.el("div", { class: `fw-content cu-content cu-option-${state.option}` });
+    content.style.height = STAGE.height - STAGE.bar + "px";
+    stage.appendChild(content);
+    const ctx = {
+      look: state.look,
+      dark: DARK.has(state.look),
+      cu: state.cu,
+      // Record the page's state in the address without drawing again, or move to another look.
+      keep: (cu) => write({ cu }),
+      go: (change) => go(change),
+    };
+    if (option && option.render) {
+      try { option.render(content, ctx); } catch (error) { content.innerHTML = `<pre class="fw-error">${error.stack || error}</pre>`; }
+    } else {
+      content.innerHTML = `<div class="fw-empty">Customise is not drawn yet.</div>`;
+    }
+    return stage;
+  }
+
+  function renderCustomise(root) {
+    const cu = FW.customise;
+    const main = FW.el("section", { class: "main" });
+    const controls = FW.el("div", { class: "controls" });
+    const options = FW.el("div", { class: "row" }, "<label>Option</label>");
+    for (const v of ["A", "B"]) {
+      const name = cu && cu.variants[v] ? cu.variants[v].name : "";
+      options.appendChild(button(`${v}${name ? " · " + name : ""}`, state.option === v, () => go({ option: v, cu: "" })));
+    }
+    controls.appendChild(options);
+    const looks = FW.el("div", { class: "row wrap" }, "<label>Look</label>");
+    for (const [id, name] of LOOKS) looks.appendChild(button(name, state.look === id, () => go({ look: id })));
+    controls.appendChild(looks);
+    main.appendChild(controls);
+    const width = Math.min(1280, root.clientWidth - 350);
+    main.appendChild(scaled(customiseStage(), Math.max(width, 640)));
+    root.appendChild(main);
+
+    const info = FW.el("aside", { class: "info" });
+    const option = cu && cu.variants[state.option];
+    if (option) {
+      info.innerHTML = `<h2>${state.option}. ${option.name}</h2><p>${option.summary || ""}</p>` +
+        (option.catalogue ? `<h3>Shaped by</h3><ul>${option.catalogue.map((c) => `<li>${c}</li>`).join("")}</ul>` : "") +
+        (option.changes ? `<h3>What changes</h3><ul>${option.changes.map((c) => `<li>${c}</li>`).join("")}</ul>` : "");
+    }
+    const chosen = picks().customise;
+    const pickRow = FW.el("div", { class: "pick" }, "<h3>Your pick</h3>");
+    for (const value of ["A", "B", "Neither"]) {
+      pickRow.appendChild(button(value, chosen === value, () => pick("customise", value), "pick-btn"));
+    }
+    info.appendChild(pickRow);
+    root.appendChild(info);
+  }
+
   function renderPicks(root) {
     const main = FW.el("section", { class: "main full" });
     const p = picks();
     const lines = ORDER.map((id) => `${FW.designs[id] ? FW.designs[id].name : id}: ${p[id] || "not picked"}`);
+    lines.push(`Customise: ${p.customise || "not picked"}`);
     main.appendChild(FW.el("h2", {}, "Your picks"));
-    main.appendChild(FW.el("p", { class: "note" }, "Copy these and send them back. Pick on each design's page."));
+    main.appendChild(FW.el("p", { class: "note" }, "Copy these and send them back. Pick on each design's page, and on Customise."));
     const text = FW.el("textarea", { class: "picks", readonly: "readonly", rows: "10" });
     text.value = lines.join("\n");
     main.appendChild(text);
@@ -283,6 +353,8 @@
         const stage = FW.el("div", { class: `fw-stage system-stage look-${state.look}${DARK.has(state.look) ? " dark-family" : ""}` });
         if (FW.system && FW.system.render) FW.system.render(stage, { look: state.look, dark: DARK.has(state.look) });
         app.appendChild(stage);
+      } else if (state.tab === "customise") {
+        app.appendChild(customiseStage());
       } else {
         app.appendChild(stageFor(design, state.variant, state.view, state.look, state.colours));
       }
@@ -290,13 +362,14 @@
     }
     document.body.classList.remove("bare");
     const tabs = FW.el("header", { class: "tabs" }, `<strong>FlexWeek 0.17 mock-up</strong>`);
-    for (const [id, name] of [["designs", "Designs"], ["looks", "Looks"], ["system", "The system"], ["picks", "Your picks"]]) {
+    for (const [id, name] of [["designs", "Designs"], ["looks", "Looks"], ["system", "The system"], ["customise", "Customise"], ["picks", "Your picks"]]) {
       tabs.appendChild(button(name, state.tab === id, () => go({ tab: id })));
     }
     app.appendChild(tabs);
     const body = FW.el("div", { class: "body" });
     app.appendChild(body);
-    ({ designs: renderDesigns, looks: renderLooks, system: renderSystem, picks: renderPicks })[state.tab](body);
+    const page = { designs: renderDesigns, looks: renderLooks, system: renderSystem, customise: renderCustomise, picks: renderPicks };
+    (page[state.tab] || renderDesigns)(body);
   }
 
   window.addEventListener("resize", () => { if (!state.bare) render(); });
