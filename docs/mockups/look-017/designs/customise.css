@@ -1,0 +1,404 @@
+/* Customise (docs/0.17/plan.md, "Customise (Jonathan, 27 September)"): A in Settings, B a look
+   editor. Colours only from looks.css, and the user's own colours, which are data (swatches, the
+   readability samples); every class starts with cu-. */
+
+.cu-content {
+  --cu-hover: color-mix(in oklab, var(--text) 6%, transparent);
+  --cu-press: color-mix(in oklab, var(--text) 10%, transparent);
+  --cu-border: 1px solid var(--hairline);
+  --cu-field-border: 1px solid var(--hairline-strong);
+  --cu-ease: cubic-bezier(0.33, 1, 0.68, 1);
+  font-family: var(--font-body); font-size: var(--t-body); color: var(--text); line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.cu-content * { box-sizing: border-box; }
+.look-poster .cu-content { --cu-border: 2px solid var(--text); --cu-field-border: 2px solid var(--text); }
+.look-high-contrast .cu-content { --cu-border: 1px solid var(--hairline-strong); }
+
+/* --- shared controls ------------------------------------------------------------------------------ */
+
+.cu-label { font-size: var(--t-body); font-weight: var(--w-strong); line-height: 1.3; }
+.cu-hint { margin: 0; font-size: var(--t-caption); color: var(--muted); line-height: 1.4; }
+.cu-hint[hidden] { display: none; }
+.cu-out { font-size: var(--t-caption); color: var(--muted); white-space: nowrap; }
+.cu-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.cu-card { background: var(--card); border: var(--cu-border); border-radius: var(--r-card); box-shadow: var(--shadow-sm); }
+
+.cu-btn {
+  height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: var(--s1); padding: 0 var(--s3);
+  border: 0; border-radius: var(--r-control); font: inherit; font-size: var(--t-body); font-weight: var(--w-strong);
+  line-height: 1; white-space: nowrap; cursor: pointer; flex: none;
+}
+.cu-btn.small { height: 28px; padding: 0 var(--s2); font-size: var(--t-caption); }
+.cu-btn.primary { background: var(--accent); color: var(--accent-ink); }
+.cu-btn.primary:hover { background: color-mix(in oklab, var(--accent), var(--text) 6%); }
+.cu-btn.secondary { background: var(--accent-tint); color: var(--accent); }
+.cu-btn.secondary:hover { background: color-mix(in oklab, var(--accent-tint), var(--accent) 6%); }
+.cu-btn.quiet { background: transparent; color: var(--text); font-weight: var(--w-regular); }
+.cu-btn.quiet:hover { background: var(--cu-hover); }
+.cu-btn.quiet.bordered { box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.cu-btn:disabled { opacity: 0.4; cursor: default; }
+.cu-btn:disabled:hover { background: transparent; }
+.cu-btn:focus-visible, .cu-iconbtn:focus-visible, .cu-seg button:focus-visible, .cu-switch:focus-visible i,
+.cu-acc:focus-visible .dot, .cu-group-toggle:focus-visible, .cu-custom-row:focus-visible, .cu-lk-pick:focus-visible,
+.cu-range:focus-visible, .cu-colour input:focus-visible, .cu-select select:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px;
+}
+.look-high-contrast .cu-btn.secondary { background: transparent; box-shadow: inset 0 0 0 1px var(--accent); }
+.look-high-contrast .cu-btn.quiet { box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.look-poster .cu-btn.primary, .look-poster .cu-btn.secondary { box-shadow: inset 0 0 0 2px var(--text), 2px 2px 0 var(--text); }
+.look-poster .cu-btn.quiet.bordered { box-shadow: inset 0 0 0 2px var(--text); }
+
+.cu-iconbtn {
+  width: 32px; height: 32px; display: inline-grid; place-items: center; flex: none; padding: 0;
+  border: 0; border-radius: var(--r-control); background: transparent; color: var(--text); cursor: pointer;
+}
+.cu-iconbtn:hover { background: var(--cu-hover); }
+.cu-iconbtn.danger { color: var(--danger); }
+
+.cu-tag {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 var(--s2); border-radius: var(--r-pill);
+  background: var(--accent-tint); color: var(--accent); font-size: var(--t-caption); font-weight: var(--w-strong); line-height: 1; white-space: nowrap;
+}
+.cu-tag[hidden] { display: none; }
+.look-high-contrast .cu-tag { background: transparent; box-shadow: inset 0 0 0 1px var(--accent); }
+.look-poster .cu-tag { box-shadow: inset 0 0 0 2px var(--text); }
+
+/* The segmented control, as the system sheet draws it. */
+.cu-seg {
+  display: inline-flex; align-self: flex-start; max-width: 100%; padding: 3px; gap: 2px;
+  border-radius: var(--r-pill); background: color-mix(in oklab, var(--text) 8%, var(--card));
+}
+.cu-seg button {
+  height: 28px; padding: 0 var(--s3); border: 0; border-radius: var(--r-pill); background: transparent; color: var(--muted);
+  font: inherit; font-size: var(--t-body); line-height: 1; white-space: nowrap; cursor: pointer;
+}
+.cu-seg button:hover { color: var(--text); }
+.cu-seg button[aria-checked="true"] { background: var(--card); color: var(--text); font-weight: var(--w-strong); box-shadow: var(--shadow-sm); }
+.look-high-contrast .cu-seg { background: var(--card); outline: 1px solid var(--hairline-strong); }
+.look-high-contrast .cu-seg button { color: var(--text); }
+.look-high-contrast .cu-seg button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
+.look-poster .cu-seg { outline: 2px solid var(--text); }
+.look-poster .cu-seg button { color: var(--text); }
+.look-poster .cu-seg button[aria-checked="true"] { outline: 2px solid var(--text); box-shadow: 2px 2px 0 var(--text); }
+
+.cu-switch {
+  display: inline-flex; align-items: center; gap: var(--s2); min-height: 32px; padding: 0; border: 0; background: none;
+  color: var(--text); font: inherit; font-size: var(--t-body); line-height: 1.3; text-align: left; cursor: pointer;
+}
+.cu-switch i { position: relative; width: 36px; height: 20px; border-radius: var(--r-pill); background: var(--hairline-strong); display: block; flex: none; }
+.cu-switch i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--card); box-shadow: var(--shadow-sm); }
+.cu-switch[aria-checked="true"] i { background: var(--accent); }
+.cu-switch[aria-checked="true"] i::after { left: 18px; background: var(--accent-ink); }
+.look-high-contrast .cu-switch i { background: var(--card); box-shadow: inset 0 0 0 2px var(--text); }
+.look-high-contrast .cu-switch i::after { background: var(--text); }
+.look-high-contrast .cu-switch[aria-checked="true"] i { background: var(--accent); box-shadow: none; }
+.look-high-contrast .cu-switch[aria-checked="true"] i::after { background: var(--accent-ink); }
+.look-poster .cu-switch i { box-shadow: inset 0 0 0 2px var(--text); }
+.look-poster .cu-switch i::after { box-shadow: 0 0 0 2px var(--text); }
+
+/* Sliders: the part up to the value in the accent; a hue slider shows the family's marks. */
+.cu-range { -webkit-appearance: none; appearance: none; width: 100%; height: 24px; margin: 0; background: transparent; cursor: pointer; }
+.cu-range::-webkit-slider-runnable-track {
+  height: 6px; border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--accent) var(--cu-fill, 50%), var(--hairline-strong) var(--cu-fill, 50%));
+}
+.cu-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 50%;
+  background: var(--card); border: 2px solid var(--text); box-shadow: var(--shadow-sm);
+}
+.cu-range.cu-hue::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg,
+    oklch(var(--mark-l) var(--mark-c) 0), oklch(var(--mark-l) var(--mark-c) 45), oklch(var(--mark-l) var(--mark-c) 90),
+    oklch(var(--mark-l) var(--mark-c) 135), oklch(var(--mark-l) var(--mark-c) 180), oklch(var(--mark-l) var(--mark-c) 225),
+    oklch(var(--mark-l) var(--mark-c) 270), oklch(var(--mark-l) var(--mark-c) 315), oklch(var(--mark-l) var(--mark-c) 360));
+}
+.cu-range:disabled { opacity: 0.4; cursor: default; }
+.look-high-contrast .cu-range::-webkit-slider-runnable-track { box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.look-poster .cu-range::-webkit-slider-runnable-track { box-shadow: inset 0 0 0 2px var(--text); height: 8px; }
+.look-poster .cu-range::-webkit-slider-thumb { margin-top: -5px; }
+
+.cu-colour { display: inline-flex; align-items: center; gap: var(--s2); flex: none; }
+.cu-colour input[type="color"] {
+  -webkit-appearance: none; appearance: none; width: 40px; height: 32px; padding: 0; flex: none;
+  border: var(--cu-field-border); border-radius: var(--r-control); background: var(--card); cursor: pointer;
+}
+.cu-colour input[type="color"]::-webkit-color-swatch-wrapper { padding: 3px; }
+.cu-colour input[type="color"]::-webkit-color-swatch { border: 0; border-radius: max(0px, calc(var(--r-control) - 3px)); }
+.cu-hex, .cu-text {
+  height: 32px; padding: 0 var(--s2); border: var(--cu-field-border); border-radius: var(--r-control);
+  background: var(--card); color: var(--text); font: inherit; font-size: var(--t-body);
+}
+.cu-hex { width: 108px; font-family: var(--font-mono); }
+.cu-text { width: 220px; min-width: 0; }
+.cu-hex:focus, .cu-text:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.cu-hex[aria-invalid] { border-color: var(--danger); }
+
+.cu-select { position: relative; display: inline-flex; align-items: center; }
+.cu-select select {
+  -webkit-appearance: none; appearance: none; height: 32px; min-width: 200px; padding: 0 32px 0 var(--s3);
+  border: var(--cu-field-border); border-radius: var(--r-control); background: var(--card); color: var(--text);
+  font: inherit; font-size: var(--t-body); cursor: pointer;
+}
+.cu-select .fw-icon { position: absolute; right: 10px; color: var(--muted); pointer-events: none; }
+
+/* --- the accent swatches -------------------------------------------------------------------------- */
+
+.cu-accents { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s1) var(--s2); }
+.cu-acc {
+  width: 52px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 4px 0;
+  border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; border-radius: var(--r-control);
+}
+.cu-acc .dot { width: 28px; height: 28px; border-radius: 50%; background: var(--sw); color: var(--swi); display: grid; place-items: center; }
+.cu-acc .dot .fw-icon { visibility: hidden; }
+.cu-acc[aria-checked="true"] .dot { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--sw); }
+.cu-acc[aria-checked="true"] .dot .fw-icon { visibility: visible; }
+.cu-acc .nm { font-size: var(--t-caption); line-height: 1.2; }
+.cu-acc[aria-checked="true"] .nm { font-weight: var(--w-strong); }
+.look-high-contrast .cu-acc[aria-checked="true"] .dot { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--text); }
+.look-poster .cu-acc .dot { box-shadow: 0 0 0 2px var(--text); }
+.look-poster .cu-acc[aria-checked="true"] .dot { box-shadow: 0 0 0 2px var(--text), 3px 3px 0 var(--text); }
+.cu-acc-any { display: flex; align-items: center; gap: var(--s2); padding: 4px 0 0 var(--s3); }
+
+/* --- Settings (A, and B with the editor closed) --------------------------------------------------- */
+
+.cu-page { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
+.cu-col { max-width: 960px; margin: 0 auto; padding: 0 0 var(--s6); }
+.cu-page-head { display: flex; align-items: center; gap: var(--s2); height: 52px; }
+.cu-page-head h1 { margin: 0; font-family: var(--font-head); font-size: var(--t-title); font-weight: var(--w-strong); letter-spacing: -0.01em; line-height: 1.2; }
+.cu-section { margin-top: var(--s3); }
+.cu-section + .cu-section { margin-top: var(--s6); }
+.cu-sec-title {
+  position: relative; display: flex; align-items: center; gap: var(--s2); margin: 0 0 var(--s2); padding-left: var(--s3);
+  font-family: var(--font-head); font-size: var(--t-heading); font-weight: var(--w-strong); line-height: 1.3;
+}
+.cu-sec-title::before { content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; background: var(--accent); }
+.cu-sec-icon { display: inline-flex; color: var(--muted); }
+
+.cu-rows { padding: 0 var(--s5); }
+.cu-setting { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--s5); padding: var(--s4) 0; align-items: start; }
+.cu-setting + .cu-setting, .cu-custom-row { border-top: 1px solid var(--hairline); }
+.look-poster .cu-setting + .cu-setting, .look-poster .cu-custom-row { border-top: 2px solid var(--text); }
+.cu-sl { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cu-setting > .cu-sl { padding-top: 6px; }
+.cu-sc { min-width: 0; }
+.cu-look-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+.cu-fake { display: inline-flex; align-items: center; justify-content: space-between; gap: var(--s2); width: 200px; height: 32px; padding: 0 10px 0 var(--s3); border: var(--cu-field-border); border-radius: var(--r-control); background: var(--card); }
+.cu-fake .fw-icon { color: var(--muted); }
+
+/* More looks: a small sample of each look, drawn in its own colours. */
+.cu-more { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s1) var(--s4); }
+.cu-more-sub { grid-column: 1 / -1; margin-top: var(--s3); font-size: var(--t-caption); font-weight: var(--w-strong); color: var(--muted); }
+.cu-more-none { grid-column: 1 / -1; }
+.cu-lk { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.cu-lk-pick {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s3); min-height: 48px; padding: 6px var(--s2) 6px 6px;
+  border: 1px solid transparent; border-radius: var(--r-control); background: none; color: var(--text);
+  font: inherit; font-size: var(--t-body); line-height: 1.3; text-align: left; cursor: pointer;
+}
+.cu-lk-pick:hover { background: var(--cu-hover); }
+.cu-lk.on .cu-lk-pick { border-color: var(--accent); background: var(--accent-tint); font-weight: var(--w-strong); }
+.look-poster .cu-lk.on .cu-lk-pick { border: 2px solid var(--text); box-shadow: 2px 2px 0 var(--text); }
+.cu-lk .nm { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cu-lk .tick { display: inline-flex; color: var(--accent); }
+.look-high-contrast .cu-lk .tick { color: var(--text); }
+.cu-lk-acts { display: inline-flex; flex: none; }
+.cu-lk.renaming { gap: var(--s2); min-height: 48px; }
+.cu-lk.renaming .cu-text { flex: 1; width: auto; }
+
+.cu-strip.fw-stage {
+  display: inline-flex; flex: none; gap: 4px; width: 56px; height: 36px; padding: 5px; overflow: hidden;
+  border-radius: var(--r-control); background: var(--page); box-shadow: inset 0 0 0 1px var(--hairline-strong);
+}
+.cu-strip .cd { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 3px; border-radius: 3px; background: var(--card); }
+.cu-strip .cd b { flex: 1; border-radius: 2px; background: var(--fill); box-shadow: inset 2px 0 0 var(--mark); }
+.cu-strip .ac { width: 8px; border-radius: 2px; background: var(--accent); }
+.cu-strip.look-high-contrast .cd b { background: var(--card); box-shadow: inset 0 0 0 1px var(--mark), inset 2px 0 0 var(--mark); }
+.cu-strip.look-poster .cd { box-shadow: inset 0 0 0 1px var(--text); }
+
+/* A: the preview and the look's state stay at the top of the column while it scrolls. */
+.cu-sticky { position: sticky; top: 0; z-index: 3; display: flex; gap: var(--s5); padding: var(--s2) 0 var(--s4); background: var(--page); }
+.cu-thumb { position: relative; width: 480px; height: 300px; flex: none; overflow: hidden; border-radius: var(--r-card); box-shadow: 0 0 0 1px var(--hairline-strong), var(--shadow-sm); }
+.look-poster .cu-thumb { box-shadow: 0 0 0 2px var(--text), var(--shadow-sm); }
+.cu-thumb > .fw-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.cu-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s3); }
+.cu-now-title { font-family: var(--font-head); font-size: var(--t-heading); font-weight: var(--w-strong); line-height: 1.3; overflow-wrap: anywhere; }
+.cu-now-title .cu-sub { font-family: var(--font-body); font-size: var(--t-body); font-weight: var(--w-regular); color: var(--muted); margin-left: var(--s1); }
+.cu-now .cu-hint { margin-top: 2px; }
+.cu-side [data-status] { display: flex; flex-direction: column; gap: var(--s3); }
+.cu-saveas { display: flex; flex-direction: column; gap: var(--s2); }
+.cu-saveas .cu-text { flex: 1; width: auto; }
+
+/* The Customise row, which opens the groups in place under it. */
+.cu-custom-row {
+  width: 100%; display: flex; align-items: center; gap: var(--s3); min-height: 68px; padding: var(--s3) 0;
+  border-left: 0; border-right: 0; border-bottom: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.cu-custom-row .cu-gicon { color: var(--accent); }
+.look-high-contrast .cu-custom-row .cu-gicon { color: var(--text); }
+.cu-custom-row .cu-sl { flex: 1; }
+.cu-groups { display: grid; grid-template-rows: 0fr; }
+.cu-groups[data-open="true"] { grid-template-rows: 1fr; }
+.cu-groups-inner { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: var(--s3); padding: 0 4px; margin: 0 -4px; }
+.cu-groups[data-open="true"] .cu-groups-inner { padding: var(--s3) 4px 6px; }
+.cu-groups:not([data-open="true"]) .cu-groups-inner { visibility: hidden; }
+.cu-custom-row[aria-expanded="true"] .cu-chev { transform: rotate(180deg); }
+
+/* --- the groups, the same cards in A and B ---------------------------------------------------------- */
+
+.cu-group { background: var(--card); border: var(--cu-border); border-radius: var(--r-card); box-shadow: var(--shadow-sm); }
+.cu-group-head { display: flex; align-items: center; gap: var(--s2); padding-right: var(--s3); }
+.cu-group-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s3); height: 52px; padding: 0 var(--s2) 0 var(--s5);
+  border: 0; border-radius: var(--r-card); background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.cu-gicon { display: inline-flex; color: var(--muted); flex: none; }
+.cu-gname { font-family: var(--font-head); font-size: var(--t-heading); font-weight: var(--w-strong); line-height: 1.3; }
+.cu-chev { display: inline-flex; margin-left: auto; color: var(--muted); flex: none; }
+.cu-group[data-open="true"] .cu-chev { transform: rotate(180deg); }
+.cu-group-body { display: grid; grid-template-rows: 0fr; }
+.cu-group[data-open="true"] .cu-group-body { grid-template-rows: 1fr; }
+.cu-group-inner { min-height: 0; overflow: hidden; }
+.cu-group:not([data-open="true"]) .cu-group-inner { visibility: hidden; }
+.cu-gpad { padding: 0 var(--s5) var(--s5); display: flex; flex-direction: column; gap: var(--s4); }
+.look-poster .cu-group[data-open="true"] .cu-gpad { border-top: 2px solid var(--text); padding-top: var(--s4); }
+.cu-group[data-open="true"] .cu-gpad { border-top: 1px solid var(--hairline); padding-top: var(--s4); }
+
+.cu-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4) var(--s6); align-items: start; }
+.cu-field { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.cu-field-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); }
+.cu-field.cu-line { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--s3); }
+.cu-switches { display: flex; flex-direction: column; gap: var(--s1); }
+
+.cu-cat { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.cu-cat-head { display: flex; align-items: center; gap: var(--s3); }
+.cu-cat-name { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: var(--s1); font-weight: var(--w-strong); }
+.cu-cat-name .fw-icon { color: var(--c-assignments-mark); }
+.cu-cat-head .cu-switch { font-size: var(--t-caption); color: var(--muted); }
+.cu-cat[data-mode="hue"] .cu-cat-exact, .cu-cat[data-mode="exact"] .cu-cat-hue { display: none; }
+
+/* The sample block in each category row, drawn in the look being made. */
+.cu-mini.fw-stage { display: inline-flex; flex: none; overflow: visible; background: none; }
+.cu-chip {
+  position: relative; display: inline-grid; place-items: center; width: 48px; height: 30px; padding-left: var(--cu-edge); overflow: hidden;
+  border-radius: var(--r-control); background: var(--fill); color: var(--block-ink); font-size: var(--t-caption); font-weight: var(--w-strong); line-height: 1;
+}
+.cu-chip::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--cu-edge); background: var(--mark); }
+.cu-mini.look-high-contrast:not([class*="cu-blocks-"]) .cu-chip, .cu-mini.cu-blocks-outline .cu-chip { background: var(--card); box-shadow: inset 0 0 0 2px var(--mark); }
+.cu-mini.cu-blocks-filled .cu-chip { padding-left: 0; }
+.cu-mini.cu-blocks-filled .cu-chip::before { display: none; }
+.cu-mini.look-poster .cu-chip { box-shadow: inset 0 0 0 2px var(--text); }
+
+/* Readability: pairs under 4.5:1, each with a Fix; a quiet line when everything reads. */
+.cu-check { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); background: var(--card); border: var(--cu-border); border-radius: var(--r-card); }
+.cu-check-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-height: 28px; }
+.cu-warn { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: var(--s2); min-height: 32px; }
+.cu-warn > .fw-icon { color: var(--text); }
+.cu-warn-text { font-size: var(--t-body); line-height: 1.3; }
+.cu-pair {
+  display: inline-grid; place-items: center; width: 34px; height: 24px; border-radius: var(--r-control);
+  font-family: var(--font-sans); font-size: var(--t-caption); font-weight: var(--w-strong); line-height: 1;
+  box-shadow: inset 0 0 0 1px var(--hairline-strong);
+}
+.cu-ok { display: flex; align-items: center; gap: var(--s2); min-height: 28px; color: var(--muted); font-size: var(--t-body); }
+.cu-ok .fw-icon { color: var(--text); }
+.cu-error { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); font-size: var(--t-body); line-height: 1.3; }
+.cu-error > span { flex: 1; min-width: 0; }
+.cu-motion-text { margin-top: calc(-1 * var(--s2)); }
+
+/* --- B: the look editor ----------------------------------------------------------------------------- */
+
+.cu-ed { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--page); }
+.cu-ed-head { height: 60px; flex: none; display: flex; align-items: center; gap: var(--s4); padding: 0 var(--s4) 0 var(--s3); border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); }
+.cu-ed-title { margin: 0 var(--s2) 0 0; font-family: var(--font-head); font-size: var(--t-heading); font-weight: var(--w-strong); line-height: 1.3; white-space: nowrap; }
+.cu-inline-field { display: flex; align-items: center; gap: var(--s2); }
+.cu-inline-field .cu-label { font-weight: var(--w-regular); color: var(--muted); white-space: nowrap; }
+.cu-inline-field .cu-text { width: 200px; }
+.cu-ed-acts { display: inline-flex; gap: 2px; }
+.cu-ed-state { margin-left: auto; font-size: var(--t-caption); color: var(--muted); white-space: nowrap; }
+.cu-ed-body { flex: 1; min-height: 0; display: flex; }
+.cu-ed-col {
+  width: 360px; flex: none; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin;
+  display: flex; flex-direction: column; gap: var(--s3); padding: var(--s3) var(--s3) var(--s4); border-right: 1px solid var(--hairline);
+}
+.cu-ed-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cu-ed-preview { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.cu-ed-preview.actual { overflow: auto; scrollbar-width: thin; }
+.cu-ed-preview > .fw-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.cu-ed-zoom { height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: 0 var(--s4); border-top: 1px solid var(--hairline); }
+.cu-ed-zoom .cu-seg button { height: 24px; font-size: var(--t-caption); }
+.look-poster .cu-ed-zoom { border-top: 2px solid var(--text); }
+.look-high-contrast .cu-ed-zoom { border-color: var(--hairline-strong); }
+.cu-ed-foot { height: 56px; flex: none; display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s4) 0 var(--s3); border-top: 1px solid var(--hairline); }
+.cu-foot-error { flex: 1; min-width: 0; }
+.cu-foot-error .cu-error { margin-top: 0; font-size: var(--t-caption); }
+.look-poster .cu-ed-head, .look-poster .cu-ed-foot { border-width: 2px; border-color: var(--text); }
+.look-poster .cu-ed-col { border-right: 2px solid var(--text); }
+.look-high-contrast .cu-ed-head, .look-high-contrast .cu-ed-foot, .look-high-contrast .cu-ed-col { border-color: var(--hairline-strong); }
+
+/* In the 360-pixel column: one field per line, full-width segments, tighter cards. */
+.cu-option-B .cu-ed-col .cu-grid { grid-template-columns: minmax(0, 1fr); gap: var(--s3); }
+.cu-option-B .cu-ed-col .cu-seg { display: flex; align-self: stretch; }
+.cu-option-B .cu-ed-col .cu-seg button { flex: 1 1 auto; padding: 0 var(--s2); }
+.cu-option-B .cu-ed-col .cu-group-toggle { height: 48px; padding-left: var(--s3); }
+.cu-option-B .cu-ed-col .cu-gpad { padding-left: var(--s3); padding-right: var(--s3); padding-bottom: var(--s4); }
+.cu-option-B .cu-ed-col .cu-acc-any { flex-basis: 100%; padding-left: 0; }
+.cu-option-B .cu-ed-col .cu-check { flex: none; }
+.cu-option-B .cu-ed-col .cu-cat-head { gap: var(--s2); }
+.cu-option-B .cu-ed-col .cu-cat-head .cu-switch span { width: min-content; line-height: 1.15; }
+
+/* --- the preview: how the knobs change Today's app (only inside a customised stage) ------------------- */
+
+/* Blocks: once Blocks or Shadows is changed, a block is drawn from the knobs over the look's own
+   drawing. The edge takes Edge width; Outline sits on the card; Bold adds Poster's offset. */
+.fw-stage.cu-stage[class*="cu-blocks-"] .td-block {
+  --cu-ring: 0 0 0 0 transparent; --cu-offset: 0 0 0 0 transparent;
+  background: var(--fill); box-shadow: var(--cu-ring), var(--cu-offset);
+  right: 2px; padding-left: calc(var(--cu-edge) + var(--s1) + 1px); padding-right: var(--s1);
+}
+.fw-stage.cu-stage[class*="cu-blocks-"] .td-block::before { width: var(--cu-edge); }
+.fw-stage.cu-stage.cu-bold[class*="cu-blocks-"] .td-block { --cu-offset: 2px 2px 0 var(--text); right: 4px; }
+.fw-stage.cu-stage.look-poster[class*="cu-blocks-"] .td-block { --cu-ring: inset 0 0 0 2px var(--text); }
+.fw-stage.cu-stage.cu-blocks-outline .td-block { --cu-ring: inset 0 0 0 2px var(--mark); background: var(--card); }
+.fw-stage.cu-stage.cu-blocks-outline .td-block.cut-top { --cu-ring: inset 2px 0 0 var(--mark), inset -2px 0 0 var(--mark), inset 0 -2px 0 var(--mark); }
+.fw-stage.cu-stage.cu-blocks-filled .td-block { padding-left: var(--s2); }
+.fw-stage.cu-stage.cu-blocks-filled .td-block::before { display: none; }
+.fw-stage.cu-stage.cu-blocks-outline .td-block .td-b-title .td-book { color: var(--text); }
+
+.fw-stage.cu-stage.cu-no-times .td-block .td-b-time, .fw-stage.cu-stage.cu-no-times .td-block .td-b-inline span { display: none; }
+.fw-stage.cu-stage.cu-no-lengths .td-block .td-b-len, .fw-stage.cu-stage.cu-no-lengths .td-block .td-b-inline em { display: none; }
+
+.fw-stage.cu-stage.cu-hours-none .design-today { --td-rule: transparent; }
+.fw-stage.cu-stage.cu-hours-clear .design-today { --td-rule: var(--hairline-strong); }
+.fw-stage.cu-stage.cu-today-off .design-today { --td-wash: transparent; }
+.fw-stage.cu-stage.cu-today-on .design-today { --td-wash: color-mix(in oklab, var(--text) 5%, transparent); }
+
+.fw-stage.cu-stage.cu-now-text .td-now, .fw-stage.cu-stage.cu-now-text .td-now::before { background: var(--text); }
+.fw-stage.cu-stage.cu-now-text .td-nowpill { background: var(--text); color: var(--card); }
+.fw-stage.cu-stage.cu-now-text .td-nowfaint { background: color-mix(in oklab, var(--text) 40%, transparent); }
+
+/* Text size: the Rail in the mock-up has fixed heights, so they grow with the type here, and the rail
+   scrolls if it runs out of room. The top bar grows to 110 % at most and packs a little tighter, as
+   the app's own top bar will have to. */
+.fw-stage.cu-stage .td-rail { overflow-y: auto; scrollbar-width: none; }
+.fw-stage.cu-bigtext .fw-bar { --t-body: calc(13pt * var(--cu-bk)); --t-title: calc(20pt * var(--cu-bk)); --t-caption: calc(11pt * var(--cu-bk)); padding: 0 var(--s3); }
+.fw-stage.cu-bigtext .fw-bar-left, .fw-stage.cu-bigtext .fw-bar-right { gap: 6px; }
+.fw-stage.cu-bigtext .fw-btn { padding: 0 10px; }
+.fw-stage.cu-bigtext .fw-segs .seg { padding: 0 10px; }
+.fw-stage.cu-stage .td-block { line-height: calc(17px * var(--cu-k, 1)); }
+.fw-stage.cu-stage .td-block.wide { line-height: calc(18px * var(--cu-k, 1)); }
+.fw-stage.cu-stage .td-block.wide .td-b-title { line-height: calc(22px * var(--cu-k, 1)); }
+.fw-stage.cu-stage .td-bh .top { height: calc(26px * var(--cu-k, 1)); }
+.fw-stage.cu-bigtext .td-b .td-grid { --td-gutter: calc(60px * var(--cu-k)); }
+.fw-stage.cu-bigtext .td-bh .ld { height: calc(14px * var(--cu-bk)); font-size: calc(11pt * var(--cu-bk)); white-space: nowrap; }
+.fw-stage.cu-stage .td-count { height: calc(18px * var(--cu-k, 1)); min-width: calc(20px * var(--cu-k, 1)); }
+.fw-stage.cu-stage .td-nowpill { height: calc(20px * var(--cu-k, 1)); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .cu-btn, .cu-iconbtn, .cu-seg button, .cu-lk-pick, .cu-group-toggle { transition: background-color 150ms var(--cu-ease), color 150ms var(--cu-ease), box-shadow 150ms var(--cu-ease); }
+  .cu-switch i::after { transition: left 160ms var(--cu-ease); }
+  .cu-chev { transition: transform 200ms var(--cu-ease); }
+  .cu-group-body, .cu-groups { transition: grid-template-rows 220ms var(--cu-ease); }
+  .cu-group-inner, .cu-groups-inner { transition: visibility 0s linear 220ms; }
+  .cu-group[data-open="true"] .cu-group-inner, .cu-groups[data-open="true"] .cu-groups-inner { transition: visibility 0s; }
+}
