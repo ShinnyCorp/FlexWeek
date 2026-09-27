@@ -22,7 +22,8 @@ Readability (high), Continuous Animation (no decorative loops), Excessive Motion
 
 1. **One accent, chosen once.** FlexWeek's blue by default (`#3d6fc4` on light, `#7fa8ff` on dark),
    the icon's colour; Sky, Sea, Gold and Sand as swatches. No look, design or screen replaces it,
-   and it is never mixed into an area larger than a control.
+   except High contrast, whose yellow is part of its contrast; and it is never mixed into an area
+   larger than a control.
 2. **Neutral surfaces.** Light: page `#f7f8fa`, cards `#ffffff`, hairlines `#e4e7ec`. Dark: page
    `#111315`, cards `#1a1d21`, hairlines `#2a2e34`. These are the looks Light and Dark (Light frost
    and Dark frost keep their ids and load as these); System follows the device.
@@ -122,11 +123,12 @@ that passes leaves "Experimental styles"; when all have, the heading goes.
 ### The looks
 
 Each look is a full token set (page, card, text, muted, hairline, block mode, knobs) that passes the
-tokens test; none replaces the accent.
+tokens test; none but High contrast replaces the accent.
 
 - **Light, Dark, System**: decisions 1 and 2.
 - **High contrast**: the Inclusive Design entry (7:1 text, 3 to 4 px focus rings, symbols with colour),
-  rules at 40 % white, a readable view control, nothing cut.
+  rules at 40 % white, a readable view control, nothing cut; the accent yellow `#ffd400` (0.16's
+  `#ffff00`, a shade warmer), whatever swatch is chosen.
 - **Slate**: cool and professional (Swiss Modernism 2.0): page `#eef1f5`, white cards, ink `#0f172a`.
 - **Nocturne**: Dark Mode (OLED): page `#0a0e27`, cards `#121633`, low-emission text `#e0e4f0`.
 - **Paper**: E-Ink / Paper: `#fdfbf7`, ink `#1a1a1a`, Newsreader headings, no shadows, and Reduce

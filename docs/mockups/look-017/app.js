@@ -231,7 +231,7 @@
   function renderLooks(root) {
     const main = FW.el("section", { class: "main full" });
     main.appendChild(FW.el("h2", {}, "Every look on Today's app"));
-    main.appendChild(FW.el("p", { class: "note" }, "Each look is a full set of colours, faces and shapes. None replaces your accent. Click one to open it large."));
+    main.appendChild(FW.el("p", { class: "note" }, "Each look is a full set of colours, faces and shapes. None but High contrast replaces your accent. Click one to open it large."));
     const grid = FW.el("div", { class: "looks-grid" });
     const today = FW.designs.today;
     const variant = picks().today === "B" ? "B" : "A";
