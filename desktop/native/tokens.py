@@ -1,0 +1,111 @@
+"""The shared system's measures and its colour maths. No Qt.
+
+Spacing, radii and shadows are 0.17's decisions 5 and 6 as data. The colour functions turn OKLCH, the
+space the category family is chosen in (decision 9), into the sRGB hex a stylesheet takes, and back
+into OKLab to measure how far apart two colours look.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+
+SPACING = (4, 8, 12, 16, 24, 32)
+RADIUS_CONTROL = 6
+RADIUS_CARD = 10
+RADIUS_SHEET = 16
+
+
+@dataclass(frozen=True)
+class Shadow:
+    """A drop shadow as `QGraphicsDropShadowEffect` takes it: offset down, blur, and black's opacity."""
+
+    y: int
+    blur: int
+    opacity: float
+
+
+SHADOW_SMALL = Shadow(1, 3, 0.08)
+SHADOW_LARGE = Shadow(12, 32, 0.16)
+
+
+def _decode(channel: float) -> float:
+    return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+
+def _encode(channel: float) -> float:
+    return channel * 12.92 if channel <= 0.0031308 else 1.055 * channel ** (1 / 2.4) - 0.055
+
+
+def linear_rgb(colour: str) -> tuple[float, float, float]:
+    raw = colour.lstrip("#")
+    red, green, blue = (_decode(int(raw[at : at + 2], 16) / 255) for at in (0, 2, 4))
+    return red, green, blue
+
+
+def hex_from_linear(red: float, green: float, blue: float) -> str:
+    """A linear sRGB colour as hex, each channel clipped into the gamut, as browsers draw one outside it."""
+    channels = (round(_encode(min(max(value, 0.0), 1.0)) * 255) for value in (red, green, blue))
+    return "#{:02x}{:02x}{:02x}".format(*channels)
+
+
+def oklab_from_linear(red: float, green: float, blue: float) -> tuple[float, float, float]:
+    long = math.cbrt(0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue)
+    medium = math.cbrt(0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue)
+    short = math.cbrt(0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue)
+    return (
+        0.2104542553 * long + 0.7936177850 * medium - 0.0040720468 * short,
+        1.9779984951 * long - 2.4285922050 * medium + 0.4505937099 * short,
+        0.0259040371 * long + 0.7827717662 * medium - 0.8086757660 * short,
+    )
+
+
+def linear_from_oklab(light: float, a: float, b: float) -> tuple[float, float, float]:
+    long = (light + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    medium = (light - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    short = (light - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    return (
+        4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short,
+        -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short,
+        -0.0041960863 * long - 0.7034186147 * medium + 1.7076147010 * short,
+    )
+
+
+def oklab(colour: str) -> tuple[float, float, float]:
+    return oklab_from_linear(*linear_rgb(colour))
+
+
+def oklch(light: float, chroma: float, hue: float) -> str:
+    """An OKLCH colour as sRGB hex, clipped into the gamut."""
+    angle = math.radians(hue)
+    return hex_from_linear(*linear_from_oklab(light, chroma * math.cos(angle), chroma * math.sin(angle)))
+
+
+def mix_oklab(top: str, bottom: str, amount: float) -> str:
+    """`amount` of `top` in `bottom`, mixed in OKLab as CSS's `color-mix(in oklab, …)` does."""
+    over, under = oklab(top), oklab(bottom)
+    mixed = (o * amount + u * (1 - amount) for o, u in zip(over, under, strict=True))
+    return hex_from_linear(*linear_from_oklab(*mixed))
+
+
+# Decision 9: one family of category colours, each category at its own hue. A light look fills a block
+# with the pale colour and edges it with the mark; a dark look sinks the tone into its own card.
+FILL = (0.92, 0.045)
+MARK = {"light": (0.62, 0.14), "dark": (0.72, 0.14), "contrast": (0.78, 0.16)}
+GREY_CHROMA = 0.01
+SINK = 0.34
+# At one lightness a deuteranope sees homework's red and sports' green as one colour, and the two lie
+# side by side all week. Homework's mark alone is darker, which no colour filter takes away.
+HOMEWORK_DARKER = 0.22
+
+
+def family_colours(hue: float, *, grey: bool = False, homework: bool = False) -> dict[str, tuple[str, str]]:
+    """A category's colours in each kind of look: (fill, mark) in light looks, (tone, mark) in dark
+    and high-contrast ones."""
+    fill = oklch(FILL[0], GREY_CHROMA if grey else FILL[1], hue)
+    colours = {}
+    for family, (light, chroma) in MARK.items():
+        chroma = GREY_CHROMA if grey else chroma
+        mark = oklch(light - (HOMEWORK_DARKER if homework else 0), chroma, hue)
+        colours[family] = (fill if family == "light" else oklch(light, chroma, hue), mark)
+    return colours

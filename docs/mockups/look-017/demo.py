@@ -11,6 +11,7 @@ reads and writes no FlexWeek data. Picks are kept in the browser and shown under
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import http.server
 import socketserver
@@ -32,10 +33,8 @@ def main() -> int:
         url = f"http://127.0.0.1:{server.server_address[1]}/{PAGE}"
         print(f"FlexWeek 0.17 mock-up: {url}  (Ctrl+C stops it)")
         webbrowser.open(url)
-        try:
+        with contextlib.suppress(KeyboardInterrupt):
             server.serve_forever()
-        except KeyboardInterrupt:
-            pass
     return 0
 
 

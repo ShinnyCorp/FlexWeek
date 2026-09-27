@@ -35,10 +35,10 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from backend.models import due_is_timed
-from desktop.native.calendar import CATEGORIES, DAYS
+from desktop.native.calendar import DAYS
 from desktop.native.hours.geometry import Span
 from desktop.native.hours.hand import Gesture, Hand, Held, Verdict
-from desktop.native.look import resolved_palette
+from desktop.native.look import category_paint, luminance, resolved_palette
 from desktop.native.weekmodel import WeekModel, clock_label, hhmm_text
 
 # The row of day names, kept above the dates while they scroll.
@@ -49,7 +49,6 @@ LEAST_CHIPS = 2
 LEAST_AHEAD = 2
 # Layout passes to wait for the canvas's new height before scrolling to the opening week anyway.
 REVEAL_TRIES = 3
-FALLBACK_MARK = "#94a3b8"
 
 
 @dataclass(frozen=True)
@@ -65,6 +64,8 @@ class MonthChip:
     due: bool = False
     due_time: str | None = None
     done: bool = False
+    # Due on a date already gone and not finished.
+    late: bool = False
 
     @property
     def carried(self) -> bool:
@@ -72,9 +73,16 @@ class MonthChip:
         return self.block_id is not None and self.start is not None and not self.due
 
     @property
+    def flag(self) -> str:
+        """What a deadline chip leads with, drawn bold: "Due" and its time if it has one."""
+        if not self.due:
+            return ""
+        return f"Due {hhmm_text(self.due_time)}" if self.due_time else "Due"
+
+    @property
     def words(self) -> str:
         if self.due:
-            return f"Due {hhmm_text(self.due_time)} {self.title}" if self.due_time else f"Due {self.title}"
+            return f"{self.flag} {self.title}"
         return f"{clock_label(self.start or 0)} {self.title}"
 
 
@@ -121,6 +129,7 @@ def month_cells(snapshot: dict | None, weeks: Mapping[str, WeekModel], today_iso
                     due=True,
                     due_time=due[11:16] if due and due_is_timed(due) else None,
                     done=bool(item.get("completed")),
+                    late=iso < today_iso and not item.get("completed"),
                 )
             )
         blocks: list[MonthChip] = []
@@ -178,7 +187,8 @@ class MonthPainter:
         return QColor(self.colours[name])
 
     def cell(self, painter: QPainter, box: QRectF, cell: MonthCell) -> None:
-        painter.fillRect(box, self.c("panel") if cell.in_month else self.c("window"))
+        # A date outside the month is told by its dimmed number, not a tint: tinted, it looked like today.
+        painter.fillRect(box, self.c("panel"))
         painter.setPen(QPen(self.c("hairline"), 1))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(box)
@@ -196,22 +206,42 @@ class MonthPainter:
         painter.drawText(spot, Qt.AlignmentFlag.AlignCenter, str(cell.day_number))
 
     def chip(self, painter: QPainter, box: QRectF, chip: MonthChip, faded: bool, held: bool) -> None:
-        mark = QColor((CATEGORIES.get(chip.category) or {}).get("mark") or FALLBACK_MARK)
-        fill = QColor(mark)
-        fill.setAlpha(24 if chip.due else 60)
+        """A block in its category's fill, as the week draws it, or a deadline as a quiet chip led by
+        a bold "Due". A column of red boxes was the most alarming thing in the app for its most
+        ordinary fact; the flag is red only once the date has gone."""
+        category_fill = None if chip.due else category_paint(chip.category, self.colours)[0]
+        if category_fill is None:
+            fill = self.c("text")
+            fill.setAlpha(18)
+        else:
+            fill = QColor(category_fill)
         ink = self.c("text")
+        flag = self.c("error") if chip.late else self.c("text")
         if faded or chip.done or held:
             fill.setAlpha(fill.alpha() // 2)
             ink.setAlpha(120)
-        painter.setPen(QPen(mark, 1) if chip.due else Qt.PenStyle.NoPen)
+            flag.setAlpha(120)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(fill)
         painter.drawRoundedRect(box, 4, 4)
-        painter.setPen(ink)
         room = box.adjusted(5, 0, -3, 0)
-        words = QFontMetrics(painter.font()).elidedText(
-            chip.words, Qt.TextElideMode.ElideRight, int(room.width())
-        )
-        painter.drawText(room, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, words)
+        align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+        words = chip.words
+        if chip.due:
+            plain = painter.font()
+            bold = QFont(plain)
+            bold.setBold(True)
+            painter.setFont(bold)
+            painter.setPen(flag)
+            elide = QFontMetrics(bold).elidedText
+            painter.drawText(room, align, elide(chip.flag, Qt.TextElideMode.ElideRight, int(room.width())))
+            room.setLeft(room.left() + QFontMetrics(bold).horizontalAdvance(chip.flag + " "))
+            painter.setFont(plain)
+            words = chip.title
+        painter.setPen(ink)
+        if room.width() > 0:
+            elide = QFontMetrics(painter.font()).elidedText
+            painter.drawText(room, align, elide(words, Qt.TextElideMode.ElideRight, int(room.width())))
 
     def more(self, painter: QPainter, box: QRectF, count: int) -> None:
         painter.setPen(self.c("muted"))
@@ -591,6 +621,8 @@ class MonthGrid(QWidget):
                     "hairline": tokens["line"],
                     "accent": tokens["accent"],
                     "accent_ink": tokens.get("accent_ink", "#ffffff"),
+                    # A dark design's cells take its categories sunk into them, as a dark look's do.
+                    "family": "dark" if luminance(tokens["surface"]) < 0.2 else "light",
                 }
             )
         )

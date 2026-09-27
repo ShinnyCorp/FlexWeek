@@ -131,7 +131,7 @@ def test_two_cards_at_one_time_go_half_width(qapp: QApplication) -> None:
 
 
 def test_homework_is_an_ink_card_and_everything_else_is_paper(qapp: QApplication) -> None:
-    view = shown(qapp, "day")
+    view = shown(qapp, "day", colour="paper")
     hours = canvas(view)
     image = hours.grab().toImage()
 
@@ -144,7 +144,7 @@ def test_homework_is_an_ink_card_and_everything_else_is_paper(qapp: QApplication
 
 
 def test_now_is_written_in_red_beside_the_line(qapp: QApplication) -> None:
-    view = shown(qapp, "day")
+    view = shown(qapp, "day", colour="paper")
     hours = canvas(view)
     track = hours.tracks[0]
     at = round(track.area.top() + track.offset(minute_of("13:40")))
@@ -354,4 +354,5 @@ def test_option_colours_repaint_the_page(qapp: QApplication) -> None:
     def corner(view: TimelineView) -> str:
         return view.grab().toImage().pixelColor(5, 5).name()
 
-    assert (corner(shown(qapp)), corner(shown(qapp, colour="night"))) == ("#f6f4ef", "#14161c")
+    assert corner(shown(qapp, colour="paper")) == "#f6f4ef"
+    assert corner(shown(qapp, colour="night")) == "#14161c"

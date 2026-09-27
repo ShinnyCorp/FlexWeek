@@ -21,6 +21,7 @@ from desktop.native.layouts.base import (
     button,
     css,
     empty,
+    family_fill,
     label,
     mark_of,
     plan_buttons,
@@ -55,7 +56,7 @@ class MissionPainter(BlockPainter):
         mark = QColor(mark_of(drawn.category))
         fill = QColor(self.tokens["surface"]).lighter(135)
         if not drawn.done and not drawn.missed:
-            fill = QColor(mark).darker(350)
+            fill = QColor(family_fill(drawn.category, self.tokens))
         return fill, QColor(self.tokens["text"]), QColor(self.tokens["line"]), mark
 
     def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:

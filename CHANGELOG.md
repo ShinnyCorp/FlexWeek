@@ -3,6 +3,53 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.0] - Unreleased
+
+### Changed
+- One accent: FlexWeek's blue, the icon's (`#3d6fc4` on light looks, `#7fa8ff`
+  on dark ones), in every look but High contrast, which keeps its yellow
+  (`#ffd400`) whatever swatch is picked. Sky, Sea, Gold and Sand still replace
+  it. The accent marks controls only: it no longer washes today's column or the
+  setup cards.
+- Light and Dark are neutral: a `#f7f8fa` page with white cards, and a
+  `#111315` page with `#1a1d21` cards. Light frost and Dark frost load as these,
+  and System follows the computer between them.
+- The categories are one family: every fill at one lightness and every mark at
+  another, worked out from OKLCH, so no category shouts over the others. On a
+  dark look a block is its category sunk into the card, written in the look's
+  own text colour. Homework's mark is darker than the rest, so it stays apart
+  from Sports for a student who cannot tell red from green.
+- Round corners are 6 pixels on controls and 10 on cards, the toast and the
+  command bar.
+- Today's column is washed with 3 % of the text colour on Week and not at all
+  on Day. The now line and its time are in the accent: red is for what cannot
+  be.
+- High contrast: text at 7 to 1 or more, the grid's rules and the hairlines at
+  40 % white instead of full white. Day, Week, Month and My day, and every
+  choice of two or three in Settings, read in white on black with the chosen
+  one filled yellow, where the view control was yellow on light grey.
+
+### Fixed
+- Changing the look with the week open, to High contrast above all, no longer
+  runs the words of the Not placed yet chips off their edge, and the focus
+  list beside the week no longer grows a sideways scroll bar or hides a row: a
+  long name gives up its middle and keeps its time.
+- The top bar, the window's frame, dialogs and Today's app always wear your
+  look and accent. A design's own colourway colours only the design's page, and
+  every design starts in Match my look; its signature colourways are still
+  there to pick, and one saved before still loads. Look and Accent stay in
+  Settings whatever the design, since they dress the window in every one.
+- Red means a problem. Month's deadlines are quiet chips led by a bold "Due",
+  whose flag turns red only once the date has gone without the homework being
+  finished; the red outlined boxes are gone. Dates outside the month are
+  white like the rest, told apart by their dimmed numbers. Homework waiting for
+  a time is edged in homework's colour, not red, and Account says how many
+  recovery codes are left in the muted colour, in red only when none are.
+- Month draws each block in its category's fill, as the week does, rather than
+  the strong colour washed over the date. So do Clay deck and Mission control,
+  whose blocks were their category's mark lightened or darkened: pale on light
+  cards and sunk into dark ones, with words that read on them.
+
 ## [0.16.0] - 2026-09-26
 
 ### Added

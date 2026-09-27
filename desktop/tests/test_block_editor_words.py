@@ -239,7 +239,7 @@ def test_the_question_before_deleting_draws_its_answer_red_and_cancel_plain(
     window: NativeWindow,  # noqa: F811
 ) -> None:
     pack, dark, accent = window._look_inputs()
-    red = QColor(window._chrome_palette(resolved_palette(pack, dark, window._look, accent))["error"])
+    red = QColor(resolved_palette(pack, dark, window._look, accent)["error"])
     box = widgets.confirm_box(window, "Delete event", "Delete Soccer practice? You can undo this.", "Delete")
     box.show()
     qapp.processEvents()

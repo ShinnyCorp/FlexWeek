@@ -253,10 +253,10 @@
  },
  {
   "file": "desktop/native/look.py",
-  "name": "a design's window colours keep text readable",
+  "name": "a design's page colours keep text readable",
   "old": "if contrast(tokens[\"bg_ink\"], tokens[\"surface\"]) >= AA_TEXT:",
   "new": "if True:",
-  "test": "desktop/tests/test_layouts_registry.py::test_every_design_dresses_the_window_in_colours_its_text_reads_on"
+  "test": "desktop/tests/test_layouts_registry.py::test_every_design_dresses_its_page_in_colours_its_text_reads_on"
  },
  {
   "file": "desktop/native/hours/chips.py",
@@ -453,5 +453,47 @@
   "old": "        self.delete_button.setVisible(assignment is not None)\n",
   "new": "        self.delete_button.setVisible(True)\n",
   "test": "desktop/tests/test_delete_homework.py::test_the_editor_offers_delete_only_for_homework_that_exists"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "the chrome dressed by the design again",
+  "old": "            self.planner.setStyleSheet(page_sheet)\n",
+  "new": "            self.setStyleSheet(page_sheet or self._dressed[0])\n",
+  "test": "desktop/tests/test_layouts_window.py::test_the_chrome_follows_the_look_whatever_design_is_on_screen"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "a design's page in the look's colours",
+  "old": "        if colour == MATCH:\n            return None\n",
+  "new": "        if True:\n            return None\n",
+  "test": "desktop/tests/test_layouts_window.py::test_the_knobs_settings_hides_for_a_design_change_nothing_in_it[bento]"
+ },
+ {
+  "file": "desktop/native/layouts/registry.py",
+  "name": "a design's own colourway first again",
+  "old": "(Choice(MATCH, \"Match my look\"), *named)",
+  "new": "(*named, Choice(MATCH, \"Match my look\"))",
+  "test": "desktop/tests/test_layouts_registry.py::test_every_design_follows_the_students_look_until_one_of_its_own_colourways_is_picked"
+ },
+ {
+  "file": "desktop/native/hours/chips.py",
+  "name": "a tray chip keeps its words through a change of look",
+  "old": "        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):\n            self._fit()\n",
+  "new": "        if False:\n            self._fit()\n",
+  "test": "desktop/tests/test_week_side.py::test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way"
+ },
+ {
+  "file": "desktop/native/hours/classic.py",
+  "name": "the focus list a row short",
+  "old": "            chrome = margins.top() + margins.bottom() + 2\n",
+  "new": "            chrome = 8\n",
+  "test": "desktop/tests/test_week_side.py::test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way"
+ },
+ {
+  "file": "desktop/native/hours/classic.py",
+  "name": "the focus list kept its height through a change of look",
+  "old": "            QTimer.singleShot(0, self, self._fit_tasks)\n",
+  "new": "            pass\n",
+  "test": "desktop/tests/test_week_side.py::test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way"
  }
 ]

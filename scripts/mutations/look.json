@@ -14,18 +14,18 @@
   "test": "desktop/tests/test_hours_painter.py::test_the_hours_have_a_rule_at_each_hour_and_none_at_the_half"
  },
  {
-  "file": "desktop/native/hours/canvas.py",
+  "file": "desktop/native/look.py",
   "name": "dark looks' rules in the plain hairline",
-  "old": "rule = self.c(\"hairline_strong\" if self.colours.get(\"axis\") == \"dark\" else \"hairline\")",
-  "new": "rule = self.c(\"hairline\")",
+  "old": "table.setdefault(\"rule\", table[\"hairline_strong\" if axis == \"dark\" else \"hairline\"])",
+  "new": "table.setdefault(\"rule\", table[\"hairline\"])",
   "test": "desktop/tests/test_hours_painter.py::test_the_hours_have_a_rule_at_each_hour_and_none_at_the_half"
  },
  {
   "file": "desktop/native/hours/canvas.py",
-  "name": "today washed at 5 %",
-  "old": "            wash.setAlphaF(0.10)\n",
-  "new": "            wash.setAlphaF(0.05)\n",
-  "test": "desktop/tests/test_hours_painter.py::test_today_is_washed_in_a_tenth_of_the_accent"
+  "name": "today washed in the accent",
+  "old": "            wash = self.c(\"text\")\n",
+  "new": "            wash = self.c(\"accent\")\n",
+  "test": "desktop/tests/test_hours_painter.py::test_today_is_washed_in_a_little_of_the_text_colour_on_a_week_and_not_at_all_on_a_day"
  },
  {
   "file": "desktop/native/hours/canvas.py",
@@ -79,16 +79,16 @@
  {
   "file": "desktop/native/look.py",
   "name": "pale fills on a dark look",
-  "old": "if palette.get(\"axis\") == \"dark\" else category_color",
-  "new": "if False else category_color",
+  "old": "    return _sunk(tone, palette[\"panel\"]), mark\n",
+  "new": "    return info[\"color\"], mark\n",
   "test": "desktop/tests/test_look.py::test_a_filled_block_on_a_dark_look_is_its_colour_sunk_into_the_panel_with_light_ink"
  },
  {
   "file": "desktop/native/calendar.py",
-  "name": "Activity pink again",
-  "old": "        \"color\": \"#a5f3fc\",\n",
-  "new": "        \"color\": \"#fbcfe8\",\n",
-  "test": "desktop/tests/test_look.py::test_homework_stands_apart_from_every_other_category"
+  "name": "a category's colours drift from the family",
+  "old": "        \"color\": \"#c3eef3\",\n",
+  "new": "        \"color\": \"#a5f3fc\",\n",
+  "test": "desktop/tests/test_tokens.py::test_the_category_colours_are_the_family_worked_out_from_their_hues"
  },
  {
   "file": "desktop/native/hours/classic.py",
@@ -117,5 +117,152 @@
   "old": "    --include-data-dir=\"$ROOT/desktop/assets=desktop/assets\" \\\n",
   "new": "",
   "test": "desktop/tests/test_native_packaging.py::test_both_builds_ship_the_icon_and_the_fonts_where_the_app_looks_for_them"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "today's wash at a tenth",
+  "old": "TODAY_WASH = 0.03\n",
+  "new": "TODAY_WASH = 0.10\n",
+  "test": "desktop/tests/test_hours_painter.py::test_today_is_washed_in_a_little_of_the_text_colour_on_a_week_and_not_at_all_on_a_day"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "Day washed as well as Week",
+  "old": "self.painter.track(painter, track, week and track.day == self.today)",
+  "new": "self.painter.track(painter, track, track.day == self.today)",
+  "test": "desktop/tests/test_hours_painter.py::test_today_is_washed_in_a_little_of_the_text_colour_on_a_week_and_not_at_all_on_a_day"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "the now line red again",
+  "old": "        colour = self.c(\"accent\")\n        font = time_font",
+  "new": "        colour = self.c(\"error\")\n        font = time_font",
+  "test": "desktop/tests/test_hours_painter.py::test_the_now_line_carries_the_time_on_a_pill_at_its_start"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "High contrast's rules at full white",
+  "old": "        rule=\"#666666\",\n",
+  "new": "",
+  "test": "desktop/tests/test_hours_painter.py::test_the_hours_have_a_rule_at_each_hour_and_none_at_the_half"
+ },
+ {
+  "file": "desktop/native/calendar.py",
+  "name": "Sports filled at another lightness",
+  "old": "        \"color\": \"#d0eed5\",\n",
+  "new": "        \"color\": \"#86efac\",\n",
+  "test": "desktop/tests/test_tokens.py::test_every_category_fill_has_one_lightness[Light]"
+ },
+ {
+  "file": "desktop/native/calendar.py",
+  "name": "homework's mark at the family's lightness",
+  "old": "        \"mark\": \"#831a1d\",\n",
+  "new": "        \"mark\": \"#cd605a\",\n",
+  "test": "desktop/tests/test_tokens.py::test_homework_stands_apart_from_every_other_category_for_a_deuteranope[Light]"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "Dark's muted under 4.5 to 1",
+  "old": "        muted=\"#9aa1ab\",\n",
+  "new": "        muted=\"#5b6474\",\n",
+  "test": "desktop/tests/test_tokens.py::test_text_reads_on_every_fill_card_and_page[Dark-frost-default]"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "High contrast's muted under 7 to 1",
+  "old": "        muted=\"#e6e6e6\",\n",
+  "new": "        muted=\"#808080\",\n",
+  "test": "desktop/tests/test_tokens.py::test_text_reads_on_every_fill_card_and_page[High contrast-frost-default]"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "the setup cards lifted with the accent",
+  "old": "    lift = mix(palette[\"text\"], palette[\"panel\"], 0.04)",
+  "new": "    lift = mix(palette[\"accent\"], palette[\"panel\"], 0.08)",
+  "test": "desktop/tests/test_tokens.py::test_the_accent_is_never_a_page_card_or_wash[Light-frost-default]"
+ },
+ {
+  "file": "desktop/native/layouts/registry.py",
+  "name": "Match my look's cards in the accent",
+  "old": "    card = surface if contrast(surface, page) >= 1.02 else mix(palette[\"text\"], page, 0.05)",
+  "new": "    card = mix(palette[\"accent\"], surface, 0.10)",
+  "test": "desktop/tests/test_tokens.py::test_the_accent_is_never_a_page_card_or_wash[Light-frost-default]"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "the default accent teal again",
+  "old": "    \"default\": {\"dark\": (\"#7fa8ff\", DARK_INK), \"light\": (\"#3d6fc4\", LIGHT_INK)},",
+  "new": "    \"default\": {\"dark\": (\"#7fa8ff\", DARK_INK), \"light\": (\"#0e7490\", LIGHT_INK)},",
+  "test": "desktop/tests/test_look.py::test_every_look_but_high_contrast_wears_flexweeks_blue_by_default"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "a swatch replaces High contrast's yellow",
+  "old": "OWN_ACCENT = (\"high-contrast\",)",
+  "new": "OWN_ACCENT = ()",
+  "test": "desktop/tests/test_look.py::test_an_accent_always_changes_the_accent"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "System on Slate and Nocturne again",
+  "old": "        return \"dark-frost\" if system_dark else \"light-frost\"",
+  "new": "        return \"nocturne\" if system_dark else \"slate\"",
+  "test": "desktop/tests/test_look.py::test_system_follows_the_device_between_light_and_dark"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "round corners 8 on everything again",
+  "old": "CORNER_RADIUS = {\"round\": (RADIUS_CONTROL, RADIUS_CARD),",
+  "new": "CORNER_RADIUS = {\"round\": (8, 8),",
+  "test": "desktop/tests/test_look.py::test_round_corners_are_6_on_controls_and_10_on_cards"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "High contrast's view control grey again",
+  "old": "        + (_contrast_rules(palette) if palette.get(\"family\") == \"contrast\" else \"\")",
+  "new": "        + \"\"",
+  "test": "desktop/tests/test_controls_look.py::test_high_contrasts_view_control_reads_every_choice_and_fills_the_chosen_one"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "the tray's edge red again",
+  "old": "border-left: 4px solid {category_paint('assignments', palette)[1]};",
+  "new": "border-left: 4px solid #ef4444;",
+  "test": "desktop/tests/test_look.py::test_a_tray_chip_is_edged_in_homeworks_colour_not_in_red"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "recovery codes left in red",
+  "old": "f\"QLabel#recoveryCount {{ color: {palette['muted']}; }}\"",
+  "new": "f\"QLabel#recoveryCount {{ color: {palette['error']}; }}\"",
+  "test": "desktop/tests/test_account_words.py::test_the_recovery_codes_left_are_an_ordinary_fact_until_none_are"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "a block's words in black on every fill",
+  "old": "        ink = text if contrast(text, category_color) >= AA_TEXT else readable_ink(category_color)\n",
+  "new": "        ink = \"#000000\"\n",
+  "test": "desktop/tests/test_tokens.py::test_text_reads_on_every_fill_card_and_page[Dark-frost-default]"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "High contrast's refusals red under 7 to 1",
+  "old": "        error=\"#ff6b6b\",\n        # Text at 7 to 1",
+  "new": "        error=\"#c42b1c\",\n        # Text at 7 to 1",
+  "test": "desktop/tests/test_tokens.py::test_text_reads_on_every_fill_card_and_page[High contrast-frost-default]"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "Clay lightens the mark again",
+  "old": "        fill = QColor(family_fill(drawn.category, self.tokens))\n",
+  "new": "        fill = QColor(mark).lighter(175)\n",
+  "test": "desktop/tests/test_layouts_main_views.py::test_a_designs_blocks_take_the_family_and_their_words_read_on_them[clay]"
+ },
+ {
+  "file": "desktop/native/layouts/mission.py",
+  "name": "Mission darkens the mark again",
+  "old": "            fill = QColor(family_fill(drawn.category, self.tokens))\n",
+  "new": "            fill = QColor(mark).darker(350)\n",
+  "test": "desktop/tests/test_layouts_main_views.py::test_a_designs_blocks_take_the_family_and_their_words_read_on_them[mission]"
  }
 ]

@@ -289,7 +289,8 @@ def test_help_shows_every_line_whole_at_large_text_and_fits_the_screen(
     assert cut == []
     assert dialog.height() <= dialog.screen().availableGeometry().height() - 48
     picture = dialog.grab().toImage()
-    inside = view.parentWidget().mapTo(dialog, QPoint(2, 2))
+    # Inside a box's edge and below its corner, which a 10-pixel radius rounds away from (2, 2).
+    inside = view.parentWidget().mapTo(dialog, QPoint(4, 30))
     assert picture.pixelColor(inside.x(), inside.y()) == picture.pixelColor(2, 2), "a box around the words"
     dialog.close()
 

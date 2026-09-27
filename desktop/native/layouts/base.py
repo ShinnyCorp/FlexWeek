@@ -18,6 +18,7 @@ from desktop.native.calendar import CATEGORIES
 from desktop.native.hours.hand import Hand, is_date_surface, is_surface
 from desktop.native.hours.hand import Verdict as HandVerdict
 from desktop.native.hours.zoom import HoursScroll
+from desktop.native.look import category_paint, luminance
 from desktop.native.weekmodel import Occurrence, WeekModel
 
 
@@ -110,6 +111,14 @@ def plural(count: int, word: str) -> str:
 def mark_of(category: str) -> str:
     """A category's strong colour, the one the web client paints with."""
     return (CATEGORIES.get(category) or {}).get("mark") or "#94a3b8"
+
+
+def family_fill(category: str, tokens: dict[str, str]) -> str:
+    """A category's fill in the one family (decision 9 of 0.17) on a design's cards: pale on light
+    ones, its tone sunk into dark ones. Lightening or darkening the mark, as designs did, turned the
+    darker homework mark into a neon red and a dark look's blocks into ink under dark words."""
+    family = "dark" if luminance(tokens["surface"]) < 0.2 else "light"
+    return category_paint(category, {"family": family, "panel": tokens["surface"]})[0] or tokens["surface"]
 
 
 def work_left(scene: Scene) -> int:

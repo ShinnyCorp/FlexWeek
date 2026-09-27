@@ -32,16 +32,15 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.hours.hand import Hand, Verdict
     from desktop.native.hours.month import MonthGrid
     from desktop.native.look import (
-        DARK_FILL,
         LOOK_DEFAULTS,
         effective_look,
         look_menu_token,
-        mix,
         pack_stylesheet,
         preset_knobs,
         resolved_palette,
     )
     from desktop.native.settings import AboutDialog, SettingsPage
+    from desktop.native.tokens import SINK, mix_oklab
     from desktop.native.weekmodel import build_week
     from desktop.native.widgets import DIALOG_MARGIN, use_app_style
     from desktop.native.window import NativeWindow
@@ -59,7 +58,9 @@ SCHOOL = {
     "days": [0],
 }
 CLUB = {"id": "club", "title": "Club", "kind": "locked", "start": "10:00", "duration_min": 30, "days": [1]}
-PALE, STRONG = "#bfdbfe", "#3b82f6"
+# School's colours: the pale fill and strong mark of a light look, and the tone and mark of a dark one.
+PALE, STRONG = "#d1e7ff", "#4687d8"
+TONE, DEEP_MARK = "#65a7fa", "#65a7fa"
 # The hosts of the hands these tests make: a hand is its host's Qt child and keeps no reference to it.
 HOSTS: list = []
 
@@ -131,37 +132,39 @@ def pixel(calendar: ClassicWeek, block_id: str, where: str) -> str:
 
 def test_the_category_table_is_what_these_tests_assume() -> None:
     assert (CATEGORIES["class"]["color"], CATEGORIES["class"]["mark"]) == (PALE, STRONG)
+    assert CATEGORIES["class"]["dark"] == (TONE, DEEP_MARK)
 
 
 def test_a_filled_block_is_the_pale_category_colour_with_ink_that_reads(qapp: QApplication) -> None:
     calendar, palette = week(qapp, look_of(), pack="slate")
-    assert shape(calendar, "school") == (PALE, "#000000", None, None)
+    assert shape(calendar, "school") == (PALE, palette["text"], None, None)
     # No category: the palette's own block colours, not a fixed light grey that glares on a dark pack.
     assert shape(calendar, "club")[:2] == (palette["block_locked"], palette["block_locked_ink"])
     assert pixel(calendar, "school", "inside") == PALE
 
 
 def test_a_filled_block_on_a_dark_pack_is_deep_with_light_ink(qapp: QApplication) -> None:
-    """Pale blue on near-black glared, and its black ink read as a hole in the page."""
+    """Pale blue on near-black glared, and its black ink read as a hole in the page. The fill is
+    School's tone sunk into the panel, as CSS's color-mix in OKLab makes it, in the look's own ink."""
     calendar, palette = week(qapp, look_of())
-    deep = mix(STRONG, palette["panel"], DARK_FILL)
-    assert shape(calendar, "school") == (deep, "#ffffff", None, None)
+    deep = mix_oklab(TONE, palette["panel"], SINK)
+    assert shape(calendar, "school") == (deep, palette["text"], None, None)
     assert pixel(calendar, "school", "inside") == deep
     assert shape(calendar, "club")[:2] == (palette["block_locked"], palette["block_locked_ink"])
 
 
 def test_an_outlined_block_is_drawn_as_one_outline_in_the_strong_colour(qapp: QApplication) -> None:
     calendar, palette = week(qapp, look_of(blocks="outlined"))
-    assert shape(calendar, "school")[:3] == (palette["grid"], palette["text"], STRONG)
-    assert pixel(calendar, "school", "left") == STRONG
+    assert shape(calendar, "school")[:3] == (palette["grid"], palette["text"], DEEP_MARK)
+    assert pixel(calendar, "school", "left") == DEEP_MARK
     assert pixel(calendar, "school", "inside") == palette["grid"]
 
 
 def test_an_edge_block_is_a_plain_card_with_the_strong_colour_down_its_left(qapp: QApplication) -> None:
     calendar, palette = week(qapp, look_of(blocks="edge"))
     fill, _ink, _outline, edge = shape(calendar, "school")
-    assert (fill, edge) == (palette["panel"], STRONG)
-    assert pixel(calendar, "school", "left") == STRONG
+    assert (fill, edge) == (palette["panel"], DEEP_MARK)
+    assert pixel(calendar, "school", "left") == DEEP_MARK
     assert pixel(calendar, "school", "inside") == palette["panel"]
 
 

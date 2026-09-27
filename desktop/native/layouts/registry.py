@@ -62,8 +62,10 @@ class LayoutSpec:
 
 
 def _colour(spec_colourways: Colourways) -> Option:
+    """Match my look first, so it is what a design wears until a student picks one of its own
+    colourways (decision 3 of 0.17). A colourway saved before then still loads as saved."""
     named = tuple(Choice(value, label) for value, label, _ in spec_colourways)
-    return Option("colour", "Colours", "style", (*named, Choice(MATCH, "Match my look")))
+    return Option("colour", "Colours", "style", (Choice(MATCH, "Match my look"), *named))
 
 
 def _show(key: str, label: str, level: str = "detail") -> Option:
@@ -309,9 +311,15 @@ def complete(tokens: dict[str, str]) -> dict[str, str]:
 
 
 def match_tokens(palette: dict) -> dict[str, str]:
-    """A design in the student's own look: the colours the rest of the app is already wearing."""
+    """A design in the student's own look: the colours the rest of the app is already wearing. Its
+    cards are the look's cards, never tinted with the accent, which is not spread over anything larger
+    than a control (decision 1 of 0.17). On a flat look, where cards sit in the page, a little of the
+    text colour tells them from it."""
+    surface, page = palette["panel"], palette["window"]
+    card = surface if contrast(surface, page) >= 1.02 else mix(palette["text"], page, 0.05)
     return complete(
         {
+            **{f"card_{name}": card for name in "abcd"},
             "bg": palette["window"],
             "bg_ink": palette["text"],
             "bg_muted": palette["muted"],

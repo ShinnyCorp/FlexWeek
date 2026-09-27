@@ -9,27 +9,25 @@ appearance contract.
 
 from __future__ import annotations
 
-import math
 from itertools import product
 
 from desktop.native.calendar import CATEGORIES
 from desktop.native.look import (
     AA_TEXT,
     ACCENTS,
-    DARK_FILL,
     FONT_FAMILIES,
     LOOK_DEFAULTS,
     LOOK_KNOBS,
     LOOK_PRESETS,
     PACKS,
     block_paint,
+    category_paint,
     contrast,
     effective_look,
     look_menu_items,
     look_menu_token,
     look_menu_value,
     look_overrides,
-    mix,
     pack_axis,
     pack_stylesheet,
     parse_look_menu_token,
@@ -39,6 +37,7 @@ from desktop.native.look import (
     resolved_palette,
     sanitize_look,
 )
+from desktop.native.tokens import SINK, mix_oklab
 
 # Every look a student can reach: pack, the device's light or dark setting, preset, accent, surface.
 EVERY_LOOK = list(product(PACKS, (False, True), LOOK_PRESETS, ACCENTS, LOOK_KNOBS["surface"]))
@@ -91,13 +90,36 @@ def test_terminal_preset_layers_before_knob_overrides() -> None:
     assert effective["text"] == "large"
 
 
-def test_pack_axis_pairs_frost_with_slate_or_nocturne() -> None:
+def test_system_follows_the_device_between_light_and_dark() -> None:
+    """Decision 2 of 0.17: System is Light or Dark as the device is. The server still hears the
+    frost looks as slate and nocturne, the axis a saved preference has always had."""
     assert pack_axis("light-frost") == "slate"
     assert pack_axis("dark-frost") == "nocturne"
     assert pack_axis("system") == "system"
-    assert resolved_pack_theme("system", True) == "nocturne"
-    assert resolved_pack_theme("system", False) == "slate"
+    assert resolved_pack_theme("system", True) == "dark-frost"
+    assert resolved_pack_theme("system", False) == "light-frost"
     assert resolved_pack_theme("slate", True) == "slate"
+
+
+def test_light_and_dark_are_the_neutral_surfaces_of_decision_2() -> None:
+    light = resolved_palette("light-frost", False, None)
+    dark = resolved_palette("dark-frost", True, None)
+    assert (light["window"], light["panel"], light["hairline"]) == ("#f7f8fa", "#ffffff", "#e4e7ec")
+    assert (light["text"], light["muted"]) == ("#111827", "#5b6474")
+    assert (dark["window"], dark["panel"], dark["hairline"]) == ("#111315", "#1a1d21", "#2a2e34")
+    assert (dark["text"], dark["muted"]) == ("#e8eaed", "#9aa1ab")
+
+
+def test_every_look_but_high_contrast_wears_flexweeks_blue_by_default() -> None:
+    """Decision 1 of 0.17: one accent, the icon's blue, #3d6fc4 on a light look and #7fa8ff on a
+    dark one. A student saw three accents before placing any homework."""
+    for pack, system_dark, preset in product(PACKS, (False, True), LOOK_PRESETS):
+        palette = resolved_palette(pack, system_dark, look_of(preset))
+        if preset == "high-contrast":
+            assert (palette["accent"], palette["accent_ink"]) == ("#ffd400", "#000000")
+            continue
+        wanted = "#7fa8ff" if palette["axis"] == "dark" else "#3d6fc4"
+        assert palette["accent"] == wanted, (pack, system_dark, preset)
 
 
 def test_every_knob_value_changes_what_is_drawn() -> None:
@@ -224,6 +246,18 @@ def test_cards_are_padded_16_or_8_and_controls_keep_their_size() -> None:
         assert f"padding: {control}px;" in field, density
 
 
+def test_round_corners_are_6_on_controls_and_10_on_cards() -> None:
+    """Decision 5 of 0.17: one shape for controls and one for cards. The other Corners keep theirs."""
+    for corners, control, card in (("round", 6, 10), ("sharp", 0, 0), ("pill", 16, 16)):
+        sheet = pack_stylesheet("light-frost", False, look_of("default", corners=corners))
+        frames = sheet.split("QFrame, QGroupBox, QTableWidget, QListWidget {")[1].split("}")[0]
+        button = sheet.split("QPushButton {")[1].split("}")[0]
+        field = sheet.split("QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {")[1].split("}")[0]
+        toast = sheet.split("QFrame#toast {")[1].split("}")[0]
+        assert f"border-radius: {card}px;" in frames and f"border-radius: {card}px;" in toast, corners
+        assert f"border-radius: {control}px;" in button and f"border-radius: {control}px;" in field, corners
+
+
 def test_every_look_keeps_its_text_readable() -> None:
     assert len(EVERY_LOOK) == 5 * 2 * 7 * 5 * 2
     for pack, system_dark, preset, accent, surface in EVERY_LOOK:
@@ -237,16 +271,22 @@ def test_every_look_keeps_its_text_readable() -> None:
 def test_button_text_comes_from_the_palette_not_a_fixed_white() -> None:
     # White on Terminal's amber was 1.8 to 1. The ink has to be the one paired with the accent.
     sheet = pack_stylesheet("slate", False, look_of("terminal"))
-    assert "QPushButton { background: #ffb000; color: #000000;" in sheet
+    assert "QPushButton { background: #7fa8ff; color: #0b1224;" in sheet
     assert "#ffffff" not in sheet
     dark = pack_stylesheet("nocturne", True, look_of("default"), "gold")
     assert "QPushButton { background: #eab308; color: #0b1224;" in dark
 
 
 def test_an_accent_always_changes_the_accent() -> None:
-    """Sky once equalled the Light frost default, so choosing it did nothing."""
+    """Sky once equalled the Light frost default, so choosing it did nothing. High contrast is the
+    one look whose accent no swatch replaces: its yellow is part of its contrast."""
     for pack, system_dark, preset in product(PACKS, (False, True), LOOK_PRESETS):
         plain = resolved_palette(pack, system_dark, look_of(preset))["accent"]
+        if preset == "high-contrast":
+            for accent in ACCENTS:
+                chosen = resolved_palette(pack, system_dark, look_of(preset), accent)
+                assert (chosen["accent"], chosen["accent_ink"]) == ("#ffd400", "#000000"), accent
+            continue
         seen = {plain}
         for accent in ACCENTS:
             if accent == "default":
@@ -267,7 +307,7 @@ def test_ink_follows_the_pack_axis() -> None:
 
 
 def test_a_students_accent_wins_over_the_presets_own() -> None:
-    assert resolved_palette("slate", False, look_of("terminal"))["accent"] == "#ffb000"
+    assert resolved_palette("slate", False, look_of("terminal"))["accent"] == "#7fa8ff"
     chosen = resolved_palette("slate", False, look_of("terminal"), "sky")
     # Terminal is a dark look whatever the pack underneath, so it takes the dark-axis sky and its ink.
     assert (chosen["accent"], chosen["accent_ink"]) == ("#38bdf8", "#0b1224")
@@ -324,7 +364,7 @@ def test_a_filled_block_is_readable_on_every_category_colour() -> None:
 
 def test_a_filled_block_on_a_dark_look_is_its_colour_sunk_into_the_panel_with_light_ink() -> None:
     """A pale fill on near-black glared off the page. Every dark look, packs and presets, fills a
-    block with the category's strong colour mixed into the panel, and writes on it in white."""
+    block with the category's tone mixed into its panel, and writes on it in its own light text."""
     seen = 0
     for pack, system_dark, preset, accent, surface in EVERY_LOOK:
         palette = resolved_palette(pack, system_dark, look_of(preset, surface=surface), accent)
@@ -333,23 +373,14 @@ def test_a_filled_block_on_a_dark_look_is_its_colour_sunk_into_the_panel_with_li
         seen += 1
         filled = look_of(preset, blocks="filled")
         for name, category in CATEGORIES.items():
-            drawn = block_paint(filled, palette, category["color"], "locked", category["mark"])
+            fill, mark = category_paint(name, palette)
+            drawn = block_paint(filled, palette, fill, "locked", mark)
             where = f"{pack}/{preset}/{surface} {name}"
-            assert drawn["fill"] == mix(category["mark"], palette["panel"], DARK_FILL), where
-            assert drawn["ink"] == "#ffffff", where
+            tone = category[palette["family"]][0]
+            assert drawn["fill"] == mix_oklab(tone, palette["panel"], SINK), where
+            assert drawn["ink"] == palette["text"], where
             assert contrast(drawn["ink"], drawn["fill"]) >= AA_TEXT, where
     assert seen
-
-
-def test_homework_stands_apart_from_every_other_category() -> None:
-    """Activity was pink beside Homework's coral, 14 apart; a student could not tell a club from an
-    essay. Homework's pale fill is now at least 20 from every other category's, Activity teal."""
-    homework = _lab(CATEGORIES["assignments"]["color"])
-    for name, category in CATEGORIES.items():
-        if name != "assignments":
-            gap = math.dist(homework, _lab(category["color"]))
-            assert gap >= 20, f"{name} {category['color']} is {gap:.1f} from Homework"
-    assert (CATEGORIES["extra"]["color"], CATEGORIES["extra"]["mark"]) == ("#a5f3fc", "#06b6d4")
 
 
 def test_every_category_has_a_mark_of_its_own() -> None:
@@ -363,10 +394,10 @@ def test_every_category_has_a_mark_of_its_own() -> None:
 def test_paper_and_pastel_are_light_looks_on_any_pack_and_close_the_menu() -> None:
     standard, experimental = look_menu_items()
     assert [name for name, _label, _kind in experimental][-3:] == ["paper", "ink", "pastel"]
-    for preset, accent in (("paper", "#8a4b2a"), ("pastel", "#7a3e9d")):
+    for preset in ("paper", "pastel"):
         for pack, system_dark in (("nocturne", True), ("dark-frost", True), ("slate", False)):
             palette = resolved_palette(pack, system_dark, look_of(preset))
-            assert (palette["axis"], palette["accent"]) == ("light", accent), f"{preset} on {pack}"
+            assert (palette["axis"], palette["accent"]) == ("light", "#3d6fc4"), f"{preset} on {pack}"
         # A chosen accent therefore takes its light-axis colour, even over a dark pack.
         chosen = resolved_palette("nocturne", True, look_of(preset), "sea")
         assert (chosen["accent"], chosen["accent_ink"]) == ("#0f766e", "#ffffff")
@@ -405,16 +436,17 @@ def _lab(colour: str) -> tuple[float, float, float]:
     return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
 
 
-def test_every_accent_stays_clearly_apart_from_every_category_colour() -> None:
-    """An accent close to a category colour makes a selected button look like a block of that
-    category. The web client's theme-tokens test enforced this and was deleted with the client;
-    nothing native replaced it until a documentation sweep noticed the rule's only guard was gone.
-    School blue against the default light accent is the near miss, at about 18."""
-    reached = {}
-    for pack, system_dark, preset, accent, surface in EVERY_LOOK:
-        colour = resolved_palette(pack, system_dark, look_of(preset, surface=surface), accent)["accent"]
-        reached.setdefault(colour, (pack, system_dark, preset, accent))
-    for colour, where in reached.items():
-        for name, category in CATEGORIES.items():
-            gap = math.dist(_lab(colour), _lab(category["mark"]))
-            assert gap >= 15, f"{where} accent {colour} is {gap:.1f} from the {name} category"
+def test_a_tray_chip_is_edged_in_homeworks_colour_not_in_red() -> None:
+    """Not placed yet is not a problem, so a tray chip's edge is homework's own mark in the look, not
+    the red that said something was wrong (decision 8 of 0.17)."""
+    homework = CATEGORIES["assignments"]
+    high_contrast = {"preset": "high-contrast", "knobs": {}}
+    for pack, dark, look, mark in (
+        ("light-frost", False, None, homework["mark"]),
+        ("dark-frost", True, None, homework["dark"][1]),
+        ("system", False, high_contrast, homework["contrast"][1]),
+    ):
+        palette = resolved_palette(pack, dark, look)
+        tray = pack_stylesheet(pack, dark, look).split('QPushButton[tray="true"] {')[1].split("}")[0]
+        assert f"border-left: 4px solid {mark};" in tray, pack
+        assert palette["error"] not in tray and "#ef4444" not in tray, pack

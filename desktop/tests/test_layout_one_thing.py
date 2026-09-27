@@ -171,14 +171,14 @@ def test_option_colours_repaint_the_screen(qapp: QApplication) -> None:
     def corner(view: OneThingView) -> str:
         return view.grab().toImage().pixelColor(4, 4).name()
 
-    assert corner(shown(qapp, "19:00")) == "#000000"
+    assert corner(shown(qapp, "19:00", colour="black")) == "#000000"
     assert corner(shown(qapp, "19:00", colour="paper")) == "#f7f1e3"
     look = resolved_palette("light-frost", False, None, "default")
     assert corner(shown(qapp, "19:00", colour="match")) == look["window"]
 
 
 def test_the_label_is_painted_in_the_accent_not_the_resets_colour(qapp: QApplication) -> None:
-    view = shown(qapp, "19:00")
+    view = shown(qapp, "19:00", colour="black")
     picture = view.findChild(QLabel, "oneLabel").grab().toImage()
     inked = {picture.pixelColor(x, y).name() for x in range(picture.width()) for y in range(picture.height())}
     assert "#fb923c" in inked
