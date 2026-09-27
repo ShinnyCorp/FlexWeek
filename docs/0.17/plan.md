@@ -1,221 +1,238 @@
 # FlexWeek 0.17: the working plan
 
-0.17 is presentation: one visual system for every screen and motion that shows what changed.
-It takes Claude's appearance review (`look-review.md`) as the brief, with AL's confirmed bugs
-(`design-review.md`, "Bugs that need no decision") folded in. Where Grok's proposal and Claude's
-review differ, the review's call stands; each is marked below. Jonathan: "Let's finalize your plan"
-(27 September). Functionality changes only where a look needs it.
+0.17 is presentation, in three phases. First, one visual system for every screen. Second, a
+revised version of every design and every look, each shown as two options in a clickable mock-up
+for Jonathan to pick. Third, building what he picks. The brief is Claude's appearance review
+(`look-review.md`), with AL's confirmed bugs (`design-review.md`, "Bugs that need no decision")
+folded in. Where Grok's proposal and the review differ, the review's call stands; each place is
+marked. Jonathan, 27 September: "Let's finalize your plan", then "for the current UI options we
+should definitely focus on refining/overhauling them … revised versions that are much more
+improved". Functionality changes only where a look needs it.
 
-## Decisions (27 September)
+## Phase 0. Research (done)
 
-### The system
+`ui-ux-pro-max` was searched for each design and look (the style, typography, colour and UX
+catalogues). Its generic answer for a student planner was Claymorphism with Baloo 2 and Comic Neue,
+a children's app, which is wrong for high schoolers; so each design and look was searched on its
+own, and the entries used are named in each brief below. UX rules taken as hard constraints:
+Reduced Motion (high), Color Only (high: never colour alone), Focus States (high), Contrast
+Readability (high), Continuous Animation (no decorative loops), Excessive Motion.
 
-1. **One accent, chosen once.** The default is FlexWeek's blue (`#3d6fc4` on light, `#7fa8ff` on
-   dark), the icon's colour. Settings offers it and the existing Sky, Sea, Gold and Sand as
-   swatches. No look, design or screen replaces it, and it is never mixed into an area larger than a
-   control: not the page, not today's column.
+## Phase 1. The shared system (decisions 1 to 10)
+
+1. **One accent, chosen once.** FlexWeek's blue by default (`#3d6fc4` on light, `#7fa8ff` on dark),
+   the icon's colour; Sky, Sea, Gold and Sand as swatches. No look, design or screen replaces it,
+   and it is never mixed into an area larger than a control.
 2. **Neutral surfaces.** Light: page `#f7f8fa`, cards `#ffffff`, hairlines `#e4e7ec`. Dark: page
-   `#111315`, cards `#1a1d21`, hairlines `#2a2e34`. These become the looks called Light and Dark
-   (Light frost and Dark frost keep their ids and load as these). System follows the device. Slate,
-   Nocturne and the presets stay under Experimental with their tints.
-3. **Designs follow the look.** Every design's Colours option defaults to Match my look; the old
-   colourways stay as choices. Day dial's navy becomes its "Night" colourway, One thing's black and
-   orange its "Poster". The window's chrome always takes the look and the accent, never a design's
-   colourway (`window.py` `_chrome_palette` returns the look's palette for the chrome).
-4. **A type scale** of five sizes over the text knob: caption 11, body 13, heading 15, title 20,
-   display 28 (points at Normal; Small and Large scale all five). Two weights, 400 and 600; 700
-   only for display numbers (the focus countdown and the dial's time). Every `font-size` and
-   `font-weight` in `look.py` comes from the scale.
-5. **Spacing and shape.** Spacing steps 4, 8, 12, 16, 24, 32. Radii: 6 for controls, 10 for cards,
-   16 for sheets, the sign-in card, the toast and the command bar; pills only for chips and the
-   segmented track.
-6. **Elevation.** Two shadows only, drawn with `QGraphicsDropShadowEffect`: a small one (0 1 3, 8 %)
-   for the raised segment and cards that float (toast), a large one (0 12 32, 16 %) for sheets, the
-   command bar and the sign-in card. Nothing else casts a shadow.
-7. **Icons.** Lucide (ISC licence) SVGs in `desktop/assets/icons/`, 16 and 20 px, 1.75 stroke, tinted
-   to the text colour: settings, chevron-left, chevron-right, chevron-down, plus, minus, search,
-   book-open (homework), trash, copy, check, eye, eye-off, clock, calendar, bell, palette, laptop,
-   timer, log-out. No Unicode glyph stands in for an icon.
-8. **Red means a problem.** Red is kept for "cannot go here", "past due" and destructive actions.
-   Due chips, not-placed edges and the recovery-code count are drawn in neutral or category colour.
-9. **One category family.** Fills at the same lightness and chroma (OKLCH L 0.92, C 0.045), marks at
-   L 0.62, C 0.14, hues: School 255, Homework 25, Study 295, Exercise 150, Activity 205, Meals 60,
-   Sleep 275, Free (C 0.01). Dark fills use the marks sunk into the card, as 0.16 does. Homework
-   also carries a non-colour cue: a book icon at the start of its title when the block is 20 px or
-   taller, and in chips.
-10. **Checked by numbers.** A test holds decisions 1, 2, 8 and 9: every fill within 0.02 lightness of
-    the others; text on every fill at 4.5:1; homework's mark at least ΔE 20 from every other mark
-    under a deuteranopia simulation; High contrast text at 7:1; the accent never used as a large
-    fill.
+   `#111315`, cards `#1a1d21`, hairlines `#2a2e34`. These are the looks Light and Dark (Light frost
+   and Dark frost keep their ids and load as these); System follows the device.
+3. **The chrome follows the look.** The top bar and the window's frame always take the look and the
+   accent; a design colours only its own content (`window.py` `_chrome_palette`). A design's signature
+   colourway stays as a choice; its default is Match my look.
+4. **A type scale**: caption 11, body 13, heading 15, title 20, display 28 (points at Normal; Small and
+   Large scale all five); weights 400 and 600, and 700 only for display numbers. Every size and weight
+   in `look.py` comes from it. (Catalogue: Swiss Modernism 2.0, "clear hierarchy, mathematical
+   ratios".)
+5. **Spacing and shape.** Steps 4, 8, 12, 16, 24, 32. Radii 6 (controls), 10 (cards), 16 (sheets, the
+   sign-in card, the toast, the command bar); pills only for chips and the segmented track.
+6. **Elevation.** Two shadows only (`QGraphicsDropShadowEffect`): small (0 1 3, 8 %) and large (0 12 32,
+   16 %).
+7. **Icons.** Lucide (ISC) SVGs in `desktop/assets/icons/`, 16 and 20 px, 1.75 stroke, tinted to the
+   text: settings, chevrons, plus, minus, search, book-open, trash, copy, check, eye, eye-off, clock,
+   calendar, bell, palette, laptop, timer, log-out. No Unicode glyph stands in for an icon (checklist:
+   "No emoji icons"). QtSvg is in PySide6 and both builds already ship `vectorimageformats`.
+8. **Red means a problem**: "cannot go here", "past due" and destructive actions only.
+9. **One category family**: fills at OKLCH L 0.92, C 0.045; marks at L 0.62, C 0.14; hues School 255,
+   Homework 25, Study 295, Exercise 150, Activity 205, Meals 60, Sleep 275, Free (C 0.01). Homework also
+   carries a book icon (Color Only rule).
+10. **Checked by numbers** (`desktop/tests/test_tokens.py`), in every look: fills within 0.02 of each
+    other in lightness; text on every fill and surface at 4.5:1 (7:1 in High contrast); homework's mark
+    at least ΔE 20 from every other mark under a deuteranopia simulation; the accent never used as a
+    large fill; every font size and weight on the scale.
 
-### Screens
+## Phase 2. Revised versions of every design and look
 
-11. **Top bar**: ‹ › Today, then the title, so the arrows never move when the title's width changes.
-    Icons from 7. Add is one pill with a 1-pixel divider before its arrow. Plan my homework is a
-    secondary button (accent text on a 10 % accent tint). More in the text colour with a chevron.
-    Every button has hover (6 % darker), pressed (10 %) and a 2-pixel focus ring in the accent at
-    40 %. The segmented control's chosen segment is raised with the small shadow; the track is the
-    page darkened 4 %.
-12. **The grid**: thin overlay scroll bars (6 px, shown on hover, never a divider); zoom as one small
-    "− +" pill with the level between; hour rules at 8 % white on Dark and no day rules there; the
-    last label never cut. The week opens at now every time, after a look change too, and after Plan
-    it scrolls to the first block the plan placed.
-13. **Today**: its header gets the accent (a filled date chip, as Month has); its column at most a 3 %
-    wash of the text colour, never the accent; Day has no wash.
-14. **Blocks in Today's app** get a 3-pixel category edge, titles 600, times in the muted colour, a
-    3-pixel gap between neighbours, no "·" left at a line's end, and below three letters of room only
-    the colour. The 12-hour clock writes short ranges ("4–5:30 PM"). The "…" never hides only the
-    length.
-15. **Side panel**: a Next card (a small "Next" label, the title, "16:00 · in 20 min"); section labels
-    in the muted colour at caption 600; the focus list in time order with times right-aligned and
-    no double space; chips with a straight 3-pixel inset edge in the category colour and the length
-    right-aligned; the panel as tall as its content, with a quiet "This week" row of homework hours
-    per day under it. While a focus timer runs, it is the panel's first card (Grok: agreed), and no
-    card stacks above the hours.
-16. **Day** drops its Next band (the side panel has it) and draws its summary with category dots.
-17. **Month** sizes its rows to their chips up to a maximum and marks this week with a tinted band
-    (review, against Grok's six even rows); due is a small "Due" flag, not a red box; days outside
-    the month dim their numbers instead of taking a tint; its scroll bar is the overlay one.
-18. **The plan result** is a slim one-line bar under the top bar ("Placed 2 · 1 without a time ·
-    Details"), one filled button (Got it) and one text button (Details); its count and the toast's
-    count are the same number (Grok and AL: agreed).
-19. **My day, Day dial**: the hand stops at the ring's inner edge; the time sits below the hub;
-    sentence case everywhere; rounded rectangles, not pills; "homework", not "task"; one "Nothing
-    else today" line; lengths in a right-aligned column.
-20. **Focus screen**: follows the look; a ring around the countdown drawn as the dial's ring; Pause
-    filled, Skip and Finish as text buttons; Back as a chevron button. Quick focus and F both open it
-    ready and wait for Start.
-21. **Toast**: dark (`#1f2937`, and `#e8eaed` on Dark), white text, Undo in the accent's light
-    shade, 16 radius, the small shadow, bottom-right over the side panel rather than over the hours;
-    it belongs to the page it was said on and goes when the page changes.
-22. **Ctrl+K**: a 40 % black backdrop that fades in; the large shadow; groups (Add, Go to,
-    Homework) with labels; an icon and the shortcut on each row; an overlay scroll bar.
-23. **Menus**: the right-click menu has icons, a separator above Delete and Delete homework, and
-    both in red. More puts Log out after a separator, and "Advanced" says what it holds (Copy and
-    paste, Restore points, Reload).
-24. **Dialogs**: Add homework and Edit event open as sheets inside the window (a card over a dimmed
-    window); the rest stay windows (review, against Grok's "all dialogs"). Every form's body is the
-    card, not a box in a card; labels on their fields' text baseline; one width per kind of field;
-    the event editor's "This day only | Every selected day" is a segmented control under the days,
-    shown only when the block repeats; Save stays where each platform puts it (review, against
-    Grok's "Save on the right"). Account is three cards: Password, Recovery codes, Your data. A
-    disabled primary keeps its shape at 40 %. Routines uses the app's checkboxes throughout.
-25. **Settings**: the column centred, up to 960 pixels; section icons and a 3-pixel accent bar on the
-    chosen one; Look as "Light | Dark | System" with "More looks" (the experimental ones) under it;
-    Accent as swatches; one field width per kind; a hairline above the footer and 24 pixels at the
-    end of each section, so nothing runs under the footer; "Experimental" as a small tag, not a
-    heading that looks pickable. No icons on individual rows (review: later).
-26. **Sign in**: the wordmark above a centred card of radius 16 with the large shadow; one heading
-    ("Welcome to FlexWeek", then "Welcome back"); the password's Show as an eye inside the field;
-    Create account hides Forgot password; the page is the look's page. No week preview (review:
-    later). Recovery codes in Inter with tabular figures.
-27. **Setup**: content centred up to 880 pixels; a tick on finished steps; Next the one filled
-    button; the school hint only when no day is picked; each sound's Play as a play icon.
-28. **Help**: shortcuts drawn as keycaps; no "tutorial is coming" line; a fade at the scroll edge.
-    **About**: the logo.
-29. **High contrast**: 7:1 text, the view control readable, rules at 40 % white, no cut chips, no
-    sideways scroll bar in the side panel.
-30. **Timeline** (the standard alternative): no second date line under the top bar's title, day
-    names at 600, homework in its category fill (no black slabs), short blocks colour only, and no
-    own Add (the top bar's). **Mission control**: words for its labels ("Not placed yet",
-    "Week 39"), lanes from the top. **Bento**: its Add secondary in the accent. **Clay deck**: the
-    first line of a tilted card never cut.
+### How the options are shown
 
-### Motion
+A clickable mock-up, `docs/mockups/look-017/` (one self-contained `index.html` and `demo.py`, as
+`look-concepts` was), with the same busy week as the review. For each design it shows the current
+0.16 screen (from `scratch/look016`) beside two revised directions, A and B, drawn in the Phase 1
+system. **A** refines the design in place; **B** changes its structure or interaction, per Jonathan's
+standing rule that options differ in layout, not paint. Each can be switched between Light, Dark and
+the design's signature colourway, and between Week and Day. A second tab shows every revised look on
+Today's app's Week, and a third the system itself (type scale, colours, controls, motion as a
+short loop). Jonathan picks A, B or "keep as it is" for each; his picks are written into this file as
+decisions before Phase 3 starts.
 
-31. **Fade through, not cross.** Every page change fades the old page out in 90 ms and the new one
-    in in 120 ms (OutCubic), so no frame shows two pages at half strength. Day, Week and Month add a
-    12-pixel slide in the direction of the segment; the week's ‹ › keep their drift.
-32. **Chrome and content change in the same frame.** The new page is built before anything changes;
-    the chrome's colours change at the fade's midpoint, with the content.
-33. **Settings slides in** from the right over the week dimmed 20 %, 200 ms; Done slides it back.
-34. **Sheets, dialogs and Ctrl+K** fade and rise 8 pixels through an opacity effect on their content,
-    which Wayland honours; the backdrop fades with them.
-35. **The segmented selection slides** (a painted indicator, 160 ms), and hover and press tints need
-    no animation (11).
-36. **Four motion levels**: Normal, More, Reduce (fades only: no slides, drifts or sliding blocks)
-    and Off.
-37. **Plan's slide is seen**: the view scrolls to the placed blocks first (12), then they slide.
+### What every revised design must pass
+
+The tokens test in every look; no clipped text at 1280x800, 1150x768 with large text, and 800 wide;
+the rig's Day and Week (and My day for day screens); the accent followed; screenshots read. A design
+that passes leaves "Experimental styles"; when all have, the heading goes.
+
+### The designs
+
+- **Today's app (Calendar).** The reference for the system; the review's sections 1 to 5 are its
+  fixes (edged blocks, the Next card, the ordered focus list, the arrows before the title, opening at
+  now). *A, Refined grid*: today's structure, the side panel as cards. *B, Rail*: a slim left rail
+  (a mini month, Next, Not placed yet) and the week using the full width, as Notion Calendar and
+  Fantastical do; the side panel goes. Catalogue: Flat Design, Swiss Modernism 2.0; Inter.
+- **Timeline (Agenda).** Now: heavy black day names, homework as black slabs, a doubled title, "D" for
+  every dinner. *A, Notebook*: E-Ink / Paper (off-white `#fdfbf7`, ink `#1a1a1a`, hairline rules, no
+  shadows), day names in Newsreader (a serif, OFL) with Inter for the rest, blocks as ink-outlined
+  cards with a category tab, the tray as sticky notes in the margin. *B, Planner spread*: the week as
+  a two-page spread, Monday to Wednesday on the left page and Thursday to Sunday with notes on the
+  right, each day a column, like a paper planner opened flat. Catalogue: E-Ink / Paper; Classic
+  Elegant pairing (serif display, Inter body).
+- **Mission control (Dashboard).** Now: internal labels ("CARGO BAY", "PLAN 3/5 PLACED"), lanes
+  floating in the middle, "D" boxes. *A, Flight deck*: HUD / Sci-Fi FUI tempered by the Data-Dense
+  Dashboard entry, which rates HUD's thin lines poorly for accessibility: lanes from the top, numbers
+  in JetBrains Mono (OFL) and words in Inter, the accent as the only bright colour, the deadline radar
+  and load chart as real small charts, 30-minute blocks as coloured ticks. *B, Ops board*: a strip of
+  four figures (planned today, due this week, free time left, focus minutes), the lanes under it, a
+  deadline table on the right sorted by time left. Signature colourway: dark; Light "Control room" too.
+- **Bento (Dashboard).** Now: a saturated indigo board with red-orange controls and a second Add.
+  *A, Bento*: the Bento Box Grid entry as written (neutral `#f5f5f7` page, white tiles at 16 to 24
+  radius, 16 gaps, a hero tile of hours with an accent header, tiles for Next, Due soon, This week's
+  load and Not placed); indigo as a colourway. *B, Today tiles*: today's hours as the hero and the
+  other six days as small tiles showing each day's load and first item; picking a tile swaps it into
+  the hero.
+- **Retro desktop.** Now: a Windows 95 pastiche drawn in Inter. *A, Windows 98, faithful*: two-pixel
+  bevels, Win98's navy-to-blue title gradient, a pixel UI face under an open licence (chosen in the
+  mock-up; Pixel Retro's VT323 for deadlines.txt), window icons, a Start button and a taskbar clock.
+  *B, System 7*: one window with tabs (Week, Deadlines, Up next) under a menu bar, one-bit black and
+  white with the accent as the only colour. Catalogue: Pixel Retro pairing; Flat Design's "no
+  gradients" does not apply here by design.
+- **Clay deck.** Now: a different pastel per day, tilted cards cutting their first line. *A, Soft deck*:
+  Claymorphism tempered by Soft UI Evolution (inner highlight and soft outer shadow, 20 radius), the
+  category family instead of a pastel per day, cards straight by default and fanned at 3 degrees at
+  most as an option. *B, Card carousel*: one large card per day in a row, today centred and its
+  neighbours peeking, moved with the arrows or the wheel.
+- **One thing (day screen).** Now: all caps, black and orange, taking over the chrome. *A, Poster*:
+  Exaggerated Minimalism (one accent, the app's; display type at 96 to 140 pt, Inter 700, tight
+  tracking; sentence case, with caps as an option), white in Light and black in Dark; the day bar a
+  thin segmented timeline. *B, Countdown*: the screen as one large ring counting down to the next
+  thing, "then" listed under it: One thing and the dial in one.
+- **Day dial (day screen).** Now: the hand past the ring, the time on the hub, caps, pills, "task".
+  *A, Dial*: Soft UI Evolution (a ring with 2-degree gaps in the category family, hour ticks outside
+  it, the hand to the inner edge, the time under the hub, sentence case, a length column in the list),
+  light in Light. *B, Next twelve hours*: an arc of the next twelve hours at twice the size, the rest
+  of the day as a small ring beside it.
+
+### The looks
+
+Each look is a full token set (page, card, text, muted, hairline, block mode, knobs) that passes the
+tokens test; none replaces the accent.
+
+- **Light, Dark, System**: decisions 1 and 2.
+- **High contrast**: the Inclusive Design entry (7:1 text, 3 to 4 px focus rings, symbols with colour),
+  rules at 40 % white, a readable view control, nothing cut.
+- **Slate**: cool and professional (Swiss Modernism 2.0): page `#eef1f5`, white cards, ink `#0f172a`.
+- **Nocturne**: Dark Mode (OLED): page `#0a0e27`, cards `#121633`, low-emission text `#e0e4f0`.
+- **Paper**: E-Ink / Paper: `#fdfbf7`, ink `#1a1a1a`, Newsreader headings, no shadows, and Reduce
+  motion by default ("distinct page turns, sharp transitions").
+- **Ink**: Paper's night counterpart: charcoal `#1c1b19`, warm ivory text, serif headings.
+- **Terminal**: the Developer Mono pairing (JetBrains Mono throughout), GitHub-dark surfaces
+  (`#0d1117`, text `#c9d1d9`), green `#3fb950` only for success; no glow or scanlines, which the
+  Cyberpunk entry rates poor for accessibility.
+- **Poster**: Neubrutalism (2-pixel black borders, 4-pixel offset shadows, flat colour on cream,
+  bold type); the one look allowed a third shadow, the offset.
+- **Pastel**: Soft UI Evolution's improved-contrast pastels on lavender, 12 radius, soft shadows, and
+  text at slate-900 so it passes 4.5:1.
+
+### The knobs
+
+- **Surface**: Flat or Layered (frost renamed for what it does).
+- **Corners**: Soft (6 and 10), Sharp (0 and 2), Round (10 and 16).
+- **Depth**: None, Soft (decision 6) or Bold (Poster's offset).
+- **Font**: Sans (Inter), Serif (Newsreader headings, Inter body) or Mono (JetBrains Mono); Newsreader
+  and JetBrains Mono are bundled like Inter, so each looks the same on every computer.
+- **Blocks**: Edge (the default), Filled or Outline.
+- **Density**: Comfortable or Compact. **Text**: Small, Normal or Large.
+
+## Phase 3. The screens and motion (decisions 11 to 36)
+
+These hold for every design; the picked directions of Phase 2 build on them.
+
+11. **Top bar**: ‹ › Today before the title; icons; Add one pill with a divider; Plan my homework
+    secondary (accent text on a 10 % tint); More in the text colour; hover 6 %, pressed 10 %, a 2-pixel
+    focus ring at 40 %; the chosen segment raised with the small shadow.
+12. **The grid**: overlay scroll bars; the zoom as a small "− +" pill; hour rules at 8 % white on Dark;
+    the last label never cut; opening at now every time; after Plan, scrolled to the first block placed.
+13. **Today**: an accent date chip in its header; a 3 % wash of the text colour at most; none on Day.
+14. **Blocks**: a 3-pixel category edge, titles 600, times muted, a 3-pixel gap between neighbours, no
+    "·" at a line's end, colour only below three letters of room, short 12-hour ranges ("4–5:30 PM").
+15. **Side panel**: a Next card; muted section labels; the focus list in time order with times
+    right-aligned; chips with a straight edge and the length right-aligned; as tall as its content,
+    with a quiet "This week" row. A running timer is its first card (Grok: agreed).
+16. **Day** drops its Next band and draws its summary with category dots.
+17. **Month**: rows sized to their chips up to a maximum and this week banded (review, against Grok's
+    six even rows); a "Due" flag, not a red box; outside days dimmed; the overlay scroll bar.
+18. **The plan result**: a slim bar ("Placed 2 · 1 without a time · Details"), one filled button and one
+    text button, the same count as the toast.
+19. **Focus screen**: follows the look; a ring around the countdown; Pause filled, Skip and Finish as
+    text; Back as a chevron. Quick focus and F both wait for Start.
+20. **Toast**: dark with white text, the accent's light shade for Undo, 16 radius, the small shadow,
+    bottom-right over the side panel; it belongs to its page.
+21. **Ctrl+K**: a 40 % black backdrop that fades; the large shadow; Add, Go to and Homework groups;
+    icons and shortcuts on the rows.
+22. **Menus**: the right-click menu with icons, a separator and red for Delete and Delete homework;
+    Log out after a separator; "Advanced" named for what it holds.
+23. **Dialogs**: Add homework and Edit event as sheets inside the window; the rest stay windows
+    (review, against Grok's "all dialogs"); every body is the card; labels on the text baseline; one
+    width per kind of field; the repeat scope as a segmented control shown only for repeating blocks;
+    Save where each platform puts it (review, against Grok); Account as three cards; a disabled
+    primary at 40 %; one checkbox style.
+24. **Settings**: the column centred up to 960; section icons and an accent bar; Look as "Light |
+    Dark | System" with the other looks under "More looks"; Accent as swatches; one width per kind of
+    field; nothing under the footer; the design picker showing Phase 2's revised pictures. No icons on
+    individual rows (review: later).
+25. **Sign in**: the wordmark above a centred 16-radius card with the large shadow; one heading; an eye
+    in the password field; Create account hides Forgot password. No week preview (review: later).
+    Recovery codes in Inter with tabular figures.
+26. **Setup**: content centred up to 880; ticks on finished steps; Next the one filled button; the
+    school hint only with no day picked; Play as an icon; the style cards showing Phase 2's pictures.
+27. **Help**: keycaps; no "tutorial is coming" line; a fade at the scroll edge. **About**: the logo.
+28. **Motion, fade through**: the old page out in 90 ms, the new in in 120 ms (OutCubic); Day, Week and
+    Month add a 12-pixel slide in the segment's direction; ‹ › keep their drift.
+29. **Chrome and content in the same frame**: the new page built first, the colours changed at the
+    fade's midpoint.
+30. **Settings slides in** from the right over the week dimmed 20 %, 200 ms.
+31. **Sheets, dialogs and Ctrl+K** fade and rise 8 pixels through an opacity effect on their content,
+    which Wayland honours.
+32. **The segmented selection slides** (a painted indicator, 160 ms).
+33. **Four motion levels**: Normal, More, Reduce (fades only) and Off (the Reduced Motion rule); Paper
+    starts at Reduce.
+34. **Plan's slide is seen**: the view scrolls to the placed blocks, then they slide.
+35. **Each design's own motion** stays inside its content and within the levels: Clay's fan settles,
+    the dial's hand eases, Retro's windows open with Win98's zoom rectangle, and nothing loops
+    (Continuous Animation rule).
+36. **Graduation**: Phase 2's checklist is the test for leaving Experimental.
 
 ## How it is run
 
-As 0.16: lanes on branches off `feat/0.17-look` (from `claude/0-17-review`), each landed by Claude
-after review. Lane A first, since its tokens are what every other lane draws with. Then B, C, D, E
-and G at the same time, with F (motion) last, since it moves the final pages. Each lane ends green
-on `scripts/verify.py` through `run-alone.sh`, on the mutation specs it touches, on the rig where it
-touches hours, and with its screens read from `~/.flexweek-ui-harness/scratch/audit_look_016.py`
-re-run on the lane (the same week, looks and frames as the review). Subagents use Opus. Local
-commits only; the PR and release come last, on Jonathan's word.
+As 0.16, on `feat/0.17-look` (from `claude/0-17-review`), each lane landed by Claude after review.
 
-## Lane A. Tokens and colour (decisions 1, 2, 3, 8, 9, 10, 13, 29)
+1. **The mock-up** (Phase 2's options) is built first, on its own branch, and opened for Jonathan;
+   nothing native is built until he has picked.
+2. **Lane A, tokens and colour** (1 to 3, 5, 6, 8 to 10, 13, and the looks and knobs of Phase 2), first.
+3. **Then, at the same time**: B type, icons and controls (4, 7, 11, 12); C the week, blocks, side
+   panel, Day, Month and plan bar (12 to 18, 34's scroll); D the focus screen, toast, Ctrl+K and menus
+   (19 to 22); E sheets, dialogs and Settings (23, 24); G sign in, setup, Help and About (25 to 27);
+   and one lane per picked design (H1 Today's app, H2 Timeline, H3 Mission control, H4 Bento, H5
+   Retro desktop, H6 Clay deck, H7 One thing and Day dial).
+4. **Lane F, motion** (28 to 35), last.
 
-Files: `desktop/native/look.py` (palettes, accents, `resolved_palette`, `block_paint`, a new
-`tokens.py` for the scale, spacing, radii and shadows), `desktop/native/calendar.py` (categories),
-`desktop/native/layouts/registry.py` (Match my look as the default colourway),
-`desktop/native/window.py` (`_chrome_palette`), `desktop/native/hours/canvas.py` (today, now pill
-halo), `desktop/native/hours/month.py` (due flag, outside days), tests.
-
-Build: the palettes and accents of 1 and 2; categories of 9 computed from OKLCH in one function with
-the hex values checked in; the chrome from the look only; today's marker of 13; red only where 8
-allows; High contrast of 29; `desktop/tests/test_tokens.py` for 10 (lightness spread, contrast,
-deuteranopia distance, accent area).
-
-You see: one blue on every screen; a near-white page with white cards; School, Soccer, Gym and
-Dinner as one family; My day in the look's colours; no red on a normal Sunday in Month.
-
-## Lane B. Type, icons and controls (4, 5, 6, 7, 11, 12 but the opening scroll)
-
-Files: `desktop/native/look.py` (every size and weight from the scale; button states; focus ring;
-scroll bars; segmented), `desktop/native/icons.py` (new: load and tint an SVG), `desktop/assets/icons/`,
-`desktop/native/window.py` (top bar order and icons), `desktop/native/hours/zoom.py` (the zoom pill),
-`desktop/native/widgets.py` (the Add pill), build scripts only if the SVG plugin needs it, tests.
-
-You see: the top bar's arrows still after a switch; real icons; hover and press on every button; a
-focus ring on Tab; thin scroll bars; a quiet zoom pill.
-
-## Lane C. The week, blocks, side panel, Day and Month (12's scroll, 14, 15, 16, 17, 18)
-
-Files: `desktop/native/hours/canvas.py` (block words and edges), `desktop/native/hours/classic.py`
-(side panel, Day), `desktop/native/hours/month.py` (row heights, this week's band),
-`desktop/native/widgets.py` (`PlanReview` as a bar), `desktop/native/window.py` (open at now after a
-look change, scroll to a plan's first block, the timer card into the panel), `desktop/native/weekmodel.py`
-(short 12-hour ranges), tests.
-
-You see: edged blocks with whole times; a Next card; an ordered focus list; a slim plan bar and the
-placed blocks on screen; Month with this week banded and no empty half-page.
-
-## Lane D. My day, the focus screen, the toast, Ctrl+K and menus (19, 20, 21, 22, 23)
-
-Files: `desktop/native/layouts/dial.py`, `desktop/native/layouts/one_thing.py`,
-`desktop/native/focus_screen.py`, `desktop/native/widgets.py` (`Toast`), `desktop/native/command_bar.py`,
-`desktop/native/window.py` (the right-click and More menus), tests.
-
-## Lane E. Dialogs, sheets and Settings (24, 25)
-
-Files: `desktop/native/widgets.py` (a `Sheet` host, `HomeworkDialog`, `BlockDialog`, `LateDialog`,
-`RoutineDialog`, form layout), `desktop/native/settings.py` (`SettingsPage`, `AccountDialog`),
-`desktop/native/window.py` (the sheet host over the planner), tests.
-
-## Lane G. Sign in, setup, Help, About and the designs (26, 27, 28, 30)
-
-Files: `desktop/native/window.py` (the auth and recovery pages), `desktop/native/setup.py`,
-`desktop/native/settings.py` (`HelpDialog`, `AboutDialog`), `desktop/native/layouts/timeline.py`,
-`mission.py`, `bento.py`, `clay.py`, tests; the rig for Timeline's Day and Week.
-
-## Lane F. Motion (31 to 37), last
-
-Files: `desktop/native/motion.py`, `desktop/native/window.py` (page changes, the chrome swap,
-Settings' slide), `desktop/native/widgets.py` (the segmented indicator, the sheet's appearance),
-`desktop/native/command_bar.py` (its fade), `desktop/native/settings.py` (the Reduce level), tests
-that grab frames: no frame of a page change shows two pages above 20 % each; the chrome and the
-content change in the same frame; Reduce moves nothing sideways.
+Each lane ends green on `scripts/verify.py` through `run-alone.sh`, on the mutation specs it touches,
+on the rig for every design it touches, and with its screens read from
+`scratch/audit_look_016.py` re-run on the lane, frames included. Subagents use Opus. Local commits
+only; the PR and release come last, on Jonathan's word.
 
 ## Integration and release
 
-- Land A, then B, C, D, E and G, then F, on `feat/0.17-look`.
-- The gate, every mutation spec, the rig on every design and both My day screens, and
-  `audit_look_016.py` read against `look-review.md` section by section, with the frame captures of
-  section 13 re-taken and read.
-- Docs: `CHANGELOG.md` 0.17.0, `spec.md` (the system: accent, surfaces, scale, motion levels),
-  `docs/0.15/architecture.md` (the chrome rule and page changes), release notes, `version.py`.
+- Land A, then the parallel lanes, then F.
+- The gate, every mutation spec, the rig on every design and both day screens, the tokens test in
+  every look, and the tour and frames read against `look-review.md` and Phase 2's checklist.
+- Docs: `CHANGELOG.md` 0.17.0, `spec.md` (the system, the looks, the knobs, the motion levels),
+  `docs/0.15/architecture.md` (the chrome rule, page changes), release notes, `version.py`.
 - Then, on Jonathan's word: push, PR, checks, merge, release.
