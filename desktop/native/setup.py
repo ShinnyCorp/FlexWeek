@@ -54,7 +54,15 @@ from desktop.native.layouts.registry import (
     options_for,
     sanitize_layout,
 )
-from desktop.native.look import PACK_LABELS, PACKS, effective_look, look_menu_items, sanitize_look
+from desktop.native.look import (
+    KNOB_VALUE_LABELS,
+    LOOK_KNOBS,
+    PACK_LABELS,
+    PACKS,
+    effective_look,
+    look_menu_items,
+    sanitize_look,
+)
 from desktop.native.motion import appear, fade_away, glide, hold_picture, slide_page
 from desktop.native.previews import Previews
 from desktop.native.settings import (
@@ -112,7 +120,7 @@ CUTOFFS = ("20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00")
 TEXT_SIZES = (("small", "Small"), ("normal", "Normal"), ("large", "Large"))
 SPACINGS = (("comfortable", "Comfortable"), ("compact", "Compact"))
 FONTS = (("sans", "Sans"), ("serif", "Serif"), ("mono", "Mono"))
-SHADOWS = (("soft", "Soft"), ("flat", "Flat"), ("hard", "Hard"))
+SHADOWS = tuple((value, KNOB_VALUE_LABELS[value]) for value in LOOK_KNOBS["depth"])
 TONE_NAMES = {tone: tone.title() for tone in RECIPES}
 STYLE_THUMB, LOOK_THUMB, COLOUR_THUMB = 264, 206, 400
 

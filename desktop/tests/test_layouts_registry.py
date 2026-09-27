@@ -160,7 +160,7 @@ def test_every_design_dresses_its_page_in_colours_its_text_reads_on() -> None:
 
 def test_match_my_look_is_readable_in_every_look_the_app_has() -> None:
     failures = []
-    combos = list(itertools.product(PACKS, (False, True), LOOK_PRESETS, ACCENT_COLORS, ("frost", "flat")))
+    combos = list(itertools.product(PACKS, (False, True), LOOK_PRESETS, ACCENT_COLORS, ("layered", "flat")))
     for pack, dark, preset, accent, surface in combos:
         look = {"preset": preset, "knobs": {"surface": surface}}
         tokens = tokens_for("bento", MATCH, resolved_palette(pack, dark, look, accent))
@@ -206,7 +206,7 @@ def test_a_bar_that_carries_no_text_is_free_to_be_seen() -> None:
     1.01 at worst, so Terminal's came out dark brown on black. A bar has no text on it."""
     worst = 99.0
     for pack, dark, preset, accent, surface in itertools.product(
-        PACKS, (False, True), LOOK_PRESETS, ACCENT_COLORS, ("frost", "flat")
+        PACKS, (False, True), LOOK_PRESETS, ACCENT_COLORS, ("layered", "flat")
     ):
         look = {"preset": preset, "knobs": {"surface": surface}}
         tokens = tokens_for("bento", MATCH, resolved_palette(pack, dark, look, accent))
@@ -275,7 +275,7 @@ def test_a_refusal_never_wears_the_accent() -> None:
         for value, _, _ in spec.colourways
     }
     for pack, dark, preset, accent, surface in itertools.product(
-        PACKS, (False, True), LOOK_PRESETS, ACCENTS, ("frost", "flat")
+        PACKS, (False, True), LOOK_PRESETS, ACCENTS, ("layered", "flat")
     ):
         look = {"preset": preset, "knobs": {"surface": surface}}
         where = f"match {pack}/{'dark' if dark else 'light'}/{preset}/{accent}"

@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import cached_property
 
 from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import (
@@ -44,7 +45,7 @@ from desktop.native.hours.geometry import (
     snap,
 )
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
-from desktop.native.look import block_paint, category_paint, readable_ink
+from desktop.native.look import block_paint, category_paint, look_measures, readable_ink
 from desktop.native.motion import DURATION_MS, app_level
 from desktop.native.weekmodel import Occurrence, clock_label, length_label
 
@@ -96,6 +97,13 @@ class Drawn:
         return words
 
 
+def shown_detail(detail: str, measures: dict) -> str:
+    """A block's times and its length, less whichever the look hides; a flag such as Finished stays."""
+    parts = detail.split(" · ")
+    shown = (measures["show_times"], measures["show_lengths"])
+    return " · ".join(part for index, part in enumerate(parts) if index >= len(shown) or shown[index])
+
+
 class BlockPainter:
     """How hours and blocks look. This default is Daily Scheduler's: pale category fills, a strong
     edge, a rule at each hour, a now line in the accent carrying the time. Designs subclass it."""
@@ -103,6 +111,12 @@ class BlockPainter:
     def __init__(self, colours: dict[str, str], look: dict | None = None) -> None:
         self.colours = colours
         self.look = look
+
+    @cached_property
+    def measures(self) -> dict:
+        """The look's block and grid settings: a custom look may hide today's wash, a block's times or
+        length, and set the edge's width."""
+        return look_measures(self.look)
 
     def c(self, name: str) -> QColor:
         return QColor(self.colours[name])
@@ -114,7 +128,7 @@ class BlockPainter:
         """A rule at each hour, in the track's upright frame, over a faint wash of the text colour on
         today. The accent is never spread over a column: picked as Gold, it turned today khaki."""
         area = track.area
-        if today:
+        if today and self.measures["today_highlight"]:
             wash = self.c("text")
             wash.setAlphaF(TODAY_WASH)
             painter.fillRect(area, wash)
@@ -187,7 +201,8 @@ class BlockPainter:
         if edge is not None:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(edge)
-            painter.drawRoundedRect(QRectF(rect.left(), rect.top(), 4, rect.height()), 2, 2)
+            width = self.measures["edge_width"] or 4
+            painter.drawRoundedRect(QRectF(rect.left(), rect.top(), width, rect.height()), 2, 2)
         if drawn.held or drawn.chosen:
             refused = drawn.verdict is not None and not drawn.verdict.ok
             painter.setPen(QPen(self.c("error" if refused else "accent"), 2))
@@ -217,7 +232,7 @@ class BlockPainter:
         room = QRectF(start, QPointF(rect.right() - 6, rect.bottom() - 2))
         if room.height() < 6 or room.width() < 8:
             return
-        detail = drawn.detail
+        detail = drawn.detail if drawn.held else shown_detail(drawn.detail, self.measures)
         if drawn.held and QFontMetrics(plain).horizontalAdvance(detail) > room.width():
             detail = ""  # said in the label beside it instead
         elif QFontMetrics(plain).horizontalAdvance(detail.split(" · ")[0]) > room.width():
@@ -294,7 +309,7 @@ class BlockPainter:
 
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
         """A line across the track at `minute`, starting from a pill with the time on it."""
-        colour = self.c("accent")
+        colour = QColor(self.colours.get("now", self.colours["accent"]))
         font = time_font(_small(painter.font()))
         font.setBold(True)
         metrics = QFontMetricsF(font)

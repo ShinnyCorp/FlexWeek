@@ -1,98 +1,120 @@
 """Device-only look knobs and account theme packs. No Qt.
 
 A look has two halves. The palette says what colours exist; the knobs say how
-the interface is drawn with them. A preset is a bundle of knob values, and may
-bring its own palette. Every knob has to change something a student can see:
-a control that stores a value nothing reads is the bug this module exists to
-prevent, and desktop/tests/test_look.py proves each value moves the output.
+the interface is drawn with them. A pack (Light, Dark, System, Slate, Nocturne) is the account's;
+a preset (High contrast, Paper, Ink, Terminal, Poster, Pastel) is a look of its own on this device,
+its palette and the knobs it sets. A custom look is any of those ten with what the student changed
+(custom_look.py keeps and checks them), drawn by the same functions. Every knob has to change
+something a student can see: a control that stores a value nothing reads is the bug this module
+exists to prevent, and desktop/tests/test_look.py proves each value moves the output.
 
-Colours began as the retired web client's CSS custom properties, where they already passed the
-readability and accent-distance audits, so both clients show the same look.
+The ten looks' colours are the 0.17 mock-up's (docs/mockups/look-017/looks.css).
 """
 
 from __future__ import annotations
 
+import math
+import re
 from copy import deepcopy
 from functools import lru_cache
 
 from desktop.native.calendar import CATEGORIES
-from desktop.native.tokens import RADIUS_CARD, RADIUS_CONTROL, SINK, mix_oklab
+from desktop.native.tokens import (
+    FILL,
+    GREY_CHROMA,
+    HOMEWORK_DARKER,
+    MARK,
+    RADIUS_CARD,
+    RADIUS_CONTROL,
+    RADIUS_SHEET,
+    SINK,
+    contrast,
+    fit_lightness,
+    luminance,
+    mix,
+    mix_oklab,
+    oklch,
+    oklch_of,
+)
 
+# The knobs of 0.17 (plan, "The knobs"), each value in the order Settings offers them. Round's id is
+# "rounded" because "round" was 0.16's name for what is now Soft; a look saved then still opens as it
+# looked (LEGACY_KNOBS).
 LOOK_KNOBS = {
-    "surface": ("frost", "flat"),
-    "corners": ("round", "sharp", "pill"),
-    "depth": ("soft", "flat", "hard"),
-    "font": ("sans", "mono", "serif"),
-    "blocks": ("filled", "outlined", "edge"),
+    "surface": ("flat", "layered"),
+    "corners": ("soft", "sharp", "rounded"),
+    "depth": ("none", "soft", "bold"),
+    "font": ("sans", "serif", "mono"),
+    "blocks": ("edge", "filled", "outline"),
     "density": ("comfortable", "compact"),
     "text": ("small", "normal", "large"),
 }
+KNOB_LABELS = {
+    "surface": "Surface",
+    "corners": "Corners",
+    "depth": "Shadows",
+    "font": "Font",
+    "blocks": "Blocks",
+    "density": "Spacing",
+    "text": "Text size",
+}
+KNOB_VALUE_LABELS = {
+    "flat": "Flat",
+    "layered": "Layered",
+    "soft": "Soft",
+    "sharp": "Sharp",
+    "rounded": "Round",
+    "none": "None",
+    "bold": "Bold",
+    "sans": "Sans",
+    "serif": "Serif",
+    "mono": "Mono",
+    "edge": "Edge",
+    "filled": "Filled",
+    "outline": "Outline",
+    "comfortable": "Comfortable",
+    "compact": "Compact",
+    "small": "Small",
+    "normal": "Normal",
+    "large": "Large",
+}
+# 0.16's names for the values that were renamed.
+LEGACY_KNOBS = {
+    "surface": {"frost": "layered"},
+    "corners": {"round": "soft", "pill": "rounded"},
+    "depth": {"flat": "none", "hard": "bold"},
+    "blocks": {"outlined": "outline"},
+}
 LOOK_DEFAULTS = {
-    "surface": "frost",
-    "corners": "round",
+    "surface": "layered",
+    "corners": "soft",
     "depth": "soft",
     "font": "sans",
     "blocks": "filled",
     "density": "comfortable",
     "text": "normal",
 }
+# A preset is a look of its own, whatever the account's pack: its palette (PRESET_PALETTES) and the
+# knobs it sets. Blocks follow the default in every look but High contrast, as the mock-up draws them.
 LOOK_PRESETS = {
     "default": {},
-    "terminal": {
-        "surface": "flat",
-        "corners": "sharp",
-        "depth": "flat",
-        "font": "mono",
-        "blocks": "outlined",
-        "density": "compact",
-        "text": "normal",
-    },
-    "poster": {
-        "surface": "flat",
-        "corners": "sharp",
-        "depth": "hard",
-        "font": "sans",
-        "blocks": "filled",
-        "density": "compact",
-        "text": "large",
-    },
-    "ink": {
-        "surface": "flat",
-        "corners": "sharp",
-        "depth": "flat",
-        "font": "serif",
-        "blocks": "edge",
-        "density": "comfortable",
-        "text": "normal",
-    },
     "high-contrast": {
         "surface": "flat",
         "corners": "sharp",
-        "depth": "hard",
+        "depth": "bold",
         "font": "sans",
-        "blocks": "outlined",
+        "blocks": "outline",
         "density": "comfortable",
         "text": "large",
     },
-    # The two soft looks. Every preset above is flat and sharp; these keep rounded corners and depth.
-    "paper": {
-        "surface": "flat",
-        "corners": "round",
-        "depth": "soft",
-        "font": "serif",
-        "blocks": "filled",
-        "density": "comfortable",
-        "text": "normal",
-    },
-    "pastel": {
-        "surface": "frost",
-        "corners": "pill",
-        "depth": "soft",
-        "font": "sans",
-        "blocks": "filled",
-        "density": "comfortable",
-        "text": "normal",
-    },
+    # E-Ink / Paper: serif headings and hairline rules. Its depth draws those hairlines; Qt draws no
+    # shadow under them.
+    "paper": {"surface": "layered", "corners": "soft", "depth": "soft", "font": "serif"},
+    "ink": {"surface": "layered", "corners": "soft", "depth": "soft", "font": "serif"},
+    "terminal": {"surface": "layered", "corners": "sharp", "depth": "soft", "font": "mono"},
+    # Neubrutalism: square corners and heavy black edges.
+    "poster": {"surface": "layered", "corners": "sharp", "depth": "bold", "font": "sans"},
+    "pastel": {"surface": "layered", "corners": "rounded", "depth": "soft", "font": "sans"},
 }
 LOOK_PRESET_LABELS = {
     "default": "Pack default",
@@ -121,13 +143,37 @@ FIELD_MIN_PX = {"small": 22, "normal": 26, "large": 34}
 # A card's padding, and the smaller one of a button, a field, a list or a menu, which keep their heights.
 DENSITY_PAD = {"comfortable": 16, "compact": 8}
 CONTROL_PAD = {"comfortable": 8, "compact": 4}
-# (controls, cards) at each Corners setting. Round is the system's own shape (decision 5 of 0.17).
-CORNER_RADIUS = {"round": (RADIUS_CONTROL, RADIUS_CARD), "sharp": (0, 0), "pill": (16, 16)}
+# (controls, cards) at each Corners setting. Soft is the system's own shape (decision 5 of 0.17).
+CORNER_RADIUS = {
+    "soft": (RADIUS_CONTROL, RADIUS_CARD),
+    "sharp": (0, 2),
+    "rounded": (RADIUS_CARD, RADIUS_SHEET),
+}
+# The bundled faces first (fonts.py), then the system's.
 FONT_FAMILIES = {
     "sans": "Inter, Noto Sans, DejaVu Sans, sans-serif",
-    "mono": "Noto Sans Mono, DejaVu Sans Mono, monospace",
-    "serif": "Noto Serif, DejaVu Serif, serif",
+    "serif": "Newsreader, Noto Serif, DejaVu Serif, serif",
+    "mono": "JetBrains Mono, Noto Sans Mono, DejaVu Sans Mono, monospace",
 }
+# The Font knob as (body, headings): Serif is Newsreader headings over Inter.
+FONT_PAIRS = {"sans": ("sans", "sans"), "serif": ("sans", "serif"), "mono": ("mono", "mono")}
+# The labels that are headings, which take the heading face.
+HEADING_NAMES = (
+    "weekTitle",
+    "settingsTitle",
+    "setupTitle",
+    "authHeading",
+    "emptyWeekHeading",
+    "alarmTitle",
+    "aboutVersion",
+    "updateHeading",
+    "prefsHeading",
+    "layoutMainHeading",
+    "layoutDayHeading",
+    "cardTitle",
+    "setupChoiceName",
+    "focusScreenTask",
+)
 AA_TEXT = 4.5
 DARK_INK = "#0b1224"
 LIGHT_INK = "#ffffff"
@@ -144,34 +190,6 @@ ACCENT_COLORS = {
 OWN_ACCENT = ("high-contrast",)
 
 
-def _channels(color: str) -> tuple[int, int, int]:
-    return int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
-
-
-def mix(top: str, bottom: str, alpha: float) -> str:
-    """The solid colour of `top` laid over `bottom` at `alpha`.
-
-    The web palette states its hairlines as translucent tints. Qt stylesheets
-    disagree between versions about alpha syntax, so the tint is settled here.
-    """
-    pairs = zip(_channels(top), _channels(bottom), strict=True)
-    blended = [round(over * alpha + under * (1 - alpha)) for over, under in pairs]
-    return "#{:02x}{:02x}{:02x}".format(*blended)
-
-
-def luminance(color: str) -> float:
-    linear = []
-    for channel in _channels(color):
-        value = channel / 255
-        linear.append(value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4)
-    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
-
-
-def contrast(first: str, second: str) -> float:
-    high, low = sorted((luminance(first), luminance(second)), reverse=True)
-    return (high + 0.05) / (low + 0.05)
-
-
 def readable_ink(background: str) -> str:
     """Black or white, whichever reads better on a colour the palette does not own, such as a category.
 
@@ -182,7 +200,7 @@ def readable_ink(background: str) -> str:
 
 
 def _palette(
-    axis: str, tint: str | None = None, soft: float = 0.12, strong: float = 0.24, **colors: str
+    axis: str, tint: str | None = None, soft: float = 0.12, strong: float = 0.24, **colors: object
 ) -> dict:
     """A colour table in the one accent. Hairlines are `tint` over the panel unless named outright.
 
@@ -200,37 +218,46 @@ def _palette(
     return table
 
 
-# window is the page, panel the raised surface, field an input, grid the calendar cell.
+# window is the page, panel the raised surface (a card), card_2 a raised one on a card, field an input,
+# grid the calendar cell. The seven looks after Light, Dark and High contrast are looks.css's
+# (docs/mockups/look-017), page, card, raised, text, muted and both hairlines as drawn there; the rest
+# is worked out the way Light's and Dark's are.
 PALETTES = {
+    # Dark Mode (OLED): midnight, low emission.
     "nocturne": _palette(
         "dark",
-        "#baccff",
-        window="#0e1320",
-        panel="#161d2b",
-        field="#121827",
-        grid="#131a27",
-        text="#e6ebf5",
-        muted="#9ba6ba",
-        error="#ff9b9b",
-        block_locked="#2b3a52",
-        block_locked_ink="#eef2fa",
+        window="#0a0e27",
+        panel="#121633",
+        card_2="#1a1f42",
+        field="#0d112c",
+        grid="#0d112c",
+        text="#e0e4f0",
+        muted="#9aa3c0",
+        hairline="#262b4d",
+        hairline_strong="#343a63",
+        rule=mix("#e0e4f0", "#0a0e27", 0.08),
+        error="#ff8a7a",
+        block_locked="#1f2449",
+        block_locked_ink="#e0e4f0",
         block_flex="#4a3c1c",
         block_flex_ink="#fff4dc",
-        block_edge="#7d93b8",
+        block_edge="#7d86a6",
     ),
+    # Swiss Modernism 2.0: cool and professional.
     "slate": _palette(
         "light",
-        "#182c58",
-        strong=0.22,
-        window="#edf2fa",
+        window="#eef1f5",
         panel="#ffffff",
-        field="#fbfcfe",
-        grid="#fbfcff",
-        text="#172033",
-        muted="#536079",
+        card_2="#e7ebf1",
+        field="#ffffff",
+        grid="#ffffff",
+        text="#0f172a",
+        muted="#475569",
+        hairline="#dbe1ea",
+        hairline_strong="#c3ccd9",
         error="#b42318",
-        block_locked="#dde6f3",
-        block_locked_ink="#18233a",
+        block_locked="#e7ebf1",
+        block_locked_ink="#0f172a",
         block_flex="#f5e6c3",
         block_flex_ink="#3b2a05",
         block_edge="#8a9bb8",
@@ -241,6 +268,7 @@ PALETTES = {
         "dark",
         window="#111315",
         panel="#1a1d21",
+        card_2="#22262b",
         field="#15171a",
         grid="#15171a",
         text="#e8eaed",
@@ -258,6 +286,7 @@ PALETTES = {
         "light",
         window="#f7f8fa",
         panel="#ffffff",
+        card_2="#f1f3f6",
         field="#ffffff",
         grid="#ffffff",
         text="#111827",
@@ -272,44 +301,49 @@ PALETTES = {
         block_edge="#8a93a3",
     ),
 }
-# A preset may replace the pack's colours outright. Terminal is true black with phosphor text.
-# Ink has a light map and a dark map so it follows the pack axis; the others are one look.
+# A preset brings its own colours, the same on any pack. `fill` moves the category family's pale fills
+# (decision 9) for a look that draws them paler or bolder.
 PRESET_PALETTES = {
+    # Developer Mono on GitHub-dark surfaces; no glow, no phosphor green.
     "terminal": _palette(
         "dark",
-        "#78ff78",
-        soft=0.25,
-        strong=0.45,
-        window="#000000",
-        panel="#0a0a0a",
-        field="#000000",
-        grid="#050505",
-        text="#d6ffd6",
-        muted="#7fbf7f",
-        error="#ff6b6b",
-        block_locked="#0a0a0a",
-        block_locked_ink="#d6ffd6",
-        block_flex="#0a0a0a",
-        block_flex_ink="#ffe9a8",
-        block_edge="#7fbf7f",
+        window="#0d1117",
+        panel="#161b22",
+        card_2="#1c2129",
+        field="#11151c",
+        grid="#11151c",
+        text="#c9d1d9",
+        muted="#8b949e",
+        hairline="#30363d",
+        hairline_strong="#484f58",
+        rule=mix("#c9d1d9", "#0d1117", 0.08),
+        error="#f85149",
+        block_locked="#21262d",
+        block_locked_ink="#c9d1d9",
+        block_flex="#4a3c1c",
+        block_flex_ink="#fff4dc",
+        block_edge="#6e7681",
     ),
+    # Neubrutalism: black lines on cream, bolder fills. Its hour rules are the ink at 14 %, not black.
     "poster": _palette(
         "light",
-        "#0b132b",
-        soft=0.75,
-        strong=1.0,
-        window="#ffd60a",
-        panel="#ffd60a",
-        field="#ffd60a",
-        grid="#ffe14d",
-        text="#0b132b",
-        muted="#5c3d2e",
-        error="#a3004f",
-        block_locked="#0b132b",
-        block_locked_ink="#ffd60a",
-        block_flex="#8b0000",
-        block_flex_ink="#ffd60a",
-        block_edge="#0b132b",
+        window="#fff8e7",
+        panel="#ffffff",
+        card_2="#fff1cc",
+        field="#ffffff",
+        grid="#ffffff",
+        text="#111111",
+        muted="#3d3d3d",
+        hairline="#111111",
+        hairline_strong="#111111",
+        rule=mix("#111111", "#fff8e7", 0.14),
+        error="#b42318",
+        block_locked="#fff1cc",
+        block_locked_ink="#111111",
+        block_flex="#f5e6c3",
+        block_flex_ink="#3b2a05",
+        block_edge="#111111",
+        fill=(0.88, 0.09),
     ),
     "high-contrast": _palette(
         "dark",
@@ -319,6 +353,7 @@ PRESET_PALETTES = {
         family="contrast",
         window="#000000",
         panel="#000000",
+        card_2="#0d0d0d",
         field="#000000",
         grid="#000000",
         text="#ffffff",
@@ -334,81 +369,65 @@ PRESET_PALETTES = {
         block_flex_ink="#ffd400",
         block_edge="#ffd400",
     ),
-    # Light looks whatever pack sits underneath, as Poster is. Paper is warmer than Ink's light sheet
-    # on purpose. Pastel's softness is in its surfaces; a pale lavender accent could not pass as text.
+    # E-Ink / Paper: ink on off-white, matte, the category fills a little quieter.
     "paper": _palette(
         "light",
-        "#4a341e",
-        soft=0.16,
-        strong=0.30,
-        window="#f7ecd2",
-        panel="#fdf8ea",
-        field="#fffcf2",
-        grid="#fffcf2",
-        text="#2f2418",
-        muted="#6a5a45",
+        window="#fdfbf7",
+        panel="#fffdf9",
+        card_2="#f6f1e8",
+        field="#fffdf9",
+        grid="#fffdf9",
+        text="#1a1a1a",
+        muted="#5c5750",
+        hairline="#e6e0d6",
+        hairline_strong="#cfc7b9",
         error="#9b1b30",
-        block_locked="#eadfc6",
-        block_locked_ink="#2f2418",
+        block_locked="#f6f1e8",
+        block_locked_ink="#1a1a1a",
         block_flex="#f3dca6",
         block_flex_ink="#3b2a05",
         block_edge="#a08a68",
+        fill=(0.92, 0.035),
     ),
+    # Paper's night counterpart: charcoal and warm ivory.
+    "ink": _palette(
+        "dark",
+        window="#1c1b19",
+        panel="#242320",
+        card_2="#2c2a26",
+        field="#1f1e1c",
+        grid="#1f1e1c",
+        text="#f3eee3",
+        muted="#b3ab9c",
+        hairline="#3a3833",
+        hairline_strong="#4a4740",
+        rule=mix("#f3eee3", "#1c1b19", 0.08),
+        error="#ff8a7a",
+        block_locked="#2c2a26",
+        block_locked_ink="#f3eee3",
+        block_flex="#4a3c1c",
+        block_flex_ink="#fff4dc",
+        block_edge="#8a8375",
+    ),
+    # Soft UI Evolution: improved-contrast pastels on lavender, text at slate-900's depth.
     "pastel": _palette(
         "light",
-        "#7a3e9d",
-        soft=0.16,
-        strong=0.30,
-        window="#fdf2f8",
+        window="#f3f0ff",
         panel="#ffffff",
-        field="#fffafd",
-        grid="#fffafd",
-        text="#3b2a4a",
-        muted="#6b5a7a",
+        card_2="#ece7ff",
+        field="#ffffff",
+        grid="#ffffff",
+        text="#1e1b2e",
+        muted="#4b4763",
+        hairline="#e4ddfb",
+        hairline_strong="#cfc5f5",
         error="#b42318",
-        block_locked="#ede4fb",
-        block_locked_ink="#2e1f47",
+        block_locked="#ece7ff",
+        block_locked_ink="#1e1b2e",
         block_flex="#ffe4ef",
         block_flex_ink="#4a1230",
         block_edge="#a78bda",
     ),
-    "ink": {
-        "dark": _palette(
-            "dark",
-            "#eaeaea",
-            soft=0.28,
-            strong=0.50,
-            window="#111111",
-            panel="#111111",
-            field="#111111",
-            grid="#161616",
-            text="#eaeaea",
-            muted="#9a9a9a",
-            error="#ff6b6b",
-            block_locked="#111111",
-            block_locked_ink="#eaeaea",
-            block_flex="#111111",
-            block_flex_ink="#eaeaea",
-            block_edge="#9a9a9a",
-        ),
-        "light": _palette(
-            "light",
-            "#1a1a1a",
-            strong=0.22,
-            window="#f4f1ea",
-            panel="#f4f1ea",
-            field="#f4f1ea",
-            grid="#efece4",
-            text="#1a1a1a",
-            muted="#5a5a5a",
-            error="#9b1b30",
-            block_locked="#f4f1ea",
-            block_locked_ink="#1a1a1a",
-            block_flex="#f4f1ea",
-            block_flex_ink="#1a1a1a",
-            block_edge="#1a1a1a",
-        ),
-    },
 }
 
 
@@ -457,7 +476,7 @@ EXPERIMENTAL_LOOKS = (
 
 def look_menu_items() -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
     """The Look list in two groups, standard then experimental, each item (name, label, kind). A pack
-    is the pack with its own knobs; a preset is a bundle of knobs on the account's pack."""
+    is the pack with its own knobs; a preset is a look of its own on any pack."""
 
     def item(kind: str, name: str) -> tuple[str, str, str]:
         return name, (PACK_LABELS if kind == "pack" else LOOK_PRESET_LABELS)[name], kind
@@ -487,25 +506,242 @@ def look_menu_value(pack: object, look: dict | None) -> str:
     return look_menu_token("pack", known_pack(pack))
 
 
+# Customise (plan, 27 September): one of the ten looks as a starting point and what the student changed
+# on it. Each base is the (pack, preset) it stands for; a custom look ignores the account's pack.
+LOOK_BASES = {
+    "light": ("light-frost", "default"),
+    "dark": ("dark-frost", "default"),
+    "system": ("system", "default"),
+    "high-contrast": ("system", "high-contrast"),
+    "slate": ("slate", "default"),
+    "nocturne": ("nocturne", "default"),
+    "paper": ("system", "paper"),
+    "ink": ("system", "ink"),
+    "terminal": ("system", "terminal"),
+    "poster": ("system", "poster"),
+    "pastel": ("system", "pastel"),
+}
+BASE_LABELS = {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "high-contrast": "High contrast",
+    "slate": "Slate",
+    "nocturne": "Nocturne",
+    "paper": "Paper",
+    "ink": "Ink",
+    "terminal": "Terminal",
+    "poster": "Poster",
+    "pastel": "Pastel",
+}
+# The four colours a student sets; muted text, the raised card and the strong line follow from them.
+CUSTOM_COLOURS = ("page", "card", "text", "line")
+HOUR_LINES = ("none", "faint", "clear")
+NOW_LINES = ("accent", "text")
+# The motion levels of decision 33; Lane F's motion.py runs them.
+MOTION_LEVELS = ("normal", "extra", "reduce", "off")
+CUSTOM_CHOICES = {
+    "spacing": LOOK_KNOBS["density"],
+    "shadows": LOOK_KNOBS["depth"],
+    "body_font": tuple(FONT_FAMILIES),
+    "heading_font": tuple(FONT_FAMILIES),
+    "blocks": LOOK_KNOBS["blocks"],
+    "hour_lines": HOUR_LINES,
+    "now_line": NOW_LINES,
+    "motion": MOTION_LEVELS,
+}
+CUSTOM_SWITCHES = ("show_times", "show_lengths", "today_highlight")
+# The least and the most of each measure, and whether it is whole pixels.
+CUSTOM_RANGES = {"corners": (0, 16, True), "text_scale": (0.9, 1.3, False), "edge_width": (2, 6, True)}
+NAME_MAX = 40
+HEX = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+def _hex(value: object) -> str | None:
+    return value.lower() if isinstance(value, str) and HEX.fullmatch(value) else None
+
+
+def _category_spec(value: object) -> tuple[str, float | str] | None:
+    """A category's colour as the student set it: ("hue", degrees) on the family, or ("colour", hex)."""
+    if not isinstance(value, dict):
+        return None
+    hue = value.get("hue")
+    if isinstance(hue, int | float) and not isinstance(hue, bool) and math.isfinite(hue):
+        return "hue", float(hue) % 360
+    colour = _hex(value.get("colour"))
+    return ("colour", colour) if colour else None
+
+
+def _said(key: str) -> str:
+    return key.replace("_", " ").capitalize()
+
+
+def sanitize_custom(raw: object) -> tuple[dict | None, list[str]]:
+    """A custom look with every unknown key and bad value dropped, and a plain sentence for each one
+    dropped. None when there is no look to keep: no base, or one this FlexWeek does not have."""
+    if not isinstance(raw, dict):
+        return None, ["A look has to be a set of named settings."]
+    if not isinstance(raw.get("base"), str) or raw["base"] not in LOOK_BASES:
+        return None, [f"It starts from a look FlexWeek does not have: {str(raw.get('base'))[:40]!r}."]
+    clean: dict = {"base": raw["base"]}
+    problems: list[str] = []
+    known = {"name", "base", "accent", "colours", "categories", *CUSTOM_CHOICES, *CUSTOM_SWITCHES}
+    known |= set(CUSTOM_RANGES)
+    for key in raw:
+        if key not in known:
+            problems.append(f"{str(key)[:40]!r} is not a look setting, so it was left out.")
+    name = raw.get("name")
+    if isinstance(name, str) and name.strip():
+        clean["name"] = " ".join(name.split())[:NAME_MAX]
+    elif "name" in raw:
+        problems.append("The name was not text, so it was left out.")
+    if "accent" in raw:
+        accent = raw["accent"]
+        if (isinstance(accent, str) and accent in ACCENTS) or _hex(accent):
+            clean["accent"] = _hex(accent) or accent
+        else:
+            problems.append("The accent was not a swatch or a colour like #3d6fc4, so it was left out.")
+    colours = raw.get("colours", {})
+    if not isinstance(colours, dict):
+        colours = {}
+        problems.append("The colours were not a set of named colours, so they were left out.")
+    kept = {key: _hex(colours.get(key)) for key in CUSTOM_COLOURS if _hex(colours.get(key))}
+    problems += [
+        f"The {key} colour was not a colour like #3d6fc4, so it was left out."
+        for key in colours
+        if key not in kept
+    ]
+    if kept:
+        clean["colours"] = kept
+    categories = raw.get("categories", {})
+    if not isinstance(categories, dict):
+        categories = {}
+        problems.append("The category colours were not a set, so they were left out.")
+    specs = {key: _category_spec(value) for key, value in categories.items() if key in CATEGORIES}
+    for key in categories:
+        if specs.get(key) is None:
+            problems.append(f"The colour for {str(key)[:40]!r} was left out: no such category or no colour.")
+    specs = {key: spec for key, spec in specs.items() if spec is not None}
+    if specs:
+        clean["categories"] = {key: {spec[0]: spec[1]} for key, spec in specs.items()}
+    for key, values in CUSTOM_CHOICES.items():
+        if key in raw:
+            if raw[key] in values:
+                clean[key] = raw[key]
+            else:
+                problems.append(f"{_said(key)} was not one of {', '.join(values)}.")
+    for key in CUSTOM_SWITCHES:
+        if key in raw:
+            if isinstance(raw[key], bool):
+                clean[key] = raw[key]
+            else:
+                problems.append(f"{_said(key)} was not on or off, so it was left out.")
+    for key, (low, high, whole) in CUSTOM_RANGES.items():
+        if key in raw:
+            value = raw[key]
+            if isinstance(value, int | float) and not isinstance(value, bool) and low <= value <= high:
+                clean[key] = round(value) if whole else round(float(value), 2)
+            else:
+                problems.append(f"{_said(key)} was not between {low} and {high}.")
+    return clean, problems
+
+
 def sanitize_look(raw: object) -> dict:
+    """The device's look: a preset and the knobs moved on it, 0.16's knob names read as today's, and a
+    custom look when the student made one."""
     clean: dict = {"preset": "default", "knobs": {}}
     if not isinstance(raw, dict):
         return clean
-    if raw.get("preset") in LOOK_PRESETS:
+    if isinstance(raw.get("preset"), str) and raw["preset"] in LOOK_PRESETS:
         clean["preset"] = raw["preset"]
     stored = raw.get("knobs")
     knobs = stored if isinstance(stored, dict) else {}
     for knob, values in LOOK_KNOBS.items():
         value = knobs.get(knob)
+        if not isinstance(value, str):
+            continue
+        value = LEGACY_KNOBS.get(knob, {}).get(value, value)
         if value in values:
             clean["knobs"][knob] = value
+    if "custom" in raw:
+        custom, _problems = sanitize_custom(raw["custom"])
+        if custom is not None:
+            clean["custom"] = custom
     return clean
 
 
+def _nearest(value: float, choices: dict[str, float]) -> str:
+    return min(choices, key=lambda name: abs(choices[name] - value))
+
+
 def effective_look(choice: dict | None) -> dict:
+    """Every knob as it is drawn. A custom look's measures answer as the nearest knob, so what reads a
+    knob, such as setup's chips, still reads something true."""
     selected = sanitize_look(choice)
-    layered = {**LOOK_DEFAULTS, **LOOK_PRESETS[selected["preset"]], **selected["knobs"]}
-    return layered
+    custom = selected.get("custom")
+    if custom is None:
+        return {**LOOK_DEFAULTS, **LOOK_PRESETS[selected["preset"]], **selected["knobs"]}
+    knobs = {**LOOK_DEFAULTS, **LOOK_PRESETS[LOOK_BASES[custom["base"]][1]]}
+    for field, knob in (("spacing", "density"), ("shadows", "depth"), ("blocks", "blocks")):
+        knobs[knob] = custom.get(field, knobs[knob])
+    body, heading = FONT_PAIRS[knobs["font"]]
+    body, heading = custom.get("body_font", body), custom.get("heading_font", heading)
+    if (body, heading) != FONT_PAIRS[knobs["font"]]:
+        knobs["font"] = "mono" if body == "mono" else "serif" if "serif" in (body, heading) else "sans"
+    if "text_scale" in custom:
+        scales = {name: size / TEXT_PT["normal"] for name, size in TEXT_PT.items()}
+        knobs["text"] = _nearest(custom["text_scale"], scales)
+    if "corners" in custom:
+        cards = {name: card for name, (_control, card) in CORNER_RADIUS.items()}
+        knobs["corners"] = _nearest(custom["corners"], cards)
+    return knobs
+
+
+def look_measures(choice: dict | None) -> dict:
+    """What a look draws that is not a colour, worked out from its knobs and any custom measures: the
+    corners of controls and cards, the text size in points, the body and heading faces, and how blocks
+    and the grid are drawn. `edge_width` None is the painter's own."""
+    selected = sanitize_look(choice)
+    custom = selected.get("custom") or {}
+    knobs = effective_look(selected)
+    radius, card_radius = CORNER_RADIUS[knobs["corners"]]
+    if "corners" in custom:
+        # A card's corner as set, and a control's in the ratio Soft and Round keep, 6 to 10.
+        card_radius = custom["corners"]
+        radius = round(card_radius * RADIUS_CONTROL / RADIUS_CARD)
+    body, heading = FONT_PAIRS[knobs["font"]]
+    if custom:
+        base_font = {**LOOK_DEFAULTS, **LOOK_PRESETS[LOOK_BASES[custom["base"]][1]]}["font"]
+        body, heading = FONT_PAIRS[base_font]
+        body, heading = custom.get("body_font", body), custom.get("heading_font", heading)
+    scale = custom.get("text_scale", TEXT_PT[knobs["text"]] / TEXT_PT["normal"])
+    return {
+        "radius": radius,
+        "card_radius": card_radius,
+        "size": round(TEXT_PT["normal"] * scale, 1) if "text_scale" in custom else TEXT_PT[knobs["text"]],
+        "scale": scale,
+        "body": FONT_FAMILIES[body],
+        "heading": FONT_FAMILIES[heading],
+        "edge_width": custom.get("edge_width"),
+        "show_times": custom.get("show_times", True),
+        "show_lengths": custom.get("show_lengths", True),
+        "today_highlight": custom.get("today_highlight", True),
+    }
+
+
+def text_scale(choice: dict | None) -> float:
+    """How much larger than Normal the look's text is drawn."""
+    return look_measures(choice)["scale"]
+
+
+def look_motion(pack: object, look: dict | None) -> str:
+    """The motion level a look starts at when the student never chose one: a custom look's own, Reduce
+    for Paper ("distinct page turns, sharp transitions"), else the pack's."""
+    selected = sanitize_look(look)
+    custom = selected.get("custom")
+    if custom is not None:
+        return custom.get("motion") or ("reduce" if LOOK_BASES[custom["base"]][1] == "paper" else "normal")
+    return "reduce" if selected["preset"] == "paper" else pack_motion(pack)
 
 
 def preset_knobs(preset: object) -> dict:
@@ -523,28 +759,102 @@ def known_accent(name: object) -> str:
     return name if name in ACCENTS else "default"
 
 
-def _preset_palette(preset: str, pack: object, system_dark: bool) -> dict | None:
-    table = PRESET_PALETTES.get(preset)
-    if table is None:
-        return None
-    if "axis" in table:
-        return table
-    theme = resolved_pack_theme(pack, system_dark)
-    return table["dark" if theme in {"nocturne", "dark-frost"} else "light"]
+def _derived_muted(text: str, card: str, page: str) -> str:
+    """The quietest mix of the text into the card that still reads at 4.5 to 1 on the card and the page."""
+    for step in range(60, 101, 2):
+        muted = mix(text, card, step / 100)
+        if min(contrast(muted, card), contrast(muted, page)) >= AA_TEXT + 0.1:
+            return muted
+    return text
+
+
+def _customised(palette: dict, custom: dict) -> dict:
+    """The base look's colours with the student's in their place, and what follows from them: a dark
+    page makes a dark look, muted text is the quietest mix of the text that still reads, the raised
+    card and the strong line are the text laid faintly over the card and the line."""
+    colours = custom.get("colours", {})
+    table = dict(palette)
+    if colours:
+        page = colours.get("page", table["window"])
+        card = colours.get("card", table["panel"])
+        text = colours.get("text", table["text"])
+        line = colours.get("line", table["hairline"])
+        axis = "dark" if luminance(page) < 0.18 else "light"
+        if axis != table["axis"] or table["family"] != "contrast":
+            table["family"] = axis
+        table["axis"] = axis
+        sunk = card if axis == "light" else mix(card, page, 0.42)
+        table.update(window=page, panel=card, field=sunk, grid=sunk, text=text, hairline=line)
+        if {"page", "card", "text"} & colours.keys():
+            raised = mix(text, card, 0.05)
+            flex_reads = contrast(table["block_flex_ink"], table["block_flex"]) >= AA_TEXT
+            table.update(
+                muted=_derived_muted(text, card, page),
+                card_2=raised,
+                block_locked=raised if contrast(text, raised) >= AA_TEXT else card,
+                block_locked_ink=text,
+                block_flex=table["block_flex"] if flex_reads else card,
+                block_flex_ink=table["block_flex_ink"] if flex_reads else text,
+                error=fit_lightness(table["error"], (page, card), AA_TEXT),
+            )
+            table["block_edge"] = mix(table["muted"], card, 0.75)
+        if {"text", "line"} & colours.keys():
+            table["hairline_strong"] = mix(text, line, 0.09)
+        table["rule"] = table["hairline_strong"] if axis == "dark" else line
+    lines = custom.get("hour_lines")
+    if lines == "none":
+        table["rule"] = table["window"]
+    elif lines == "faint":
+        table["rule"] = mix(table["text"], table["window"], 0.08)
+    elif lines == "clear":
+        table["rule"] = table["hairline_strong"]
+    if "categories" in custom:
+        table["categories"] = {key: next(iter(spec.items())) for key, spec in custom["categories"].items()}
+    return table
+
+
+def _accent(palette: dict, accent: object) -> tuple[str, str]:
+    """The accent and its ink on this palette: a swatch in the palette's axis, or a colour of the
+    student's with black or white ink, whichever reads."""
+    colour = _hex(accent)
+    if colour:
+        return colour, readable_ink(colour)
+    return ACCENT_COLORS[known_accent(accent)][palette["axis"]]
+
+
+def _preset_palette(preset: str) -> dict | None:
+    return PRESET_PALETTES.get(preset)
 
 
 def resolved_palette(pack: object, system_dark: bool, look: dict | None, accent: object = "default") -> dict:
-    """The colours on screen: the preset's palette or the pack's, then the accent, then the surface knob."""
+    """The colours on screen: the preset's palette or the pack's, then a custom look's colours, then the
+    accent, then the surface knob.
+
+    The accent is one colour everywhere, but a page may need its darker shade (or on a dark page its
+    lighter one) for accent words to read at 4.5 to 1; its lightness moves the least it takes, and its
+    hue stays. No built-in look needs it; a custom page might."""
     choice = sanitize_look(look)
-    pack_colours = PALETTES[resolved_pack_theme(pack, system_dark)]
-    base = _preset_palette(choice["preset"], pack, system_dark) or pack_colours
+    custom = choice.get("custom")
+    preset = choice["preset"]
+    if custom is not None:
+        pack, preset = LOOK_BASES[custom["base"]]
+    base = _preset_palette(preset) or PALETTES[resolved_pack_theme(pack, system_dark)]
     palette = dict(base)
-    if choice["preset"] not in OWN_ACCENT:
-        palette["accent"], palette["accent_ink"] = ACCENT_COLORS[known_accent(accent)][palette["axis"]]
+    if custom is not None:
+        palette = _customised(palette, custom)
+        accent = custom.get("accent", accent)
+    if preset not in OWN_ACCENT or (custom is not None and "accent" in custom):
+        palette["accent"], palette["accent_ink"] = _accent(palette, accent)
     if effective_look(choice)["surface"] == "flat":
         # Flat has no raised surfaces: panels and inputs sit in the page and only hairlines divide them.
         palette["panel"] = palette["window"]
         palette["field"] = palette["window"]
+    readable = fit_lightness(palette["accent"], (palette["window"], palette["panel"]), AA_TEXT)
+    if readable != palette["accent"]:
+        palette["accent"] = readable
+        palette["accent_ink"] = readable_ink(readable)
+    if custom is not None and custom.get("now_line") == "text":
+        palette["now"] = palette["text"]
     return palette
 
 
@@ -552,16 +862,47 @@ def category_paint(category: str | None, palette: dict) -> tuple[str | None, str
     """A category's fill and mark in this look, or (None, None) for none.
 
     A light look fills with the pale colour. On a dark one a pale fill glared off the page, so the fill
-    there is the category's tone sunk into the look's own panel.
+    there is the category's tone sunk into the look's own panel. A look may draw the family's fills
+    paler or bolder (`fill`), and a custom look may give a category a hue of its own on the family, or
+    an exact colour, which is its fill in any look.
     """
     info = CATEGORIES.get(category or "")
     if info is None:
         return None, None
     family = palette.get("family", "light")
-    if family == "light":
-        return info["color"], info["mark"]
-    tone, mark = info[family]
-    return _sunk(tone, palette["panel"]), mark
+    spec = (palette.get("categories") or {}).get(category)
+    fill = palette.get("fill")
+    if spec is None and (fill is None or family != "light"):
+        if family == "light":
+            return info["color"], info["mark"]
+        tone, mark = info[family]
+        return _sunk(tone, palette["panel"]), mark
+    return _own_paint(category, family, spec, fill, palette["panel"])
+
+
+@lru_cache(maxsize=512)
+def _own_paint(
+    category: str,
+    family: str,
+    spec: tuple[str, float | str] | None,
+    fill: tuple[float, float] | None,
+    panel: str,
+) -> tuple[str, str]:
+    info = CATEGORIES[category]
+    homework = HOMEWORK_DARKER if category == "assignments" else 0.0
+    mark_light, mark_chroma = MARK[family]
+    if spec is not None and spec[0] == "colour":
+        colour = str(spec[1])
+        _light, chroma, hue = oklch_of(colour)
+        return colour, oklch(mark_light - homework, min(chroma, mark_chroma), hue)
+    hue = float(spec[1]) if spec is not None else info["hue"]
+    grey = spec is None and category == "free"
+    chroma = GREY_CHROMA if grey else mark_chroma
+    mark = oklch(mark_light - homework, chroma, hue)
+    if family != "light":
+        return _sunk(oklch(mark_light, chroma, hue), panel), mark
+    light, fill_chroma = fill or FILL
+    return oklch(light, GREY_CHROMA if grey else fill_chroma, hue), mark
 
 
 @lru_cache(maxsize=256)
@@ -587,7 +928,7 @@ def block_paint(
     neutral_ink = palette["block_flex_ink" if flexible else "block_locked_ink"]
     mark = mark or category_color or palette["block_edge"]
     mode = effective_look(look)["blocks"]
-    if mode == "outlined":
+    if mode == "outline":
         return {"mode": mode, "fill": palette["grid"], "ink": palette["text"], "outline": mark, "edge": None}
     if mode == "edge":
         return {
@@ -605,11 +946,11 @@ def block_paint(
 
 
 def _depth_rules(depth: str, palette: dict) -> str:
-    # Qt stylesheets have no shadows. Depth is drawn with edges instead: a hairline for soft, nothing
-    # for flat, and a heavy bottom and right edge for hard, which reads as a hard offset shadow.
-    if depth == "flat":
+    # Qt stylesheets have no shadows. Depth is drawn with edges instead: a hairline for Soft, nothing
+    # for None, and for Bold a heavy bottom and right edge, which reads as Poster's offset shadow.
+    if depth == "none":
         return "border: none;"
-    if depth == "hard":
+    if depth == "bold":
         strong = palette["hairline_strong"]
         heavy = f"4px solid {strong}"
         return f"border: 2px solid {strong}; border-bottom: {heavy}; border-right: {heavy};"
@@ -758,7 +1099,7 @@ def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) 
     edges = _depth_rules(depth, palette)
     card_radius = max(radius, 10)
     track = mix(palette["text"], palette["panel"], 0.07)
-    chosen_edge = "none" if depth == "flat" else f"1px solid {palette['hairline_strong']}"
+    chosen_edge = "none" if depth == "none" else f"1px solid {palette['hairline_strong']}"
     selected = mix(palette["accent"], palette["panel"], 0.16)
     return (
         f"QWidget#settingsPage {{ background: {palette['window']}; }}"
@@ -807,7 +1148,7 @@ def setup_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> 
     """
     edges = _depth_rules(depth, palette)
     card_radius = max(radius, 10)
-    ring = "transparent" if depth == "flat" else mix(palette["hairline_strong"], palette["panel"], 0.6)
+    ring = "transparent" if depth == "none" else mix(palette["hairline_strong"], palette["panel"], 0.6)
     # A card is larger than a control, so it is lifted with the text colour, never the accent.
     lift = mix(palette["text"], palette["panel"], 0.04)
     quiet = (
@@ -880,20 +1221,21 @@ def pack_stylesheet(
     knobs = effective_look(look)
     card = DENSITY_PAD[knobs["density"]]
     pad = CONTROL_PAD[knobs["density"]]
-    size = TEXT_PT[knobs["text"]]
-    family = FONT_FAMILIES[knobs["font"]]
-    radius, card_radius = CORNER_RADIUS[knobs["corners"]]
+    measures = look_measures(look)
+    size = measures["size"]
+    family = measures["body"]
+    radius, card_radius = measures["radius"], measures["card_radius"]
     edges = _depth_rules(knobs["depth"], palette)
     item_h = 36 if knobs["text"] == "large" else 22
     button_min = f" min-height: {item_h}px;" if knobs["text"] == "large" else ""
     field_min = FIELD_MIN_PX[knobs["text"]]
     # A flat look has no edges, so a plain button is told from its words by a faint fill instead.
-    if knobs["depth"] == "flat":
+    if knobs["depth"] == "none":
         quiet_edge = f"background: {palette['hairline']}; border: none;"
     else:
         quiet_edge = f"background: transparent; border: 1px solid {palette['hairline_strong']};"
     # A flat look draws no lines at all, so its segments are told apart by the raised one alone.
-    divider = "none" if knobs["depth"] == "flat" else f"1px solid {palette['hairline_strong']}"
+    divider = "none" if knobs["depth"] == "none" else f"1px solid {palette['hairline_strong']}"
     return (
         f"QMainWindow, QDialog, QWidget {{ background: {palette['window']}; color: {palette['text']}; "
         f"font-family: {family}; font-size: {size}pt; }}"
@@ -1076,6 +1418,9 @@ def pack_stylesheet(
         f"font-weight: 800; font-size: {max(size - 1, 7)}pt; margin-top: 6px; }}"
         f"QLabel#weekNoneWaiting {{ color: {palette['muted']}; font-size: {max(size - 1, 7)}pt; }}"
         + (_contrast_rules(palette) if palette.get("family") == "contrast" else "")
+        # Headings in the look's heading face: Newsreader in the Serif font, over Inter.
+        + ", ".join(f"QLabel#{name}" for name in HEADING_NAMES)
+        + f" {{ font-family: {measures['heading']}; }}"
     ) + (control_rules(palette, radius, size, art) if art is not None else "")
 
 

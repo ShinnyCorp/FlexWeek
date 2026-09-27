@@ -5,7 +5,33 @@ All notable changes to FlexWeek are documented here. Format follows
 
 ## [0.17.0] - Unreleased
 
+### Added
+- Newsreader and JetBrains Mono ship with the app, as Inter does, in four
+  weights each. The Serif font sets headings in Newsreader over Inter; the Mono
+  font is JetBrains Mono throughout.
+- Ink, Paper's night counterpart: a charcoal page with warm ivory text and
+  serif headings, whatever the account's look.
+- Looks of your own (the model behind Customise; its screen comes later): start
+  from any of the ten looks and change the accent (a swatch or any colour), the
+  page, card, text and line colours, each category's colour (a hue on the
+  family, or an exact colour), the corners, spacing, shadows, the body and
+  heading fonts, the text size, how blocks are drawn, the hour lines, today's
+  highlight, the now line and the motion. Unreadable pairs are found, each with
+  a fix that moves that colour's lightness until it reads at 4.5 to 1. Looks
+  are saved by name on this computer, and shared as a small file.
+
 ### Changed
+- Slate, Nocturne, Paper, Terminal, Poster and Pastel are redrawn as the 0.17
+  mock-up draws them, each in the one accent: Slate cool grey-blue, Nocturne
+  midnight, Paper ink on off-white with serif headings and quieter category
+  fills, Terminal GitHub-dark in JetBrains Mono, Poster black lines and bolder
+  fills on cream, Pastel lavender. A look saved in 0.16 opens as its new self.
+  Paper starts at the Reduce motion level when no level was chosen.
+- The accent's words always read at 4.5 to 1: on a tinted page that needs it,
+  as Slate's and Pastel's, the accent is its own shade a little darker.
+- The knobs are renamed as they are drawn: Surface Flat or Layered, Corners
+  Soft (6 and 10), Sharp (0 and 2) or Round (10 and 16), Shadows None, Soft or
+  Bold, Blocks Edge, Filled or Outline. Saved choices keep their meaning.
 - One accent: FlexWeek's blue, the icon's (`#3d6fc4` on light looks, `#7fa8ff`
   on dark ones), in every look but High contrast, which keeps its yellow
   (`#ffd400`) whatever swatch is picked. Sky, Sea, Gold and Sand still replace
@@ -19,8 +45,8 @@ All notable changes to FlexWeek are documented here. Format follows
   dark look a block is its category sunk into the card, written in the look's
   own text colour. Homework's mark is darker than the rest, so it stays apart
   from Sports for a student who cannot tell red from green.
-- Round corners are 6 pixels on controls and 10 on cards, the toast and the
-  command bar.
+- Soft corners (0.16's Round) are 6 pixels on controls and 10 on cards, the
+  toast and the command bar.
 - Today's column is washed with 3 % of the text colour on Week and not at all
   on Day. The now line and its time are in the accent: red is for what cannot
   be.
