@@ -35,10 +35,10 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from backend.models import due_is_timed
-from desktop.native.calendar import CATEGORIES, DAYS
+from desktop.native.calendar import DAYS
 from desktop.native.hours.geometry import Span
 from desktop.native.hours.hand import Gesture, Hand, Held, Verdict
-from desktop.native.look import resolved_palette
+from desktop.native.look import category_paint, luminance, resolved_palette
 from desktop.native.weekmodel import WeekModel, clock_label, hhmm_text
 
 # The row of day names, kept above the dates while they scroll.
@@ -49,7 +49,6 @@ LEAST_CHIPS = 2
 LEAST_AHEAD = 2
 # Layout passes to wait for the canvas's new height before scrolling to the opening week anyway.
 REVEAL_TRIES = 3
-FALLBACK_MARK = "#94a3b8"
 
 
 @dataclass(frozen=True)
@@ -207,15 +206,15 @@ class MonthPainter:
         painter.drawText(spot, Qt.AlignmentFlag.AlignCenter, str(cell.day_number))
 
     def chip(self, painter: QPainter, box: QRectF, chip: MonthChip, faded: bool, held: bool) -> None:
-        """A block in its category's colour, or a deadline as a quiet chip led by a bold "Due". A
-        column of red boxes was the most alarming thing in the app for its most ordinary fact; the
-        flag is red only once the date has gone."""
-        if chip.due:
+        """A block in its category's fill, as the week draws it, or a deadline as a quiet chip led by
+        a bold "Due". A column of red boxes was the most alarming thing in the app for its most
+        ordinary fact; the flag is red only once the date has gone."""
+        category_fill = None if chip.due else category_paint(chip.category, self.colours)[0]
+        if category_fill is None:
             fill = self.c("text")
             fill.setAlpha(18)
         else:
-            fill = QColor((CATEGORIES.get(chip.category) or {}).get("mark") or FALLBACK_MARK)
-            fill.setAlpha(60)
+            fill = QColor(category_fill)
         ink = self.c("text")
         flag = self.c("error") if chip.late else self.c("text")
         if faded or chip.done or held:
@@ -622,6 +621,8 @@ class MonthGrid(QWidget):
                     "hairline": tokens["line"],
                     "accent": tokens["accent"],
                     "accent_ink": tokens.get("accent_ink", "#ffffff"),
+                    # A dark design's cells take its categories sunk into them, as a dark look's do.
+                    "family": "dark" if luminance(tokens["surface"]) < 0.2 else "light",
                 }
             )
         )

@@ -232,14 +232,14 @@ def test_the_words_held_over_a_refused_date_say_no_in_red(qapp: QApplication) ->
     assert seen == [(words, True), ("19:00 History essay → Fri 25", False)]
 
 
-def painted_colours(qapp: QApplication, draw) -> set[str]:
-    """Every colour a painter call leaves on a small card-coloured picture."""
+def painted_colours(qapp: QApplication, draw, palette: dict | None = None) -> set[str]:
+    """Every colour a painter call leaves on a small picture, in Light unless told."""
     from PySide6.QtGui import QColor, QFont, QImage, QPainter
 
     from desktop.native.hours.month import MonthPainter
     from desktop.native.look import resolved_palette
 
-    palette = resolved_palette("light-frost", False, None)
+    palette = palette or resolved_palette("light-frost", False, None)
     image = QImage(240, 40, QImage.Format.Format_ARGB32)
     image.fill(QColor("#123456"))
     painter = QPainter(image)
@@ -274,6 +274,25 @@ def test_a_deadline_is_a_quiet_chip_led_by_due_and_red_only_once_its_date_has_go
         assert CATEGORIES["assignments"]["mark"] not in chip(shown), "outlined in homework's colour"
     assert palette["error"] in chip(gone)
     assert palette["error"] not in chip(coming)
+
+
+def test_a_block_on_month_is_its_category_as_the_week_fills_it(qapp: QApplication) -> None:
+    """One family (decision 9 of 0.17): a chip is the category's fill for the look, pale on Light and
+    sunk into the card on Dark, not the strong mark washed over the card."""
+    from PySide6.QtCore import QRectF
+
+    from desktop.native.hours.month import MonthChip
+    from desktop.native.look import category_paint, resolved_palette
+
+    box = QRectF(0, 0, 240, 40)
+    for pack, dark in (("light-frost", False), ("dark-frost", True)):
+        palette = resolved_palette(pack, dark, None)
+        for category in ("class", "assignments"):
+            chip = MonthChip(f"block:{category}", "Block", category, block_id=category, start=8 * 60)
+            seen = painted_colours(
+                qapp, lambda month, painter, chip=chip: month.chip(painter, box, chip, False, False), palette
+            )
+            assert category_paint(category, palette)[0] in seen, (pack, category)
 
 
 def test_a_date_outside_the_month_is_told_by_its_dimmed_number_not_a_tint(qapp: QApplication) -> None:
