@@ -35,7 +35,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QScrollArea, QWidget
 
 from desktop.native.calendar import DAYS, create_click_range
-from desktop.native.fonts import time_font
+from desktop.native.fonts import caption, time_font, weighted
 from desktop.native.hours.geometry import (
     Axis,
     LinearTrack,
@@ -46,6 +46,7 @@ from desktop.native.hours.geometry import (
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
 from desktop.native.look import block_paint, category_paint, readable_ink
 from desktop.native.motion import DURATION_MS, app_level
+from desktop.native.tokens import WEIGHT_REGULAR, WEIGHT_STRONG
 from desktop.native.weekmodel import Occurrence, clock_label, length_label
 
 # A press this close to a block's start or end edge resizes it, on a block long enough to have edges.
@@ -202,8 +203,7 @@ class BlockPainter:
         self.words(painter, rect, drawn, ink, visible)
 
     def words(self, painter: QPainter, rect: QRectF, drawn: Drawn, ink: QColor, visible: QRectF) -> None:
-        bold = QFont(painter.font())
-        bold.setBold(True)
+        bold = weighted(painter.font(), WEIGHT_STRONG)
         plain = time_font(_small(painter.font()))
         line = QFontMetrics(bold).height()
         # The name on a bold line and its times on one line of the smaller font under it.
@@ -268,8 +268,7 @@ class BlockPainter:
         painter.setBrush(wash)
         painter.setPen(QPen(colour, 2))
         painter.drawRoundedRect(rect, 5, 5)
-        bold = time_font(painter.font())
-        bold.setBold(True)
+        bold = weighted(time_font(painter.font()), WEIGHT_STRONG)
         painter.setPen(self.c("text"))
         _write_lines(painter, words, bold, rect.adjusted(8, 3, -6, -3))
 
@@ -295,8 +294,7 @@ class BlockPainter:
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
         """A line across the track at `minute`, starting from a pill with the time on it."""
         colour = self.c("accent")
-        font = time_font(_small(painter.font()))
-        font.setBold(True)
+        font = weighted(time_font(_small(painter.font())), WEIGHT_STRONG)
         metrics = QFontMetricsF(font)
         words = clock_label(minute)
         width, height = metrics.horizontalAdvance(words) + 10, metrics.height() + 2
@@ -334,8 +332,7 @@ class BlockPainter:
         painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
 
     def day_name(self, painter: QPainter, box: QRectF, words: str, today: bool) -> None:
-        font = QFont(painter.font())
-        font.setBold(today)
+        font = weighted(painter.font(), WEIGHT_STRONG if today else WEIGHT_REGULAR)
         painter.setFont(font)
         painter.setPen(self.c("accent" if today else "muted"))
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, words)
@@ -382,9 +379,7 @@ def _between(start: QRectF, end: QRectF, share: float) -> QRectF:
 
 
 def _small(font: QFont) -> QFont:
-    made = QFont(font)
-    made.setPointSizeF(max(made.pointSizeF() * 0.86, 7))
-    return made
+    return caption(font)
 
 
 # Words that belong to the number before them.

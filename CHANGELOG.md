@@ -28,6 +28,11 @@ All notable changes to FlexWeek are documented here. Format follows
   40 % white instead of full white. Day, Week, Month and My day, and every
   choice of two or three in Settings, read in white on black with the chosen
   one filled yellow, where the view control was yellow on light grey.
+- One type scale: captions 11 pt, body text 13, headings 15, titles 20 and
+  display numbers 28 at Normal text, which Small and Large scale together. Two
+  weights, regular and semibold; bold only for the focus screen's countdown.
+  Body text is a point larger than before, and titles, headings and the grid's
+  small words each have one size wherever they appear.
 
 ### Fixed
 - Changing the look with the week open, to High contrast above all, no longer

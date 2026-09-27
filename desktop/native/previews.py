@@ -18,7 +18,8 @@ from desktop.native.hours.hand import Hand, Verdict
 from desktop.native.layouts.base import Scene
 from desktop.native.layouts.registry import options_for, tokens_for
 from desktop.native.layouts.views import VIEW_CLASSES
-from desktop.native.look import TEXT_PT, effective_look, resolved_palette
+from desktop.native.look import effective_look, resolved_palette
+from desktop.native.tokens import TEXT_SCALE
 from desktop.native.weekmodel import build_week
 
 # Drawn at a laptop's window size and scaled down, so each design lays out as it does in use.
@@ -109,7 +110,7 @@ def render(main: str, colour: str | None, pack: str, look: dict | None, width: i
                 minute=SAMPLE_MINUTE,
                 options=options,
                 tokens=tokens_for(main, options["colour"], palette),
-                scale=TEXT_PT[effective_look(look)["text"]] / TEXT_PT["normal"],
+                scale=TEXT_SCALE[effective_look(look)["text"]],
                 iso_day=(date.fromisoformat(monday) + timedelta(days=SAMPLE_DAY)).isoformat(),
             )
         )

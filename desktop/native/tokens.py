@@ -45,6 +45,12 @@ def type_pt(role: str, scale: float | str = 1.0) -> float:
     return round(TYPE_PT[role] * factor * 2) / 2
 
 
+def text_knob(body_pt: float) -> str | None:
+    """The Text knob whose body size is `body_pt`, for a painter that knows only its widget's font;
+    None for a size off the scale, as a design's own."""
+    return next((knob for knob in TEXT_SCALE if type_pt("body", knob) == body_pt), None)
+
+
 def _decode(channel: float) -> float:
     return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
 

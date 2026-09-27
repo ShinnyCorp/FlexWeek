@@ -76,7 +76,6 @@ from desktop.native.layouts.empty import EmptyWeek, nothing_yet
 from desktop.native.layouts.registry import MATCH, options_for, sanitize_layout, tokens_for
 from desktop.native.layouts.views import VIEW_CLASSES
 from desktop.native.look import (
-    TEXT_PT,
     effective_look,
     pack_motion,
     pack_stylesheet,
@@ -109,6 +108,7 @@ from desktop.native.settings import (
 from desktop.native.setup import REMINDERS, SETUP_VERSION, STYLE, SetupPage, SetupState
 from desktop.native.sound import Bell
 from desktop.native.spotify import LISTENING, STARTING, SpotifyPlayer, open_in_app
+from desktop.native.tokens import TEXT_SCALE
 from desktop.native.tones import FALLBACK
 from desktop.native.update import RELEASE_PAGE, due_for_check, sanitize_updates
 from desktop.native.updater import Updater, apply_update
@@ -1052,7 +1052,7 @@ class NativeWindow(QMainWindow):
             minute=clock["minute"],
             options=options,
             tokens=tokens_for(layout_id, options["colour"], palette),
-            scale=TEXT_PT[effective_look(self._look)["text"]] / TEXT_PT["normal"],
+            scale=TEXT_SCALE[effective_look(self._look)["text"]],
             surface=surface,
             month=session.month_data,
             iso_day=session.selected_day,

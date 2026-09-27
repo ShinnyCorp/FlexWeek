@@ -12,11 +12,23 @@ readability and accent-distance audits, so both clients show the same look.
 
 from __future__ import annotations
 
+import math
 from copy import deepcopy
 from functools import lru_cache
 
 from desktop.native.calendar import CATEGORIES
-from desktop.native.tokens import RADIUS_CARD, RADIUS_CONTROL, SINK, mix_oklab
+from desktop.native.tokens import (
+    RADIUS_CARD,
+    RADIUS_CONTROL,
+    SINK,
+    TEXT_SCALE,
+    TYPE_PT,
+    WEIGHT_NUMBER,
+    WEIGHT_REGULAR,
+    WEIGHT_STRONG,
+    mix_oklab,
+    type_pt,
+)
 
 LOOK_KNOBS = {
     "surface": ("frost", "flat"),
@@ -113,11 +125,13 @@ PACK_LABELS = {
 PACKS = ("system", "light-frost", "dark-frost", "nocturne", "slate")
 ACCENTS = ("default", "sky", "gold", "sea", "sand")
 MONO_FAMILY = "DejaVu Sans Mono, Noto Sans Mono, monospace"
-TEXT_PT = {"small": 10, "normal": 12, "large": 15}
 # The shortest a field may be drawn. A layout under pressure squeezes its rows, and a combo box or a
 # line edit has no minimum of its own worth the name, so the text inside gets sliced in half rather
-# than the dialog refusing to shrink. Measured against the app's own font at each size.
-FIELD_MIN_PX = {"small": 22, "normal": 26, "large": 34}
+# than the dialog refusing to shrink. Measured against the app's own font: 2.25 pixels a point.
+FIELD_MIN_PX = {text: math.ceil(type_pt("body", text) * 2.25) for text in TEXT_SCALE}
+# The focus screen's countdown is read from across a desk, so it is drawn beyond the scale, at a size
+# the Text knob never sets. It is the one size a stylesheet may write off the scale.
+COUNTDOWN_PT = 96
 # A card's padding, and the smaller one of a button, a field, a list or a menu, which keep their heights.
 DENSITY_PAD = {"comfortable": 16, "compact": 8}
 CONTROL_PAD = {"comfortable": 8, "compact": 4}
@@ -651,13 +665,19 @@ def palette_from_tokens(tokens: dict[str, str], base: dict) -> dict:
     }
 
 
-def control_rules(palette: dict, radius: int, size: int, art: dict[str, str]) -> str:
+def type_sizes(text: str) -> dict[str, str]:
+    """Each role of the type scale (decision 4) as a stylesheet writes its size, at the Text knob."""
+    return {role: f"{type_pt(role, text):g}pt" for role in TYPE_PT}
+
+
+def control_rules(palette: dict, radius: int, text: str, art: dict[str, str]) -> str:
     """Scrollbars, dropdowns, steppers, check marks, lists, menus and tooltips in the design's colours.
 
     Left to Fusion they kept its grey chrome in every design, and on a dark palette an unticked box, an
     unselected radio button and the spin arrows could not be seen at all. `art` holds the tick and
     chevron images, which `control_art` in widgets.py draws for the palette.
     """
+    pt = type_sizes(text)
     handle = mix(palette["muted"], palette["panel"], 0.55)
     corner = max(4, min(radius, 10))
     item = max(4, corner - 2)
@@ -682,8 +702,8 @@ def control_rules(palette: dict, radius: int, size: int, art: dict[str, str]) ->
         f"QComboBox::down-arrow:on {{ image: url({up}); }}"
         f"QComboBox QAbstractItemView {{ background: {palette['panel']}; color: {palette['text']}; "
         f"border: 1px solid {palette['hairline_strong']}; padding: 4px; outline: 0; }}"
-        f"QComboBox QAbstractItemView::item {{ min-height: {size * 2 + 8}px; padding: 2px 10px; "
-        f"border-radius: {item}px; }}"
+        f"QComboBox QAbstractItemView::item {{ min-height: {round(type_pt('body', text) * 2) + 8}px; "
+        f"padding: 2px 10px; border-radius: {item}px; }}"
         f"QComboBox QAbstractItemView::item:hover {{ background: {palette['hairline']}; }}"
         "QAbstractSpinBox { padding-right: 26px; }"
         "QAbstractSpinBox::up-button { subcontrol-origin: border; subcontrol-position: top right; "
@@ -698,7 +718,7 @@ def control_rules(palette: dict, radius: int, size: int, art: dict[str, str]) ->
         f"QCalendarWidget QWidget {{ background: {palette['panel']}; color: {palette['text']}; "
         f"alternate-background-color: {palette['panel']}; }}"
         f"QCalendarWidget QToolButton {{ background: transparent; color: {palette['text']}; "
-        "border: none; padding: 4px 8px; font-weight: 600; }"
+        f"border: none; padding: 4px 8px; font-weight: {WEIGHT_STRONG}; }}"
         # The month's grid is a QFrame too. Padded like a panel, it lost its last column and week: the
         # calendar sizes its columns to the whole view, not to what the padding leaves.
         f"QCalendarWidget QAbstractItemView {{ selection-background-color: {palette['accent']}; "
@@ -728,11 +748,11 @@ def control_rules(palette: dict, radius: int, size: int, art: dict[str, str]) ->
         f"QMenu::item:selected {{ background: {palette['accent']}; color: {palette['accent_ink']}; }}"
         f"QMenu::item:disabled {{ color: {palette['muted']}; }}"
         f"QMenu::separator {{ height: 1px; background: {palette['hairline']}; margin: 6px 8px; }}"
-        f"QLabel#menuHeading {{ color: {palette['muted']}; font-weight: 600; "
-        f"font-size: {max(size - 1, 8)}pt; padding: 6px 12px 2px 12px; }}"
+        f"QLabel#menuHeading {{ color: {palette['muted']}; font-weight: {WEIGHT_STRONG}; "
+        f"font-size: {pt['caption']}; padding: 6px 12px 2px 12px; }}"
         # A tooltip does not take the window's text size by itself, so at Large it stayed small.
         f"QToolTip {{ background: {palette['text']}; color: {palette['window']}; border: none; "
-        f"padding: 5px 9px; border-radius: {item}px; font-size: {size}pt; }}"
+        f"padding: 5px 9px; border-radius: {item}px; font-size: {pt['body']}; }}"
         f"QProgressBar {{ background: {palette['hairline']}; border: none; border-radius: 4px; "
         f"max-height: 8px; text-align: center; color: transparent; }}"
         f"QProgressBar::chunk {{ background: {palette['accent']}; border-radius: 4px; }}"
@@ -748,13 +768,14 @@ def control_rules(palette: dict, radius: int, size: int, art: dict[str, str]) ->
     )
 
 
-def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> str:
+def settings_rules(palette: dict, radius: int, text: str, pad: int, depth: str) -> str:
     """Settings as a page: a list of sections on the left, cards on the right, and segmented choices.
     Dialogs laid out in cards use the same card.
 
     A segmented control is a sunken track with the chosen segment raised on it, so two or three
     choices read as one control with one answer.
     """
+    pt = type_sizes(text)
     edges = _depth_rules(depth, palette)
     card_radius = max(radius, 10)
     track = mix(palette["text"], palette["panel"], 0.07)
@@ -774,22 +795,22 @@ def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) 
         f"border-radius: {max(radius - 2, 4)}px; }}"
         f"QListWidget#prefsNav::item:hover {{ background: {palette['hairline']}; color: {palette['text']}; }}"
         f"QListWidget#prefsNav::item:selected {{ background: {selected}; color: {palette['text']}; }}"
-        f"QLabel#settingsTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
+        f"QLabel#settingsTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; }}"
         f"QFrame#settingsCard, QFrame#dialogCard {{ background: {palette['panel']}; "
         f"border-radius: {card_radius}px; padding: 0; {edges} }}"
         "QLabel#prefsHeading, QLabel#layoutMainHeading, QLabel#layoutDayHeading, QLabel#cardTitle { "
-        f"font-size: {size + 1}pt; font-weight: 700; color: {palette['text']}; }}"
+        f"font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; color: {palette['text']}; }}"
         "QLabel#settingsCardNote, QLabel#cardNote, QLabel#settingsExperimental, QLabel#prefPlanningNote, "
         "QLabel#prefDndNote, "
         "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits { "
         f"color: {palette['muted']}; }}"
-        "QLabel#settingsExperimental { font-weight: 700; margin-top: 6px; }"
+        f"QLabel#settingsExperimental {{ font-weight: {WEIGHT_STRONG}; margin-top: 6px; }}"
         f'QFrame[segmented="true"] {{ background: {track}; border: none; '
         f"border-radius: {max(radius, 6) + 2}px; padding: 0; }}"
         f'QPushButton[segment="true"] {{ background: transparent; color: {palette["muted"]}; border: none; '
         # One weight whether chosen or not: a bolder chosen segment was wider than the room it was given.
-        f"border-radius: {max(radius, 6)}px; padding: {max(pad - 2, 3)}px {pad + 8}px; font-weight: 600; "
-        "min-height: 0; }"
+        f"border-radius: {max(radius, 6)}px; padding: {max(pad - 2, 3)}px {pad + 8}px; "
+        f"font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
         f'QPushButton[segment="true"]:hover {{ color: {palette["text"]}; }}'
         f'QPushButton[segment="true"]:checked {{ background: {palette["field"]}; color: {palette["text"]}; '
         f"border: {chosen_edge}; }}"
@@ -798,13 +819,14 @@ def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) 
     )
 
 
-def setup_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> str:
+def setup_rules(palette: dict, radius: int, text: str, pad: int, depth: str) -> str:
     """First-run setup: a rail of steps beside one question at a time, and cards to pick from.
 
     Groups, chips and Back take the depth's edges like every other control. A card keeps a ring of
     one width whether or not it is picked, so picking one never nudges its picture: the ring is the
     accent when picked and, except on a flat look, a soft line otherwise.
     """
+    pt = type_sizes(text)
     edges = _depth_rules(depth, palette)
     card_radius = max(radius, 10)
     ring = "transparent" if depth == "flat" else mix(palette["hairline_strong"], palette["panel"], 0.6)
@@ -825,38 +847,41 @@ def setup_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> 
         # colour. On a card that is a band of background across the middle of it.
         f"QWidget#setupRow, QWidget#setupBody {{ background: transparent; border: none; padding: 0; }}"
         f"QScrollArea#setupScroll {{ background: transparent; border: none; padding: 0; }}"
-        f"QLabel#setupBrand {{ font-size: {size + 2}pt; font-weight: 700; color: {palette['accent']}; }}"
+        f"QLabel#setupBrand {{ font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; "
+        f"color: {palette['accent']}; }}"
         f"QPushButton#setupRailItem {{ background: transparent; color: {palette['muted']}; border: none; "
-        f"text-align: left; padding: {pad + 2}px {pad}px; font-weight: 500; min-height: 0; }}"
+        f"text-align: left; padding: {pad + 2}px {pad}px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"
         f"QPushButton#setupRailItem:hover {{ color: {palette['text']}; }}"
         f"QPushButton#setupRailItem[done=\"true\"] {{ color: {palette['text']}; }}"
-        f"QPushButton#setupRailItem[current=\"true\"] {{ color: {palette['text']}; font-weight: 700; }}"
+        f"QPushButton#setupRailItem[current=\"true\"] {{ color: {palette['text']}; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
         f"QPushButton#setupRailItem:disabled {{ background: transparent; "
         f"color: {mix(palette['muted'], palette['panel'], 0.55)}; }}"
         f"QFrame#setupRailMarker {{ background: {palette['accent']}; border: none; padding: 0; "
         f"border-radius: 1px; }}"
-        f"QLabel#setupTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
-        f"QLabel#setupNote {{ color: {palette['muted']}; font-size: {size + 1}pt; }}"
+        f"QLabel#setupTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#setupNote {{ color: {palette['muted']}; font-size: {pt['body']}; }}"
         f"QLabel#setupHint, QLabel#setupFieldLabel {{ color: {palette['muted']}; }}"
-        f"QLabel#setupSection {{ font-size: {size + 1}pt; font-weight: 700; margin-top: 8px; }}"
-        f"QLabel#setupError {{ color: {palette['error']}; font-weight: 600; }}"
-        f"QLabel#setupSummaryName {{ font-weight: 700; }}"
+        f"QLabel#setupSection {{ font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; "
+        "margin-top: 8px; }"
+        f"QLabel#setupError {{ color: {palette['error']}; font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#setupSummaryName {{ font-weight: {WEIGHT_STRONG}; }}"
         f"QFrame#setupChoice {{ background: {palette['panel']}; border: 2px solid {ring}; "
         f"border-radius: {card_radius}px; padding: 0; }}"
         f"QFrame#setupChoice:hover {{ background: {lift}; }}"
         f"QFrame#setupChoice:focus {{ border-color: {mix(palette['accent'], palette['panel'], 0.5)}; }}"
         f"QFrame#setupChoice[selected=\"true\"] {{ border-color: {palette['accent']}; background: {lift}; }}"
-        f"QLabel#setupChoiceName {{ font-weight: 700; font-size: {size + 1}pt; }}"
+        f"QLabel#setupChoiceName {{ font-weight: {WEIGHT_STRONG}; font-size: {pt['body']}; }}"
         f"QLabel#setupChoiceNote {{ color: {palette['muted']}; }}"
         f"QFrame#setupGroup {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
         f"{pills} {{ background: {palette['field']}; color: {palette['text']}; {edges} "
-        f"border-radius: 14px; padding: 4px 12px; font-weight: 500; min-height: 0; }}"
+        f"border-radius: 14px; padding: 4px 12px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"
         f"QPushButton#setupDay {{ padding: 4px 9px; }}"
         f"{pills_hover} {{ background: {mix(palette['accent'], palette['field'], 0.14)}; }}"
         f"QPushButton#setupChip:checked, QPushButton#setupDay:checked {{ background: {palette['accent']}; "
         f"color: {palette['accent_ink']}; }}"
         f"{quiet_rule} {{ background: transparent; color: {palette['accent']}; border: none; "
-        f"padding: {pad}px 2px; font-weight: 600; min-height: 0; }}"
+        f"padding: {pad}px 2px; font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
         f"{quiet_hover} {{ color: {palette['text']}; text-decoration: underline; }}"
         f"QPushButton#setupAddActivity:disabled, QPushButton#setupAddHomework:disabled {{ "
         f"background: transparent; color: {palette['muted']}; }}"
@@ -864,7 +889,7 @@ def setup_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> 
         f"QPushButton#setupChange {{ padding: 0 2px; }}"
         f"QPushButton#setupBack {{ background: transparent; color: {palette['text']}; {edges} }}"
         f"QPushButton#setupBack:hover {{ background: {mix(palette['accent'], palette['window'], 0.1)}; }}"
-        f"QPushButton#setupNext {{ padding: {pad}px {pad * 3}px; font-weight: 700; }}"
+        f"QPushButton#setupNext {{ padding: {pad}px {pad * 3}px; font-weight: {WEIGHT_STRONG}; }}"
     )
 
 
@@ -880,7 +905,7 @@ def pack_stylesheet(
     knobs = effective_look(look)
     card = DENSITY_PAD[knobs["density"]]
     pad = CONTROL_PAD[knobs["density"]]
-    size = TEXT_PT[knobs["text"]]
+    pt = type_sizes(knobs["text"])
     family = FONT_FAMILIES[knobs["font"]]
     radius, card_radius = CORNER_RADIUS[knobs["corners"]]
     edges = _depth_rules(knobs["depth"], palette)
@@ -896,14 +921,14 @@ def pack_stylesheet(
     divider = "none" if knobs["depth"] == "flat" else f"1px solid {palette['hairline_strong']}"
     return (
         f"QMainWindow, QDialog, QWidget {{ background: {palette['window']}; color: {palette['text']}; "
-        f"font-family: {family}; font-size: {size}pt; }}"
+        f"font-family: {family}; font-size: {pt['body']}; }}"
         f"QFrame, QGroupBox, QTableWidget, QListWidget {{ background: {palette['panel']}; "
         f"color: {palette['text']}; padding: {card}px; border-radius: {card_radius}px; {edges} }}"
         # Lists, tables and scroll areas are frames too, but their padding is room around rows.
         f"QAbstractScrollArea {{ padding: {pad}px; }}"
         # A group's title sits in the space above its frame. Without the room it was drawn on the
         # frame line, over the first row of what it names.
-        f"QGroupBox {{ margin-top: {round(size * 1.9) + 4}px; }}"
+        f"QGroupBox {{ margin-top: {round(type_pt('body', knobs['text']) * 1.9) + 4}px; }}"
         f"QGroupBox::title {{ subcontrol-origin: margin; left: {card + 4}px; padding: 0 4px; }}"
         f"QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {{ background: {palette['field']}; "
         f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; "
@@ -921,10 +946,10 @@ def pack_stylesheet(
         f"border: none; padding: 0; border-radius: 0; }}"
         # Today's app's Day: the day's hours, then what still needs a time and a summary beside them.
         f"QFrame#daySide {{ background: {palette['panel']}; border-radius: 0; {edges} }}"
-        f"QLabel#dayWaitingLabel, QLabel#daySummaryLabel {{ color: {palette['accent']}; font-weight: 800; "
-        f"font-size: {max(size - 1, 7)}pt; }}"
+        f"QLabel#dayWaitingLabel, QLabel#daySummaryLabel {{ color: {palette['accent']}; "
+        f"font-weight: {WEIGHT_STRONG}; font-size: {pt['caption']}; }}"
         f"QLabel#daySummaryLabel {{ margin-top: 10px; }}"
-        f"QLabel#dayWaitingHint {{ color: {palette['muted']}; font-size: {max(size - 1, 7)}pt; }}"
+        f"QLabel#dayWaitingHint {{ color: {palette['muted']}; font-size: {pt['caption']}; }}"
         # What follows the pointer while something is carried: a pill, readable over any calendar.
         f"QLabel#heldChip {{ background: {palette['accent']}; color: {palette['accent_ink']}; "
         f"padding: 3px 10px; border-radius: 10px; }}"
@@ -948,7 +973,7 @@ def pack_stylesheet(
         f'color: {readable_ink(palette["error"])}; }}'
         f"QPushButton#deleteBlock, QPushButton#deleteHomework {{ background: transparent; "
         f"color: {palette['error']}; border: none; "
-        f"padding: {pad}px 2px; font-weight: 600; min-height: 0; }}"
+        f"padding: {pad}px 2px; font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
         f"QPushButton#deleteBlock:hover, QPushButton#deleteHomework:hover {{ text-decoration: underline; }}"
         # Homework that still needs a time, to be dragged onto the hours: it looks like homework, not
         # like a button that does something when pressed. Its edge is homework's own colour; red would
@@ -956,40 +981,43 @@ def pack_stylesheet(
         f"QPushButton[tray=\"true\"] {{ background: {palette['panel']}; color: {palette['text']}; "
         f"{edges} border-left: 4px solid {category_paint('assignments', palette)[1]}; text-align: left; }}"
         f"QMenu::item {{ min-height: {item_h}px; padding: {pad}px {pad * 2}px; }}"
-        f"QLabel#nowNext {{ font-weight: 600; }}"
-        f"QLabel#focusTask {{ font-weight: 600; }}"
+        f"QLabel#nowNext {{ font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#focusTask {{ font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#focusPhase {{ color: {palette['muted']}; }}"
-        f"QLabel#focusTime {{ font-family: {MONO_FAMILY}; font-weight: 700; }}"
+        f"QLabel#focusTime {{ font-family: {MONO_FAMILY}; font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#recoveryList {{ font-family: {MONO_FAMILY}; }}"
         f"QLabel#recoveryStatus {{ color: {palette['error']}; }}"
         # How many recovery codes are left is an ordinary fact until none are.
         f"QLabel#recoveryCount {{ color: {palette['muted']}; }}"
-        f'QLabel#recoveryCount[problem="true"] {{ color: {palette["error"]}; font-weight: 600; }}'
+        f'QLabel#recoveryCount[problem="true"] {{ color: {palette["error"]}; font-weight: {WEIGHT_STRONG}; }}'
         f"QWidget#authCard {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
-        f"QLabel#authBrand {{ font-size: {size + 8}pt; font-weight: 700; color: {palette['accent']}; }}"
-        f"QLabel#authHeading {{ font-weight: 600; font-size: {size + 3}pt; }}"
+        f"QLabel#authBrand {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; "
+        f"color: {palette['accent']}; }}"
+        f"QLabel#authHeading {{ font-weight: {WEIGHT_STRONG}; font-size: {pt['heading']}; }}"
         f"QLabel#authNote, QLabel#passwordHint, QLabel#usernameHint {{ color: {palette['muted']}; }}"
-        f"QLabel#validationError {{ color: {palette['error']}; font-weight: 600; }}"
+        f"QLabel#validationError {{ color: {palette['error']}; font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#homeworkEstimateHint {{ color: {palette['muted']}; }}"
-        f"QLabel#homeworkEstimateHint[problem=\"true\"] {{ color: {palette['error']}; font-weight: 600; }}"
+        f"QLabel#homeworkEstimateHint[problem=\"true\"] {{ color: {palette['error']}; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
         f"QPushButton#todayWeek {{ background: transparent; color: {palette['text']}; "
-        f"font-weight: 600; padding: {pad}px {pad * 2}px; {edges} }}"
+        f"font-weight: {WEIGHT_STRONG}; padding: {pad}px {pad * 2}px; {edges} }}"
         # The way in is a button; the way to a new account is small print, so it is drawn as a link.
-        f"QLabel#updateHeading {{ font-size: {size + 4}pt; font-weight: 700; }}"
+        f"QLabel#updateHeading {{ font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#updateDetail, QLabel#updateStatus {{ color: {palette['muted']}; }}"
         # The first-week card sits on top of the week rather than in a layout, so it has to read as
         # something laid over the calendar rather than printed onto it.
         # The week you are on, said once and said large.
-        f"QLabel#weekTitle {{ font-size: {size + 6}pt; font-weight: 700; color: {palette['text']}; }}"
+        f"QLabel#weekTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; "
+        f"color: {palette['text']}; }}"
         # Today's name above the week, in the accent over a 2 px line. The others keep a clear line,
         # so the row does not move when the day changes.
         f'QLabel[today="false"] {{ border-bottom: 2px solid transparent; border-radius: 0; }}'
-        f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: 700; '
+        f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: {WEIGHT_STRONG}; '
         f'border-bottom: 2px solid {palette["accent"]}; border-radius: 0; }}'
         # Day / Week / Month / My day are one segmented control: a shared track, the chosen view
         # raised in the panel colour, the others muted, a hairline between them.
         f"QPushButton#viewDay, QPushButton#viewWeek, QPushButton#viewMonth, QPushButton#viewMyDay {{ "
-        f"background: transparent; color: {palette['muted']}; font-weight: 500; "
+        f"background: transparent; color: {palette['muted']}; font-weight: {WEIGHT_REGULAR}; "
         f"padding: {pad}px {round(pad * 1.5)}px; border: none; border-radius: {max(radius - 2, 0)}px; "
         f"border-left: {divider}; }}"
         f'QPushButton[segment="first"] {{ border-left: none; }}'
@@ -997,50 +1025,51 @@ def pack_stylesheet(
         f"QPushButton#viewMyDay:hover {{ color: {palette['text']}; }}"
         f"QPushButton#viewDay:checked, QPushButton#viewWeek:checked, QPushButton#viewMonth:checked, "
         f"QPushButton#viewMyDay:checked {{ background: {palette['panel']}; color: {palette['text']}; "
-        f"font-weight: 600; border-left: none; {edges} }}"
+        f"font-weight: {WEIGHT_STRONG}; border-left: none; {edges} }}"
         # The arrows are navigation, not actions, so they carry no fill.
         f"QPushButton#prevWeek, QPushButton#nextWeek {{ background: transparent; "
-        f"color: {palette['text']}; font-size: {size + 3}pt; font-weight: 700; "
+        f"color: {palette['text']}; font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; "
         f"padding: 0; {edges} }}"
         f"QPushButton#prevWeek:hover, QPushButton#nextWeek:hover {{ color: {palette['text']}; }}"
         # Zoom is a view control like the arrows: no fill. The corner sizes it to the text.
         f"QPushButton[zoom=\"true\"] {{ background: transparent; color: {palette['text']}; "
-        f"font-weight: 700; padding: 0; min-height: 0; {edges} }}"
+        f"font-weight: {WEIGHT_STRONG}; padding: 0; min-height: 0; {edges} }}"
         f"QPushButton[zoom=\"true\"]:disabled {{ background: transparent; "
         f"color: {palette['hairline_strong']}; }}"
         # One filled button on the page: the thing the app is for.
         f"QLabel#blockDurationLine {{ color: {palette['muted']}; }}"
-        f"QLabel#blockDurationLine[problem=\"true\"] {{ color: {palette['error']}; font-weight: 600; }}"
-        f"QLabel#aboutVersion {{ font-size: {size + 4}pt; font-weight: 700; }}"
-        f"QLabel#helpKey {{ font-weight: 600; }}"
-        f"QLabel#helpScreenName {{ font-weight: 700; }}"
+        f"QLabel#blockDurationLine[problem=\"true\"] {{ color: {palette['error']}; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#aboutVersion {{ font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#helpKey {{ font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#helpScreenName {{ font-weight: {WEIGHT_STRONG}; }}"
         f"QPushButton#moreButton, QPushButton#settingsGear {{ background: transparent; "
         f"color: {palette['muted']}; {edges} }}"
-        + setup_rules(palette, radius, size, pad, knobs["depth"])
-        + settings_rules(palette, radius, size, pad, knobs["depth"])
+        + setup_rules(palette, radius, knobs["text"], pad, knobs["depth"])
+        + settings_rules(palette, radius, knobs["text"], pad, knobs["depth"])
         + f"QPushButton#authSwitch, QPushButton#forgotPassword, QPushButton#updateSkip {{ "
         f"background: transparent; "
         f"color: {palette['accent']}; border: none; padding: {pad}px 0; "
-        f"font-size: {size - 1}pt; text-align: left; min-height: 0; }}"
+        f"font-size: {pt['caption']}; text-align: left; min-height: 0; }}"
         f"QPushButton#authSwitch:hover, QPushButton#forgotPassword:hover, "
         f"QPushButton#updateSkip:hover {{ "
         f"color: {palette['text']}; text-decoration: underline; }}"
         # A ringing alarm is the one thing in the app that has to be read from across a room.
-        f"QLabel#alarmTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
-        f"QLabel#alarmDetail {{ font-size: {size + 2}pt; color: {palette['muted']}; }}"
+        f"QLabel#alarmTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#alarmDetail {{ font-size: {pt['heading']}; color: {palette['muted']}; }}"
         f"QFrame#toast {{ background: {palette['panel']}; color: {palette['text']}; "
         f"{edges} padding: {pad * 2}px {pad * 3}px; border-radius: {card_radius}px; }}"
         # A new account's empty week, the focus screen and the command bar.
-        f"QLabel#emptyWeekHeading {{ font-size: {size + 8}pt; font-weight: 700; }}"
-        f"QLabel#emptyWeekLine {{ color: {palette['muted']}; font-size: {size + 1}pt; }}"
-        f"QPushButton#emptyWeekAdd, QPushButton#focusScreenStart {{ font-weight: 600; "
+        f"QLabel#emptyWeekHeading {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#emptyWeekLine {{ color: {palette['muted']}; font-size: {pt['body']}; }}"
+        f"QPushButton#emptyWeekAdd, QPushButton#focusScreenStart {{ font-weight: {WEIGHT_STRONG}; "
         f"padding: {pad + 2}px {pad * 3}px; }}"
-        f"QLabel#focusScreenPhase {{ color: {palette['accent']}; font-size: {size + 2}pt; "
-        f"font-weight: 700; letter-spacing: 2px; }}"
-        # The countdown is read from across a desk, in the look's own face at a size the text knob never sets.
-        f"QLabel#focusScreenTime {{ font-size: 96pt; "
-        f"font-weight: 700; color: {palette['text']}; }}"
-        f"QLabel#focusScreenTask {{ font-size: {size + 6}pt; font-weight: 600; }}"
+        f"QLabel#focusScreenPhase {{ color: {palette['accent']}; font-size: {pt['heading']}; "
+        f"font-weight: {WEIGHT_STRONG}; letter-spacing: 2px; }}"
+        # The countdown is read from across a desk, in the look's own face.
+        f"QLabel#focusScreenTime {{ font-size: {COUNTDOWN_PT}pt; "
+        f"font-weight: {WEIGHT_NUMBER}; color: {palette['text']}; }}"
+        f"QLabel#focusScreenTask {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#focusScreenHint {{ color: {palette['muted']}; }}"
         f"QProgressBar#focusScreenProgress {{ background: {palette['hairline']}; border: none; "
         f"border-radius: 3px; min-height: 6px; max-height: 6px; padding: 0; }}"
@@ -1049,7 +1078,7 @@ def pack_stylesheet(
         f"QWidget#commandBar {{ background: rgba(0, 0, 0, 90); }}"
         f"QFrame#commandBox {{ background: {palette['panel']}; border-radius: {card_radius}px; "
         f"{edges} padding: {pad}px; }}"
-        f"QLineEdit#commandInput {{ font-size: {size + 2}pt; }}"
+        f"QLineEdit#commandInput {{ font-size: {pt['heading']}; }}"
         f"QListWidget#commandList {{ border: none; padding: 0; }}"
         f"QListWidget#commandList::item {{ padding: {pad}px; border-radius: {radius}px; }}"
         f"QLabel#commandNothing {{ color: {palette['muted']}; padding: {pad}px; }}"
@@ -1057,26 +1086,26 @@ def pack_stylesheet(
         f"QFrame#segments {{ background: {palette['hairline']}; padding: 2px; border: none; "
         f"border-radius: {radius}px; }}"
         # Add and its arrow are one button split in two.
-        f"QPushButton#addButton {{ font-weight: 600; border-top-right-radius: 0; "
+        f"QPushButton#addButton {{ font-weight: {WEIGHT_STRONG}; border-top-right-radius: 0; "
         f"border-bottom-right-radius: 0; }}"
         f"QPushButton#addArrow {{ padding: {pad}px {pad}px; border-top-left-radius: 0; "
         f"border-bottom-left-radius: 0; margin-left: 1px; }}"
         f"QPushButton#addArrow::menu-indicator {{ image: none; width: 0; }}"
         # The toast's one button reads as part of its sentence.
         f"QPushButton#toastButton {{ background: transparent; color: {palette['accent']}; border: none; "
-        f"font-weight: 700; padding: 2px {pad}px; min-height: 0; }}"
+        f"font-weight: {WEIGHT_STRONG}; padding: 2px {pad}px; min-height: 0; }}"
         f"QPushButton#toastButton:hover {{ text-decoration: underline; }}"
         # Week's side, as Day's: the panel colour, its headings in the accent, and folded, one line.
         # Narrower at the sides than a card, so "Math worksheet · 45 min" is whole in its 250 pixels.
         f"QFrame#weekSide {{ background: {palette['panel']}; border-radius: 0; "
         f"padding: {card}px {pad}px; {edges} }}"
         f'QFrame#weekSide[folded="true"] {{ padding: {pad // 2}px {pad}px; }}'
-        f"QLabel#weekNext, QLabel#weekSideLine {{ font-weight: 600; }}"
+        f"QLabel#weekNext, QLabel#weekSideLine {{ font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#focusTasksLabel, QLabel#classicWaitingLabel {{ color: {palette['accent']}; "
-        f"font-weight: 800; font-size: {max(size - 1, 7)}pt; margin-top: 6px; }}"
-        f"QLabel#weekNoneWaiting {{ color: {palette['muted']}; font-size: {max(size - 1, 7)}pt; }}"
+        f"font-weight: {WEIGHT_STRONG}; font-size: {pt['caption']}; margin-top: 6px; }}"
+        f"QLabel#weekNoneWaiting {{ color: {palette['muted']}; font-size: {pt['caption']}; }}"
         + (_contrast_rules(palette) if palette.get("family") == "contrast" else "")
-    ) + (control_rules(palette, radius, size, art) if art is not None else "")
+    ) + (control_rules(palette, radius, knobs["text"], art) if art is not None else "")
 
 
 def _contrast_rules(palette: dict) -> str:

@@ -48,7 +48,6 @@ from desktop.native.layouts.registry import EXPERIMENTAL, sanitize_layout
 from desktop.native.look import (
     ACCENTS,
     LOOK_KNOBS,
-    TEXT_PT,
     effective_look,
     known_pack,
     look_menu_items,
@@ -63,6 +62,7 @@ from desktop.native.motion import slide_page
 from desktop.native.remind import ALARM_SNOOZE_MIN
 from desktop.native.sound import Bell
 from desktop.native.spotify import SpotifyPlayer, open_in_app
+from desktop.native.tokens import type_pt
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
 from desktop.native.weekmodel import hhmm_text, length_label, time_format
@@ -1335,7 +1335,7 @@ class HelpDialog(Dialog):
         super().__init__(parent)
         self.setWindowTitle("Help")
         self.ensurePolished()
-        large = self.font().pointSizeF() >= TEXT_PT["large"]
+        large = self.font().pointSizeF() >= type_pt("body", "large")
         wide = parent is not None and parent.window().width() >= HELP_TWO_COLUMN_WIDTH
         self.columns = 2 if wide and not large else 1
         self.setMinimumWidth(HELP_TWO_COLUMN_WIDTH if self.columns == 2 else HELP_MIN_WIDTH)

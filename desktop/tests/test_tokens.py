@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import math
 import re
+from collections import defaultdict
 from itertools import product
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +19,7 @@ from desktop.native.calendar import CATEGORIES
 from desktop.native.layouts.registry import MATCH, tokens_for
 from desktop.native.look import (
     ACCENTS,
+    COUNTDOWN_PT,
     block_paint,
     category_paint,
     contrast,
@@ -24,7 +27,18 @@ from desktop.native.look import (
     pack_stylesheet,
     resolved_palette,
 )
-from desktop.native.tokens import family_colours, linear_rgb, oklab, oklab_from_linear
+from desktop.native.tokens import (
+    TEXT_SCALE,
+    TYPE_PT,
+    WEIGHT_NUMBER,
+    WEIGHT_REGULAR,
+    WEIGHT_STRONG,
+    family_colours,
+    linear_rgb,
+    oklab,
+    oklab_from_linear,
+    type_pt,
+)
 
 HIGH_CONTRAST = {"preset": "high-contrast", "knobs": {}}
 # Each look as a student reaches it, on the device setting that goes with it.
@@ -180,3 +194,61 @@ def test_the_now_line_and_the_selection_show_over_every_block(name: str, surface
         if contrast(palette["accent"], drawn["fill"]) < 3.0:
             faint.append(f"{key} {mode} {contrast(palette['accent'], drawn['fill']):.2f}")
     assert faint == [], (name, surface, accent)
+
+
+SIZE = re.compile(r"font-size: ([^;}]+)")
+WEIGHT = re.compile(r"font-weight: ([^;}]+)")
+# control_rules only writes the images' paths into the sheet.
+ART = defaultdict(lambda: "art.png")
+
+
+@pytest.mark.parametrize(("name", "text"), list(product(LOOKS, TEXT_SCALE)))
+def test_every_font_size_and_weight_in_the_stylesheet_is_on_the_scale(name: str, text: str) -> None:
+    """Decision 4: caption, body, heading, title and display, which the Text knob scales together, and
+    two weights, with 700 only for display numbers. The focus screen's countdown is the one size
+    drawn beyond the scale, and it is a number."""
+    pack, dark, _look = LOOKS[name]
+    look = look_for(name)
+    look = {**look, "knobs": {**look["knobs"], "text": text}}
+    palette = resolved_palette(pack, dark, look)
+    sheet = pack_stylesheet(pack, dark, look, "default", palette, ART)
+    scale = {f"{type_pt(role, text):g}pt" for role in TYPE_PT}
+    display = f"{type_pt('display', text):g}pt"
+    off = []
+    for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", sheet):
+        where = selector.strip()
+        sizes = [size.strip() for size in SIZE.findall(body)]
+        countdown = where == "QLabel#focusScreenTime" and sizes == [f"{COUNTDOWN_PT}pt"]
+        off += [f"{where}: {size}" for size in sizes if size not in scale and not countdown]
+        for weight in (weight.strip() for weight in WEIGHT.findall(body)):
+            number = weight == str(WEIGHT_NUMBER) and (countdown or sizes == [display])
+            if weight not in {str(WEIGHT_REGULAR), str(WEIGHT_STRONG)} and not number:
+                off.append(f"{where}: weight {weight}")
+    assert SIZE.search(sheet) and WEIGHT.search(sheet), "the patterns found nothing to check"
+    assert off == [], (name, text)
+
+
+def test_the_text_knob_scales_all_five_sizes() -> None:
+    """Small and Large move every size together, so a heading stays a heading at any text size."""
+    for role in TYPE_PT:
+        assert type_pt(role, "small") < type_pt(role, "normal") < type_pt(role, "large"), role
+    assert [type_pt(role, "normal") for role in TYPE_PT] == [11, 13, 15, 20, 28]
+
+
+# The only modules that may set a font's size or weight: the stylesheet and the scale's own helpers.
+SCALE_KEEPERS = {"look.py", "fonts.py"}
+OWN_FONT = re.compile(r"\.set(Bold|Weight|PointSize|PointSizeF|PixelSize)\(|font-size|font-weight")
+
+
+def test_no_widget_outside_the_designs_sets_a_size_or_weight_of_its_own() -> None:
+    """A widget that sets its own size or weight is off the scale however the scale changes. The
+    designs under layouts/ keep their own sizes until their lanes redraw them."""
+    native = Path(__file__).resolve().parents[1] / "native"
+    found = [
+        f"{path.relative_to(native)}:{number}: {line.strip()}"
+        for path in sorted(native.rglob("*.py"))
+        if path.name not in SCALE_KEEPERS and "layouts" not in path.parts
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if OWN_FONT.search(line) and not line.strip().startswith("#")
+    ]
+    assert found == []

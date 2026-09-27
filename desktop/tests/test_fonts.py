@@ -18,7 +18,8 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtGui import QFont, QFontDatabase, QFontInfo, QFontMetricsF
     from PySide6.QtWidgets import QApplication, QLineEdit, QTimeEdit
 
-    from desktop.native.fonts import FACES, FONT_DIR, TABULAR, load_fonts, time_font
+    from desktop.native.fonts import FACES, FONT_DIR, TABULAR, caption, load_fonts, time_font, weighted
+    from desktop.native.tokens import WEIGHT_STRONG, type_pt
     from desktop.native.widgets import use_app_style
 
 
@@ -55,6 +56,26 @@ def test_a_time_takes_as_much_room_whatever_its_figures(qapp: QApplication) -> N
     even = QFontMetricsF(time_font(plain))
     assert even.horizontalAdvance(ones) == even.horizontalAdvance(zeros)
     assert time_font(plain).pointSizeF() == plain.pointSizeF() and time_font(plain).family() == "Inter"
+
+
+def test_the_hours_small_words_are_the_scales_caption_at_every_text_size(qapp: QApplication) -> None:
+    """Hour labels, block times and the now line's time were the body shrunk by 0.86, a size of their
+    own at every Text knob. They are the caption beside the body the knob chose."""
+    for text in ("small", "normal", "large"):
+        body = QFont("Inter")
+        body.setPointSizeF(type_pt("body", text))
+        assert caption(body).pointSizeF() == type_pt("caption", text), text
+    # A design's own size, off the scale, keeps its proportion until its lane redraws it.
+    own = QFont("Inter")
+    own.setPointSizeF(20)
+    assert caption(own).pointSizeF() == pytest.approx(17.2)
+
+
+def test_a_strong_word_is_600_not_bold(qapp: QApplication) -> None:
+    load_fonts()
+    strong = weighted(QFont("Inter", 13), WEIGHT_STRONG)
+    assert strong.weight() == QFont.Weight.DemiBold
+    assert QFontInfo(strong).styleName() == "SemiBold"
 
 
 def test_every_time_box_writes_its_figures_at_one_width(qapp: QApplication) -> None:
