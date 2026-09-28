@@ -4,6 +4,7 @@ pub mod clean;
 pub mod contain;
 pub mod identity;
 pub mod job;
+pub mod queue;
 pub mod state;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -13,6 +13,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crate::clean;
 use crate::identity::{self, ProcIdentity};
 use crate::job::{self, JobLimits, JobRecord, ProcRef};
+use crate::queue;
 use crate::state;
 
 static INTERRUPTED: AtomicI32 = AtomicI32::new(0);
@@ -56,6 +57,20 @@ pub fn execute(argv: &[String], timeout_secs: Option<u64>) -> u8 {
     if argv.is_empty() {
         eprintln!("fwtest run needs a command");
         return 2;
+    }
+    let _held = match queue::lock(&root) {
+        Ok(held) => held,
+        Err(error) => {
+            eprintln!("could not take the job lock: {error}");
+            return 1;
+        }
+    };
+    if let Err(error) = queue::wait_for_other_suites() {
+        if queue::is_wait_timeout(&error) {
+            return 75;
+        }
+        eprintln!("could not see whether another suite is running: {error}");
+        return 1;
     }
     match clean::clean(&root) {
         Ok(report) if report.survived.is_empty() => {}
