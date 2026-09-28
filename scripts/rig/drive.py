@@ -31,6 +31,7 @@ from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import ModuleType
 
 MARKER = "rig-week-marker"
 ROOT = Path(__file__).resolve().parents[2]
@@ -1085,6 +1086,14 @@ def child_main(args: argparse.Namespace) -> int:
             "rig-piano": ("Piano", "17:45", 45),
             "rig-reading": ("Reading", "20:15", 45),
             "rig-chores": ("Chores", "21:15", 45),
+            # 0.17's Month grows a row to its chips when the window has the height, so a date is only
+            # short of room with more than a tall window can show.
+            "rig-run": ("Run", "06:00", 30),
+            "rig-stretch": ("Stretch", "06:45", 30),
+            "rig-breakfast": ("Breakfast", "07:15", 30),
+            "rig-journal": ("Journal", "22:00", 30),
+            "rig-tidy": ("Tidy", "22:45", 30),
+            "rig-podcast": ("Podcast", "23:15", 30),
         }
         for key, (title, start, length) in added.items():
             session.add_block(
@@ -1592,6 +1601,18 @@ def main() -> int:
     import hidden_session
 
     display = hidden_session.start(args.server)
+    try:
+        return drive(args, display, hidden_session)
+    finally:
+        # The hidden KWin and its bus go when the run does. Kept up for the next run, one outlived its
+        # rig by two hours beside Jonathan's own desktop, which froze under the load around it.
+        # FLEXWEEK_RIG_KEEP=1 keeps it, for runs back to back.
+        if not os.environ.get("FLEXWEEK_RIG_KEEP"):
+            hidden_session.stop()
+
+
+def drive(args: argparse.Namespace, display: str, hidden_session: ModuleType) -> int:
+    """Run the scenarios in a child on the hidden display, and return its exit code."""
     out = (
         Path(args.out)
         if args.out
