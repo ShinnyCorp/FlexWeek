@@ -181,6 +181,8 @@ HEADING_NAMES = (
     "cardTitle",
     "setupChoiceName",
     "focusScreenTask",
+    "timelineDayName",
+    "timelineStat",
 )
 AA_TEXT = 4.5
 # Room round a drawn menu's panel for its shadow: its window is this much larger on every side.

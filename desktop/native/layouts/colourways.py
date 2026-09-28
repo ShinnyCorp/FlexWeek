@@ -16,23 +16,26 @@ def _tokens(**colours: str) -> dict[str, str]:
 
 TIMELINE = (
     (
+        # The mock-up's Ruled paper, saved under 0.16's name, with FlexWeek's blue as its accent as the
+        # mock-up draws it: a colourway's page stays the same whichever accent the look wears.
         "paper",
-        "Paper",
+        "Ruled paper",
         _tokens(
-            bg="#f6f4ef",
-            bg_ink="#1d1b16",
-            bg_muted="#5f594c",
-            surface="#ffffff",
-            text="#1d1b16",
-            muted="#5f594c",
-            accent="#1d1b16",
-            accent_ink="#f6f4ef",
-            line="#d9d3c4",
-            danger="#b3202a",
+            bg="#fdfbf7",
+            bg_ink="#1a1a1a",
+            bg_muted="#5c5750",
+            surface="#fffdf9",
+            text="#1a1a1a",
+            muted="#5c5750",
+            accent="#3d6fc4",
+            accent_ink="#ffffff",
+            line="#cfc7b9",
+            danger="#c42b1c",
             danger_ink="#ffffff",
         ),
     ),
     (
+        # 0.16's night paper, with FlexWeek's blue on dark for its accent in place of 0.16's white.
         "night",
         "Night",
         _tokens(
@@ -42,8 +45,8 @@ TIMELINE = (
             surface="#1f232d",
             text="#eef0f6",
             muted="#aab2c5",
-            accent="#eef0f6",
-            accent_ink="#14161c",
+            accent="#7fa8ff",
+            accent_ink="#0b1224",
             line="#333a4a",
             danger="#ff6b7a",
             danger_ink="#14161c",

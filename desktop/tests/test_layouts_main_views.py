@@ -1,6 +1,7 @@
-"""What every main view owes the student, whichever design and whichever options: by itself it can add
-homework, run the plan, reach the day screen, show everything that has no time yet, open any block on
-screen, and reach every day of the week. The mock-up measured this; the native client tests it.
+"""What every main view owes the student, whichever design and whichever options: by itself it shows
+everything that has no time yet, opens any block on screen, and reaches every day of the week. The
+mock-up measured this; the native client tests it. Add, Plan and My day are the top bar's in every
+design since 0.17 (test_layouts_window.py checks Add there), so a design draws no second Add.
 """
 
 from __future__ import annotations
@@ -63,10 +64,6 @@ def shown(layout_id: str, options: dict[str, str], today: int | None = 3) -> Lay
     return view
 
 
-def names(view: LayoutView) -> set[str]:
-    return {item.objectName() for item in view.findChildren(QPushButton)}
-
-
 def blocks_offered(view: LayoutView) -> set[str]:
     return {item.property("block_id") for item in view.findChildren(QPushButton)} - {None}
 
@@ -75,9 +72,6 @@ def blocks_offered(view: LayoutView) -> set[str]:
 def test_a_main_view_can_plan_by_itself_whatever_its_options(qapp: QApplication, layout_id: str) -> None:
     for options in every_choice(layout_id):
         view = shown(layout_id, options)
-        found = names(view)
-        for need in ("Add",):
-            assert any(name.endswith(need) or need + "Small" in name for name in found), (options, need)
         assert {"poster-1", "second-wait"} <= blocks_offered(view), options
 
 
@@ -98,9 +92,8 @@ def test_a_main_views_buttons_ask_for_the_right_thing(qapp: QApplication, layout
     view.plan_requested.connect(lambda: asked.append("plan"))
     view.my_day_requested.connect(lambda: asked.append("my day"))
     view.block_activated.connect(asked.append)
-    next(item for item in view.findChildren(QPushButton) if item.objectName().endswith("Add")).click()
     next(item for item in view.findChildren(QPushButton) if item.property("block_id") == "poster-1").click()
-    assert asked == ["add", "poster-1"]
+    assert asked == ["poster-1"]
 
 
 @pytest.mark.parametrize("layout_id", MAIN_VIEWS)
@@ -111,8 +104,7 @@ def test_a_main_view_survives_an_empty_week_and_another_week(qapp: QApplication,
     for today in (3, None):
         view = VIEW_CLASSES[layout_id]()
         view.show_week(Scene(build_week(WEEK, [], {}, None), today, minute_of("13:40"), options, tokens))
-        found = names(view)
-        assert any(name.endswith("Add") or "AddSmall" in name for name in found), found
+        assert not view.grab().isNull()
 
 
 @pytest.mark.parametrize("layout_id", ["clay", "mission"])

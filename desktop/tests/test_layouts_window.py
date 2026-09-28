@@ -624,6 +624,82 @@ def test_my_day_opens_whichever_day_screen_was_picked(qapp: QApplication, window
     assert window.planner.currentWidget() is window.week_table
 
 
+def test_timelines_pages_are_its_paper_in_the_real_window(qapp: QApplication, window: NativeWindow) -> None:
+    """The window's stylesheet paints every plain widget in the page colour. Under the hours, beside
+    the zoom above them and behind Day's notes are plain widgets of Qt's own: drawn offscreen alone
+    they showed the pages; in the window they would be grey bands on white paper."""
+    window._layout = {"main": "timeline", "day": "one", "options": {}}
+    window._on_week()
+    qapp.processEvents()
+    view = window.planner.currentWidget()
+    paper = view.scene.tokens["surface"]
+    assert paper != view.scene.tokens["bg"], "the page and the paper differ, or this checks nothing"
+    hours = view.hours_surfaces()[0]
+    header = view.findChild(QWidget, "timelineWeekHeader")
+    between = round(hours.track_for(3).point_for(12 * 60 + 30).y())
+    image = view.grab().toImage()
+    # Left of the hour labels at half past twelve, where no label is; under the scroll bar at the
+    # right edge, clear of its handle; and right of the zoom.
+    assert image.pixelColor(hours.mapTo(view, QPoint(3, between))).name() == paper
+    assert image.pixelColor(hours.mapTo(view, QPoint(hours.width() - 10, between))).name() == paper
+    assert image.pixelColor(header.mapTo(view, QPoint(round(hours.gutter) - 3, 3))).name() == paper
+    click(window, "viewDay")
+    settled(qapp, window)
+    qapp.processEvents()
+    notes = view.findChild(QWidget, "timelineNotesPage")
+    image = view.grab().toImage()
+    assert image.pixelColor(notes.mapTo(view, QPoint(notes.width() - 3, 3))).name() == paper
+
+
+def test_a_sticky_notes_small_print_is_regular_in_the_real_window(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The window's stylesheet sets every button's font at 600; a note is a button, and its length
+    and due date came out as bold as its title."""
+    from PySide6.QtGui import QPainter
+
+    from desktop.native.layouts import timeline
+
+    written: list[tuple[str, int]] = []
+
+    class Seen(QPainter):
+        def drawText(self, *args) -> None:  # noqa: N802
+            written.append((next(arg for arg in args if isinstance(arg, str)), self.font().weight()))
+            super().drawText(*args)
+
+    monkeypatch.setattr(timeline, "QPainter", Seen)
+    session = window.session
+    session.add_homework(
+        {"id": "poster", "title": "Science poster", "due": sunday_due(session.week_start), "estimate_min": 60,
+         "revision": 0}
+    )
+    session.save()
+    settled(qapp, window)
+    window._layout = {"main": "timeline", "day": "one", "options": {}}
+    window._on_week()
+    qapp.processEvents()
+    view = window.planner.currentWidget()
+    view.findChild(QPushButton, "timelineWaiting0").grab()
+    assert ("Science", 600) in written
+    assert [weight for words, weight in written if words == "1 h"] == [400]
+
+
+def test_timelines_names_and_figures_take_the_looks_heading_face(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """In Match my look, as the mock-up draws them: Paper's serif headings are Newsreader."""
+    from desktop.native.look import sanitize_look
+
+    window._look = sanitize_look({"preset": "paper"})
+    window._layout = {"main": "timeline", "day": "one", "options": {}}
+    window._apply_appearance()
+    window._on_week()
+    qapp.processEvents()
+    view = window.planner.currentWidget()
+    found = [*view.findChildren(QLabel, "timelineDayName"), *view.findChildren(QLabel, "timelineStat")]
+    assert found and {item.font().family() for item in found} == {"Newsreader"}
+
+
 def test_the_dials_list_is_one_card_in_the_real_window(qapp: QApplication, window: NativeWindow) -> None:
     """The window's stylesheet paints every styled widget in the page colour. Drawn offscreen alone the
     list's last row was on its card; in the window it sat on a grey band."""
@@ -659,11 +735,12 @@ def test_summaries_speak_minutes_not_session_counts(qapp: QApplication, window: 
     assert "THIS WEEK · DRAG ACROSS DAYS" in shown
     assert not any(sessions.search(text) for text in shown)
 
+    # Timeline's week in figures: the minutes of homework planned, and how many homework are done.
     window._layout = {"main": "timeline", "day": "one", "options": {}}
     window._on_week()
     qapp.processEvents()
     shown = labels()
-    assert any("1 h planned · 0 done" in text for text in shown)
+    assert {"1 h", "homework planned", "0 of 1", "done"} <= set(shown)
     assert not any(sessions.search(text) for text in shown)
 
     click(window, "viewMyDay")
@@ -674,8 +751,19 @@ def test_summaries_speak_minutes_not_session_counts(qapp: QApplication, window: 
     window._on_week()
     qapp.processEvents()
     shown = labels()
-    assert any("1 h planned · 1 h done" in text for text in shown)
+    assert {"1 h", "homework planned", "1 of 1", "done"} <= set(shown)
     assert not any(sessions.search(text) for text in shown)
+
+
+def test_every_main_view_has_add_on_the_top_bar(qapp: QApplication, window: NativeWindow) -> None:
+    """Add is the top bar's in every design (decision 11 of 0.17); a design draws no second one."""
+    for spec in LAYOUTS.values():
+        if spec.role != "plan":
+            continue
+        window._layout = {"main": spec.id, "day": "one", "options": {}}
+        window._on_week()
+        qapp.processEvents()
+        assert window.findChild(QPushButton, "addButton").isVisible(), spec.id
 
 
 def more_actions(window: NativeWindow) -> dict[str, bool]:

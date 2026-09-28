@@ -135,8 +135,8 @@
  {
   "file": "desktop/native/layouts/timeline.py",
   "name": "Timeline's Day stays where the last day was",
-  "old": "        scroll.open_at((scene.week.week_start, day), opens, above=120)\n",
-  "new": "        scroll.open_at(scene.week.week_start, opens, above=120)\n",
+  "old": "        open_hours(hours, (scene.week.week_start, day), scene.week, scene.today, scene.minute, day)\n",
+  "new": "        open_hours(hours, scene.week.week_start, scene.week, scene.today, scene.minute, day)\n",
   "test": "desktop/tests/test_hours_open.py::test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_or_week"
  },
  {

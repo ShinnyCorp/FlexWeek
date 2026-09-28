@@ -90,7 +90,7 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "timeline",
             "plan",
             "Timeline",
-            "One day as a ruled page, and the week as seven lines of hours down the page.",
+            "The week as a paper planner opened flat, and a day as its page of hours beside its notes.",
             (
                 _colour(TIMELINE),
                 Option(
@@ -98,13 +98,6 @@ LAYOUTS: dict[str, LayoutSpec] = {
                     "Spacing",
                     "style",
                     (Choice("comfortable", "Comfortable"), Choice("compact", "Compact")),
-                ),
-                # Never "hidden": the strip is how a day is picked, so without it the week is out of reach.
-                Option(
-                    "strip",
-                    "Week strip",
-                    "detail",
-                    (Choice("bars", "With load bars"), Choice("names", "Day names only")),
                 ),
                 _show("finished", "Finished and past items"),
             ),

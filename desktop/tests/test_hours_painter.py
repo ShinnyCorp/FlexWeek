@@ -20,16 +20,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt
     from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter
-    from PySide6.QtWidgets import QApplication, QWidget
+    from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
     from desktop.native.fonts import TABULAR, load_fonts
     from desktop.native.hours import canvas as canvas_module
     from desktop.native.hours.canvas import BlockPainter, Drawn, HoursCanvas, fit_lines
-    from desktop.native.hours.geometry import LinearTrack
+    from desktop.native.hours.geometry import Axis, LinearTrack
     from desktop.native.hours.hand import Hand, Verdict
-    from desktop.native.layouts.base import Scene
-    from desktop.native.layouts.registry import options_for, tokens_for
-    from desktop.native.layouts.timeline import TimelineView
+    from desktop.native.hours.zoom import HoursScroll, Scale
     from desktop.native.look import mix, resolved_palette
     from desktop.native.weekmodel import build_week, minute_of
 
@@ -203,18 +201,42 @@ if importlib.util.find_spec("PySide6") is not None:
             super().drawText(*args)
 
 
-def timeline_week(qapp: QApplication) -> TimelineView:
-    options = options_for(None, "timeline")
-    palette = resolved_palette("light-frost", False, None, "default")
-    week = build_week(WEEK, BLOCKS, HOMEWORK, TRACE)
-    tokens = tokens_for("timeline", options["colour"], palette)
-    view = TimelineView()
-    HOSTS.append(view)
-    view.resize(1150, 700)
-    view.show_week(Scene(week, 3, minute_of("17:00"), options, tokens))
-    view.show()
+def lane_week(qapp: QApplication) -> HoursCanvas:
+    """Seven lanes whose time runs across at 64 pixels an hour, with the hour labels in a strip
+    above them, as Mission control lays its week out."""
+
+    def lanes(area: QRectF) -> list[LinearTrack]:
+        tall = area.height() / 7
+        return [
+            LinearTrack(
+                day,
+                QRectF(area.left() + 24, area.top() + day * tall + 6, area.width() - 48, tall - 12),
+                Axis.ACROSS,
+            )
+            for day in range(7)
+        ]
+
+    host = QWidget()
+    HOSTS.append(host)
+    canvas = HoursCanvas(
+        Hand(lambda block_id, from_day, span: Verdict(True, ""), host),
+        BlockPainter(resolved_palette("light-frost", False, None, "default")),
+        lanes,
+    )
+    scroll = HoursScroll(
+        canvas,
+        Scale("lanes.week", (48, 64, 80, 96), 64),
+        lambda px: 24 * px + 48,
+        name="lanes",
+        gutter=170,
+        axis=Axis.ACROSS,
+    )
+    QVBoxLayout(host).addWidget(scroll)
+    host.resize(1150, 700)
+    canvas.set_week(build_week(WEEK, BLOCKS, HOMEWORK, TRACE).occurrences, 3, minute_of("17:00"))
+    host.show()
     qapp.processEvents()
-    return view
+    return canvas
 
 
 def words_on(canvas: HoursCanvas, block_id: str, day: int) -> list[str]:
@@ -227,7 +249,7 @@ def words_on(canvas: HoursCanvas, block_id: str, day: int) -> list[str]:
 def test_a_block_with_no_room_for_three_letters_is_its_colour_alone(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch, points: int
 ) -> None:
-    """Timeline's Week at 64 pixels an hour draws the 30-minute Dinner 30 pixels wide: no room for
+    """A week of lanes at 64 pixels an hour draws the 30-minute Dinner 30 pixels wide: no room for
     three letters of its name. Decision 14 of 0.17: below three letters, the colour alone, not "D"
     seven times down the week and not lines of "…". A block with room still says its name."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
@@ -236,7 +258,7 @@ def test_a_block_with_no_room_for_three_letters_is_its_colour_alone(
     font.setPointSize(points)
     qapp.setFont(font)
     try:
-        canvas = timeline_week(qapp).hours_surfaces()[0]
+        canvas = lane_week(qapp)
         assert canvas.block_rect("dinner", 0).width() < 34
         Said.words = []
         canvas.repaint()
@@ -250,10 +272,10 @@ def test_a_block_with_no_room_for_three_letters_is_its_colour_alone(
 def test_an_hour_label_at_the_edge_of_what_shows_is_moved_inside_it(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Timeline's Week scrolled so 08:00 sits on the left edge of what shows, then so 20:00 sits on
+    """A week of lanes scrolled so 08:00 sits on the left edge of what shows, then so 20:00 sits on
     its right edge: each label is written whole inside what shows, not cut to ")8:00" or "20:0"."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
-    canvas = timeline_week(qapp).hours_surfaces()[0]
+    canvas = lane_week(qapp)
     scroll = canvas._scroll_area()
     port, bar = scroll.viewport(), scroll.horizontalScrollBar()
     track = canvas.tracks[0]

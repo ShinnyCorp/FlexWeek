@@ -1,22 +1,31 @@
-"""Timeline: ink on paper. Day is one ruled column; Week is seven lines of hours down the page.
+"""Timeline: the week as a paper planner opened flat (0.17's Planner spread).
 
-Day keeps the big day heading. Under it the day is a ruled column like a notebook page, with ink
-cards on it and NOW in red, and homework with no time waits in the margin on the right. Week reads
-down the page like an article: each day a big heading with its hours running across beside it. The
-seven lines are one canvas, so a block carried to another day's line never leaves the surface it
-started on. Both are the shared hours, on the window's hand.
+Week is two pages: Monday to Wednesday on the left, Thursday to Sunday on the right, each day a
+column of hours, with the gutter between the pages and the hour rules running across both. The seven
+columns are one canvas, so a block carried from Wednesday to Thursday never leaves the surface it
+started on. At the foot of the left page are the week's figures and what is next; at the foot of the
+right, the homework not placed yet as sticky notes, and what is due this week.
+
+Day opens the planner at one day: its hours on the left page; on the right its summary, what is next,
+what is due this week, what is not placed yet, and a ruled space for notes. Both are the shared hours,
+on the window's hand.
 """
 
 from __future__ import annotations
 
-from functools import partial
+import html
+from dataclasses import dataclass
+from datetime import date
+from functools import cached_property, partial
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
-    QLayout,
+    QLabel,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -24,126 +33,447 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from desktop.native import icons
 from desktop.native.calendar import DAY_FULL, DAYS
-from desktop.native.hours.canvas import BlockPainter, Drawn, HoursCanvas
+from desktop.native.fonts import at_scale, caption, time_font, weighted
+from desktop.native.hours.canvas import (
+    HOMEWORK_CATEGORIES,
+    RADIUS_BLOCK,
+    TEXT_LEFT,
+    TEXT_RIGHT,
+    TEXT_TOP,
+    TODAY_WASH,
+    BlockPainter,
+    Drawn,
+    HoursCanvas,
+    block_layout,
+    fit_lines,
+)
 from desktop.native.hours.chips import TrayChip
-from desktop.native.hours.geometry import FIRST, LAST, Axis, LinearTrack
+from desktop.native.hours.classic import day_shares, open_hours
+from desktop.native.hours.geometry import FIRST, LAST, LinearTrack
 from desktop.native.hours.hand import Hand
-from desktop.native.hours.zoom import HoursScroll, Scale, opening_minute
+from desktop.native.hours.zoom import HoursScroll, Scale
 from desktop.native.layouts.base import (
     LayoutView,
     Scene,
     base_sheet,
-    button,
     css,
     empty,
+    family,
     label,
-    mark_of,
-    plan_buttons,
     rules,
     scrolling,
 )
-from desktop.native.weekmodel import Occurrence, Waiting, planned_line
+from desktop.native.layouts.registry import MATCH
+from desktop.native.look import FONT_FAMILIES, category_paint, look_measures, readable_ink
+from desktop.native.tokens import (
+    RADIUS_CARD,
+    RADIUS_CONTROL,
+    WEIGHT_REGULAR,
+    WEIGHT_STRONG,
+    mix_oklab,
+    type_pt,
+)
+from desktop.native.weekmodel import (
+    HOMEWORK,
+    Occurrence,
+    Waiting,
+    WeekModel,
+    clock_label,
+    length_label,
+    planned_line,
+)
+from desktop.native.widgets import FittedLabel, FlowLayout
 
-DAY_SCALE = Scale("timeline.day", (72, 96, 120, 144), 96)
-WEEK_SCALE = Scale("timeline.week", (48, 64, 80, 96), 64)
-# Room above and below the column, and either side of each line, for the first and last hour's label.
-END_ROOM = 24
-# The page scrolls a held block's day this far clear of its edge, so the neighbouring days show too.
-NEIGHBOURS = 1.2
+DAY_SCALE = Scale("timeline.day", (36, 45, 60, 80, 120), 45)
+# A level remembered for 0.16's lanes was an hour's width across a line; the columns keep their own.
+WEEK_SCALE = Scale("timeline.spread", (28, 36, 48, 64, 96), 36)
+# The planner's two pages and the days on each.
+PAGES = ((0, 1, 2), (3, 4, 5, 6))
+# Room above and below the hours for the first and last hour's label.
+END_ROOM = 20
+# The mock-up's measures at Normal text, in pixels: room round the spread; inside a page at its outer
+# edge, by the gutter and at its top; the row of day names; the hour labels; a sticky note at the
+# foot of the week and on Day.
+AROUND = (16, 6, 16, 16)
+OUTER, INNER, TOP = 18, 26, 14
+HEADS, GUTTER = 44, 44
+SQUARE_NOTE = (132, 94)
+WIDE_NOTE = 216
+# The least room the list of what is due takes beside the notes.
+DUE_WIDE = 230
+# How much of the page's room Compact keeps.
+COMPACT = 0.6
+# The sheet of the next pages, showing under each page's foot.
+SHEET = 3
+# The gutter's shade, from the fold out across each page.
+FOLD, FOLD_SHADE = 30, 0.07
+# The notes' ruled lines on Day.
+RULED = 32
 
 
-class TimelinePainter(BlockPainter):
-    """A white ruled page. Homework is an ink card, anything else a white card outlined in ink, each
-    with its category's colour down its start edge. The held block is lifted on a hard shadow."""
-
-    def __init__(self, tokens: dict[str, str], rule: float = 0.0) -> None:
-        super().__init__({
-            "window": tokens["bg"], "grid": tokens["line"], "hairline": tokens["line"],
-            "accent": tokens["accent"], "accent_ink": tokens["accent_ink"],
-            "error": tokens["danger"], "text": tokens["text"], "muted": tokens["bg_muted"],
-        })
-        self.tokens = tokens
-        # How far below each line of the week its section ends, where a rule divides it from the next.
-        self.rule = rule
-
-    def track(self, painter: QPainter, track: LinearTrack, today: bool) -> None:
-        area = track.area
-        painter.fillRect(area, QColor(self.tokens["surface"]))
-        # Only the week's lines tint today: Day shows one day, and its page stays white.
-        super().track(painter, track, today and track.axis is Axis.ACROSS)
-        painter.setPen(QPen(QColor(self.tokens["line"]), 1))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(area.adjusted(0, 0, -1, -1))
-        if self.rule and track.axis is Axis.ACROSS:
-            below = area.bottom() + self.rule
-            painter.drawLine(QPointF(area.left() - END_ROOM, below), QPointF(area.right() + END_ROOM, below))
-
-    def fills(self, drawn: Drawn) -> tuple[QColor, QColor, QColor | None, QColor | None]:
-        # Anything else is a card of the paper the page is printed on, so it stands off the white page.
-        mark = QColor(mark_of(drawn.category))
-        ink, paper = QColor(self.tokens["text"]), QColor(self.tokens["surface"])
-        if drawn.done or drawn.missed:
-            return QColor(self.tokens["bg"]), QColor(self.tokens["muted"]), QColor(self.tokens["line"]), mark
-        if drawn.work:
-            return ink, paper, None, mark
-        return QColor(self.tokens["bg"]), ink, ink, mark
-
-    def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:
-        # Both under the card: an ink ring round an ink card cannot be seen, and a ring clear of the
-        # card can, on the white page, whatever the card's colour.
-        painter.save()
-        ink = QColor(self.tokens["text"])
-        if drawn.held:
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(ink)
-            painter.drawRoundedRect(rect.translated(4, 4), 5, 5)
-        elif drawn.chosen:
-            painter.setPen(QPen(ink, 2))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(rect.adjusted(-3, -3, 3, 3), 7, 7)
-        painter.restore()
-        super().block(painter, rect, drawn, visible)
-
-    def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
-        super().now(painter, track, minute)
-        room = track.area.left() - 8
-        if track.axis is not Axis.DOWN or track.turn or room < 24:
-            return
-        # In the hour labels' gutter, over whichever label is there.
-        at = track.area.top() + track.offset(minute)
-        box = QRectF(2, at - 9, room, 18)
-        painter.fillRect(box, QColor(self.tokens["bg"]))
-        bold = QFont(painter.font())
-        bold.setBold(True)
-        painter.setFont(bold)
-        painter.setPen(QColor(self.tokens["danger"]))
-        painter.drawText(box, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, "NOW")
+def _spread(inner: float, area: QRectF) -> list[LinearTrack]:
+    """Monday to Wednesday on the left page, right of the hour labels, and Thursday to Sunday on the
+    right, `inner` clear of the fold down the middle of the canvas on either side."""
+    fold = area.right() / 2
+    top, tall = area.top() + END_ROOM / 2, area.height() - END_ROOM
+    tracks = []
+    for days, (left, right) in zip(
+        PAGES, ((area.left(), fold - inner), (fold + inner, area.right())), strict=True
+    ):
+        wide = (right - left) / len(days)
+        tracks += [LinearTrack(day, QRectF(left + at * wide, top, wide, tall)) for at, day in enumerate(days)]
+    return tracks
 
 
 def _column(day: int, area: QRectF) -> list[LinearTrack]:
-    return [LinearTrack(day, area.adjusted(0, END_ROOM / 2, -12, -END_ROOM / 2))]
+    return [LinearTrack(day, area.adjusted(0, END_ROOM / 2, 0, -END_ROOM / 2))]
 
 
-def _column_length(px: int) -> int:
+def _length(px: int) -> int:
     return round((LAST - FIRST) / 60 * px) + END_ROOM
 
 
-def _lines(pad: float, area: QRectF) -> list[LinearTrack]:
-    tall = area.height() / 7
-    return [
-        LinearTrack(
-            day,
-            QRectF(area.left() + END_ROOM, area.top() + day * tall + pad,
-                   area.width() - 2 * END_ROOM, tall - 2 * pad),
-            Axis.ACROSS,
+@dataclass(frozen=True)
+class Due:
+    """Homework due this week, as the notes list it: where its first session is, or None while one
+    of its sessions waits for a time."""
+
+    title: str
+    at: tuple[int, int] | None
+
+
+def due_this_week(week: WeekModel) -> list[Due]:
+    """What is not placed yet first, by when it is due; then the rest by where they are placed."""
+    first, last = week.date_of(0).isoformat(), week.date_of(6).isoformat()
+
+    def this_week(due: str | None) -> bool:
+        return bool(due) and first <= (due or "")[:10] <= last
+
+    waiting: dict[str, Due] = {}
+    for item in week.waiting:
+        if this_week(item.due):
+            waiting.setdefault(item.assignment_id or item.block_id, Due(item.title, None))
+    placed: dict[str, Due] = {}
+    for entry in week.occurrences:
+        key = entry.assignment_id or entry.block_id
+        if entry.work and this_week(entry.due) and key not in waiting:
+            placed.setdefault(key, Due(entry.title, (entry.day, entry.start)))
+    return [*waiting.values(), *sorted(placed.values(), key=lambda due: due.at or (0, 0))]
+
+
+def week_figures(week: WeekModel) -> tuple[tuple[str, str], ...]:
+    """The foot of the left page: the minutes of homework planned, how many homework are done (each
+    with every one of its sessions finished), and how many sessions wait for a time."""
+    homework: dict[str, list[bool]] = {}
+    for entry in week.occurrences:
+        if entry.work:
+            homework.setdefault(entry.assignment_id or entry.block_id, []).append(entry.done)
+    for item in week.waiting:
+        homework.setdefault(item.assignment_id or item.block_id, []).append(False)
+    done = sum(all(finished) for finished in homework.values())
+    planned = sum(entry.minutes for entry in week.occurrences if entry.work)
+    return (
+        (length_label(planned), "homework planned"),
+        (f"{done} of {len(homework)}" if homework else "0", "done"),
+        (str(len(week.waiting)), "not placed yet"),
+    )
+
+
+def next_up(scene: Scene) -> Occurrence | None:
+    """The next thing to start today, on this week."""
+    if scene.today is None:
+        return None
+    return next(
+        (entry for entry in scene.week.on_day(scene.today) if entry.live and entry.start > scene.minute), None
+    )
+
+
+def _when(entry: Occurrence, minute: int) -> str:
+    return f"at {clock_label(entry.start)}, in {length_label(entry.start - minute)}"
+
+
+def _due_words(due: str | None) -> str:
+    """When homework is due, as a sticky note says it: "due Sun 27"."""
+    if not due:
+        return ""
+    day = date.fromisoformat(due[:10])
+    return f"due {DAYS[day.weekday()]} {day.day}"
+
+
+def _paint(tokens: dict[str, str], category: str) -> tuple[str, str]:
+    """A category's fill and mark in the one family, on this design's pages."""
+    fill, mark = category_paint(category, {"family": family(tokens), "panel": tokens["surface"]})
+    return fill or tokens["surface"], mark or tokens["line"]
+
+
+class TimelinePainter(BlockPainter):
+    """Ruled paper. The hours are ruled at each hour on the spread's pages, with a hairline between
+    days; blocks are cards outlined in ink with their category's tab down the start edge, and
+    homework, or a block with no room for a word, is its category's colour."""
+
+    def __init__(
+        self,
+        tokens: dict[str, str],
+        *,
+        edged: frozenset[int] = frozenset(),
+        wide: bool = False,
+        now_words: str = "",
+        now_at: float = 4,
+    ) -> None:
+        soft = mix_oklab(tokens["line"], tokens["surface"], 0.5)
+        super().__init__(
+            {
+                "window": tokens["surface"],
+                "hairline": soft,
+                "rule": soft,
+                "accent": tokens["accent"],
+                "accent_ink": tokens["accent_ink"],
+                "error": tokens["danger"],
+                "text": tokens["text"],
+                "muted": tokens["muted"],
+            },
+            wide=wide,
         )
-        for day in range(7)
-    ]
+        self.tokens = tokens
+        # The days with a hairline down their start edge: every column but the first on the right page.
+        self.edged = edged
+        self.now_words, self.now_at = now_words, now_at
+        self._ink = QColor(mix_oklab(tokens["text"], tokens["surface"], 0.78))
+        # Set as each block is drawn, for `fills` and `fonts`: a block with no room for a word, and
+        # one on Day too short for a line at the body size, whose title is then in the caption size,
+        # as the mock-up writes "Dinner 18:30–19:00 · 30 min".
+        self._wordless = self._tiny = False
+
+    @cached_property
+    def measures(self) -> dict:
+        # The week's narrow columns say a block's name and times; Day says its length too.
+        return {**look_measures(self.look), "show_lengths": self.wide}
+
+    def background(self, painter: QPainter, rect: QRectF) -> None:
+        """Nothing: the pages under the hours are the spread's."""
+
+    def track(self, painter: QPainter, track: LinearTrack, today: bool) -> None:
+        area = track.area
+        if today:
+            wash = self.c("text")
+            wash.setAlphaF(TODAY_WASH)
+            painter.fillRect(area, wash)
+        painter.setPen(QPen(self.c("rule"), 1))
+        for minute in range(-(-track.first // 60) * 60, track.last + 1, 60):
+            at = area.top() + track.offset(minute)
+            painter.drawLine(QPointF(area.left(), at), QPointF(area.right(), at))
+        if track.day in self.edged:
+            painter.drawLine(area.topLeft(), area.bottomLeft())
+
+    def fills(self, drawn: Drawn) -> tuple[QColor, QColor, QColor | None, QColor | None]:
+        fill, mark = _paint(self.tokens, drawn.category)
+        paper = self.tokens["surface"]
+        if drawn.done or drawn.missed:
+            return QColor(paper), QColor(self.tokens["muted"]), None, QColor(mark)
+        return (
+            QColor(fill if drawn.work or self._wordless else paper),
+            QColor(self.tokens["text"]),
+            None,
+            QColor(mark),
+        )
+
+    def fonts(self, base: QFont) -> tuple[QFont, QFont]:
+        title, small = super().fonts(base)
+        if self._tiny:
+            title = at_scale(base, "caption", self.scale(base), WEIGHT_STRONG)
+        return title, small
+
+    def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:
+        self._tiny = False
+        body = QFontMetricsF(self.fonts(painter.font())[0]).lineSpacing()
+        self._tiny = self.wide and rect.height() + 0.5 < body
+        self._wordless = not drawn.held and self._no_room(painter.font(), rect, drawn)
+        super().block(painter, rect, drawn, visible)
+        if not (drawn.held or drawn.chosen):
+            painter.setPen(QPen(self._ink, 1))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(
+                rect.adjusted(0.5, 0.5, -0.5, -0.5), RADIUS_BLOCK - 0.5, RADIUS_BLOCK - 0.5
+            )
+
+    def _no_room(self, font: QFont, rect: QRectF, drawn: Drawn) -> bool:
+        """Whether the block says nothing, as `words` would find: an outlined card with only a tab
+        would read as an empty box, so it is its category's colour, as the mock-up draws Dinner."""
+        title, small = self.fonts(font)
+        room = QRectF(
+            QPointF(rect.left() + TEXT_LEFT, rect.top() + TEXT_TOP),
+            QPointF(rect.right() - TEXT_RIGHT, rect.bottom() - 1),
+        )
+        tight = QRectF(room.left(), rect.top(), room.width(), rect.height())
+        book = drawn.category in HOMEWORK_CATEGORIES
+        return not block_layout(drawn, title, small, room, tight=tight, wide=self.wide, book=book)
+
+    def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
+        """A line across the day at `minute`, and a pill near its start with the time on it."""
+        colour = QColor(self.colours.get("now", self.colours["accent"]))
+        font = weighted(time_font(caption(painter.font())), WEIGHT_STRONG)
+        words = f"{self.now_words} {clock_label(minute)}".strip()
+        metrics = QFontMetricsF(font)
+        width, height = metrics.horizontalAdvance(words) + 12, metrics.height() + 2
+        area = track.area
+        at = area.top() + track.offset(minute)
+        painter.setPen(QPen(colour, 2))
+        painter.drawLine(QPointF(area.left(), at), QPointF(area.right(), at))
+        pill = QRectF(area.left() + self.now_at, at - height / 2, width, height)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(colour)
+        painter.drawRoundedRect(pill, height / 2, height / 2)
+        painter.setPen(QColor(readable_ink(colour.name())))
+        painter.setFont(font)
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
 
 
-def _line_length(px: int) -> int:
-    return round((LAST - FIRST) / 60 * px) + 2 * END_ROOM
+class Spread(QWidget):
+    """A planner opened flat: two pages joined at a fold down the middle, shaded either side of it,
+    and the next sheet showing under their foot. What is laid on it is clear, so its paper shows."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__()
+        self.setObjectName(name)
+        self.tokens: dict[str, str] = {}
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        if not self.tokens:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        paper, edge = QColor(self.tokens["surface"]), QColor(self.tokens["line"])
+        box = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5 - SHEET)
+        painter.setPen(QPen(edge, 1))
+        painter.setBrush(paper)
+        for sheet in (box.translated(0, SHEET).adjusted(1, 0, -1, 0), box):
+            painter.drawRoundedRect(sheet, RADIUS_CARD, RADIUS_CARD)
+        fold = self.width() / 2
+        shade, clear = QColor(self.tokens["text"]), QColor(self.tokens["text"])
+        shade.setAlphaF(FOLD_SHADE)
+        clear.setAlphaF(0)
+        for toward in (fold - FOLD, fold + FOLD):
+            ramp = QLinearGradient(QPointF(toward, 0), QPointF(fold, 0))
+            ramp.setColorAt(0, clear)
+            ramp.setColorAt(1, shade)
+            painter.fillRect(QRectF(min(toward, fold), box.top() + 1, FOLD, box.height() - 1), ramp)
+        painter.setPen(QPen(edge, 1))
+        painter.drawLine(QPointF(fold, box.top()), QPointF(fold, box.bottom()))
+        painter.end()
+
+
+class DayHeading(QPushButton):
+    """A day's name over its column, with its date right after it, today's in an accent chip. The
+    name shortens to "Wed" before it would be cut. On Week a click opens the day."""
+
+    opened = Signal(int)
+    PAD, GAP = 8, 6
+
+    def __init__(self, day: int, name: str, opens: bool) -> None:
+        super().__init__()
+        self.day = day
+        self.setObjectName(name)
+        self.setProperty("kind", "heading")
+        self.setAccessibleName(f"Show {DAY_FULL[day]}" if opens else DAY_FULL[day])
+        if opens:
+            self.setProperty("day_target", day)
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.setToolTip(f"Open {DAY_FULL[day]}")
+            self.clicked.connect(lambda _=False: self.opened.emit(self.day))
+        else:
+            self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(self.PAD, 0, 0, 0)
+        row.setSpacing(self.GAP)
+        self.title = label(DAY_FULL[day], "timelineDayName")
+        # Two labels shown in turn: Qt keeps a label's padding from its first styling, so a date
+        # restyled as today's chip later lost the chip's padding.
+        self.date = label("", "timelineDate")
+        self.chip = label("", "timelineChip")
+        for part in (self.title, self.date, self.chip):
+            part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            # A styled label counts as framed and is indented by half a letter; the chip's own padding
+            # is all the room it needs.
+            part.setIndent(0)
+            row.addWidget(part, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addStretch(1)
+
+    def set_date(self, number: int, today: bool) -> None:
+        self.date.setText(str(number))
+        self.chip.setText(str(number))
+        self.date.setVisible(not today)
+        self.chip.setVisible(today)
+        self._fit()
+
+    def resizeEvent(self, event: object) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._fit()
+
+    def _fit(self) -> None:
+        """The whole name if it fits beside the date, else its short form, closer to its edge and its
+        date in a narrow column; shortened further only if even that does not fit. Measured in the
+        name's own styled face."""
+        tag = self.chip if self.chip.isVisibleTo(self) else self.date
+        for part in (self.title, tag):
+            part.ensurePolished()
+        metrics = self.title.fontMetrics()
+        full, short = DAY_FULL[self.day], DAYS[self.day]
+        room = self.width() - self.PAD - self.GAP - tag.sizeHint().width()
+        pad, gap = (self.PAD, self.GAP) if metrics.horizontalAdvance(short) <= room else (2, 3)
+        self.layout().setContentsMargins(pad, 0, 0, 0)
+        self.layout().setSpacing(gap)
+        room = self.width() - pad - gap - tag.sizeHint().width()
+        words = full if metrics.horizontalAdvance(full) <= room else short
+        self.title.setText(metrics.elidedText(words, Qt.TextElideMode.ElideRight, max(room, 0)))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(0, super().minimumSizeHint().height())
+
+
+class Heads(QFrame):
+    """The days' names over their columns, kept above the hours as they scroll."""
+
+    opened = Signal(int)
+
+    def __init__(self, canvas: TimelineCanvas, days: tuple[int, ...], opens: bool) -> None:
+        super().__init__()
+        self.setObjectName("timelineHeads")
+        self.canvas = canvas
+        self.opens = opens
+        self.headings: dict[int, DayHeading] = {}
+        self.show_days(days)
+        canvas.heads = self
+
+    def show_days(self, days: tuple[int, ...]) -> None:
+        if tuple(self.headings) == days:
+            return
+        for heading in self.headings.values():
+            heading.setParent(None)
+            heading.deleteLater()
+        name = "timelineWeekDay{}" if self.opens else "timelineDayHead"
+        self.headings = {day: DayHeading(day, name.format(day), self.opens) for day in days}
+        for heading in self.headings.values():
+            heading.setParent(self)
+            heading.opened.connect(self.opened)
+            heading.show()
+        self.place()
+
+    def place(self) -> None:
+        """Each name over its column: the canvas's hours start after the hour labels, and this row
+        after the zoom above them."""
+        for track in self.canvas.tracks:
+            heading = self.headings.get(track.day)
+            if heading is not None:
+                left = round(track.area.left() - self.canvas.gutter)
+                heading.setGeometry(
+                    QRect(left, 0, round(track.area.right() - self.canvas.gutter) - left, self.height())
+                )
+
+    def resizeEvent(self, event: object) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self.place()
 
 
 def _page_of(widget: QWidget | None) -> QScrollArea | None:
@@ -155,35 +485,34 @@ def _page_of(widget: QWidget | None) -> QScrollArea | None:
 
 
 class TimelineCanvas(HoursCanvas):
-    """Hours on a page that scrolls too. A time is brought on screen in the hours and then in the
-    page, and the week's day names are the headings beside its lines."""
+    """Hours on a page that scrolls too, in a short window: a time is brought on screen in the hours
+    and then in the page. The week's day names are the headings over its columns."""
 
-    def __init__(self, hand: Hand, painter: TimelinePainter, lay_out, *, gutter: float = 0) -> None:
-        super().__init__(hand, painter, lay_out, gutter=gutter)
-        self.headings: dict[int, DayHeading] = {}
+    def __init__(self, hand: Hand, painter: TimelinePainter, lay_out) -> None:
+        super().__init__(hand, painter, lay_out)
+        self.heads: Heads | None = None
+
+    def relayout(self) -> None:
+        super().relayout()
+        if self.heads is not None:
+            self.heads.place()
 
     def day_name(self, day: int) -> QPoint:
-        heading = self.headings.get(day)
-        return heading.mapToGlobal(heading.rect().center()) if heading is not None else super().day_name(day)
+        heading = self.heads.headings.get(day) if self.heads is not None else None
+        if heading is None or heading.property("day_target") is None:
+            return super().day_name(day)
+        return heading.mapToGlobal(heading.rect().center())
 
     def reveal(self, day: int, first: int, last: int) -> None:
-        area = self._scroll_area()
+        super().reveal(day, first, last)
         track = self.track_for(day, first) or self.track_for(day)
-        if area is None or track is None:
+        page = _page_of(self._scroll_area())
+        if page is None or track is None:
             return
-        across = track.axis is Axis.ACROSS
-        page = _page_of(area)
-        for minute in (last, first):
-            local = track.point_for(min(max(minute, track.first), track.last)).toPoint()
-            # Clear of the edge where a held block starts the hours scrolling.
-            area.ensureVisible(local.x(), local.y(), 60 if across else 20, 20 if across else 60)
-        if page is None:
-            return
-        reach = round(track.area.height() * NEIGHBOURS) if across else 60
         for minute in (last, first):
             local = track.point_for(min(max(minute, track.first), track.last)).toPoint()
             inside = self.mapTo(page.widget(), local)
-            page.ensureVisible(inside.x(), inside.y(), 0, reach)
+            page.ensureVisible(inside.x(), inside.y(), 20, 60)
 
     def in_view(self, day: int, minute: int) -> bool:
         if not super().in_view(day, minute):
@@ -193,57 +522,179 @@ class TimelineCanvas(HoursCanvas):
         if page is None or track is None:
             return True
         port = page.viewport()
-        at = self.mapTo(port, track.point_for(minute).toPoint())
-        return port.rect().adjusted(-2, -2, 2, 2).contains(at)
+        return (
+            port.rect().adjusted(-2, -2, 2, 2).contains(self.mapTo(port, track.point_for(minute).toPoint()))
+        )
 
 
-class DayHeading(QPushButton):
-    """A day's big name with its date under it, beside its line of hours. Clicked, it opens the day."""
+class Note(TrayChip):
+    """Homework not placed yet as a sticky note, set a little askew: its colour with a deeper strip
+    along the top, the book and its name, how long it takes and when it is due. Square at the foot
+    of the week, wide on Day. Drag it onto a day to give it a time; a click opens it."""
 
-    opened = Signal(int)
+    def __init__(
+        self, hand: Hand, waiting: Waiting, tokens: dict[str, str], *, tilt: float, square: bool, scale: float
+    ) -> None:
+        super().__init__(hand, waiting)
+        self.setText(waiting.title)
+        self.setProperty("note", True)
+        self.tokens, self.tilt, self.square, self.scale = tokens, tilt, square, scale
+        self.length = length_label(waiting.minutes)
+        self.due = _due_words(waiting.due)
+        self.fill, self.mark = _paint(tokens, waiting.category or HOMEWORK)
 
-    def __init__(self, day: int) -> None:
+    def _fit(self) -> None:
+        # Painted whole each time: the title wraps and shortens in the paint.
+        return
+
+    def _fonts(self) -> tuple[QFont, QFont]:
+        # Both weights named: the window's stylesheet sets a button's font at 600.
+        title = at_scale(self.font(), "caption" if self.square else "body", self.scale, WEIGHT_STRONG)
+        return title, time_font(at_scale(self.font(), "caption", self.scale, WEIGHT_REGULAR))
+
+    def _pad(self) -> tuple[float, float, float]:
+        """Its padding at the top, the sides and the foot."""
+        return tuple(size * self.scale for size in ((12, 10, 8) if self.square else (13, 12, 10)))
+
+    def _meta(self) -> list[str]:
+        parts = [self.length, *([self.due] if self.due else [])]
+        return parts if self.square else [" · ".join(parts)]
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        if self.square:
+            return QSize(round(SQUARE_NOTE[0] * self.scale), round(SQUARE_NOTE[1] * self.scale))
+        title, small = self._fonts()
+        top, side, foot = self._pad()
+        book = QFontMetricsF(title).ascent() + 5
+        words = max(
+            QFontMetricsF(title).horizontalAdvance(self._title) + book,
+            QFontMetricsF(small).horizontalAdvance(self._meta()[0]),
+        )
+        tall = top + QFontMetricsF(title).lineSpacing() + 2 + QFontMetricsF(small).lineSpacing() + foot
+        return QSize(round(max(WIDE_NOTE * self.scale, words + 2 * side) + 4), round(tall + 4))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        hint = self.sizeHint()
+        return QSize(min(hint.width(), round(WIDE_NOTE * self.scale * 0.6)), hint.height())
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        centre = QRectF(self.rect()).center()
+        painter.translate(centre)
+        painter.rotate(self.tilt)
+        painter.translate(-centre)
+        # Clear of the widget's edge, so its turned corners are not cut.
+        body = QRectF(self.rect()).adjusted(2, 2, -2, -2)
+        fill = QColor(self.fill)
+        painter.fillRect(body, fill)
+        painter.fillRect(
+            QRectF(body.left(), body.top(), body.width(), 5 * self.scale),
+            QColor(mix_oklab(self.mark, self.fill, 0.30)),
+        )
+        if self.hasFocus():
+            painter.setPen(QPen(QColor(self.tokens["accent"]), 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(body.adjusted(1, 1, -1, -1))
+        ink = self.tokens["text"]
+        title, small = self._fonts()
+        top, side, foot = self._pad()
+        metrics = QFontMetricsF(title)
+        icon = round(metrics.ascent())
+        book = icon + 5
+        room = QRectF(body.left() + side + book, body.top() + top, body.width() - 2 * side - book, 0)
+        lines = fit_lines(self._title, title, room.width(), metrics.lineSpacing() * (2 if self.square else 1))
+        painter.drawPixmap(
+            QPointF(room.left() - book, room.top() + (metrics.height() - icon) / 2),
+            icons.pixmap("book-open", ink, icon, self.devicePixelRatioF()),
+        )
+        painter.setPen(QColor(ink))
+        painter.setFont(title)
+        for at, line in enumerate(lines):
+            box = QRectF(room.left(), room.top() + at * metrics.lineSpacing(), room.width(), metrics.height())
+            painter.drawText(box, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, line)
+        meta = self._meta()
+        line = QFontMetricsF(small).lineSpacing()
+        below = (
+            body.bottom() - foot - line * len(meta) if self.square else room.top() + metrics.lineSpacing() + 2
+        )
+        painter.setPen(QColor(mix_oklab(ink, self.fill, 0.72)))
+        painter.setFont(small)
+        for at, words in enumerate(meta):
+            box = QRectF(body.left() + side, below + at * line, body.width() - 2 * side, line)
+            painter.drawText(box, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, words)
+        painter.end()
+
+
+class Ruled(QFrame):
+    """The ruled space for notes at the foot of Day's right page."""
+
+    def __init__(self, tokens: dict[str, str], scale: float) -> None:
         super().__init__()
-        self.day = day
-        self.setObjectName(f"timelineWeekDay{day}")
-        self.setProperty("kind", "heading")
-        self.setProperty("day_target", day)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setAccessibleName(f"Show {DAY_FULL[day]}")
-        self.setToolTip(f"Open {DAY_FULL[day]}")
-        # As tall as its line of hours, whatever its words would like.
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
-        stack = QVBoxLayout(self)
-        stack.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
-        stack.setContentsMargins(4, 0, 8, 0)
-        stack.setSpacing(0)
-        self.title = label(DAY_FULL[day], "timelineHeadingName")
-        self.date = label("", "timelineHeadingDate")
-        stack.addStretch(1)
-        # No indent once today's underline gives the name a frame, so it stays in line with the others.
-        self.title.setIndent(0)
-        for part in (self.title, self.date):
-            part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-            stack.addWidget(part, 0, Qt.AlignmentFlag.AlignLeft)
-        stack.addStretch(1)
-        self.clicked.connect(self._open)
+        self.setObjectName("timelineRuled")
+        self.rule = QColor(mix_oklab(tokens["line"], tokens["surface"], 0.5))
+        self.pitch = RULED * scale
+        self.setMinimumHeight(round(self.pitch))
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
 
-    def _open(self, _checked: bool = False) -> None:
-        self.opened.emit(self.day)
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setPen(QPen(self.rule, 1))
+        at = self.pitch * 0.6
+        while at < self.height():
+            painter.drawLine(QPointF(0, at), QPointF(self.width(), at))
+            at += self.pitch
+        painter.end()
 
 
-def _detach(layout: QLayout, widget: QWidget) -> bool:
-    """Take a kept scroll out of the page before the page is cleared."""
-    for index in range(layout.count()):
-        item = layout.itemAt(index)
-        if item.widget() is widget:
-            layout.takeAt(index)
-            widget.hide()
-            return True
-        inner = item.layout()
-        if inner is not None and _detach(inner, widget):
-            return True
-    return False
+class Split(QFrame):
+    """Two parts side by side while it is `wide` enough for both, and one over the other when not,
+    as the foot of the right page is in a narrow window or at large text."""
+
+    def __init__(self, name: str, wide: int, gap: int) -> None:
+        super().__init__()
+        self.setObjectName(name)
+        self.wide = wide
+        self.box = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
+        self.box.setContentsMargins(0, 0, 0, 0)
+        self.box.setSpacing(gap)
+        # Its page's half of the spread, whatever its parts would like: the direction follows that.
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def resizeEvent(self, event: object) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        side = self.width() >= self.wide
+        direction = QBoxLayout.Direction.LeftToRight if side else QBoxLayout.Direction.TopToBottom
+        if self.box.direction() != direction:
+            self.box.setDirection(direction)
+
+
+@dataclass
+class Pages:
+    """A spread kept between renders: its hours, which keep their zoom and place, and the parts laid
+    out again each time."""
+
+    spread: Spread
+    hours: HoursScroll
+    # The two pages' parts side by side, the gutter between them.
+    row: QBoxLayout
+    feet: tuple[QVBoxLayout, ...]
+
+
+def _frame(name: str, box: QBoxLayout | None = None) -> QFrame:
+    made = QFrame()
+    made.setObjectName(name)
+    if box is not None:
+        made.setLayout(box)
+        box.setContentsMargins(0, 0, 0, 0)
+    return made
+
+
+def _clear(area: QScrollArea) -> QScrollArea:
+    """A scroll area on the spread whose content lets the paper show. setWidget fills it, and a
+    picture of the design drawn outside the window, as setup's are, showed grey under the hours."""
+    area.widget().setAutoFillBackground(False)
+    return area
 
 
 class TimelineView(LayoutView):
@@ -256,11 +707,199 @@ class TimelineView(LayoutView):
         self._page = QWidget()
         self._page.setObjectName("timelinePage")
         self._root = QVBoxLayout(self._page)
-        self._root.setContentsMargins(16, 8, 16, 10)
         outer.addWidget(scrolling(self._page, "timelineScroll"))
-        self._scrolls: dict[str, HoursScroll] = {}
-        # The text size each was made at: its gutter is fixed when it is made.
-        self._made_at: dict[str, float] = {}
+        self._pages: dict[str, Pages] = {}
+        # The text size they were made at: their gutter and the pages' measures are fixed when made.
+        self._made_at: float | None = None
+
+    def render(self, scene: Scene, week_changed: bool) -> None:
+        tight = COMPACT if scene.options.get("density") == "compact" else 1.0
+        if self._made_at != scene.scale:
+            for kept in self._pages.values():
+                kept.spread.setParent(None)
+                kept.spread.deleteLater()
+            self._pages, self._made_at = {}, scene.scale
+        self.setStyleSheet(self._sheet(scene))
+        px = scene.px
+        self._root.setContentsMargins(*(px(size * tight) for size in AROUND))
+        key = "day" if scene.surface == "day" else "week"
+        pages = self._pages.get(key) or self._make(key, scene)
+        for kept in self._pages.values():
+            kept.spread.setVisible(kept is pages)
+        pages.spread.tokens = scene.tokens
+        pages.spread.update()
+        outer, top, inner = px(OUTER * tight), px(TOP * tight), px(INNER * tight)
+        pages.spread.layout().setContentsMargins(outer, top, outer, top + SHEET)
+        pages.row.setSpacing(2 * inner)
+        if key == "day":
+            self._render_day(scene, pages, tight)
+        else:
+            self._render_week(scene, pages, inner, tight)
+
+    def _make(self, key: str, scene: Scene) -> Pages:
+        px = scene.px
+        spread = Spread(f"timeline{key.title()}Spread")
+        day = key == "day"
+        layout = QHBoxLayout(spread) if day else QVBoxLayout(spread)
+        layout.setSpacing(0)
+        # Laid out and painted as each render says.
+        canvas = TimelineCanvas(self.hand, TimelinePainter(scene.tokens), None)
+        heads = Heads(canvas, () if day else tuple(range(7)), not day)
+        heads.opened.connect(self._open_day)
+        heads.setFixedHeight(px(HEADS))
+        if day:
+            canvas.setObjectName("timelineHours")
+            canvas.setAccessibleName("The day's page of hours")
+            hours = HoursScroll(canvas, DAY_SCALE, _length, name="timelineDay", gutter=px(GUTTER))
+        else:
+            canvas.setObjectName("timelineSpread")
+            canvas.setAccessibleName("The week on two pages, a column of hours for each day")
+            canvas.setAccessibleDescription(
+                "Drag a block up or down to change its time, or onto another day's column. Pull its top "
+                "or bottom edge to resize it, or drag empty time to add something. Click a block to open it."
+            )
+            hours = HoursScroll(canvas, WEEK_SCALE, _length, name="timelineWeek", gutter=px(GUTTER))
+        self.keep_zoom(hours)
+        hours.zoomed.connect(lambda _key, _px, kept=hours: self._fit_hours(kept, self._scene))
+        hours.set_header(heads)
+        _clear(hours)
+        feet: list[QVBoxLayout] = []
+        # Capped at the length of the hours, which then sit at the top of their page.
+        layout.addWidget(hours, 1)
+        if day:
+            notes = QVBoxLayout()
+            notes_page = _frame("timelineNotesPage", notes)
+            layout.addWidget(_clear(scrolling(notes_page, "timelineNotesScroll")), 1)
+            feet.append(notes)
+            row: QBoxLayout = layout
+        else:
+            row = QHBoxLayout()
+            for name in ("timelineWeekFoot", "timelineNotesFoot"):
+                foot = QVBoxLayout()
+                row.addWidget(_frame(name, foot), 1)
+                feet.append(foot)
+            layout.addWidget(_frame("timelineFeet", row))
+        self._root.addWidget(spread, 1)
+        made = Pages(spread, hours, row, tuple(feet))
+        self._pages[key] = made
+        return made
+
+    def _fit_hours(self, hours: HoursScroll, scene: Scene | None) -> None:
+        """No taller than the hours and their names: past that the foot of the page takes the room."""
+        if scene is None:
+            return
+        hours.setMinimumHeight(min(scene.px(220), _length(hours.px)))
+        hours.setMaximumHeight(max(30, hours.header.sizeHint().height()) + _length(hours.px))
+
+    # Week
+
+    def _render_week(self, scene: Scene, pages: Pages, inner: int, tight: float) -> None:
+        hours = pages.hours
+        canvas = hours.canvas
+        canvas._lay_out = partial(_spread, inner)
+        canvas.set_painter(TimelinePainter(scene.tokens, edged=frozenset({0, 1, 2, 4, 5, 6})))
+        canvas.relayout()
+        self._date_heads(scene, canvas.heads)
+        canvas.set_week(_shown(scene, scene.week.occurrences), scene.today, scene.minute)
+        open_hours(hours, scene.week.week_start, scene.week, scene.today, scene.minute)
+        self._fit_hours(hours, scene)
+        left, right = pages.feet
+        for foot in (left, right):
+            empty(foot)
+            foot.parentWidget().setContentsMargins(0, scene.px(12 * tight), 0, 0)
+        self._figures(scene, left)
+        self._notes_foot(scene, right)
+
+    def _figures(self, scene: Scene, foot: QVBoxLayout) -> None:
+        """This week in figures, and what is next."""
+        px = scene.px
+        foot.setSpacing(px(8))
+        foot.addWidget(label("This week", "timelineLabel"))
+        row = QHBoxLayout()
+        row.setSpacing(px(32))
+        for value, words in week_figures(scene.week):
+            pair = QVBoxLayout()
+            pair.setSpacing(px(2))
+            pair.addWidget(label(value, "timelineStat"))
+            pair.addWidget(label(words, "timelineStatWord"))
+            row.addLayout(pair)
+        row.addStretch(1)
+        foot.addLayout(row)
+        coming = next_up(scene)
+        if coming is not None:
+            muted = scene.tokens["muted"]
+            line = QLabel(
+                f'<span style="color:{muted}">Next</span> {html.escape(coming.title)} '
+                f'<span style="color:{muted}">{_when(coming, scene.minute)}</span>'
+            )
+            line.setObjectName("timelineNext")
+            line.setTextFormat(Qt.TextFormat.RichText)
+            line.setWordWrap(True)
+            foot.addSpacing(px(4))
+            foot.addWidget(line)
+        foot.addStretch(1)
+
+    def _notes_foot(self, scene: Scene, foot: QVBoxLayout) -> None:
+        """Not placed yet as sticky notes, and what is due this week beside them."""
+        px = scene.px
+        # Two square notes side by side, as the mock-up's 276 pixels hold, at any text size.
+        wide = 2 * round(SQUARE_NOTE[0] * scene.scale) + px(12)
+        split = Split("timelineNotesSplit", wide + px(24) + px(DUE_WIDE), px(24))
+        notes = _frame("timelineNotes", QVBoxLayout())
+        notes.setFixedWidth(wide)
+        self._waiting(scene, notes.layout(), square=True)
+        split.box.addWidget(notes, 0, Qt.AlignmentFlag.AlignTop)
+        due = _frame("timelineDue", QVBoxLayout())
+        self._due(scene, due.layout(), big=False)
+        split.box.addWidget(due, 1, Qt.AlignmentFlag.AlignTop)
+        foot.addWidget(split)
+        foot.addStretch(1)
+
+    # Day
+
+    def _render_day(self, scene: Scene, pages: Pages, tight: float) -> None:
+        day = self.shown_day(scene)
+        hours = pages.hours
+        canvas = hours.canvas
+        canvas._lay_out = partial(_column, day)
+        canvas.set_painter(TimelinePainter(scene.tokens, wide=True, now_words="Now", now_at=scene.px(40)))
+        if canvas.heads is not None:
+            canvas.heads.show_days((day,))
+        canvas.relayout()
+        self._date_heads(scene, canvas.heads)
+        canvas.set_week(_shown(scene, scene.week.on_day(day)), scene.today, scene.minute)
+        open_hours(hours, (scene.week.week_start, day), scene.week, scene.today, scene.minute, day)
+        self._fit_hours(hours, scene)
+        (notes,) = pages.feet
+        empty(notes)
+        px = scene.px
+        notes.parentWidget().setContentsMargins(px(4), px(12 * tight), px(4), 0)
+        notes.setSpacing(px(24 * tight))
+        is_today = day == scene.today
+        notes.addLayout(self._summary(scene, day, is_today))
+        coming = next_up(scene) if is_today else None
+        if coming is not None:
+            section = self._section(scene, "Next")
+            line = QLabel(
+                f'<span style="font-weight:{WEIGHT_STRONG}">{html.escape(coming.title)}</span> '
+                f'<span style="color:{scene.tokens["muted"]}">{_when(coming, scene.minute)}</span>'
+            )
+            line.setObjectName("timelineNext")
+            line.setTextFormat(Qt.TextFormat.RichText)
+            line.setWordWrap(True)
+            section.addWidget(line)
+            notes.addLayout(section)
+        section = QVBoxLayout()
+        section.setSpacing(0)
+        self._due(scene, section, big=True)
+        notes.addLayout(section)
+        section = QVBoxLayout()
+        section.setSpacing(px(6))
+        self._waiting(scene, section, square=False)
+        notes.addLayout(section)
+        section = self._section(scene, "Notes")
+        section.addWidget(Ruled(scene.tokens, scene.scale), 1)
+        notes.addLayout(section, 1)
 
     def shown_day(self, scene: Scene) -> int:
         if scene.surface == "day" and scene.iso_day:
@@ -269,287 +908,172 @@ class TimelineView(LayoutView):
                     return day
         return scene.today if scene.today is not None else 0
 
-    def render(self, scene: Scene, week_changed: bool) -> None:
-        compact = scene.options.get("density") == "compact"
-        self._style(scene, compact)
-        for kept in self._scrolls.values():
-            _detach(self._root, kept)
-        empty(self._root)
-        self._root.setSpacing(scene.px(6 if compact else 10))
-        if scene.surface == "day":
-            self._render_day(scene)
-        else:
-            self._render_week(scene, compact)
-
-    def _style(self, scene: Scene, compact: bool) -> None:
-        tokens, name = scene.tokens, self.objectName()
-        pad = scene.px(6 if compact else 10)
-        self.setStyleSheet(
-            base_sheet(name, tokens)
-            + rules(
-                name,
-                {
-                    "#timelineScroll, #timelinePage": css(background=tokens["bg"]),
-                    "#timelineDay, #timelineWeekTitle": css(
-                        font_size=f"{scene.px(30 if compact else 42)}px",
-                        font_weight=900,
-                        letter_spacing="-1px",
-                    ),
-                    "#timelineWeekTitle": css(font_size=f"{scene.px(26 if compact else 34)}px"),
-                    "#timelineSub, #timelineTrayHint, #timelineHeadingDate": css(
-                        color=tokens["bg_muted"], font_size=f"{scene.px(14)}px"
-                    ),
-                    "#timelineTrayHint, #timelineHeadingDate": css(font_size=f"{scene.px(12)}px"),
-                    "#timelineTrayLabel": css(font_size=f"{scene.px(13)}px", font_weight=800),
-                    "#timelineMargin": css(border_left=f"2px solid {tokens['bg_ink']}"),
-                    "#timelineHeadingName": css(
-                        font_size=f"{scene.px(18 if compact else 22)}px",
-                        font_weight=900,
-                        letter_spacing="-0.5px",
-                    ),
-                    "QPushButton": css(
-                        background=tokens["surface"],
-                        color=tokens["text"],
-                        border=f"2px solid {tokens['text']}",
-                        border_radius=f"{scene.px(12)}px",
-                        padding=f"0 {scene.px(16)}px",
-                        min_height=f"{scene.px(40)}px",
-                        font_size=f"{scene.px(14)}px",
-                        font_weight=600,
-                    ),
-                    'QPushButton[zoom="true"]': css(min_height="0", padding="0", border_radius="4px"),
-                    'QPushButton[kind="main"]': css(background=tokens["accent"], color=tokens["accent_ink"]),
-                    'QPushButton[kind="day"]': css(
-                        border=f"2px solid {tokens['line']}",
-                        padding=f"{scene.px(4)}px",
-                        min_height=f"{scene.px(28)}px",
-                        font_size=f"{scene.px(12)}px",
-                    ),
-                    'QPushButton[kind="day"][chosen="true"]': css(
-                        background=tokens["accent"], color=tokens["accent_ink"],
-                        border=f"2px solid {tokens['accent']}", font_weight=800,
-                    ),
-                    'QPushButton[kind="chip"]': css(
-                        border=f"1px dashed {tokens['text']}",
-                        border_left=f"4px solid {tokens['danger']}",
-                        border_radius="3px",
-                        text_align="left",
-                        padding=f"0 {pad}px",
-                        min_height=f"{scene.px(34)}px",
-                        font_size=f"{scene.px(13)}px",
-                    ),
-                    'QPushButton[kind="heading"]': css(
-                        background="transparent",
-                        border="none",
-                        border_bottom=f"1px solid {tokens['line']}",
-                        border_radius="0",
-                        padding="0",
-                        min_height="0",
-                    ),
-                    "QPushButton:focus": css(border=f"3px solid {tokens['danger']}"),
-                    'QFrame[role="track"]': css(background=tokens["line"], border_radius="3px"),
-                    'QFrame[role="load"]': css(background=tokens["text"], border_radius="3px"),
-                },
-            )
+    def _summary(self, scene: Scene, day: int, is_today: bool) -> QVBoxLayout:
+        """The day's homework planned and done, and its time by category, each with its dot."""
+        px = scene.px
+        section = self._section(scene, "Today" if is_today else DAY_FULL[day])
+        work = [entry for entry in scene.week.on_day(day) if entry.work]
+        planned = planned_line(
+            sum(entry.minutes for entry in work), sum(entry.minutes for entry in work if entry.done)
         )
-
-    # Day: Column rule
-
-    def _render_day(self, scene: Scene) -> None:
-        day = self.shown_day(scene)
-        head = QHBoxLayout()
-        head.addWidget(label(DAY_FULL[day], "timelineDay"))
-        head.addStretch(1)
-        for made in plan_buttons(self, "timeline", "+ Add homework"):
-            head.addWidget(made, 0, Qt.AlignmentFlag.AlignVCenter)
-        self._root.addLayout(head)
-        date = scene.week.date_of(day)
-        load = _load(scene.week.on_day(day))
-        self._root.addWidget(label(f"{date.strftime('%B')} {date.day} · {load}", "timelineSub"))
-        self._root.addLayout(self._strip(scene, day))
-        body = QHBoxLayout()
-        body.setSpacing(scene.px(18))
-        scroll = self._day_hours(scene, day)
-        body.addWidget(scroll, 1)
-        body.addWidget(self._margin(scene))
-        self._root.addLayout(body, 1)
-        scroll.show()
-
-    def _day_hours(self, scene: Scene, day: int) -> HoursScroll:
-        scroll = self._kept("day", scene)
-        if scroll is None:
-            canvas = TimelineCanvas(self.hand, TimelinePainter(scene.tokens), partial(_column, day))
-            canvas.setObjectName("timelineHours")
-            canvas.setAccessibleName("The day's page")
-            scroll = self.keep_zoom(HoursScroll(
-                canvas, DAY_SCALE, _column_length, name="timelineColumn", gutter=scene.px(56),
-            ))
-            self._keep("day", scroll, scene)
-        canvas = scroll.canvas
-        canvas._lay_out = partial(_column, day)
-        canvas.set_painter(TimelinePainter(scene.tokens))
-        canvas.relayout()
-        canvas.set_week(_shown(scene, scene.week.on_day(day)), scene.today, scene.minute)
-        opens = opening_minute(scene.week, scene.today, scene.minute, day)
-        scroll.open_at((scene.week.week_start, day), opens, above=120)
-        scroll.setMinimumHeight(scene.px(260))
-        return scroll
-
-    def _strip(self, scene: Scene, shown: int) -> QHBoxLayout:
-        strip = QHBoxLayout()
-        strip.setSpacing(scene.px(6))
-        most = max([scene.week.load_min(day) for day in range(7)] + [1])
-        for day, name in enumerate(DAYS):
-            cell = QVBoxLayout()
-            cell.setSpacing(2)
-            pick = button(f"{name} {scene.week.date_of(day).day}", f"timelineDay{day}", "day")
-            pick.setProperty("chosen", "true" if day == shown else "false")
-            pick.setProperty("day_target", day)
-            pick.setAccessibleName(f"Show {DAY_FULL[day]}, {scene.week.load_min(day)} minutes of homework")
-            pick.clicked.connect(lambda _=False, target=day: self._open_day(target))
-            cell.addWidget(pick)
-            if scene.options.get("strip") != "names":
-                # A bare 4px stub under each button read as debris. The bar sits in a track of its own,
-                # so a light day is a short bar in a slot rather than a stray mark.
-                track = QFrame()
-                track.setProperty("role", "track")
-                track.setFixedHeight(scene.px(6))
-                inside = QHBoxLayout(track)
-                inside.setContentsMargins(0, 0, 0, 0)
-                inside.setSpacing(0)
-                bar = QFrame()
-                bar.setProperty("role", "load")
-                share = scene.week.load_min(day) / most
-                inside.addWidget(bar, max(round(share * 100), 3))
-                inside.addStretch(max(round((1 - share) * 100), 0))
-                cell.addWidget(track)
-            strip.addLayout(cell)
-        return strip
-
-    def _margin(self, scene: Scene) -> QFrame:
-        margin = QFrame()
-        margin.setObjectName("timelineMargin")
-        margin.setFixedWidth(scene.px(210))
-        inner = QVBoxLayout(margin)
-        inner.setContentsMargins(scene.px(14), scene.px(8), 0, 0)
-        inner.setSpacing(scene.px(8))
-        inner.addWidget(label("Not placed yet · in the margin", "timelineTrayLabel", wrap=True))
-        waiting = scene.week.waiting
-        words = "Drag one onto the page to give it a time." if waiting else "Nothing is waiting for a time."
-        inner.addWidget(label(words, "timelineTrayHint", wrap=True))
-        for index, item in enumerate(waiting):
-            inner.addWidget(self._chip(item, index))
-        inner.addStretch(1)
-        return margin
-
-    def _chip(self, waiting: Waiting, index: int) -> TrayChip:
-        chip = TrayChip(self.hand, waiting)
-        chip.setObjectName(f"timelineWaiting{index}")
-        chip.setProperty("kind", "chip")
-        chip.clicked.connect(lambda _=False, block_id=waiting.block_id: self.block_activated.emit(block_id))
-        return chip
-
-    # Week: Continuous scroll
-
-    def _render_week(self, scene: Scene, compact: bool) -> None:
-        week = scene.week
-        head = QHBoxLayout()
-        head.setSpacing(scene.px(14))
-        head.addWidget(label("This week", "timelineWeekTitle"))
-        first, last = week.date_of(0), week.date_of(6)
-        span = f"{first.day} {first:%B} – {last.day} {last:%B}"
-        sub = label(f"{span} · {_load(week.occurrences)}", "timelineSub")
-        head.addWidget(sub, 0, Qt.AlignmentFlag.AlignBottom)
-        head.addStretch(1)
-        for made in plan_buttons(self, "timeline", "+ Add homework"):
-            head.addWidget(made, 0, Qt.AlignmentFlag.AlignVCenter)
-        self._root.addLayout(head)
-        scroll = self._week_hours(scene, compact)
-        self._root.addWidget(scroll, 1)
-        tray = QHBoxLayout()
-        tray.setSpacing(scene.px(8))
-        tray.addWidget(label("Not placed yet · in the margin", "timelineTrayLabel"))
-        for index, item in enumerate(week.waiting):
-            tray.addWidget(self._chip(item, index))
-        if not week.waiting:
-            tray.addWidget(label("Nothing is waiting for a time.", "timelineTrayHint"))
-        tray.addStretch(1)
-        self._root.addLayout(tray)
-        scroll.show()
-
-    def _week_hours(self, scene: Scene, compact: bool) -> HoursScroll:
-        pad = scene.px(4 if compact else 6)
-        scroll = self._kept("week", scene)
-        if scroll is None:
-            canvas = TimelineCanvas(self.hand, TimelinePainter(scene.tokens, pad), partial(_lines, pad))
-            canvas.setObjectName("timelineLines")
-            canvas.setAccessibleName("The week, a line of hours for each day")
-            canvas.setAccessibleDescription(
-                "Drag along a day's line to change the time, or onto another day's line. Pull a block's "
-                "left or right end to resize it, or drag empty time to add something. Click a block to "
-                "open it."
+        section.addWidget(label(planned, "timelineSum"))
+        grid = QGridLayout()
+        grid.setContentsMargins(0, px(4), 0, 0)
+        grid.setHorizontalSpacing(px(24))
+        grid.setVerticalSpacing(px(6))
+        for at, share in enumerate(day_shares(scene.week, day)):
+            row = QHBoxLayout()
+            row.setSpacing(px(8))
+            dot = QFrame()
+            dot.setObjectName("timelineDot")
+            dot.setFixedSize(px(8), px(8))
+            dot.setStyleSheet(
+                f"background: {_paint(scene.tokens, share.category)[1]}; border-radius: {px(8) // 2}px;"
             )
-            scroll = self.keep_zoom(HoursScroll(
-                canvas, WEEK_SCALE, _line_length, name="timelineWeek", gutter=scene.px(170), axis=Axis.ACROSS,
-            ))
-            scroll.set_header(self._headings(canvas))
-            self._keep("week", scroll, scene)
-        canvas = scroll.canvas
-        canvas._lay_out = partial(_lines, pad)
-        canvas.set_painter(TimelinePainter(scene.tokens, pad))
-        canvas.relayout()
-        for day, heading in canvas.headings.items():
-            date = scene.week.date_of(day)
-            heading.date.setText(f"{date.day} {date:%B}")
-            today = day == scene.today
-            heading.title.setStyleSheet(
-                f"border-bottom: {scene.px(4)}px solid {scene.tokens['danger']};" if today else ""
-            )
-        canvas.set_week(_shown(scene, scene.week.occurrences), scene.today, scene.minute)
-        opens = opening_minute(scene.week, scene.today, scene.minute)
-        scroll.open_at(scene.week.week_start, opens, above=180)
-        # Seven lines share what the window has; below this each line is too thin to hold a block's
-        # name, and the page scrolls instead.
-        scroll.setMinimumHeight(scene.px(30) + 7 * scene.px(38 if compact else 46))
-        return scroll
-
-    def _headings(self, canvas: TimelineCanvas) -> QWidget:
-        names = QWidget()
-        names.setObjectName("timelineHeadings")
-        column = QVBoxLayout(names)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(0)
-        for day in range(7):
-            heading = DayHeading(day)
-            heading.opened.connect(self._open_day)
-            column.addWidget(heading, 1)
-            canvas.headings[day] = heading
-        return names
+            row.addWidget(dot, 0, Qt.AlignmentFlag.AlignVCenter)
+            row.addWidget(label(share.name, "timelineShare"))
+            row.addStretch(1)
+            row.addWidget(label(length_label(share.minutes), "timelineShareLength"))
+            grid.addLayout(row, at // 2, at % 2)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        section.addLayout(grid)
+        return section
 
     # Shared
+
+    def _section(self, scene: Scene, words: str) -> QVBoxLayout:
+        section = QVBoxLayout()
+        section.setSpacing(scene.px(6))
+        section.addWidget(label(words, "timelineLabel"))
+        return section
+
+    def _date_heads(self, scene: Scene, heads: Heads | None) -> None:
+        for day, heading in (heads.headings if heads is not None else {}).items():
+            heading.set_date(scene.week.date_of(day).day, day == scene.today)
+
+    def _waiting(self, scene: Scene, box: QVBoxLayout, *, square: bool) -> None:
+        """Not placed yet, as sticky notes set a little askew each way in turn."""
+        box.setSpacing(scene.px(8))
+        box.addWidget(label("Not placed yet", "timelineTrayLabel"))
+        waiting = scene.week.waiting
+        if not waiting:
+            box.addWidget(label("Nothing is waiting for a time.", "timelineHint", wrap=True))
+            return
+        notes = FlowLayout(gap=scene.px(12))
+        tilts = (-1.4, 1.0) if square else (-1.2, 0.9)
+        for index, item in enumerate(waiting):
+            note = Note(
+                self.hand, item, scene.tokens, tilt=tilts[index % 2], square=square, scale=scene.scale
+            )
+            note.setObjectName(f"timelineWaiting{index}")
+            note.clicked.connect(lambda _=False, block_id=item.block_id: self.block_activated.emit(block_id))
+            notes.addWidget(note)
+        host = QFrame()
+        host.setObjectName("timelineNoteRow")
+        host.setLayout(notes)
+        notes.setContentsMargins(0, 0, 0, 0)
+        box.addWidget(host)
+
+    def _due(self, scene: Scene, box: QVBoxLayout, *, big: bool) -> None:
+        """Homework due this week: where each is placed, or Not placed yet in the accent."""
+        px = scene.px
+        box.addWidget(label("Due this week", "timelineLabel"))
+        box.addSpacing(px(6))
+        listed = due_this_week(scene.week)
+        if not listed:
+            box.addWidget(label("Nothing is due this week.", "timelineHint", wrap=True))
+            return
+        icon = px(13)
+        book = icons.pixmap("book-open", scene.tokens["text"], icon, self.devicePixelRatioF())
+        for due in listed:
+            row = QHBoxLayout()
+            row.setSpacing(px(6))
+            line = _frame("timelineDueRow", row)
+            line.setProperty("ruled", big)
+            line.setFixedHeight(px(26 if big else 19))
+            mark = QLabel()
+            mark.setObjectName("timelineDueBook")
+            mark.setPixmap(book)
+            row.addWidget(mark, 0, Qt.AlignmentFlag.AlignVCenter)
+            title = FittedLabel(minimum=px(40))
+            title.setObjectName("timelineDueTitle")
+            title.setProperty("big", big)
+            title.set_full_text(due.title)
+            row.addWidget(title, 1, Qt.AlignmentFlag.AlignVCenter)
+            if due.at is None:
+                where = label("Not placed yet", "timelineDueWhen")
+                where.setProperty("open", True)
+            else:
+                where = label(f"{DAYS[due.at[0]]} {clock_label(due.at[1])}", "timelineDueWhen")
+            row.addWidget(where, 0, Qt.AlignmentFlag.AlignVCenter)
+            box.addWidget(line)
 
     def _open_day(self, day: int) -> None:
         if self._scene is not None:
             self.day_activated.emit(self._scene.week.date_of(day).isoformat())
 
-    def _kept(self, key: str, scene: Scene) -> HoursScroll | None:
-        """The hours this tab made before, unless the text size has changed since: their gutter was
-        sized for the old one, so they are made again, at the zoom the window remembers."""
-        scroll = self._scrolls.get(key)
-        if scroll is not None and self._made_at.get(key) != scene.scale:
-            del self._scrolls[key]
-            scroll.deleteLater()
-            return None
-        return scroll
+    def _sheet(self, scene: Scene) -> str:
+        tokens = scene.tokens
+        text, muted, accent = tokens["text"], tokens["muted"], tokens["accent"]
+        soft = mix_oklab(tokens["line"], tokens["surface"], 0.5)
 
-    def _keep(self, key: str, scroll: HoursScroll, scene: Scene) -> None:
-        self._scrolls[key] = scroll
-        self._made_at[key] = scene.scale
+        def size(role: str) -> str:
+            return f"{type_pt(role, scene.scale)}pt"
 
-
-def _load(items: tuple[Occurrence, ...]) -> str:
-    work = [item for item in items if item.work]
-    return planned_line(sum(item.minutes for item in work), sum(item.minutes for item in work if item.done))
+        # The design's own colourways are its catalogue's pairing, Newsreader over Inter; in Match my
+        # look its headings take the look's heading face (look.HEADING_NAMES).
+        serif = css(font_family=FONT_FAMILIES["serif"]) if scene.options.get("colour", MATCH) != MATCH else ""
+        chip = round(20 * scene.scale)
+        clear = css(background="transparent")
+        return base_sheet(self.objectName(), tokens) + rules(
+            self.objectName(),
+            {
+                "#timelineScroll, #timelinePage": css(background=tokens["bg"]),
+                # Plain widgets on the pages, which the window's stylesheet would paint its page colour.
+                "#timelineWeekHeader, #timelineDayHeader, #timelineWeekZoom, #timelineDayZoom": clear,
+                # Qt's holders of the scroll bars, which lie over the pages' right edge.
+                "#qt_scrollarea_vcontainer, #qt_scrollarea_hcontainer": clear,
+                "QLabel": css(color=text),
+                'QPushButton[kind="heading"]': css(
+                    background="transparent",
+                    border="none",
+                    border_radius=f"{RADIUS_CONTROL}px",
+                    padding="0",
+                    min_height="0",
+                ),
+                'QPushButton[kind="heading"]:hover': css(background=mix_oklab(text, tokens["surface"], 0.04)),
+                'QPushButton[kind="heading"][keyfocus="true"]:focus': css(border=f"2px solid {accent}"),
+                "QLabel#timelineDayName": css(font_size=size("heading"), font_weight=WEIGHT_STRONG) + serif,
+                "QLabel#timelineDate": css(color=muted, font_size=size("caption")),
+                "QLabel#timelineChip": css(
+                    background=accent,
+                    color=tokens["accent_ink"],
+                    font_weight=WEIGHT_STRONG,
+                    border_radius=f"{chip // 2}px",
+                    padding=f"0 {round(8 * scene.scale)}px",
+                    min_height=f"{chip}px",
+                    max_height=f"{chip}px",
+                ),
+                "QFrame#timelineWeekFoot, QFrame#timelineNotesFoot": css(
+                    border_top=f"1px solid {tokens['line']}"
+                ),
+                "QLabel#timelineLabel, QLabel#timelineTrayLabel": css(
+                    color=muted, font_size=size("caption"), font_weight=WEIGHT_STRONG
+                ),
+                "QLabel#timelineStat": css(font_size=size("title"), font_weight=WEIGHT_STRONG) + serif,
+                "QLabel#timelineStatWord, QLabel#timelineHint, QLabel#timelineShareLength": css(
+                    color=muted, font_size=size("caption")
+                ),
+                "QLabel#timelineShare": css(font_size=size("caption")),
+                "QLabel#timelineNext, QLabel#timelineSum": css(font_size=size("body")),
+                'QFrame#timelineDueRow[ruled="true"]': css(border_bottom=f"1px solid {soft}"),
+                "QLabel#timelineDueTitle": css(font_size=size("caption")),
+                'QLabel#timelineDueTitle[big="true"]': css(font_size=size("body")),
+                "QLabel#timelineDueWhen": css(color=muted, font_size=size("caption")),
+                'QLabel#timelineDueWhen[open="true"]': css(color=accent, font_weight=WEIGHT_STRONG),
+            },
+        )
 
 
 def _shown(scene: Scene, items: tuple[Occurrence, ...]) -> list[Occurrence]:
