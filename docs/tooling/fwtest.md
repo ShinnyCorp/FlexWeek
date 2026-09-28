@@ -57,6 +57,11 @@ fwtest clean
   file left edited by a mutation run, and removes the stale records. It is safe to run at any time
   and does nothing when there is nothing to clean. Every other command runs it first.
 
+Every command that runs Python uses `--python PATH` if given, then `$FWTEST_PYTHON`, then
+`<checkout>/.venv/bin/python`, where `<checkout>` is the git top level of the working directory. A
+git worktree has no `.venv` of its own, so give it a symlink to the main checkout's. If none of
+these exists, `fwtest` says so and exits 2 rather than falling back to the system Python.
+
 Exit codes: 0 when everything passed; 1 when a check failed or a mutation survived; 124 when a job
 timed out; 75 when another suite outside `fwtest` held the machine for 30 minutes; 2 for a usage
 error.
