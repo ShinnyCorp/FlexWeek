@@ -29,7 +29,7 @@ from desktop.native.layouts.registry import (
     options_for,
 )
 from desktop.native.previews import Previews
-from desktop.native.widgets import ChoiceCard, Choices, FlowLayout, Segmented, Switch
+from desktop.native.widgets import ChoiceCard, Choices, FlowLayout, Form, Segmented, Switch
 
 SLOTS = (
     ("main", "plan", "Main view", "Where you plan your week."),
@@ -137,7 +137,7 @@ class LayoutSection(QFrame):
         body.addWidget(self.pick)
         self._form_host = QWidget()
         self._form_host.setObjectName("settingsRow")
-        self._form = QFormLayout(self._form_host)
+        self._form = Form(self._form_host)
         # A long option drops its choices under its name rather than pushing the page wider than the
         # room it has.
         self._form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)

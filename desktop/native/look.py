@@ -16,7 +16,7 @@ from copy import deepcopy
 from functools import lru_cache
 
 from desktop.native.calendar import CATEGORIES
-from desktop.native.tokens import RADIUS_CARD, RADIUS_CONTROL, SINK, mix_oklab
+from desktop.native.tokens import RADIUS_CARD, RADIUS_CONTROL, RADIUS_SHEET, SINK, mix_oklab
 
 LOOK_KNOBS = {
     "surface": ("frost", "flat"),
@@ -718,6 +718,11 @@ def control_rules(palette: dict, radius: int, size: int, art: dict[str, str]) ->
         f"border: 5px solid {palette['accent']}; width: 8px; height: 8px; }}"
         f"QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{ "
         f"background: {palette['hairline']}; border-color: {palette['hairline_strong']}; }}"
+        # A list's ticks are the same box as a check box's, not Qt's own (decision 23 of 0.17).
+        f"QAbstractItemView::indicator {{ width: 16px; height: 16px; border-radius: 4px; "
+        f"border: 1px solid {palette['muted']}; background: {palette['field']}; }}"
+        f"QAbstractItemView::indicator:checked {{ background: {palette['accent']}; "
+        f"border-color: {palette['accent']}; image: url({tick}); }}"
         "QListWidget, QListView { outline: 0; }"
         f"QListWidget::item:hover, QListView::item:hover {{ background: {palette['hairline']}; }}"
         f"QListWidget::item:selected, QListView::item:selected {{ background: {palette['accent']}; "
@@ -759,7 +764,8 @@ def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) 
     card_radius = max(radius, 10)
     track = mix(palette["text"], palette["panel"], 0.07)
     chosen_edge = "none" if depth == "flat" else f"1px solid {palette['hairline_strong']}"
-    selected = mix(palette["accent"], palette["panel"], 0.16)
+    # The chosen section is marked by a bar in the accent; its row takes only a little of the text.
+    selected = mix(palette["text"], palette["panel"], 0.06)
     return (
         f"QWidget#settingsPage {{ background: {palette['window']}; }}"
         # Bare widgets inside a card, which the app-wide rule would paint as a band of page colour.
@@ -769,11 +775,14 @@ def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) 
         f"QWidget#settingsRail {{ background: {palette['panel']}; }}"
         "QScrollArea#settingsScroll { background: transparent; border: none; padding: 0; border-radius: 0; }"
         f"QListWidget#prefsNav {{ background: {palette['panel']}; border: none; border-radius: 0; "
-        "padding: 16px 8px; }"
-        f"QListWidget#prefsNav::item {{ color: {palette['muted']}; padding: {pad + 4}px 12px; "
-        f"border-radius: {max(radius - 2, 4)}px; }}"
+        "padding: 16px 4px; }"
+        f"QListWidget#prefsNav::item {{ color: {palette['muted']}; "
+        f"padding: {pad + 4}px 8px {pad + 4}px 7px; border-left: 3px solid transparent; border-radius: 0; }}"
         f"QListWidget#prefsNav::item:hover {{ background: {palette['hairline']}; color: {palette['text']}; }}"
-        f"QListWidget#prefsNav::item:selected {{ background: {selected}; color: {palette['text']}; }}"
+        f"QListWidget#prefsNav::item:selected {{ background: {selected}; color: {palette['text']}; "
+        f"border-left: 3px solid {palette['accent']}; font-weight: 600; }}"
+        # Nothing runs under the footer: a hairline above it ends the page.
+        f"QWidget#settingsFooter {{ border-top: 1px solid {palette['hairline']}; }}"
         f"QLabel#settingsTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
         f"QFrame#settingsCard, QFrame#dialogCard {{ background: {palette['panel']}; "
         f"border-radius: {card_radius}px; padding: 0; {edges} }}"
@@ -795,6 +804,35 @@ def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) 
         f"border: {chosen_edge}; }}"
         'QPushButton[segment="true"]:disabled { background: transparent; '
         f'color: {palette["hairline_strong"]}; }}'
+    )
+
+
+def _rgba(colour: str, alpha: float) -> str:
+    red, green, blue = _channels(colour)
+    return f"rgba({red}, {green}, {blue}, {round(alpha * 255)})"
+
+
+DISABLED = 0.4
+
+
+def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str) -> str:
+    """Dialogs (decision 23 of 0.17): the body is the card, a sheet's card is rounded as a sheet, and a
+    button that cannot be pressed yet keeps its shape at 40 %, not a grey slab that looked broken."""
+    edges = _depth_rules(depth, palette)
+    sheet = RADIUS_SHEET if card_radius else 0
+    return (
+        # A sheet's window is only room for its shadow; the card is what is seen.
+        'QDialog[sheet="true"] { background: transparent; }'
+        f"QFrame#sheetCard {{ background: {palette['panel']}; border-radius: {sheet}px; padding: 0; "
+        f"{edges} }}"
+        'QWidget[bare="true"], QScrollArea[bare="true"] { background: transparent; border: none; '
+        "padding: 0; border-radius: 0; }"
+        'QScrollArea[bare="true"] > QWidget#qt_scrollarea_viewport { background: transparent; }'
+        f"QDialog QPushButton:disabled {{ background: {_rgba(palette['accent'], DISABLED)}; "
+        f"color: {_rgba(palette['accent_ink'], DISABLED)}; }}"
+        'QDialog QPushButton[quiet="true"]:disabled, '
+        'QWidget#settingsPage QPushButton[quiet="true"]:disabled '
+        f"{{ {quiet_edge} color: {_rgba(palette['text'], DISABLED)}; }}"
     )
 
 
@@ -946,10 +984,11 @@ def pack_stylesheet(
         f'QPushButton[quiet="true"]:hover {{ background: {palette["hairline"]}; }}'
         f'QPushButton[danger="true"] {{ background: {palette["error"]}; '
         f'color: {readable_ink(palette["error"])}; }}'
-        f"QPushButton#deleteBlock, QPushButton#deleteHomework {{ background: transparent; "
-        f"color: {palette['error']}; border: none; "
+        f"QPushButton#deleteBlock, QPushButton#deleteHomework, QPushButton#deleteAccount {{ "
+        f"background: transparent; color: {palette['error']}; border: none; "
         f"padding: {pad}px 2px; font-weight: 600; min-height: 0; }}"
-        f"QPushButton#deleteBlock:hover, QPushButton#deleteHomework:hover {{ text-decoration: underline; }}"
+        f"QPushButton#deleteBlock:hover, QPushButton#deleteHomework:hover, "
+        f"QPushButton#deleteAccount:hover {{ text-decoration: underline; }}"
         # Homework that still needs a time, to be dragged onto the hours: it looks like homework, not
         # like a button that does something when pressed. Its edge is homework's own colour; red would
         # say something is wrong, and nothing is.
@@ -1018,6 +1057,7 @@ def pack_stylesheet(
         f"color: {palette['muted']}; {edges} }}"
         + setup_rules(palette, radius, size, pad, knobs["depth"])
         + settings_rules(palette, radius, size, pad, knobs["depth"])
+        + dialog_rules(palette, card_radius, knobs["depth"], quiet_edge)
         + f"QPushButton#authSwitch, QPushButton#forgotPassword, QPushButton#updateSkip {{ "
         f"background: transparent; "
         f"color: {palette['accent']}; border: none; padding: {pad}px 0; "

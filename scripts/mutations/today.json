@@ -142,7 +142,7 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "the repeat note sits in the Days field, not a row of its own",
-  "old": "        days_field = QVBoxLayout()\n        days_field.addLayout(choices)\n        days_field.addWidget(self.repeat_note)\n        # Level with the boxes rather than halfway down to the note.\n        days_label = QLabel(\"Days\")\n        days_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)\n        form.addRow(days_label, days_field)\n",
+  "old": "        days_field = QVBoxLayout()\n        days_field.addLayout(choices)\n        days_field.addWidget(self.repeat_note)\n        # The label sits on the boxes' line, not halfway down to the note.\n        form.addRow(\"Days\", days_field)\n",
   "new": "        self.repeat_note.setWordWrap(True)\n        form.addRow(\"Days\", choices)\n        form.addRow(\"\", self.repeat_note)\n",
   "test": "desktop/tests/test_block_editor_words.py::test_the_repeat_note_sits_whole_under_the_day_boxes"
  },
