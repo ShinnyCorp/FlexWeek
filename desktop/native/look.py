@@ -181,6 +181,7 @@ HEADING_NAMES = (
     "cardTitle",
     "setupChoiceName",
     "focusScreenTask",
+    "clayDayName",
     "timelineDayName",
     "timelineStat",
 )

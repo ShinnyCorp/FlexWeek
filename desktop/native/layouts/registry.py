@@ -152,11 +152,8 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "clay",
             "plan",
             "Clay deck",
-            "One large Day card and seven live cards on Week.",
-            (
-                _colour(CLAY),
-                Option("tilt", "Week cards", "detail", (Choice("on", "Fanned"), Choice("off", "Straight"))),
-            ),
+            "One day at a time on a large card, the days either side peeking, moved with the arrows.",
+            (_colour(CLAY), _show("peek", "Days either side")),
             CLAY,
             purpose="Agenda",
             experimental=True,

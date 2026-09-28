@@ -258,24 +258,19 @@ RETRO = (
 )
 CLAY = (
     (
+        # The mock-up's signature, lavender clay, saved under 0.16's Pastel. It wears the student's accent.
         "pastel",
-        "Pastel",
+        "Clay",
         _tokens(
-            bg="#f3ecff",
-            bg_ink="#3a2f4d",
-            bg_muted="#4a3f5e",
-            surface="#ffffff",
-            text="#3a2f4d",
-            muted="#4a3f5e",
-            accent="#3a2f4d",
-            accent_ink="#ffffff",
-            line="#e3d9f5",
-            danger="#9b1c4a",
+            bg="#efe9fa",
+            bg_ink="#221c36",
+            bg_muted="#595272",
+            surface="#f9f6ff",
+            text="#221c36",
+            muted="#595272",
+            line="#e2daf2",
+            danger="#b3261e",
             danger_ink="#ffffff",
-            card_a="#fdbcb4",
-            card_b="#add8e6",
-            card_c="#c9f7d0",
-            card_d="#e6e6fa",
         ),
     ),
     (
@@ -293,10 +288,6 @@ CLAY = (
             line="#cdeedd",
             danger="#9b1c1c",
             danger_ink="#ffffff",
-            card_a="#b8f0d3",
-            card_b="#d3f3b0",
-            card_c="#b5ece9",
-            card_d="#f4f3b3",
         ),
     ),
     (
@@ -314,10 +305,6 @@ CLAY = (
             line="#fbdcc6",
             danger="#9b1c1c",
             danger_ink="#ffffff",
-            card_a="#ffd0a8",
-            card_b="#ffc2c2",
-            card_c="#ffe7a3",
-            card_d="#f7c6e0",
         ),
     ),
     (
