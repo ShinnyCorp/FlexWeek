@@ -542,6 +542,11 @@ The commands it runs, each of which must exit 0:
   CSRF, atomic saves, revision conflict and import/retry tests.
 - Solver tests are the source of truth: `solve()` stays synchronous and pure so
   pytest can exercise it without HTTP.
+- The Rust test harness in `tools/fwtest` (Rust approved for it on 2026-09-28;
+  contract in `docs/tooling/fwtest.md`) has its own checks, run from
+  `tools/fwtest`, each of which must exit 0: `cargo fmt --check`,
+  `cargo clippy -- -D warnings` and `cargo test`. The Rust version is the one
+  `rustup` installs as stable; the crate uses the 2024 edition.
 
 ## Acceptance Criteria
 - [ ] Only-locked week solves to an identity schedule with 0 moves (T1).
