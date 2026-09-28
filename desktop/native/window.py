@@ -9,7 +9,7 @@ from copy import deepcopy
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QStandardPaths, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QObject, QPoint, QSize, QStandardPaths, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
 )
 
 from backend.slots import minutes_to_hhmm
-from desktop.native import autostart
+from desktop.native import autostart, icons
 from desktop.native.calendar import (
     CATEGORIES,
     DAY_FULL,
@@ -108,7 +108,7 @@ from desktop.native.settings import (
 from desktop.native.setup import REMINDERS, SETUP_VERSION, STYLE, SetupPage, SetupState
 from desktop.native.sound import Bell
 from desktop.native.spotify import LISTENING, STARTING, SpotifyPlayer, open_in_app
-from desktop.native.tokens import TEXT_SCALE
+from desktop.native.tokens import SPACING, TEXT_SCALE
 from desktop.native.tones import FALLBACK
 from desktop.native.update import RELEASE_PAGE, due_for_check, sanitize_updates
 from desktop.native.updater import Updater, apply_update
@@ -138,12 +138,15 @@ from desktop.native.widgets import (
     PreviewDialog,
     RoutineDialog,
     SchoolHoursDialog,
+    Segment,
+    SegmentTrack,
     SpreadDialog,
     Toast,
     UnfinishedPanel,
     add_heading,
     confirm,
     control_art,
+    keyboard_focus_rings,
     steady_wheel,
     swatch,
     use_app_style,
@@ -210,7 +213,8 @@ LOG_OUT_QUESTION = (
 # What they say on a top bar with no room for the whole words.
 PLAN_SHORT = "Plan"
 SUGGEST_SHORT = "Suggest"
-NAV_ARROW_PX = 34
+# The top bar's icons, the larger of the system's two sizes (decision 7).
+BAR_ICON_PX = 20
 AUTH_CARD_WIDTH = 380
 # Long enough for the student to read that the update installed before the window goes.
 UPDATE_QUIT_MS = 1200
@@ -271,6 +275,7 @@ class NativeWindow(QMainWindow):
         application = QApplication.instance()
         if isinstance(application, QApplication):
             steady_wheel(application)
+            keyboard_focus_rings(application)
             use_app_style(application)
         # main() has loaded them already; a window made anywhere else, as in the tests, is drawn alike.
         load_fonts()
@@ -666,16 +671,13 @@ class NativeWindow(QMainWindow):
         self._bar_views = QHBoxLayout()
         bar.add_group(where)
         bar.add_group(self._bar_views)
-        # Where you are, said once and said large. Thirteen buttons of equal weight and no title at
-        # all was the clutter: nothing told the eye where to land.
-        self.week_title = FittedLabel()
-        self.week_title.setObjectName("weekTitle")
-        where.addWidget(self.week_title)
-        self.prev_nav = QPushButton("‹")
+        # ‹ › Today, then where you are, said once and said large. After the title, the arrows moved
+        # sideways with its width on every switch between Day, Week and Month (decision 11).
+        self.prev_nav = QPushButton()
         self.prev_nav.setObjectName("prevWeek")
         self.prev_nav.setToolTip("Previous week")
         self.prev_nav.clicked.connect(self._go_previous)
-        self.next_nav = QPushButton("›")
+        self.next_nav = QPushButton()
         self.next_nav.setObjectName("nextWeek")
         self.next_nav.setToolTip("Next week")
         self.next_nav.clicked.connect(self._go_next)
@@ -683,35 +685,42 @@ class NativeWindow(QMainWindow):
         today.setObjectName("todayWeek")
         today.setToolTip("Jump to today")
         today.clicked.connect(self._go_today)
-        for arrow in (self.prev_nav, self.next_nav):
-            arrow.setFixedWidth(NAV_ARROW_PX)
+        today.setProperty("quiet", True)
+        for arrow, name in ((self.prev_nav, "chevron-left"), (self.next_nav, "chevron-right")):
+            arrow.setProperty("quiet", True)
+            arrow.setIconSize(QSize(BAR_ICON_PX, BAR_ICON_PX))
+            icons.tint(arrow, name)
             where.addWidget(arrow)
         where.addWidget(today)
+        where.addSpacing(SPACING[1])
+        # Thirteen buttons of equal weight and no title at all was the clutter: nothing told the eye
+        # where to land.
+        self.week_title = FittedLabel()
+        self.week_title.setObjectName("weekTitle")
+        where.addWidget(self.week_title)
         # One control, not four loose buttons: switching view is one decision.
-        segments = QFrame()
+        segments = SegmentTrack()
         segments.setObjectName("segments")
         segment_row = QHBoxLayout(segments)
         segment_row.setContentsMargins(0, 0, 0, 0)
-        segment_row.setSpacing(0)
+        segment_row.setSpacing(2)
         for view, label, tip in (
             ("day", "Day", "One day as a list"),
             ("week", "Week", "The week you are planning"),
             ("month", "Month", "The month as a calendar"),
         ):
-            button = QPushButton(label)
+            button = Segment(label)
             button.setObjectName(f"view{view.title()}")
-            button.setProperty("segment", "first" if view == "day" else "middle")
             button.setCheckable(True)
             button.setToolTip(tip)
             button.clicked.connect(lambda checked=False, value=view: self._choose_view(value))
-            segment_row.addWidget(button)
-        my_day = QPushButton("My day")
+            segments.add(button)
+        my_day = Segment("My day")
         my_day.setObjectName("viewMyDay")
-        my_day.setProperty("segment", "last")
         my_day.setCheckable(True)
         my_day.setToolTip("Watch today")
         my_day.clicked.connect(self._enter_day)
-        segment_row.addWidget(my_day)
+        segments.add(my_day)
         self._bar_views.addWidget(segments)
         self.account_name = QLabel()
         self.account_name.setObjectName("accountName")
@@ -749,8 +758,9 @@ class NativeWindow(QMainWindow):
         add_button.setObjectName("addButton")
         add_button.setToolTip(MORE_TIPS["addHomework"])
         add_button.clicked.connect(self._add_now)
-        add_arrow = QPushButton("▾")
+        add_arrow = QPushButton()
         add_arrow.setObjectName("addArrow")
+        icons.tint(add_arrow, "chevron-down")
         add_arrow.setAccessibleName("More ways to add")
         add_arrow.setToolTip("Add fixed time or school hours, or pick a type to drag onto the calendar.")
         add_arrow.setMenu(self.add_menu)
@@ -780,7 +790,8 @@ class NativeWindow(QMainWindow):
         redo.clicked.connect(self.session.redo)
         solve = FittedButton(PLAN_LABEL, PLAN_SHORT)
         solve.setObjectName("solveButton")
-        solve.setProperty("quiet", True)
+        # Second only to Add: accent words on a tint, not a third outlined button beside Today and More.
+        solve.setProperty("secondary", True)
         solve.clicked.connect(self.session.solve)
         replan = QPushButton("Replan all my homework")
         replan.setObjectName("replanAll")
@@ -835,6 +846,7 @@ class NativeWindow(QMainWindow):
         spotify.clicked.connect(self._open_spotify)
         more = QPushButton("More")
         more.setObjectName("moreButton")
+        more.setProperty("quiet", True)
         overflow = QWidget(page)
         overflow.setObjectName("moreOverflow")
         overflow.hide()
@@ -898,10 +910,13 @@ class NativeWindow(QMainWindow):
             self._more_pairs.append((action, button))
         more_menu.aboutToShow.connect(self._sync_more_menu)
         more.setMenu(more_menu)
-        gear = QPushButton("⚙\ufe0e")
+        gear = QPushButton()
         gear.setObjectName("settingsGear")
+        gear.setProperty("quiet", True)
         gear.setToolTip("Settings")
         gear.setAccessibleName("Settings")
+        gear.setIconSize(QSize(BAR_ICON_PX, BAR_ICON_PX))
+        icons.tint(gear, "settings")
         gear.clicked.connect(self._open_settings)
         # The week saves itself now, so Save is not a thing to press; it stays reachable under More
         # and on Ctrl+S for anyone who wants to be sure. Retry appears only when a save has failed.
@@ -1119,6 +1134,10 @@ class NativeWindow(QMainWindow):
     def _keep_bar_whole(self) -> None:
         """The window is never narrower than the top bar's buttons at their smallest, which large
         text, Suggest times and Retry save each widen."""
+        # Add and its chevron are one pill, so the chevron, an icon, is as tall as Add's words.
+        add = self.findChild(QPushButton, "addButton")
+        add.ensurePolished()
+        self.findChild(QPushButton, "addArrow").setFixedHeight(add.sizeHint().height())
         self._bar_views.invalidate()
         margins = self._bar_views.parentWidget().layout().contentsMargins()
         needed = self._bar_views.minimumSize().width() + margins.left() + margins.right()
@@ -1434,6 +1453,8 @@ class NativeWindow(QMainWindow):
         period = "month" if month else ("day" if day else "week")
         self.prev_nav.setToolTip(f"Previous {period}")
         self.next_nav.setToolTip(f"Next {period}")
+        self.prev_nav.setAccessibleName(f"Previous {period}")
+        self.next_nav.setAccessibleName(f"Next {period}")
         self.week_title.set_full_text(
             planner_title(self.session, view), planner_title(self.session, view, short=True)
         )
@@ -1813,7 +1834,9 @@ class NativeWindow(QMainWindow):
         info = CATEGORIES.get(armed or "")
         if button is not None:
             button.setText(f"Add {info['label'].lower()}" if info else "Add")
-            button.setIcon(QIcon(swatch(info["mark"])) if info else QIcon())
+            icons.tint(button, None if info else "plus")
+            if info:
+                button.setIcon(QIcon(swatch(info["mark"])))
 
     def _clock_in_week(self) -> tuple[int | None, int | None]:
         """Today's weekday and minute when the open week is this week, else nothing to mark."""

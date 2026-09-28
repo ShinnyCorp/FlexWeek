@@ -10,9 +10,10 @@ from __future__ import annotations
 from functools import cache
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QRectF, Qt
-from PySide6.QtGui import QIcon, QPainter, QPixmap
+from PySide6.QtCore import QByteArray, QEvent, QObject, QRectF, Qt
+from PySide6.QtGui import QIcon, QPainter, QPalette, QPixmap
 from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtWidgets import QAbstractButton
 
 ICON_DIR = Path(__file__).resolve().parents[1] / "assets" / "icons"
 STROKE = "1.75"
@@ -58,3 +59,50 @@ def icon(name: str, colour: str, disabled: str | None = None) -> QIcon:
             if disabled:
                 made.addPixmap(pixmap(name, disabled, size, ratio), QIcon.Mode.Disabled)
     return made
+
+
+# The dynamic property a tinted button keeps its icon's name in.
+NAME = "iconName"
+
+
+class _Tint(QObject):
+    """Draws each tinted button's icon in the colour its stylesheet gives its words, again whenever the
+    stylesheet changes, as it does with the look."""
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            _apply(watched)
+        return False
+
+
+_TINT: _Tint | None = None
+
+
+def _apply(button: QObject) -> None:
+    name = button.property(NAME)
+    if not isinstance(button, QAbstractButton) or not name:
+        return
+    colours = button.palette()
+    words = colours.color(QPalette.ColorGroup.Active, QPalette.ColorRole.ButtonText).name()
+    greyed = colours.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText).name()
+    made = (name, words, greyed)
+    if button.property("iconTint") != "|".join(made):
+        button.setProperty("iconTint", "|".join(made))
+        button.setIcon(icon(name, words, greyed))
+
+
+def tint(button: QAbstractButton, name: str | None) -> None:
+    """Show Lucide's `name` on `button` in its own text colour, which follows the look; None takes the
+    icon off, for a button that draws another."""
+    global _TINT
+    if _TINT is None:
+        _TINT = _Tint()
+    button.setProperty(NAME, name or "")
+    button.setProperty("iconTint", "")
+    button.removeEventFilter(_TINT)
+    if name:
+        button.installEventFilter(_TINT)
+        button.ensurePolished()
+        _apply(button)
+    else:
+        button.setIcon(QIcon())

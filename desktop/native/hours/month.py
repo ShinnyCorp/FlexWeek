@@ -42,6 +42,7 @@ from desktop.native.hours.hand import Gesture, Hand, Held, Verdict
 from desktop.native.look import category_paint, luminance, resolved_palette
 from desktop.native.tokens import WEIGHT_STRONG
 from desktop.native.weekmodel import WeekModel, clock_label, hhmm_text
+from desktop.native.widgets import overlay_scroll_bars
 
 # The row of day names, kept above the dates while they scroll.
 HEADER = 26
@@ -543,6 +544,7 @@ class MonthScroll(QScrollArea):
     def __init__(self, canvas: MonthCanvas, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("monthScroll")
+        overlay_scroll_bars(self)
         self.names = MonthNames(canvas, self)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setWidgetResizable(True)

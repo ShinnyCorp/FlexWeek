@@ -20,6 +20,7 @@ from desktop.native.calendar import CATEGORIES
 from desktop.native.tokens import (
     RADIUS_CARD,
     RADIUS_CONTROL,
+    SHADOW_SMALL,
     SINK,
     TEXT_SCALE,
     TYPE_PT,
@@ -683,12 +684,16 @@ def control_rules(palette: dict, radius: int, text: str, art: dict[str, str]) ->
     item = max(4, corner - 2)
     tick, down, up = art["tick"], art["down"], art["up"]
     return (
-        "QScrollBar:vertical { background: transparent; width: 12px; margin: 2px; }"
-        "QScrollBar:horizontal { background: transparent; height: 12px; margin: 2px; }"
+        # No margin on the bar itself: a bar with one cannot be laid over its content (below).
+        "QScrollBar:vertical { background: transparent; width: 12px; }"
+        "QScrollBar:horizontal { background: transparent; height: 12px; }"
         f"QScrollBar::handle:vertical {{ background: {handle}; border-radius: 4px; min-height: 36px; "
-        "margin: 0 2px; }"
+        "margin: 2px 4px; }"
         f"QScrollBar::handle:horizontal {{ background: {handle}; border-radius: 4px; min-width: 36px; "
-        "margin: 2px 0; }"
+        "margin: 4px 2px; }"
+        # Decision 12's overlay bars, which widgets.OverlayBar draws. Given a background here, Qt
+        # would draw them itself and give them a strip of their own beside the content.
+        'QScrollBar[overlay="true"]:vertical, QScrollBar[overlay="true"]:horizontal { background: none; }'
         f"QScrollBar::handle:hover {{ background: {palette['muted']}; }}"
         f"QScrollBar::handle:pressed {{ background: {palette['accent']}; }}"
         "QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; border: none; "
@@ -893,6 +898,135 @@ def setup_rules(palette: dict, radius: int, text: str, pad: int, depth: str) -> 
     )
 
 
+def _veil(colour: str, amount: float) -> str:
+    """`colour` at `amount` opacity, laid over whatever the control sits on."""
+    red, green, blue = _channels(colour)
+    return f"rgba({red}, {green}, {blue}, {round(amount * 255)})"
+
+
+def button_rules(palette: dict, pad: int, radius: int, depth: str, button_min: str) -> str:
+    """Decision 11: one set of states dresses every button in the app. Primary is filled in the accent,
+    secondary is accent words on a tenth of the accent, quiet is words in the text colour. Each takes
+    6 % of the text colour on hover and 10 % when pressed; a disabled one shows at 40 %; the key that
+    reached it draws a 2-pixel ring at 40 % of the accent (the whole accent in High contrast), which
+    a click does not (see `widgets.KeyFocus`).
+
+    The ring is the button's own edge, kept clear at rest, so focusing a button moves nothing. A
+    stylesheet has no opacity, so the 40 % is each colour mixed 40 % into the page.
+    """
+    text, accent, ink, page = palette["text"], palette["accent"], palette["accent_ink"], palette["window"]
+    danger = palette["error"]
+    contrast_look = palette.get("family") == "contrast"
+    tint = "transparent" if contrast_look else mix(accent, page, 0.10)
+    ring = accent if contrast_look else mix(accent, page, 0.4)
+    # Poster's heavy edges are its own look; every other button is its fill and its words.
+    hard = depth == "hard" and not contrast_look
+    rest = _depth_rules(depth, palette) if hard else "border: 2px solid transparent;"
+    kinds = (
+        ("QPushButton", accent, ink, WEIGHT_STRONG),
+        ('QPushButton[secondary="true"]', tint, accent, WEIGHT_STRONG),
+        ('QPushButton[danger="true"]', danger, readable_ink(danger), WEIGHT_STRONG),
+    )
+    rules = [f"QPushButton {{ padding: {pad}px {pad * 2}px; border-radius: {radius}px; {rest}{button_min} }}"]
+    for selector, fill, words, weight in kinds:
+        solid = page if fill == "transparent" else fill
+        rules += [
+            f"{selector} {{ background: {fill}; color: {words}; font-weight: {weight}; }}",
+            f"{selector}:hover {{ background: {mix(text, solid, 0.06)}; }}",
+            f"{selector}:pressed {{ background: {mix(text, solid, 0.10)}; }}",
+            f"{selector}:disabled {{ background: {mix(solid, page, 0.4)}; color: {mix(words, page, 0.4)}; }}",
+        ]
+    if contrast_look:
+        # A tint of yellow on black is mud, so High contrast outlines a secondary button instead.
+        rules.append(f'QPushButton[secondary="true"] {{ border-color: {accent}; }}')
+    rules += [
+        f'QPushButton[quiet="true"] {{ background: transparent; color: {text}; '
+        f"font-weight: {WEIGHT_REGULAR}; }}",
+        f'QPushButton[quiet="true"]:hover {{ background: {_veil(text, 0.06)}; }}',
+        f'QPushButton[quiet="true"]:pressed {{ background: {_veil(text, 0.10)}; }}',
+        f'QPushButton[quiet="true"]:disabled {{ background: transparent; color: {mix(text, page, 0.4)}; }}',
+        f'QPushButton[keyfocus="true"]:focus {{ border-color: {ring}; }}',
+    ]
+    return "".join(rules)
+
+
+VIEW_BUTTONS = ("viewDay", "viewWeek", "viewMonth", "viewMyDay")
+BAR_BUTTONS = ", ".join(
+    f"QPushButton#{name}"
+    for name in (
+        "prevWeek", "nextWeek", "todayWeek", "addButton", "addArrow", "solveButton", "retrySave",
+        "moreButton", "settingsGear",
+    )
+)
+ZOOM_PILL_PX = 24
+
+
+def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | None) -> str:
+    """Decision 11's top bar, as the mock-up draws it. The arrows, Today, More and the gear are quiet
+    buttons in the text colour. Add and its chevron are one pill split by a line of the accent's ink.
+    The view control is a pill track with the chosen view raised on it by the small shadow, painted by
+    `widgets.SegmentTrack` from the colours given here; High contrast keeps its readable control, the
+    track outlined in white and the chosen view filled yellow. The zoom is a small "− +" pill in the
+    hours' corner (decision 12)."""
+    text, muted, page = palette["text"], palette["muted"], palette["window"]
+    contrast_look = palette.get("family") == "contrast"
+    ring = palette["accent"] if contrast_look else mix(palette["accent"], page, 0.4)
+    track = page if contrast_look else mix(text, page, 0.06)
+    chosen = palette["accent"] if contrast_look else palette["panel"]
+    chosen_words = palette["accent_ink"] if contrast_look else text
+    outline = text if contrast_look else track
+    lifted = depth == "soft" and not contrast_look
+    dark = palette.get("axis") == "dark"
+    shade = round(255 * (SHADOW_SMALL.dark_opacity if dark else SHADOW_SMALL.opacity)) if lifted else 0
+    divider = mix(palette["accent_ink"], palette["accent"], 0.3)
+    more = art.get("more") if art else None
+    pill_edge = palette["hairline_strong"] if contrast_look else palette["hairline"]
+    quiet_ink = text if contrast_look else muted
+
+    def views(state: str = "") -> str:
+        return ", ".join(f"QPushButton#{name}{state}" for name in VIEW_BUTTONS)
+
+    focused = views('[keyfocus="true"]:focus')
+    menu = (
+        f"QPushButton#moreButton {{ padding-right: {pad * 2 + 16}px; }}"
+        f"QPushButton#moreButton::menu-indicator {{ image: url({more}); subcontrol-origin: padding; "
+        f"subcontrol-position: center right; width: 14px; height: 14px; right: {pad}px; }}"
+        if more
+        else ""
+    )
+    return (
+        f"QFrame#segments {{ background: transparent; border: none; border-radius: 0; padding: 3px; "
+        f"alternate-background-color: {track}; selection-background-color: {chosen}; color: {outline}; "
+        f"qproperty-shade: {shade}; }}"
+        f"{views()} {{ background: transparent; color: {quiet_ink}; font-weight: {WEIGHT_REGULAR}; "
+        f"border: 2px solid transparent; padding: {max(pad - 4, 1)}px {pad + 4}px; min-height: 0; }}"
+        f"{views(':hover')} {{ background: transparent; color: {text}; }}"
+        f"{views(':checked')} {{ background: transparent; color: {chosen_words}; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
+        f"{focused} {{ border-color: {ring}; }}"
+        # The bar's controls are 32 pixels tall at Normal, as the mock-up's, not a dialog's 40.
+        f"{BAR_BUTTONS} {{ padding-top: {max(pad - 4, 1)}px; padding-bottom: {max(pad - 4, 1)}px; }}"
+        "QPushButton#prevWeek, QPushButton#nextWeek, QPushButton#settingsGear { "
+        f"padding-left: {max(pad - 2, 2)}px; padding-right: {max(pad - 2, 2)}px; }}"
+        "QPushButton#addButton { border-top-right-radius: 0; border-bottom-right-radius: 0; "
+        f"padding-right: {pad + 2}px; }}"
+        f"QPushButton#addArrow {{ padding: {pad}px {pad // 2 + 2}px; border-top-left-radius: 0; "
+        f"border-bottom-left-radius: 0; border-left-width: 1px; border-left-color: {divider}; }}"
+        "QPushButton#addArrow::menu-indicator { image: none; width: 0; }"
+        f"{menu}"
+        f'QWidget[zoomPill="true"] {{ background: {palette["panel"]}; border-width: 1px; '
+        f"border-style: solid; border-color: {pill_edge}; border-radius: {ZOOM_PILL_PX // 2}px; }}"
+        f"QWidget#zoomDivider {{ background: {pill_edge}; }}"
+        f'QPushButton[zoom="true"] {{ background: transparent; color: {quiet_ink}; border: none; '
+        f"border-radius: {ZOOM_PILL_PX // 2 - 1}px; padding: 0; min-height: 0; }}"
+        f'QPushButton[zoom="true"]:hover {{ background: {_veil(text, 0.06)}; }}'
+        f'QPushButton[zoom="true"]:pressed {{ background: {_veil(text, 0.10)}; }}'
+        f'QPushButton[zoom="true"]:disabled {{ background: transparent; '
+        f'color: {palette["hairline_strong"]}; }}'
+        f'QPushButton[zoom="true"][keyfocus="true"]:focus {{ border: 2px solid {ring}; }}'
+    )
+
+
 def pack_stylesheet(
     pack: object,
     system_dark: bool,
@@ -912,13 +1046,6 @@ def pack_stylesheet(
     item_h = 36 if knobs["text"] == "large" else 22
     button_min = f" min-height: {item_h}px;" if knobs["text"] == "large" else ""
     field_min = FIELD_MIN_PX[knobs["text"]]
-    # A flat look has no edges, so a plain button is told from its words by a faint fill instead.
-    if knobs["depth"] == "flat":
-        quiet_edge = f"background: {palette['hairline']}; border: none;"
-    else:
-        quiet_edge = f"background: transparent; border: 1px solid {palette['hairline_strong']};"
-    # A flat look draws no lines at all, so its segments are told apart by the raised one alone.
-    divider = "none" if knobs["depth"] == "flat" else f"1px solid {palette['hairline_strong']}"
     return (
         f"QMainWindow, QDialog, QWidget {{ background: {palette['window']}; color: {palette['text']}; "
         f"font-family: {family}; font-size: {pt['body']}; }}"
@@ -959,18 +1086,12 @@ def pack_stylesheet(
         f"color: {palette['muted']}; padding: 2px 6px; border: none; }}"
         # QLabel is a QFrame in Qt, so without this every label, even an empty one, is drawn as a panel.
         f"QLabel {{ background: transparent; border: none; padding: 0; }}"
-        f"QPushButton {{ background: {palette['accent']}; color: {palette['accent_ink']}; "
-        f"padding: {pad}px {pad * 2}px; border-radius: {radius}px; {edges}{button_min} }}"
-        f"QPushButton:disabled {{ background: {palette['hairline_strong']}; color: {palette['muted']}; }}"
-        # The rule above that gives every widget the text colour also keeps it when the widget is off,
-        # so reminder settings looked live while reminders were off.
-        f"QWidget#prefReminderControls QWidget:disabled {{ color: {palette['muted']}; }}"
         # One filled button per dialog: the answer. Cancel and its kind are drawn plain beside it, and
         # a button that destroys something takes the error colour.
-        f'QPushButton[quiet="true"] {{ color: {palette["text"]}; {quiet_edge} }}'
-        f'QPushButton[quiet="true"]:hover {{ background: {palette["hairline"]}; }}'
-        f'QPushButton[danger="true"] {{ background: {palette["error"]}; '
-        f'color: {readable_ink(palette["error"])}; }}'
+        + button_rules(palette, pad, radius, knobs["depth"], button_min)
+        # The rule above that gives every widget the text colour also keeps it when the widget is off,
+        # so reminder settings looked live while reminders were off.
+        + f"QWidget#prefReminderControls QWidget:disabled {{ color: {palette['muted']}; }}"
         f"QPushButton#deleteBlock, QPushButton#deleteHomework {{ background: transparent; "
         f"color: {palette['error']}; border: none; "
         f"padding: {pad}px 2px; font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
@@ -999,8 +1120,6 @@ def pack_stylesheet(
         f"QLabel#homeworkEstimateHint {{ color: {palette['muted']}; }}"
         f"QLabel#homeworkEstimateHint[problem=\"true\"] {{ color: {palette['error']}; "
         f"font-weight: {WEIGHT_STRONG}; }}"
-        f"QPushButton#todayWeek {{ background: transparent; color: {palette['text']}; "
-        f"font-weight: {WEIGHT_STRONG}; padding: {pad}px {pad * 2}px; {edges} }}"
         # The way in is a button; the way to a new account is small print, so it is drawn as a link.
         f"QLabel#updateHeading {{ font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#updateDetail, QLabel#updateStatus {{ color: {palette['muted']}; }}"
@@ -1014,28 +1133,6 @@ def pack_stylesheet(
         f'QLabel[today="false"] {{ border-bottom: 2px solid transparent; border-radius: 0; }}'
         f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: {WEIGHT_STRONG}; '
         f'border-bottom: 2px solid {palette["accent"]}; border-radius: 0; }}'
-        # Day / Week / Month / My day are one segmented control: a shared track, the chosen view
-        # raised in the panel colour, the others muted, a hairline between them.
-        f"QPushButton#viewDay, QPushButton#viewWeek, QPushButton#viewMonth, QPushButton#viewMyDay {{ "
-        f"background: transparent; color: {palette['muted']}; font-weight: {WEIGHT_REGULAR}; "
-        f"padding: {pad}px {round(pad * 1.5)}px; border: none; border-radius: {max(radius - 2, 0)}px; "
-        f"border-left: {divider}; }}"
-        f'QPushButton[segment="first"] {{ border-left: none; }}'
-        f"QPushButton#viewDay:hover, QPushButton#viewWeek:hover, QPushButton#viewMonth:hover, "
-        f"QPushButton#viewMyDay:hover {{ color: {palette['text']}; }}"
-        f"QPushButton#viewDay:checked, QPushButton#viewWeek:checked, QPushButton#viewMonth:checked, "
-        f"QPushButton#viewMyDay:checked {{ background: {palette['panel']}; color: {palette['text']}; "
-        f"font-weight: {WEIGHT_STRONG}; border-left: none; {edges} }}"
-        # The arrows are navigation, not actions, so they carry no fill.
-        f"QPushButton#prevWeek, QPushButton#nextWeek {{ background: transparent; "
-        f"color: {palette['text']}; font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; "
-        f"padding: 0; {edges} }}"
-        f"QPushButton#prevWeek:hover, QPushButton#nextWeek:hover {{ color: {palette['text']}; }}"
-        # Zoom is a view control like the arrows: no fill. The corner sizes it to the text.
-        f"QPushButton[zoom=\"true\"] {{ background: transparent; color: {palette['text']}; "
-        f"font-weight: {WEIGHT_STRONG}; padding: 0; min-height: 0; {edges} }}"
-        f"QPushButton[zoom=\"true\"]:disabled {{ background: transparent; "
-        f"color: {palette['hairline_strong']}; }}"
         # One filled button on the page: the thing the app is for.
         f"QLabel#blockDurationLine {{ color: {palette['muted']}; }}"
         f"QLabel#blockDurationLine[problem=\"true\"] {{ color: {palette['error']}; "
@@ -1043,8 +1140,7 @@ def pack_stylesheet(
         f"QLabel#aboutVersion {{ font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#helpKey {{ font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#helpScreenName {{ font-weight: {WEIGHT_STRONG}; }}"
-        f"QPushButton#moreButton, QPushButton#settingsGear {{ background: transparent; "
-        f"color: {palette['muted']}; {edges} }}"
+        + top_bar_rules(palette, pad, knobs["depth"], art)
         + setup_rules(palette, radius, knobs["text"], pad, knobs["depth"])
         + settings_rules(palette, radius, knobs["text"], pad, knobs["depth"])
         + f"QPushButton#authSwitch, QPushButton#forgotPassword, QPushButton#updateSkip {{ "
@@ -1082,15 +1178,6 @@ def pack_stylesheet(
         f"QListWidget#commandList {{ border: none; padding: 0; }}"
         f"QListWidget#commandList::item {{ padding: {pad}px; border-radius: {radius}px; }}"
         f"QLabel#commandNothing {{ color: {palette['muted']}; padding: {pad}px; }}"
-        # The view control's track, which the chosen segment sits in.
-        f"QFrame#segments {{ background: {palette['hairline']}; padding: 2px; border: none; "
-        f"border-radius: {radius}px; }}"
-        # Add and its arrow are one button split in two.
-        f"QPushButton#addButton {{ font-weight: {WEIGHT_STRONG}; border-top-right-radius: 0; "
-        f"border-bottom-right-radius: 0; }}"
-        f"QPushButton#addArrow {{ padding: {pad}px {pad}px; border-top-left-radius: 0; "
-        f"border-bottom-left-radius: 0; margin-left: 1px; }}"
-        f"QPushButton#addArrow::menu-indicator {{ image: none; width: 0; }}"
         # The toast's one button reads as part of its sentence.
         f"QPushButton#toastButton {{ background: transparent; color: {palette['accent']}; border: none; "
         f"font-weight: {WEIGHT_STRONG}; padding: 2px {pad}px; min-height: 0; }}"
@@ -1109,17 +1196,15 @@ def pack_stylesheet(
 
 
 def _contrast_rules(palette: dict) -> str:
-    """High contrast's segmented controls: a track outlined on the page, every choice in the text colour
-    and the chosen one filled with the accent. Yellow on light grey could not be read."""
-    views = ("viewDay", "viewWeek", "viewMonth", "viewMyDay")
-    selectors = [*(f"QPushButton#{name}" for name in views), 'QPushButton[segment="true"]']
-    segments = ", ".join(selectors)
-    chosen = ", ".join(f"{selector}:checked" for selector in selectors)
+    """High contrast's segmented choices in Settings: a track outlined on the page, every choice in the
+    text colour and the chosen one filled with the accent. Yellow on light grey could not be read. The
+    top bar's view control takes the same colours from `top_bar_rules`."""
     return (
-        f'QFrame#segments, QFrame[segmented="true"] {{ background: {palette["window"]}; '
+        f'QFrame[segmented="true"] {{ background: {palette["window"]}; '
         f"border: 1px solid {palette['text']}; }}"
-        f"{segments} {{ color: {palette['text']}; border: none; }}"
-        f"{chosen} {{ background: {palette['accent']}; color: {palette['accent_ink']}; border: none; }}"
+        f'QPushButton[segment="true"] {{ color: {palette["text"]}; border: none; }}'
+        f'QPushButton[segment="true"]:checked {{ background: {palette["accent"]}; '
+        f"color: {palette['accent_ink']}; border: none; }}"
     )
 
 

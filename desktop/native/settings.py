@@ -66,7 +66,14 @@ from desktop.native.tokens import type_pt
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
 from desktop.native.weekmodel import hhmm_text, length_label, time_format
-from desktop.native.widgets import Dialog, FlowLayout, Segmented, Switch, fit_scroll_dialog
+from desktop.native.widgets import (
+    Dialog,
+    FlowLayout,
+    Segmented,
+    Switch,
+    fit_scroll_dialog,
+    overlay_scroll_bars,
+)
 
 UPDATE_MIN_WIDTH = 420
 ALARM_MIN_WIDTH = 380
@@ -719,6 +726,7 @@ class SettingsPage(QWidget):
         for page in (appearance, planning, focus, alerts, computer):
             area = QScrollArea()
             area.setObjectName("settingsScroll")
+            overlay_scroll_bars(area)
             area.setWidgetResizable(True)
             area.setFrameShape(QFrame.Shape.NoFrame)
             area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)

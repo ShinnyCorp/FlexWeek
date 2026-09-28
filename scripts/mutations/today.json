@@ -246,13 +246,6 @@
  },
  {
   "file": "desktop/native/look.py",
-  "name": "a plain button on a flat look has no edge",
-  "old": "quiet_edge = f\"background: {palette['hairline']}; border: none;\"",
-  "new": "quiet_edge = f\"background: transparent; border: 1px solid {palette['hairline_strong']};\"",
-  "test": "desktop/tests/test_look.py::test_depth_is_drawn_with_edges_because_qt_has_no_shadows"
- },
- {
-  "file": "desktop/native/look.py",
   "name": "a design's page colours keep text readable",
   "old": "if contrast(tokens[\"bg_ink\"], tokens[\"surface\"]) >= AA_TEXT:",
   "new": "if True:",

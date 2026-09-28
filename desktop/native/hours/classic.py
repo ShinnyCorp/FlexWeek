@@ -32,7 +32,7 @@ from desktop.native.hours.geometry import FIRST, LAST, LinearTrack
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import HoursScroll, Scale, opening_minute
 from desktop.native.weekmodel import Waiting, WeekModel, hhmm_text, length_label, time_format
-from desktop.native.widgets import FlowLayout
+from desktop.native.widgets import FlowLayout, overlay_scroll_bars
 
 # A Day never goes below 96 pixels an hour, where 15 minutes is 24 pixels. The Week opens at 48, where
 # an hour still has edges to resize, and can go further out to see more of the day at once.
@@ -111,6 +111,7 @@ class WeekSide(QFrame):
         side.addWidget(self.tasks_label)
         self.tasks = QListWidget()
         self.tasks.setObjectName("focusTasks")
+        overlay_scroll_bars(self.tasks)
         # Never a sideways scroll bar: a name too long for the side gives up its middle, never its time.
         self.tasks.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.tasks.setTextElideMode(Qt.TextElideMode.ElideMiddle)

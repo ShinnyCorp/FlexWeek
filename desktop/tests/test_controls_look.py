@@ -186,23 +186,23 @@ def test_a_menu_heading_is_drawn_as_text(qapp: QApplication) -> None:
 
 def view_control(qapp: QApplication, pack: str, dark: bool, look: dict | None) -> tuple[QImage, dict, list]:
     """Day, Week and Month as the top bar builds them, Week chosen, in a look."""
-    from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton
+    from PySide6.QtWidgets import QHBoxLayout
+
+    from desktop.native.widgets import Segment, SegmentTrack
 
     palette = resolved_palette(pack, dark, look)
     page = QWidget()
     page.setStyleSheet(pack_stylesheet(pack, dark, look, "default", palette, control_art(palette)))
-    track = QFrame(page)
+    track = SegmentTrack(page)
     track.setObjectName("segments")
-    row = QHBoxLayout(track)
+    QHBoxLayout(track)
     buttons = []
-    views = (("viewDay", "Day", "first"), ("viewWeek", "Week", "middle"), ("viewMonth", "Month", "last"))
-    for name, words, place in views:
-        button = QPushButton(words)
+    for name, words in (("viewDay", "Day"), ("viewWeek", "Week"), ("viewMonth", "Month")):
+        button = Segment(words)
         button.setObjectName(name)
         button.setCheckable(True)
         button.setChecked(name == "viewWeek")
-        button.setProperty("segment", place)
-        row.addWidget(button)
+        track.add(button)
         buttons.append(button)
     track.adjustSize()
     page.resize(track.size())
@@ -217,8 +217,9 @@ def test_high_contrasts_view_control_reads_every_choice_and_fills_the_chosen_one
     image, palette, (day, week, _month) = view_control(
         qapp, "system", False, {"preset": "high-contrast", "knobs": {}}
     )
-    assert image.pixelColor(week.left() + 3, week.top() + 3).name() == palette["accent"] == "#ffd400"
-    assert image.pixelColor(day.left() + 3, day.top() + 3).name() == palette["window"]
+    # Inside each pill's rounded ends, on its middle line.
+    assert image.pixelColor(week.left() + 6, week.center().y()).name() == palette["accent"] == "#ffd400"
+    assert image.pixelColor(day.left() + 6, day.center().y()).name() == palette["window"]
 
     def inks(box) -> set[str]:
         columns, rows = range(box.left(), box.right()), range(box.top(), box.bottom())
