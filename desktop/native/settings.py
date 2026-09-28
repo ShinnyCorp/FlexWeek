@@ -7,11 +7,12 @@ from copy import deepcopy
 from pathlib import Path
 from uuid import uuid4
 
-from PySide6.QtCore import QEvent, QObject, Qt, QUrl, Signal
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
     QGuiApplication,
+    QIcon,
     QKeyEvent,
     QLinearGradient,
     QPainter,
@@ -56,11 +57,14 @@ from desktop.native.calendar import DAY_FULL
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
 from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import drag_step
+from desktop.native.icons import pixmap as icon_pixmap
 from desktop.native.layouts.dialog import SLOTS, LayoutSection
-from desktop.native.layouts.registry import EXPERIMENTAL, sanitize_layout
+from desktop.native.layouts.registry import sanitize_layout
 from desktop.native.look import (
+    ACCENT_COLORS,
     ACCENTS,
     LOOK_KNOBS,
+    OWN_ACCENT,
     TEXT_PT,
     effective_look,
     known_pack,
@@ -70,6 +74,7 @@ from desktop.native.look import (
     look_overrides,
     pack_motion,
     parse_look_menu_token,
+    resolved_palette,
     sanitize_look,
 )
 from desktop.native.motion import slide_page
@@ -79,7 +84,19 @@ from desktop.native.spotify import SpotifyPlayer, open_in_app
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
 from desktop.native.weekmodel import hhmm_text, length_label, time_format
-from desktop.native.widgets import Dialog, FlowLayout, Segmented, Switch, fit_scroll_dialog
+from desktop.native.widgets import (
+    Choices,
+    Dialog,
+    FlowLayout,
+    Form,
+    Segmented,
+    Swatches,
+    Switch,
+    bare,
+    even_fields,
+    fit_scroll_dialog,
+    info_card,
+)
 
 UPDATE_MIN_WIDTH = 420
 ALARM_MIN_WIDTH = 380
@@ -88,9 +105,21 @@ ALARM_GAP = 12
 ALARM_BUTTON_HEIGHT = 44
 # Room beside the longest name in the Settings list, for its selection edge.
 PREFS_NAV_PAD = 8
-SETTINGS_COLUMN = 760
+# The column of cards, centred in the page up to this width (decision 24 of 0.17).
+SETTINGS_COLUMN = 960
 CARD_PAD = 16
+SECTION_GAP_BELOW = 24
 SECTIONS = ("Appearance & layout", "Planning", "Focus", "Alerts", "This computer")
+# Each section's icon in the list, Lucide's names (decision 24 of 0.17). None on the rows themselves.
+SECTION_ICONS = ("palette", "calendar", "timer", "bell", "laptop")
+# The three looks most people choose between; every other look is under More looks.
+MAIN_LOOKS = ("light-frost", "dark-frost", "system")
+MORE_LOOKS = "More looks"
+MORE_LOOKS_HINT = "Choose another look"
+ACCENT_LABELS = {"default": "Blue"}
+OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
+CUSTOMISE = "Customise"
+CUSTOMISE_TIP = "Your own colours, corners and fonts. Coming in this version."
 MOTION_CHOICES = (("Normal", "normal"), ("More movement", "extra"), ("Off", "off"))
 PREFERRED_VIEWS = (("Whatever I had open", None), ("Week", "week"), ("Day", "day"))
 KNOB_LABELS = {
@@ -105,9 +134,13 @@ KNOB_LABELS = {
 ALARM_LIST_MAX_HEIGHT = 200
 ACCOUNT_MAX_WIDTH = 520
 ACCOUNT_MIN_WIDTH = 560
+ACCOUNT_PASSWORD_NOTE = "Your current password is needed for every change on this page."
+ACCOUNT_CODES_NOTE = "Each code signs you in once if you forget your password."
+ACCOUNT_DATA_NOTE = "Keep a copy of your account, or of one week or day, in a file."
 SPORT_FALLBACK = "Sport or club"
 ALARM_TONE_LABELS = {"spotify": "A Spotify song or playlist"}
-DRAG_STEP_QUESTION = "When you drag a block, it moves in steps of:"
+# Said above the choice, where it can wrap: as the choice's label it was wider than the page at large text.
+DRAG_STEP_QUESTION = "When you drag a block, it moves in steps of this length."
 DRAG_STEP_CHOICES = ((5, "5 minutes (more control)"), (15, "15 minutes (quarter hours)"))
 PLANNING_STYLES = (
     ("auto", "Plan it for me as I add it", "New homework gets a time straight away."),
@@ -210,14 +243,6 @@ def _page_button(words: str, name: str) -> QPushButton:
     return made
 
 
-def _add_heading_item(box: QComboBox, words: str) -> None:
-    """A row in a dropdown that names the rows under it and cannot be picked."""
-    box.addItem(words, None)
-    item = box.model().item(box.count() - 1)
-    item.setEnabled(False)
-    item.setSelectable(False)
-
-
 def _heading(words: str) -> QLabel:
     """A card's title, so eighteen settings stop reading as one list."""
     made = QLabel(words)
@@ -229,7 +254,7 @@ def _card(title: str, note: str = "") -> tuple[QFrame, QFormLayout]:
     """A card of settings under a title, and the form its rows go in."""
     card = QFrame()
     card.setObjectName("settingsCard")
-    form = QFormLayout(card)
+    form = Form(card)
     form.setContentsMargins(CARD_PAD, CARD_PAD, CARD_PAD, CARD_PAD)
     form.setVerticalSpacing(10)
     # Only what is meant to stretch does: a spin box or a short dropdown as wide as the card read as a
@@ -248,7 +273,7 @@ def _section_page(title: str, cards: tuple[QWidget, ...]) -> QWidget:
     page = QWidget()
     page.setObjectName("settingsBody")
     around = QHBoxLayout(page)
-    around.setContentsMargins(24, 24, 24, 24)
+    around.setContentsMargins(24, 24, 24, SECTION_GAP_BELOW)
     column = QWidget()
     column.setObjectName("settingsRow")
     column.setMaximumWidth(SETTINGS_COLUMN)
@@ -261,9 +286,71 @@ def _section_page(title: str, cards: tuple[QWidget, ...]) -> QWidget:
     for card in cards:
         box.addWidget(card)
     box.addStretch(1)
-    around.addWidget(column, 1)
-    around.addStretch(0)
+    # Centred: the column takes the room up to its widest, and what is left is shared either side.
+    around.addStretch(1)
+    around.addWidget(column, 1000)
+    around.addStretch(1)
     return page
+
+
+class LookPicker(Choices):
+    """Look as "Light | Dark | System", with every other look in a list under them (decision 24 of 0.17).
+    To the code that reads it, one control whose choices are every look, as the dropdown it replaces."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__()
+        self.setObjectName(name)
+        bare(self)
+        standard, experimental = look_menu_items()
+        looks = [(label, look_menu_token(kind, look)) for look, label, kind in (*standard, *experimental)]
+        main = [look_menu_token("pack", pack) for pack in MAIN_LOOKS]
+        ordered = sorted(looks, key=lambda item: main.index(item[1]) if item[1] in main else len(main))
+        for label, token in ordered:
+            self._remember(label, token)
+        self.main = Segmented(tuple(item for item in ordered if item[1] in main), f"{name}Main")
+        self.main.setAccessibleName("Look")
+        self.more = QComboBox()
+        self.more.setObjectName(f"{name}More")
+        self.more.setAccessibleName(MORE_LOOKS)
+        self.more.setPlaceholderText(MORE_LOOKS_HINT)
+        for label, token in ordered:
+            if token not in main:
+                self.more.addItem(label, token)
+        box = QVBoxLayout(self)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(8)
+        box.addWidget(self.main, 0, Qt.AlignmentFlag.AlignLeft)
+        line = QHBoxLayout()
+        line.setSpacing(8)
+        more = QLabel(MORE_LOOKS)
+        more.setObjectName("settingsCardNote")
+        line.addWidget(more)
+        line.addWidget(self.more)
+        line.addStretch(1)
+        box.addLayout(line)
+        self.main.currentIndexChanged.connect(self._picked_main)
+        self.more.activated.connect(self._picked_more)
+
+    def first_line(self) -> QWidget:
+        """What the Look label sits beside: the three looks, not the middle of both lines."""
+        return self.main
+
+    def _picked_main(self, index: int) -> None:
+        if index >= 0:
+            self.setCurrentIndex(self.findData(self.main.itemData(index)))
+
+    def _picked_more(self, index: int) -> None:
+        if index >= 0:
+            self.setCurrentIndex(self.findData(self.more.itemData(index)))
+
+    def _show(self, index: int) -> None:
+        token = self.itemData(index) if index >= 0 else None
+        for box in (self.main, self.more):
+            box.blockSignals(True)
+        self.main.setCurrentIndex(self.main.findData(token))
+        self.more.setCurrentIndex(self.more.findData(token))
+        for box in (self.main, self.more):
+            box.blockSignals(False)
 
 
 class FocusPanel(QWidget):
@@ -410,22 +497,18 @@ class SettingsPage(QWidget):
         chosen_layout = sanitize_layout(week_layout)
         self._alarms = [deepcopy(item) for item in preferences.get("alarms") or []]
         self._pack = known_pack(preferences.get("theme_pack"))
-        self.look = QComboBox()
-        self.look.setObjectName("prefTheme")
-        standard, experimental = look_menu_items()
-        for name, label, kind in standard:
-            self.look.addItem(label, look_menu_token(kind, name))
-        _add_heading_item(self.look, EXPERIMENTAL)
-        for name, label, kind in experimental:
-            self.look.addItem(label, look_menu_token(kind, name))
+        self.look = LookPicker("prefTheme")
         index = self.look.findData(look_menu_value(self._pack, self._look))
         self.look.setCurrentIndex(max(0, index))
-        self.accent = QComboBox()
-        self.accent.setObjectName("prefAccent")
-        for name in ACCENTS:
-            self.accent.addItem(name.title(), name)
+        swatches = tuple((ACCENT_LABELS.get(name, name.title()), name) for name in ACCENTS)
+        self.accent = Swatches(swatches, "prefAccent")
         index = self.accent.findData(preferences.get("accent") or "default")
         self.accent.setCurrentIndex(max(0, index))
+        self.accent_note = _note(OWN_ACCENT_NOTE, "settingsCardNote")
+        # Where Customise opens (plan, "Customise"). Its lane builds what it does.
+        self.customise = _page_button(f"{CUSTOMISE}…", "prefCustomise")
+        self.customise.setToolTip(CUSTOMISE_TIP)
+        self.customise.setEnabled(False)
         self.accent_chips = Switch("Use the accent on category chips")
         self.accent_chips.setObjectName("prefAccentChips")
         self.accent_chips.setChecked(bool(preferences.get("accent_chips")))
@@ -437,7 +520,7 @@ class SettingsPage(QWidget):
         shown = effective_look(self._look)
         self.fine_host = QWidget()
         self.fine_host.setObjectName("prefFineHost")
-        fine_form = QFormLayout(self.fine_host)
+        fine_form = Form(self.fine_host)
         self._fine_form = fine_form
         fine_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         fine_form.setContentsMargins(0, 0, 0, 0)
@@ -445,7 +528,7 @@ class SettingsPage(QWidget):
             box = Segmented(tuple((value.title(), value) for value in values), "look" + knob.title())
             box.setCurrentIndex(max(0, box.findData(shown[knob])))
             self.knobs[knob] = box
-            fine_form.addRow(KNOB_LABELS[knob], box)
+            fine_form.addRow(KNOB_LABELS.get(knob, knob.title()), box)
         self.fine_tune = Switch(FINE_TUNE_LOOK)
         self.fine_tune.setObjectName("prefFineTune")
         self.fine_tune.setChecked(bool(self._look.get("knobs")))
@@ -552,8 +635,11 @@ class SettingsPage(QWidget):
         main_section, day_section = self.layout_sections
         self.colours_card, appear = _card("Colours")
         appear.addRow("Look", self.look)
+        appear.addRow(CUSTOMISE, self.customise)
         appear.addRow("Accent", self.accent)
+        appear.addRow("", self.accent_note)
         appear.addRow(self.accent_chips)
+        self._colours_form = appear
         everywhere_card, everywhere = _card("Every screen")
         everywhere.addRow("Animations", self.motion)
         everywhere.addRow(self.fine_tune)
@@ -583,13 +669,13 @@ class SettingsPage(QWidget):
         open_availability = _page_button("Availability…", "prefsAvailability")
         open_availability.clicked.connect(self.availability_requested.emit)
         where_form.addRow(open_availability)
-        drag_card, drag_form = _card("Dragging")
+        drag_card, drag_form = _card("Dragging", DRAG_STEP_QUESTION)
         self.drag_step = Segmented(
             tuple((f"{minutes} minutes", minutes) for minutes, _words in DRAG_STEP_CHOICES), "prefDragStep"
         )
         chosen_step = drag_step(preferences.get("drag_step_min"))
         self.drag_step.setCurrentIndex(max(0, self.drag_step.findData(chosen_step)))
-        drag_form.addRow(DRAG_STEP_QUESTION, self.drag_step)
+        drag_form.addRow("Steps", self.drag_step)
         planning = _section_page("Planning", (planning_card, where_card, drag_card))
         focus_card, focus_form = _card("Focus timer")
         focus_form.addRow("Focus minutes", self.work)
@@ -605,14 +691,15 @@ class SettingsPage(QWidget):
         # was one unticked box among controls that looked live.
         self.reminder_controls = QWidget()
         self.reminder_controls.setObjectName("prefReminderControls")
-        reminder_form = QFormLayout(self.reminder_controls)
+        reminder_form = Form(self.reminder_controls)
         reminder_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         reminder_form.setContentsMargins(0, 0, 0, 0)
         reminder_form.addRow("How long before", self.lead)
         reminder_form.addRow(self.reminder_sound)
         tone_row = QHBoxLayout()
-        tone_row.addWidget(self.alarm_tone, 1)
+        tone_row.addWidget(self.alarm_tone)
         tone_row.addWidget(self.play_tone)
+        tone_row.addStretch(1)
         reminder_form.addRow("Sound", tone_row)
         reminder_form.addRow("Spotify link", self.spotify)
         reminder_form.addRow(self.tone_note)
@@ -639,7 +726,6 @@ class SettingsPage(QWidget):
         self.alarm_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         alarms_form.addRow(self.alarm_list)
         self._alarms_form = alarms_form
-        alarm_row = QHBoxLayout()
         self.alarm_name = QLineEdit()
         self.alarm_name.setObjectName("alarmName")
         self.alarm_name.setPlaceholderText("Alarm name")
@@ -651,13 +737,11 @@ class SettingsPage(QWidget):
         self.alarm_sound.setMinimumContentsLength(8)
         for name in SOUNDS:
             self.alarm_sound.addItem("Spotify link" if name == "spotify" else name.title(), name)
-        # The name on a line of its own: with the dropdown's chevron room, name, time and sound side by
+        # A line each: with every dropdown as wide as the page's widest, name, time and sound side by
         # side were wider than the page at large text.
         alarms_form.addRow("New alarm", self.alarm_name)
-        for widget in (self.alarm_time, self.alarm_sound):
-            alarm_row.addWidget(widget)
-        alarm_row.addStretch(1)
-        alarms_form.addRow("Rings at", alarm_row)
+        alarms_form.addRow("Rings at", self.alarm_time)
+        alarms_form.addRow("Sound", self.alarm_sound)
         self.alarm_spotify = QLineEdit()
         self.alarm_spotify.setObjectName("alarmSpotify")
         self.alarm_spotify.setPlaceholderText("Spotify link (optional)")
@@ -728,6 +812,11 @@ class SettingsPage(QWidget):
         self.nav.setAccessibleName("Settings sections")
         for name in SECTIONS:
             self.nav.addItem(name)
+        # Restyled with the look: the icons are drawn in its colours, and the fields measured in its font.
+        self._redress = QTimer(self)
+        self._redress.setSingleShot(True)
+        self._redress.setInterval(0)
+        self._redress.timeout.connect(self._dress)
         rail_box.addWidget(self.nav, 1)
         self.stack = QStackedWidget()
         self.stack.setObjectName("prefsStack")
@@ -831,9 +920,37 @@ class SettingsPage(QWidget):
             self._fine_form.setRowVisible(self.knobs[knob], todays_app)
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
-        """The list fits its longest name once the pack's font has arrived; at large text a fixed
-        width cut "Appearance & layout" off."""
         super().showEvent(event)
+        self._dress()
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.StyleChange, QEvent.Type.FontChange) and self.isVisible():
+            self._redress.start()
+
+    def shown_palette(self) -> dict:
+        """The colours on screen, as the window works them out from what this page holds."""
+        system_dark = QGuiApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
+        return resolved_palette(self._pack, system_dark, self.look_choice(), self.accent.currentData())
+
+    def _dress(self) -> None:
+        """What the style sheet cannot draw: the sections' icons and the accent swatches in the look's
+        colours, and one width for each kind of field in the look's font. Then the list fits its longest
+        name; at large text a fixed width cut "Appearance & layout" off."""
+        palette = self.shown_palette()
+        self.accent.set_colours({name: ACCENT_COLORS[name][palette["axis"]] for name in ACCENTS})
+        size = 16
+        self.nav.setIconSize(QSize(size, size))
+        ratio = self.devicePixelRatioF()
+        for row, name in enumerate(SECTION_ICONS):
+            made = QIcon()
+            made.addPixmap(icon_pixmap(name, palette["muted"], size, ratio), QIcon.Mode.Normal)
+            made.addPixmap(icon_pixmap(name, palette["text"], size, ratio), QIcon.Mode.Selected)
+            self.nav.item(row).setIcon(made)
+        self._colours_form.setRowVisible(self.accent_note, self.look_choice()["preset"] in OWN_ACCENT)
+        # Section by section: a dropdown on Alerts need not make Appearance's wider than its page.
+        for index in range(self.stack.count()):
+            even_fields(self.stack.widget(index))
         margins = self.nav.contentsMargins()
         self.nav.setFixedWidth(
             self.nav.sizeHintForColumn(0) + margins.left() + margins.right() + 2 * self.nav.frameWidth()
@@ -858,6 +975,8 @@ class SettingsPage(QWidget):
         """Takes and drops the value a box sends. Wired straight to `changed.emit`, that value made
         every emit raise inside Qt, which swallows it, so nothing showed until Settings closed."""
         self.changed.emit()
+        if self.isVisible():
+            self._redress.start()
 
     def _style_toggled(self, _button: object, on: bool) -> None:
         if on:
@@ -1175,8 +1294,11 @@ class AccountDialog(Dialog):
         status = QLabel(remaining_text)
         status.setObjectName("recoveryCount")
         status.setProperty("problem", remaining == 0)
-        layout.addWidget(status)
-        form = QFormLayout()
+        self.setMinimumWidth(ACCOUNT_MIN_WIDTH)
+        # Three cards, each about one thing (decision 23 of 0.17): eight buttons in three wrapped rows
+        # said nothing about which went with the two fields.
+        password, password_box = info_card("Password", ACCOUNT_PASSWORD_NOTE)
+        form = Form()
         self.current_password = QLineEdit()
         self.current_password.setEchoMode(QLineEdit.EchoMode.Password)
         self.current_password.setObjectName("currentPassword")
@@ -1185,18 +1307,20 @@ class AccountDialog(Dialog):
         self.new_password.setEchoMode(QLineEdit.EchoMode.Password)
         self.new_password.setObjectName("newPassword")
         form.addRow("New password", self.new_password)
-        layout.addLayout(form)
-        self.setMinimumWidth(ACCOUNT_MIN_WIDTH)
-        row = FlowLayout()
-        for words, name, action in (
-            ("Replace password", "changePassword", "password"),
-            ("Replace recovery codes", "replaceCodes", "codes"),
-            ("Delete account", "deleteAccount", "delete"),
-            ("Export account", "exportAccount", "export"),
-            ("Import account", "importAccount", "import"),
-            ("Export week", "exportWeek", "week"),
-            ("Export day", "exportDay", "day"),
-            ("Import week or day file", "importFile", "import-week"),
+        password_box.addLayout(form)
+        codes, codes_box = info_card("Recovery codes", ACCOUNT_CODES_NOTE)
+        codes_box.addWidget(status)
+        data, data_box = info_card("Your data", ACCOUNT_DATA_NOTE)
+        files = FlowLayout()
+        cards = {"password": password_box, "codes": codes_box, "data": files}
+        for words, name, action, where in (
+            ("Replace password", "changePassword", "password", "password"),
+            ("Replace recovery codes", "replaceCodes", "codes", "codes"),
+            ("Export account", "exportAccount", "export", "data"),
+            ("Import account", "importAccount", "import", "data"),
+            ("Export week", "exportWeek", "week", "data"),
+            ("Export day", "exportDay", "day", "data"),
+            ("Import week or day file", "importFile", "import-week", "data"),
         ):
             button = QPushButton(words)
             button.setObjectName(name)
@@ -1204,8 +1328,21 @@ class AccountDialog(Dialog):
             # Replace password is the answer to the two fields above; the rest open something else.
             button.setProperty("quiet", action != "password")
             button.clicked.connect(self._set)
-            row.addWidget(button)
-        layout.addLayout(row)
+            if where == "data":
+                files.addWidget(button)
+            else:
+                cards[where].addWidget(button, 0, Qt.AlignmentFlag.AlignLeft)
+        data_box.addLayout(files)
+        # Deleting is words in red, away from the rest, as it is in the editors.
+        delete = QPushButton("Delete account")
+        delete.setObjectName("deleteAccount")
+        delete.setProperty("action", "delete")
+        delete.setAutoDefault(False)
+        delete.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete.clicked.connect(self._set)
+        data_box.addWidget(delete, 0, Qt.AlignmentFlag.AlignLeft)
+        for card in (password, codes, data):
+            layout.addWidget(card)
         close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         close.button(QDialogButtonBox.StandardButton.Close).setProperty("quiet", True)
         close.rejected.connect(self.reject)

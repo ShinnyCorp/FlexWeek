@@ -1,0 +1,135 @@
+[
+ {
+  "name": "the editors open as windows of their own",
+  "file": "desktop/native/widgets.py",
+  "old": "        self.sheet = sheet and parent is not None\n",
+  "new": "        self.sheet = False\n",
+  "test": "desktop/tests/test_dialogs_look.py::test_the_two_editors_are_sheets_over_the_dimmed_week_and_the_rest_stay_windows"
+ },
+ {
+  "name": "the week behind a sheet is not dimmed",
+  "file": "desktop/native/widgets.py",
+  "old": "        self._shade.show()\n",
+  "new": "",
+  "test": "desktop/tests/test_dialogs_look.py::test_the_two_editors_are_sheets_over_the_dimmed_week_and_the_rest_stay_windows"
+ },
+ {
+  "name": "the dimming stays after the sheet closes",
+  "file": "desktop/native/widgets.py",
+  "old": "            self._shade.deleteLater()\n            self._shade = None\n",
+  "new": "            pass\n",
+  "test": "desktop/tests/test_dialogs_look.py::test_the_two_editors_are_sheets_over_the_dimmed_week_and_the_rest_stay_windows"
+ },
+ {
+  "name": "Save made outside its dialog, so Enter presses More details",
+  "file": "desktop/native/widgets.py",
+  "old": "    buttons = QDialogButtonBox(choices, dialog)\n",
+  "new": "    buttons = QDialogButtonBox(choices)\n",
+  "test": "desktop/tests/test_dialogs_look.py::test_the_two_editors_are_sheets_over_the_dimmed_week_and_the_rest_stay_windows"
+ },
+ {
+  "name": "the scrolled body a pale box inside the card",
+  "file": "desktop/native/look.py",
+  "old": "        'QWidget[bare=\"true\"], QScrollArea[bare=\"true\"] { background: transparent; border: none; '\n",
+  "new": "        'QWidget[nobare=\"true\"], QScrollArea[nobare=\"true\"] { background: transparent; border: none; '\n",
+  "test": "desktop/tests/test_dialogs_look.py::test_the_homework_body_is_the_card_not_a_box_inside_it"
+ },
+ {
+  "name": "labels level with their fields' top edge",
+  "file": "desktop/native/widgets.py",
+  "old": "        return QSize(size.width(), max(size.height(), self._line.sizeHint().height()))\n",
+  "new": "        return size\n",
+  "test": "desktop/tests/test_dialogs_look.py::test_a_label_sits_on_its_fields_line_of_words"
+ },
+ {
+  "name": "each field as wide as its row or its text",
+  "file": "desktop/native/widgets.py",
+  "old": "                field.setFixedWidth(width)\n",
+  "new": "                pass\n",
+  "test": "desktop/tests/test_dialogs_look.py::test_every_field_of_a_kind_has_one_width"
+ },
+ {
+  "name": "the repeat scope shown for every block",
+  "file": "desktop/native/widgets.py",
+  "old": "        form.setRowVisible(scope_box, bool(series and occurrence_day is not None))\n",
+  "new": "        form.setRowVisible(scope_box, True)\n",
+  "test": "desktop/tests/test_dialogs_look.py::test_the_repeat_scope_is_a_choice_of_two_under_the_days_only_for_a_repeating_block"
+ },
+ {
+  "name": "a primary that cannot be pressed yet a grey slab",
+  "file": "desktop/native/look.py",
+  "old": "        f\"QDialog QPushButton:disabled {{ background: {_rgba(palette['accent'], DISABLED)}; \"\n",
+  "new": "        f\"QDialog QPushButton:disabled {{ background: {palette['hairline_strong']}; \"\n",
+  "test": "desktop/tests/test_dialogs_look.py::test_a_primary_that_cannot_be_pressed_yet_keeps_its_colour_at_40_percent"
+ },
+ {
+  "name": "a list's ticks drawn by Qt",
+  "file": "desktop/native/look.py",
+  "old": "        f\"QAbstractItemView::indicator:checked {{ background: {palette['accent']}; \"\n",
+  "new": "        f\"QAbstractItemView::indicator:unchecked {{ background: {palette['accent']}; \"\n",
+  "test": "desktop/tests/test_dialogs_look.py::test_a_lists_ticks_are_the_apps_check_boxes"
+ },
+ {
+  "name": "Account's actions in one row again",
+  "file": "desktop/native/settings.py",
+  "old": "            if where == \"data\":\n",
+  "new": "            if True:\n",
+  "test": "desktop/tests/test_dialogs_look.py::test_account_is_three_cards_each_with_its_own_actions"
+ },
+ {
+  "name": "the cards against the left",
+  "file": "desktop/native/settings.py",
+  "old": "    around.addStretch(1)\n    around.addWidget(column, 1000)\n",
+  "new": "    around.addWidget(column, 1000)\n",
+  "test": "desktop/tests/test_settings_look.py::test_the_column_of_cards_is_centred_up_to_960"
+ },
+ {
+  "name": "the section list without its icons",
+  "file": "desktop/native/settings.py",
+  "old": "            self.nav.item(row).setIcon(made)\n",
+  "new": "            pass\n",
+  "test": "desktop/tests/test_settings_look.py::test_each_section_has_its_icon_and_the_chosen_one_an_accent_bar"
+ },
+ {
+  "name": "no bar on the chosen section",
+  "file": "desktop/native/look.py",
+  "old": "        f\"border-left: 3px solid {palette['accent']}; font-weight: 600; }}\"\n",
+  "new": "        f\"font-weight: 600; }}\"\n",
+  "test": "desktop/tests/test_settings_look.py::test_each_section_has_its_icon_and_the_chosen_one_an_accent_bar"
+ },
+ {
+  "name": "a segment keeps claiming a look chosen under More looks",
+  "file": "desktop/native/settings.py",
+  "old": "        self.main.setCurrentIndex(self.main.findData(token))\n",
+  "new": "",
+  "test": "desktop/tests/test_settings_look.py::test_look_is_light_dark_or_system_and_the_other_looks_are_under_more_looks"
+ },
+ {
+  "name": "the swatches all grey",
+  "file": "desktop/native/widgets.py",
+  "old": "            button.fill, button.ink = colours.get(data, (button.fill, button.ink))\n",
+  "new": "",
+  "test": "desktop/tests/test_settings_look.py::test_the_accent_is_swatches_in_the_looks_own_colours"
+ },
+ {
+  "name": "number boxes each their own width",
+  "file": "desktop/native/settings.py",
+  "old": "            even_fields(self.stack.widget(index))\n",
+  "new": "            pass\n",
+  "test": "desktop/tests/test_settings_look.py::test_every_number_box_on_a_page_is_one_width"
+ },
+ {
+  "name": "nothing ends the page above the footer",
+  "file": "desktop/native/look.py",
+  "old": "        f\"QWidget#settingsFooter {{ border-top: {footer_line}; }}\"\n",
+  "new": "",
+  "test": "desktop/tests/test_settings_look.py::test_a_hairline_ends_the_page_above_the_footer"
+ },
+ {
+  "name": "High contrast silent about its own yellow",
+  "file": "desktop/native/settings.py",
+  "old": "        self._colours_form.setRowVisible(self.accent_note, self.look_choice()[\"preset\"] in OWN_ACCENT)\n",
+  "new": "        self._colours_form.setRowVisible(self.accent_note, False)\n",
+  "test": "desktop/tests/test_settings_look.py::test_high_contrast_says_it_keeps_its_own_yellow"
+ }
+]

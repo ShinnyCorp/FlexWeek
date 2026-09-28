@@ -48,8 +48,34 @@ All notable changes to FlexWeek are documented here. Format follows
 - Help: the shortcuts are drawn as keys, the words fade out at a scroll edge
   with more past it, and the line saying a tutorial is coming is gone. About
   shows the FlexWeek logo beside the version.
+- Add homework and Edit event open inside the window: a card with rounded
+  corners and a soft shadow over the week, which dims behind it. Every other
+  dialog stays a window of its own.
+- In every dialog the form sits on one card, with no pale box inside it. Each
+  label sits on the same line as the words in its field, and every time box,
+  date, number box and dropdown in a dialog is as wide as the others of its
+  kind rather than as wide as the row.
+- Edit event asks "Apply to: This day only | Every selected day" under the
+  days, and only for a block that repeats, instead of two round buttons above
+  the title.
+- Account is three cards: Password, Recovery codes and Your data, each with its
+  own buttons; Delete account is red words at the end of Your data.
+- A button that cannot be pressed yet, such as Accept late start before
+  Preview, keeps its colour at 40 % instead of turning into a grey slab.
+- Routines and a homework's checklist tick their rows with the same boxes as
+  every other check box.
+- Settings: the cards stand in a column centred in the page, up to 960 pixels;
+  each section has its icon in the list and the open one a bar in the accent;
+  Look is "Light | Dark | System" with every other look under More looks;
+  Accent is a row of colour swatches; every number box and dropdown on a page
+  is one width; and a hairline ends the page above Done. A Customise row under
+  Look is waiting for its own settings. An alarm's time and sound are on lines
+  of their own, and the drag step's question is said above its choice.
 
 ### Fixed
+- In the homework editor, Enter saves. It pressed More details, the first
+  button after the title, because Save was made the default before it was in
+  the dialog.
 - Changing the look with the week open, to High contrast above all, no longer
   runs the words of the Not placed yet chips off their edge, and the focus
   list beside the week no longer grows a sideways scroll bar or hides a row: a

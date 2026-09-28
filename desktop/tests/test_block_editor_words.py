@@ -146,7 +146,8 @@ def test_save_is_the_one_filled_button_and_delete_is_quiet_at_the_bottom_left(
     assert save.isDefault()
 
     picture = dialog.grab().toImage()
-    background = picture.pixelColor(2, 2)
+    # The editor is a sheet (decision 23 of 0.17): its buttons sit on its card, not on a window.
+    background = picture.pixelColor(dialog.card.mapTo(dialog, QPoint(6, dialog.card.height() // 2)))
 
     def fill(button: QPushButton) -> QColor:
         # Above the words, inside the edge: the button's own paint and nothing else.

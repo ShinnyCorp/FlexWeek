@@ -138,8 +138,8 @@ def accent_mixes(palette: dict) -> set[str]:
 # The rules that paint a page, a card or a panel. A background named in one may be neutral or the
 # look's own surfaces, never the accent or the accent laid over them.
 LARGE = re.compile(
-    r"(QMainWindow|QDialog|QFrame, QGroupBox|#(settingsPage|settingsRail|settingsCard|dialogCard|setupRail|"
-    r"setupNav|setupChoice|setupGroup|authCard|weekSide|daySide|toast|commandBox))\b"
+    r"(QMainWindow|QDialog|QFrame, QGroupBox|#(settingsPage|settingsRail|settingsCard|dialogCard|sheetCard|"
+    r"setupRail|setupNav|setupChoice|setupGroup|authCard|weekSide|daySide|toast|commandBox))\b"
 )
 
 
