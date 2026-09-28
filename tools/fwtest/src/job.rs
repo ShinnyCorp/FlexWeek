@@ -33,6 +33,9 @@ pub struct JobRecord {
     pub owner: ProcRef,
     pub processes: Vec<ProcRef>,
     pub limits: JobLimits,
+    /// systemd user scope, when the job was started inside one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
 }
 
 pub fn jobs_dir(root: &Path) -> PathBuf {

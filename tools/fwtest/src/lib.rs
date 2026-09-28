@@ -1,6 +1,7 @@
 //! fwtest library. The contract is `docs/tooling/fwtest.md`.
 
 pub mod clean;
+pub mod contain;
 pub mod identity;
 pub mod job;
 pub mod state;

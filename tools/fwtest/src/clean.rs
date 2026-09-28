@@ -35,6 +35,13 @@ pub fn clean(root: &Path) -> io::Result<CleanReport> {
         if job::owner_is_live(&job)? {
             continue;
         }
+        if let Some(scope) = &job.scope {
+            let _ = std::process::Command::new("systemctl")
+                .args(["--user", "stop", scope])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
         let mut survived = false;
         for process in &job.processes {
             match identity::stop_if_ours(process.pid, process.start_ticks)? {
@@ -122,5 +129,6 @@ pub fn sample_job(
             cpus: vec![0, 1],
             timeout: 600,
         },
+        scope: None,
     }
 }

@@ -16,6 +16,9 @@ pub struct ProcIdentity {
     pub pid: i32,
     pub comm: String,
     pub state: char,
+    pub ppid: i32,
+    pub pgrp: i32,
+    pub nice: i32,
     pub start_ticks: u64,
 }
 
@@ -36,19 +39,20 @@ pub fn parse_stat(text: &str) -> Result<ProcIdentity, StatParseError> {
     let comm = text[open + 1..close].to_string();
     let rest: Vec<&str> = text[close + 1..].split_whitespace().collect();
     // state is the first token after comm. starttime is field 22, so index 19.
-    let state = rest
-        .first()
-        .and_then(|token| token.chars().next())
-        .ok_or(StatParseError)?;
-    let start_ticks = rest
-        .get(19)
-        .ok_or(StatParseError)?
-        .parse()
-        .map_err(|_| StatParseError)?;
+    let token = |index: usize| rest.get(index).ok_or(StatParseError);
+    let state = token(0)?.chars().next().ok_or(StatParseError)?;
+    let ppid = token(1)?.parse().map_err(|_| StatParseError)?;
+    let pgrp = token(2)?.parse().map_err(|_| StatParseError)?;
+    // nice is field 19 (index 16). starttime is field 22 (index 19).
+    let nice = token(16)?.parse().map_err(|_| StatParseError)?;
+    let start_ticks = token(19)?.parse().map_err(|_| StatParseError)?;
     Ok(ProcIdentity {
         pid,
         comm,
         state,
+        ppid,
+        pgrp,
+        nice,
         start_ticks,
     })
 }
@@ -123,6 +127,64 @@ fn signal(pid: i32, signal: Signal) -> io::Result<()> {
     }
 }
 
+/// SIGTERM every still-matching process, wait, then SIGKILL whatever is left.
+pub fn stop_all(targets: &[(i32, u64)]) -> io::Result<Vec<i32>> {
+    fn live(pid: i32, ticks: u64) -> io::Result<bool> {
+        if pid <= 1 || pid as u32 == std::process::id() {
+            return Ok(false);
+        }
+        is_live_match(pid, ticks)
+    }
+    for (pid, ticks) in targets {
+        if live(*pid, *ticks)? {
+            signal(*pid, Signal::SIGTERM)?;
+        }
+    }
+    let first = std::time::Instant::now();
+    while first.elapsed() < Duration::from_secs(3) {
+        if !targets
+            .iter()
+            .any(|(pid, ticks)| live(*pid, *ticks).unwrap_or(false))
+        {
+            reap(targets);
+            return Ok(Vec::new());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    for (pid, ticks) in targets {
+        if live(*pid, *ticks)? {
+            signal(*pid, Signal::SIGKILL)?;
+        }
+    }
+    let second = std::time::Instant::now();
+    while second.elapsed() < Duration::from_secs(3) {
+        if !targets
+            .iter()
+            .any(|(pid, ticks)| live(*pid, *ticks).unwrap_or(false))
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    reap(targets);
+    let mut survived = Vec::new();
+    for (pid, ticks) in targets {
+        if live(*pid, *ticks)? {
+            survived.push(*pid);
+        }
+    }
+    Ok(survived)
+}
+
+fn reap(targets: &[(i32, u64)]) {
+    for (pid, _) in targets {
+        let mut status = 0;
+        unsafe {
+            nix::libc::waitpid(*pid, &mut status, nix::libc::WNOHANG);
+        }
+    }
+}
+
 fn wait_until_gone(pid: i32, start_ticks: u64, budget: Duration) -> io::Result<bool> {
     let started = std::time::Instant::now();
     loop {
@@ -147,6 +209,9 @@ mod tests {
         assert_eq!(parsed.pid, 432);
         assert_eq!(parsed.comm, "worker (a) b");
         assert_eq!(parsed.state, 'S');
+        assert_eq!(parsed.ppid, 1);
+        assert_eq!(parsed.pgrp, 2);
+        assert_eq!(parsed.nice, 16);
         assert_eq!(parsed.start_ticks, 424242);
     }
 
