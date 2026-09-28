@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PySide6.QtCore import QEvent, QModelIndex, QObject, QPersistentModelIndex, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QKeyEvent, QMouseEvent, QPainter
+from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter
 from PySide6.QtWidgets import (
     QFrame,
     QLabel,
@@ -26,8 +26,9 @@ from PySide6.QtWidgets import (
 
 from desktop.native import icons
 from desktop.native.elevation import lift
+from desktop.native.fonts import caption, weighted
 from desktop.native.motion import appear
-from desktop.native.tokens import TYPE_PT, WEIGHT_STRONG, Shadow
+from desktop.native.tokens import WEIGHT_STRONG, Shadow
 
 BAR_WIDTH = 560
 # Rows shown before the list scrolls, group labels counted.
@@ -114,9 +115,7 @@ class CommandRow(QStyledItemDelegate):
     ) -> None:
         if not index.data(KEY_ROLE):
             painter.save()
-            font = QFont(option.font)
-            font.setPointSizeF(font.pointSizeF() * TYPE_PT["caption"] / TYPE_PT["body"])
-            font.setWeight(QFont.Weight(WEIGHT_STRONG))
+            font = weighted(caption(option.font), WEIGHT_STRONG)
             painter.setFont(font)
             painter.setPen(QColor(self.muted))
             words = option.rect.adjusted(8, 4, -8, 0)
@@ -127,8 +126,7 @@ class CommandRow(QStyledItemDelegate):
         keys = index.data(KEYS_ROLE)
         if keys:
             painter.save()
-            font = QFont(option.font)
-            font.setPointSizeF(font.pointSizeF() * TYPE_PT["caption"] / TYPE_PT["body"])
+            font = caption(option.font)
             painter.setFont(font)
             painter.setPen(QColor(self.muted))
             right = QRect(option.rect.adjusted(8, 0, -12, 0))

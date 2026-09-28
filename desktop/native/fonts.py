@@ -51,6 +51,14 @@ def weighted(base: QFont, weight: int) -> QFont:
     return made
 
 
+def numeral(base: QFont, pixels: int, weight: int) -> QFont:
+    """A figure sized to the mark it sits in, such as a step's number in its 20-pixel ring, rather
+    than to the words around it: the scale's caption would touch the ring."""
+    made = weighted(base, weight)
+    made.setPixelSize(pixels)
+    return made
+
+
 def caption(base: QFont) -> QFont:
     """The type scale's caption beside `base`, the body size at some Text knob. A design that sets
     its own size keeps its own proportion until its lane redraws it."""

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QApplication, QPushButton
 from desktop.native.calendar import sunday_due
 from desktop.native.hours import canvas as canvas_module
 from desktop.native.hours.canvas import BlockPainter, Drawn
+from desktop.native.hours.classic import SIDE_PX
 from desktop.native.hours.geometry import Span
 from desktop.native.layouts.registry import sanitize_layout
 from desktop.native.window import WINDOW_MIN_WIDTH, NativeWindow
@@ -62,7 +63,7 @@ def test_week_keeps_next_the_focus_list_and_not_placed_yet_beside_its_hours(
     seeded(qapp, window)
     side = window.week_table.side
     assert window.planner.currentWidget() is window.week_table
-    assert side.isVisible() and not side.folded and side.width() == 250
+    assert side.isVisible() and not side.folded and side.width() == SIDE_PX
     hours = window.week_table.scroll
     assert side.geometry().left() >= hours.geometry().right(), "the side is to the right of the hours"
     assert side.next.isVisible() and side.next.text() == window.session.now_next_text()

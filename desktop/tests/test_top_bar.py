@@ -10,7 +10,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEvent, QPoint, QRect, Qt
-from PySide6.QtGui import QColor, QImage
+from PySide6.QtGui import QColor, QImage, QPainter, QRegion
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -19,6 +19,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QStyle,
+    QStyleOptionButton,
     QWidget,
 )
 
@@ -213,6 +215,22 @@ def states_host(
     return made[0], made[1], made[2]
 
 
+def hover_fill(button: QPushButton) -> QColor:
+    """The colour just inside a button's left edge as the style draws it with the pointer on it.
+
+    Drawn from the style with the hover state set: a moved pointer on the offscreen platform reaches
+    whichever test window is on top, which in a parallel run can be one an earlier test left open."""
+    option = QStyleOptionButton()
+    button.initStyleOption(option)
+    option.state |= QStyle.StateFlag.State_MouseOver
+    image = QImage(button.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(0)
+    painter = QPainter(image)
+    button.style().drawControl(QStyle.ControlElement.CE_PushButton, option, painter, button)
+    painter.end()
+    return image.pixelColor(4, button.height() // 2)
+
+
 def fill(button: QPushButton) -> QColor:
     """The colour just inside a button's left edge, clear of its words and its 2-pixel edge."""
     return button.grab().toImage().pixelColor(4, button.height() // 2)
@@ -227,11 +245,7 @@ def test_every_button_answers_hover_press_and_disabled(qapp: QApplication, host:
     tint = mix(palette["accent"], page, 0.1)
     for button, rest in ((primary, palette["accent"]), (secondary, tint)):
         assert near(fill(button), rest), button.text()
-        QTest.mouseMove(button, button.rect().center())
-        qapp.processEvents()
-        assert near(fill(button), mix(text, rest, 0.06)), f"{button.text()} on hover"
-        QTest.mouseMove(host, QPoint(host.width() - 1, host.height() - 1))
-        qapp.processEvents()
+        assert near(hover_fill(button), mix(text, rest, 0.06)), f"{button.text()} on hover"
         button.setDown(True)
         assert near(fill(button), mix(text, rest, 0.10)), f"{button.text()} pressed"
         button.setDown(False)
@@ -302,6 +316,15 @@ def laid_over(area: QAbstractScrollArea) -> bool:
     return bool(bar_.property("overlay")) and inside
 
 
+def painted(bar_: QWidget) -> QImage:
+    """What the bar itself paints, on nothing. grab() fills a widget's background first, and a bar laid
+    over the hours has none of its own: on screen the hours show through round its handle."""
+    image = QImage(bar_.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(0)
+    bar_.render(image, QPoint(), QRegion(), QWidget.RenderFlag.DrawChildren)
+    return image
+
+
 def inked_columns(image: QImage) -> int:
     return sum(
         1
@@ -321,9 +344,9 @@ def test_the_hours_scroll_under_a_thin_bar_that_widens_under_the_pointer(
     bar_ = scroll.verticalScrollBar()
     assert bar_.isVisible() and bar_.maximum() > 0
     assert laid_over(scroll), "the bar still takes a strip beside the hours"
-    rest = inked_columns(bar_.grab().toImage())
+    rest = inked_columns(painted(bar_))
     QApplication.sendEvent(bar_, QEvent(QEvent.Type.Enter))
-    wide = inked_columns(bar_.grab().toImage())
+    wide = inked_columns(painted(bar_))
     QApplication.sendEvent(bar_, QEvent(QEvent.Type.Leave))
     assert 0 < rest < wide, (rest, wide)
     assert rest <= 6, f"{rest} pixels wide at rest"

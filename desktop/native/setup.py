@@ -47,6 +47,7 @@ from desktop.native.calendar import (
     is_setup_block,
     sunday_due,
 )
+from desktop.native.fonts import numeral
 from desktop.native.hours.geometry import drag_step
 from desktop.native.layouts.registry import (
     EXPERIMENTAL,
@@ -76,6 +77,7 @@ from desktop.native.settings import (
     SPOTIFY_TONE_NOTE,
 )
 from desktop.native.sound import Bell
+from desktop.native.tokens import WEIGHT_STRONG
 from desktop.native.tones import FALLBACK, RECIPES
 from desktop.native.weekmodel import clock_text, hhmm_text, time_format
 from desktop.native.widgets import DAYS, ChoiceCard, DueField, FlowLayout, rounded_picture
@@ -275,9 +277,7 @@ def step_badge(number: int, state: str, palette: dict, family: str, ratio: float
         current = state == CURRENT
         painter.setPen(QPen(QColor(palette["accent" if current else "hairline_strong"]), 1.5))
         painter.drawEllipse(ring)
-        font = QFont(family)
-        font.setPixelSize(11)
-        font.setWeight(QFont.Weight.DemiBold)
+        font = numeral(QFont(family), 11, WEIGHT_STRONG)
         painter.setFont(font)
         painter.setPen(QColor(palette["text" if current else "muted"]))
         painter.drawText(QRectF(0, 0, BADGE_PX, BADGE_PX), Qt.AlignmentFlag.AlignCenter, str(number))

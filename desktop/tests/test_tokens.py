@@ -251,7 +251,9 @@ def test_the_text_knob_scales_all_five_sizes() -> None:
 
 
 # The only modules that may set a font's size or weight: the stylesheet and the scale's own helpers.
-SCALE_KEEPERS = {"look.py", "fonts.py"}
+# ring.py fits the focus screen's countdown numeral to its ring, beyond the scale on purpose, as
+# 0.16's countdown was; its other words are the scale's.
+SCALE_KEEPERS = {"look.py", "fonts.py", "ring.py"}
 OWN_FONT = re.compile(r"\.set(Bold|Weight|PointSize|PointSizeF|PixelSize)\(|font-size|font-weight")
 
 

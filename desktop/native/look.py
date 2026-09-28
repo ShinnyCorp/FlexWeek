@@ -1430,7 +1430,8 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
 
     focused = views('[keyfocus="true"]:focus')
     menu = (
-        f"QPushButton#moreButton {{ padding-right: {pad * 2 + 16}px; }}"
+        # The chevron's room is added to the width by Qt; the padding only keeps it off the word.
+        f"QPushButton#moreButton {{ padding-right: {pad + 14}px; }}"
         f"QPushButton#moreButton::menu-indicator {{ image: url({more}); subcontrol-origin: padding; "
         f"subcontrol-position: center right; width: 14px; height: 14px; right: {pad}px; }}"
         if more
@@ -1441,7 +1442,9 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
         f"alternate-background-color: {track}; selection-background-color: {chosen}; color: {outline}; "
         f"qproperty-shade: {shade}; }}"
         f"{views()} {{ background: transparent; color: {quiet_ink}; font-weight: {WEIGHT_REGULAR}; "
-        f"border: 2px solid transparent; padding: {max(pad - 4, 1)}px {pad + 4}px; min-height: 0; }}"
+        # Inside a track 3 pixels in from the bar's other controls: a view's own padding is that much
+        # less, or the track squeezed it and cut the tails off "Day" and "My day".
+        f"border: 2px solid transparent; padding: {max(pad - 7, 0)}px {pad + 2}px; min-height: 0; }}"
         f"{views(':hover')} {{ background: transparent; color: {text}; }}"
         f"{views(':checked')} {{ background: transparent; color: {chosen_words}; "
         f"font-weight: {WEIGHT_STRONG}; }}"
@@ -1450,6 +1453,10 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
         f"{BAR_BUTTONS} {{ padding-top: {max(pad - 4, 1)}px; padding-bottom: {max(pad - 4, 1)}px; }}"
         "QPushButton#prevWeek, QPushButton#nextWeek, QPushButton#settingsGear { "
         f"padding-left: {max(pad - 2, 2)}px; padding-right: {max(pad - 2, 2)}px; }}"
+        # Words-only controls sit as close to their words as the mock-up's: a filled button's
+        # padding made More 108 pixels wide and pushed a two-month title into its short form.
+        f"QPushButton#todayWeek, QPushButton#moreButton {{ padding-left: {pad}px; }}"
+        f"QPushButton#todayWeek {{ padding-right: {pad}px; }}"
         "QPushButton#addButton { border-top-right-radius: 0; border-bottom-right-radius: 0; "
         f"padding-right: {pad + 2}px; }}"
         f"QPushButton#addArrow {{ padding: {pad}px {pad // 2 + 2}px; border-top-left-radius: 0; "

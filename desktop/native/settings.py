@@ -81,7 +81,7 @@ from desktop.native.motion import slide_page
 from desktop.native.remind import ALARM_SNOOZE_MIN
 from desktop.native.sound import Bell
 from desktop.native.spotify import SpotifyPlayer, open_in_app
-from desktop.native.tokens import type_pt
+from desktop.native.tokens import SPACING, type_pt
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
 from desktop.native.weekmodel import hhmm_text, length_label, time_format
@@ -275,7 +275,9 @@ def _section_page(title: str, cards: tuple[QWidget, ...]) -> QWidget:
     page = QWidget()
     page.setObjectName("settingsBody")
     around = QHBoxLayout(page)
-    around.setContentsMargins(24, 24, 24, SECTION_GAP_BELOW)
+    # 16 at the sides, a spacing step, not 24: the column is centred and capped at 960, so the sides
+    # only show on a narrow window, where Large text's four Open on choices needed the room.
+    around.setContentsMargins(SPACING[3], 24, SPACING[3], SECTION_GAP_BELOW)
     column = QWidget()
     column.setObjectName("settingsRow")
     column.setMaximumWidth(SETTINGS_COLUMN)

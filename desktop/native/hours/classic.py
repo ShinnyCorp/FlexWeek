@@ -42,7 +42,8 @@ DAY_HOUR_PX = DAY_SCALE.default
 WEEK_HOUR_PX = WEEK_SCALE.default
 PAD = 8
 GUTTER = 52
-SIDE_PX = 250
+# 0.16's 250 at its 12-point text, grown with the type scale's 13-point body (decision 4).
+SIDE_PX = 272
 # The most rows the focus list shows before it scrolls, so a long one never pushes the tray away.
 FOCUS_ROWS = 6
 

@@ -541,7 +541,7 @@ def test_a_custom_look_dresses_the_window_and_is_kept_with_the_saved_looks(
     assert category_paint("class", painter.colours)[1] == oklch(*MARK["dark"], 140)
     title = window.findChild(QLabel, "weekTitle")
     assert title.font().family() == "JetBrains Mono"
-    assert "font-size: 14.4pt" in window.styleSheet() and "border-radius: 4px" in window.styleSheet()
+    assert "font-size: 15.5pt" in window.styleSheet() and "border-radius: 4px" in window.styleSheet()
     picture = window.week_table.hours.grab().toImage()
     colours = {picture.pixelColor(x, y).name() for x in range(0, picture.width(), 40) for y in (5, 200)}
     assert "#1e2430" in colours
@@ -1334,17 +1334,20 @@ def test_the_week_title_sits_beside_its_arrows_and_is_whole_when_there_is_room(
 def test_a_week_across_two_months_shortens_to_month_abbreviations_not_an_ellipsis(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """At 1024 px "28 September – 4 October" does not fit, and cut short it read "28 Septemb…": no end
-    date at all. The short form keeps the whole range."""
+    """Beside 0.17's top bar at 1280 px "28 September – 4 October" does not fit, and cut short it read
+    "28 Septemb…": no end date at all. The short form keeps the whole range. Wider, the whole words
+    come back; narrower, the controls go under the title, which then has room again."""
     window.session.load_week("2026-09-28")
     wait_until(qapp, lambda: not window.session.busy and window.session.week_start == "2026-09-28")
-    window.resize(1280, 768)
-    qapp.processEvents()
-    assert window.week_title.text() == "28 September – 4 October"
-    window.resize(1024, 768)
-    qapp.processEvents()
-    assert window.week_title.text() == "28 Sep – 4 Oct"
-    assert window.week_title.accessibleName() == "28 September – 4 October"
+    seen = {}
+    for width in (1440, 1280, 1150, 1024):
+        window.resize(width, 768)
+        qapp.processEvents()
+        seen[width] = window.week_title.text()
+        assert window.week_title.accessibleName() == "28 September – 4 October", width
+    assert seen[1440] == "28 September – 4 October"
+    assert seen[1280] == "28 Sep – 4 Oct"
+    assert set(seen.values()) <= {"28 September – 4 October", "28 Sep – 4 Oct"}, seen
 
 
 def test_the_top_bar_keeps_the_gear_on_a_1024_window(qapp: QApplication, window: NativeWindow) -> None:

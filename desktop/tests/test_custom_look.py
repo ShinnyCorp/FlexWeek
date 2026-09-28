@@ -122,7 +122,8 @@ def test_every_measure_and_choice_reaches_what_is_drawn() -> None:
     }
     look = worn(custom)
     measures = look_measures(look)
-    assert (measures["card_radius"], measures["radius"], measures["size"]) == (14, 8, 14.4)
+    # The body size at 1.2 times the type scale's 13 points, to the half point.
+    assert (measures["card_radius"], measures["radius"], measures["size"]) == (14, 8, 15.5)
     assert (measures["body"], measures["heading"]) == (FONT_FAMILIES["serif"], FONT_FAMILIES["mono"])
     assert (measures["edge_width"], measures["show_times"], measures["today_highlight"]) == (5, False, False)
     knobs = effective_look(look)
@@ -130,7 +131,7 @@ def test_every_measure_and_choice_reaches_what_is_drawn() -> None:
     assert drawn == ("compact", "bold", "outline", "large")
     sheet = pack_stylesheet("system", False, look)
     assert "font-family: Newsreader" in sheet.split("QWidget {")[1].split("}")[0]
-    assert "font-size: 14.4pt" in sheet and "border-radius: 14px" in sheet
+    assert "font-size: 15.5pt" in sheet and "border-radius: 14px" in sheet
     assert "border-bottom: 4px solid" in sheet
     palette = resolved_palette("system", False, look)
     assert palette["rule"] == palette["window"] and palette["now"] == palette["text"]

@@ -28,8 +28,9 @@ from PySide6.QtWidgets import QMenu, QWidget, QWidgetAction
 
 from desktop.native import icons
 from desktop.native.elevation import lift
+from desktop.native.fonts import caption
 from desktop.native.look import MENU_EDGE, hover_tint
-from desktop.native.tokens import RADIUS_CARD, RADIUS_CONTROL, SHADOW_LARGE, TYPE_PT
+from desktop.native.tokens import RADIUS_CARD, RADIUS_CONTROL, SHADOW_LARGE
 
 ICON = "iconName"
 DANGER = "danger"
@@ -158,11 +159,7 @@ class Menu(QMenu):
     # --- drawing --------------------------------------------------------------------------------
 
     def _key_font(self) -> QFont:
-        font = QFont(self.font())
-        size = font.pointSizeF()
-        if size > 0:
-            font.setPointSizeF(size * TYPE_PT["caption"] / TYPE_PT["body"])
-        return font
+        return caption(self.font())
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         colours = self._colours

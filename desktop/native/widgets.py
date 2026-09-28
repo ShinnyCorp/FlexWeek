@@ -72,7 +72,9 @@ from PySide6.QtWidgets import (
     QSpacerItem,
     QSpinBox,
     QStyle,
+    QStyleOptionButton,
     QStyleOptionSlider,
+    QStylePainter,
     QTimeEdit,
     QVBoxLayout,
     QWidget,
@@ -111,7 +113,7 @@ from desktop.native.reuse import (
     routine_source_blocks,
     row_conflict,
 )
-from desktop.native.tokens import SHADOW_LARGE, SPACING, WEIGHT_STRONG, Shadow
+from desktop.native.tokens import SHADOW_LARGE, SPACING, WEIGHT_REGULAR, WEIGHT_STRONG, Shadow
 from desktop.native.weekmodel import due_label, hhmm_text, length_label, time_format
 from desktop.native.work_windows import WorkWindowsEditor
 
@@ -1110,12 +1112,69 @@ def info_card(title: str, note: str) -> tuple[QFrame, QVBoxLayout]:
 
 class Switch(QCheckBox):
     """On or off, drawn as a toggle by the style sheet. Still a check box, so it is read, set and
-    announced as one."""
+    announced as one.
+
+    Its words wrap under their own first line, as a label's do: a check box's words are one line, so
+    at Large text "Split long homework into focus sessions" made Settings wider than an 800 pixel
+    window. The style draws the toggle; the words are drawn here."""
 
     def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
         super().__init__(text, parent)
         self.setProperty("switch", True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # A check box's own policy makes its one line the least it may be given.
+        policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
+
+    def _toggle(self) -> tuple[QStyleOptionButton, QRect, int]:
+        """The style's option with no words, where it draws the toggle, and the room after it."""
+        option = QStyleOptionButton()
+        self.initStyleOption(option)
+        option.text = ""
+        mark = self.style().subElementRect(QStyle.SubElement.SE_CheckBoxIndicator, option, self)
+        gap = self.style().pixelMetric(QStyle.PixelMetric.PM_CheckBoxLabelSpacing, option, self)
+        return option, mark, mark.right() + 1 + gap
+
+    def _words(self, width: int) -> QRect:
+        return self.fontMetrics().boundingRect(
+            QRect(0, 0, max(width, 1), 100_000), int(Qt.TextFlag.TextWordWrap), self.text()
+        )
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        _option, mark, start = self._toggle()
+        words = self.fontMetrics().size(0, self.text())
+        return QSize(start + words.width() + 2, max(mark.height(), words.height()) + 2)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        _option, mark, start = self._toggle()
+        longest = max((self.fontMetrics().horizontalAdvance(word) for word in self.text().split()), default=0)
+        return QSize(start + longest + 2, mark.height())
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802
+        _option, mark, start = self._toggle()
+        return max(mark.height(), self._words(width - start - 2).height()) + 2
+
+    def hitButton(self, pos: QPoint) -> bool:  # noqa: N802
+        return self.rect().contains(pos)
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        option, mark, start = self._toggle()
+        painter = QStylePainter(self)
+        painter.drawControl(QStyle.ControlElement.CE_CheckBox, option)
+        group = QPalette.ColorGroup.Active if self.isEnabled() else QPalette.ColorGroup.Disabled
+        painter.setPen(self.palette().color(group, QPalette.ColorRole.WindowText))
+        words = self._words(self.width() - start - 2)
+        # The first line sits level with the toggle; the rest run under it.
+        top = max(0, (mark.height() - self.fontMetrics().height()) // 2) + mark.top()
+        painter.drawText(
+            QRect(start, top, self.width() - start - 2, words.height()),
+            int(Qt.TextFlag.TextWordWrap | Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
+            self.text(),
+        )
 
 
 class Choices(QFrame):
@@ -1268,9 +1327,7 @@ class SwatchButton(QAbstractButton):
             painter.drawPixmap(round(left + (ring - tick) / 2), round((ring - tick) / 2), mark)
         words = self.palette().color(QPalette.ColorRole.WindowText)
         painter.setPen(words)
-        font = self.font()
-        font.setBold(self.isChecked())
-        painter.setFont(font)
+        painter.setFont(weighted(self.font(), WEIGHT_STRONG if self.isChecked() else WEIGHT_REGULAR))
         below = QRectF(0, ring + 2, self.width(), self.height() - ring - 2)
         painter.drawText(below, int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop), self.text())
         painter.end()
