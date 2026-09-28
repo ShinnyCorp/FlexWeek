@@ -105,18 +105,25 @@ def visible_buttons(widget) -> list[str]:
     return [button.text() for button in widget.findChildren(QPushButton) if button.isVisible()]
 
 
-def test_quick_focus_fills_the_window_and_esc_comes_back(qapp: QApplication, window: NativeWindow) -> None:
+def quick_focus(window: NativeWindow) -> None:
+    """More > Quick focus, then Start: Quick focus opens the screen ready, as F does (decision 19)."""
     window.findChild(QPushButton, "quickFocusAction").click()
-    assert window.session.focus is not None
+    assert window.session.focus is None, "Quick focus waits for Start"
     assert on_screen(window) == "focusPage"
+    assert visible_buttons(window.focus_screen) == ["Back", "Start"]
+    QTest.mouseClick(window.focus_screen.start, LEFT)
+    assert window.session.focus is not None
+
+
+def test_quick_focus_fills_the_window_and_esc_comes_back(qapp: QApplication, window: NativeWindow) -> None:
+    quick_focus(window)
     screen = window.focus_screen
     assert screen.isVisible() and window.findChild(QPushButton, "solveButton").isVisible() is False
     state = window.session.focus
-    assert screen.time.text() == format_countdown(remaining_ms(state, window.session.now_ms()))
+    assert screen.time_text() == format_countdown(remaining_ms(state, window.session.now_ms()))
+    assert screen.ring.left() == 1.0, "a timer just started has the whole ring to go"
     assert screen.phase.text() == "Focus"
     assert screen.task.text() == "Quick focus"
-    screen.time.ensurePolished()
-    assert screen.time.font().pointSize() == 96 and screen.time.font().bold()
     assert visible_buttons(screen) == ["Back", "Pause", "Skip", "Finish"]
 
     QTest.keyClick(screen, Qt.Key.Key_Escape)
@@ -132,7 +139,7 @@ def test_quick_focus_fills_the_window_and_esc_comes_back(qapp: QApplication, win
 
 
 def test_pause_skip_and_finish_act_on_the_one_timer(qapp: QApplication, window: NativeWindow) -> None:
-    window.findChild(QPushButton, "quickFocusAction").click()
+    quick_focus(window)
     screen = window.focus_screen
     QTest.mouseClick(screen.pause, LEFT)
     assert window.session.focus["running"] is False
@@ -144,7 +151,7 @@ def test_pause_skip_and_finish_act_on_the_one_timer(qapp: QApplication, window: 
     QTest.mouseClick(screen.skip, LEFT)
     assert window.session.focus["phase"] == "break"
     assert screen.phase.text() == "Break"
-    assert screen.time.text() == format_countdown(phase_duration_ms("break", window.session.preferences))
+    assert screen.time_text() == format_countdown(phase_duration_ms("break", window.session.preferences))
     QTest.mouseClick(screen.stop, LEFT)
     assert window.session.focus is None
     assert on_screen(window) == "weekPage"
@@ -189,7 +196,7 @@ def test_f_opens_it_ready_to_start_unless_typing(qapp: QApplication, window: Nat
     screen = window.focus_screen
     assert window.session.focus is None, "F shows the timer; it does not start one"
     assert screen.phase.text() == READY
-    assert screen.time.text() == format_countdown(phase_duration_ms("work", window.session.preferences))
+    assert screen.time_text() == format_countdown(phase_duration_ms("work", window.session.preferences))
     assert visible_buttons(screen) == ["Back", "Start"]
     QTest.mouseClick(screen.start, LEFT)
     assert window.session.focus is not None and window.session.focus["title"] == "Quick focus"
@@ -197,7 +204,7 @@ def test_f_opens_it_ready_to_start_unless_typing(qapp: QApplication, window: Nat
 
 
 def test_a_week_change_does_not_take_the_screen_away(qapp: QApplication, window: NativeWindow) -> None:
-    window.findChild(QPushButton, "quickFocusAction").click()
+    quick_focus(window)
     window.session.week_changed.emit()
     assert on_screen(window) == "focusPage"
 
@@ -214,6 +221,7 @@ def test_a_finished_session_offers_finished_and_a_break(qapp: QApplication, wind
     screen = window.focus_screen
     assert session.focus["phase"] == "ended"
     assert screen.phase.text() == "Session finished"
+    assert screen.ring.left() == 0.0, "a finished session has no ring left"
     assert visible_buttons(screen) == ["Back", "Finished", "Take a break"]
     QTest.mouseClick(screen.finished, LEFT)
     settled(qapp, window)
@@ -222,3 +230,49 @@ def test_a_finished_session_offers_finished_and_a_break(qapp: QApplication, wind
     assert (essay["completed"], essay["completed_day"], essay["start"]) == (True, 3, "19:00")
     assert session.focus is None
     assert on_screen(window) == "weekPage"
+
+
+def test_the_ring_counts_down_with_the_timer(qapp: QApplication, window: NativeWindow) -> None:
+    quick_focus(window)
+    session = window.session
+    whole = phase_duration_ms("work", session.preferences)
+    started = session.now_ms()
+    session.now_ms = lambda: started + whole // 4
+    session.tick_focus()
+    screen = window.focus_screen
+    assert screen.ring.left() == pytest.approx(0.75, abs=0.01)
+    assert screen.time_text() == format_countdown(whole * 3 // 4)
+
+
+def test_pause_is_the_one_filled_button_and_skip_and_finish_are_words(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Decision 19: Pause filled, Skip and Finish as text, Back as a chevron. Three equal outlined
+    buttons read as three equal asks."""
+    from desktop.native.look import FOCUS_TEXT_BUTTONS
+
+    quick_focus(window)
+    screen = window.focus_screen
+    filled = [button.text() for button in screen.findChildren(QPushButton)
+              if button.isVisible() and not button.property("quiet")]
+    assert filled == ["Pause"]
+    assert {screen.skip.objectName(), screen.stop.objectName(), screen.back.objectName()} <= set(
+        FOCUS_TEXT_BUTTONS
+    )
+    screen.skip.ensurePolished()
+    face = screen.skip.palette().color(screen.skip.backgroundRole())
+    assert face.alpha() == 0 or face == screen.palette().color(screen.backgroundRole()), "no fill of its own"
+    assert not screen.back.icon().isNull(), "Back carries the chevron"
+
+
+def test_the_screen_wears_the_look_and_its_accent(qapp: QApplication, window: NativeWindow) -> None:
+    from desktop.native.look import resolved_palette, sanitize_look
+
+    window.session.preferences = {**window.session.preferences, "theme_pack": "dark-frost"}
+    window._look = sanitize_look({"preset": "default"})
+    window._apply_appearance()
+    window._open_focus_screen()
+    palette = resolved_palette("dark-frost", True, window._look)
+    screen = window.focus_screen
+    assert screen.ring._colours.arc == palette["accent"]
+    assert screen.palette().color(screen.backgroundRole()).name() == palette["window"]

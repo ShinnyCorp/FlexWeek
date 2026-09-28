@@ -1,21 +1,44 @@
 """Ctrl+K: one box to add something or go somewhere by typing, instead of hunting through menus.
 
 The bar only lists what can be done and says which one was chosen; the window does it, the same way
-its buttons do.
+its buttons do. It is drawn as decision 21 of 0.17 has it: the window dimmed 40 % behind it, the box a
+sheet with the large shadow, and its rows grouped under muted labels (Add, Go to, Homework), each
+with an icon and, where it has one, its key on the right.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QEvent, QObject, Qt, Signal
-from PySide6.QtGui import QKeyEvent, QMouseEvent
-from PySide6.QtWidgets import QFrame, QLabel, QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QModelIndex, QObject, QPersistentModelIndex, QRect, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QKeyEvent, QMouseEvent, QPainter
+from PySide6.QtWidgets import (
+    QFrame,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from desktop.native import icons
+from desktop.native.elevation import lift
+from desktop.native.motion import appear
+from desktop.native.tokens import TYPE_PT, WEIGHT_STRONG, Shadow
 
 BAR_WIDTH = 560
-VISIBLE_ROWS = 8
+# Rows shown before the list scrolls, group labels counted.
+VISIBLE_ROWS = 10
+ROW_PX = 36
+LABEL_PX = 28
 PLACEHOLDER = "Type a command or the name of your homework"
 NOTHING_MATCHES = "Nothing matches. Try fewer letters."
+GROUPS = ("Add", "Go to", "Homework")
+KEY_ROLE = Qt.ItemDataRole.UserRole
+KEYS_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 @dataclass(frozen=True)
@@ -23,6 +46,9 @@ class Command:
     key: str
     words: str
     tip: str = ""
+    group: str = "Go to"
+    icon: str = ""
+    keys: str = ""
 
 
 def match_rank(query: str, words: str) -> int | None:
@@ -53,6 +79,63 @@ def ranked(query: str, commands: list[Command]) -> list[Command]:
     return [commands[index] for _, index in sorted(scored)]
 
 
+def grouped(query: str, commands: list[Command]) -> list[tuple[str, list[Command]]]:
+    """What matches, under its group. The group holding the best match comes first, so the first row,
+    the one Enter runs, is always the best answer; with nothing typed they come in GROUPS order."""
+    best: dict[str, int] = {}
+    rows: dict[str, list[Command]] = {}
+    for command in ranked(query, commands):
+        rank = match_rank(query, command.words) or 0
+        best.setdefault(command.group, rank)
+        rows.setdefault(command.group, []).append(command)
+    def place(group: str) -> tuple[int, int]:
+        return best[group], GROUPS.index(group) if group in GROUPS else len(GROUPS)
+
+    order = sorted(rows, key=place)
+    return [(group, rows[group]) for group in order]
+
+
+class CommandRow(QStyledItemDelegate):
+    """A command drawn as the style draws a row, with its key on the right in the muted colour; a group
+    label drawn small and muted."""
+
+    def __init__(self, parent: QObject) -> None:
+        super().__init__(parent)
+        self.muted = "#5b6474"
+
+    def sizeHint(  # noqa: N802
+        self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
+    ) -> QSize:
+        size = super().sizeHint(option, index)
+        return QSize(size.width(), ROW_PX if index.data(KEY_ROLE) else LABEL_PX)
+
+    def paint(
+        self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
+    ) -> None:
+        if not index.data(KEY_ROLE):
+            painter.save()
+            font = QFont(option.font)
+            font.setPointSizeF(font.pointSizeF() * TYPE_PT["caption"] / TYPE_PT["body"])
+            font.setWeight(QFont.Weight(WEIGHT_STRONG))
+            painter.setFont(font)
+            painter.setPen(QColor(self.muted))
+            words = option.rect.adjusted(8, 4, -8, 0)
+            painter.drawText(words, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, index.data())
+            painter.restore()
+            return
+        super().paint(painter, option, index)
+        keys = index.data(KEYS_ROLE)
+        if keys:
+            painter.save()
+            font = QFont(option.font)
+            font.setPointSizeF(font.pointSizeF() * TYPE_PT["caption"] / TYPE_PT["body"])
+            painter.setFont(font)
+            painter.setPen(QColor(self.muted))
+            right = QRect(option.rect.adjusted(8, 0, -12, 0))
+            painter.drawText(right, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, keys)
+            painter.restore()
+
+
 class CommandBar(QWidget):
     """Laid over the whole window, dimming it; the box sits in the top third. A click outside the box
     or Esc closes it."""
@@ -64,12 +147,16 @@ class CommandBar(QWidget):
         self.setObjectName("commandBar")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._commands: list[Command] = []
+        self._icon_colour = "#5b6474"
+        # The window's Animations level: the dimmed window fades in with the box on it.
+        self.motion = "normal"
         self.box = QFrame(self)
         self.box.setObjectName("commandBox")
         self.box.setFixedWidth(BAR_WIDTH)
         column = QVBoxLayout(self.box)
         # The box's own padding is the margin; the layout's would double it.
         column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(4)
         self.input = QLineEdit()
         self.input.setObjectName("commandInput")
         self.input.setPlaceholderText(PLACEHOLDER)
@@ -77,16 +164,37 @@ class CommandBar(QWidget):
         self.input.textChanged.connect(self._fill)
         self.input.returnPressed.connect(self._run_current)
         self.input.installEventFilter(self)
+        self._search = self.input.addAction(
+            icons.icon("search", self._icon_colour), QLineEdit.ActionPosition.LeadingPosition
+        )
+        rule = QFrame()
+        rule.setObjectName("commandRule")
+        rule.setFixedHeight(1)
         self.list = QListWidget()
         self.list.setObjectName("commandList")
         self.list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.list.setIconSize(QSize(16, 16))
+        self.rows = CommandRow(self.list)
+        self.list.setItemDelegate(self.rows)
         self.list.itemClicked.connect(self._run_item)
         self.nothing = QLabel(NOTHING_MATCHES)
         self.nothing.setObjectName("commandNothing")
-        for widget in (self.input, self.list, self.nothing):
+        for widget in (self.input, rule, self.list, self.nothing):
             column.addWidget(widget)
         parent.installEventFilter(self)
         self.hide()
+
+    def set_look(self, palette: dict, shadow: Shadow | None, dark: bool = False) -> None:
+        """The icons and labels in the look's muted colour, and the box's shadow, or none."""
+        self._icon_colour = palette["muted"]
+        self.rows.muted = palette["muted"]
+        self._search.setIcon(icons.icon("search", self._icon_colour))
+        if shadow is None:
+            self.box.setGraphicsEffect(None)
+        else:
+            lift(self.box, shadow, dark)
+        if self.isVisible():
+            self._fill(self.input.text())
 
     def open(self, commands: list[Command]) -> None:
         self._commands = commands
@@ -96,6 +204,7 @@ class CommandBar(QWidget):
         self.show()
         self.raise_()
         self.input.setFocus()
+        appear(self, self.motion)
 
     def close_bar(self) -> None:
         self.hide()
@@ -104,23 +213,38 @@ class CommandBar(QWidget):
             host.setFocus()
 
     def shown_words(self) -> list[str]:
-        return [self.list.item(row).text() for row in range(self.list.count())]
+        """The commands listed, without the group labels."""
+        return [item.text() for item in self._items() if item.data(KEY_ROLE)]
+
+    def shown_groups(self) -> list[str]:
+        return [item.text() for item in self._items() if not item.data(KEY_ROLE)]
+
+    def _items(self) -> list[QListWidgetItem]:
+        return [self.list.item(row) for row in range(self.list.count())]
 
     def _fill(self, query: str) -> None:
         self.list.clear()
-        for command in ranked(query, self._commands):
-            item = QListWidgetItem(command.words)
-            item.setData(Qt.ItemDataRole.UserRole, command.key)
-            if command.tip:
-                item.setToolTip(command.tip)
-            self.list.addItem(item)
-        found = self.list.count()
+        for group, commands in grouped(query, self._commands):
+            label = QListWidgetItem(group)
+            label.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.list.addItem(label)
+            for command in commands:
+                item = QListWidgetItem(command.words)
+                item.setData(KEY_ROLE, command.key)
+                item.setData(KEYS_ROLE, command.keys)
+                if command.icon:
+                    item.setIcon(icons.icon(command.icon, self._icon_colour))
+                if command.tip:
+                    item.setToolTip(command.tip)
+                self.list.addItem(item)
+        found = len(self.shown_words())
         self.list.setVisible(found > 0)
         self.nothing.setVisible(found == 0)
         if found:
-            self.list.setCurrentRow(0)
-            rows = min(found, VISIBLE_ROWS)
-            self.list.setFixedHeight(rows * self.list.sizeHintForRow(0) + 2 * self.list.frameWidth())
+            self._step_to(0, 1)
+            shown = self._items()[:VISIBLE_ROWS]
+            height = sum(ROW_PX if item.data(KEY_ROLE) else LABEL_PX for item in shown)
+            self.list.setFixedHeight(height + 2 * self.list.frameWidth())
         self.box.adjustSize()
 
     def _place(self) -> None:
@@ -135,7 +259,9 @@ class CommandBar(QWidget):
         self.box.move((host.width() - width) // 2, max(24, round(host.height() / 6)))
 
     def _run_item(self, item: QListWidgetItem) -> None:
-        key = item.data(Qt.ItemDataRole.UserRole)
+        key = item.data(KEY_ROLE)
+        if not key:
+            return
         # Closed first, so a dialog the command opens is not under the dimmed window.
         self.close_bar()
         self.chosen.emit(key)
@@ -145,10 +271,19 @@ class CommandBar(QWidget):
         if item is not None and self.list.isVisible():
             self._run_item(item)
 
-    def _step(self, by: int) -> None:
+    def _step_to(self, row: int, by: int) -> None:
+        """The first command from `row` in the direction `by`, round the list, past the labels."""
         count = self.list.count()
-        if count:
-            self.list.setCurrentRow((self.list.currentRow() + by) % count)
+        for _ in range(count):
+            row %= count
+            if self.list.item(row).data(KEY_ROLE):
+                self.list.setCurrentRow(row)
+                return
+            row += by
+
+    def _step(self, by: int) -> None:
+        if self.list.count():
+            self._step_to(self.list.currentRow() + by, by)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize and watched is self.parentWidget() and self.isVisible():

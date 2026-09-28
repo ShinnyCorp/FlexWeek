@@ -83,6 +83,7 @@ from backend.slots import (
     hhmm_to_minutes,
     minutes_to_hhmm,
 )
+from desktop.native import icons
 from desktop.native.calendar import (
     CATEGORIES,
     SETUP_SCHOOL_ID,
@@ -95,6 +96,7 @@ from desktop.native.calendar import (
 from desktop.native.elevation import lift
 from desktop.native.fonts import time_font
 from desktop.native.icons import pixmap as icon_pixmap
+from desktop.native.menus import Menu
 from desktop.native.motion import app_level, appear, settle, vanish
 from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
@@ -104,7 +106,7 @@ from desktop.native.reuse import (
     routine_source_blocks,
     row_conflict,
 )
-from desktop.native.tokens import SHADOW_LARGE, SPACING
+from desktop.native.tokens import SHADOW_LARGE, SPACING, Shadow
 from desktop.native.weekmodel import due_label, hhmm_text, length_label, time_format
 from desktop.native.work_windows import WorkWindowsEditor
 
@@ -273,6 +275,9 @@ def fit_scroll_dialog(dialog: QDialog, *, min_height: int = DIALOG_USABLE_HEIGHT
 TOAST_MS = 6000
 TOAST_MARGIN = 24
 TOAST_MIN_WIDTH = 280
+TOAST_MAX_WIDTH = 420
+# Room round the toast's card for its shadow.
+TOAST_SHADOW = 4
 # Between the toast's bottom edge and the foot of the hours, and between its words and its button.
 TOAST_FOOT = 16
 TOAST_GAP = 12
@@ -463,21 +468,29 @@ class EndsLayout(QLayout):
         return top + self._gap + below + margins.top() + margins.bottom()
 
 
-class Toast(QFrame):
-    """One notice at a time, floating over the foot of the hours, with at most one button.
+class Toast(QWidget):
+    """One notice at a time, bottom right of the page it was said on, with at most one button.
 
-    The frame and its words let the pointer through to the hours under them. The button is laid over
-    the frame as the window's own child, since Qt passes a widget's clicks on only with its children's.
-    `over` is the widget whose foot it floats over; while that is hidden, the window's.
+    Dark with light words, the 16 corners of a sheet and the small shadow (decision 20 of 0.17). The
+    toast itself is the part that moves and fades; the painted card inside it carries the shadow, as a
+    widget holds one effect. The toast and its words let the pointer through to what is under them.
+    The button is laid over the card as the window's own child, since Qt passes a widget's clicks on
+    only with its children's. `over` is the page area it sits in; while that is hidden, the window.
     """
 
     def __init__(self, parent: QWidget, over: QWidget) -> None:
         super().__init__(parent)
         self._over = over
-        self.setObjectName("toast")
+        self.setObjectName("toastHost")
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        row = QHBoxLayout(self)
+        around = QHBoxLayout(self)
+        around.setContentsMargins(TOAST_SHADOW, TOAST_SHADOW, TOAST_SHADOW, TOAST_SHADOW)
+        self.card = QFrame()
+        self.card.setObjectName("toast")
+        self.card.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        around.addWidget(self.card)
+        row = QHBoxLayout(self.card)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(TOAST_GAP)
         self.label = QLabel()
@@ -492,6 +505,7 @@ class Toast(QFrame):
         self.button.hide()
         self.button.clicked.connect(self._pressed)
         self._callback: Callable[[], None] | None = None
+        self._action_colour = "#a1bbe4"
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(TOAST_MS)
@@ -499,6 +513,15 @@ class Toast(QFrame):
         # The window's Animations level. A notice rises into place and fades when it goes.
         self.motion = "normal"
         self.hide()
+
+    def set_look(self, action_colour: str, shadow: Shadow | None, dark: bool = False) -> None:
+        """The colour of the toast's button, for its icon, and the shadow, or none in a look without."""
+        self._action_colour = action_colour
+        if shadow is None:
+            self.card.setGraphicsEffect(None)
+        else:
+            lift(self.card, shadow, dark)
+        self._dress_button()
 
     def text(self) -> str:
         return self.label.text()
@@ -508,10 +531,11 @@ class Toast(QFrame):
         self.setAccessibleName(text)
         self.setAccessibleDescription(text)
         self.button.setText(button)
+        self._dress_button()
         self._callback = callback if button else None
         size = self.button.sizeHint() if button else QSize(0, 0)
         self._slot.changeSize(size.width(), size.height(), QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.layout().invalidate()
+        self.card.layout().invalidate()
         # A rise still running would carry the notice back to where the last one was meant to go.
         settle(self)
         settle(self.button)
@@ -531,6 +555,12 @@ class Toast(QFrame):
         # One with something to press stays long enough to reach for it.
         self._timer.start(TOAST_MS * 2 if button else TOAST_MS)
 
+    def _dress_button(self) -> None:
+        # Undo is the one button with a picture: the arrow back, in the button's own colour.
+        undo = self.button.text() == "Undo"
+        self.button.setIcon(icons.icon("undo-2", self._action_colour) if undo else QIcon())
+        self.button.setIconSize(QSize(14, 14))
+
     def reposition(self) -> None:
         host = self.parentWidget()
         if host is None:
@@ -542,11 +572,13 @@ class Toast(QFrame):
         self.label.setWordWrap(False)
         natural = self.sizeHint().width()
         self.label.setWordWrap(True)
-        width = min(max(natural, TOAST_MIN_WIDTH), max(120, area.width() - 2 * TOAST_MARGIN))
+        room = max(120, min(TOAST_MAX_WIDTH, area.width() - 2 * TOAST_FOOT) + 2 * TOAST_SHADOW)
+        width = min(max(natural, TOAST_MIN_WIDTH), room)
         height = max(self.heightForWidth(width), self.minimumSizeHint().height())
-        # Over the foot of the hours, and never past the bottom of the window.
-        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT
-        self.setGeometry(area.left() + (area.width() - width) // 2, max(0, bottom - height), width, height)
+        # Bottom right of the page, 16 pixels in from its corner, and never past the window's foot.
+        right = area.left() + area.width() - TOAST_FOOT + TOAST_SHADOW
+        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT + TOAST_SHADOW
+        self.setGeometry(max(0, right - width), max(0, bottom - height), width, height)
 
     def moveEvent(self, event: QMoveEvent) -> None:  # noqa: N802
         super().moveEvent(event)
@@ -564,7 +596,7 @@ class Toast(QFrame):
             self.button.hide()
 
     def _place_button(self) -> None:
-        inside = self.contentsRect()
+        inside = self.card.contentsRect().translated(self.card.pos())
         size = self.button.sizeHint()
         self.button.setGeometry(
             self.x() + inside.right() + 1 - size.width(),
@@ -654,7 +686,7 @@ class FlowLayout(QLayout):
         return y + row_height - rect.y() + margins.bottom()
 
 
-class AddMenu(QMenu):
+class AddMenu(Menu):
     """Everything that adds something to the week, in one menu.
 
     This was a strip of eight chips above the calendar, which armed a type for dragging, plus two Add
@@ -671,15 +703,12 @@ class AddMenu(QMenu):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("addMenu")
-        self.setToolTipsVisible(True)
-        for name, words, asked in (
-            ("addMenuHomework", "Add homework…", self.homework_requested),
-            ("addMenuFixed", "Add fixed time…", self.fixed_requested),
-            ("addMenuSchool", "School hours…", self.school_requested),
+        for name, words, icon, asked in (
+            ("addMenuHomework", "Add homework…", "book-open", self.homework_requested),
+            ("addMenuFixed", "Add fixed time…", "clock", self.fixed_requested),
+            ("addMenuSchool", "School hours…", "school", self.school_requested),
         ):
-            action = self.addAction(words)
-            action.setObjectName(name)
-            action.triggered.connect(asked.emit)
+            self.add(words, icon, name=name).triggered.connect(asked.emit)
         self.addSeparator()
         add_heading(self, "Then drag on the calendar")
         self._actions: dict[str, QAction] = {}

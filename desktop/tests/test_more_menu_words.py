@@ -56,7 +56,8 @@ TOOLTIPS = {
     "Unfinished": NOTHING_UNFINISHED,
     "Routines": "Save this week's fixed times as a routine, or add a saved routine to a week.",
     "Quick focus": (
-        "Start a 30-minute focus timer now, without picking homework. Change its length in Settings > Focus."
+        "Open the focus timer, ready to start 30 minutes without picking homework. "
+        "Change its length in Settings > Focus."
     ),
     "Replan all my homework": (
         "Find new times for all of this week's homework, as if none had a time yet. Homework you placed "
@@ -420,3 +421,24 @@ def test_help_and_about_are_under_more(
         if action.text() in {"Help", "About FlexWeek"}:
             action.trigger()
     assert opened == ["Help", "About FlexWeek"]
+
+
+def test_every_row_under_more_has_an_icon_and_log_out_stands_apart(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """Decision 22: icons on the More menu, "Advanced" named for what it holds, and Log out after a
+    line of its own, never with Help and About."""
+    from desktop.native.menus import ICON, Menu
+
+    menu = opened_more(window)
+    assert isinstance(menu, Menu)
+    named = [action for action in menu.actions() if action.text()]
+    assert all(action.property(ICON) for action in named), [a.text() for a in named if not a.property(ICON)]
+    edits = next(action for action in named if action.menu() is not None)
+    assert edits.text() == "Undo, copy and save"
+    assert [action.text() for action in edits.menu().actions()][:2] == ["Undo", "Redo"]
+    assert all(action.property(ICON) for action in edits.menu().actions())
+    rows = [action.text() or "---" for action in menu.actions() if action.isVisible() and not action.menu()]
+    assert rows[-5:] == ["---", "Help", "About FlexWeek", "---", "Log out"]
+    assert all(action.property(ICON) for action in window.add_menu.actions()[:3]), "the Add menu's three"

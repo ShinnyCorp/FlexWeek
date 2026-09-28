@@ -1,22 +1,29 @@
 """The focus timer as the whole window, large enough to read from across a desk.
 
 The timer is the session's `focus`, the same one the strip above the hours shows. This page only
-draws it and says what the student pressed; the window does it.
+draws it and says what the student pressed; the window does it. It wears the student's look, with
+the countdown in the ring One thing's Countdown uses (decision 19 of 0.17).
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QFontMetrics, QResizeEvent
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from desktop.native import icons
 from desktop.native.focus import format_countdown, phase_duration_ms, remaining_ms
+from desktop.native.ring import CountdownRing, ring_colours
 
 PHASE_WORDS = {"work": "Focus", "break": "Break", "long_break": "Long break", "ended": "Session finished"}
 READY = "Ready when you are"
 QUICK_TITLE = "Quick focus"
 BACK_HINT = "Esc goes back to your week."
-PROGRESS_STEPS = 1000
 SKIP_TIPS = {"work": "Skip to the break", "break": "Skip the break", "long_break": "Skip the break"}
+# The ring at its largest, and what the page keeps for Back, the buttons and the hint around it.
+RING_MAX = 440
+RING_MIN = 240
+AROUND_RING = 260
 
 
 class FocusScreen(QWidget):
@@ -36,31 +43,26 @@ class FocusScreen(QWidget):
         top = QHBoxLayout()
         self.back = self._button("Back", "focusScreenBack", self.back_requested, quiet=True)
         self.back.setToolTip("Go back to your week. The timer keeps running. Esc")
+        self.back.setIconSize(QSize(16, 16))
         top.addWidget(self.back)
         top.addStretch(1)
         layout.addLayout(top)
         layout.addStretch(2)
+        self.ring = CountdownRing()
         self.phase = self._label("focusScreenPhase")
-        self.time = self._label("focusScreenTime")
-        self.progress = QProgressBar()
-        self.progress.setObjectName("focusScreenProgress")
-        self.progress.setTextVisible(False)
-        self.progress.setRange(0, PROGRESS_STEPS)
-        # Centred, a bar takes only its hint's width, which is a sliver.
-        self.progress.setFixedWidth(360)
         self.task = self._label("focusScreenTask")
-        self.task.setWordWrap(True)
-        layout.addWidget(self.phase)
-        layout.addWidget(self.time)
-        layout.addWidget(self.progress, 0, Qt.AlignmentFlag.AlignHCenter)
-        layout.addSpacing(12)
-        layout.addWidget(self.task)
+        self.ring.above.addWidget(self.phase)
+        self.ring.below.addWidget(self.task)
+        layout.addWidget(self.ring, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addSpacing(24)
         buttons = QHBoxLayout()
+        buttons.setSpacing(8)
         buttons.addStretch(1)
+        # One filled button, the next step: Start, Pause or Resume, or Finished once time is up.
+        # Skip, Finish and Take a break are words beside it.
         self.start = self._button("Start", "focusScreenStart", self.start_requested)
         self.start.setToolTip("Start a focus timer now, without picking homework.")
-        self.pause = self._button("Pause", "focusScreenPause", self.pause_requested, quiet=True)
+        self.pause = self._button("Pause", "focusScreenPause", self.pause_requested)
         self.skip = self._button("Skip", "focusScreenSkip", self.skip_requested, quiet=True)
         self.stop = self._button("Finish", "focusScreenFinish", self.stop_requested, quiet=True)
         self.stop.setToolTip("Stop the timer and go back to your week.")
@@ -75,6 +77,8 @@ class FocusScreen(QWidget):
         hint = self._label("focusScreenHint")
         hint.setText(BACK_HINT)
         layout.addWidget(hint)
+        self._task_words = ""
+        self.set_palette({"accent": "#3d6fc4", "text": "#111827", "window": "#f7f8fa", "muted": "#5b6474"})
 
     def _label(self, name: str) -> QLabel:
         made = QLabel()
@@ -90,6 +94,12 @@ class FocusScreen(QWidget):
         made.clicked.connect(signal.emit)
         return made
 
+    def set_palette(self, palette: dict, text_scale: float = 1.0) -> None:
+        """The look's colours for what a style sheet cannot reach: the ring and Back's chevron."""
+        self.ring.set_colours(ring_colours(palette))
+        self.ring.set_text_scale(text_scale)
+        self.back.setIcon(icons.icon("chevron-left", palette["text"]))
+
     def set_state(self, session) -> None:
         """Ready with the student's focus length when no timer runs; otherwise the timer as it is."""
         state = session.focus
@@ -99,17 +109,18 @@ class FocusScreen(QWidget):
         running = state is not None and not ended
         if state is None:
             self.phase.setText(READY)
-            self.time.setText(format_countdown(phase_duration_ms("work", prefs)))
-            self.task.setText(QUICK_TITLE)
+            self.ring.set_number(format_countdown(phase_duration_ms("work", prefs)))
+            self._task_words = QUICK_TITLE
+            self.ring.set_left(1.0)
         else:
             paused = running and not state.get("running")
             self.phase.setText(PHASE_WORDS.get(phase, "") + (" · Paused" if paused else ""))
             left = remaining_ms(state, session.now_ms())
-            self.time.setText(format_countdown(left))
-            self.task.setText(state.get("title") or QUICK_TITLE)
+            self.ring.set_number(format_countdown(left))
+            self._task_words = state.get("title") or QUICK_TITLE
             whole = phase_duration_ms(phase, prefs) if running else 1
-            self.progress.setValue(round(PROGRESS_STEPS * (1 - min(left, whole) / whole)) if running else 0)
-        self.progress.setVisible(running)
+            self.ring.set_left(min(left, whole) / whole if running else 0.0)
+        self._show_task()
         self.start.setVisible(state is None)
         self.pause.setText("Pause" if state and state.get("running") else "Resume")
         self.skip.setToolTip(SKIP_TIPS.get(phase or "", ""))
@@ -118,3 +129,20 @@ class FocusScreen(QWidget):
         homework = ended and state.get("assignmentId") in (session.assignments or {})
         self.finished.setVisible(bool(homework))
         self.take_break.setVisible(ended)
+
+    def time_text(self) -> str:
+        """The countdown as the ring shows it."""
+        return self.ring.number()
+
+    def _show_task(self) -> None:
+        """The homework's name inside the ring, shortened to the ring's width when it is long."""
+        room = max(80, round(self.ring.width() * 0.7))
+        metrics = QFontMetrics(self.task.font())
+        self.task.setText(metrics.elidedText(self._task_words, Qt.TextElideMode.ElideRight, room))
+        self.task.setToolTip(self._task_words if self.task.text() != self._task_words else "")
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        side = max(RING_MIN, min(RING_MAX, self.height() - AROUND_RING, self.width() - 48))
+        self.ring.setFixedSize(side, side)
+        self._show_task()

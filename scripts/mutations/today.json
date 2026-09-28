@@ -168,9 +168,9 @@
   "test": "desktop/tests/test_account_words.py::test_delete_account_names_the_account_and_keeps_it_when_refused"
  },
  {
-  "file": "desktop/native/window.py",
+  "file": "desktop/native/menus.py",
   "name": "More shows its descriptions",
-  "old": "        more_menu.setToolTipsVisible(True)\n",
+  "old": "        self.setToolTipsVisible(True)\n",
   "new": "",
   "test": "desktop/tests/test_more_menu_words.py::test_every_action_under_more_and_advanced_says_what_it_does"
  },
@@ -408,16 +408,16 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "the toast takes the hours' clicks",
-  "old": "        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)\n        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)\n        row = QHBoxLayout(self)\n",
-  "new": "        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)\n        row = QHBoxLayout(self)\n",
-  "test": "desktop/tests/test_drag_results.py::test_the_toast_floats_over_the_foot_of_the_hours_and_lets_the_pointer_through"
+  "old": "        self.setObjectName(\"toastHost\")\n        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)\n",
+  "new": "        self.setObjectName(\"toastHost\")\n",
+  "test": "desktop/tests/test_drag_results.py::test_the_toast_sits_bottom_right_of_the_page_and_lets_the_pointer_through"
  },
  {
   "file": "desktop/native/widgets.py",
   "name": "the toast runs off the bottom of a short window",
-  "old": "        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT\n",
+  "old": "        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT + TOAST_SHADOW\n",
   "new": "        bottom = area.top() + area.height() + TOAST_FOOT * 4\n",
-  "test": "desktop/tests/test_drag_results.py::test_the_toast_floats_over_the_foot_of_the_hours_and_lets_the_pointer_through"
+  "test": "desktop/tests/test_drag_results.py::test_the_toast_sits_bottom_right_of_the_page_and_lets_the_pointer_through"
  },
  {
   "file": "desktop/native/hours/classic.py",
@@ -443,8 +443,8 @@
  {
   "file": "desktop/native/window.py",
   "name": "homework with no time offers a one-time Delete",
-  "old": "        if block.get(\"start\") or assignment is None:\n            offered.append((\"blockMenuDelete\", \"Delete\"))\n",
-  "new": "        if True:\n            offered.append((\"blockMenuDelete\", \"Delete\"))\n",
+  "old": "        if block.get(\"start\") or assignment is None:\n            menu.add(\"Delete\", ",
+  "new": "        if True:\n            menu.add(\"Delete\", ",
   "test": "desktop/tests/test_context_menu.py::test_homework_with_no_time_has_a_menu_too"
  },
  {
