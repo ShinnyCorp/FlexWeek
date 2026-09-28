@@ -223,13 +223,13 @@ def test_option_colours_repaint_the_screen(qapp: QApplication) -> None:
 
 def test_poster_counts_down_in_the_students_accent_not_0_16s_orange(qapp: QApplication) -> None:
     for accent in ("default", "sea"):
-        palette = resolved_palette("light-frost", False, None, accent)
+        worn = tokens_for("one", "black", resolved_palette("light-frost", False, None, accent))["accent"]
         view = shown(qapp, "19:00", colour="black", accent=accent)
         picture = view.findChild(CountdownRing).grab().toImage()
         inked = {
             picture.pixelColor(x, y).name() for x in range(picture.width()) for y in range(picture.height())
         }
-        assert palette["accent"] in inked, accent
+        assert worn in inked, accent
         assert "#fb923c" not in inked, accent
 
 

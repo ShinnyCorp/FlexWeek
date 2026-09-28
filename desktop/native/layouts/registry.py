@@ -18,7 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from desktop.native.layouts.colourways import BENTO, CLAY, DIAL, MISSION, ONE, RETRO, TIMELINE, Colourways
-from desktop.native.look import contrast, mix, readable_ink
+from desktop.native.look import AA_TEXT, contrast, mix, readable_ink
+from desktop.native.tokens import fit_lightness
 
 MATCH = "match"
 
@@ -340,8 +341,14 @@ def tokens_for(layout_id: str, colour: str, palette: dict) -> dict[str, str]:
     chosen = next((tokens for value, _, tokens in LAYOUTS[layout_id].colourways if value == colour), None)
     if chosen is None:
         return match_tokens(palette)
-    # A colourway that names no accent, as One thing's Poster, wears the student's own.
-    return complete({"accent": palette["accent"], "accent_ink": palette["accent_ink"], **chosen})
+    if "accent" in chosen:
+        return complete(chosen)
+    # A colourway that names no accent, as One thing's Poster and Day dial's Night, wears the
+    # student's own. Its lightness moves as little as it takes to read on the colourway's page, as
+    # the look moves it for the look's: a light look's blue on Poster's black read at 4.2 to 1.
+    accent = fit_lightness(palette["accent"], (chosen["bg"], chosen["surface"]), AA_TEXT)
+    ink = palette["accent_ink"] if accent == palette["accent"] else readable_ink(accent)
+    return complete({"accent": accent, "accent_ink": ink, **chosen})
 
 
 def contrast_failures(tokens: dict[str, str], floor: float = 4.5) -> list[str]:

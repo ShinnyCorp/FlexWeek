@@ -28,6 +28,7 @@ from desktop.native.look import (
     palette_from_tokens,
     resolved_palette,
 )
+from desktop.native.tokens import oklch_of
 from desktop.tests.test_look import TEXT_PAIRS, _lab
 
 DESIGNS = [spec.id for spec in LAYOUTS.values() if spec.options]
@@ -171,12 +172,12 @@ def test_match_my_look_is_readable_in_every_look_the_app_has() -> None:
 def test_a_design_can_ask_for_a_colour_its_colourway_does_not_name() -> None:
     palette = resolved_palette("light-frost", False, None, "default")
     tokens = tokens_for("one", "black", palette)
-    # Poster names no accent, so it wears the student's own in place of 0.16's orange.
-    assert (tokens["bg"], tokens["cta"], tokens["cta_ink"]) == (
-        "#000000",
-        palette["accent"],
-        palette["accent_ink"],
-    )
+    # Poster names no accent, so it wears the student's own in place of 0.16's orange: the same hue,
+    # lightened until it reads on the black page.
+    assert tokens["bg"] == "#000000" and tokens["cta"] == tokens["accent"]
+    assert oklch_of(tokens["accent"])[2] == pytest.approx(oklch_of(palette["accent"])[2], abs=2)
+    assert oklch_of(tokens["accent"])[0] > oklch_of(palette["accent"])[0]
+    assert contrast(tokens["cta_ink"], tokens["cta"]) >= 4.5
     # Derived from the colourway itself. Borrowed from the student's light look it was white on pale.
     for key in ("card_a", "card_b", "card_c", "card_d"):
         assert contrast(tokens["text"], tokens[key]) >= 4.5
@@ -280,10 +281,19 @@ def test_a_colourway_in_the_students_accent_reads_in_every_one(layout_id: str, c
     for pack, dark, accent in itertools.product(PACKS, (False, True), ACCENTS):
         tokens = tokens_for(layout_id, colour, resolved_palette(pack, dark, None, accent))
         failures += [(pack, dark, accent, item) for item in contrast_failures(tokens)]
+        for ground in ("bg", "surface"):
+            if (ratio := contrast(tokens["accent"], tokens[ground])) < AA_TEXT:
+                failures.append((pack, dark, accent, f"accent on {ground} {ratio:.2f}"))
         if (gap := math.dist(_lab(tokens["accent"]), _lab(tokens["danger"]))) < 25:
             close[(pack, dark, accent)] = round(gap, 1)
     assert failures == []
     assert close == {}
+
+
+def test_a_dark_looks_accent_already_reads_on_night_and_is_worn_as_it_is() -> None:
+    palette = resolved_palette("nocturne", True, None, "default")
+    tokens = tokens_for("dial", "midnight", palette)
+    assert (tokens["accent"], tokens["accent_ink"]) == (palette["accent"], palette["accent_ink"])
 
 
 def test_a_refusal_never_wears_the_accent() -> None:
