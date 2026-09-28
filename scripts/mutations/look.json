@@ -2,7 +2,7 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "a block leaves out its length though it has room",
-  "old": "            lambda cut: stack(2, (drawn.times, drawn.length), cut),\n",
+  "old": "            lambda cut: stack(2, tuple(part for part in (times, length) if part), cut),\n",
   "new": "",
   "test": "desktop/tests/test_hours_painter.py::test_a_block_says_the_most_it_can_without_cutting_a_word_or_ending_a_line_in_a_dot"
  },
@@ -37,15 +37,15 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "hour labels in proportional figures",
-  "old": "        font = time_font(QFont(painter.font()))\n        font.setPointSizeF(type_pt(\"caption\", self.scale(painter.font())))\n        painter.setFont(font)\n",
-  "new": "        font = QFont(painter.font())\n        font.setPointSizeF(type_pt(\"caption\", self.scale(painter.font())))\n        painter.setFont(font)\n",
+  "old": "        font = at_scale(time_font(painter.font()), \"caption\", self.scale(painter.font()))\n",
+  "new": "        font = at_scale(painter.font(), \"caption\", self.scale(painter.font()))\n",
   "test": "desktop/tests/test_hours_painter.py::test_every_time_on_the_hours_is_written_in_figures_of_one_width"
  },
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "block times in proportional figures",
-  "old": "        small = time_font(QFont(base))\n",
-  "new": "        small = QFont(base)\n",
+  "old": "        small = at_scale(time_font(base), \"caption\", scale, WEIGHT_REGULAR)\n",
+  "new": "        small = at_scale(base, \"caption\", scale, WEIGHT_REGULAR)\n",
   "test": "desktop/tests/test_hours_painter.py::test_every_time_on_the_hours_is_written_in_figures_of_one_width"
  },
  {
@@ -219,8 +219,8 @@
  {
   "file": "desktop/native/look.py",
   "name": "High contrast's view control grey again",
-  "old": "        + (_contrast_rules(palette) if palette.get(\"family\") == \"contrast\" else \"\")",
-  "new": "        + \"\"",
+  "old": "    chosen = palette[\"accent\"] if contrast_look else palette[\"panel\"]\n",
+  "new": "    chosen = palette[\"panel\"]\n",
   "test": "desktop/tests/test_controls_look.py::test_high_contrasts_view_control_reads_every_choice_and_fills_the_chosen_one"
  },
  {
@@ -271,5 +271,26 @@
   "old": "    \"default\": {\"dark\": (\"#7fa8ff\", DARK_INK), \"light\": (\"#3d6fc4\", LIGHT_INK)},\n",
   "new": "    \"default\": {\"dark\": (\"#7fa8ff\", DARK_INK), \"light\": (\"#8fb0e8\", LIGHT_INK)},\n",
   "test": "desktop/tests/test_look.py::test_every_look_but_high_contrast_wears_flexweeks_blue_by_default"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "High contrast's choices in Settings grey again",
+  "old": "        + (_contrast_rules(palette) if palette.get(\"family\") == \"contrast\" else \"\")",
+  "new": "        + \"\"",
+  "test": "desktop/tests/test_controls_look.py::test_high_contrasts_choices_in_settings_read_every_one_and_fill_the_chosen_one"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "a stray declaration after the week's title breaks the whole stylesheet",
+  "old": "        f\"QLabel#weekTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; \"\n        f\"color: {palette['text']}; }}\"\n",
+  "new": "        f\"QLabel#weekTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; \"\n        f\"color: {palette['text']}; }}\"\n        f'border-bottom: 2px solid {palette[\"accent\"]}; border-radius: 0; }}'\n",
+  "test": "desktop/tests/test_tokens.py::test_every_stylesheet_is_whole_rules_that_qt_can_parse"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "one line kept a pixel clear of a block's top again",
+  "old": "        tight = QRectF(room.left(), max(rect.top(), room.top() - TEXT_TOP), room.width(), 0)\n",
+  "new": "        tight = QRectF(room.left(), max(rect.top() + 1, room.top() - TEXT_TOP + 1), room.width(), 0)\n",
+  "test": "desktop/tests/test_hours_painter.py::test_a_half_hour_in_high_contrast_says_its_name_on_the_week"
  }
 ]

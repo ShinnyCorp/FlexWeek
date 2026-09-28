@@ -516,3 +516,28 @@ def test_a_short_block_at_large_text_keeps_its_title_first_and_whole_words(qapp:
 
     assert said("Piano lesson", False)[0] == "Piano lesson"
     assert said("Math worksheet", True) == ["Math…"]
+
+
+def test_a_half_hour_in_high_contrast_says_its_name_on_the_week(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """High contrast's text is Large, where a half-hour on the week is one caption line exactly. Kept a
+    pixel clear of its top, Dinner said nothing, and High contrast draws blocks as outlines, so there
+    was no colour to say it either: an empty box."""
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    look = {"preset": "high-contrast", "knobs": {}}
+    palette = resolved_palette("system", False, look)
+    dinner = {
+        "id": "dinner",
+        "title": "Dinner",
+        "kind": "locked",
+        "category": "meals",
+        "days": [0],
+        "start": "18:30",
+        "duration_min": 30,
+    }
+    canvas = three_days(blocks=(dinner,), palette=palette)
+    canvas.set_painter(BlockPainter(palette, look))
+    Said.words = []
+    canvas.grab()
+    assert "Dinner" in [text for text, _where in Said.words]

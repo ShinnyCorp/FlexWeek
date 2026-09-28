@@ -93,8 +93,8 @@
  {
   "name": "no bar on the chosen section",
   "file": "desktop/native/look.py",
-  "old": "        f\"border-left: 3px solid {palette['accent']}; font-weight: 600; }}\"\n",
-  "new": "        f\"font-weight: 600; }}\"\n",
+  "old": "        f\"border-left: 3px solid {palette['accent']}; font-weight: {WEIGHT_STRONG}; }}\"\n",
+  "new": "        f\"font-weight: {WEIGHT_STRONG}; }}\"\n",
   "test": "desktop/tests/test_settings_look.py::test_each_section_has_its_icon_and_the_chosen_one_an_accent_bar"
  },
  {

@@ -473,20 +473,13 @@
   "name": "a tray chip keeps its words through a change of look",
   "old": "        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):\n            self._fit()\n",
   "new": "        if False:\n            self._fit()\n",
-  "test": "desktop/tests/test_week_side.py::test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way"
+  "test": "desktop/tests/test_tray_chip.py::test_a_chip_shortens_its_words_again_when_a_new_look_makes_them_larger"
  },
  {
   "file": "desktop/native/hours/rail.py",
   "name": "the focus list a row short",
   "old": "                rows * self.tasks.sizeHintForRow(0) + margins.top() + margins.bottom() + 2\n",
   "new": "                (rows - 1) * self.tasks.sizeHintForRow(0) + margins.top() + margins.bottom() + 2\n",
-  "test": "desktop/tests/test_week_side.py::test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way"
- },
- {
-  "file": "desktop/native/hours/rail.py",
-  "name": "the focus list kept its height through a change of look",
-  "old": "        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):\n            self._fit_tasks()\n",
-  "new": "        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):\n            pass\n",
   "test": "desktop/tests/test_week_side.py::test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way"
  }
 ]

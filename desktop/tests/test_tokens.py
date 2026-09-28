@@ -269,3 +269,16 @@ def test_no_widget_outside_the_designs_sets_a_size_or_weight_of_its_own() -> Non
         if OWN_FONT.search(line) and not line.strip().startswith("#")
     ]
     assert found == []
+
+
+@pytest.mark.parametrize("name", LOOKS)
+def test_every_stylesheet_is_whole_rules_that_qt_can_parse(name: str) -> None:
+    """Qt drops a whole stylesheet it cannot parse, with only a line on the console. A stray
+    declaration left by a merge once did that to the window in every look, and every test still
+    passed: the window was drawn in Qt's own grey."""
+    for text in ("small", "normal", "large"):
+        pack, dark, look = LOOKS[name]
+        look = {**(look or {"preset": "default", "knobs": {}}), "knobs": {"text": text}}
+        sheet = pack_stylesheet(pack, dark, look, "default", resolved_palette(pack, dark, look))
+        leftover = re.sub(r"[^{}]+\{[^{}]*\}", "", sheet)
+        assert leftover.strip() == "", (name, text, leftover[:200])

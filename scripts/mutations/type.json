@@ -16,8 +16,8 @@
  {
   "file": "desktop/native/look.py",
   "name": "a heading a point over the body again",
-  "old": "        f\"QLabel#focusScreenTask {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; }}\"\n",
-  "new": "        f\"QLabel#focusScreenTask {{ font-size: 21pt; font-weight: {WEIGHT_STRONG}; }}\"\n",
+  "old": "        f\"QLabel#focusScreenTask {{ color: {palette['text']}; font-size: {type_pt('title', text)}pt; \"\n",
+  "new": "        f\"QLabel#focusScreenTask {{ color: {palette['text']}; font-size: 21pt; \"\n",
   "test": "desktop/tests/test_tokens.py::test_every_font_size_and_weight_in_the_stylesheet_is_on_the_scale"
  },
  {
@@ -37,8 +37,8 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "a block's name bold by its own hand",
-  "old": "        bold = weighted(painter.font(), WEIGHT_STRONG)\n        plain = time_font(_small(painter.font()))\n",
-  "new": "        bold = QFont(painter.font())\n        bold.setBold(True)\n        plain = time_font(_small(painter.font()))\n",
+  "old": "        title = at_scale(base, \"body\" if self.wide else \"caption\", scale, WEIGHT_STRONG)\n",
+  "new": "        title = at_scale(base, \"body\" if self.wide else \"caption\", scale)\n        title.setBold(True)\n",
   "test": "desktop/tests/test_tokens.py::test_no_widget_outside_the_designs_sets_a_size_or_weight_of_its_own"
  }
 ]

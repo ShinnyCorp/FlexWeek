@@ -13,7 +13,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, QStandardPaths, QUrl
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtGui import QAction, QDesktopServices, QImage, QRegion
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -307,8 +307,13 @@ def test_help_fades_its_words_at_an_edge_with_more_past_it(
     view = area.viewport()
     assert bottom.geometry().bottom() == view.height() - 1 and bottom.width() == view.width()
     page = dialog.palette().color(dialog.backgroundRole())
-    picture = view.grab().toImage()
-    assert picture.pixelColor(view.width() // 2, view.height() - 1) == page, "faded out to the page"
+    # Drawn alone on nothing: over the page itself its last row would be the page with no fade at all.
+    fade = QImage(bottom.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    fade.fill(0)
+    bottom.render(fade, QPoint(), QRegion(), QWidget.RenderFlag.DrawChildren)
+    last = fade.pixelColor(bottom.width() // 2, bottom.height() - 1)
+    # The ramp ends a fraction of a pixel below the last row, which is all but opaque.
+    assert last.alpha() >= 240 and last.rgb() == page.rgb(), "faded out to the page"
     bar.setValue(bar.maximum())
     qapp.processEvents()
     assert (top.isVisible(), bottom.isVisible()) == (True, False)

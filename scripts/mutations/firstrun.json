@@ -51,8 +51,8 @@
   {
     "name": "the sign-in card rounded as a card, not a sheet",
     "file": "desktop/native/look.py",
-    "old": "    sheet = RADIUS_SHEET if card_radius else 0\n",
-    "new": "    sheet = card_radius\n",
+    "old": "    sheet = RADIUS_SHEET if card_radius else 0\n    ring = mix(palette[\"accent\"], palette[\"field\"], 0.4)\n",
+    "new": "    sheet = card_radius\n    ring = mix(palette[\"accent\"], palette[\"field\"], 0.4)\n",
     "test": "desktop/tests/test_sign_in_card.py::test_the_card_is_a_sheet_lifted_with_the_large_shadow_where_the_look_has_shadows"
   },
   {
@@ -65,7 +65,7 @@
   {
     "name": "the sign-in card as narrow at Large text as at Normal",
     "file": "desktop/native/window.py",
-    "old": "            card.setFixedWidth(round(AUTH_CARD_WIDTH * TEXT_SCALE[knobs[\"text\"]]))\n",
+    "old": "            card.setFixedWidth(round(AUTH_CARD_WIDTH * text_scale(self._look)))\n",
     "new": "            card.setFixedWidth(AUTH_CARD_WIDTH)\n",
     "test": "desktop/tests/test_sign_in_card.py::test_every_line_on_the_card_is_whole_at_large_text"
   },

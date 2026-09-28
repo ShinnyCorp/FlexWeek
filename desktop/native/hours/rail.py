@@ -71,7 +71,9 @@ MONTHS = (
 )
 HIDE_MONTH = "Hide the month"
 SHOW_MONTH = "Show the month"
-PAD = SPACING[3]
+# 8 at the sides: the window's own 9-pixel margin puts the rail's words 17 from its edge, where the
+# mock-up has them at 16, and a focus row or a chip has the room to say "Chem lab report" whole.
+PAD = SPACING[1]
 # Where a chip's title starts: past its edge, the book and the gaps between.
 CHIP_TITLE_LEFT = SPACING[1] + 3 + SPACING[1] + 16 + SPACING[1]
 
@@ -475,8 +477,10 @@ class RailChip(TrayChip):
 class FocusRows(QStyledItemDelegate):
     """A focus list row: the book, the title, and when at the right, today's in the text colour."""
 
-    def __init__(self, rail: Rail) -> None:
-        super().__init__(rail)
+    def __init__(self, rail: Rail, view: QListWidget) -> None:
+        # Owned by its list, as Ctrl+K's rows are: a list does not own its delegate, and one freed
+        # before its list left the list's destructor disconnecting from nothing.
+        super().__init__(view)
         self.rail = rail
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex) -> QSize:
@@ -574,7 +578,7 @@ class Rail(QFrame):
         self.body = QWidget()
         self.body.setObjectName("railBody")
         self.sections = QVBoxLayout(self.body)
-        self.sections.setContentsMargins(PAD, SPACING[0], PAD, PAD)
+        self.sections.setContentsMargins(PAD, SPACING[0], PAD, SPACING[3])
         self.sections.setSpacing(SPACING[4])
         self.timer_slot = QVBoxLayout()
         self.timer_slot.setContentsMargins(0, 0, 0, 0)
@@ -618,7 +622,7 @@ class Rail(QFrame):
         focus_box.addLayout(self.focus_head)
         self.tasks = QListWidget()
         self.tasks.setObjectName("focusTasks")
-        self.tasks.setItemDelegate(FocusRows(self))
+        self.tasks.setItemDelegate(FocusRows(self, self.tasks))
         self.tasks.setMouseTracking(True)
         self.tasks.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         overlay_scroll_bars(self.tasks)
@@ -729,11 +733,6 @@ class Rail(QFrame):
             self.tasks.setFixedHeight(
                 rows * self.tasks.sizeHintForRow(0) + margins.top() + margins.bottom() + 2
             )
-
-    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
-        super().changeEvent(event)
-        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
-            self._fit_tasks()
 
     def set_waiting(self, waiting: tuple[Waiting, ...]) -> None:
         if self.hand.busy:

@@ -127,16 +127,16 @@
  },
  {
   "file": "desktop/native/hours/canvas.py",
-  "name": "the edge at 4 pixels whatever the look says",
-  "old": "            width = self.measures[\"edge_width\"] or 4\n",
-  "new": "            width = 4\n",
+  "name": "the edge at 3 pixels whatever the look says",
+  "old": "            width = self.measures[\"edge_width\"] or EDGE_WIDTH\n",
+  "new": "            width = EDGE_WIDTH\n",
   "test": "desktop/tests/test_hours_painter.py::test_a_custom_look_sets_todays_wash_the_now_line_and_the_edge"
  },
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "a block's times shown though the look hides them",
-  "old": "    return \" · \".join(part for index, part in enumerate(parts) if index >= len(shown) or shown[index])",
-  "new": "    return detail",
+  "old": "        times = drawn.times if shown[0] else \"\"\n",
+  "new": "        times = drawn.times\n",
   "test": "desktop/tests/test_hours_painter.py::test_a_custom_look_can_leave_out_a_blocks_times_or_its_length"
  },
  {

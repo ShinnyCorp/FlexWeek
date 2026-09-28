@@ -211,6 +211,37 @@ def view_control(qapp: QApplication, pack: str, dark: bool, look: dict | None) -
     return track.grab().toImage(), palette, [button.geometry() for button in buttons]
 
 
+def test_high_contrasts_choices_in_settings_read_every_one_and_fill_the_chosen_one(
+    qapp: QApplication,
+) -> None:
+    """Settings' two- and three-way choices, as the top bar's: in High contrast every choice in the
+    text colour on the page and the chosen one filled with the accent. Yellow on grey could not be
+    read."""
+    from desktop.native.widgets import Segmented
+
+    look = {"preset": "high-contrast", "knobs": {}}
+    palette = resolved_palette("system", False, look)
+    page = QWidget()
+    page.setStyleSheet(pack_stylesheet("system", False, look, "default", palette, control_art(palette)))
+    choice = Segmented((("Light", "light"), ("Dark", "dark"), ("System", "system")), "lookChoice")
+    choice.setParent(page)
+    choice.setCurrentIndex(1)
+    choice.adjustSize()
+    page.resize(choice.size())
+    page.show()
+    qapp.processEvents()
+    image = choice.grab().toImage()
+    light, dark, _system = (button.geometry() for button in choice.buttons())
+    assert image.pixelColor(dark.left() + 6, dark.center().y()).name() == palette["accent"]
+    assert image.pixelColor(light.left() + 6, light.center().y()).name() == palette["window"]
+    words = {
+        image.pixelColor(x, y).name()
+        for x in range(light.left(), light.right())
+        for y in range(light.top(), light.bottom())
+    }
+    assert palette["text"] in words
+
+
 def test_high_contrasts_view_control_reads_every_choice_and_fills_the_chosen_one(qapp: QApplication) -> None:
     """Yellow on light grey could not be read. Every segment is in the text colour on the page, and the
     chosen one is filled with the accent and written in its ink."""

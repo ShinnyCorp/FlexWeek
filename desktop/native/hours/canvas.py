@@ -40,6 +40,7 @@ from desktop.native import icons
 from desktop.native.calendar import DAYS, create_click_range
 from desktop.native.fonts import at_scale, caption, time_font, weighted
 from desktop.native.hours.geometry import (
+    BETWEEN,
     Axis,
     LinearTrack,
     Span,
@@ -120,13 +121,6 @@ class Drawn:
             return self.verdict.words
         words = f"{self.times} · {self.length}"
         return words + " · Pinned" if self.pinned and not self.done else words
-
-
-def shown_detail(detail: str, measures: dict) -> str:
-    """A block's times and its length, less whichever the look hides; a flag such as Finished stays."""
-    parts = detail.split(" · ")
-    shown = (measures["show_times"], measures["show_lengths"])
-    return " · ".join(part for index, part in enumerate(parts) if index >= len(shown) or shown[index])
 
 
 class BlockPainter:
@@ -305,7 +299,9 @@ class BlockPainter:
             lay = held_layout(drawn.title, words, title_font, small, room, book is not None)
             _paint_layout(painter, lay, title_font, small, ink, self.c("error") if refused else muted, book)
             return
-        tight = QRectF(room.left(), max(rect.top() + 1, room.top() - TEXT_TOP + 1), room.width(), 0)
+        # One line may take the block's whole height: at Large text a half-hour on the week is one
+        # caption line exactly, and High contrast's outlined Dinner said nothing, an empty box.
+        tight = QRectF(room.left(), max(rect.top(), room.top() - TEXT_TOP), room.width(), 0)
         tight.setBottom(rect.bottom())
         shown = (self.measures["show_times"], self.measures["show_lengths"])
         lay = block_layout(
@@ -1172,15 +1168,19 @@ class HoursCanvas(QWidget):
         edges; move from anywhere else. As in Daily Scheduler, except that an edge is never more than
         a fifth of the block, so a short block still moves when pressed a quarter of the way in."""
         down = track.axis is Axis.DOWN
-        length = rect.height() if down else rect.width()
+        # The drawing stops a pixel short of the block's start and two of its end, so blocks back to
+        # back stand apart. An edge is pressed on the drawing, but it is at most a fifth of the block's
+        # own time less those pixels: a fifth of the drawing let a 15-minute block on Day resize when
+        # pressed three quarters of the way into its time.
+        lead, trail = 1.0, BETWEEN - 1.0
+        length = (rect.height() if down else rect.width()) + lead + trail
         if length < 2 * EDGE_PX + 6:
             return Gesture.MOVE
-        edge = min(EDGE_PX, length / 5)
         from_start = upright.y() - rect.top() if down else upright.x() - rect.left()
         from_end = rect.bottom() - upright.y() if down else rect.right() - upright.x()
-        if from_start <= edge:
+        if from_start <= min(EDGE_PX, length / 5 - lead):
             return Gesture.RESIZE_START
-        if from_end <= edge:
+        if from_end <= min(EDGE_PX, length / 5 - trail):
             return Gesture.RESIZE_END
         return Gesture.MOVE
 

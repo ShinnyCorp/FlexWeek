@@ -326,10 +326,12 @@ def painted(bar_: QWidget) -> QImage:
 
 
 def inked_columns(image: QImage) -> int:
+    """How wide the handle is drawn: columns with any pixel at a fifth of full ink or more. The faint
+    groove laid under a wide bar is a sixteenth, and is not the handle."""
     return sum(
         1
         for x in range(image.width())
-        if any(image.pixelColor(x, y).alpha() > 0 for y in range(image.height()))
+        if any(image.pixelColor(x, y).alpha() >= 51 for y in range(image.height()))
     )
 
 

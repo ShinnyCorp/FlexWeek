@@ -1569,7 +1569,6 @@ def pack_stylesheet(
         # The week you are on, said once and said large.
         f"QLabel#weekTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; "
         f"color: {palette['text']}; }}"
-        f'border-bottom: 2px solid {palette["accent"]}; border-radius: 0; }}'
         # One filled button on the page: the thing the app is for.
         f"QLabel#blockDurationLine {{ color: {palette['muted']}; }}"
         f"QLabel#blockDurationLine[problem=\"true\"] {{ color: {palette['error']}; "
