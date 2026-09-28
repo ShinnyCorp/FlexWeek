@@ -1315,15 +1315,15 @@ def test_the_week_title_sits_beside_its_arrows_and_is_whole_when_there_is_room(
     qapp: QApplication, window: NativeWindow
 ) -> None:
     """The title was given 96 of the 217 pixels "21 – 27 September" needs, and Qt laid the arrows
-    out as if it had none, so it read "21 – 27 S" under the ‹ and › buttons at every width, half an
-    empty bar beside it."""
+    out as if it had none, so it read "21 – 27 S" under the arrows at every width, half an empty bar
+    beside it. The arrows and Today now come first (decision 11 of 0.17), and the title after them."""
     for width in (1280, 1024):
         window.resize(width, 768)
         qapp.processEvents()
-        title, previous = window.week_title, window.prev_nav
-        title_right = title.mapTo(window, title.rect().topRight()).x()
-        previous_left = previous.mapTo(window, previous.rect().topLeft()).x()
-        assert title_right < previous_left, (width, title_right, previous_left)
+        title, today = window.week_title, window.findChild(QPushButton, "todayWeek")
+        title_left = title.mapTo(window, title.rect().topLeft()).x()
+        today_right = today.mapTo(window, today.rect().topRight()).x()
+        assert today_right < title_left, (width, today_right, title_left)
     window.resize(1280, 768)
     qapp.processEvents()
     shown = window.week_title.text()
@@ -1363,7 +1363,7 @@ def test_the_top_bar_keeps_the_gear_on_a_1024_window(qapp: QApplication, window:
 def test_the_gear_opens_settings(qapp: QApplication, window: NativeWindow) -> None:
     gear = window.findChild(QPushButton, "settingsGear")
     assert gear is not None
-    assert gear.text() == "⚙\ufe0e"
+    assert gear.text() == "" and not gear.icon().isNull()
     assert gear.toolTip() == "Settings"
     assert gear.accessibleName() == "Settings"
     click(window, "settingsGear")

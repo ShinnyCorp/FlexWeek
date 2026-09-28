@@ -32,15 +32,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from desktop.native import icons
 from desktop.native.hours.canvas import HoursCanvas
 from desktop.native.hours.geometry import Axis
+from desktop.native.look import ZOOM_PILL_PX
 from desktop.native.weekmodel import WeekModel
+from desktop.native.widgets import overlay_scroll_bars
 
 KEY = re.compile(r"[a-z]+\.[a-z]+")
 # With Ctrl, anywhere in the window: zoom in, out, or back to the surface's own level.
 ZOOM_KEYS = {Qt.Key.Key_Equal: 1, Qt.Key.Key_Plus: 1, Qt.Key.Key_Minus: -1, Qt.Key.Key_0: 0}
 # Hours with neither now nor a block to show open at 08:00.
 OPENS = 8 * 60
+# The zoom pill's minus and plus, as the mock-up draws them.
+ZOOM_ICON_PX = 14
 
 
 @dataclass(frozen=True)
@@ -101,37 +106,40 @@ class ZoomButton(QPushButton):
 
 
 class ZoomButtons(QWidget):
-    """Zoom out and zoom in, side by side, for the corner above the hour labels."""
+    """Zoom out and zoom in for the corner above the hour labels: a small "− +" pill (decision 12)."""
 
     def __init__(self, name: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName(f"{name}Zoom")
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(2)
-        self.out = self._button("−", f"{name}ZoomOut", "Zoom out", "Ctrl+-")
-        self.into = self._button("+", f"{name}ZoomIn", "Zoom in", "Ctrl+=")
-        row.addWidget(self.out)
-        row.addWidget(self.into)
+        self.pill = QWidget()
+        self.pill.setProperty("zoomPill", True)
+        self.pill.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.pill.setFixedHeight(ZOOM_PILL_PX)
+        inside = QHBoxLayout(self.pill)
+        inside.setContentsMargins(1, 1, 1, 1)
+        inside.setSpacing(0)
+        self.out = self._button("minus", f"{name}ZoomOut", "Zoom out", "Ctrl+-")
+        self.into = self._button("plus", f"{name}ZoomIn", "Zoom in", "Ctrl+=")
+        divider = QWidget()
+        divider.setObjectName("zoomDivider")
+        divider.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        divider.setFixedSize(1, ZOOM_PILL_PX // 2)
+        inside.addWidget(self.out)
+        inside.addWidget(divider, 0, Qt.AlignmentFlag.AlignVCenter)
+        inside.addWidget(self.into)
+        row.addWidget(self.pill, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addStretch(1)
-        self._fit()
 
-    def _fit(self) -> None:
-        # Square, and grows with the text, never under 24 pixels a side.
-        side = max(24, self.fontMetrics().height() + 8)
-        for button in (self.out, self.into):
-            button.side = side
-            button.setFixedSize(side, side)
-
-    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
-        super().changeEvent(event)
-        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
-            self._fit()
-
-    def _button(self, face: str, name: str, words: str, keys: str) -> ZoomButton:
-        button = ZoomButton(face)
+    def _button(self, icon: str, name: str, words: str, keys: str) -> ZoomButton:
+        button = ZoomButton()
         button.setObjectName(name)
         button.setProperty("zoom", True)
+        button.side = ZOOM_PILL_PX - 2
+        button.setFixedSize(button.side, button.side)
+        button.setIconSize(QSize(ZOOM_ICON_PX, ZOOM_ICON_PX))
+        icons.tint(button, icon)
         button.setToolTip(f"{words} on the hours ({keys}; Ctrl+0 goes back)")
         button.setAccessibleName(f"{words} on the hours")
         button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
@@ -180,6 +188,7 @@ class HoursScroll(QScrollArea):
         self._row.addWidget(self.buttons, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.header.installEventFilter(self)
         self.setFrameShape(QFrame.Shape.NoFrame)
+        overlay_scroll_bars(self)
         self.setWidgetResizable(True)
         across = Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         (self.setHorizontalScrollBarPolicy if self._down else self.setVerticalScrollBarPolicy)(across)
@@ -347,7 +356,7 @@ class HoursScroll(QScrollArea):
 
     def _place_header(self) -> None:
         row = self.buttons.layout()
-        corner = max(self._gutter, float(2 * self.buttons.out.side + row.spacing() + 10))
+        corner = max(self._gutter, float(self.buttons.pill.sizeHint().width() + 10))
         self.buttons.setFixedWidth(round(corner))
         row.setContentsMargins(4, 0, 0, 0)
         if not self._down:

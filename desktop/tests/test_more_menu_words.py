@@ -27,7 +27,8 @@ from PySide6.QtWidgets import (
 
 from desktop.native import settings
 from desktop.native.layouts.registry import sanitize_layout
-from desktop.native.look import TEXT_PT, sanitize_look
+from desktop.native.look import sanitize_look
+from desktop.native.tokens import type_pt
 from desktop.native.window import NativeWindow
 from desktop.tests.window_support import (  # noqa: F401
     host,
@@ -404,7 +405,7 @@ def test_a_description_is_as_large_as_the_text_the_student_chose(
         QToolTip.showText(button.mapToGlobal(QPoint(0, button.height())), button.toolTip(), button)
         qapp.processEvents()
         tip = next(w for w in qapp.topLevelWidgets() if w.objectName() == "qtooltip_label" and w.isVisible())
-        assert tip.font().pointSize() == TEXT_PT[text], text
+        assert tip.font().pointSizeF() == type_pt("body", text), text
         QToolTip.hideText()
         qapp.processEvents()
 

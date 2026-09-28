@@ -198,7 +198,7 @@
  {
   "file": "desktop/native/look.py",
   "name": "a description takes the chosen text size",
-  "old": "border-radius: {item}px; font-size: {size}pt; }}",
+  "old": "border-radius: {item}px; font-size: {pt['body']}; }}",
   "new": "border-radius: {item}px; }}",
   "test": "desktop/tests/test_more_menu_words.py::test_a_description_is_as_large_as_the_text_the_student_chose"
  },
@@ -233,8 +233,8 @@
  {
   "file": "desktop/native/look.py",
   "name": "headings stand out",
-  "old": "f\"font-size: {size + 1}pt; font-weight: 700; color: {palette['text']}; }}\"",
-  "new": "f\"font-size: {size + 1}pt; color: {palette['text']}; }}\"",
+  "old": "f\"font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; color: {palette['text']}; }}\"",
+  "new": "f\"font-size: {pt['heading']}; color: {palette['text']}; }}\"",
   "test": "desktop/tests/test_settings_words.py::test_every_heading_on_appearance_stands_out_from_the_rows_under_it"
  },
  {
@@ -243,13 +243,6 @@
   "old": "    made.setProperty(\"quiet\", True)\n    made.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)\n",
   "new": "",
   "test": "desktop/tests/test_settings_words.py::test_a_button_that_opens_something_else_is_plain_and_as_wide_as_its_words"
- },
- {
-  "file": "desktop/native/look.py",
-  "name": "a plain button on a flat look has no edge",
-  "old": "quiet_edge = f\"background: {palette['hairline']}; border: none;\"",
-  "new": "quiet_edge = f\"background: transparent; border: 1px solid {palette['hairline_strong']};\"",
-  "test": "desktop/tests/test_look.py::test_depth_is_drawn_with_edges_because_qt_has_no_shadows"
  },
  {
   "file": "desktop/native/look.py",

@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 from PySide6.QtCore import (
+    Property,
     QDate,
     QEvent,
     QObject,
@@ -26,6 +27,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QAction,
     QColor,
+    QFontMetrics,
     QHideEvent,
     QIcon,
     QKeyEvent,
@@ -41,6 +43,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractButton,
+    QAbstractScrollArea,
     QAbstractSpinBox,
     QApplication,
     QButtonGroup,
@@ -64,10 +67,12 @@ from PySide6.QtWidgets import (
     QProxyStyle,
     QPushButton,
     QScrollArea,
+    QScrollBar,
     QSizePolicy,
     QSpacerItem,
     QSpinBox,
     QStyle,
+    QStyleOptionSlider,
     QTimeEdit,
     QVBoxLayout,
     QWidget,
@@ -94,7 +99,7 @@ from desktop.native.calendar import (
     span_problem,
 )
 from desktop.native.elevation import lift
-from desktop.native.fonts import time_font
+from desktop.native.fonts import time_font, weighted
 from desktop.native.icons import pixmap as icon_pixmap
 from desktop.native.menus import Menu
 from desktop.native.motion import app_level, appear, settle, vanish
@@ -106,7 +111,7 @@ from desktop.native.reuse import (
     routine_source_blocks,
     row_conflict,
 )
-from desktop.native.tokens import SHADOW_LARGE, SPACING, Shadow
+from desktop.native.tokens import SHADOW_LARGE, SPACING, WEIGHT_STRONG, Shadow
 from desktop.native.weekmodel import due_label, hhmm_text, length_label, time_format
 from desktop.native.work_windows import WorkWindowsEditor
 
@@ -188,6 +193,178 @@ def steady_wheel(app: QApplication) -> None:
         app.installEventFilter(WheelGuard(app))
 
 
+# The focus reasons that mean the student moved with the keyboard.
+KEYED = (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason, Qt.FocusReason.ShortcutFocusReason)
+
+
+class KeyFocus(QObject):
+    """Marks a button reached with the keyboard, so its focus ring shows, and clears the mark when a click
+    focuses it: Qt's `:focus` also holds after a click, which would ring every button pressed. Other
+    reasons, such as the window coming back to the front, leave the mark as it was."""
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() == QEvent.Type.FocusIn and isinstance(watched, QAbstractButton):
+            reason = event.reason()
+            if reason in KEYED or reason == Qt.FocusReason.MouseFocusReason:
+                keyed = reason in KEYED
+                if bool(watched.property("keyfocus")) != keyed:
+                    watched.setProperty("keyfocus", keyed)
+                    watched.style().unpolish(watched)
+                    watched.style().polish(watched)
+        return False
+
+
+def keyboard_focus_rings(app: QApplication) -> None:
+    if app.findChild(KeyFocus) is None:
+        app.installEventFilter(KeyFocus(app))
+
+
+class OverlayBar(QObject):
+    """Draws a scroll bar marked `overlay` as a thin rounded handle that widens under the pointer. The
+    bar lies over the edge of what scrolls (AppStyle makes it transient), so the content keeps its
+    whole width, as a phone's or a Mac's does."""
+
+    REST, WIDE, EDGE = 4, 8, 2
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if not isinstance(watched, QScrollBar):
+            return False
+        kind = event.type()
+        if kind in (QEvent.Type.Enter, QEvent.Type.Leave):
+            watched.setProperty("hovered", kind == QEvent.Type.Enter)
+            watched.update()
+        elif kind == QEvent.Type.Paint:
+            self._paint(watched)
+            return True
+        return False
+
+    def _paint(self, bar: QScrollBar) -> None:
+        if bar.maximum() <= bar.minimum():
+            return
+        option = QStyleOptionSlider()
+        bar.initStyleOption(option)
+        handle = QRectF(
+            bar.style().subControlRect(
+                QStyle.ComplexControl.CC_ScrollBar, option, QStyle.SubControl.SC_ScrollBarSlider, bar
+            )
+        )
+        wide = bool(bar.property("hovered")) or bar.isSliderDown()
+        thick = self.WIDE if wide else self.REST
+        down = bar.orientation() == Qt.Orientation.Vertical
+        across = (bar.width() if down else bar.height()) - thick - self.EDGE
+        if down:
+            pill = QRectF(
+                across, handle.top() + self.EDGE, thick, max(handle.height() - 2 * self.EDGE, thick)
+            )
+        else:
+            pill = QRectF(
+                handle.left() + self.EDGE, across, max(handle.width() - 2 * self.EDGE, thick), thick
+            )
+        ink = bar.palette().color(QPalette.ColorRole.WindowText)
+        painter = QPainter(bar)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        if wide:
+            track = QColor(ink)
+            track.setAlphaF(0.06)
+            painter.setBrush(track)
+            groove = QRectF(bar.rect()).adjusted(1, 1, -1, -1)
+            painter.drawRoundedRect(
+                groove, min(groove.width(), groove.height()) / 2, min(groove.width(), groove.height()) / 2
+            )
+        ink.setAlphaF(0.65 if bar.isSliderDown() else 0.5 if wide else 0.3)
+        painter.setBrush(ink)
+        painter.drawRoundedRect(pill, thick / 2, thick / 2)
+        painter.end()
+
+
+def overlay_scroll_bars(area: QAbstractScrollArea) -> None:
+    """Decision 12's scroll bars on `area`: thin, laid over its content's edge, wider under the pointer.
+    Called before the area is first shown, which is when it lays its bars out."""
+    global _OVERLAY
+    if _OVERLAY is None:
+        _OVERLAY = OverlayBar()
+    for bar in (area.verticalScrollBar(), area.horizontalScrollBar()):
+        bar.setProperty("overlay", True)
+        bar.installEventFilter(_OVERLAY)
+
+
+_OVERLAY: OverlayBar | None = None
+
+
+def overlaid(widget: object) -> bool:
+    return isinstance(widget, QScrollBar) and bool(widget.property("overlay"))
+
+
+class SegmentTrack(QFrame):
+    """A segmented control's track, a pill, with the chosen segment raised on it as a pill of its own
+    and lifted with the small shadow. Painted, since a stylesheet's corner cannot follow a height
+    that the text size sets. The stylesheet gives the colours: `alternate-background-color` is the
+    track, `selection-background-color` the chosen segment and `color` an outline, drawn when it
+    differs from the track; `qproperty-shade` is the shadow's opacity out of 255, or 0 for none."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._shade = 0
+
+    def _get_shade(self) -> int:
+        return self._shade
+
+    def _set_shade(self, value: int) -> None:
+        self._shade = value
+        self.update()
+
+    shade = Property(int, _get_shade, _set_shade)
+
+    def add(self, button: QAbstractButton) -> None:
+        self.layout().addWidget(button)
+        button.toggled.connect(self.update)
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        colours = self.palette()
+        track = colours.color(QPalette.ColorRole.AlternateBase)
+        outline = colours.color(QPalette.ColorRole.WindowText)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        box = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        painter.setPen(QPen(outline, 1) if outline != track else Qt.PenStyle.NoPen)
+        painter.setBrush(track)
+        painter.drawRoundedRect(box, box.height() / 2, box.height() / 2)
+        chosen = next(
+            (b for b in self.findChildren(QAbstractButton) if b.isChecked() and b.isVisible()), None
+        )
+        if chosen is not None:
+            pill = QRectF(chosen.geometry())
+            radius = pill.height() / 2
+            painter.setPen(Qt.PenStyle.NoPen)
+            shade = self._shade
+            # The small shadow (decision 6), 0 1 3: three widening rings, each a third of its opacity.
+            for spread in (1.5, 1.0, 0.5) if shade else ():
+                painter.setBrush(QColor(0, 0, 0, round(shade / 3)))
+                painter.drawRoundedRect(
+                    pill.adjusted(-spread, 1 - spread, spread, 1 + spread), radius, radius
+                )
+            painter.setBrush(colours.color(QPalette.ColorRole.Highlight))
+            painter.drawRoundedRect(pill, radius, radius)
+        painter.end()
+
+
+class Segment(QPushButton):
+    """One choice on a SegmentTrack, always as wide as its words at the chosen weight, so choosing it
+    moves nothing and cuts nothing."""
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        hint = super().sizeHint()
+        words = self.text()
+        extra = QFontMetrics(weighted(self.font(), WEIGHT_STRONG)).horizontalAdvance(words)
+        return QSize(
+            hint.width() + max(0, extra - self.fontMetrics().horizontalAdvance(words)), hint.height()
+        )
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return self.sizeHint()
+
+
 # How far a dialog's content sits in from its edges. Qt's styles give about 11 px.
 DIALOG_MARGIN = 24
 LAYOUT_MARGINS = (
@@ -206,7 +383,15 @@ class AppStyle(QProxyStyle):
     def pixelMetric(self, metric, option=None, widget=None):  # noqa: N802
         if metric in LAYOUT_MARGINS and isinstance(widget, QDialog):
             return DIALOG_MARGIN
+        if metric == QStyle.PixelMetric.PM_ScrollView_ScrollBarOverlap and overlaid(widget):
+            # The whole bar lies over the content, which keeps its width.
+            return super().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, option, widget)
         return super().pixelMetric(metric, option, widget)
+
+    def styleHint(self, hint, option=None, widget=None, returnData=None):  # noqa: N802
+        if hint == QStyle.StyleHint.SH_ScrollBar_Transient and overlaid(widget):
+            return 1
+        return super().styleHint(hint, option, widget, returnData)
 
     def polish(self, target):  # Qt names one method for a widget, a palette and the application.
         if isinstance(target, QTimeEdit):
@@ -795,10 +980,22 @@ def _switch_file(on: bool, track: str, knob: str) -> str:
     return path.as_posix()
 
 
+def _icon_file(name: str, colour: str) -> str:
+    """Lucide's `name` in `colour` as an image file, for a style sheet's `image:`, at twice 16 pixels."""
+    folder = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation))
+    path = folder / f"flexweek-icon-{name}-{QColor(colour).name()[1:]}.png"
+    if not path.is_file():
+        folder.mkdir(parents=True, exist_ok=True)
+        icons.pixmap(name, colour, 32).save(str(path))
+    return path.as_posix()
+
+
 def control_art(palette: dict) -> dict[str, str]:
     """The images the control rules in `pack_stylesheet` draw with: a tick in the accent's ink,
-    chevrons for dropdowns and steppers in the muted ink, and a switch on, off and greyed."""
+    chevrons for dropdowns and steppers in the muted ink, a switch on, off and greyed, and the
+    chevron after More in the text colour."""
     return {
+        "more": _icon_file("chevron-down", palette["text"]),
         "tick": _art_file("tick", palette["accent_ink"]),
         "down": _art_file("down", palette["muted"]),
         "up": _art_file("up", palette["muted"]),

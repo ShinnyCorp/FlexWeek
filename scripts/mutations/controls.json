@@ -1,0 +1,107 @@
+[
+ {
+  "file": "desktop/native/window.py",
+  "name": "the gear a glyph again",
+  "old": "        icons.tint(gear, \"settings\")\n",
+  "new": "        gear.setText(\"\\u2699\")\n",
+  "test": "desktop/tests/test_top_bar.py::test_no_glyph_stands_in_for_an_icon_in_the_chrome"
+ },
+ {
+  "file": "desktop/native/hours/zoom.py",
+  "name": "the zoom's minus written as text",
+  "old": "        button = ZoomButton()\n",
+  "new": "        button = ZoomButton(\"\\u2212\" if icon == \"minus\" else \"+\")\n",
+  "test": "desktop/tests/test_top_bar.py::test_no_glyph_stands_in_for_an_icon_in_the_chrome"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "the title before the arrows again",
+  "old": "        where.addWidget(self.week_title)\n",
+  "new": "        where.insertWidget(0, self.week_title)\n",
+  "test": "desktop/tests/test_top_bar.py::test_the_arrows_and_today_come_before_the_title_and_stay_put"
+ },
+ {
+  "file": "desktop/native/icons.py",
+  "name": "icons drawn once and never again when the look changes",
+  "old": "        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_top_bar.py::test_the_bars_icons_are_in_the_words_colour_and_follow_the_look"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "Add's chevron a second button again",
+  "old": "border-bottom-left-radius: 0; border-left-width: 1px; border-left-color: {divider}; }}",
+  "new": "border-bottom-left-radius: 0; margin-left: 2px; }}",
+  "test": "desktop/tests/test_top_bar.py::test_add_is_one_pill_split_by_a_line_of_its_ink"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "Plan my homework plain again",
+  "old": "        solve.setProperty(\"secondary\", True)\n",
+  "new": "        solve.setProperty(\"quiet\", True)\n",
+  "test": "desktop/tests/test_top_bar.py::test_plan_is_second_to_add_and_more_is_in_the_text_colour"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "no hover on a filled button",
+  "old": "            f\"{selector}:hover {{ background: {mix(text, solid, 0.06)}; }}\",\n",
+  "new": "",
+  "test": "desktop/tests/test_top_bar.py::test_every_button_answers_hover_press_and_disabled"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "no press on a filled button",
+  "old": "            f\"{selector}:pressed {{ background: {mix(text, solid, 0.10)}; }}\",\n",
+  "new": "",
+  "test": "desktop/tests/test_top_bar.py::test_every_button_answers_hover_press_and_disabled"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "a disabled button grey again",
+  "old": "            f\"{selector}:disabled {{ background: {mix(solid, page, 0.4)}; color: {mix(words, page, 0.4)}; }}\",\n",
+  "new": "            f\"{selector}:disabled {{ background: {palette['hairline_strong']}; color: {palette['muted']}; }}\",\n",
+  "test": "desktop/tests/test_top_bar.py::test_every_button_answers_hover_press_and_disabled"
+ },
+ {
+  "file": "desktop/native/widgets.py",
+  "name": "a click rings a button too",
+  "old": "                keyed = reason in KEYED\n",
+  "new": "                keyed = True\n",
+  "test": "desktop/tests/test_top_bar.py::test_the_key_that_reaches_a_button_rings_it_and_a_click_does_not"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "no focus ring",
+  "old": "        f'QPushButton[keyfocus=\"true\"]:focus {{ border-color: {ring}; }}',\n",
+  "new": "",
+  "test": "desktop/tests/test_top_bar.py::test_the_key_that_reaches_a_button_rings_it_and_a_click_does_not"
+ },
+ {
+  "file": "desktop/native/widgets.py",
+  "name": "the chosen view not raised",
+  "old": "            painter.setBrush(colours.color(QPalette.ColorRole.Highlight))\n",
+  "new": "            painter.setBrush(colours.color(QPalette.ColorRole.AlternateBase))\n",
+  "test": "desktop/tests/test_top_bar.py::test_the_chosen_view_is_raised_on_its_track"
+ },
+ {
+  "file": "desktop/native/widgets.py",
+  "name": "scroll bars beside the content again",
+  "old": "        if hint == QStyle.StyleHint.SH_ScrollBar_Transient and overlaid(widget):\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_top_bar.py::test_the_hours_scroll_under_a_thin_bar_that_widens_under_the_pointer"
+ },
+ {
+  "file": "desktop/native/widgets.py",
+  "name": "the bar never widens",
+  "old": "        thick = self.WIDE if wide else self.REST\n",
+  "new": "        thick = self.REST\n",
+  "test": "desktop/tests/test_top_bar.py::test_the_hours_scroll_under_a_thin_bar_that_widens_under_the_pointer"
+ },
+ {
+  "file": "desktop/native/hours/month.py",
+  "name": "Month keeps a strip for its bar",
+  "old": "        overlay_scroll_bars(self)\n",
+  "new": "",
+  "test": "desktop/tests/test_top_bar.py::test_month_and_settings_scroll_under_the_same_bars"
+ }
+]

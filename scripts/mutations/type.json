@@ -1,0 +1,44 @@
+[
+ {
+  "file": "desktop/native/look.py",
+  "name": "the week title bold again",
+  "old": "f\"QLabel#weekTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; \"",
+  "new": "f\"QLabel#weekTitle {{ font-size: {pt['title']}; font-weight: 700; \"",
+  "test": "desktop/tests/test_tokens.py::test_every_font_size_and_weight_in_the_stylesheet_is_on_the_scale"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "the Text knob leaves the stylesheet's sizes alone",
+  "old": "    return {role: f\"{type_pt(role, text):g}pt\" for role in TYPE_PT}\n",
+  "new": "    return {role: f\"{type_pt(role):g}pt\" for role in TYPE_PT}\n",
+  "test": "desktop/tests/test_tokens.py::test_every_font_size_and_weight_in_the_stylesheet_is_on_the_scale"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "a heading a point over the body again",
+  "old": "        f\"QLabel#focusScreenTask {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; }}\"\n",
+  "new": "        f\"QLabel#focusScreenTask {{ font-size: 21pt; font-weight: {WEIGHT_STRONG}; }}\"\n",
+  "test": "desktop/tests/test_tokens.py::test_every_font_size_and_weight_in_the_stylesheet_is_on_the_scale"
+ },
+ {
+  "file": "desktop/native/fonts.py",
+  "name": "the hours' small words shrunk by a ratio again",
+  "old": "    made.setPointSizeF(type_pt(\"caption\", knob) if knob else max(base.pointSizeF() * 0.86, 7))\n",
+  "new": "    made.setPointSizeF(max(base.pointSizeF() * 0.86, 7))\n",
+  "test": "desktop/tests/test_fonts.py::test_the_hours_small_words_are_the_scales_caption_at_every_text_size"
+ },
+ {
+  "file": "desktop/native/fonts.py",
+  "name": "a strong word drawn bold",
+  "old": "    made.setWeight(QFont.Weight(weight))\n",
+  "new": "    made.setWeight(QFont.Weight.Bold)\n",
+  "test": "desktop/tests/test_fonts.py::test_a_strong_word_is_600_not_bold"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "a block's name bold by its own hand",
+  "old": "        bold = weighted(painter.font(), WEIGHT_STRONG)\n        plain = time_font(_small(painter.font()))\n",
+  "new": "        bold = QFont(painter.font())\n        bold.setBold(True)\n        plain = time_font(_small(painter.font()))\n",
+  "test": "desktop/tests/test_tokens.py::test_no_widget_outside_the_designs_sets_a_size_or_weight_of_its_own"
+ }
+]

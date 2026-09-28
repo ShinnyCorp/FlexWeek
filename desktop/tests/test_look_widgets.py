@@ -340,5 +340,5 @@ def test_todays_name_above_the_week_is_marked_and_no_other(qapp: QApplication) -
     calendar.set_week(build_week(WEEK, [SCHOOL, CLUB], {}, None), 2, 7 * 60)
     assert [label.property("today") for label in calendar._name_labels] == [False, False, True] + [False] * 4
     sheet = pack_stylesheet("slate", False, look_of())
-    assert f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: 700; ' in sheet
+    assert f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: 600; ' in sheet
     assert f'border-bottom: 2px solid {palette["accent"]}; border-radius: 0; }}' in sheet

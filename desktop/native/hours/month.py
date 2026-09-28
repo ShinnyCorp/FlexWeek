@@ -36,10 +36,13 @@ from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from backend.models import due_is_timed
 from desktop.native.calendar import DAYS
+from desktop.native.fonts import caption, weighted
 from desktop.native.hours.geometry import Span
 from desktop.native.hours.hand import Gesture, Hand, Held, Verdict
 from desktop.native.look import category_paint, luminance, resolved_palette
+from desktop.native.tokens import WEIGHT_STRONG
 from desktop.native.weekmodel import WeekModel, clock_label, hhmm_text
+from desktop.native.widgets import overlay_scroll_bars
 
 # The row of day names, kept above the dates while they scroll.
 HEADER = 26
@@ -229,8 +232,7 @@ class MonthPainter:
         words = chip.words
         if chip.due:
             plain = painter.font()
-            bold = QFont(plain)
-            bold.setBold(True)
+            bold = weighted(plain, WEIGHT_STRONG)
             painter.setFont(bold)
             painter.setPen(flag)
             elide = QFontMetrics(bold).elidedText
@@ -321,9 +323,7 @@ class MonthCanvas(QWidget):
         return max(1, (len(self.cells) + 6) // 7)
 
     def _small(self) -> QFont:
-        font = QFont(self.font())
-        font.setPointSizeF(max(font.pointSizeF() * 0.86, 7))
-        return font
+        return caption(self.font())
 
     def chip_height(self) -> float:
         return QFontMetrics(self._small()).height() + 2
@@ -528,8 +528,7 @@ class MonthNames(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.fillRect(self.rect(), self.canvas.painter.c("window"))
-        font = QFont(self.canvas._small())
-        font.setBold(True)
+        font = weighted(self.canvas._small(), WEIGHT_STRONG)
         painter.setFont(font)
         wide = self.width() / 7
         for column in range(7):
@@ -545,6 +544,7 @@ class MonthScroll(QScrollArea):
     def __init__(self, canvas: MonthCanvas, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("monthScroll")
+        overlay_scroll_bars(self)
         self.names = MonthNames(canvas, self)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setWidgetResizable(True)

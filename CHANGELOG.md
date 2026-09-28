@@ -120,6 +120,24 @@ All notable changes to FlexWeek are documented here. Format follows
   depth and a quiet tint on the row under the pointer instead of the accent.
   Log out sits after a line of its own, and Advanced is now "Undo, copy and
   save", for what it holds.
+- One type scale: captions 11 pt, body text 13, headings 15, titles 20 and
+  display numbers 28 at Normal text, which Small and Large scale together. Two
+  weights, regular and semibold; bold only for the focus screen's countdown.
+  Body text is a point larger than before, and titles, headings and the grid's
+  small words each have one size wherever they appear.
+- The top bar, as the 0.17 mock-up draws it: the arrows and Today come before
+  the title, so they no longer move when the title's width changes; the arrows,
+  the gear, Add's arrow, More's arrow and the zoom are Lucide's icons in the
+  text colour instead of text glyphs; Add is one pill with a line between Add
+  and its arrow; Plan my homework is accent words on a tint of the accent;
+  More is in the text colour; the chosen view is raised on its track by a small
+  shadow.
+- Every button has the same states: 6 % of the text colour on hover, 10 % when
+  pressed, a 2-pixel ring when reached with the keyboard (not after a click),
+  and 40 % when it cannot be pressed.
+- The week, Day, Month, Settings and the focus list scroll under a thin scroll
+  bar laid over their edge, which widens under the pointer; the bar no longer
+  takes a strip of its own. The zoom is a small "− +" pill.
 
 ### Fixed
 - In the homework editor, Enter saves. It pressed More details, the first

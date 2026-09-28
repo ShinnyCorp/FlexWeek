@@ -135,8 +135,8 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "the now line red again",
-  "old": "        colour = QColor(self.colours.get(\"now\", self.colours[\"accent\"]))\n        font = time_font",
-  "new": "        colour = self.c(\"error\")\n        font = time_font",
+  "old": "        colour = QColor(self.colours.get(\"now\", self.colours[\"accent\"]))\n        font = weighted(",
+  "new": "        colour = self.c(\"error\")\n        font = weighted(",
   "test": "desktop/tests/test_hours_painter.py::test_the_now_line_carries_the_time_on_a_pill_at_its_start"
  },
  {
