@@ -766,6 +766,9 @@ def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) 
     chosen_edge = "none" if depth == "flat" else f"1px solid {palette['hairline_strong']}"
     # The chosen section is marked by a bar in the accent; its row takes only a little of the text.
     selected = mix(palette["text"], palette["panel"], 0.06)
+    # Nothing runs under the footer: a hairline above it ends the page, but on a flat look, which
+    # draws no lines at all.
+    footer_line = "none" if depth == "flat" else f"1px solid {palette['hairline']}"
     return (
         f"QWidget#settingsPage {{ background: {palette['window']}; }}"
         # Bare widgets inside a card, which the app-wide rule would paint as a band of page colour.
@@ -781,8 +784,7 @@ def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) 
         f"QListWidget#prefsNav::item:hover {{ background: {palette['hairline']}; color: {palette['text']}; }}"
         f"QListWidget#prefsNav::item:selected {{ background: {selected}; color: {palette['text']}; "
         f"border-left: 3px solid {palette['accent']}; font-weight: 600; }}"
-        # Nothing runs under the footer: a hairline above it ends the page.
-        f"QWidget#settingsFooter {{ border-top: 1px solid {palette['hairline']}; }}"
+        f"QWidget#settingsFooter {{ border-top: {footer_line}; }}"
         f"QLabel#settingsTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
         f"QFrame#settingsCard, QFrame#dialogCard {{ background: {palette['panel']}; "
         f"border-radius: {card_radius}px; padding: 0; {edges} }}"

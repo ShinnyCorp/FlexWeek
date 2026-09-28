@@ -121,7 +121,7 @@
  {
   "name": "nothing ends the page above the footer",
   "file": "desktop/native/look.py",
-  "old": "        f\"QWidget#settingsFooter {{ border-top: 1px solid {palette['hairline']}; }}\"\n",
+  "old": "        f\"QWidget#settingsFooter {{ border-top: {footer_line}; }}\"\n",
   "new": "",
   "test": "desktop/tests/test_settings_look.py::test_a_hairline_ends_the_page_above_the_footer"
  },
