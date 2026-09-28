@@ -2,6 +2,7 @@
 
 pub mod clean;
 pub mod contain;
+pub mod gate;
 pub mod identity;
 pub mod job;
 pub mod queue;

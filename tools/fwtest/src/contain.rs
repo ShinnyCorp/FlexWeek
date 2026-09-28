@@ -46,31 +46,38 @@ pub fn half_cpus() -> Vec<usize> {
     allowed.into_iter().take(take).collect()
 }
 
-pub fn execute(argv: &[String], timeout_secs: Option<u64>) -> u8 {
+pub struct Session {
+    root: PathBuf,
+    _lock: queue::MachineLock,
+}
+
+impl Session {
+    pub fn run(&self, argv: &[String], timeout_secs: Option<u64>) -> io::Result<u8> {
+        supervise(&self.root, argv, timeout_secs)
+    }
+}
+
+pub fn session() -> Result<Session, u8> {
     let root = match state::harness_root() {
         Ok(root) => root,
         Err(message) => {
             eprintln!("{message}");
-            return 2;
+            return Err(2);
         }
     };
-    if argv.is_empty() {
-        eprintln!("fwtest run needs a command");
-        return 2;
-    }
-    let _held = match queue::lock(&root) {
+    let held = match queue::lock(&root) {
         Ok(held) => held,
         Err(error) => {
             eprintln!("could not take the job lock: {error}");
-            return 1;
+            return Err(1);
         }
     };
     if let Err(error) = queue::wait_for_other_suites() {
         if queue::is_wait_timeout(&error) {
-            return 75;
+            return Err(75);
         }
         eprintln!("could not see whether another suite is running: {error}");
-        return 1;
+        return Err(1);
     }
     match clean::clean(&root) {
         Ok(report) if report.survived.is_empty() => {}
@@ -84,14 +91,26 @@ pub fn execute(argv: &[String], timeout_secs: Option<u64>) -> u8 {
                     .collect::<Vec<_>>()
                     .join(" ")
             );
-            return 1;
+            return Err(1);
         }
         Err(error) => {
             eprintln!("clean failed: {error}");
-            return 1;
+            return Err(1);
         }
     }
-    match supervise(&root, argv, timeout_secs) {
+    Ok(Session { root, _lock: held })
+}
+
+pub fn execute(argv: &[String], timeout_secs: Option<u64>) -> u8 {
+    if argv.is_empty() {
+        eprintln!("fwtest run needs a command");
+        return 2;
+    }
+    let session = match session() {
+        Ok(session) => session,
+        Err(code) => return code,
+    };
+    match session.run(argv, timeout_secs) {
         Ok(code) => code,
         Err(error) => {
             eprintln!("run failed: {error}");
