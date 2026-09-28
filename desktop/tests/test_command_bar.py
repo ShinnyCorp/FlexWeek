@@ -202,5 +202,5 @@ def test_plan_says_suggest_times_for_a_student_who_plans_by_hand(
 
 
 def test_help_lists_both_keys() -> None:
-    assert ("Ctrl+K", "Command bar") in HELP_KEYS
-    assert ("F", "Focus screen") in HELP_KEYS
+    assert ("[Ctrl]+[K]", "Command bar") in HELP_KEYS
+    assert ("[F]", "Focus screen") in HELP_KEYS
