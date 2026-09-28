@@ -14,7 +14,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from desktop.native.focus import now_and_next, now_next_line
 from desktop.native.hours.canvas import Drawn
@@ -85,13 +85,19 @@ def test_the_tray_is_not_placed_yet_everywhere(
     window._on_week()
     qapp.processEvents()
     assert window.findChild(QLabel, "classicWaitingLabel").text() == "Not placed yet"
-    trays = (("timeline", "timelineTrayLabel"), ("clay", "clayTrayLabel"), ("retro", "retroNotesWaiting"))
+    trays = (("timeline", "timelineTrayLabel"), ("clay", "clayTrayLabel"))
     for main, name in trays:
         window._layout = sanitize_layout({"main": main, "day": "one"})
         window._on_week()
         qapp.processEvents()
         labels = [label.text() for label in window.findChildren(QLabel, name) if label.isVisibleTo(window)]
         assert labels and all(text.startswith("Not placed yet") for text in labels), (main, labels)
+    # Retro's Notepad says it on the homework's own line, as the mock-up writes it.
+    window._layout = sanitize_layout({"main": "retro", "day": "one"})
+    window._on_week()
+    qapp.processEvents()
+    line = window.findChild(QPushButton, "retroNoteWaiting0")
+    assert line.isVisibleTo(window) and line.lines[-1].endswith("not placed yet"), line.lines
 
 
 def test_the_strip_under_next_says_what_it_is(

@@ -7,10 +7,10 @@ adds homework, plans, or finishes anything by itself, so there is one planner, n
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QApplication, QFrame, QLabel, QLayout, QPushButton, QScrollArea, QWidget
 
@@ -127,6 +127,28 @@ def family_fill(category: str, tokens: dict[str, str]) -> str:
     return category_paint(category, {"family": family, "panel": tokens["surface"]})[0] or tokens["surface"]
 
 
+def short_length(minutes: int) -> str:
+    """A length where room is short: "1 h 30", "45 min", "2 h"."""
+    hours, rest = divmod(max(minutes, 0), 60)
+    if not hours:
+        return f"{rest} min"
+    return f"{hours} h {rest}" if rest else f"{hours} h"
+
+
+def free_stretches(items: Sequence[Occurrence], start: int, end: int) -> list[tuple[int, int]]:
+    """The stretches from `start` to `end` that nothing still to do takes."""
+    free, at = [], start
+    for item in sorted(items, key=lambda entry: entry.start):
+        if not item.live or item.end <= at or item.start >= end:
+            continue
+        if item.start > at:
+            free.append((at, item.start))
+        at = max(at, item.end)
+    if at < end:
+        free.append((at, end))
+    return free
+
+
 def work_left(scene: Scene) -> int:
     """Placed homework minutes still ahead today. Running late is only offered while there are some."""
     if scene.today is None:
@@ -158,6 +180,8 @@ class LayoutView(QWidget):
     my_day_requested = Signal()
     back_requested = Signal()
     day_activated = Signal(str)
+    # The app's own menu, opening up from this point on the screen, as Retro desktop's Start asks.
+    menu_requested = Signal(QPoint)
     # A level the student chose on hours this design made, to remember: the scale's key and pixels an hour.
     zoomed = Signal(str, int)
 
