@@ -459,7 +459,7 @@ def custom_hours(custom: dict) -> tuple[HoursCanvas, dict]:
 
 def test_a_custom_look_sets_todays_wash_the_now_line_and_the_edge(qapp: QApplication) -> None:
     """Customise's grid and block settings: today's highlight off, the now line in the text colour,
-    and a 6-pixel category edge, where the look's own are a 3 % wash, the accent and 4 pixels."""
+    and a 6-pixel category edge, where the look's own are a 3 % wash, the accent and 3 pixels."""
     y = 10 + HOUR_PX // 2
     plain, plain_palette = custom_hours({"blocks": "edge"})
     changed, palette = custom_hours(
@@ -475,7 +475,8 @@ def test_a_custom_look_sets_todays_wash_the_now_line_and_the_edge(qapp: QApplica
     assert after.pixelColor(x, line_y).name() == palette["text"]
     block = changed.block_rect("essay", 1)
     middle = block.center().y()
-    assert _near(before.pixelColor(block.left() + 5, middle), plain_palette["panel"])
+    # Five pixels in is past the look's own 3-pixel edge and inside the custom look's 6.
+    assert not _near(before.pixelColor(block.left() + 5, middle), plain_palette["block_edge"])
     assert _near(after.pixelColor(block.left() + 5, middle), palette["block_edge"])
 
 

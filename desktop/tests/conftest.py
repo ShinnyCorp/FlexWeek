@@ -12,6 +12,13 @@ from pathlib import Path
 
 import pytest
 
+# Qt's offscreen screen is 800 by 800 unless told otherwise, and a drag finds what is under the
+# pointer by the screen: with the rail on the left, Thursday and Friday of a 1280 pixel window sat past
+# its edge, where nothing could be dropped. A laptop's screen, then, wherever offscreen is asked for.
+SCREEN = Path(__file__).with_name("offscreen-screen.json")
+if os.environ.get("QT_QPA_PLATFORM", "offscreen") == "offscreen":
+    os.environ["QT_QPA_PLATFORM"] = f"offscreen:configfile={SCREEN}"
+
 # Qt's test mode keeps its files in ~/.qttest. Workers running side by side would share the look
 # file, the kept sessions and the rest, and hand one test's state to another's, so each worker gets a
 # home of its own. The cache stays the real one, so fonts are not indexed again for every worker.

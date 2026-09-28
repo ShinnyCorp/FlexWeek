@@ -174,6 +174,11 @@ class HoursScroll(QScrollArea):
         # and where the bar stopped while there was no room yet to put it back.
         self._kept: float | None = None
         self._short_at: int | None = None
+        # A minute opened in the middle of what shows, and where the bar was put for it: kept in the
+        # middle while what shows changes size, as a new look's taller header makes it, until the
+        # student scrolls.
+        self._centre: float | None = None
+        self._placed: int | None = None
         # The week, or day, these hours last opened on.
         self._opened: object = None
         # The header first: the scroll area starts filtering events as soon as it holds the hours.
@@ -281,6 +286,7 @@ class HoursScroll(QScrollArea):
         not reach it yet; they do once they can."""
         self._pending = (minute, above)
         self._kept = self._short_at = None
+        self._centre = minute if above is None else None
         if not self.isVisible():
             return
         self._lay_out_now()
@@ -289,6 +295,7 @@ class HoursScroll(QScrollArea):
             half = self._port_length() / 2 / self.canvas.tracks[0].per_minute()
             self._kept = minute - (half if above is None else above)
             self._put_back()
+            self._placed = self._bar().value()
 
     def open_at(self, key: object, minute: int, above: int | None = 90) -> None:
         """Scroll to `minute` the first time these hours show `key`, a week or one of its days. The
@@ -309,6 +316,19 @@ class HoursScroll(QScrollArea):
     def hideEvent(self, event: object) -> None:  # noqa: N802
         super().hideEvent(event)
         self._kept, self._short_at = self._minute_at(self._bar().value()), None
+        self._centre = None
+
+    def _keep_centre(self) -> None:
+        """The minute opened in the middle stays there through a resize, unless the student scrolled."""
+        if self._centre is None or not self.isVisible() or not self.canvas.tracks:
+            return
+        bar = self._bar()
+        if bar.value() != self._placed:
+            self._centre = None
+            return
+        self._lay_out_now()
+        bar.setValue(round(self._y_for(self._centre) - self._port_length() / 2))
+        self._placed = bar.value()
 
     def showEvent(self, event: object) -> None:  # noqa: N802
         """Hours shown again start at the minute they started at when hidden, however the design
@@ -399,11 +419,13 @@ class HoursScroll(QScrollArea):
                 self._put_back()
             else:
                 self._kept = self._short_at = None
+        self._keep_centre()
 
     def viewportEvent(self, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize:
             # A scroll bar that comes or goes changes the width the hours have.
             self._place_header()
+            self._keep_centre()
         return super().viewportEvent(event)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802

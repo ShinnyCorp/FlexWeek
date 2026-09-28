@@ -487,7 +487,7 @@ def test_a_short_notice_keeps_its_words_on_one_line(qapp: QApplication, window: 
 def test_the_toast_sits_bottom_right_of_the_page_and_lets_the_pointer_through(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """Bottom right, over the side panel, its card 16 pixels in from the page's corner, inside the
+    """Bottom right, clear of the rail on the left, its card 16 pixels in from the page's corner, inside the
     window at any height (decision 20 of 0.17), and only its button takes a click: what is under its
     words still takes a drag."""
     from desktop.native.widgets import TOAST_FOOT
@@ -505,9 +505,8 @@ def test_the_toast_sits_bottom_right_of_the_page_and_lets_the_pointer_through(
         card = toast.card.geometry().translated(toast.pos())
         inset = (corner.x() - card.right() - 1, corner.y() - card.bottom() - 1)
         assert inset == (TOAST_FOOT, TOAST_FOOT), height
-        side = window.week_table.side
-        assert card.right() <= side.mapTo(window, QPoint(side.width(), 0)).x(), "over the side panel"
-        assert card.center().x() > side.mapTo(window, QPoint(0, 0)).x(), height
+        middle = planner.mapTo(window, QPoint(planner.width() // 2, 0)).x()
+        assert card.left() > middle, "in the right half of the page, clear of the rail"
         assert toast.geometry().bottom() < window.height(), height
         words = toast.geometry().topLeft() + QPoint(12, toast.height() // 2)
         assert window.childAt(words) is not toast and not toast.isAncestorOf(window.childAt(words))

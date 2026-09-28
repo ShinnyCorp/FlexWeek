@@ -586,6 +586,8 @@ class NativeWindow(QMainWindow):
                     # What the toast said was about the page the student is leaving.
                     self.toast.hide()
                 switch_page(self._stack, page, self._motion)
+                if name == "weekPage":
+                    self._open_at_now()
                 return
 
     def _entry_card(self, name: str) -> QVBoxLayout:
@@ -1565,7 +1567,11 @@ class NativeWindow(QMainWindow):
             self._month_revealed = None
         self._sync_add_button()
         view = self.session.planner_view
-        switch_page(self.planner, self._planner_widget(view), self._motion)
+        shown = self._planner_widget(view)
+        # The rail goes with Today's app's Day and Week. Put away before the page changes, another
+        # design is laid out once at its whole width, not first cramped beside the rail and again.
+        self._place_rail(shown in (self.week_table, self.day_view))
+        switch_page(self.planner, shown, self._motion)
         self._release_travel()
         for name in ("viewDay", "viewWeek", "viewMonth", "viewMyDay"):
             button = self.findChild(QPushButton, name)

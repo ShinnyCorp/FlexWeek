@@ -1097,8 +1097,10 @@ def info_card(title: str, note: str) -> tuple[QFrame, QVBoxLayout]:
     card = QFrame()
     card.setObjectName("dialogCard")
     box = QVBoxLayout(card)
-    box.setContentsMargins(16, 16, 16, 16)
-    box.setSpacing(8)
+    # 12 above and below, a step under the sides: Account's three cards at the 13-point body stood 778
+    # pixels tall, more than a 1366 by 768 laptop has.
+    box.setContentsMargins(SPACING[3], SPACING[2], SPACING[3], SPACING[2])
+    box.setSpacing(SPACING[1])
     heading = QLabel(title)
     heading.setObjectName("cardTitle")
     # One line, not wrapped: a dialog's height is fixed before its words wrap, so a sentence that

@@ -544,7 +544,8 @@ def test_a_custom_look_dresses_the_window_and_is_kept_with_the_saved_looks(
     assert "font-size: 15.5pt" in window.styleSheet() and "border-radius: 4px" in window.styleSheet()
     picture = window.week_table.hours.grab().toImage()
     colours = {picture.pixelColor(x, y).name() for x in range(0, picture.width(), 40) for y in (5, 200)}
-    assert "#1e2430" in colours
+    # Today's app draws its hours on a sheet in the card's colour, beside the rail on the page.
+    assert "#262d3b" in colours
     window._save_look()
     stored = json.loads(look_file().read_text())
     assert stored["custom"] == custom and stored["saved_looks"] == [custom]

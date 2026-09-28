@@ -210,7 +210,8 @@ def test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_say_their_names
     for _ in range(5):
         qapp.processEvents()
     assert rail.folded and hours.hours.short_words
-    assert rail.geometry().bottom() < hours.geometry().top(), "the line sits above the hours"
+    line_foot = rail.mapTo(window, rail.rect().bottomLeft()).y()
+    assert line_foot < hours.mapTo(window, hours.rect().topLeft()).y(), "the line sits above the hours"
     assert rail.height() < 80, "one slim line"
     assert rail.line.text() == "Next: Soccer practice, 16:00 · in 20 min · Not placed yet: 1"
     assert not rail.tasks.isVisible() and not rail.month.isVisible()
