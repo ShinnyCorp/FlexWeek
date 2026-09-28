@@ -1,0 +1,142 @@
+[
+  {
+    "name": "Create account keeps Forgot password",
+    "file": "desktop/native/window.py",
+    "old": "        self.forgot_button.setVisible(mode == SIGN_IN)\n",
+    "new": "        self.forgot_button.setVisible(True)\n",
+    "test": "desktop/tests/test_sign_in_card.py::test_the_card_has_one_heading_and_create_account_hides_forgot_password"
+  },
+  {
+    "name": "a second heading under the greeting",
+    "file": "desktop/native/window.py",
+    "old": "        self.auth_note.setVisible(bool(note))\n",
+    "new": "        self.auth_note.setVisible(True)\n",
+    "test": "desktop/tests/test_sign_in_card.py::test_the_card_has_one_heading_and_create_account_hides_forgot_password"
+  },
+  {
+    "name": "Sign in stays filled beside Reset password",
+    "file": "desktop/native/window.py",
+    "old": "        self.sign_in_button.setVisible(mode == SIGN_IN)\n",
+    "new": "        self.sign_in_button.setVisible(mode != CREATE)\n",
+    "test": "desktop/tests/test_sign_in_card.py::test_forgot_password_is_the_cards_own_page_with_one_filled_button"
+  },
+  {
+    "name": "the eye does not show the password",
+    "file": "desktop/native/window.py",
+    "old": "        self.setEchoMode(QLineEdit.EchoMode.Normal if shown else QLineEdit.EchoMode.Password)\n",
+    "new": "        self.setEchoMode(QLineEdit.EchoMode.Password)\n",
+    "test": "desktop/tests/test_sign_in_card.py::test_the_eye_sits_inside_the_password_box_and_shows_and_hides_it"
+  },
+  {
+    "name": "a shown password stays shown after log out",
+    "file": "desktop/native/window.py",
+    "old": "            self.password_reveal.setChecked(False)\n",
+    "new": "",
+    "test": "desktop/tests/test_sign_in_card.py::test_the_eye_sits_inside_the_password_box_and_shows_and_hides_it"
+  },
+  {
+    "name": "no wordmark on the page",
+    "file": "desktop/native/window.py",
+    "old": "        outer.addLayout(brand_row())\n",
+    "new": "",
+    "test": "desktop/tests/test_sign_in_card.py::test_the_wordmark_sits_on_the_page_centred_above_the_card"
+  },
+  {
+    "name": "recovery codes in proportional figures",
+    "file": "desktop/native/window.py",
+    "old": "        self.recovery_list.setFont(time_font(self.recovery_list.font()))\n",
+    "new": "        self.recovery_list.setFont(self.recovery_list.font())\n",
+    "test": "desktop/tests/test_auth_words.py::test_the_codes_are_in_inter_with_figures_of_one_width"
+  },
+  {
+    "name": "the sign-in card rounded as a card, not a sheet",
+    "file": "desktop/native/look.py",
+    "old": "    sheet = RADIUS_SHEET if card_radius else 0\n",
+    "new": "    sheet = card_radius\n",
+    "test": "desktop/tests/test_sign_in_card.py::test_the_card_is_a_sheet_lifted_with_the_large_shadow_where_the_look_has_shadows"
+  },
+  {
+    "name": "the sign-in card without its shadow",
+    "file": "desktop/native/window.py",
+    "old": "            if soft:\n                lift(card, SHADOW_LARGE",
+    "new": "            if not soft:\n                lift(card, SHADOW_LARGE",
+    "test": "desktop/tests/test_sign_in_card.py::test_the_card_is_a_sheet_lifted_with_the_large_shadow_where_the_look_has_shadows"
+  },
+  {
+    "name": "the sign-in card as narrow at Large text as at Normal",
+    "file": "desktop/native/window.py",
+    "old": "            card.setFixedWidth(round(AUTH_CARD_WIDTH * TEXT_SCALE[knobs[\"text\"]]))\n",
+    "new": "            card.setFixedWidth(AUTH_CARD_WIDTH)\n",
+    "test": "desktop/tests/test_sign_in_card.py::test_every_line_on_the_card_is_whole_at_large_text"
+  },
+  {
+    "name": "the school hint under a week of school days",
+    "file": "desktop/native/setup.py",
+    "old": "        self.school_hint.setVisible(not self.school_days.days())\n",
+    "new": "        self.school_hint.setVisible(True)\n",
+    "test": "desktop/tests/test_setup_look.py::test_the_school_hint_shows_only_when_no_school_day_is_picked"
+  },
+  {
+    "name": "Send a test reminder filled like Next",
+    "file": "desktop/native/setup.py",
+    "old": "        self.test.setProperty(\"quiet\", True)\n",
+    "new": "        self.test.setProperty(\"quiet\", False)\n",
+    "test": "desktop/tests/test_setup_look.py::test_next_is_the_one_filled_button_on_every_page"
+  },
+  {
+    "name": "Add custom hours filled like Next",
+    "file": "desktop/native/setup.py",
+    "old": "        self.work_editor.add_button.setProperty(\"quiet\", True)\n",
+    "new": "        self.work_editor.add_button.setProperty(\"quiet\", False)\n",
+    "test": "desktop/tests/test_setup_look.py::test_next_is_the_one_filled_button_on_every_page"
+  },
+  {
+    "name": "no tick on a finished step",
+    "file": "desktop/native/setup.py",
+    "old": "            state = CURRENT if current else FINISHED if done else PENDING\n",
+    "new": "            state = CURRENT if current else PENDING\n",
+    "test": "desktop/tests/test_setup_look.py::test_a_finished_step_shows_a_tick_on_the_rail"
+  },
+  {
+    "name": "setup's page left at its narrow hint",
+    "file": "desktop/native/setup.py",
+    "old": "    line.addWidget(column, SETUP_COLUMN)\n",
+    "new": "    line.addWidget(column, 1)\n",
+    "test": "desktop/tests/test_setup_look.py::test_each_page_and_its_buttons_are_centred_up_to_880_pixels"
+  },
+  {
+    "name": "Play keeps the first look's colour",
+    "file": "desktop/native/setup.py",
+    "old": "            play.setIcon(icons.icon(\"circle-play\", palette[\"accent\"]))\n",
+    "new": "            play.setIcon(play.icon())\n",
+    "test": "desktop/tests/test_setup_look.py::test_play_is_an_icon_in_the_looks_accent"
+  },
+  {
+    "name": "Help's keys as plain words",
+    "file": "desktop/native/settings.py",
+    "old": "        made.setObjectName(\"helpKeycap\" if cap else \"helpKeyJoin\")\n",
+    "new": "        made.setObjectName(\"helpKeyJoin\")\n",
+    "test": "desktop/tests/test_more_menu_words.py::test_help_draws_each_shortcut_as_keycaps"
+  },
+  {
+    "name": "Help without its scroll-edge fade",
+    "file": "desktop/native/settings.py",
+    "old": "        self.setVisible(bar.value() > bar.minimum() if self._top else bar.value() < bar.maximum())\n",
+    "new": "        self.setVisible(False)\n",
+    "test": "desktop/tests/test_more_menu_words.py::test_help_fades_its_words_at_an_edge_with_more_past_it"
+  },
+  {
+    "name": "Help's fade never reaches the page colour",
+    "file": "desktop/native/settings.py",
+    "old": "        ramp.setColorAt(1, clear if self._top else page)\n",
+    "new": "        ramp.setColorAt(1, clear)\n",
+    "test": "desktop/tests/test_more_menu_words.py::test_help_fades_its_words_at_an_edge_with_more_past_it"
+  },
+  {
+    "name": "About without the logo",
+    "file": "desktop/native/settings.py",
+    "old": "        brand.addWidget(_logo(ABOUT_LOGO_PX))\n",
+    "new": "",
+    "test": "desktop/tests/test_more_menu_words.py::test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_lives_in"
+  }
+]
