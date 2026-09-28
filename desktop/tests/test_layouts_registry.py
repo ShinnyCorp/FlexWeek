@@ -12,7 +12,6 @@ import pytest
 from desktop.native.layouts.registry import (
     LAYOUTS,
     MATCH,
-    complete,
     contrast_failures,
     layouts_for,
     options_for,
@@ -172,7 +171,12 @@ def test_match_my_look_is_readable_in_every_look_the_app_has() -> None:
 def test_a_design_can_ask_for_a_colour_its_colourway_does_not_name() -> None:
     palette = resolved_palette("light-frost", False, None, "default")
     tokens = tokens_for("one", "black", palette)
-    assert (tokens["bg"], tokens["cta"], tokens["cta_ink"]) == ("#000000", "#fb923c", "#000000")
+    # Poster names no accent, so it wears the student's own in place of 0.16's orange.
+    assert (tokens["bg"], tokens["cta"], tokens["cta_ink"]) == (
+        "#000000",
+        palette["accent"],
+        palette["accent_ink"],
+    )
     # Derived from the colourway itself. Borrowed from the student's light look it was white on pale.
     for key in ("card_a", "card_b", "card_c", "card_d"):
         assert contrast(tokens["text"], tokens[key]) >= 4.5
@@ -256,10 +260,26 @@ def test_every_design_offers_a_light_colourway_too() -> None:
 
 
 def test_a_dark_colourway_is_readable_like_any_other() -> None:
+    palette = resolved_palette("light-frost", False, None)
     for layout_id, spec in LAYOUTS.items():
         for value, _label, tokens in spec.colourways:
             if relative_luminance(tokens["bg"]) < 0.35:
-                assert contrast_failures(complete(tokens)) == [], (layout_id, value)
+                assert contrast_failures(tokens_for(layout_id, value, palette)) == [], (layout_id, value)
+
+
+def test_poster_is_readable_in_every_accent_and_a_refusal_never_wears_it() -> None:
+    """Poster takes the student's accent onto its black page, so it is held to the rules in every
+    accent of every pack, light and dark, not only in the one the other tests use."""
+    import math
+
+    failures, close = [], {}
+    for pack, dark, accent in itertools.product(PACKS, (False, True), ACCENTS):
+        tokens = tokens_for("one", "black", resolved_palette(pack, dark, None, accent))
+        failures += [(pack, dark, accent, item) for item in contrast_failures(tokens)]
+        if (gap := math.dist(_lab(tokens["accent"]), _lab(tokens["danger"]))) < 25:
+            close[(pack, dark, accent)] = round(gap, 1)
+    assert failures == []
+    assert close == {}
 
 
 def test_a_refusal_never_wears_the_accent() -> None:

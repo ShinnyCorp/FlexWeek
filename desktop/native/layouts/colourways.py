@@ -320,18 +320,17 @@ CLAY = (
 )
 ONE = (
     (
+        # 0.16's black page with the student's accent in place of its orange, as 0.17 picked.
         "black",
-        "Black and orange",
+        "Poster",
         _tokens(
             bg="#000000",
             bg_ink="#ffffff",
-            bg_muted="#bdbdbd",
-            surface="#000000",
+            bg_muted="#a3a3a3",
+            surface="#141414",
             text="#ffffff",
-            muted="#bdbdbd",
-            accent="#fb923c",
-            accent_ink="#000000",
-            line="#3a3a3a",
+            muted="#a3a3a3",
+            line="#3d3d3d",
             danger="#ff4d6d",
             danger_ink="#000000",
         ),

@@ -254,7 +254,7 @@ def test_the_thing_itself_carried_onto_the_day_bar_goes_at_that_time(
     view, bar = my_day(qapp, window, "one")
     said = reported(window)
     title = view.findChild(QLabel, "oneTitle")
-    assert title.text() == "HISTORY ESSAY"
+    assert title.text() == "History essay"
     start = title.mapToGlobal(title.rect().center())
     end = bar.point_for(THURSDAY, 20 * 60 + 30)
     carry(qapp, title, [start + (end - start) * step / 8 for step in range(9)])
@@ -281,7 +281,7 @@ def test_homework_due_today_with_no_time_is_given_one_by_carrying_its_title_onto
     view, bar = my_day(qapp, window, "one")
     said = reported(window)
     title = view.findChild(QLabel, "oneTitle")
-    assert title.text() == "MATH WORKSHEET"
+    assert title.text() == "Math worksheet"
     start = title.mapToGlobal(title.rect().center())
     end = bar.point_for(THURSDAY, 21 * 60)
     carry(qapp, title, [start + (end - start) * step / 8 for step in range(9)])

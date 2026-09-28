@@ -294,32 +294,26 @@ class LayoutView(QWidget):
         board.raise_()
 
 
-def day_buttons(
-    view: LayoutView, scene: Scene, item: Occurrence | None, prefix: str, *, upper: bool = False
-) -> list[QPushButton]:
+def day_buttons(view: LayoutView, scene: Scene, item: Occurrence | None, prefix: str) -> list[QPushButton]:
     """What a student does while living the day, written once for every day screen: finish the
     homework, start focus, say they are running late, go back to planning."""
-
-    def word(text: str) -> str:
-        return text.upper() if upper else text
-
     made = []
     if scene.options.get("actions") != "hide":
         if item is not None and item.work and item.assignment_id:
-            finished = button(word("Homework finished"), f"{prefix}Finished", "main")
+            finished = button("Homework finished", f"{prefix}Finished", "main")
             finished.clicked.connect(
                 lambda _=False, key=item.assignment_id: view.finished_requested.emit(key)
             )
-            focus = button(word("Start focus"), f"{prefix}Focus")
+            focus = button("Start focus", f"{prefix}Focus")
             focus.clicked.connect(
                 lambda _=False, entry=item: view.focus_requested.emit(entry.block_id, entry.day)
             )
             made += [finished, focus]
         if work_left(scene):
-            late = button(word("Running late"), f"{prefix}Late")
+            late = button("Running late", f"{prefix}Late")
             late.clicked.connect(view.late_requested.emit)
             made.append(late)
-    back = button(word("Back to planning"), f"{prefix}Back")
+    back = button("Back to planning", f"{prefix}Back")
     back.clicked.connect(view.back_requested.emit)
     return [*made, back]
 

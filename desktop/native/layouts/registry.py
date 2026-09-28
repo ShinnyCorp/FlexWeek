@@ -339,7 +339,10 @@ def tokens_for(layout_id: str, colour: str, palette: dict) -> dict[str, str]:
     """The colours a layout paints with. Every design can ask for every token, so a view never has to
     guard a missing key."""
     chosen = next((tokens for value, _, tokens in LAYOUTS[layout_id].colourways if value == colour), None)
-    return match_tokens(palette) if chosen is None else complete(chosen)
+    if chosen is None:
+        return match_tokens(palette)
+    # A colourway that names no accent, as One thing's Poster, wears the student's own.
+    return complete({"accent": palette["accent"], "accent_ink": palette["accent_ink"], **chosen})
 
 
 def contrast_failures(tokens: dict[str, str], floor: float = 4.5) -> list[str]:

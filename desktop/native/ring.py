@@ -12,7 +12,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPaintEvent, QPen, QResizeEvent
 from PySide6.QtWidgets import QSizePolicy, QSpacerItem, QVBoxLayout, QWidget
 
@@ -105,11 +105,22 @@ class CountdownRing(QWidget):
         self._place()
         self.update()
 
+    def lines_changed(self) -> None:
+        """The owner's lines above or below the number changed their words or size: the number gives
+        them the room they now need."""
+        self._place()
+        self.update()
+
     def number(self) -> str:
         return self._number
 
     def left(self) -> float:
         return self._left
+
+    def inside(self) -> QSize:
+        """The room inside the ring for the owner's lines and the number together."""
+        inner = max(self._inner(), 0.0)
+        return QSize(round(inner * 1.4), round(inner * 1.6))
 
     # --- geometry -------------------------------------------------------------------------------
 
@@ -139,7 +150,22 @@ class CountdownRing(QWidget):
         wide = QFontMetricsF(number).horizontalAdvance(self._number) + self._unit_width(unit)
         if wide > room > 0:
             number.setPointSizeF(max(8.0, number.pointSizeF() * room / wide))
+        # And no taller than the inner circle leaves once the owner's lines are in, or a two-line
+        # title in a small ring ran into it.
+        tall = self._number_room()
+        high = QFontMetricsF(number).height() * 1.02
+        if high > tall > 0:
+            number.setPointSizeF(max(8.0, number.pointSizeF() * tall / high))
         return number, unit
+
+    def _number_room(self) -> float:
+        margins = self.layout().contentsMargins()
+        width = self.width() - margins.left() - margins.right()
+        lines = sum(
+            part.heightForWidth(width) if part.hasHeightForWidth() else part.sizeHint().height()
+            for part in (self.above, self.below)
+        )
+        return self.height() - margins.top() - margins.bottom() - lines
 
     def _unit_width(self, unit: QFont) -> float:
         if not self._unit:
@@ -157,6 +183,7 @@ class CountdownRing(QWidget):
         self.layout().setContentsMargins(across, down, across, down)
         number, _unit = self._fonts()
         height = round(QFontMetricsF(number).height() * 1.02) if self._number else 0
+        height = min(height, max(int(self._number_room()), 0))
         self._slot.changeSize(0, height, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.layout().invalidate()
 

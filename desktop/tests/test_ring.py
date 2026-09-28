@@ -19,7 +19,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor, QImage
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QLabel
 
     from desktop.native.look import resolved_palette
     from desktop.native.ring import CountdownRing, RingColours, arc_angles, ring_colours
@@ -99,6 +99,27 @@ def test_a_long_number_shrinks_to_stay_inside_the_ring(qapp: QApplication) -> No
     columns = [x for x in range(SIDE) if any(image.pixelColor(x, y) == QColor(NUMBER) for y in range(SIDE))]
     assert columns, "the number drew nothing"
     assert SIDE / 2 - inner < columns[0] and columns[-1] < SIDE / 2 + inner
+
+
+def test_the_number_leaves_the_lines_above_and_below_it_their_room(qapp: QApplication) -> None:
+    """One thing's two-line title over the number in a small ring pushed the lines out over the
+    track. The number now takes only the height the owner's lines leave, and all of it stays inside."""
+    ring = made(qapp, 0.5, "20", "min")
+    title, when = QLabel("Soccer practice\nand the drive"), QLabel("16:00–17:30")
+    title.setStyleSheet("font-size: 28pt;")
+    ring.above.addWidget(title)
+    ring.below.addWidget(when)
+    for line in (title, when):
+        line.ensurePolished()
+    ring.lines_changed()
+    ring.layout().activate()
+    image = drawn(ring)
+    rows = [y for y in range(SIDE) if any(image.pixelColor(x, y) == QColor(NUMBER) for x in range(SIDE))]
+    assert rows, "the number drew nothing"
+    assert title.geometry().bottom() < rows[0] and rows[-1] < when.geometry().top()
+    top = (SIDE - ring.inside().height()) / 2
+    assert top - 1 <= title.geometry().top() and when.geometry().bottom() <= SIDE - top + 1, "inside"
+    assert [line.height() >= line.sizeHint().height() for line in (title, when)] == [True, True]
 
 
 def test_the_scale_draws_marks_outside_the_track(qapp: QApplication) -> None:

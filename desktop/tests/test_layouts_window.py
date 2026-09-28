@@ -171,7 +171,7 @@ def test_the_day_screen_reads_the_real_week_at_the_real_minute(
     click(window, "viewMyDay")
     view = window.planner.currentWidget()
     said = tuple(view.findChild(QLabel, name).text() for name in ("oneLabel", "oneTitle", "oneLine"))
-    assert said == ("NOW", "HISTORY ESSAY", "UNTIL 19:45 · 45 MIN LEFT")
+    assert said == ("Now", "History essay", "18:45–19:45")
 
 
 def test_homework_finished_finishes_it_the_way_the_product_does(
@@ -184,7 +184,7 @@ def test_homework_finished_finishes_it_the_way_the_product_does(
     assert window.session.assignments["essay"]["completed"] is True
     assert window.session.can_undo() is True
     view = window.planner.currentWidget()
-    assert view.findChild(QLabel, "oneTitle").text() == "ALL HOMEWORK FINISHED"
+    assert view.findChild(QLabel, "oneTitle").text() == "All homework finished"
 
 
 def test_start_focus_keeps_the_timer_in_view_on_a_day_screen(
