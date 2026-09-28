@@ -25,6 +25,17 @@ enum Command {
         #[arg(long)]
         python: Option<std::path::PathBuf>,
     },
+    /// Break one rule at a time and check that its test goes red.
+    Mutate {
+        /// Run only the case with this name.
+        #[arg(long)]
+        case: Option<String>,
+        /// Python interpreter. Overrides FWTEST_PYTHON and .venv/bin/python.
+        #[arg(long)]
+        python: Option<std::path::PathBuf>,
+        /// Spec files. Default is every scripts/mutations/*.json in the checkout.
+        specs: Vec<std::path::PathBuf>,
+    },
     /// Run a command as one contained job.
     Run {
         /// Stop the job after this many seconds (exit 124).
@@ -45,6 +56,11 @@ fn main() {
             workers,
             python,
         } => fwtest::gate::run(backend_only, workers, python.as_deref()),
+        Command::Mutate {
+            case,
+            python,
+            specs,
+        } => fwtest::mutate::run(&specs, case.as_deref(), python.as_deref()),
         Command::Run { timeout, command } => fwtest::contain::execute(&command, timeout),
     };
     std::process::exit(i32::from(code));

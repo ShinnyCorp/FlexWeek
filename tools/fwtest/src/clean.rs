@@ -22,6 +22,9 @@ pub struct CleanReport {
 
 pub fn clean(root: &Path) -> io::Result<CleanReport> {
     let mut report = CleanReport::default();
+    // Stale jobs are removed below. Restore edits first only when nothing live
+    // still owns a file; `restore_finished` checks that itself.
+    crate::edits::restore_finished(root)?;
     for path in job::list_job_files(root)? {
         let job = match job::load_job_file(&path) {
             Ok(job) => job,

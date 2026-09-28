@@ -2,9 +2,11 @@
 
 pub mod clean;
 pub mod contain;
+pub mod edits;
 pub mod gate;
 pub mod identity;
 pub mod job;
+pub mod mutate;
 pub mod queue;
 pub mod state;
 
