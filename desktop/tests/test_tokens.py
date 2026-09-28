@@ -168,7 +168,7 @@ def accent_mixes(palette: dict) -> set[str]:
 # look's own surfaces, never the accent or the accent laid over them.
 LARGE = re.compile(
     r"(QMainWindow|QDialog|QFrame, QGroupBox|#(settingsPage|settingsRail|settingsCard|dialogCard|sheetCard|"
-    r"setupRail|setupNav|setupChoice|setupGroup|authCard|weekSide|daySide|toast|commandBox))\b"
+    r"setupRail|setupNav|setupChoice|setupGroup|authCard|weekTable|dayView|planReview|toast|commandBox))\b"
 )
 
 

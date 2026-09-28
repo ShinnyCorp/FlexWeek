@@ -148,10 +148,10 @@
  },
  {
   "file": "desktop/native/hours/canvas.py",
-  "name": "a block with no room for its name draws dots",
-  "old": "        if not named:\n            name = _initial(drawn.title, QFontMetrics(bold), room.width())\n",
-  "new": "",
-  "test": "desktop/tests/test_hours_painter.py::test_a_short_block_on_sideways_hours_is_its_first_letter_not_dots"
+  "name": "a block with no room for three letters draws dots",
+  "old": "    if width < indent + tm.horizontalAdvance(drawn.title.strip()[:3]) or tight.height() + 0.5 < tl:\n",
+  "new": "    if tight.height() + 0.5 < tl:\n",
+  "test": "desktop/tests/test_hours_painter.py::test_a_block_with_no_room_for_three_letters_is_its_colour_alone"
  },
  {
   "file": "desktop/native/hours/canvas.py",

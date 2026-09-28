@@ -48,6 +48,11 @@ from desktop.native.widgets import overlay_scroll_bars
 HEADER = 26
 # The fewest chips a date always has room for; past them the month scrolls rather than squeezing.
 LEAST_CHIPS = 2
+# A week's row grows with its busiest date up to this many chips; past them it says "+N more"
+# (decision 17 of 0.17: rows sized to their chips, not six even rows).
+MOST_CHIPS = 6
+# This week's band: this much of the text colour over its dates, as the week washes today.
+BAND = 0.04
 # A month opened on a week late in it still shows at least this many weeks.
 LEAST_AHEAD = 2
 # Layout passes to wait for the canvas's new height before scrolling to the opening week anyway.
@@ -189,9 +194,14 @@ class MonthPainter:
     def c(self, name: str) -> QColor:
         return QColor(self.colours[name])
 
-    def cell(self, painter: QPainter, box: QRectF, cell: MonthCell) -> None:
+    def cell(self, painter: QPainter, box: QRectF, cell: MonthCell, band: bool = False) -> None:
         # A date outside the month is told by its dimmed number, not a tint: tinted, it looked like today.
+        # This week is banded in a little of the text colour, never the accent.
         painter.fillRect(box, self.c("panel"))
+        if band:
+            wash = self.c("text")
+            wash.setAlphaF(BAND)
+            painter.fillRect(box, wash)
         painter.setPen(QPen(self.c("hairline"), 1))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(box)
@@ -278,9 +288,10 @@ class MonthCanvas(QWidget):
         # can stand for a block on another week, such as School.
         self.open_week: str | None = None
         self._pressed: str | None = None
-        # The row the month opened on, and the height of the view it scrolls in.
+        # The row the month opened on, the height of the view it scrolls in, and each row's height.
         self._lead = 0
         self._room = 0
+        self._heights: list[float] = []
         hand.preview_changed.connect(self.update)
 
     def set_cells(self, cells: list[MonthCell]) -> None:
@@ -309,13 +320,36 @@ class MonthCanvas(QWidget):
         self._fit()
 
     def _fit(self) -> None:
-        # A whole month fits a laptop's screen, so its first row is always on top. Opened on a later
-        # week, the rows grow until the weeks from that one on fill the view, and the ones before it
-        # are above, a scroll away.
-        rows = self.rows()
-        least = rows * self.least_row()
-        filled = math.ceil(self._room * rows / max(rows - self._lead, LEAST_AHEAD)) if self._lead else 0
-        self.setMinimumHeight(max(least, filled))
+        """Each week's row as tall as its busiest date's chips, from two to six. Room over is shared
+        by the weeks from the one the month opened on, which fill the view; the ones before it are
+        above, a scroll away."""
+        heights = [self.base_row(row) for row in range(self.rows())]
+        start = min(self._lead, max(len(heights) - LEAST_AHEAD, 0))
+        spare = self._room - sum(heights[start:])
+        if spare > 0 and heights:
+            share = spare / (len(heights) - start)
+            heights = [height + (share if at >= start else 0) for at, height in enumerate(heights)]
+        self._heights = heights
+        self.setMinimumHeight(math.ceil(sum(heights)))
+        self.update()
+
+    def base_row(self, row: int) -> float:
+        """A week's row at its own size: its busiest date's chips, from LEAST_CHIPS to MOST_CHIPS,
+        and a line for "+N more"."""
+        busiest = max((len(cell.chips) for cell in self.cells[row * 7 : row * 7 + 7]), default=0)
+        chips = min(max(busiest, LEAST_CHIPS), MOST_CHIPS)
+        return round(self.number_height() + chips * self.pitch() + self.pitch() + 4)
+
+    def _row_tops(self) -> list[float]:
+        """Where each row starts, with any height the view adds shared by every row."""
+        heights = self._heights if len(self._heights) == self.rows() else [self.least_row()] * self.rows()
+        extra = max(self.height() - sum(heights), 0) / max(len(heights), 1)
+        tops, at = [], 0.0
+        for height in heights:
+            tops.append(at)
+            at += height + extra
+        tops.append(at)
+        return tops
 
     # Where things are
 
@@ -340,8 +374,8 @@ class MonthCanvas(QWidget):
     def cell_rect(self, index: int) -> QRectF:
         row, column = divmod(index, 7)
         wide = self.width() / 7
-        tall = self.height() / self.rows()
-        return QRectF(column * wide, row * tall, wide, tall)
+        tops = self._row_tops()
+        return QRectF(column * wide, tops[row], wide, tops[row + 1] - tops[row])
 
     def index_of(self, iso: str) -> int | None:
         return next((at for at, cell in enumerate(self.cells) if cell.iso == iso), None)
@@ -394,9 +428,10 @@ class MonthCanvas(QWidget):
         painter.fillRect(self.rect(), self.painter.c("window"))
         held = self.hand.preview_held()
         target = self.hand.month_target if held is not None else None
+        bands = {at // 7 for at, cell in enumerate(self.cells) if cell.today}
         for at, cell in enumerate(self.cells):
             box = self.cell_rect(at)
-            self.painter.cell(painter, box, cell)
+            self.painter.cell(painter, box, cell, at // 7 in bands)
             painter.setFont(self.font())
             self.painter.day_number(painter, box, cell)
             painter.setFont(self._small())
@@ -532,9 +567,7 @@ class MonthNames(QWidget):
         painter.setFont(font)
         wide = self.width() / 7
         for column in range(7):
-            self.canvas.painter.header(
-                painter, QRectF(column * wide, 0, wide, self.height()), DAYS[column].upper()
-            )
+            self.canvas.painter.header(painter, QRectF(column * wide, 0, wide, self.height()), DAYS[column])
         painter.end()
 
 

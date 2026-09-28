@@ -51,6 +51,14 @@ def weighted(base: QFont, weight: int) -> QFont:
     return made
 
 
+def at_scale(base: QFont, role: str, scale: float | str, weight: int | None = None) -> QFont:
+    """`base` at the type scale's `role` (decision 4), at a Text knob or a custom look's scale, and at
+    one of its weights if given. For words a widget paints itself, such as a block's."""
+    made = QFont(base)
+    made.setPointSizeF(type_pt(role, scale))
+    return weighted(made, weight) if weight is not None else made
+
+
 def numeral(base: QFont, pixels: int, weight: int) -> QFont:
     """A figure sized to the mark it sits in, such as a step's number in its 20-pixel ring, rather
     than to the words around it: the scale's caption would touch the ring."""

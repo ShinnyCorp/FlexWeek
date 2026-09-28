@@ -98,7 +98,8 @@ LOOK_DEFAULTS = {
     "corners": "soft",
     "depth": "soft",
     "font": "sans",
-    "blocks": "filled",
+    # Decision 14 of 0.17: the category's fill with a 3-pixel edge in its mark.
+    "blocks": "edge",
     "density": "comfortable",
     "text": "normal",
 }
@@ -937,7 +938,7 @@ def block_paint(
 
     `category_color` is the fill and `mark` the strong colour of the same category, both as
     `category_paint` gives them for the look. A pale outline vanishes on a light pack, so an outline
-    or an edge is drawn with the mark.
+    or an edge is drawn with the mark. Edge is Filled with the mark down the block's left side.
     """
     flexible = kind == "flexible"
     neutral = palette["block_flex" if flexible else "block_locked"]
@@ -946,19 +947,12 @@ def block_paint(
     mode = effective_look(look)["blocks"]
     if mode == "outline":
         return {"mode": mode, "fill": palette["grid"], "ink": palette["text"], "outline": mark, "edge": None}
-    if mode == "edge":
-        return {
-            "mode": mode,
-            "fill": palette["panel"],
-            "ink": palette["text"],
-            "outline": palette["hairline"],
-            "edge": mark,
-        }
+    edge = mark if mode == "edge" else None
     if category_color:
         text = palette["text"]
         ink = text if contrast(text, category_color) >= AA_TEXT else readable_ink(category_color)
-        return {"mode": mode, "fill": category_color, "ink": ink, "outline": None, "edge": None}
-    return {"mode": mode, "fill": neutral, "ink": neutral_ink, "outline": None, "edge": None}
+        return {"mode": mode, "fill": category_color, "ink": ink, "outline": None, "edge": edge}
+    return {"mode": mode, "fill": neutral, "ink": neutral_ink, "outline": None, "edge": edge}
 
 
 def _depth_rules(depth: str, palette: dict) -> str:
@@ -1528,12 +1522,6 @@ def pack_stylesheet(
         # The week's hours paint their own background; as a frame the scroll area boxed them twice.
         f"QScrollArea#weekScroll, QScrollArea#dayScroll, QScrollArea#helpScroll {{ background: transparent; "
         f"border: none; padding: 0; border-radius: 0; }}"
-        # Today's app's Day: the day's hours, then what still needs a time and a summary beside them.
-        f"QFrame#daySide {{ background: {palette['panel']}; border-radius: 0; {edges} }}"
-        f"QLabel#dayWaitingLabel, QLabel#daySummaryLabel {{ color: {palette['accent']}; "
-        f"font-weight: {WEIGHT_STRONG}; font-size: {pt['caption']}; }}"
-        f"QLabel#daySummaryLabel {{ margin-top: 10px; }}"
-        f"QLabel#dayWaitingHint {{ color: {palette['muted']}; font-size: {pt['caption']}; }}"
         # What follows the pointer while something is carried: a pill, readable over any calendar.
         f"QLabel#heldChip {{ background: {palette['accent']}; color: {palette['accent_ink']}; "
         f"padding: 3px 10px; border-radius: 10px; }}"
@@ -1581,10 +1569,6 @@ def pack_stylesheet(
         # The week you are on, said once and said large.
         f"QLabel#weekTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; "
         f"color: {palette['text']}; }}"
-        # Today's name above the week, in the accent over a 2 px line. The others keep a clear line,
-        # so the row does not move when the day changes.
-        f'QLabel[today="false"] {{ border-bottom: 2px solid transparent; border-radius: 0; }}'
-        f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: {WEIGHT_STRONG}; '
         f'border-bottom: 2px solid {palette["accent"]}; border-radius: 0; }}'
         # One filled button on the page: the thing the app is for.
         f"QLabel#blockDurationLine {{ color: {palette['muted']}; }}"
@@ -1608,16 +1592,9 @@ def pack_stylesheet(
         f"QLabel#emptyWeekLine {{ color: {palette['muted']}; font-size: {pt['body']}; }}"
         f"QPushButton#emptyWeekAdd {{ font-weight: {WEIGHT_STRONG}; "
         f"padding: {pad + 2}px {pad * 3}px; }}"
-        # Week's side, as Day's: the panel colour, its headings in the accent, and folded, one line.
-        # Narrower at the sides than a card, so "Math worksheet · 45 min" is whole in its 250 pixels.
-        f"QFrame#weekSide {{ background: {palette['panel']}; border-radius: 0; "
-        f"padding: {card}px {pad}px; {edges} }}"
-        f'QFrame#weekSide[folded="true"] {{ padding: {pad // 2}px {pad}px; }}'
-        f"QLabel#weekNext, QLabel#weekSideLine {{ font-weight: {WEIGHT_STRONG}; }}"
-        f"QLabel#focusTasksLabel, QLabel#classicWaitingLabel {{ color: {palette['accent']}; "
-        f"font-weight: {WEIGHT_STRONG}; font-size: {pt['caption']}; margin-top: 6px; }}"
-        f"QLabel#weekNoneWaiting {{ color: {palette['muted']}; font-size: {pt['caption']}; }}"
+        f"QLabel#weekSideLine {{ font-weight: {WEIGHT_STRONG}; }}"
         + (_contrast_rules(palette) if palette.get("family") == "contrast" else "")
+        + planner_rules(palette, scale, pad, radius, card_radius, edges)
         # Headings in the look's heading face: Newsreader in the Serif font, over Inter.
         + ", ".join(f"QLabel#{name}" for name in HEADING_NAMES)
         + f" {{ font-family: {measures['heading']}; }}"
@@ -1716,6 +1693,68 @@ def overlay_rules(palette: dict, knobs: dict, pad: int, card_radius: int) -> str
         f'QMenu[drawn="true"] {{ background: transparent; border: none; padding: {MENU_EDGE + 4}px; }}'
         f'QMenu[drawn="true"]::item {{ padding: 4px 8px; min-height: {row}px; }}'
         'QMenu[drawn="true"]::separator { height: 1px; margin: 4px 8px; }'
+    )
+
+
+def planner_rules(
+    palette: dict, text: float | str, pad: int, radius: int, card_radius: int, edges: str
+) -> str:
+    """Today's app around its hours: the plan bar, the rail, Day's agenda (decisions 13 to 18 of 0.17).
+    Sizes from the type scale; section labels in the muted colour, never the accent, which read as
+    links."""
+    caption, body, heading = (f"{type_pt(role, text)}pt" for role in ("caption", "body", "heading"))
+    link = (
+        f"background: transparent; color: {palette['accent']}; border: none; "
+        f"padding: 2px {pad // 2}px; min-height: 0; font-weight: {WEIGHT_STRONG};"
+    )
+    bare = "background: transparent; border: none; padding: 0; border-radius: 0;"
+    line = palette["hairline_strong"] if palette.get("family") == "contrast" else palette["hairline"]
+
+    def rule(side: str) -> str:
+        # A flat look draws no lines, here as everywhere.
+        return "" if edges == "border: none;" else f"border-{side}: 1px solid {line};"
+
+    hover = mix(palette["text"], palette["window"], 0.06)
+    ring = mix(palette["accent"], palette["window"], 0.4)
+    return (
+        # The rail sits on the page; Day and Week on a sheet in the card colour, its corner rounded.
+        f"QFrame#rail, QScrollArea#railScroll, QWidget#railBody, QWidget#railStrip, QWidget#railMonth, "
+        f"QWidget#railNext, QWidget#railWaiting, QWidget#railFocus, QFrame#railNextCard {{ {bare} }}"
+        f'QFrame#rail[folded="true"] {{ padding: {pad // 2}px {pad}px; }}'
+        f"QListWidget#focusTasks {{ {bare} }}"
+        f"QLabel[railMonthTitle=\"true\"], QLabel#railNextTitle {{ font-size: {body}; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#railNextWhen, QLabel#railNextThen, QLabel#classicAgendaSub, QLabel#weekNoneWaiting {{ "
+        f"color: {palette['muted']}; font-size: {caption}; }}"
+        f"QLabel#railWaitingCount {{ background: {mix(palette['text'], palette['window'], 0.07)}; "
+        f"color: {palette['muted']}; border-radius: 9px; padding: 1px 6px; font-size: {caption}; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
+        f'QPushButton[railIcon="true"] {{ background: transparent; border: none; padding: 0; '
+        f"min-height: 0; border-radius: {radius}px; }}"
+        f'QPushButton[railIcon="true"]:hover {{ background: {hover}; }}'
+        # A rail chip paints itself; the tray's border and a large-text button's height are not its.
+        f'QPushButton[railChip="true"] {{ {bare} min-height: 0; }}'
+        f'QPushButton[railIcon="true"]:focus {{ border: 2px solid {ring}; }}'
+        f"QFrame#weekTable, QFrame#dayView {{ background: {palette['panel']}; padding: 0; border: none; "
+        f"{rule("top")} {rule("left")} border-radius: 0; "
+        f"border-top-left-radius: 16px; }}"
+        f"QWidget#weekHeader, QWidget#dayHeader, QWidget#weekDayNames, QWidget#dayNames, "
+        f"QWidget#weekZoom, QWidget#dayZoom, QScrollArea#classicAgendaScroll, "
+        f"QWidget#classicAgendaList, QWidget#daySummary {{ {bare} }}"
+        f"QFrame#classicAgenda {{ {bare} {rule("right")} }}"
+        f"QFrame#classicAgendaFoot {{ {bare} {rule("top")} }}"
+
+        # One slim bar: its count, Details, Replan as text and Got it filled.
+        f"QFrame#planReview {{ background: {palette['panel']}; padding: {pad // 2}px {pad}px; "
+        f"border-radius: {card_radius}px; {edges} }}"
+        f"QLabel#planReviewHeading {{ font-weight: {WEIGHT_STRONG}; font-size: {body}; }}"
+        f"QPushButton#planReviewDetails, QPushButton#planReviewReplan {{ {link} }}"
+        f"QPushButton#planReviewDetails:hover, QPushButton#planReviewReplan:hover {{ "
+        f"text-decoration: underline; }}"
+        f"QListWidget#planReviewList {{ border: none; padding: 0; font-size: {caption}; }}"
+        f"QLabel[railLabel=\"true\"] {{ color: {palette['muted']}; font-size: {caption}; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel[railHeading=\"true\"] {{ font-size: {heading}; font-weight: {WEIGHT_STRONG}; }}"
     )
 
 

@@ -2967,8 +2967,10 @@ class AlertStrip(QWidget):
         self.text.setText(f"{notice.get('title') or 'FlexWeek'}{' — ' + body if body else ''}{more}")
 
 
-class PlanReview(QWidget):
-    """What the plan just did, in the solver's own words.
+class PlanReview(QFrame):
+    """What the plan just did, in the solver's own words, as one slim bar (decision 18 of 0.17):
+    "Placed 2 · 1 without a time · Details", Got it filled and Replan as text. Details opens the
+    solver's sentences, and they are open already when something has no time.
 
     The client used to take one explanation out of however many the solver gave and drop it in the
     status line, and never mentioned a move at all outside Running late. Explaining what could not
@@ -2982,26 +2984,41 @@ class PlanReview(QWidget):
         super().__init__(parent)
         self.setObjectName("planReview")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        row = QHBoxLayout()
+        row.setSpacing(8)
         self.heading = QLabel()
         self.heading.setObjectName("planReviewHeading")
-        layout.addWidget(self.heading)
-        self.list = QListWidget()
-        self.list.setObjectName("planReviewList")
-        layout.addWidget(self.list)
-        row = QHBoxLayout()
-        dismiss = QPushButton("Got it")
-        dismiss.setObjectName("planReviewDismiss")
-        dismiss.setToolTip("Hide this list.")
-        dismiss.clicked.connect(self._dismiss)
+        row.addWidget(self.heading)
+        self.details = QPushButton("Details")
+        self.details.setObjectName("planReviewDetails")
+        self.details.setCheckable(True)
+        self.details.setToolTip("Show what the plan did, and why.")
+        self.details.toggled.connect(self._show_details)
+        row.addWidget(self.details)
+        row.addStretch(1)
         replan = QPushButton("Replan all my homework")
         replan.setObjectName("planReviewReplan")
         replan.setToolTip(REPLAN_TIP)
         replan.clicked.connect(self.replan_requested.emit)
-        row.addWidget(dismiss)
+        dismiss = QPushButton("Got it")
+        dismiss.setObjectName("planReviewDismiss")
+        dismiss.setToolTip("Hide this list.")
+        dismiss.clicked.connect(self._dismiss)
         row.addWidget(replan)
-        row.addStretch(1)
+        row.addWidget(dismiss)
         layout.addLayout(row)
+        self.list = QListWidget()
+        self.list.setObjectName("planReviewList")
+        self.list.setWordWrap(True)
+        layout.addWidget(self.list)
+        self.list.hide()
         self.hide()
+
+    def _show_details(self, shown: bool) -> None:
+        self.list.setVisible(shown)
+        self.details.setText("Hide details" if shown else "Details")
 
     def _dismiss(self) -> None:
         self.hide()
@@ -3049,20 +3066,27 @@ class PlanReview(QWidget):
                 said.append(f"{titles.get(item['block_id'], 'Homework')}: {item['message']}")
         return said
 
-    def set_trace(self, trace: dict | None, titles: dict[str, str], week_start: str) -> None:
+    def set_trace(
+        self, trace: dict | None, titles: dict[str, str], week_start: str, counts: tuple[int, int]
+    ) -> None:
+        """`counts` are the plan's own, homework it gave a time and homework it could not, the
+        numbers the toast says. The trace's placed list holds every block with a time, School
+        included, so counted here it said 2 placed where the toast said 0."""
         self.list.clear()
         said = self.rows_for(trace or {}, titles, week_start) if trace else []
         if not said:
             self.hide()
             return
-        placed = len(trace.get("placed") or [])
-        unplaced = len(trace.get("unplaced") or [])
-        self.heading.setText(f"Your plan: {placed} placed, {unplaced} without a time")
+        placed, waiting = counts
+        parts = [f"Placed {placed}"] + ([f"{waiting} without a time"] if waiting else [])
+        self.heading.setText(" · ".join(parts))
         for line in said:
             self.list.addItem(QListWidgetItem(line))
         # As tall as it needs and no taller. One line in a box four lines deep reads as an error.
         row = self.list.sizeHintForRow(0) if self.list.count() else 0
         self.list.setFixedHeight(min(row * len(said) + 2 * self.list.frameWidth() + 4, PLAN_REVIEW_MAX))
+        self.details.setChecked(bool(waiting))
+        self._show_details(bool(waiting))
         self.show()
 
 

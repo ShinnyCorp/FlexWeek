@@ -169,7 +169,7 @@ class HoursScroll(QScrollArea):
         self.px = scale.default
         self._length_for = length_for
         self._gutter = gutter
-        self._pending: tuple[int, int] | None = None
+        self._pending: tuple[int, int | None] | None = None
         # The minute at the start of what showed when the hours were hidden, until it is put back,
         # and where the bar stopped while there was no room yet to put it back.
         self._kept: float | None = None
@@ -274,10 +274,11 @@ class HoursScroll(QScrollArea):
 
     # Scrolling to a time
 
-    def scroll_to(self, minute: int, above: int = 90) -> None:
-        """Put `minute` near the start of what shows, with `above` minutes of the day before it.
-        Hours that are not on screen yet do it when they are shown, and only then. Shown while
-        their page is still being laid out, they may not reach it yet; they do once they can."""
+    def scroll_to(self, minute: int, above: int | None = 90) -> None:
+        """Put `minute` near the start of what shows, with `above` minutes of the day before it, or
+        in the middle of what shows when `above` is None. Hours that are not on screen yet do it
+        when they are shown, and only then. Shown while their page is still being laid out, they may
+        not reach it yet; they do once they can."""
         self._pending = (minute, above)
         self._kept = self._short_at = None
         if not self.isVisible():
@@ -285,15 +286,20 @@ class HoursScroll(QScrollArea):
         self._lay_out_now()
         if self.canvas.tracks:
             self._pending = None
-            self._kept = minute - above
+            half = self._port_length() / 2 / self.canvas.tracks[0].per_minute()
+            self._kept = minute - (half if above is None else above)
             self._put_back()
 
-    def open_at(self, key: object, minute: int, above: int = 90) -> None:
+    def open_at(self, key: object, minute: int, above: int | None = 90) -> None:
         """Scroll to `minute` the first time these hours show `key`, a week or one of its days. The
         same one shown again stays wherever the student scrolled it, through saves and refreshes."""
         if key != self._opened:
             self._opened = key
             self.scroll_to(minute, above)
+
+    def forget(self) -> None:
+        """The next `open_at` opens, whatever these hours showed last."""
+        self._opened = None
 
     def focusNextPrevChild(self, next: bool) -> bool:  # noqa: N802
         # QScrollArea's own then scrolls to show the child that had the focus: for hours longer than

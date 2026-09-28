@@ -28,6 +28,7 @@ from PySide6.QtGui import (
     QKeyEvent,
     QMouseEvent,
     QPainter,
+    QPainterPath,
     QPaintEvent,
     QPen,
     QResizeEvent,
@@ -35,8 +36,9 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QScrollArea, QWidget
 
+from desktop.native import icons
 from desktop.native.calendar import DAYS, create_click_range
-from desktop.native.fonts import caption, time_font, weighted
+from desktop.native.fonts import at_scale, caption, time_font, weighted
 from desktop.native.hours.geometry import (
     Axis,
     LinearTrack,
@@ -45,13 +47,30 @@ from desktop.native.hours.geometry import (
     snap,
 )
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
-from desktop.native.look import block_paint, category_paint, look_measures, readable_ink
+from desktop.native.look import (
+    block_paint,
+    category_paint,
+    contrast,
+    look_measures,
+    mix,
+    readable_ink,
+    text_scale,
+)
 from desktop.native.motion import DURATION_MS, app_level
-from desktop.native.tokens import WEIGHT_REGULAR, WEIGHT_STRONG
-from desktop.native.weekmodel import Occurrence, clock_label, length_label
+from desktop.native.tokens import RADIUS_CONTROL, TYPE_PT, WEIGHT_REGULAR, WEIGHT_STRONG
+from desktop.native.weekmodel import Occurrence, clock_label, length_label, range_label, short_clock
 
 # A press this close to a block's start or end edge resizes it, on a block long enough to have edges.
 EDGE_PX = 7
+# Decision 14 of 0.17: a 3-pixel category edge, and the words kept this far inside a block.
+EDGE_WIDTH = 3
+RADIUS_BLOCK = RADIUS_CONTROL
+TEXT_LEFT, TEXT_RIGHT, TEXT_TOP = 8, 5, 3
+# A block's times and length, in its ink laid this much over its fill.
+MUTED_INK = 0.72
+# Homework: a block of it carries a book as well as its colour, for a student who cannot tell the colours.
+HOMEWORK_CATEGORIES = ("assignments", "homework")
+BOOK = "book-open"
 FREE_HINT = "+ drag to create, or click"
 # How much of the text colour washes today's column when a week is shown (decision 13 of 0.17).
 TODAY_WASH = 0.03
@@ -82,20 +101,25 @@ class Drawn:
     short: bool = False
 
     @property
-    def detail(self) -> str:
-        if self.held and self.verdict is not None:
-            return self.verdict.words
-        words = (
-            f"{clock_label(self.span.start)}–{clock_label(self.span.end)} · {length_label(self.span.minutes)}"
-        )
-        for flag, word in (
-            (self.done, "Finished"),
-            (self.missed, "Missed"),
-            (self.pinned and not self.done, "Pinned"),
-        ):
+    def times(self) -> str:
+        return range_label(self.span.start, self.span.end)
+
+    @property
+    def length(self) -> str:
+        """Its length, then what became of it: "1 h", "1 h · Missed"."""
+        words = length_label(self.span.minutes)
+        for flag, word in ((self.done, "Finished"), (self.missed, "Missed")):
             if flag:
                 words += f" · {word}"
         return words
+
+    @property
+    def detail(self) -> str:
+        """Everything a block says under its name, on one line, for a screen reader and the tests."""
+        if self.held and self.verdict is not None:
+            return self.verdict.words
+        words = f"{self.times} · {self.length}"
+        return words + " · Pinned" if self.pinned and not self.done else words
 
 
 def shown_detail(detail: str, measures: dict) -> str:
@@ -109,9 +133,17 @@ class BlockPainter:
     """How hours and blocks look. This default is Daily Scheduler's: pale category fills, a strong
     edge, a rule at each hour, a now line in the accent carrying the time. Designs subclass it."""
 
-    def __init__(self, colours: dict[str, str], look: dict | None = None) -> None:
+    # Where the time now is written: on a pill at the start of its line, or in the gutter beside it,
+    # where it takes the place of the hour labels near it.
+    now_in_gutter = False
+
+    def __init__(self, colours: dict[str, str], look: dict | None = None, *, wide: bool = False) -> None:
         self.colours = colours
         self.look = look
+        # One wide day, whose blocks put their length beside the title and write it larger.
+        self.wide = wide
+        # The minute now on these hours, set by the canvas before it paints, or None.
+        self.now_minute: int | None = None
 
     @cached_property
     def measures(self) -> dict:
@@ -157,20 +189,26 @@ class BlockPainter:
         every: int = 60,
         visible: QRectF | None = None,
     ) -> None:
-        """Hours beside the first track: to its left down a column, above it across a lane. A label
-        the edge of `visible`, the part on screen, would cut is moved inside it, as a long block's
-        name is."""
+        """Hours beside the first track, in caption: to its left down a column, above it across a
+        lane. Down a column, a label the edge of `visible`, the part on screen, would cut is left
+        out, as is one the time now takes the place of; moved inside, it named the wrong rule.
+        Across a lane it is moved inside, where it still sits over its own hour."""
+        font = at_scale(time_font(painter.font()), "caption", self.scale(painter.font()))
+        painter.setFont(font)
         painter.setPen(self.c("muted"))
-        painter.setFont(time_font(_small(painter.font())))
-        metrics = QFontMetricsF(painter.font())
+        metrics = QFontMetricsF(font)
+        tall = metrics.height() + 2
         for minute in range(((track.first + every - 1) // every) * every, track.last + 1, every):
             at = track.offset(minute)
             words = clock_label(minute)
             if track.axis is Axis.DOWN:
-                box = QRectF(track.area.left() - room, track.area.top() + at - 9, room - 6, 18)
+                box = QRectF(track.area.left() - room, track.area.top() + at - tall / 2, room - 8, tall)
                 align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                if visible is not None and box.bottom() > visible.top() and box.top() < visible.bottom():
-                    box.moveTop(max(min(box.top(), visible.bottom() - box.height()), visible.top()))
+                if visible is not None and (box.top() < visible.top() or box.bottom() > visible.bottom()):
+                    continue
+                near_now = self.now_minute is not None and abs(at - track.offset(self.now_minute)) < tall
+                if self.now_in_gutter and near_now:
+                    continue
             else:
                 wide = metrics.horizontalAdvance(words) + 2
                 box = QRectF(track.area.left() + at - wide / 2, track.area.top() - room, wide, room - 2)
@@ -192,88 +230,97 @@ class BlockPainter:
 
     def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:
         fill, ink, outline, edge = self.fills(drawn)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(fill)
-        painter.drawRoundedRect(rect, 5, 5)
+        shape = QPainterPath()
+        shape.addRoundedRect(rect, RADIUS_BLOCK, RADIUS_BLOCK)
+        painter.fillPath(shape, fill)
         if outline is not None:
             painter.setPen(QPen(outline, 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 5, 5)
+            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), RADIUS_BLOCK - 1, RADIUS_BLOCK - 1)
         if edge is not None:
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(edge)
-            width = self.measures["edge_width"] or 4
-            painter.drawRoundedRect(QRectF(rect.left(), rect.top(), width, rect.height()), 2, 2)
+            # A straight edge inside the block's own corners, as the category's mark.
+            painter.save()
+            painter.setClipPath(shape)
+            # A custom look may set its own width.
+            width = self.measures["edge_width"] or EDGE_WIDTH
+            painter.fillRect(QRectF(rect.left(), rect.top(), width, rect.height()), edge)
+            painter.restore()
         if drawn.held or drawn.chosen:
             refused = drawn.verdict is not None and not drawn.verdict.ok
             painter.setPen(QPen(self.c("error" if refused else "accent"), 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 5, 5)
+            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), RADIUS_BLOCK - 1, RADIUS_BLOCK - 1)
         if drawn.columns > 1 and not drawn.held:
             # Shares its time with another block: allowed, and marked so it is not missed. In its own
             # ink, since red is for what cannot be.
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(ink)
             painter.drawEllipse(QPointF(rect.right() - 7, rect.top() + 7), 3.5, 3.5)
-        self.words(painter, rect, drawn, ink, visible)
+        self.words(painter, rect, drawn, ink, visible, fill, edge)
 
-    def words(self, painter: QPainter, rect: QRectF, drawn: Drawn, ink: QColor, visible: QRectF) -> None:
-        bold = weighted(painter.font(), WEIGHT_STRONG)
-        plain = time_font(_small(painter.font()))
-        line = QFontMetrics(bold).height()
-        # The name on a bold line and its times on one line of the smaller font under it.
-        two_lines = line + 1 + QFontMetricsF(plain).height()
+    def scale(self, font: QFont) -> float:
+        """The Text knob as a factor: the look's when the painter has one, else what the window's
+        own font says, for a design that paints without the look."""
+        if self.look is not None:
+            return text_scale(self.look)
+        return font.pointSizeF() / TYPE_PT["body"] if font.pointSizeF() > 0 else 1.0
+
+    def fonts(self, base: QFont) -> tuple[QFont, QFont]:
+        """A block's title and its small print: the title at 600, both at caption size on a week and
+        the title at body size on a wide day (decision 14 of 0.17)."""
+        scale = self.scale(base)
+        title = at_scale(base, "body" if self.wide else "caption", scale, WEIGHT_STRONG)
+        small = at_scale(time_font(base), "caption", scale, WEIGHT_REGULAR)
+        return title, small
+
+    def words(
+        self,
+        painter: QPainter,
+        rect: QRectF,
+        drawn: Drawn,
+        ink: QColor,
+        visible: QRectF,
+        fill: QColor | None = None,
+        edge: QColor | None = None,
+    ) -> None:
+        """The most a block can say without cutting a word: its title on up to two lines, its times,
+        its length; then the title and its start on one line; with no room for three letters,
+        nothing, and its colour says it is there."""
+        title_font, small = self.fonts(painter.font())
+        title_line = QFontMetricsF(title_font).lineSpacing()
         # The name stays in sight while the start of a long block is scrolled away, either way.
-        start = QPointF(rect.left() + 8, rect.top() + 3)
-        if drawn.axis is Axis.DOWN and rect.bottom() - visible.top() > 2 * line:
-            start.setY(max(start.y(), visible.top() + 3))
-        elif drawn.axis is Axis.ACROSS and rect.right() - visible.left() > 2 * line:
-            start.setX(max(start.x(), visible.left() + 3))
-        room = QRectF(start, QPointF(rect.right() - 6, rect.bottom() - 2))
-        if room.height() < 6 or room.width() < 8:
+        start = QPointF(rect.left() + TEXT_LEFT, rect.top() + TEXT_TOP)
+        if drawn.axis is Axis.DOWN and rect.bottom() - visible.top() > 2 * title_line:
+            start.setY(max(start.y(), visible.top() + TEXT_TOP))
+        elif drawn.axis is Axis.ACROSS and rect.right() - visible.left() > 2 * title_line:
+            start.setX(max(start.x(), visible.left() + TEXT_TOP))
+        room = QRectF(start, QPointF(rect.right() - TEXT_RIGHT, rect.bottom() - 1))
+        paper = fill if fill is not None else self.c("window")
+        muted = QColor(mix(ink.name(), paper.name(), MUTED_INK))
+        book = self._book_colour(drawn, ink, paper, edge)
+        if drawn.held:
+            refused = drawn.verdict is not None and not drawn.verdict.ok
+            fits = QFontMetricsF(small).horizontalAdvance(drawn.detail) <= room.width()
+            words = drawn.detail if fits else ""
+            lay = held_layout(drawn.title, words, title_font, small, room, book is not None)
+            _paint_layout(painter, lay, title_font, small, ink, self.c("error") if refused else muted, book)
             return
-        detail = drawn.detail if drawn.held else shown_detail(drawn.detail, self.measures)
-        if drawn.held and QFontMetrics(plain).horizontalAdvance(detail) > room.width():
-            detail = ""  # said in the label beside it instead
-        elif QFontMetrics(plain).horizontalAdvance(detail.split(" · ")[0]) > room.width():
-            # A time cut in half, "08:00–1…", says less than none; the name alone reads whole.
-            detail = ""
-        painter.setPen(ink)
-        if drawn.short and not drawn.held:
-            # "Soccer practice" whole over two lines says more than "Soccer …" and its times.
-            font = bold if room.height() >= line else plain
-            if fit_lines(drawn.title, font, room.width(), room.height()):
-                _write_lines(painter, drawn.title, font, room)
-            else:
-                painter.setFont(font)
-                initial = _initial(drawn.title, QFontMetrics(font), room.width())
-                painter.drawText(room, Qt.AlignmentFlag.AlignLeft, initial)
-            return
-        if room.height() < two_lines:
-            painter.setFont(plain)
-            text = f"{drawn.title} · {detail}" if detail else drawn.title
-            elided = QFontMetrics(plain).elidedText(text, Qt.TextElideMode.ElideRight, int(room.width()))
-            if not elided.strip("…"):
-                elided = _initial(drawn.title, QFontMetrics(plain), room.width())
-            painter.drawText(room, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
-            return
-        painter.setFont(bold)
-        name = QFontMetrics(bold).elidedText(drawn.title, Qt.TextElideMode.ElideRight, int(room.width()))
-        named = bool(name.strip("…"))
-        if not named:
-            name = _initial(drawn.title, QFontMetrics(bold), room.width())
-        painter.drawText(
-            QRectF(room.left(), room.top(), room.width(), line), Qt.AlignmentFlag.AlignLeft, name
+        tight = QRectF(room.left(), max(rect.top() + 1, room.top() - TEXT_TOP + 1), room.width(), 0)
+        tight.setBottom(rect.bottom())
+        shown = (self.measures["show_times"], self.measures["show_lengths"])
+        lay = block_layout(
+            drawn, title_font, small, room, tight=tight, wide=self.wide, book=book is not None, shown=shown
         )
-        if not named:
-            # No room for any of the name, so none for its times either.
-            return
-        faint = QColor(ink)
-        faint.setAlphaF(0.8)
-        refused = drawn.verdict is not None and not drawn.verdict.ok
-        painter.setPen(self.c("error") if refused else faint)
-        below = QRectF(room.left(), room.top() + line + 1, room.width(), room.height() - line - 1)
-        _write_lines(painter, detail, plain, below)
+        _paint_layout(painter, lay, title_font, small, ink, muted, book, muted)
+
+    def _book_colour(self, drawn: Drawn, ink: QColor, paper: QColor, edge: QColor | None) -> QColor | None:
+        """Homework carries a book as well as its colour. In its mark where the mark reads on the
+        block, else in the block's ink."""
+        if drawn.category not in HOMEWORK_CATEGORIES:
+            return None
+        if edge is not None and contrast(edge.name(), paper.name()) >= 3.0:
+            return edge
+        return ink
 
     def ghost(self, painter: QPainter, rect: QRectF, words: str, ok: bool) -> None:
         """Something about to be made: a tinted block where it would go, with its times."""
@@ -376,13 +423,6 @@ def _write_lines(painter: QPainter, text: str, font: QFont, room: QRectF) -> Non
         painter.drawText(box, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, line)
 
 
-def _initial(title: str, metrics: QFontMetrics, width: float) -> str:
-    """A block with no room for any of its name: its first letter if that fits, else nothing. Its
-    colour already says a block is there; a lone "…" said nothing more."""
-    first = title.strip()[:1]
-    return first if first and metrics.horizontalAdvance(first) <= width else ""
-
-
 def _between(start: QRectF, end: QRectF, share: float) -> QRectF:
     """The rectangle `share` of the way from `start` to `end`."""
     return QRectF(
@@ -438,6 +478,287 @@ def fit_lines(text: str, font: QFont, width: float, height: float) -> list[str]:
             break
         lines.append(fitted)
     return lines
+
+
+@dataclass(frozen=True)
+class Written:
+    """One line of a block's words: what it says, in the title's font or the small one, and where.
+    `book` puts the homework book before it; `pin` puts a pin before a line aligned right."""
+
+    text: str
+    title: bool
+    box: QRectF
+    right: bool = False
+    book: bool = False
+    pin: bool = False
+
+
+# Between a title and the time or length on its line.
+INLINE_GAP = 6
+
+
+def _book_room(metrics: QFontMetricsF) -> float:
+    """The book's size at a font, and the room it takes before the title."""
+    return round(metrics.ascent()) + 3
+
+
+def _wrap(text: str, metrics: QFontMetricsF, width: float, indent: float) -> tuple[list[str], bool]:
+    """`text` broken at its spaces into lines of `width`, the first `indent` shorter; and whether
+    every word fits its line whole."""
+    lines: list[str] = []
+    whole = True
+    for word in _words(text):
+        if lines:
+            room = width - (indent if len(lines) == 1 else 0)
+            if metrics.horizontalAdvance(f"{lines[-1]} {word}") <= room:
+                lines[-1] += f" {word}"
+                continue
+        lines.append(word)
+        if metrics.horizontalAdvance(word) > width - (indent if len(lines) == 1 else 0):
+            whole = False
+    return lines, whole
+
+
+def word_elide(text: str, metrics: QFontMetricsF, width: float) -> str:
+    """`text` in `width`, given way at a space where it must, "Math…" rather than "Math works…". Only
+    a first word wider than the room is cut inside it."""
+    if metrics.horizontalAdvance(text) <= width:
+        return text
+    words = _words(text)
+    kept = ""
+    for word in words:
+        longer = f"{kept} {word}".strip()
+        if metrics.horizontalAdvance(longer + "…") > width:
+            break
+        kept = longer
+    if kept:
+        return kept + "…"
+    return metrics.elidedText(text, Qt.TextElideMode.ElideRight, width)
+
+
+def _clamp(lines: list[str], most: int, metrics: QFontMetricsF, width: float, indent: float) -> list[str]:
+    """At most `most` lines, the last one ending in "…" if there was more, each within its width."""
+    shown = lines[:most]
+    if len(lines) > most:
+        shown[-1] = " ".join(lines[most - 1 :])
+    return [word_elide(line, metrics, width - (indent if at == 0 else 0)) for at, line in enumerate(shown)]
+
+
+def _beside(title: QFontMetricsF, small: QFontMetricsF) -> float:
+    """How far below a title line's top small print on the same line starts, so the two share a baseline."""
+    return max(title.ascent() - small.ascent(), 0.0)
+
+
+def block_layout(
+    drawn: Drawn,
+    title_font: QFont,
+    small: QFont,
+    room: QRectF,
+    *,
+    tight: QRectF | None = None,
+    wide: bool = False,
+    book: bool = False,
+    shown: tuple[bool, bool] = (True, True),
+) -> list[Written]:
+    """What a block says in `room`, and where (decision 14 of 0.17). The first way that fits with no
+    word cut: the title on up to two lines, its times, its length; then without the length; the
+    title on one line and its times; "Dinner 18:30" on one line; the title alone. Only if none fits
+    whole does the title give way with "…". With no room for three of its letters, nothing: the
+    block's colour says it is there. A wide day puts the length at the right of the title. `shown`
+    is whether the look shows times and lengths; a flag such as Finished stays either way.
+
+    `tight` is the block's room with less kept from its top and bottom, for one line on a block too
+    short for the usual margins, as a half-hour Dinner is on the week."""
+    tight = tight if tight is not None else room
+    tm, sm = QFontMetricsF(title_font), QFontMetricsF(small)
+    indent = _book_room(tm) if book else 0.0
+    width, height = room.width(), room.height()
+    tl, sl = tm.lineSpacing(), sm.lineSpacing()
+    if width < indent + tm.horizontalAdvance(drawn.title.strip()[:3]) or tight.height() + 0.5 < tl:
+        return []
+    # One line starts where the usual margin puts it, or higher on a block too short for that.
+    line_top = room.top() if height + 0.5 >= tl else tight.top()
+    lines, whole = _wrap(drawn.title, tm, width, indent)
+    if wide:
+        return _wide_layout(drawn, tm, sm, room, line_top, indent, book)
+
+    def stack(most: int, extras: tuple[str, ...], cut: bool) -> list[Written] | None:
+        if any(sm.horizontalAdvance(extra) > width for extra in extras):
+            return None
+        count = min(len(lines), most)
+        if count > 1 or extras:
+            if tl * count + sl * len(extras) > height + 0.5:
+                return None
+            top = room.top()
+        else:
+            top = line_top
+        if not cut and (not whole or len(lines) > most):
+            return None
+        out = []
+        for at, text in enumerate(_clamp(lines, most, tm, width, indent)):
+            left = room.left() + (indent if at == 0 else 0)
+            out.append(Written(text, True, QRectF(left, top, room.right() - left, tl), book=book and at == 0))
+            top += tl
+        for extra in extras:
+            out.append(Written(extra, False, QRectF(room.left(), top, width, sl)))
+            top += sl
+        return out
+
+    def one_line(after: str, cut: bool) -> list[Written] | None:
+        """The title and `after` on one line, as "Dinner 18:30"."""
+        after_width = sm.horizontalAdvance(after)
+        title_room = width - indent - INLINE_GAP - after_width
+        if title_room < tm.horizontalAdvance(drawn.title.strip()[:3]):
+            return None
+        fits = tm.horizontalAdvance(drawn.title) <= title_room
+        if not fits and not cut:
+            return None
+        text = drawn.title if fits else word_elide(drawn.title, tm, title_room)
+        left = room.left() + indent
+        written = [Written(text, True, QRectF(left, line_top, title_room, tl), book=book)]
+        at = left + tm.horizontalAdvance(text) + INLINE_GAP
+        written.append(Written(after, False, QRectF(at, line_top + _beside(tm, sm), after_width + 1, sl)))
+        return written
+
+    if drawn.short:
+        # Short of room the window asked for names only: "Soccer practice" whole over two lines
+        # says more than "Soccer …" and its times.
+        ways = [lambda cut: stack(3, (), cut), lambda cut: stack(1, (), cut)]
+    else:
+        said = ((drawn.done, "Finished"), (drawn.missed, "Missed"))
+        flags = " · ".join(word for flag, word in said if flag)
+        times = drawn.times if shown[0] else ""
+        length = drawn.length if shown[1] else flags
+        ways = [
+            lambda cut: stack(2, tuple(part for part in (times, length) if part), cut),
+            lambda cut: stack(2, tuple(part for part in (times,) if part), cut),
+            lambda cut: stack(1, tuple(part for part in (times,) if part), cut),
+            lambda cut: one_line(short_clock(drawn.span.start) if shown[0] else "", cut),
+            lambda cut: stack(2, (), cut),
+            lambda cut: stack(1, (), cut),
+        ]
+    for way in ways:
+        found = way(False)
+        if found is not None:
+            return found
+    # Nothing says the title whole: it gives way, and the name comes before its start on one line,
+    # "Math works…" rather than "Mat… 19:00".
+    for way in ways[:3] + ways[4:] + ways[3:4]:
+        found = way(True)
+        if found is not None:
+            return found
+    return []
+
+
+def _wide_layout(
+    drawn: Drawn,
+    tm: QFontMetricsF,
+    sm: QFontMetricsF,
+    room: QRectF,
+    line_top: float,
+    indent: float,
+    book: bool,
+) -> list[Written]:
+    """One wide day's block: the title with the length at its right, the times under them; or all
+    three on one line."""
+    width, height = room.width(), room.height()
+    tl, sl = tm.lineSpacing(), sm.lineSpacing()
+    pinned = drawn.pinned and not drawn.done
+    length_width = sm.horizontalAdvance(drawn.length) + (_book_room(sm) if pinned else 0)
+    title_room = width - length_width - INLINE_GAP
+    shifted = _beside(tm, sm)
+
+    def length_at(top: float) -> Written:
+        box = QRectF(room.left(), top + shifted, width, sl)
+        return Written(drawn.length, False, box, right=True, pin=pinned)
+
+    def stacked(cut: bool) -> list[Written] | None:
+        narrowed, fits = _wrap(drawn.title, tm, title_room, indent)
+        count = min(len(narrowed), 2)
+        if tl * count + sl > height + 0.5 or sm.horizontalAdvance(drawn.times) > width:
+            return None
+        if not cut and (not fits or len(narrowed) > 2):
+            return None
+        out = []
+        top = room.top()
+        for at, text in enumerate(_clamp(narrowed, 2, tm, title_room, indent)):
+            left = room.left() + (indent if at == 0 else 0)
+            box = QRectF(left, top, title_room - (left - room.left()), tl)
+            out.append(Written(text, True, box, book=book and at == 0))
+            top += tl
+        out.append(length_at(room.top()))
+        out.append(Written(drawn.times, False, QRectF(room.left(), top, width, sl)))
+        return out
+
+    def inline(cut: bool) -> list[Written] | None:
+        times_width = sm.horizontalAdvance(drawn.times)
+        name_room = title_room - indent - INLINE_GAP - times_width
+        if name_room < tm.horizontalAdvance(drawn.title.strip()[:3]):
+            return None
+        fits = tm.horizontalAdvance(drawn.title) <= name_room
+        if not fits and not cut:
+            return None
+        text = drawn.title if fits else word_elide(drawn.title, tm, name_room)
+        left = room.left() + indent
+        at = left + tm.horizontalAdvance(text) + INLINE_GAP
+        return [
+            Written(text, True, QRectF(left, line_top, name_room, tl), book=book),
+            Written(drawn.times, False, QRectF(at, line_top + shifted, times_width + 1, sl)),
+            length_at(line_top),
+        ]
+
+    for cut in (False, True):
+        for way in (stacked, inline):
+            found = way(cut)
+            if found is not None:
+                return found
+    return []
+
+
+def held_layout(
+    title: str, words: str, title_font: QFont, small: QFont, room: QRectF, book: bool
+) -> list[Written]:
+    """A held block: its name, and under it where it would land, in whole lines."""
+    tm, sm = QFontMetricsF(title_font), QFontMetricsF(small)
+    indent = _book_room(tm) if book else 0.0
+    if room.height() + 0.5 < tm.height() or room.width() < indent + 8:
+        return []
+    name = tm.elidedText(title, Qt.TextElideMode.ElideRight, room.width() - indent)
+    tl, sl = tm.lineSpacing(), sm.lineSpacing()
+    box = QRectF(room.left() + indent, room.top(), room.width() - indent, tl)
+    out = [Written(name, True, box, book=book)]
+    below = room.height() - tl
+    for at, line in enumerate(fit_lines(words, small, room.width(), below)):
+        out.append(Written(line, False, QRectF(room.left(), room.top() + tl + at * sl, room.width(), sl)))
+    return out
+
+
+def _paint_layout(
+    painter: QPainter,
+    lay: list[Written],
+    title_font: QFont,
+    small: QFont,
+    ink: QColor,
+    muted: QColor,
+    book: QColor | None,
+    pin: QColor | None = None,
+) -> None:
+    ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
+    for line in lay:
+        font = title_font if line.title else small
+        metrics = QFontMetricsF(font)
+        painter.setFont(font)
+        painter.setPen(ink if line.title else muted)
+        align = Qt.AlignmentFlag.AlignRight if line.right else Qt.AlignmentFlag.AlignLeft
+        painter.drawText(line.box, align | Qt.AlignmentFlag.AlignTop, line.text)
+        size = round(metrics.ascent())
+        top = line.box.top() + (metrics.height() - size) / 2
+        if line.book and book is not None:
+            left = line.box.left() - _book_room(metrics)
+            painter.drawPixmap(QPointF(left, top), icons.pixmap(BOOK, book.name(), size, ratio))
+        if line.pin and pin is not None:
+            left = line.box.right() - metrics.horizontalAdvance(line.text) - _book_room(metrics)
+            painter.drawPixmap(QPointF(left, top), icons.pixmap("pin", pin.name(), size, ratio))
 
 
 class HoursCanvas(QWidget):
@@ -688,6 +1009,8 @@ class HoursCanvas(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         visible = self._visible()
+        shown_today = self.today is not None and any(track.day == self.today for track in self.tracks)
+        self.painter.now_minute = self.now_min if shown_today else None
         with _fresh(painter):
             self.painter.background(painter, QRectF(self.rect()))
         preview = self.hand.preview

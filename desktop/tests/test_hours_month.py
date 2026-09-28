@@ -383,3 +383,44 @@ def test_a_month_revealed_before_its_first_layout_still_opens_on_the_week(qapp: 
     room = grid.scroll.viewport().height()
     grid.close()
     assert (shown, below >= room) == (3, True)
+
+
+def test_a_weeks_row_is_as_tall_as_its_busiest_date_and_this_week_is_banded(qapp: QApplication) -> None:
+    """Decision 17 of 0.17: not six even rows with empty space in the quiet weeks. A week's row grows
+    with its busiest date, up to six chips, and the week with today is banded in a little of the text
+    colour, not the accent."""
+    from PySide6.QtGui import QColor
+
+    from desktop.native.hours.month import MOST_CHIPS
+    from desktop.native.look import mix, resolved_palette
+
+    snapshot = build_month("2026-09", [], [])
+    busy = next(day for day in snapshot["days"] if day["date"] == "2026-09-16")
+    busy["blocks"] = [
+        {"id": f"b{hour}", "title": f"Club {hour}", "start": f"{hour:02d}:00", "duration_min": 60}
+        for hour in range(8, 17)
+    ]
+    grid = MonthGrid()
+    palette = resolved_palette("light-frost", False, None)
+    grid.set_palette(palette)
+    grid.resize(900, 300)
+    grid.set_month(snapshot, False)
+    canvas = grid.canvas
+    canvas.set_cells(month_cells(snapshot, {}, "2026-09-16"))
+    grid.show()
+    qapp.processEvents()
+    quiet, busy_row = canvas.cell_rect(0).height(), canvas.cell_rect(16).height()
+    assert busy_row > quiet, f"the busy week's row is {busy_row:.0f} px, a quiet one {quiet:.0f}"
+    shown, more = canvas.chip_boxes(16)
+    assert (len(shown), more) == (MOST_CHIPS, 9 - MOST_CHIPS)
+    image = canvas.grab().toImage()
+
+    def ground(index: int) -> str:
+        box = canvas.cell_rect(index)
+        return QColor(image.pixel(int(box.right()) - 4, int(box.bottom()) - 4)).name()
+
+    band = mix(palette["text"], palette["panel"], 0.04)
+    assert ground(16) != palette["panel"] and ground(16) == ground(20)
+    assert abs(QColor(ground(16)).lightness() - QColor(band).lightness()) <= 2
+    assert ground(0) == palette["panel"], "only this week is banded"
+    grid.close()

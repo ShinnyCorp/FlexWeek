@@ -362,13 +362,14 @@ def test_depth_is_drawn_with_edges_because_qt_has_no_shadows() -> None:
 def test_a_block_shows_its_category_colour_in_the_place_the_knob_names() -> None:
     palette = resolved_palette("nocturne", True, None)
     blue = "#3b82f6"
-    filled = block_paint(look_of("default"), resolved_palette("slate", False, None), blue)
+    filled = block_paint(look_of("default", blocks="filled"), resolved_palette("slate", False, None), blue)
     assert (filled["fill"], filled["outline"], filled["edge"]) == (blue, None, None)
     outlined = block_paint(look_of("default", blocks="outline"), palette, blue)
     assert (outlined["fill"], outlined["outline"], outlined["edge"]) == (palette["grid"], blue, None)
     assert outlined["ink"] == palette["text"]
-    edge = block_paint(look_of("default", blocks="edge"), palette, blue)
-    assert (edge["fill"], edge["edge"]) == (palette["panel"], blue)
+    # Edge, the default (decision 14 of 0.17): Filled, with the mark down its side.
+    edge = block_paint(look_of("default"), palette, blue)
+    assert (edge["mode"], edge["fill"], edge["outline"], edge["edge"]) == ("edge", blue, None, blue)
     # No category: a filled block uses the palette's own block colours, flexible work the warm pair.
     plain = block_paint(look_of("default"), palette, None, "flexible")
     assert (plain["fill"], plain["ink"]) == (palette["block_flex"], palette["block_flex_ink"])

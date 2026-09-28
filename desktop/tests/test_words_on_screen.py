@@ -107,7 +107,7 @@ def test_the_strip_under_next_says_what_it_is(
     session.add_block({**essay, "start": "19:00", "days": [0], "pinned": True})
     session.save()
     settled(qapp, window)
-    panel = window.week_table.side
+    panel = window.rail
     assert panel.tasks.isVisibleTo(window)
     label = panel.findChild(QLabel, "focusTasksLabel")
     assert label.text() == "Start a focus timer"

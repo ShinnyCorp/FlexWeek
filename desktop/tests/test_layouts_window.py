@@ -11,7 +11,7 @@ import json
 import os
 import time
 from collections.abc import Callable, Iterator
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -1195,6 +1195,34 @@ def test_a_real_solve_explains_itself_once(qapp: QApplication, window: NativeWin
     assert window.plan_review.isVisible() is False
 
 
+def test_the_plan_bar_counts_what_the_toast_counts(qapp: QApplication, window: NativeWindow) -> None:
+    """Decision 18 of 0.17. The bar counted every block the solver's trace calls placed, School and
+    homework already placed included, and said 2 placed under a toast that said 0. Both now say the
+    homework this plan gave a time and the homework it could not."""
+    import re
+
+    session = window.session
+    session.add_block({"id": "school", "title": "School", "kind": "locked", "category": "class",
+                       "start": "08:00", "duration_min": 390, "days": [0, 1, 2, 3, 4]})
+    due = f"{(date.fromisoformat(session.week_start) + timedelta(days=6)).isoformat()}T23:59"
+    session.add_homework({"id": "essay", "title": "History essay", "due": due, "estimate_min": 60,
+                          "revision": 0})
+    # Ten hours due at the week's start: there is no room for it, so the bar has something to say.
+    session.add_homework({"id": "poster", "title": "Science fair poster",
+                          "due": f"{session.week_start}T08:00", "estimate_min": 600, "revision": 0})
+    session.save()
+    settled(qapp, window)
+    session.solve()
+    wait_until(qapp, lambda: session.trace is not None and not session.busy)
+    qapp.processEvents()
+    assert len(session.trace.get("placed") or []) > 1, "the trace also lists School"
+    said = window.toast.text()
+    planned = re.match(r"Planned (\d+) homework blocks?\. (\d+) still needs? a time\.", said)
+    assert planned, said
+    assert window.plan_review.isVisible()
+    assert window.plan_review.heading.text() == f"Placed {planned[1]} · {planned[2]} without a time"
+
+
 def test_a_commitment_over_planned_homework_offers_find_a_new_time(
     qapp: QApplication, window: NativeWindow
 ) -> None:
@@ -1267,8 +1295,12 @@ def test_the_week_toolbar_keeps_only_what_is_reached_for(qapp: QApplication, win
     shown = [
         button.objectName()
         for button in page.findChildren(QPushButton)
-        # The calendar's own controls, such as zooming its hours, belong to it, not to the toolbar.
-        if button.isVisible() and button.objectName() and not window.planner.isAncestorOf(button)
+        # The calendar's own controls, such as zooming its hours or paging the rail's month, belong to
+        # it, not to the toolbar.
+        if button.isVisible()
+        and button.objectName()
+        and not window.planner.isAncestorOf(button)
+        and not window.rail.isAncestorOf(button)
     ]
     assert window.findChild(QPushButton, "weekZoomIn").isVisible()
     assert shown == [
