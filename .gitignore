@@ -24,3 +24,6 @@ desktop/pysidedeploy.spec
 
 # fwtest build output
 tools/fwtest/target/
+
+# Multi-model handoffs (agent-workflow-kit, team-modes)
+.handoff/
