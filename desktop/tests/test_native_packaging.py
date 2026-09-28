@@ -71,6 +71,8 @@ def test_both_builds_ship_the_icon_and_the_fonts_where_the_app_looks_for_them() 
     assert '--include-data-dir="$ROOT/desktop/assets=desktop/assets"' in LINUX
     assert "--include-data-dir=$(Join-Path $Root 'desktop\\assets')=desktop/assets" in WINDOWS
     fonts = ROOT / "desktop/assets/fonts"
-    for face in ("Regular", "Medium", "SemiBold", "Bold"):
-        assert (fonts / f"Inter-{face}.ttf").is_file(), face
-    assert "SIL Open Font License" in (fonts / "LICENSE.txt").read_text(encoding="utf-8")
+    for family in ("Inter", "Newsreader", "JetBrainsMono"):
+        for face in ("Regular", "Medium", "SemiBold", "Bold"):
+            assert (fonts / f"{family}-{face}.ttf").is_file(), (family, face)
+    for licence in ("LICENSE.txt", "Newsreader-OFL.txt", "JetBrainsMono-OFL.txt"):
+        assert "SIL Open Font License" in (fonts / licence).read_text(encoding="utf-8"), licence

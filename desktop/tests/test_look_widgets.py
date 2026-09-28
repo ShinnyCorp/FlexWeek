@@ -154,7 +154,7 @@ def test_a_filled_block_on_a_dark_pack_is_deep_with_light_ink(qapp: QApplication
 
 
 def test_an_outlined_block_is_drawn_as_one_outline_in_the_strong_colour(qapp: QApplication) -> None:
-    calendar, palette = week(qapp, look_of(blocks="outlined"))
+    calendar, palette = week(qapp, look_of(blocks="outline"))
     assert shape(calendar, "school")[:3] == (palette["grid"], palette["text"], DEEP_MARK)
     assert pixel(calendar, "school", "left") == DEEP_MARK
     assert pixel(calendar, "school", "inside") == palette["grid"]
@@ -169,9 +169,9 @@ def test_an_edge_block_is_a_plain_card_with_the_strong_colour_down_its_left(qapp
 
 
 def test_the_outline_stays_visible_on_a_light_pack(qapp: QApplication) -> None:
-    calendar, palette = week(qapp, look_of(blocks="outlined"), pack="slate")
+    calendar, palette = week(qapp, look_of(blocks="outline"), pack="slate")
     assert pixel(calendar, "school", "left") == STRONG
-    assert palette["grid"] == "#fbfcff"
+    assert palette["grid"] == "#ffffff"
 
 
 def test_changing_the_look_repaints_the_week_already_on_screen(qapp: QApplication) -> None:
@@ -198,7 +198,7 @@ def test_days_outside_the_month_use_the_palettes_muted_ink(qapp: QApplication) -
     grid.set_month(snapshot, False)
     grid.set_palette(terminal)
     assert grid.canvas.cells[0].in_month is False
-    assert grid.canvas.painter.c("muted").name() == terminal["muted"] == "#7fbf7f"
+    assert grid.canvas.painter.c("muted").name() == terminal["muted"] == "#8b949e"
 
 
 def settings(look: dict) -> SettingsPage:
@@ -243,26 +243,26 @@ def test_choosing_terminal_in_settings_applies_every_one_of_its_knobs(qapp: QApp
 
 def test_a_knob_moved_by_hand_stays_when_the_look_changes(qapp: QApplication) -> None:
     dialog = settings({"preset": "default", "knobs": {}})
-    move(dialog, "corners", "pill")
+    move(dialog, "corners", "rounded")
     choose(dialog, look_menu_token("preset", "terminal"))
-    assert shown(dialog)["corners"] == "pill"
+    assert shown(dialog)["corners"] == "rounded"
     assert shown(dialog)["font"] == "mono"
-    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "pill"}}
-    move(dialog, "depth", "hard")
-    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "pill", "depth": "hard"}}
+    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "rounded"}}
+    move(dialog, "depth", "bold")
+    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "rounded", "depth": "bold"}}
     assert effective_look(dialog.look_choice())["font"] == "mono"
     choose(dialog, look_menu_token("pack", "system"))
-    assert shown(dialog)["corners"] == "pill"
-    assert shown(dialog)["depth"] == "hard"
+    assert shown(dialog)["corners"] == "rounded"
+    assert shown(dialog)["depth"] == "bold"
     assert shown(dialog)["font"] == "sans"
-    assert dialog.look_choice() == {"preset": "default", "knobs": {"corners": "pill", "depth": "hard"}}
+    assert dialog.look_choice() == {"preset": "default", "knobs": {"corners": "rounded", "depth": "bold"}}
 
 
 def test_opening_settings_shows_the_look_on_screen_and_changes_nothing(qapp: QApplication) -> None:
-    stored = {"preset": "terminal", "knobs": {"text": "large", "corners": "pill"}}
+    stored = {"preset": "terminal", "knobs": {"text": "large", "corners": "rounded"}}
     dialog = settings(stored)
     # Each box shows what the student sees, not the first value in its list.
-    assert shown(dialog) == {**preset_knobs("terminal"), "text": "large", "corners": "pill"}
+    assert shown(dialog) == {**preset_knobs("terminal"), "text": "large", "corners": "rounded"}
     # Pressing OK untouched must hand back exactly what was stored: the preset connection is made
     # after the stored preset is selected, so opening the dialog never resets a student's own knobs.
     assert dialog.look_choice() == stored

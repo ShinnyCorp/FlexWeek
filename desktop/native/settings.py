@@ -63,6 +63,7 @@ from desktop.native.layouts.registry import sanitize_layout
 from desktop.native.look import (
     ACCENT_COLORS,
     ACCENTS,
+    KNOB_VALUE_LABELS,
     LOOK_KNOBS,
     OWN_ACCENT,
     TEXT_PT,
@@ -525,7 +526,8 @@ class SettingsPage(QWidget):
         fine_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         fine_form.setContentsMargins(0, 0, 0, 0)
         for knob, values in LOOK_KNOBS.items():
-            box = Segmented(tuple((value.title(), value) for value in values), "look" + knob.title())
+            labelled = tuple((KNOB_VALUE_LABELS[value], value) for value in values)
+            box = Segmented(labelled, "look" + knob.title())
             box.setCurrentIndex(max(0, box.findData(shown[knob])))
             self.knobs[knob] = box
             fine_form.addRow(KNOB_LABELS.get(knob, knob.title()), box)
@@ -1157,7 +1159,9 @@ class SettingsPage(QWidget):
         parsed = parse_look_menu_token(self.look.currentData())
         preset = parsed[1] if parsed and parsed[0] == "preset" else "default"
         shown = {knob: box.currentData() for knob, box in self.knobs.items()}
-        return sanitize_look({"preset": preset, "knobs": look_overrides(preset, shown)})
+        # A custom look stays until another look is chosen from the menu, which drops it.
+        kept = {"custom": self._look["custom"]} if "custom" in self._look else {}
+        return sanitize_look({"preset": preset, "knobs": look_overrides(preset, shown), **kept})
 
     def layout_choice(self) -> dict:
         picked: dict = {"options": {}}

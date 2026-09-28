@@ -335,12 +335,12 @@ def test_signing_out_of_a_day_screen_does_not_leave_the_next_student_in_one(
 
 
 def test_the_choice_is_saved_on_this_device_beside_the_look(qapp: QApplication, window: NativeWindow) -> None:
-    window._look = {"preset": "paper", "knobs": {"corners": "pill"}}
+    window._look = {"preset": "paper", "knobs": {"corners": "rounded"}}
     window._layout = {"main": "classic", "day": "one", "options": {"one": {"colour": "paper"}}}
     window._save_look()
     stored = json.loads(look_file().read_text())
     assert stored["preset"] == "paper"
-    assert stored["knobs"] == {"corners": "pill"}
+    assert stored["knobs"] == {"corners": "rounded"}
     assert stored["layout"] == {
         "main": "classic",
         "day": "one",
@@ -351,7 +351,7 @@ def test_the_choice_is_saved_on_this_device_beside_the_look(qapp: QApplication, 
     assert set(stored["updates"]) == {"check", "last_ms", "skip"}
     window._look, window._layout = {}, {}
     window._load_look()
-    assert window._look == {"preset": "paper", "knobs": {"corners": "pill"}}
+    assert window._look == {"preset": "paper", "knobs": {"corners": "rounded"}}
     assert window._layout["options"] == {"one": {"colour": "paper"}}
     click(window, "viewMyDay")
     faded_in()
@@ -508,6 +508,49 @@ def test_the_knobs_settings_hides_for_a_design_change_nothing_in_it(
         assert view_with({knob: other}) == plain, knob
     assert view_with({}, {"theme_pack": "dark-frost"}) == plain, "look"
     assert view_with({}, {"accent": "gold"}) == plain, "accent"
+
+
+def test_a_custom_look_dresses_the_window_and_is_kept_with_the_saved_looks(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Customise end to end: Paper made a night look of the student's own, with Sea for the accent,
+    School in green, square-ish corners, mono headings and larger text, worn by the whole window,
+    saved by name in the look file and read back as it was."""
+    from desktop.native.custom_look import save_look, wear
+    from desktop.native.look import category_paint, oklch, sanitize_look
+    from desktop.native.tokens import MARK
+
+    custom = {
+        "name": "Night study",
+        "base": "paper",
+        "accent": "sea",
+        "colours": {"page": "#1e2430", "card": "#262d3b", "text": "#e8ecf2", "line": "#394255"},
+        "categories": {"class": {"hue": 140}},
+        "corners": 4,
+        "heading_font": "mono",
+        "text_scale": 1.2,
+    }
+    window._look = wear(sanitize_look(None), custom)
+    window._saved_looks = save_look([], custom, "Night study")
+    window._apply_appearance()
+    window._on_week()
+    settled(qapp, window)
+    painter = window.week_table.hours.painter
+    assert (painter.colours["window"], painter.colours["accent"]) == ("#1e2430", "#2dd4bf")
+    # A dark page makes a dark look: School's green sunk into the card, its mark on the dark family.
+    assert category_paint("class", painter.colours)[1] == oklch(*MARK["dark"], 140)
+    title = window.findChild(QLabel, "weekTitle")
+    assert title.font().family() == "JetBrains Mono"
+    assert "font-size: 14.4pt" in window.styleSheet() and "border-radius: 4px" in window.styleSheet()
+    picture = window.week_table.hours.grab().toImage()
+    colours = {picture.pixelColor(x, y).name() for x in range(0, picture.width(), 40) for y in (5, 200)}
+    assert "#1e2430" in colours
+    window._save_look()
+    stored = json.loads(look_file().read_text())
+    assert stored["custom"] == custom and stored["saved_looks"] == [custom]
+    window._look, window._saved_looks = {}, []
+    window._load_look()
+    assert window._look["custom"] == custom and window._saved_looks == [custom]
 
 
 def test_the_dialog_shows_style_first_and_fine_tune_on_request(qapp: QApplication) -> None:

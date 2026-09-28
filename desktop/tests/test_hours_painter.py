@@ -374,11 +374,13 @@ def rows(palette: dict, today: bool) -> QImage:
 def test_the_hours_have_a_rule_at_each_hour_and_none_at_the_half(qapp: QApplication) -> None:
     """The dashed half-hour rules crowded the grid. On a dark look the hour rules take the stronger
     hairline, since the plain one all but vanished on the page; High contrast's are 40 % white, since
-    full white turned the grid into graph paper."""
+    full white turned the grid into graph paper. Nocturne, Ink and Terminal draw looks.css's 8 % of
+    their text."""
     high_contrast = {"preset": "high-contrast", "knobs": {}}
     for pack, dark, look, rule in (
         ("slate", False, None, resolved_palette("slate", False, None)["hairline"]),
-        ("nocturne", True, None, resolved_palette("nocturne", True, None)["hairline_strong"]),
+        ("dark-frost", True, None, resolved_palette("dark-frost", True, None)["hairline_strong"]),
+        ("nocturne", True, None, mix("#e0e4f0", "#0a0e27", 0.08)),
         ("light-frost", False, high_contrast, "#666666"),
     ):
         palette = resolved_palette(pack, dark, look)
@@ -424,3 +426,49 @@ def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
     assert track.area.left() <= written[0].left() < track.area.left() + 12
     accent = resolved_palette("system", False, None)["accent"]
     assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == accent
+
+
+def custom_hours(custom: dict) -> tuple[HoursCanvas, dict]:
+    """Three days at 15:40 in a custom look on Light, with its painter."""
+    look = {"preset": "default", "knobs": {}, "custom": {"base": "light", **custom}}
+    palette = resolved_palette("system", False, look)
+    canvas = three_days(now_min=15 * 60 + 40, palette=palette)
+    canvas.set_painter(BlockPainter(palette, look))
+    return canvas, palette
+
+
+def test_a_custom_look_sets_todays_wash_the_now_line_and_the_edge(qapp: QApplication) -> None:
+    """Customise's grid and block settings: today's highlight off, the now line in the text colour,
+    and a 6-pixel category edge, where the look's own are a 3 % wash, the accent and 4 pixels."""
+    y = 10 + HOUR_PX // 2
+    plain, plain_palette = custom_hours({"blocks": "edge"})
+    changed, palette = custom_hours(
+        {"blocks": "edge", "today_highlight": False, "now_line": "text", "edge_width": 6}
+    )
+    before, after = plain.grab().toImage(), changed.grab().toImage()
+    assert _near(before.pixelColor(130, y), mix(plain_palette["text"], plain_palette["window"], 0.03))
+    assert _near(after.pixelColor(130, y), palette["window"])
+    track = changed.tracks[0]
+    line_y = round(track.area.top() + track.offset(15 * 60 + 40))
+    x = int(track.area.right()) - 3
+    assert before.pixelColor(x, line_y).name() == plain_palette["accent"]
+    assert after.pixelColor(x, line_y).name() == palette["text"]
+    block = changed.block_rect("essay", 1)
+    middle = block.center().y()
+    assert _near(before.pixelColor(block.left() + 5, middle), plain_palette["panel"])
+    assert _near(after.pixelColor(block.left() + 5, middle), palette["block_edge"])
+
+
+def test_a_custom_look_can_leave_out_a_blocks_times_or_its_length(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    for shown, missing, custom in (
+        ("16:00–17:30", "1 h 30 min", {"show_lengths": False}),
+        ("1 h 30 min", "16:00–17:30", {"show_times": False}),
+    ):
+        canvas, _palette = custom_hours(custom)
+        Said.words = []
+        canvas.grab()
+        written = " ".join(text for text, _where in Said.words)
+        assert shown in written and missing not in written, custom

@@ -1,4 +1,4 @@
-"""The shared system, checked by numbers (decision 10 of 0.17's plan) in Light, Dark and High contrast.
+"""The shared system, checked by numbers (decision 10 of 0.17's plan) in all ten looks.
 
 Colours are measured in OKLab, the space the category family is chosen in; a distance is OKLab's
 times 100. Colour blindness is Machado, Oliveira and Fernandes (2009) at full severity, applied to
@@ -17,6 +17,7 @@ from desktop.native.calendar import CATEGORIES
 from desktop.native.layouts.registry import MATCH, tokens_for
 from desktop.native.look import (
     ACCENTS,
+    LOOK_KNOBS,
     block_paint,
     category_paint,
     contrast,
@@ -26,16 +27,28 @@ from desktop.native.look import (
 )
 from desktop.native.tokens import family_colours, linear_rgb, oklab, oklab_from_linear
 
-HIGH_CONTRAST = {"preset": "high-contrast", "knobs": {}}
-# Each look as a student reaches it, on the device setting that goes with it.
+
+def preset(name: str) -> dict:
+    return {"preset": name, "knobs": {}}
+
+
+# Each look as a student reaches it, on the device setting that goes with it. A preset is the same
+# look on any pack, so each is reached from the device's opposite setting too.
 LOOKS = {
     "Light": ("light-frost", False, None),
     "Dark": ("dark-frost", True, None),
-    "High contrast": ("system", False, HIGH_CONTRAST),
+    "High contrast": ("system", False, preset("high-contrast")),
+    "Slate": ("slate", False, None),
+    "Nocturne": ("nocturne", True, None),
+    "Paper": ("system", True, preset("paper")),
+    "Ink": ("system", False, preset("ink")),
+    "Terminal": ("slate", False, preset("terminal")),
+    "Poster": ("nocturne", True, preset("poster")),
+    "Pastel": ("system", True, preset("pastel")),
 }
 CASES = [
     (name, surface, accent)
-    for name, surface, accent in product(LOOKS, ("frost", "flat"), ACCENTS)
+    for name, surface, accent in product(LOOKS, LOOK_KNOBS["surface"], ACCENTS)
 ]
 DEUTERANOPIA = (
     (0.367322, 0.860646, -0.227968),
@@ -44,12 +57,12 @@ DEUTERANOPIA = (
 )
 
 
-def look_for(name: str, surface: str = "frost") -> dict:
+def look_for(name: str, surface: str = "layered") -> dict:
     look = LOOKS[name][2] or {"preset": "default", "knobs": {}}
     return {**look, "knobs": {**look["knobs"], "surface": surface}}
 
 
-def palette_for(name: str, surface: str = "frost", accent: str = "default") -> dict:
+def palette_for(name: str, surface: str = "layered", accent: str = "default") -> dict:
     pack, dark, _look = LOOKS[name]
     return resolved_palette(pack, dark, look_for(name, surface), accent)
 
@@ -75,7 +88,7 @@ def test_the_category_colours_are_the_family_worked_out_from_their_hues() -> Non
 @pytest.mark.parametrize("name", LOOKS)
 def test_every_category_fill_has_one_lightness(name: str) -> None:
     """No category shouts over another: every fill within 0.02 of the others in lightness."""
-    for surface in ("frost", "flat"):
+    for surface in LOOK_KNOBS["surface"]:
         palette = palette_for(name, surface)
         lightness = {key: oklab(category_paint(key, palette)[0])[0] for key in CATEGORIES}
         spread = max(lightness.values()) - min(lightness.values())
@@ -100,6 +113,9 @@ def test_text_reads_on_every_fill_card_and_page(name: str, surface: str, accent:
             ("error", "window"),
             ("error", "panel"),
             ("accent_ink", "accent"),
+            # The accent's own words: today's name, the side panel's headings, links.
+            ("accent", "window"),
+            ("accent", "panel"),
             ("block_locked_ink", "block_locked"),
             ("block_flex_ink", "block_flex"),
         )
@@ -174,7 +190,7 @@ def test_the_now_line_and_the_selection_show_over_every_block(name: str, surface
     beside FlexWeek's blue on purpose; lightness keeps them apart."""
     palette = palette_for(name, surface, accent)
     faint = []
-    for key, mode in product(CATEGORIES, ("filled", "outlined", "edge")):
+    for key, mode in product(CATEGORIES, LOOK_KNOBS["blocks"]):
         fill, mark = category_paint(key, palette)
         drawn = block_paint({"preset": "default", "knobs": {"blocks": mode}}, palette, fill, "locked", mark)
         if contrast(palette["accent"], drawn["fill"]) < 3.0:

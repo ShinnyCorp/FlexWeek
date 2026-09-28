@@ -61,6 +61,7 @@ from desktop.native.calendar import (
 from desktop.native.client import PASSWORD_LENGTH_HINT, USERNAME_HINT, sign_in_problem, sign_up_problem
 from desktop.native.command_bar import Command, CommandBar
 from desktop.native.controller import ROUTINE_STATUS, NativeSession
+from desktop.native.custom_look import sanitize_saved
 from desktop.native.elevation import lift
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import phase_duration_ms
@@ -78,13 +79,13 @@ from desktop.native.layouts.empty import EmptyWeek, nothing_yet
 from desktop.native.layouts.registry import MATCH, options_for, sanitize_layout, tokens_for
 from desktop.native.layouts.views import VIEW_CLASSES
 from desktop.native.look import (
-    TEXT_PT,
     effective_look,
-    pack_motion,
+    look_motion,
     pack_stylesheet,
     palette_from_tokens,
     resolved_palette,
     sanitize_look,
+    text_scale,
 )
 from desktop.native.motion import appear, apply_ui_effects, fade_away, hold_picture, motion_level, switch_page
 from desktop.native.remind import REMINDER_POLL_MS, clock_parts
@@ -111,7 +112,7 @@ from desktop.native.settings import (
 from desktop.native.setup import REMINDERS, SETUP_VERSION, STYLE, SetupPage, SetupState
 from desktop.native.sound import Bell
 from desktop.native.spotify import LISTENING, STARTING, SpotifyPlayer, open_in_app
-from desktop.native.tokens import SHADOW_LARGE, SPACING, TEXT_SCALE
+from desktop.native.tokens import SHADOW_LARGE, SPACING
 from desktop.native.tones import FALLBACK
 from desktop.native.update import RELEASE_PAGE, due_for_check, sanitize_updates
 from desktop.native.updater import Updater, apply_update
@@ -349,6 +350,8 @@ class NativeWindow(QMainWindow):
         self._entry_mode = SIGN_IN
         self._updates = sanitize_updates(None)
         self._zoom: dict[str, int] = {}
+        # The student's own looks, kept by name (custom_look.py); Settings will list them.
+        self._saved_looks: list[dict] = []
         self._shown: tuple | None = None
         self._update_asked = False
         self._update_dialog: UpdateDialog | None = None
@@ -1113,7 +1116,7 @@ class NativeWindow(QMainWindow):
             minute=clock["minute"],
             options=options,
             tokens=tokens_for(layout_id, options["colour"], palette),
-            scale=TEXT_PT[effective_look(self._look)["text"]] / TEXT_PT["normal"],
+            scale=text_scale(self._look),
             surface=surface,
             month=session.month_data,
             iso_day=session.selected_day,
@@ -2978,6 +2981,7 @@ class NativeWindow(QMainWindow):
         self._layout = sanitize_layout(stored.get("layout") if isinstance(stored, dict) else None)
         self._updates = sanitize_updates(stored.get("updates") if isinstance(stored, dict) else None)
         self._zoom = sanitize_zoom(stored.get("zoom") if isinstance(stored, dict) else None)
+        self._saved_looks = sanitize_saved(stored.get("saved_looks") if isinstance(stored, dict) else None)
 
     def _save_look(self) -> None:
         import json
@@ -2985,7 +2989,13 @@ class NativeWindow(QMainWindow):
         path = self._look_path()
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            body = {**self._look, "layout": self._layout, "updates": self._updates, "zoom": self._zoom}
+            body = {
+                **self._look,
+                "layout": self._layout,
+                "updates": self._updates,
+                "zoom": self._zoom,
+                "saved_looks": self._saved_looks,
+            }
             path.write_text(json.dumps(body) + "\n")
         except OSError:
             self.session._say("Could not save the look for this device.")
@@ -3016,7 +3026,8 @@ class NativeWindow(QMainWindow):
         if page is not None:
             page_sheet = pack_stylesheet(pack, system_dark, self._look, accent, page, control_art(page))
         chips = bool((self.session.preferences or {}).get("accent_chips"))
-        self._motion = motion_level((self.session.preferences or {}).get("motion"), pack_motion(pack))
+        chosen_motion = (self.session.preferences or {}).get("motion")
+        self._motion = motion_level(chosen_motion, look_motion(pack, self._look))
         dressed = (sheet, repr(self._look), repr(palette), chips, self._motion)
         # Every change to the week comes through here. Restyling the whole window each time, when the
         # look had not changed, cost about 26 ms a change and repainted everything on screen.
@@ -3048,7 +3059,7 @@ class NativeWindow(QMainWindow):
         soft = knobs["depth"] == "soft"
         for card in self._entry_cards:
             # As wide as its words: a card sized for Normal text cut Large text's lines short.
-            card.setFixedWidth(round(AUTH_CARD_WIDTH * TEXT_SCALE[knobs["text"]]))
+            card.setFixedWidth(round(AUTH_CARD_WIDTH * text_scale(self._look)))
             if soft:
                 lift(card, SHADOW_LARGE, palette["axis"] == "dark")
             else:

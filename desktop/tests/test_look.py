@@ -16,6 +16,9 @@ from desktop.native.look import (
     AA_TEXT,
     ACCENTS,
     FONT_FAMILIES,
+    HEADING_NAMES,
+    KNOB_LABELS,
+    KNOB_VALUE_LABELS,
     LOOK_DEFAULTS,
     LOOK_KNOBS,
     LOOK_PRESETS,
@@ -27,8 +30,10 @@ from desktop.native.look import (
     look_menu_items,
     look_menu_token,
     look_menu_value,
+    look_motion,
     look_overrides,
     pack_axis,
+    pack_motion,
     pack_stylesheet,
     parse_look_menu_token,
     preset_knobs,
@@ -37,7 +42,7 @@ from desktop.native.look import (
     resolved_palette,
     sanitize_look,
 )
-from desktop.native.tokens import SINK, mix_oklab
+from desktop.native.tokens import SINK, mix_oklab, oklch_of
 
 # Every look a student can reach: pack, the device's light or dark setting, preset, accent, surface.
 EVERY_LOOK = list(product(PACKS, (False, True), LOOK_PRESETS, ACCENTS, LOOK_KNOBS["surface"]))
@@ -81,6 +86,9 @@ def test_unknown_knobs_and_packs_fall_back() -> None:
     assert clean["knobs"] == {"text": "large"}
     assert effective_look(clean)["font"] == "sans"
     assert effective_look(clean)["text"] == "large"
+    # A file edited by hand may hold anything; nothing in it can stop the look loading.
+    odd = sanitize_look({"preset": ["poster"], "knobs": {"corners": ["round"], "depth": {"x": 1}}})
+    assert odd == {"preset": "default", "knobs": {}}
 
 
 def test_terminal_preset_layers_before_knob_overrides() -> None:
@@ -112,14 +120,24 @@ def test_light_and_dark_are_the_neutral_surfaces_of_decision_2() -> None:
 
 def test_every_look_but_high_contrast_wears_flexweeks_blue_by_default() -> None:
     """Decision 1 of 0.17: one accent, the icon's blue, #3d6fc4 on a light look and #7fa8ff on a
-    dark one. A student saw three accents before placing any homework."""
+    dark one. A student saw three accents before placing any homework. Where a tinted page needs it for
+    the accent's words to read, as Slate's and Pastel's do, it is the blue's darker shade: the same hue,
+    a little lower in lightness."""
     for pack, system_dark, preset in product(PACKS, (False, True), LOOK_PRESETS):
         palette = resolved_palette(pack, system_dark, look_of(preset))
         if preset == "high-contrast":
             assert (palette["accent"], palette["accent_ink"]) == ("#ffd400", "#000000")
             continue
         wanted = "#7fa8ff" if palette["axis"] == "dark" else "#3d6fc4"
-        assert palette["accent"] == wanted, (pack, system_dark, preset)
+        where = (pack, system_dark, preset)
+        if palette["accent"] != wanted:
+            light, _chroma, hue = oklch_of(palette["accent"])
+            wanted_light, _wanted_chroma, wanted_hue = oklch_of(wanted)
+            assert abs(hue - wanted_hue) < 1.5 and 0 < wanted_light - light < 0.02, where
+            assert contrast(wanted, palette["window"]) < AA_TEXT, where
+        assert contrast(palette["accent"], palette["window"]) >= AA_TEXT, where
+    assert resolved_palette("light-frost", False, None)["accent"] == "#3d6fc4"
+    assert resolved_palette("slate", False, None)["accent"] == "#3b6cc1"
 
 
 def test_every_knob_value_changes_what_is_drawn() -> None:
@@ -142,68 +160,57 @@ def test_every_knob_value_changes_what_is_drawn() -> None:
 
 
 def test_choosing_a_preset_means_every_one_of_its_knobs() -> None:
+    """Each look of 0.17's plan with the knobs it is drawn with. Blocks follow the default in all but
+    High contrast, as the mock-up draws them."""
+    blocks = LOOK_DEFAULTS["blocks"]
+    common = {"density": "comfortable", "text": "normal", "blocks": blocks}
     expected = {
-        "terminal": {
-            "surface": "flat",
-            "corners": "sharp",
-            "depth": "flat",
-            "font": "mono",
-            "blocks": "outlined",
-            "density": "compact",
-            "text": "normal",
-        },
-        "poster": {
-            "surface": "flat",
-            "corners": "sharp",
-            "depth": "hard",
-            "font": "sans",
-            "blocks": "filled",
-            "density": "compact",
-            "text": "large",
-        },
-        "ink": {
-            "surface": "flat",
-            "corners": "sharp",
-            "depth": "flat",
-            "font": "serif",
-            "blocks": "edge",
-            "density": "comfortable",
-            "text": "normal",
-        },
+        "terminal": {**common, "surface": "layered", "corners": "sharp", "depth": "soft", "font": "mono"},
+        "poster": {**common, "surface": "layered", "corners": "sharp", "depth": "bold", "font": "sans"},
+        "ink": {**common, "surface": "layered", "corners": "soft", "depth": "soft", "font": "serif"},
+        "paper": {**common, "surface": "layered", "corners": "soft", "depth": "soft", "font": "serif"},
+        "pastel": {**common, "surface": "layered", "corners": "rounded", "depth": "soft", "font": "sans"},
         "high-contrast": {
             "surface": "flat",
             "corners": "sharp",
-            "depth": "hard",
+            "depth": "bold",
             "font": "sans",
-            "blocks": "outlined",
+            "blocks": "outline",
             "density": "comfortable",
             "text": "large",
-        },
-        "paper": {
-            "surface": "flat",
-            "corners": "round",
-            "depth": "soft",
-            "font": "serif",
-            "blocks": "filled",
-            "density": "comfortable",
-            "text": "normal",
-        },
-        "pastel": {
-            "surface": "frost",
-            "corners": "pill",
-            "depth": "soft",
-            "font": "sans",
-            "blocks": "filled",
-            "density": "comfortable",
-            "text": "normal",
         },
     }
     assert preset_knobs("default") == LOOK_DEFAULTS
     for name, knobs in expected.items():
         assert preset_knobs(name) == knobs
         assert look_overrides(name, knobs) == {}
-    assert look_overrides("terminal", {**preset_knobs("terminal"), "depth": "hard"}) == {"depth": "hard"}
-    assert look_overrides("default", {**LOOK_DEFAULTS, "corners": "pill"}) == {"corners": "pill"}
+    assert look_overrides("terminal", {**preset_knobs("terminal"), "depth": "bold"}) == {"depth": "bold"}
+    assert look_overrides("default", {**LOOK_DEFAULTS, "corners": "rounded"}) == {"corners": "rounded"}
+
+
+def test_a_look_saved_by_016_opens_with_its_knobs_named_as_017_names_them() -> None:
+    """0.17 renamed five knob values. A look file written by 0.16 keeps what it chose: frost is
+    Layered, round Soft, pill Round, flat depth None, hard Bold, outlined Outline."""
+    saved = {
+        "preset": "terminal",
+        "knobs": {"surface": "frost", "corners": "pill", "depth": "hard", "blocks": "outlined"},
+    }
+    assert sanitize_look(saved)["knobs"] == {
+        "surface": "layered",
+        "corners": "rounded",
+        "depth": "bold",
+        "blocks": "outline",
+    }
+    assert sanitize_look({"knobs": {"corners": "round", "depth": "flat"}})["knobs"] == {
+        "corners": "soft",
+        "depth": "none",
+    }
+    # Today's names pass through unchanged, Round among them.
+    assert sanitize_look({"knobs": {"corners": "rounded"}})["knobs"] == {"corners": "rounded"}
+    for knob, values in LOOK_KNOBS.items():
+        assert all(value in KNOB_VALUE_LABELS for value in values), knob
+    assert [KNOB_VALUE_LABELS[value] for value in LOOK_KNOBS["corners"]] == ["Soft", "Sharp", "Round"]
+    assert set(KNOB_LABELS) == set(LOOK_KNOBS)
 
 
 # Every pair of window colours the app puts text on.
@@ -225,11 +232,30 @@ def test_the_app_asks_for_its_own_inter_first_and_the_system_sans_after() -> Non
     assert FONT_FAMILIES["sans"].split(", ")[0] == "Inter"
     assert FONT_FAMILIES["sans"].endswith("sans-serif")
     assert "font-family: Inter, " in pack_stylesheet("slate", False, look_of("default"))
-    # Terminal and Paper keep their own faces for the app's words. The focus screen's countdown is
-    # drawn in the sans face whatever the look, so only the app-wide rule is read.
-    for name in ("terminal", "paper"):
-        app_wide = pack_stylesheet("slate", False, look_of(name)).split("QWidget {")[1].split("}")[0]
-        assert "font-family: Inter" not in app_wide, name
+
+
+def faces(look: dict) -> tuple[str, str]:
+    """The first face of the app-wide rule and of the headings' rule."""
+    sheet = pack_stylesheet("slate", False, look)
+    body = sheet.split("QWidget {")[1].split("font-family: ")[1].split(";")[0]
+    headings = ", ".join(f"QLabel#{name}" for name in HEADING_NAMES) + " { font-family: "
+    heading = sheet.split(headings)[1].split(";")[0]
+    return body.split(", ")[0], heading.split(", ")[0]
+
+
+def test_serif_is_newsreader_headings_over_inter_and_mono_is_jetbrains_mono_throughout() -> None:
+    """The Font knob (0.17): Sans is Inter; Serif keeps Inter for the words and sets headings in
+    Newsreader; Mono is JetBrains Mono for both. Paper and Ink are serif looks, Terminal a mono one."""
+    assert {"weekTitle", "settingsTitle", "authHeading"} <= set(HEADING_NAMES)
+    for look, wanted in (
+        (look_of("default"), ("Inter", "Inter")),
+        (look_of("default", font="serif"), ("Inter", "Newsreader")),
+        (look_of("default", font="mono"), ("JetBrains Mono", "JetBrains Mono")),
+        (look_of("paper"), ("Inter", "Newsreader")),
+        (look_of("ink"), ("Inter", "Newsreader")),
+        (look_of("terminal"), ("JetBrains Mono", "JetBrains Mono")),
+    ):
+        assert faces(look) == wanted, look
 
 
 def test_cards_are_padded_16_or_8_and_controls_keep_their_size() -> None:
@@ -246,9 +272,10 @@ def test_cards_are_padded_16_or_8_and_controls_keep_their_size() -> None:
         assert f"padding: {control}px;" in field, density
 
 
-def test_round_corners_are_6_on_controls_and_10_on_cards() -> None:
-    """Decision 5 of 0.17: one shape for controls and one for cards. The other Corners keep theirs."""
-    for corners, control, card in (("round", 6, 10), ("sharp", 0, 0), ("pill", 16, 16)):
+def test_soft_corners_are_6_on_controls_and_10_on_cards() -> None:
+    """Decision 5 of 0.17: Soft is the system's shape, 6 on controls and 10 on cards; Sharp is 0 and
+    2 and Round 10 and 16, as the plan's knobs name them."""
+    for corners, control, card in (("soft", 6, 10), ("sharp", 0, 2), ("rounded", 10, 16)):
         sheet = pack_stylesheet("light-frost", False, look_of("default", corners=corners))
         frames = sheet.split("QFrame, QGroupBox, QTableWidget, QListWidget {")[1].split("}")[0]
         button = sheet.split("QPushButton {")[1].split("}")[0]
@@ -296,14 +323,14 @@ def test_an_accent_always_changes_the_accent() -> None:
             seen.add(chosen)
 
 
-def test_ink_follows_the_pack_axis() -> None:
-    light = resolved_palette("slate", False, look_of("ink"))
-    dark = resolved_palette("nocturne", True, look_of("ink"))
-    frost_light = resolved_palette("light-frost", False, look_of("ink"))
-    assert light["text"] == frost_light["text"] == "#1a1a1a"
-    assert dark["text"] == "#eaeaea"
-    assert light["axis"] == "light"
-    assert dark["axis"] == "dark"
+def test_ink_is_papers_night_on_any_pack() -> None:
+    """0.16's Ink followed the pack between a light and a dark sheet. 0.17's is Paper's night
+    counterpart (looks.css): charcoal and warm ivory whatever the pack, and Paper is its day."""
+    for pack, system_dark in (("slate", False), ("nocturne", True), ("light-frost", False)):
+        ink = resolved_palette(pack, system_dark, look_of("ink"))
+        paper = resolved_palette(pack, system_dark, look_of("paper"))
+        assert (ink["axis"], ink["window"], ink["text"]) == ("dark", "#1c1b19", "#f3eee3"), pack
+        assert (paper["axis"], paper["window"], paper["text"]) == ("light", "#fdfbf7", "#1a1a1a"), pack
 
 
 def test_a_students_accent_wins_over_the_presets_own() -> None:
@@ -313,7 +340,7 @@ def test_a_students_accent_wins_over_the_presets_own() -> None:
     assert (chosen["accent"], chosen["accent_ink"]) == ("#38bdf8", "#0b1224")
 
 
-def test_flat_surface_has_no_raised_panels_and_frost_does() -> None:
+def test_flat_surface_has_no_raised_panels_and_layered_does() -> None:
     frost = resolved_palette("nocturne", True, look_of("default"))
     flat = resolved_palette("nocturne", True, look_of("default", surface="flat"))
     assert frost["panel"] != frost["window"]
@@ -323,8 +350,8 @@ def test_flat_surface_has_no_raised_panels_and_frost_does() -> None:
 
 def test_depth_is_drawn_with_edges_because_qt_has_no_shadows() -> None:
     soft = pack_stylesheet("nocturne", True, look_of("default"))
-    flat = pack_stylesheet("nocturne", True, look_of("default", depth="flat"))
-    hard = pack_stylesheet("nocturne", True, look_of("default", depth="hard"))
+    flat = pack_stylesheet("nocturne", True, look_of("default", depth="none"))
+    hard = pack_stylesheet("nocturne", True, look_of("default", depth="bold"))
     assert "border: 1px solid" in soft and "border: none;" not in soft.split("QHeaderView")[0]
     assert "border: none;" in flat and "1px solid" not in flat
     assert "border-bottom: 4px solid" in hard and "border-right: 4px solid" in hard
@@ -335,7 +362,7 @@ def test_a_block_shows_its_category_colour_in_the_place_the_knob_names() -> None
     blue = "#3b82f6"
     filled = block_paint(look_of("default"), resolved_palette("slate", False, None), blue)
     assert (filled["fill"], filled["outline"], filled["edge"]) == (blue, None, None)
-    outlined = block_paint(look_of("default", blocks="outlined"), palette, blue)
+    outlined = block_paint(look_of("default", blocks="outline"), palette, blue)
     assert (outlined["fill"], outlined["outline"], outlined["edge"]) == (palette["grid"], blue, None)
     assert outlined["ink"] == palette["text"]
     edge = block_paint(look_of("default", blocks="edge"), palette, blue)
@@ -343,13 +370,13 @@ def test_a_block_shows_its_category_colour_in_the_place_the_knob_names() -> None
     # No category: a filled block uses the palette's own block colours, flexible work the warm pair.
     plain = block_paint(look_of("default"), palette, None, "flexible")
     assert (plain["fill"], plain["ink"]) == (palette["block_flex"], palette["block_flex_ink"])
-    bare = block_paint(look_of("default", blocks="outlined"), palette, None)
+    bare = block_paint(look_of("default", blocks="outline"), palette, None)
     assert bare["outline"] == palette["block_edge"]
     # A pale fill makes a vanishing outline on a light pack, so an outline or an edge uses the strong mark.
     pale, strong = "#bfdbfe", "#3b82f6"
     light = resolved_palette("slate", False, None)
     assert block_paint(look_of("default"), light, pale, "locked", strong)["fill"] == pale
-    outlined_pale = block_paint(look_of("default", blocks="outlined"), palette, pale, "locked", strong)
+    outlined_pale = block_paint(look_of("default", blocks="outline"), palette, pale, "locked", strong)
     assert outlined_pale["outline"] == strong
     assert block_paint(look_of("default", blocks="edge"), palette, pale, "locked", strong)["edge"] == strong
 
@@ -397,28 +424,55 @@ def test_paper_and_pastel_are_light_looks_on_any_pack_and_close_the_menu() -> No
     for preset in ("paper", "pastel"):
         for pack, system_dark in (("nocturne", True), ("dark-frost", True), ("slate", False)):
             palette = resolved_palette(pack, system_dark, look_of(preset))
-            assert (palette["axis"], palette["accent"]) == ("light", "#3d6fc4"), f"{preset} on {pack}"
+            assert palette["axis"] == "light", f"{preset} on {pack}"
+            assert palette["accent"] == resolved_palette("slate", False, look_of(preset))["accent"]
         # A chosen accent therefore takes its light-axis colour, even over a dark pack.
         chosen = resolved_palette("nocturne", True, look_of(preset), "sea")
         assert (chosen["accent"], chosen["accent_ink"]) == ("#0f766e", "#ffffff")
 
 
-def test_paper_and_pastel_are_the_soft_looks_and_are_not_ink() -> None:
-    """Every earlier preset is flat and sharp. These two keep rounded corners and drawn depth."""
-    for preset in ("paper", "pastel"):
-        sheet = pack_stylesheet("slate", False, look_of(preset))
-        assert "border-radius: 0px" not in sheet
-        assert "border: 1px solid" in sheet, "soft depth is a hairline edge"
-    assert "border-radius: 16px" in pack_stylesheet("slate", False, look_of("pastel"))
-    assert "Noto Serif" in pack_stylesheet("slate", False, look_of("paper"))
-    # Pastel is the one preset with raised panels; Paper's pages sit flat in the cream.
-    pastel = resolved_palette("slate", False, look_of("pastel"))
-    paper = resolved_palette("slate", False, look_of("paper"))
-    assert pastel["panel"] != pastel["window"]
-    assert paper["panel"] == paper["window"] == "#f7ecd2"
-    ink = resolved_palette("slate", False, look_of("ink"))
-    assert (paper["text"], paper["window"]) != (ink["text"], ink["window"])
-    assert preset_knobs("paper")["blocks"] == "filled" and preset_knobs("ink")["blocks"] == "edge"
+def test_the_seven_looks_wear_looks_css_colours() -> None:
+    """Each look's page, card, raised card, text, muted text and hairlines as the mock-up draws them
+    (docs/mockups/look-017/looks.css)."""
+    drawn = {
+        ("slate", "default"): ("#eef1f5", "#ffffff", "#e7ebf1", "#0f172a", "#475569", "#dbe1ea", "#c3ccd9"),
+        ("nocturne", "default"): ("#0a0e27", "#121633", "#1a1f42", "#e0e4f0", "#9aa3c0", "#262b4d",
+                                  "#343a63"),
+        ("system", "paper"): ("#fdfbf7", "#fffdf9", "#f6f1e8", "#1a1a1a", "#5c5750", "#e6e0d6", "#cfc7b9"),
+        ("system", "ink"): ("#1c1b19", "#242320", "#2c2a26", "#f3eee3", "#b3ab9c", "#3a3833", "#4a4740"),
+        ("system", "terminal"): ("#0d1117", "#161b22", "#1c2129", "#c9d1d9", "#8b949e", "#30363d", "#484f58"),
+        ("system", "poster"): ("#fff8e7", "#ffffff", "#fff1cc", "#111111", "#3d3d3d", "#111111", "#111111"),
+        ("system", "pastel"): ("#f3f0ff", "#ffffff", "#ece7ff", "#1e1b2e", "#4b4763", "#e4ddfb", "#cfc5f5"),
+    }
+    keys = ("window", "panel", "card_2", "text", "muted", "hairline", "hairline_strong")
+    for (pack, preset), colours in drawn.items():
+        palette = resolved_palette(pack, False, look_of(preset))
+        assert tuple(palette[key] for key in keys) == colours, (pack, preset)
+
+
+def test_paper_draws_the_family_quieter_and_poster_bolder() -> None:
+    """looks.css: Paper's fills at chroma 0.035, Poster's at lightness 0.88 and chroma 0.09. The
+    marks stay the family's, so an edge or outline is the same colour in every light look."""
+    light = resolved_palette("light-frost", False, None)
+    paper = resolved_palette("system", False, look_of("paper"))
+    poster = resolved_palette("system", False, look_of("poster"))
+    for key in CATEGORIES:
+        plain, mark = category_paint(key, light)
+        quiet, quiet_mark = category_paint(key, paper)
+        bold, bold_mark = category_paint(key, poster)
+        assert mark == quiet_mark == bold_mark, key
+        if key == "free":
+            continue
+        assert oklch_of(quiet)[1] < oklch_of(plain)[1] < oklch_of(bold)[1], key
+        assert oklch_of(bold)[0] < oklch_of(plain)[0], key
+
+
+def test_paper_starts_at_reduce_motion() -> None:
+    """E-Ink's "distinct page turns, sharp transitions": Paper's level when the student never chose
+    one. The others keep the pack's."""
+    assert look_motion("light-frost", look_of("paper")) == "reduce"
+    assert look_motion("light-frost", look_of("default")) == pack_motion("light-frost") == "extra"
+    assert look_motion("slate", look_of("ink")) == "normal"
 
 
 def _lab(colour: str) -> tuple[float, float, float]:

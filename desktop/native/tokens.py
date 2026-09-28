@@ -97,6 +97,67 @@ def oklch(light: float, chroma: float, hue: float) -> str:
     return hex_from_linear(*linear_from_oklab(light, chroma * math.cos(angle), chroma * math.sin(angle)))
 
 
+def _channels(colour: str) -> tuple[int, int, int]:
+    return int(colour[1:3], 16), int(colour[3:5], 16), int(colour[5:7], 16)
+
+
+def mix(top: str, bottom: str, alpha: float) -> str:
+    """The solid colour of `top` laid over `bottom` at `alpha`.
+
+    The web palette states its hairlines as translucent tints. Qt stylesheets
+    disagree between versions about alpha syntax, so the tint is settled here.
+    """
+    pairs = zip(_channels(top), _channels(bottom), strict=True)
+    blended = [round(over * alpha + under * (1 - alpha)) for over, under in pairs]
+    return "#{:02x}{:02x}{:02x}".format(*blended)
+
+
+def luminance(colour: str) -> float:
+    red, green, blue = linear_rgb(colour)
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
+def contrast(first: str, second: str) -> float:
+    high, low = sorted((luminance(first), luminance(second)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+def oklch_of(colour: str) -> tuple[float, float, float]:
+    """A hex colour as OKLCH: lightness, chroma and hue in degrees."""
+    light, a, b = oklab(colour)
+    return light, math.hypot(a, b), math.degrees(math.atan2(b, a)) % 360
+
+
+def fit_lightness(colour: str, grounds: tuple[str, ...], floor: float) -> str:
+    """`colour` with its OKLCH lightness moved the least it takes to read at `floor` on every ground,
+    darker or lighter, whichever needs the smaller move; its hue and chroma kept as the gamut allows.
+
+    A colour that already reads is returned as it is. The search ends at black or white, which read
+    at 4.58 to 1 or better on any one ground.
+    """
+
+    def reads(candidate: str) -> bool:
+        return all(contrast(candidate, ground) >= floor for ground in grounds)
+
+    if reads(colour):
+        return colour
+    light, chroma, hue = oklch_of(colour)
+    found: list[tuple[float, str]] = []
+    for end, extreme in ((0.0, "#000000"), (1.0, "#ffffff")):
+        if not reads(oklch(end, chroma, hue)):
+            if reads(extreme):
+                found.append((abs(end - light) + 1, extreme))
+            continue
+        fails, passes = light, end
+        for _step in range(40):
+            middle = (fails + passes) / 2
+            fails, passes = (fails, middle) if reads(oklch(middle, chroma, hue)) else (middle, passes)
+        found.append((abs(passes - light), oklch(passes, chroma, hue)))
+    if not found:
+        return max(("#000000", "#ffffff"), key=lambda ink: min(contrast(ink, g) for g in grounds))
+    return min(found)[1]
+
+
 def mix_oklab(top: str, bottom: str, amount: float) -> str:
     """`amount` of `top` in `bottom`, mixed in OKLab as CSS's `color-mix(in oklab, …)` does."""
     over, under = oklab(top), oklab(bottom)
