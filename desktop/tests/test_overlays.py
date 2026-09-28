@@ -69,6 +69,9 @@ def test_a_row_under_the_pointer_shows_and_keeps_its_words_readable_in_every_loo
             failed.append(look)
         if contrast(palette["error"], hover) < 4.5:
             failed.append((look, "delete"))
+        # On black, a step of 6 % is black again; High contrast's row stands a visible step off it.
+        if palette.get("family") == "contrast" and contrast(hover, palette["panel"]) < 1.5:
+            failed.append((look, "unseen"))
     assert failed == []
 
 
