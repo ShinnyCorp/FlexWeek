@@ -261,8 +261,8 @@
  {
   "file": "desktop/native/layouts/mission.py",
   "name": "Mission darkens the mark again",
-  "old": "            fill = QColor(family_fill(drawn.category, self.tokens))\n",
-  "new": "            fill = QColor(mark).darker(350)\n",
+  "old": "        return QColor(fill), QColor(self.tokens[\"text\"]), None, QColor(mark)\n",
+  "new": "        return QColor(mark).darker(350), QColor(self.tokens[\"text\"]), None, QColor(mark)\n",
   "test": "desktop/tests/test_layouts_main_views.py::test_a_designs_blocks_take_the_family_and_their_words_read_on_them[mission]"
  },
  {

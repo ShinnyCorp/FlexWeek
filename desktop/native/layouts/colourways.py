@@ -55,6 +55,25 @@ TIMELINE = (
 )
 MISSION = (
     (
+        # The mock-up's signature, near black, with FlexWeek's blue on dark as the mock-up draws it: a
+        # colourway's page stays the same whichever accent the look wears.
+        "deck",
+        "Flight deck",
+        _tokens(
+            bg="#0b0f14",
+            bg_ink="#e6edf5",
+            bg_muted="#8d9aab",
+            surface="#121821",
+            text="#e6edf5",
+            muted="#8d9aab",
+            accent="#7fa8ff",
+            accent_ink="#0b1224",
+            line="#2c3846",
+            danger="#ff8a7a",
+            danger_ink="#0b0f14",
+        ),
+    ),
+    (
         "cyan",
         "Cyan",
         _tokens(

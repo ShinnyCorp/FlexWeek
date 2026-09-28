@@ -245,7 +245,7 @@ def test_every_design_offers_a_dark_colourway() -> None:
 
 
 def test_every_design_offers_a_light_colourway_too() -> None:
-    """The same argument the other way: Mission control is three shades of dark."""
+    """The same argument the other way: every one of Mission control's colourways is dark."""
     missing = [
         layout_id
         for layout_id, spec in LAYOUTS.items()

@@ -1,8 +1,10 @@
-"""Mission's scope and lanes use the shared hand, with their own HUD and cargo tray."""
+"""Mission control's ops board: four figures, the lanes of hours on the shared hand, and a deadline
+table whose rows of homework not placed yet are what the student drags onto a lane."""
 
 from __future__ import annotations
 
 import importlib.util
+import itertools
 import os
 from collections.abc import Iterator
 from dataclasses import replace
@@ -18,19 +20,29 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     import shiboken6
-    from PySide6.QtCore import QEvent, QRectF, Qt
-    from PySide6.QtGui import QFont, QHelpEvent, QImage, QPainter
+    from PySide6.QtCore import QEvent, QPoint, Qt
+    from PySide6.QtGui import QColor, QHelpEvent, QTextDocumentFragment
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QToolTip, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import (
+        QApplication,
+        QFrame,
+        QLabel,
+        QPushButton,
+        QScrollArea,
+        QToolTip,
+        QVBoxLayout,
+        QWidget,
+    )
 
-    from desktop.native.hours.canvas import BlockPainter, Drawn
     from desktop.native.hours.chips import TrayChip
     from desktop.native.hours.geometry import Axis
+    from desktop.native.hours.zoom import HoursScroll
     from desktop.native.layouts.base import Scene
-    from desktop.native.layouts.mission import WEEK_SCALE, MissionCanvas, MissionView
-    from desktop.native.layouts.registry import options_for, tokens_for
-    from desktop.native.look import resolved_palette
+    from desktop.native.layouts.mission import WEEK_SCALE, Bar, MissionCanvas, MissionView
+    from desktop.native.layouts.registry import LAYOUTS, options_for, tokens_for
+    from desktop.native.look import ACCENTS, PACKS, category_paint, resolved_palette
     from desktop.native.weekmodel import build_week, minute_of
+    from desktop.native.widgets import FittedLabel
 
 
 @pytest.fixture(scope="module")
@@ -38,19 +50,78 @@ def qapp() -> Iterator[QApplication]:
     yield QApplication.instance() or QApplication(["flexweek-mission-test"])
 
 
-def shown(qapp: QApplication, *, surface: str = "week", blocks: list[dict] | None = None,
-          iso_day: str = "", **chosen: str) -> MissionView:
+def shown(
+    qapp: QApplication,
+    *,
+    surface: str = "week",
+    blocks: list[dict] | None = None,
+    homework: dict | None = None,
+    iso_day: str = "",
+    today: int | None = 3,
+    minute: str = "13:40",
+    size: tuple[int, int] = (1366, 760),
+    scale: float = 1.0,
+    **chosen: str,
+) -> MissionView:
+    """Mission on the test week, Thursday 13:40 unless told otherwise."""
     options = {**options_for(None, "mission"), **chosen}
     palette = resolved_palette("light-frost", False, None, "default")
     view = MissionView()
-    view.resize(1366, 760)
-    week = build_week(WEEK, blocks or BLOCKS, HOMEWORK, TRACE)
-    view.show_week(Scene(week, 3, minute_of("13:40"), options,
-                         tokens_for("mission", options["colour"], palette),
-                         surface=surface, iso_day=iso_day))
+    view.resize(*size)
+    week = build_week(WEEK, blocks or BLOCKS, homework or HOMEWORK, TRACE)
+    view.show_week(
+        Scene(
+            week,
+            today,
+            minute_of(minute),
+            options,
+            tokens_for("mission", options["colour"], palette),
+            scale=scale,
+            surface=surface,
+            iso_day=iso_day,
+        )
+    )
     view.show()
     qapp.processEvents()
     return view
+
+
+def words(widget: QLabel) -> str:
+    """What a label says, its markup and spacing aside."""
+    return " ".join(QTextDocumentFragment.fromHtml(widget.text()).toPlainText().split())
+
+
+def figure(view: MissionView, name: str) -> tuple[str, str]:
+    """A figure's value and the line under it."""
+    return words(view.findChild(QLabel, f"{name}Value")), words(view.findChild(QLabel, f"{name}Line"))
+
+
+def table_rows(view: MissionView) -> list[tuple[str, str, str, str]]:
+    """Each row of the deadline table: the homework, what it needs, the time left and where it is."""
+    rows = []
+    for row in view.findChild(QFrame, "missionDeadlines").findChildren(QFrame, "missionDeadline"):
+        placed = row.findChild(QLabel, "missionPlaced")
+        chips = " / ".join(chip.text() for chip in row.findChildren(TrayChip))
+        where = words(placed) if placed is not None else chips
+        rows.append(
+            (
+                row.findChild(FittedLabel, "missionDeadlineTitle").full_text(),
+                row.findChild(QLabel, "missionFigure").text(),
+                row.findChild(QLabel, "missionLeft").text(),
+                where,
+            )
+        )
+    return rows
+
+
+def beside(view: MissionView, name: str) -> bool:
+    """Whether the deadline table sits to the right of the hours called `name`, rather than under."""
+    table = view.findChild(QFrame, "missionDeadlines")
+    hours = view.findChild(HoursScroll, name)
+    left = table.mapTo(view, QPoint(0, 0))
+    lanes = hours.mapTo(view, QPoint(hours.width(), hours.height()))
+    assert left.x() >= lanes.x() or left.y() >= lanes.y(), "the table lies over the lanes"
+    return left.x() >= lanes.x()
 
 
 def test_week_has_seven_live_horizontal_tracks_and_one_hand(qapp: QApplication) -> None:
@@ -61,19 +132,30 @@ def test_week_has_seven_live_horizontal_tracks_and_one_hand(qapp: QApplication) 
     assert all(track.axis is Axis.ACROSS and track.first == 0 and track.last == 1440
                for track in hours.tracks)
     assert hours.hand is view.hand
-    assert view.findChild(TrayChip, "missionWaiting0") is not None
-    assert view.findChild(QLabel, "missionUnplaced").text().startswith("NOT PLACED YET")
+    chip = view.findChild(TrayChip, "missionWaiting0")
+    assert (chip.block_id, chip.text()) == ("poster-1", "Not placed yet")
 
 
-def test_day_scope_uses_the_selected_date_and_has_cargo_bay(qapp: QApplication) -> None:
+def test_the_week_opens_at_the_mock_ups_scale(qapp: QApplication) -> None:
+    """The mock-up draws 08:00 to 22:00 across the lanes at 1280 wide: 56 pixels an hour."""
+    view = shown(qapp)
+    assert view._scrolls["week"].px == WEEK_SCALE.default == 56
+
+
+def test_day_is_one_lane_of_the_chosen_date_with_that_days_list(qapp: QApplication) -> None:
     view = shown(qapp, surface="day", iso_day="2026-09-18")
     hours = view.findChild(MissionCanvas, "missionHours")
-    assert len(hours.tracks) == 1
-    assert hours.tracks[0].day == 4
-    assert hours.tracks[0].axis is Axis.ACROSS
-    assert view.findChild(QFrame, "missionCargo") is not None
-    assert view.findChild(QFrame, "missionSide") is None
-    assert view.findChild(QLabel, "missionTitle").text().startswith("FLEXWEEK / DAY")
+    assert [(track.day, track.axis) for track in hours.tracks] == [(4, Axis.ACROSS)]
+    assert view.findChild(QPushButton, "missionDay4").title.text() == "Fri"
+    listed = view.findChild(QFrame, "missionDayList")
+    assert listed.findChild(QLabel, "missionLabel").text() == "Friday"
+    assert [name.full_text() for name in listed.findChildren(FittedLabel, "missionRowTitle")] == [
+        "School",
+        "Dinner",
+    ]
+    # What is still to come is today's alone.
+    assert view.findChild(QFrame, "missionUpNext") is None
+    assert view.findChild(QFrame, "missionFreeTime") is None
 
 
 def test_two_blocks_at_one_time_take_separate_scope_rows(qapp: QApplication) -> None:
@@ -85,15 +167,19 @@ def test_two_blocks_at_one_time_take_separate_scope_rows(qapp: QApplication) -> 
     assert boxes[0].bottom() < boxes[1].top() or boxes[1].bottom() < boxes[0].top()
 
 
-def test_week_name_opens_a_real_day(qapp: QApplication) -> None:
+def test_week_name_opens_a_real_day_and_todays_date_is_a_chip(qapp: QApplication) -> None:
     view = shown(qapp)
     opened: list[str] = []
     view.day_activated.connect(opened.append)
     view.findChild(QPushButton, "missionDay4").click()
     assert opened == [view.scene.week.date_of(4).isoformat()]
+    today, friday = view.findChild(QPushButton, "missionDay3"), view.findChild(QPushButton, "missionDay4")
+    assert (today.chip.isVisible(), today.date.isVisible(), today.chip.text()) == (True, False, "17")
+    assert (friday.chip.isVisible(), friday.date.isVisible(), friday.date.text()) == (False, True, "18")
 
 
-def test_a_bar_opens_and_gives_its_full_name_on_hover(qapp: QApplication) -> None:
+def test_a_bar_opens_and_gives_its_name_and_times_on_hover(qapp: QApplication) -> None:
+    """How a tick too small for its name is named, and a bar's name that did not fit whole."""
     view = shown(qapp)
     hours = view.findChild(MissionCanvas, "missionHours")
     box = hours.block_rect("chem-1", 3)
@@ -103,16 +189,7 @@ def test_a_bar_opens_and_gives_its_full_name_on_hover(qapp: QApplication) -> Non
     QTest.mouseDClick(hours, Qt.MouseButton.LeftButton, pos=local)
     assert opened == ["chem-1"]
     QApplication.sendEvent(hours, QHelpEvent(QEvent.Type.ToolTip, local, box.center()))
-    assert QToolTip.text() == "Chem-1"
-
-
-def test_header_and_radar_keep_missions_status(qapp: QApplication) -> None:
-    view = shown(qapp)
-    said = [view.findChild(QLabel, name).text() for name in
-            ("missionTitle", "missionClock", "missionPlaced")]
-    assert said == ["FLEXWEEK / WEEK 38", "LOCAL 13:40", "PLAN 3/4 PLACED"]
-    assert view.findChild(QPushButton, "missionRadar0").property("risk") == "danger"
-    assert view.findChild(QLabel, "missionLoadTitle") is not None
+    assert QToolTip.text() == "Chem-1\n20:00–21:30 · 1 h 30 min"
 
 
 def test_full_day_reaches_early_block_and_quarter_hour(qapp: QApplication) -> None:
@@ -121,65 +198,225 @@ def test_full_day_reaches_early_block_and_quarter_hour(qapp: QApplication) -> No
     view = shown(qapp, blocks=blocks)
     hours = view.findChild(MissionCanvas, "missionHours")
     assert hours.block_rect("paper-round", 3) is not None
-    assert hours.block_rect("quiz", 4).width() >= 14
+    assert hours.block_rect("quiz", 4).width() >= 10
     assert hours.block_rect("quiz", 4).height() >= 14
 
 
-def test_week_initial_only_fills_a_block_without_shared_words(qapp: QApplication) -> None:
-    view = shown(qapp, blocks=[*BLOCKS, block("quiz", "locked", [5], "19:00", 15)])
-    assert view._scrolls["week"].px == WEEK_SCALE.default
+def test_the_four_figures_say_what_is_planned_due_free_and_focused(qapp: QApplication) -> None:
+    """Thursday 13:40. Planned today is Thursday's homework, the essay at 18:45 and the chem report at
+    20:00. Due this week is homework still to do: the maths was finished. Free time runs to 22:00
+    around School, Dinner and both homework. No focus has been timed."""
+    view = shown(qapp)
+    assert figure(view, "missionPlanned") == ("2 h 30 min", "Essay-1 at 18:45")
+    assert figure(view, "missionDue") == ("3", "2 placed, 1 not placed yet")
+    assert figure(view, "missionFree") == ("4 h 30 min", "Until 22:00")
+    assert figure(view, "missionFocus") == ("0 min", "None yet this week")
+    cards = view.findChild(QFrame, "missionStrip").cards
+    labels = [card.findChild(QLabel, "missionLabel").text() for card in cards]
+    assert labels == ["Planned today", "Due this week", "Free time left today", "Focus minutes"]
+
+
+def test_focus_minutes_are_what_the_timer_credited_to_this_weeks_homework(qapp: QApplication) -> None:
+    homework = {**HOMEWORK, "chem": {**HOMEWORK["chem"], "focus_minutes": 35}}
+    view = shown(qapp, homework=homework)
+    assert figure(view, "missionFocus") == ("35 min", "On this week's homework")
+
+
+def test_another_week_has_no_today_to_count_from(qapp: QApplication) -> None:
+    view = shown(qapp, today=None)
+    for name in ("missionPlanned", "missionFree"):
+        assert figure(view, name) == ("–", "Today is in another week.")
+    assert figure(view, "missionDue") == ("3", "2 placed, 1 not placed yet")
+    table = view.findChild(QFrame, "missionDeadlines")
+    columns = [label.text() for label in table.findChildren(QLabel, "missionColumn")]
+    assert columns == ["Homework", "Needs", "Due"]
+    assert [row[2] for row in table_rows(view)] == ["Thu 17", "Fri 18", "Sun 20"]
+
+
+def test_the_deadline_table_lists_homework_still_to_do_by_time_left(qapp: QApplication) -> None:
+    """Chem is due at the end of today, the essay at 21:00 tomorrow and the poster on Sunday at
+    20:00; the finished maths is not listed. The bar is how much of each is placed."""
+    view = shown(qapp)
+    assert table_rows(view) == [
+        ("Chem-1", "1:30", "10 h", "Placed Thu 20:00"),
+        ("Essay-1", "1:00", "1 d 7 h", "Placed Thu 18:45"),
+        ("Poster-1", "2:00", "3 d 6 h", "Not placed yet"),
+    ]
+    table = view.findChild(QFrame, "missionDeadlines")
+    assert [bar.share for bar in table.findChildren(Bar)] == [1.0, 1.0, 0.0]
+    foot = table.findChild(QLabel, "missionFoot").text()
+    assert foot == "The bar is how much of each is placed in the week."
+
+
+def test_homework_due_on_one_day_says_so_under_the_table(qapp: QApplication) -> None:
+    homework = {key: {**item, "due": "2026-09-20T23:59"} for key, item in HOMEWORK.items()}
+    view = shown(qapp, homework=homework)
+    foot = view.findChild(QFrame, "missionDeadlines").findChild(QLabel, "missionFoot").text()
+    assert foot == "All 3 are due Sunday 20. The bar is how much of each is placed in the week."
+
+
+def test_part_placed_homework_offers_the_session_still_waiting(qapp: QApplication) -> None:
+    """The essay has an hour placed and 45 minutes waiting: its bar is part full, its waiting session
+    is the handle to drag, and it counts as not placed yet."""
+    second = block("second-wait", "flexible", [], None, 45, assignment_id="essay", title="Second wait")
+    blocks = [*BLOCKS, second]
+    view = shown(qapp, blocks=blocks)
+    essay = table_rows(view)[1]
+    assert essay == ("Essay-1", "1:45", "1 d 7 h", "45 min not placed yet")
+    share = view.findChild(QFrame, "missionDeadlines").findChildren(Bar)[1].share
+    assert share == pytest.approx(60 / 105)
+    chips = {chip.block_id for chip in view.findChildren(TrayChip)}
+    assert chips == {"poster-1", "second-wait"}
+    assert figure(view, "missionDue")[1] == "1 placed, 2 not placed yet"
+
+
+def test_homework_past_due_says_so_in_the_danger_colour(qapp: QApplication) -> None:
+    homework = {**HOMEWORK, "essay": {**HOMEWORK["essay"], "due": "2026-09-17T10:00"}}
+    view = shown(qapp, homework=homework)
+    first = view.findChild(QFrame, "missionDeadlines").findChildren(QLabel, "missionLeft")[0]
+    assert (first.text(), first.property("gone")) == ("Past due", True)
+    assert table_rows(view)[0][0] == "Essay-1"
+
+
+def test_half_an_hour_or_less_is_a_tick_and_longer_a_filled_block(qapp: QApplication) -> None:
+    """Dinner is a mark in its colour down the middle of its half hour, with the lane on either
+    side; a quiz of three quarters of an hour is filled."""
+    view = shown(qapp, blocks=[*BLOCKS, block("quiz", "locked", [4], "10:00", 45)])
     hours = view.findChild(MissionCanvas, "missionHours")
-    track = hours.track_for(5)
-    assert track is not None
-    drawn = {item.block_id: (item, rect) for item, rect in hours.drawn(track)}
-
-    def render(item: Drawn, rect: QRectF, mission: bool) -> tuple[bytes, QFont]:
-        image = QImage(int(rect.width()) + 8, int(rect.height()) + 8,
-                       QImage.Format.Format_ARGB32_Premultiplied)
-        image.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(image)
-        painter.setFont(qapp.font())
-        box = QRectF(3, 3, rect.width(), rect.height())
-        if mission:
-            hours.painter.block(painter, box, item, QRectF(image.rect()))
-        else:
-            BlockPainter.block(hours.painter, painter, box, item, QRectF(image.rect()))
-        font = painter.font()
-        painter.end()
-        return bytes(image.bits()), font
-
-    quarter, quarter_box = drawn["quiz"]
-    half, half_box = drawn["dinner"]
-    plain_quarter, plain_quarter_font = render(quarter, quarter_box, False)
-    marked_quarter, marked_quarter_font = render(quarter, quarter_box, True)
-    plain_half, plain_half_font = render(half, half_box, False)
-    marked_half, marked_half_font = render(half, half_box, True)
-    assert marked_quarter != plain_quarter
-    assert marked_half == plain_half
-    assert marked_quarter_font == plain_quarter_font
-    assert marked_half_font == plain_half_font
+    image = hours.grab().toImage()
+    surface = view.scene.tokens["surface"]
+    meals_fill, meals_mark = category_paint("meals", {"family": "light", "panel": surface})
+    class_fill, _ = category_paint("class", {"family": "light", "panel": surface})
+    dinner = next(rect for item, rect in hours.drawn(hours.track_for(3)) if item.block_id == "dinner")
+    middle = dinner.center().toPoint()
+    assert image.pixelColor(middle).name() == meals_mark
+    assert image.pixelColor(QPoint(round(dinner.left()) + 3, middle.y())).name() != meals_fill
+    quiz = next(rect for item, rect in hours.drawn(hours.track_for(4)) if item.block_id == "quiz")
+    assert image.pixelColor(QPoint(round(quiz.left()) + 6, round(quiz.bottom()) - 4)).name() == class_fill
 
 
-def test_side_can_hide_without_hiding_the_tray(qapp: QApplication) -> None:
-    view = shown(qapp, side="hide")
-    assert view.findChild(QFrame, "missionSide") is None
-    assert view.findChild(TrayChip, "missionWaiting0") is not None
+def test_a_name_that_cannot_fit_is_written_beside_its_block_where_the_lane_is_free(
+    qapp: QApplication,
+) -> None:
+    """The piano lesson's 45 minutes cannot hold its name, and Dinner is too close after it, so the
+    name goes before it, over free lane. School's name fits inside, so nothing is written before it."""
+    piano = block("piano", "locked", [2], "17:00", 45, title="Piano lesson", category="extra")
+    view = shown(qapp, blocks=[*BLOCKS, piano])
+    hours = view.findChild(MissionCanvas, "missionHours")
+    image = hours.grab().toImage()
+
+    def ink_before(block_id: str) -> int:
+        rect = next(rect for item, rect in hours.drawn(hours.track_for(2)) if item.block_id == block_id)
+        return sum(
+            QColor(image.pixel(x, y)).lightness() < 110
+            for x in range(max(round(rect.left()) - 110, 0), round(rect.left()) - 4)
+            for y in range(round(rect.top()) + 6, round(rect.top()) + 24)
+        )
+
+    assert ink_before("piano") > 20
+    assert ink_before("school") == 0
 
 
-def test_narrow_week_keeps_the_tray_and_its_zoom(qapp: QApplication) -> None:
+def test_day_says_what_is_still_to_come_today_and_the_free_time_left(qapp: QApplication) -> None:
+    view = shown(qapp, surface="day", iso_day="2026-09-17")
+    coming = view.findChild(QFrame, "missionUpNext")
+    assert words(coming.findChild(QLabel, "missionMuted")) == "3 more today"
+    assert [
+        (when.text(), name.full_text(), wait.text())
+        for when, name, wait in zip(
+            coming.findChildren(QLabel, "missionWhen"),
+            coming.findChildren(FittedLabel, "missionRowTitle"),
+            coming.findChildren(QLabel, "missionIn"),
+            strict=True,
+        )
+    ] == [
+        ("18:00", "Dinner", "in 4 h 20 min"),
+        ("18:45", "Essay-1", "in 5 h 5 min"),
+        ("20:00", "Chem-1", "in 6 h 20 min"),
+    ]
+    assert words(coming.findChild(QLabel, "missionFoot")) == "Then Friday: School at 08:00."
+    free = view.findChild(QFrame, "missionFreeTime")
+    assert words(free.findChild(QLabel, "missionMuted")) == "4:30 until 22:00"
+    assert [
+        (when.text(), length.text())
+        for when, length in zip(
+            free.findChildren(QLabel, "missionWhen"), free.findChildren(QLabel, "missionFigure"), strict=True
+        )
+    ] == [("14:30–18:00", "3:30"), ("18:30–18:45", "0:15"), ("19:45–20:00", "0:15"), ("21:30–22:00", "0:30")]
+    assert words(free.findChild(QLabel, "missionFoot")) == "Room for Poster-1, 2:00, before 22:00."
+
+
+def test_late_in_the_day_the_free_time_says_when_what_waits_will_not_fit(qapp: QApplication) -> None:
+    view = shown(qapp, surface="day", iso_day="2026-09-17", minute="20:30")
+    free = view.findChild(QFrame, "missionFreeTime")
+    assert [when.text() for when in free.findChildren(QLabel, "missionWhen")] == ["21:30–22:00"]
+    said = words(free.findChild(QLabel, "missionFoot"))
+    assert said == "Poster-1 needs 2:00, more than is free before 22:00."
+    coming = view.findChild(QFrame, "missionUpNext")
+    assert coming.findChildren(QLabel, "missionWhen") == []
+    assert coming.findChild(QLabel, "missionHint").text() == "Nothing else scheduled today."
+
+
+@pytest.mark.parametrize(
+    ("size", "scale", "side"),
+    [((1280, 760), 1.0, True), ((1150, 700), 1.2, True), ((900, 700), 1.0, False)],
+)
+def test_the_table_stays_beside_the_lanes_until_they_would_show_too_little(
+    qapp: QApplication, size: tuple[int, int], scale: float, side: bool
+) -> None:
+    """It holds the only handle on homework not placed yet, so at 1150 wide with large text, where the
+    rig checks the handles are on screen, it is still beside them; under 924 pixels it goes under."""
+    view = shown(qapp, size=size, scale=scale)
+    assert beside(view, "missionWeekScroll") is side
+
+
+def test_the_figures_fold_two_over_two_in_a_narrow_window(qapp: QApplication) -> None:
+    wide = shown(qapp)
+    tops = [wide.findChild(QFrame, name).y() for name in ("missionPlanned", "missionDue", "missionFree")]
+    assert len(set(tops)) == 1
+    narrow = shown(qapp, size=(800, 700))
+    names = ("missionPlanned", "missionDue", "missionFree")
+    planned, due, free = (narrow.findChild(QFrame, name) for name in names)
+    assert planned.y() == due.y() < free.y()
+    page = narrow.findChild(QScrollArea, "missionScroll")
+    assert page.horizontalScrollBar().maximum() == 0, "the page scrolls sideways"
+
+
+def test_in_a_short_window_the_lanes_and_not_the_tables_rows_set_the_pages_height(
+    qapp: QApplication,
+) -> None:
+    """Six homework make a table taller than a laptop's short window. Its rows scroll inside it, and
+    every lane is on screen with the page still."""
+    extra = {
+        f"hw{at}": {"id": f"hw{at}", "title": f"Reading {at}", "due": "2026-09-20T23:59", "completed": False}
+        for at in range(4)
+    }
+    sessions = [block(f"hw{at}-1", "flexible", [], None, 30, assignment_id=f"hw{at}") for at in range(4)]
+    blocks = [*BLOCKS, *sessions]
+    view = shown(qapp, blocks=blocks, homework={**HOMEWORK, **extra}, size=(1366, 490))
+    assert view.findChild(QScrollArea, "missionScroll").verticalScrollBar().maximum() == 0
+    assert view.findChild(QScrollArea, "missionDeadlineRowsScroll").verticalScrollBar().maximum() > 0
+
+
+def test_the_figures_can_be_hidden(qapp: QApplication) -> None:
+    assert shown(qapp, figures="hide").findChild(QFrame, "missionStrip") is None
+    assert shown(qapp).findChild(QFrame, "missionStrip") is not None
+
+
+def test_a_narrow_week_keeps_its_hours_and_their_zoom(qapp: QApplication) -> None:
     view = shown(qapp)
     original = view._scrolls["week"]
     original.zoom_by(1)
-    view.resize(1024, 640)
+    view.resize(800, 640)
     view.show_week(replace(view.scene, minute=view.scene.minute + 1))
     qapp.processEvents()
-    assert view.findChild(QFrame, "missionSide") is None
+    assert beside(view, "missionWeekScroll") is False
     assert view.findChild(TrayChip, "missionWaiting0") is not None
     assert view._scrolls["week"] is original
-    assert original.px == 96
+    assert original.px == 72
     view.show_week(replace(view.scene, surface="day"))
     view.show_week(replace(view.scene, surface="week"))
-    assert view._scrolls["week"] is original and original.px == 96
+    assert view._scrolls["week"] is original and original.px == 72
 
 
 def test_parked_day_scroll_dies_with_its_host(qapp: QApplication) -> None:
@@ -206,23 +443,31 @@ def test_parked_day_scroll_dies_with_its_host(qapp: QApplication) -> None:
 
 def test_colour_option_repaints_the_console(qapp: QApplication) -> None:
     colours = [shown(qapp, colour=name).grab().toImage().pixelColor(3, 3).name()
-               for name in ("cyan", "amber", "green")]
-    assert colours == ["#070b12", "#0d0a04", "#040b06"]
+               for name in ("deck", "cyan", "amber", "green")]
+    assert colours == ["#0b0f14", "#070b12", "#0d0a04", "#040b06"]
 
 
-def test_radar_elides_a_long_title(qapp: QApplication) -> None:
+def test_flight_deck_is_the_mock_ups_signature_in_flexweeks_blue_whatever_the_look() -> None:
+    """A design's own colourway stays the same whichever look and accent the student wears."""
+    assert LAYOUTS["mission"].colourways[0][:2] == ("deck", "Flight deck")
+    for pack, dark, accent in itertools.product(PACKS, (False, True), ACCENTS):
+        tokens = tokens_for("mission", "deck", resolved_palette(pack, dark, None, accent))
+        assert (tokens["bg"], tokens["surface"], tokens["accent"]) == ("#0b0f14", "#121821", "#7fa8ff")
+
+
+def test_a_long_title_in_the_table_is_shortened_with_its_whole_name_to_hand(qapp: QApplication) -> None:
     title = "History essay outline and annotated bibliography"
     blocks = [{**item, "title": title} if item["id"] == "essay-1" else item for item in BLOCKS]
     view = shown(qapp, blocks=blocks)
-    row = view.findChild(QPushButton, "missionRadar1")
-    assert "…" in row.text()
-    assert row.toolTip() == title
+    name = view.findChild(QFrame, "missionDeadlines").findChildren(FittedLabel, "missionDeadlineTitle")[1]
+    assert name.text().endswith("…")
+    assert (name.full_text(), name.toolTip()) == (title, title)
 
 
-def test_cargo_chip_click_opens_homework(qapp: QApplication) -> None:
+def test_a_waiting_row_click_opens_homework(qapp: QApplication) -> None:
     view = shown(qapp, surface="day")
     opened: list[str] = []
     view.block_activated.connect(opened.append)
     chip = view.findChild(TrayChip, "missionWaiting0")
     QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
-    assert opened == [chip.block_id]
+    assert opened == [chip.block_id] == ["poster-1"]

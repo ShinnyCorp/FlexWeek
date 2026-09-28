@@ -169,6 +169,25 @@ def test_finished_and_missed_homework_leave_the_queue() -> None:
     ]
 
 
+def test_focus_is_what_the_timer_credited_to_this_weeks_homework_and_blocks() -> None:
+    """The timer adds its minutes to the homework, or to a block with no homework. The week counts
+    the homework it has sessions of, each once however many sessions, and its other blocks; homework
+    with no session this week is another week's."""
+    homework = {
+        **HOMEWORK,
+        "chem": {**HOMEWORK["chem"], "focus_minutes": 25},
+        "essay": {**HOMEWORK["essay"], "focus_minutes": 15},
+        "later": {"id": "later", "title": "Next week's reading", "due": "2026-09-25", "focus_minutes": 40},
+    }
+    blocks = [
+        *BLOCKS,
+        block("essay-2", "flexible", [4], "17:00", 30, assignment_id="essay"),
+        block("piano", "locked", [2], "17:00", 45, focus_minutes=10),
+    ]
+    assert build_week(WEEK, blocks, homework, TRACE).focus_min == 25 + 15 + 10
+    assert build_week(WEEK, BLOCKS, HOMEWORK, TRACE).focus_min == 0
+
+
 def test_homework_the_account_marks_complete_is_done_even_if_the_block_is_not() -> None:
     blocks = [block("math-2", "flexible", [2], "16:00", 30, assignment_id="math")]
     week = build_week(WEEK, blocks, HOMEWORK, None)

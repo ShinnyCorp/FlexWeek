@@ -73,10 +73,6 @@ def _show(key: str, label: str, level: str = "detail") -> Option:
     return Option(key, label, level, (Choice("show", "Show"), Choice("hide", "Hide")))
 
 
-_HOURS = Option(
-    "hours", "Hours shown", "detail", (Choice("day", "06:00 to 22:00"), Choice("full", "All 24 hours"))
-)
-
 LAYOUTS: dict[str, LayoutSpec] = {
     spec.id: spec
     for spec in (
@@ -109,8 +105,8 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "mission",
             "plan",
             "Mission control",
-            "Days as lanes across the screen, with a deadline radar.",
-            (_colour(MISSION), _HOURS, _show("side", "Deadline radar and load")),
+            "Today in numbers across the top, the days as lanes of hours, and deadlines by time left.",
+            (_colour(MISSION), _show("figures", "Figures across the top")),
             MISSION,
             purpose="Dashboard",
             experimental=True,

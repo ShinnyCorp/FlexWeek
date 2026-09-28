@@ -212,6 +212,8 @@ class WeekModel:
     week_start: str
     occurrences: tuple[Occurrence, ...] = ()
     waiting: tuple[Waiting, ...] = ()
+    # Minutes the focus timer has credited to this week's homework, and to its blocks without any.
+    focus_min: int = 0
 
     def date_of(self, day: int) -> date:
         return date.fromisoformat(self.week_start) + timedelta(days=day)
@@ -341,4 +343,9 @@ def build_week(
             )
     occurrences.sort(key=lambda item: (item.day, item.start, item.block_id))
     waiting.sort(key=lambda item: due_sort_key(item.due, item.block_id))
-    return WeekModel(week_start, tuple(occurrences), tuple(waiting))
+    # The timer adds its minutes to the homework, or to a block with none (focus.credit_target). A
+    # homework's are all of its own, from whichever week they were timed in.
+    worked = {block.get("assignment_id") for block in blocks} - {None}
+    focus = sum(int((homework.get(key) or {}).get("focus_minutes") or 0) for key in worked)
+    focus += sum(int(block.get("focus_minutes") or 0) for block in blocks if not block.get("assignment_id"))
+    return WeekModel(week_start, tuple(occurrences), tuple(waiting), focus)
