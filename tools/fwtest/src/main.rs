@@ -36,6 +36,15 @@ enum Command {
         /// Spec files. Default is every scripts/mutations/*.json in the checkout.
         specs: Vec<std::path::PathBuf>,
     },
+    /// Run the rig driver, then stop the hidden session and anything left.
+    Rig {
+        /// Python interpreter. Overrides FWTEST_PYTHON and .venv/bin/python.
+        #[arg(long)]
+        python: Option<std::path::PathBuf>,
+        /// Arguments forwarded to scripts/rig/drive.py.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Run a command as one contained job.
     Run {
         /// Stop the job after this many seconds (exit 124).
@@ -61,6 +70,7 @@ fn main() {
             python,
             specs,
         } => fwtest::mutate::run(&specs, case.as_deref(), python.as_deref()),
+        Command::Rig { python, args } => fwtest::rig::run(&args, python.as_deref()),
         Command::Run { timeout, command } => fwtest::contain::execute(&command, timeout),
     };
     std::process::exit(i32::from(code));

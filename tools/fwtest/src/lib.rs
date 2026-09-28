@@ -8,6 +8,7 @@ pub mod identity;
 pub mod job;
 pub mod mutate;
 pub mod queue;
+pub mod rig;
 pub mod state;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
