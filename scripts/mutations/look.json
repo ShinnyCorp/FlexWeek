@@ -270,6 +270,6 @@
   "name": "The default accent too pale to see over a block",
   "old": "    \"default\": {\"dark\": (\"#7fa8ff\", DARK_INK), \"light\": (\"#3d6fc4\", LIGHT_INK)},\n",
   "new": "    \"default\": {\"dark\": (\"#7fa8ff\", DARK_INK), \"light\": (\"#8fb0e8\", LIGHT_INK)},\n",
-  "test": "desktop/tests/test_tokens.py::test_the_now_line_and_the_selection_show_over_every_block"
+  "test": "desktop/tests/test_look.py::test_every_look_but_high_contrast_wears_flexweeks_blue_by_default"
  }
 ]
