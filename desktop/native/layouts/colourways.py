@@ -106,12 +106,15 @@ MISSION = (
         ),
     ),
 )
+# Bento's colourways paint the hero tile alone, `hero` in `hero_ink` with `hero_muted` for its small
+# print; the page and the other tiles are the colourway's own. Indigo is the mock-up's: the light page,
+# as 0.17 draws it, with the indigo on the hero only.
 BENTO = (
     (
         "indigo",
         "Indigo",
         _tokens(
-            bg="#eef2ff",
+            bg="#f7f8fa",
             bg_ink="#1e1b4b",
             bg_muted="#4b4a75",
             surface="#ffffff",
@@ -119,11 +122,12 @@ BENTO = (
             muted="#4b4a75",
             accent="#4f46e5",
             accent_ink="#ffffff",
-            line="#e0e7ff",
+            line="#e4e7ec",
             danger="#991b1b",
             danger_ink="#ffffff",
-            cta="#c2410c",
-            cta_ink="#ffffff",
+            hero="#4338ca",
+            hero_ink="#ffffff",
+            hero_muted="#e0e7ff",
         ),
     ),
     (
@@ -141,8 +145,9 @@ BENTO = (
             line="#fde0cf",
             danger="#9f1239",
             danger_ink="#ffffff",
-            cta="#7c2d12",
-            cta_ink="#ffffff",
+            hero="#c2410c",
+            hero_ink="#ffffff",
+            hero_muted="#fff1e6",
         ),
     ),
     (
@@ -160,8 +165,9 @@ BENTO = (
             line="#e4e4e7",
             danger="#991b1b",
             danger_ink="#ffffff",
-            cta="#3f3f46",
-            cta_ink="#ffffff",
+            hero="#18181b",
+            hero_ink="#ffffff",
+            hero_muted="#d4d4d8",
         ),
     ),
     (
@@ -179,8 +185,9 @@ BENTO = (
             line="#26304a",
             danger="#fca5a5",
             danger_ink="#0b1020",
-            cta="#fb923c",
-            cta_ink="#0b1020",
+            hero="#3730a3",
+            hero_ink="#ffffff",
+            hero_muted="#c7d2fe",
         ),
     ),
 )
