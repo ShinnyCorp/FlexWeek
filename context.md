@@ -657,6 +657,13 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-28, `tooling/fwtest`: the Rust test harness `fwtest` is set up for Grok to build. The
+  contract is `docs/tooling/fwtest.md`; `tools/fwtest` is an empty crate that builds; spec.md's
+  Validation lists its cargo checks. Grok builds it on `grok/fwtest-harness` in
+  `~/.worktrees/flexweek-fwtest-grok` from the sealed slices in that worktree's `.handoff/`
+  (S1 the harness, S2 GLM's fixture, S3 parity). Next: review Grok's branch against the
+  contract, then move README, AGENTS.md and CI to `fwtest` and delete `scripts/verify.py`,
+  `scripts/mutate.py` and `run-alone.sh`. The 0.17 redesign waits on `feat/0.17-look`.
 - 2026-09-26, `feat/0.16-polish`: 0.16.0 prepared on Jonathan's "let's finalize": version,
   dated changelog, `docs/release-notes-v0.16.0.md` and README's usage text. Since the review round:
   homework can be deleted with Undo across weeks (eaa326a), and the gate runs pytest on every core
