@@ -11,7 +11,7 @@
   "name": "a tray chip keeps its whole words",
   "old": "        if fitted != self.text():\n            self.setText(fitted)\n",
   "new": "",
-  "test": "desktop/tests/test_classic_hours.py::test_a_tray_chip_shortens_its_words_to_the_room_it_has_and_keeps_its_title"
+  "test": "desktop/tests/test_classic_hours.py::test_a_tray_chip_shortens_its_title_and_keeps_its_length_whole"
  },
  {
   "file": "desktop/native/hours/chips.py",
@@ -308,9 +308,9 @@
   "test": "desktop/tests/test_now_next.py::test_the_next_and_now_countdowns_move_with_the_minute_without_a_focus_timer"
  },
  {
-  "file": "desktop/native/hours/classic.py",
-  "name": "an empty now and next line still takes its row",
-  "old": "        self.next.setVisible(wide and bool(self._next))\n",
+  "file": "desktop/native/hours/rail.py",
+  "name": "an empty Next card still takes its room",
+  "old": "        self.next.setVisible(wide and has_next)\n",
   "new": "        self.next.setVisible(wide)\n",
   "test": "desktop/tests/test_now_next.py::test_the_next_and_now_countdowns_move_with_the_minute_without_a_focus_timer"
  },
@@ -420,17 +420,17 @@
   "test": "desktop/tests/test_drag_results.py::test_the_toast_floats_over_the_foot_of_the_hours_and_lets_the_pointer_through"
  },
  {
-  "file": "desktop/native/hours/classic.py",
-  "name": "Week's side never folds",
-  "old": "        if narrow == self.side.folded:\n            return\n",
-  "new": "        return\n",
-  "test": "desktop/tests/test_week_side.py::test_a_narrow_window_folds_the_side_into_one_line_and_blocks_say_their_names"
+  "file": "desktop/native/window.py",
+  "name": "the rail never folds",
+  "old": "        narrow = self.width() < NARROW_WIDTH\n        if narrow != self.rail.folded:\n",
+  "new": "        narrow = False\n        if narrow != self.rail.folded:\n",
+  "test": "desktop/tests/test_week_side.py::test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_say_their_names"
  },
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "a narrow block keeps its times and cuts its name",
-  "old": "        if drawn.short and not drawn.held:\n",
-  "new": "        if False:\n",
+  "old": "    if drawn.short:\n",
+  "new": "    if False:\n",
   "test": "desktop/tests/test_week_side.py::test_a_short_block_word_gives_its_name_the_room_its_times_took"
  },
  {
@@ -483,17 +483,17 @@
   "test": "desktop/tests/test_week_side.py::test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way"
  },
  {
-  "file": "desktop/native/hours/classic.py",
+  "file": "desktop/native/hours/rail.py",
   "name": "the focus list a row short",
-  "old": "            chrome = margins.top() + margins.bottom() + 2\n",
-  "new": "            chrome = 8\n",
+  "old": "                rows * self.tasks.sizeHintForRow(0) + margins.top() + margins.bottom() + 2\n",
+  "new": "                (rows - 1) * self.tasks.sizeHintForRow(0) + margins.top() + margins.bottom() + 2\n",
   "test": "desktop/tests/test_week_side.py::test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way"
  },
  {
-  "file": "desktop/native/hours/classic.py",
+  "file": "desktop/native/hours/rail.py",
   "name": "the focus list kept its height through a change of look",
-  "old": "            QTimer.singleShot(0, self, self._fit_tasks)\n",
-  "new": "            pass\n",
+  "old": "        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):\n            self._fit_tasks()\n",
+  "new": "        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):\n            pass\n",
   "test": "desktop/tests/test_week_side.py::test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way"
  }
 ]

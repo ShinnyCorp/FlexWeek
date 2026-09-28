@@ -309,7 +309,8 @@ def test_a_week_opened_while_hidden_scrolls_to_now_when_it_is_shown(qapp: QAppli
     view.set_week(build_week("2026-10-05", [], {}, None), 2, 12 * 60)
     view.show()
     settle(qapp)
-    assert 10 * 60 <= minute_at(view, 0) <= 11 * 60, "a new week opens a little above now"
+    top, bottom = minute_at(view, 0), minute_at(view, view.scroll.viewport().height())
+    assert abs((top + bottom) / 2 - 12 * 60) <= 2, "a new week opens with now in the middle"
 
 
 def dark_in(image: QImage, strip: QRect, left: int) -> int:

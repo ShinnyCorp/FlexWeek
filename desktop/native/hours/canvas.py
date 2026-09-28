@@ -510,15 +510,29 @@ def _wrap(text: str, metrics: QFontMetricsF, width: float, indent: float) -> tup
     return lines, whole
 
 
+def word_elide(text: str, metrics: QFontMetricsF, width: float) -> str:
+    """`text` in `width`, given way at a space where it must, "Math…" rather than "Math works…". Only
+    a first word wider than the room is cut inside it."""
+    if metrics.horizontalAdvance(text) <= width:
+        return text
+    words = _words(text)
+    kept = ""
+    for word in words:
+        longer = f"{kept} {word}".strip()
+        if metrics.horizontalAdvance(longer + "…") > width:
+            break
+        kept = longer
+    if kept:
+        return kept + "…"
+    return metrics.elidedText(text, Qt.TextElideMode.ElideRight, width)
+
+
 def _clamp(lines: list[str], most: int, metrics: QFontMetricsF, width: float, indent: float) -> list[str]:
     """At most `most` lines, the last one ending in "…" if there was more, each within its width."""
     shown = lines[:most]
     if len(lines) > most:
         shown[-1] = " ".join(lines[most - 1 :])
-    elide = Qt.TextElideMode.ElideRight
-    return [
-        metrics.elidedText(line, elide, width - (indent if at == 0 else 0)) for at, line in enumerate(shown)
-    ]
+    return [word_elide(line, metrics, width - (indent if at == 0 else 0)) for at, line in enumerate(shown)]
 
 
 def _beside(title: QFontMetricsF, small: QFontMetricsF) -> float:
@@ -588,7 +602,7 @@ def block_layout(
         fits = tm.horizontalAdvance(drawn.title) <= title_room
         if not fits and not cut:
             return None
-        text = drawn.title if fits else tm.elidedText(drawn.title, Qt.TextElideMode.ElideRight, title_room)
+        text = drawn.title if fits else word_elide(drawn.title, tm, title_room)
         left = room.left() + indent
         written = [Written(text, True, QRectF(left, line_top, title_room, tl), book=book)]
         at = left + tm.horizontalAdvance(text) + INLINE_GAP
@@ -608,11 +622,16 @@ def block_layout(
             lambda cut: stack(2, (), cut),
             lambda cut: stack(1, (), cut),
         ]
-    for cut in (False, True):
-        for way in ways:
-            found = way(cut)
-            if found is not None:
-                return found
+    for way in ways:
+        found = way(False)
+        if found is not None:
+            return found
+    # Nothing says the title whole: it gives way, and the name comes before its start on one line,
+    # "Math works…" rather than "Mat… 19:00".
+    for way in ways[:3] + ways[4:] + ways[3:4]:
+        found = way(True)
+        if found is not None:
+            return found
     return []
 
 
@@ -664,7 +683,7 @@ def _wide_layout(
         fits = tm.horizontalAdvance(drawn.title) <= name_room
         if not fits and not cut:
             return None
-        text = drawn.title if fits else tm.elidedText(drawn.title, Qt.TextElideMode.ElideRight, name_room)
+        text = drawn.title if fits else word_elide(drawn.title, tm, name_room)
         left = room.left() + indent
         at = left + tm.horizontalAdvance(text) + INLINE_GAP
         return [

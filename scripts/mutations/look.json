@@ -1,10 +1,10 @@
 [
  {
   "file": "desktop/native/hours/canvas.py",
-  "name": "a one-hour block's times need two bold lines",
-  "old": "        if room.height() < two_lines:\n",
-  "new": "        if room.height() < 2 * line:\n",
-  "test": "desktop/tests/test_hours_painter.py::test_a_one_hour_block_says_its_name_and_its_times_on_two_lines"
+  "name": "a block leaves out its length though it has room",
+  "old": "            lambda cut: stack(2, (drawn.times, drawn.length), cut),\n",
+  "new": "",
+  "test": "desktop/tests/test_hours_painter.py::test_a_block_says_the_most_it_can_without_cutting_a_word_or_ending_a_line_in_a_dot"
  },
  {
   "file": "desktop/native/hours/canvas.py",
@@ -37,15 +37,15 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "hour labels in proportional figures",
-  "old": "        painter.setFont(time_font(_small(painter.font())))\n        metrics = QFontMetricsF(painter.font())\n",
-  "new": "        painter.setFont(_small(painter.font()))\n        metrics = QFontMetricsF(painter.font())\n",
+  "old": "        font = time_font(QFont(painter.font()))\n        font.setPointSizeF(type_pt(\"caption\", self.scale(painter.font())))\n        painter.setFont(font)\n",
+  "new": "        font = QFont(painter.font())\n        font.setPointSizeF(type_pt(\"caption\", self.scale(painter.font())))\n        painter.setFont(font)\n",
   "test": "desktop/tests/test_hours_painter.py::test_every_time_on_the_hours_is_written_in_figures_of_one_width"
  },
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "block times in proportional figures",
-  "old": "        plain = time_font(_small(painter.font()))\n        line = QFontMetrics(bold).height()\n",
-  "new": "        plain = _small(painter.font())\n        line = QFontMetrics(bold).height()\n",
+  "old": "        small = time_font(QFont(base))\n",
+  "new": "        small = QFont(base)\n",
   "test": "desktop/tests/test_hours_painter.py::test_every_time_on_the_hours_is_written_in_figures_of_one_width"
  },
  {
@@ -93,8 +93,8 @@
  {
   "file": "desktop/native/hours/classic.py",
   "name": "today's name not marked",
-  "old": "                label.setProperty(\"today\", day == today)\n",
-  "new": "                label.setProperty(\"today\", False)\n",
+  "old": "            label.show_day(DAYS[day], str(week.date_of(day).day), homework_minutes(week, day), day == today)\n",
+  "new": "            label.show_day(DAYS[day], str(week.date_of(day).day), homework_minutes(week, day), False)\n",
   "test": "desktop/tests/test_look_widgets.py::test_todays_name_above_the_week_is_marked_and_no_other"
  },
  {

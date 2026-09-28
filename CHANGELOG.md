@@ -5,7 +5,35 @@ All notable changes to FlexWeek are documented here. Format follows
 
 ## [0.17.0] - Unreleased
 
+### Added
+- Today's app has a rail on the left of Day and Week in place of the side
+  panel on the right: a small month with this week banded, today in the accent
+  and a dot on each day homework is due; what is next and what follows it;
+  homework not placed yet, as chips with the book and the length at the right;
+  and the homework to start a focus timer on, in time order with the time at
+  the right. A running timer is its first card. The month folds away from a
+  control on its header and stays folded after a restart. The week takes the
+  rest of the width, and each day's header says its hours of homework.
+- Day lists the day beside its hours: each thing's times and length, the time
+  now as a line, and a summary with a bar and a dot for each kind of thing. It
+  no longer puts what is next in a band above the hours.
+
 ### Changed
+- Blocks have a 3-pixel edge in their category's colour, with Edge the default
+  block style. Titles are at 600 and times muted, blocks back to back are 3
+  pixels apart, no line ends in a dot, homework carries a book, and 12-hour
+  times are short ("4–5:30 PM"). A block says its title on up to two lines,
+  then its times and length, then "Dinner 18:30" on one line; a title gives way
+  at a space only when nothing else fits, and a block with no room for three
+  letters shows its colour alone.
+- Today's date is an accent chip in its header on Week and Day.
+- Day and Week open at the time now, in the middle of what shows, each time
+  they are shown: switched to, back from Settings or the focus screen, and in a
+  new look. After Plan they scroll to the first homework it placed.
+- Month's rows are as tall as their busiest date, up to six chips, this week
+  is banded, and its day names are in sentence case.
+- The plan result is one slim bar: "Placed 2 · 1 without a time", Details,
+  Replan as text and Got it filled.
 - One accent: FlexWeek's blue, the icon's (`#3d6fc4` on light looks, `#7fa8ff`
   on dark ones), in every look but High contrast, which keeps its yellow
   (`#ffd400`) whatever swatch is picked. Sky, Sea, Gold and Sand still replace
@@ -30,6 +58,11 @@ All notable changes to FlexWeek are documented here. Format follows
   one filled yellow, where the view control was yellow on light grey.
 
 ### Fixed
+- The plan bar counts what the toast counts, the homework the plan gave a time
+  and the homework it could not. It counted every block with a time, School
+  included, and said 2 placed under a toast that said 0.
+- An hour label the edge of the hours would cut is left out, not moved off its
+  rule.
 - Changing the look with the week open, to High contrast above all, no longer
   runs the words of the Not placed yet chips off their edge, and the focus
   list beside the week no longer grows a sideways scroll bar or hides a row: a

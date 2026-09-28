@@ -444,3 +444,26 @@ def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
     assert track.area.left() <= written[0].left() < track.area.left() + 12
     accent = resolved_palette("system", False, None)["accent"]
     assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == accent
+
+
+def test_a_short_block_at_large_text_keeps_its_title_first_and_whole_words(qapp: QApplication) -> None:
+    """At Large text a 45-minute block on the week has room for one line. "Piano lesson" is said
+    whole; "Math worksheet", which cannot be, gives way at a space, "Math…", and its name comes before
+    its time: not "Mat… 19:00", nor "Math works…"."""
+    from desktop.native.hours.canvas import TEXT_LEFT, TEXT_RIGHT, TEXT_TOP, block_layout
+    from desktop.native.hours.geometry import Span
+
+    large = {"preset": "default", "knobs": {"text": "large"}}
+    title, small = BlockPainter(resolved_palette("system", False, None), large).fonts(QFont("Inter", 15))
+    # A column of the week beside the rail at 1280, 45 minutes at 48 pixels an hour.
+    rect = QRectF(0, 0, 128, 45 * 48 / 60 - 3)
+    room = rect.adjusted(TEXT_LEFT, TEXT_TOP, -TEXT_RIGHT, -1)
+    tight = QRectF(room.left(), 1, room.width(), rect.height() - 1)
+
+    def said(name: str, homework: bool) -> list[str]:
+        span = Span(1, 19 * 60, 19 * 60 + 45)
+        drawn = Drawn(name, name, "assignments" if homework else "extra", homework, span, 0, 1)
+        return [line.text for line in block_layout(drawn, title, small, room, tight=tight, book=homework)]
+
+    assert said("Piano lesson", False)[0] == "Piano lesson"
+    assert said("Math worksheet", True) == ["Math…"]

@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from uuid import uuid4
 
-from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtCore import QMargins, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QKeyEvent, QShowEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -327,6 +327,9 @@ class FocusPanel(QWidget):
             choices.addWidget(widget)
         choices.addStretch(1)
         card_box.addLayout(choices)
+        self._rows = (status, choices)
+        self._margins = layout.contentsMargins()
+        self._compact = False
         self._ended_widgets = (self.finished, self.take_break, self.more_min, self.more)
         # Nothing to show until a timer runs, and blank rows cost the calendar height. The homework to
         # start one on is in Week's side.
@@ -335,6 +338,17 @@ class FocusPanel(QWidget):
 
     def _emit_more(self) -> None:
         self.more_requested.emit(int(self.more_min.currentData() or 0))
+
+    def set_compact(self, compact: bool) -> None:
+        """Stacked, for the top of Today's app's rail: its parts one under another, not in a row
+        wider than the rail."""
+        direction = QBoxLayout.Direction.TopToBottom if compact else QBoxLayout.Direction.LeftToRight
+        for row in self._rows:
+            if row.direction() != direction:
+                row.setDirection(direction)
+        self.layout().setContentsMargins(QMargins() if compact else self._margins)
+        self._compact = compact
+        self.note.setVisible(not compact or self.finished.isVisibleTo(self))
 
     def show_now_next(self, text: str) -> None:
         self.now_next.setText(text)
@@ -361,6 +375,9 @@ class FocusPanel(QWidget):
             widget.setVisible(ended)
         self.card.setVisible(state is not None)
         self.note.setText(FOCUS_ENDED_NOTE if ended else FOCUS_RUNNING_NOTE)
+        # In the rail a running timer is its name, time and way to the focus screen; what to do next
+        # is said once it ends.
+        self.note.setVisible(ended or not self._compact)
         self.more.setEnabled(bool(choices))
         for label in (self.task, self.phase, self.time):
             label.setVisible(bool(label.text()))

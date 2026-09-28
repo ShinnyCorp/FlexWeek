@@ -117,11 +117,11 @@ def test_a_day_name_on_the_week_stays_visible_and_opens_that_day(qapp: QApplicat
     assert opened == [4]
 
 
-def test_a_tray_chip_shortens_its_words_to_the_room_it_has_and_keeps_its_title(qapp: QApplication) -> None:
-    """The Day's tray is narrower than a long title. The chip shortens its words rather than running
-    off the edge of the tray, and says the whole title to a screen reader and in its tooltip."""
-    from desktop.native.hours.chips import TrayChip
-    from desktop.native.hours.classic import ClassicDay
+def test_a_rail_chip_shortens_its_title_to_the_rail_and_keeps_its_length(qapp: QApplication) -> None:
+    """The rail is narrower than a long title. A chip there shortens the title, never the length,
+    never widens the rail, and says the whole title to a screen reader and in its tooltip; given
+    room again it says it all."""
+    from desktop.native.hours.rail import RAIL_PX, Rail
 
     title = "Science poster on the water cycle for Ms Alvarez"
     poster = {
@@ -133,24 +133,23 @@ def test_a_tray_chip_shortens_its_words_to_the_room_it_has_and_keeps_its_title(q
         "duration_min": 90,
         "days": [0, 1, 2, 3, 4],
     }
-    view = ClassicDay(a_hand())
-    view.set_look(None, resolved_palette("system", False, None))
-    view.resize(760, 520)
-    view.set_day(
-        build_week("2026-09-21", [poster], {"poster": {"id": "poster", "due": "2026-09-25"}}), 3, 3, 900
-    )
-    view.show()
+    rail = Rail(a_hand())
+    rail.set_look(None, resolved_palette("system", False, None))
+    rail.resize(RAIL_PX, 700)
+    week = build_week("2026-09-21", [poster], {"poster": {"id": "poster", "due": "2026-09-25"}})
+    rail.set_week(week, 3, 900, {})
+    rail.show()
     qapp.processEvents()
-    chip = view.findChild(TrayChip)
-    whole = f"{title} · 1 h 30 min"
-    inside = view.side.contentsRect()
-    assert chip.mapTo(view.side, chip.rect().topRight()).x() <= inside.right(), "the chip ran past its tray"
-    assert chip.text() != whole and chip.text().endswith("… · 1 h 30 min"), chip.text()
-    assert chip.accessibleName() == whole
+    chip = rail.chips()[0]
+    assert rail.width() == RAIL_PX, "a long title widened the rail"
+    assert chip.mapTo(rail, chip.rect().topRight()).x() <= rail.width(), "the chip ran past the rail"
+    assert chip.shown_title() != title and chip.shown_title().endswith("…"), chip.shown_title()
+    assert chip.length == "1 h 30 min"
+    assert chip.accessibleName() == f"{title} · 1 h 30 min"
     assert title in chip.toolTip()
-    view.side.setFixedWidth(620)
+    chip.setFixedWidth(900)
     qapp.processEvents()
-    assert chip.text() == whole, "given room again, it says it all"
+    assert chip.shown_title() == title, "given room again, it says it all"
 
 
 def test_a_tray_chip_shortens_its_title_and_keeps_its_length_whole(qapp: QApplication) -> None:
@@ -207,3 +206,41 @@ def test_a_tray_chip_in_a_row_says_it_all_again_once_the_row_has_room(qapp: QApp
     row.setFixedWidth(700)
     qapp.processEvents()
     assert chip.text() == whole
+
+
+def test_day_is_its_agenda_in_order_with_now_between_what_has_been_and_what_is_next(
+    qapp: QApplication,
+) -> None:
+    """Decision 16 of 0.17: Day drops its Next band; beside the rail it lists the day, times and
+    lengths, with the time now as a line, and a summary with a dot for each kind of thing. A click on
+    a line opens it."""
+    from desktop.native.hours.classic import ClassicDay
+
+    blocks = [
+        {"id": "school", "title": "School", "kind": "locked", "category": "class", "start": "08:00",
+         "duration_min": 405, "days": [3]},
+        {"id": "soccer", "title": "Soccer practice", "kind": "locked", "category": "extra", "start": "16:00",
+         "duration_min": 90, "days": [3]},
+        {"id": "dinner", "title": "Dinner", "kind": "locked", "category": "meals", "start": "18:30",
+         "duration_min": 30, "days": [3]},
+    ]
+    hand = a_hand()
+    opened: list[str] = []
+    hand.opened.connect(opened.append)
+    view = ClassicDay(hand)
+    view.set_look(None, resolved_palette("system", False, None))
+    view.resize(1000, 700)
+    view.set_day(build_week("2026-09-21", blocks, {}, None), 3, 3, 15 * 60 + 40)
+    view.show()
+    qapp.processEvents()
+    agenda = view.agenda
+    assert agenda.heading.text() == "Thursday"
+    assert agenda.sub.text() == "3 things · 8 h 45 min"
+    rows = [row.item.title if row.item is not None else "now" for row in agenda.list.rows]
+    assert rows == ["School", "now", "Soccer practice", "Dinner"]
+    assert view.summary.text() == "School: 6 h 45 min\nActivity: 1 h 30 min\nMeals: 30 min"
+    soccer = agenda.list.rows[2].box.center().toPoint()
+    QTest.mouseClick(agenda.list, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, soccer)
+    assert opened == ["soccer"]
+    view.set_day(build_week("2026-09-21", blocks, {}, None), 3, None, None)
+    assert [row.item is None for row in agenda.list.rows] == [False] * 3, "no now on a day that is not today"

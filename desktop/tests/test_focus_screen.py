@@ -153,7 +153,7 @@ def test_pause_skip_and_finish_act_on_the_one_timer(qapp: QApplication, window: 
 def test_start_focus_from_the_strip_opens_it_on_that_homework(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    tasks = window.week_table.side.tasks
+    tasks = window.rail.tasks
     assert tasks.count() == 1
     tasks.setCurrentRow(0)
     QTest.keyClick(tasks, Qt.Key.Key_Return)

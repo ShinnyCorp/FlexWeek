@@ -69,6 +69,7 @@ from desktop.native.hours.geometry import Span, drag_step
 from desktop.native.hours.hand import Create, Hand, Move, MoveDate, Place, span_words
 from desktop.native.hours.hand import Verdict as HandVerdict
 from desktop.native.hours.month import MonthGrid
+from desktop.native.hours.rail import Rail
 from desktop.native.hours.zoom import ZOOM_KEYS, HoursScroll, sanitize_zoom
 from desktop.native.kept import KeptSession
 from desktop.native.layouts.base import NARROW_WIDTH, LayoutView, Scene
@@ -300,6 +301,8 @@ class NativeWindow(QMainWindow):
         self._updates = sanitize_updates(None)
         self._zoom: dict[str, int] = {}
         self._shown: tuple | None = None
+        # Which of Day and Week, on which week and day, last opened at now.
+        self._opened_hours: tuple | None = None
         self._update_asked = False
         self._update_dialog: UpdateDialog | None = None
         self._updater = Updater(self)
@@ -476,6 +479,9 @@ class NativeWindow(QMainWindow):
         self.activateWindow()
 
     def _show_page(self, name: str) -> None:
+        if name != "weekPage":
+            # Back from Settings or the focus screen, Day and Week open at now again.
+            self._opened_hours = None
         for index in range(self._stack.count()):
             page = self._stack.widget(index)
             if page.objectName() == name:
@@ -926,19 +932,27 @@ class NativeWindow(QMainWindow):
         self.focus_panel.finished_requested.connect(self.session.finish_focused_homework)
         self.focus_panel.break_requested.connect(self.session.take_focus_break)
         self.focus_panel.more_requested.connect(self.session.add_focus_time)
-        layout.addWidget(self.focus_panel)
+        # Today's app keeps a rail left of its Day and Week; the notices and the planner are beside it.
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        self._rail_row = body
+        column = QVBoxLayout()
+        column.setContentsMargins(0, 0, 0, 0)
+        self._column = column
+        column.addWidget(self.focus_panel)
         # Neither is inside the planning chrome, which a design of its own hides: More > Unfinished
         # and Plan can be pressed from any design, and what they show is the point of pressing them.
         self.unfinished_panel = UnfinishedPanel()
         self.unfinished_panel.plan_requested.connect(self._plan_unfinished)
         self.unfinished_panel.delete_requested.connect(self._delete_homework)
-        layout.addWidget(self.unfinished_panel)
+        column.addWidget(self.unfinished_panel)
         self.plan_review = PlanReview()
         self.plan_review.replan_requested.connect(lambda: self.session.solve(everything=True))
-        layout.addWidget(self.plan_review)
+        column.addWidget(self.plan_review)
         self.alert_strip = AlertStrip()
         self.alert_strip.handled.connect(self._reminder_handled)
-        layout.addWidget(self.alert_strip)
+        column.addWidget(self.alert_strip)
         self.planner = QStackedWidget()
         self.planner.setObjectName("plannerStack")
         # One pointer for every gesture on every surface: it follows a drag and reports one change.
@@ -953,8 +967,13 @@ class NativeWindow(QMainWindow):
         # Today's app, as Daily Scheduler draws it: a Week that scrolls and a full-width Day.
         self.week_table = ClassicWeek(self.hand)
         self.week_table.day_opened.connect(self._open_week_day)
-        self.week_table.side.focus_requested.connect(self._start_focus)
         self.planner.addWidget(self.week_table)
+        self.rail = Rail(self.hand)
+        self.rail.focus_requested.connect(self._start_focus)
+        self.rail.date_chosen.connect(self._go_to_date)
+        self.rail.month_shown_changed.connect(self._keep_rail)
+        body.addWidget(self.rail)
+        body.addLayout(column, 1)
         self.day_view = ClassicDay(self.hand)
         self.planner.addWidget(self.day_view)
         for hours in (self.week_table.scroll, self.day_view.scroll):
@@ -969,12 +988,13 @@ class NativeWindow(QMainWindow):
             self.week_table.hours,
             self.day_view.hours,
             self.month_grid.canvas,
-            self.week_table.side.tasks,
+            self.rail.tasks,
         ):
             widget.installEventFilter(self)
         # The calendar is the point of this page, so it takes whatever height the rest does not need,
         # down to the window's foot. Notices float over it rather than taking a row.
-        layout.addWidget(self.planner, 1)
+        column.addWidget(self.planner, 1)
+        layout.addLayout(body, 1)
         self._stack.addWidget(page)
         self._week_page = page
         self.toast = Toast(self, self.planner)
@@ -1080,12 +1100,16 @@ class NativeWindow(QMainWindow):
         is running to redraw it."""
         self._show_next()
 
+    def _rail_shown(self) -> bool:
+        """Whether Today's app's rail is beside the planner: on its Day and Week."""
+        return self.planner.currentWidget() in (self.week_table, self.day_view)
+
     def _show_next(self) -> None:
-        """The Next line goes in Week's side when it is on screen, else above the planner."""
+        """What is next goes in the rail when it is on screen, else above the planner."""
         words = self.session.now_next_text()
-        side = self.planner.currentWidget() is self.week_table
-        self.week_table.side.set_next(words)
-        self.focus_panel.show_now_next("" if side else words)
+        today, minute = self._clock_in_week()
+        self.rail.set_clock(today, minute)
+        self.focus_panel.show_now_next("" if self._rail_shown() else words)
 
     def _sync_chrome(self) -> None:
         """Planning chips and the clipboard line step aside for a design of its own. Plan my
@@ -1100,13 +1124,14 @@ class NativeWindow(QMainWindow):
         self.solve_button.setToolTip(SUGGEST_TIP if manual else PLAN_TIP)
         self._keep_bar_whole()
         own = isinstance(self.planner.currentWidget(), LayoutView)
-        # Week's side holds the Next line and the focus list, so above its hours the panel is only
-        # the running timer.
-        side = self.planner.currentWidget() is self.week_table
+        # The rail holds what is next and the focus list, so beside it the panel is only the running
+        # timer, which is the rail's first card (decision 15 of 0.17).
+        side = self._rail_shown()
         self.plan_chrome.setVisible(not own)
+        self._place_rail(side)
         self.focus_panel.setVisible((not own and not side) or self.session.focus is not None)
         self._show_next()
-        self.week_table.side.set_tasks(self.session.focus_tasks())
+        self.rail.set_tasks(self.session.focus_tasks(), self._clock_in_week()[0])
         # Quick focus is in the action row whenever there is one, so the panel's own copy would be
         # the same button twice; it belongs to the panel only where no action row is shown.
         self.focus_panel.quick.setVisible(own and self._day_mode)
@@ -1178,8 +1203,9 @@ class NativeWindow(QMainWindow):
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
-        # Under 1150 pixels Week's side folds away and its blocks say their names only.
+        # Under 1150 pixels the rail folds into a line above the hours and blocks say their names only.
         self.week_table.set_narrow(self.width() < NARROW_WIDTH)
+        self._place_rail(self._rail_shown())
         if self.toast.isVisible():
             self.toast.reposition()
 
@@ -1493,10 +1519,12 @@ class NativeWindow(QMainWindow):
             titles = {block["id"]: block["title"] for block in self.session.blocks}
             was_open = self.plan_review.isVisible()
             self.plan_review.set_trace(fresh, titles, self.session.week_start, self.session.plan_counts)
+            self._reveal_placed()
             if self.plan_review.isVisible() and not was_open:
                 appear(self.plan_review, self._motion)
         self._sync_chrome()
         self._apply_appearance()
+        self._open_at_now()
         if self._pending_spread_ui and self.session.spread_preview:
             self._pending_spread_ui = False
             preview = self.session.spread_preview
@@ -1832,6 +1860,7 @@ class NativeWindow(QMainWindow):
         today, minute = self._clock_in_week()
         self.week_table.set_week(week, today, minute)
         self.day_view.set_day(week, date.fromisoformat(self.session.selected_day).weekday(), today, minute)
+        self.rail.set_week(week, today, minute, self.session.assignments)
         self.month_grid.set_unsaved(self.session.unsaved_weeks())
         self.month_grid.set_week(week)
 
@@ -1851,6 +1880,66 @@ class NativeWindow(QMainWindow):
         # In place: every design holds this dict and reads it for the hours it makes later.
         self._zoom[key] = px
         self._save_look()
+
+    def _place_rail(self, shown: bool) -> None:
+        """The rail beside the planner, or folded into a line above it on a narrow window; and the
+        running timer at the top of the rail while it shows."""
+        narrow = self.width() < NARROW_WIDTH
+        if narrow != self.rail.folded:
+            for home in (self._rail_row, self._column):
+                home.removeWidget(self.rail)
+            if narrow:
+                self._column.insertWidget(self._column.indexOf(self.planner), self.rail)
+            else:
+                self._rail_row.insertWidget(0, self.rail)
+            self.rail.set_folded(narrow)
+        self.rail.setVisible(shown)
+        in_rail = shown and not narrow
+        slot = self.rail.timer_slot
+        if in_rail and slot.indexOf(self.focus_panel) < 0:
+            self._column.removeWidget(self.focus_panel)
+            slot.addWidget(self.focus_panel)
+        elif not in_rail and self._column.indexOf(self.focus_panel) < 0:
+            slot.removeWidget(self.focus_panel)
+            self._column.insertWidget(0, self.focus_panel)
+        self.focus_panel.set_compact(in_rail)
+
+    def _open_at_now(self) -> None:
+        """Day and Week open at now each time they are shown: switched to, back from another page, or
+        in a new look. A save or a tick of the clock while they show leaves them where they are."""
+        shown = self.planner.currentWidget()
+        if shown not in (self.week_table, self.day_view):
+            self._opened_hours = None
+            return
+        # Week is the same week whichever day is chosen in it, as picking up a block chooses its day.
+        day = self.session.selected_day if shown is self.day_view else None
+        key = (shown.objectName(), self.session.week_start, day)
+        if key != self._opened_hours:
+            self._opened_hours = key
+            shown.open_again()
+
+    def _reveal_placed(self) -> None:
+        """After Plan, the hours on screen scroll to the first homework it placed, so what it did is
+        seen (decision 34 of 0.17). On Day, only when that is the day shown."""
+        first = self.session.plan_first
+        shown = self.planner.currentWidget()
+        if first is None or shown not in (self.week_table, self.day_view):
+            return
+        day, minute = first
+        if shown is self.day_view and day != shown.day:
+            return
+        shown.scroll.scroll_to(minute, 60)
+
+    def _keep_rail(self, _shown: bool) -> None:
+        """The month folded or shown in the rail is kept on this computer, as the zoom is."""
+        self._save_look()
+
+    def _go_to_date(self, iso: str) -> None:
+        """A date picked in the rail's month: that day on Day, else its week."""
+        if self.session.planner_view == "day":
+            self.session.open_day(iso)
+        else:
+            self.session.load_week(monday_of(iso))
 
     def _open_week_day(self, day: int) -> None:
         self.session.open_day(date_for_day(self.session.week_start, day))
@@ -2920,6 +3009,8 @@ class NativeWindow(QMainWindow):
         self._layout = sanitize_layout(stored.get("layout") if isinstance(stored, dict) else None)
         self._updates = sanitize_updates(stored.get("updates") if isinstance(stored, dict) else None)
         self._zoom = sanitize_zoom(stored.get("zoom") if isinstance(stored, dict) else None)
+        rail = stored.get("rail") if isinstance(stored, dict) else None
+        self.rail.set_month_shown(not (isinstance(rail, dict) and rail.get("month") is False))
 
     def _save_look(self) -> None:
         import json
@@ -2927,7 +3018,13 @@ class NativeWindow(QMainWindow):
         path = self._look_path()
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            body = {**self._look, "layout": self._layout, "updates": self._updates, "zoom": self._zoom}
+            body = {
+                **self._look,
+                "layout": self._layout,
+                "updates": self._updates,
+                "zoom": self._zoom,
+                "rail": {"month": self.rail.month_shown},
+            }
             path.write_text(json.dumps(body) + "\n")
         except OSError:
             self.session._say("Could not save the look for this device.")
@@ -2964,12 +3061,15 @@ class NativeWindow(QMainWindow):
         # look had not changed, cost about 26 ms a change and repainted everything on screen.
         if dressed != self._dressed:
             self._dressed = dressed
+            # A new look is another first sight of the week: it opens at now again.
+            self._opened_hours = None
             self.setStyleSheet(sheet)
             self._keep_bar_whole()
             apply_ui_effects(self._motion)
             self.toast.motion = self._motion
             self.week_table.set_look(self._look, palette)
             self.day_view.set_look(self._look, palette)
+            self.rail.set_look(self._look, palette)
             self.month_grid.set_palette(palette)
             self.add_menu.set_palette(palette, chips)
         if page_sheet != self._page_sheet:

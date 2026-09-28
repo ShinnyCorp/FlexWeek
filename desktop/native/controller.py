@@ -100,9 +100,20 @@ from desktop.native.reuse import (
     unfinished_items,
     week_label,
 )
-from desktop.native.weekmodel import WeekModel, build_week, due_label, length_label
+from desktop.native.weekmodel import WeekModel, build_week, due_label, length_label, minute_of
 
 WEEK_OVER = "This week is over, so nothing was planned. Plan this week or a later one."
+
+
+def first_placed(trace: dict, targets: object) -> tuple[int, int] | None:
+    """Where the first homework a plan gave a time is, by day and then minute."""
+    spots = [
+        (day, minute_of(item["start"]))
+        for item in trace.get("placed") or []
+        if item["id"] in targets and item.get("start")
+        for day in (item.get("days") or [])[:1]
+    ]
+    return min(spots, default=None)
 
 
 def plan_sentence(placed: int, waiting: int) -> str:
@@ -226,6 +237,8 @@ class NativeSession(QObject):
         self._fresh_plan = False
         # The last plan's homework given a time and still without one: what its toast and its bar say.
         self.plan_counts: tuple[int, int] = (0, 0)
+        # The day and minute of the first homework the last plan gave a time, to scroll to.
+        self.plan_first: tuple[int, int] | None = None
         self.needs_time: dict[str, str] = {}
         # Registered in this sitting, so setup can open before the account's preferences arrive.
         self.new_account = False
@@ -1643,6 +1656,7 @@ class NativeSession(QObject):
                     self.needs_time[block_id] = reasons[block_id]
             self._fresh_plan = True
             self.plan_counts = (placed, waiting)
+            self.plan_first = first_placed(data, targets)
             split_note = self._apply_auto_split(data)
             changed = self._dump_blocks() != before
             if not changed:
