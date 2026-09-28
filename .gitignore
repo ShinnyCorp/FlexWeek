@@ -21,3 +21,6 @@ dist/
 desktop/deployment/
 build/
 desktop/pysidedeploy.spec
+
+# fwtest build output
+tools/fwtest/target/
