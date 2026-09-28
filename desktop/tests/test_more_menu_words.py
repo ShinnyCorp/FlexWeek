@@ -207,13 +207,16 @@ def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_
     wait_until(qapp, lambda: window.session.storage_info is not None)
     folder = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
     dialog = settings.AboutDialog(window, window.session.storage_info, folder)
-    said = [label.text() for label in dialog.findChildren(QLabel)]
+    said = [label.text() for label in dialog.findChildren(QLabel) if label.text()]
     assert said == [
         "FlexWeek 0.16.0",
         "FlexWeek plans your homework around school, sports and everything else in your week.",
         "Your plans are saved on this computer.",
     ]
     assert dialog.windowTitle() == "About FlexWeek"
+    logo = dialog.findChild(QLabel, "aboutLogo")
+    assert not logo.pixmap().isNull(), "the logo beside the name"
+    assert logo.pixmap().deviceIndependentSize().toSize().width() == settings.ABOUT_LOGO_PX
     opened: list[QUrl] = []
     monkeypatch.setattr(QDesktopServices, "openUrl", staticmethod(lambda url: opened.append(url) or True))
     button = dialog.findChild(QPushButton, "aboutOpenFolder")
@@ -232,14 +235,16 @@ def test_about_on_a_server_names_the_server_and_has_no_folder_to_open(
     assert dialog.findChild(QPushButton, "aboutOpenFolder") is None
 
 
-def test_help_says_guides_are_coming_and_explains_each_screen_and_the_keys(
+def test_help_explains_each_screen_and_the_keys_and_promises_nothing(
     qapp: QApplication,  # noqa: F811
     host: QWidget,  # noqa: F811
 ) -> None:
+    """Its first line was "A tutorial and short guides are coming in a later version" (decision 27)."""
     dialog = settings.HelpDialog(host)
-    said = "\n".join(label.text() for label in dialog.findChildren(QLabel))
+    rows = [row.accessibleName() for row in dialog.findChildren(QWidget, "helpKey")]
+    said = "\n".join([*(label.text() for label in dialog.findChildren(QLabel)), *rows])
+    assert "tutorial" not in said.lower() and "coming" not in said.lower()
     for line in (
-        "A tutorial and short guides are coming in a later version. Until then, this is the short version.",
         "Day",
         "One day hour by hour, with homework that is not placed yet beside it, ready to drag in.",
         "Week",
@@ -251,7 +256,7 @@ def test_help_says_guides_are_coming_and_explains_each_screen_and_the_keys(
         "Ctrl+K",
         "Command bar",
         "Focus screen",
-        "D, W, M",
+        "D W M",
         "Day, Week, Month",
         "Ctrl+Z",
         "Undo",
@@ -261,6 +266,54 @@ def test_help_says_guides_are_coming_and_explains_each_screen_and_the_keys(
     ):
         assert line in said, line
     assert dialog.windowTitle() == "Help"
+
+
+def test_help_draws_each_shortcut_as_keycaps(
+    qapp: QApplication,  # noqa: F811
+    host: QWidget,  # noqa: F811
+) -> None:
+    """Each key its own cap, and the words between keys plain, so Ctrl+K reads as two keys."""
+    dialog = settings.HelpDialog(host)
+    rows = dialog.findChildren(QWidget, "helpKey")
+    said = [settings.keys_words(key) for key, _what in settings.HELP_KEYS]
+    assert [row.accessibleName() for row in rows] == said
+
+    def parts(row: QWidget) -> list[tuple[str, str]]:
+        return [(label.objectName(), label.text()) for label in row.findChildren(QLabel)]
+
+    assert parts(rows[4]) == [("helpKeycap", "Ctrl"), ("helpKeyJoin", "+"), ("helpKeycap", "K")]
+    assert parts(rows[2]) == [("helpKeycap", "B"), ("helpKeyJoin", "or"), ("helpKeycap", "Esc")]
+    assert parts(rows[-1]) == [("helpKeycap", "Esc"), ("helpKeyJoin", "while dragging")]
+
+
+def test_help_fades_its_words_at_an_edge_with_more_past_it(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    knobs = {**window._look.get("knobs", {}), "text": "large"}
+    window._look = sanitize_look({**window._look, "knobs": knobs})
+    window._apply_appearance()
+    dialog = settings.HelpDialog(window)
+    dialog.show()
+    dialog.resize(dialog.width(), 420)
+    qapp.processEvents()
+    area = dialog.findChild(QScrollArea, "helpScroll")
+    bar = area.verticalScrollBar()
+    top, bottom = dialog.fades
+    assert bar.maximum() > 0, "Help scrolls at this height"
+    assert (top.isVisible(), bottom.isVisible()) == (False, True)
+    view = area.viewport()
+    assert bottom.geometry().bottom() == view.height() - 1 and bottom.width() == view.width()
+    page = dialog.palette().color(dialog.backgroundRole())
+    picture = view.grab().toImage()
+    assert picture.pixelColor(view.width() // 2, view.height() - 1) == page, "faded out to the page"
+    bar.setValue(bar.maximum())
+    qapp.processEvents()
+    assert (top.isVisible(), bottom.isVisible()) == (True, False)
+    bar.setValue(bar.maximum() // 2)
+    qapp.processEvents()
+    assert (top.isVisible(), bottom.isVisible()) == (True, True)
+    dialog.close()
 
 
 def shows_all_of_itself(label: QLabel) -> bool:
@@ -282,7 +335,7 @@ def test_help_shows_every_line_whole_at_large_text_and_fits_the_screen(
     qapp.processEvents()
     labels = dialog.findChildren(QLabel)
     assert dialog.columns == 1
-    assert len(labels) == 1 + 2 + 2 * len(settings.HELP_SCREENS) + 2 * len(settings.HELP_KEYS)
+    assert len(dialog.findChildren(QWidget, "helpKey")) == len(settings.HELP_KEYS)
     assert [label.text() for label in labels if not shows_all_of_itself(label)] == []
     view = dialog.findChild(QScrollArea, "helpScroll").viewport()
     cut = [label.text() for label in labels if label.mapTo(view, label.rect().topRight()).x() > view.width()]
