@@ -1,7 +1,8 @@
 """The sign-in card's greeting and the recovery codes page (0.16 review rows R23 and R24).
 
 "Welcome back." greeted a student who had never been there. The recovery codes were a plain label of
-eight lines, kept only by selecting them with the mouse.
+eight lines, kept only by selecting them with the mouse. Since 0.17 the greeting is the card's one
+heading (decision 25), where it sat as a second heading under "Sign in".
 """
 
 from __future__ import annotations
@@ -30,8 +31,8 @@ from desktop.tests.window_support import (  # noqa: F401
     wait_until,
 )
 
-FIRST = "Welcome."
-AGAIN = "Welcome back."
+FIRST = "Welcome to FlexWeek"
+AGAIN = "Welcome back"
 
 
 def page(window: NativeWindow) -> str:
@@ -68,13 +69,19 @@ def codes(window: NativeWindow) -> list[str]:
     return window.recovery_list.text().splitlines()
 
 
+def greeting(window: NativeWindow) -> str:
+    """The card's heading, once it is the only one: no line of small print is shown under it."""
+    assert window.auth_note.isHidden(), window.auth_note.text()
+    return window.auth_heading.text()
+
+
 def test_a_first_launch_says_welcome_and_a_return_says_welcome_back(
     qapp: QApplication,  # noqa: F811
     server: LocalServer,  # noqa: F811
     kept: KeptSession,
 ) -> None:
     with launched(server, kept) as window:
-        assert window.auth_note.text() == FIRST
+        assert greeting(window) == FIRST
         on_recovery_page(qapp, window)
         window.recovery_ack.setChecked(True)
         window.recovery_continue.click()
@@ -83,13 +90,13 @@ def test_a_first_launch_says_welcome_and_a_return_says_welcome_back(
         wait_until(qapp, lambda: page(window) == "authPage" and not window.session.busy)
         # Log out forgets the session, not that someone has been here.
         assert kept.token() is None
-        assert window.auth_note.text() == AGAIN
+        assert greeting(window) == AGAIN
     with launched(server, kept) as window:
-        assert window.auth_note.text() == AGAIN
+        assert greeting(window) == AGAIN
         window.findChild(QPushButton, "authSwitch").click()
         assert window.auth_note.text().startswith("FlexWeek fits homework around school and sports.")
         window.findChild(QPushButton, "authSwitch").click()
-        assert window.auth_note.text() == AGAIN
+        assert greeting(window) == AGAIN
 
 
 def test_signing_in_without_keeping_the_session_still_counts_as_having_been_here(
@@ -101,7 +108,7 @@ def test_signing_in_without_keeping_the_session_still_counts_as_having_been_here
     with launched(server, KeptSession(tmp_path / "other" / "flexweek.json")) as window:
         on_recovery_page(qapp, window)
     with launched(server, kept) as window:
-        assert window.auth_note.text() == FIRST
+        assert greeting(window) == FIRST
         window.keep_signed_in.setChecked(False)
         window.username.setText(USERNAME)
         window.password.setText(PASSWORD)
@@ -109,7 +116,7 @@ def test_signing_in_without_keeping_the_session_still_counts_as_having_been_here
         wait_until(qapp, lambda: window.session.account is not None and not window.session.busy)
         assert kept.token() is None
     with launched(server, kept) as window:
-        assert window.auth_note.text() == AGAIN
+        assert greeting(window) == AGAIN
 
 
 @pytest.fixture()
@@ -125,10 +132,14 @@ def evenly_spaced(font: QFont) -> bool:
     return metrics.horizontalAdvance("iiii1111") == metrics.horizontalAdvance("WWWW0000")
 
 
-def test_the_codes_are_in_the_fixed_width_face(recovering: NativeWindow) -> None:
+def test_the_codes_are_in_inter_with_figures_of_one_width(recovering: NativeWindow) -> None:
+    """DejaVu Sans Mono was a second face, heavier and wider than Inter around it (decision 25)."""
     assert len(codes(recovering)) == 8
-    assert evenly_spaced(recovering.recovery_list.font())
-    assert not evenly_spaced(recovering.recovery_copy.font())
+    font = recovering.recovery_list.font()
+    assert font.family() == "Inter"
+    assert not evenly_spaced(font), "not a fixed-width face"
+    metrics = QFontMetrics(font)
+    assert metrics.horizontalAdvance("1111") == metrics.horizontalAdvance("0000"), "figures of one width"
 
 
 def test_copy_puts_every_code_on_the_clipboard_and_says_so_for_a_moment(

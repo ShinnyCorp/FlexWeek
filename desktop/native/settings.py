@@ -2,11 +2,24 @@
 
 from __future__ import annotations
 
+import re
 from copy import deepcopy
+from pathlib import Path
 from uuid import uuid4
 
-from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QKeyEvent, QShowEvent
+from PySide6.QtCore import QEvent, QObject, Qt, QUrl, Signal
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QGuiApplication,
+    QKeyEvent,
+    QLinearGradient,
+    QPainter,
+    QPaintEvent,
+    QPalette,
+    QPixmap,
+    QShowEvent,
+)
 from PySide6.QtWidgets import (
     QBoxLayout,
     QButtonGroup,
@@ -121,30 +134,32 @@ HELP_TWO_COLUMN_WIDTH = 900
 SECTION_GAP = 14
 ABOUT_LINE = "FlexWeek plans your homework around school, sports and everything else in your week."
 ABOUT_HERE = "Your plans are saved on this computer."
-HELP_INTRO = (
-    "A tutorial and short guides are coming in a later version. Until then, this is the short version."
-)
+LOGO = Path(__file__).resolve().parents[1] / "assets" / "logo.png"
+ABOUT_LOGO_PX = 56
+# How far the words fade out at a scroll edge with more past it.
+FADE_PX = 24
 HELP_SCREENS = (
     ("Day", "One day hour by hour, with homework that is not placed yet beside it, ready to drag in."),
     ("Week", "Monday to Sunday: drag a block to move it, or drag across empty time to add one."),
     ("Month", "Each date's blocks and the homework due that day; click a date to open it in Day."),
     ("My day", "What is on now and what comes next, to follow once your plan is made."),
 )
+# Each key in brackets is drawn as a keycap; the words between are drawn plain.
 HELP_KEYS = (
-    ("D, W, M", "Day, Week, Month"),
-    ("T", "My day"),
-    ("B or Esc", "Back from My day"),
-    ("F", "Focus screen"),
-    ("Ctrl+K", "Command bar"),
-    ("Ctrl+Z", "Undo"),
-    ("Ctrl+Y or Ctrl+Shift+Z", "Redo"),
-    ("Ctrl+C, then Ctrl+V", "Copy the selected block, then paste it into the selected day"),
-    ("Ctrl+D", "Duplicate the selected block"),
-    ("Delete", "Delete the selected block"),
-    ("Ctrl+S", "Save now"),
-    ("Ctrl and =, - or 0", "Zoom the hours in, out, or back to normal"),
-    ("Ctrl and the mouse wheel", "Zoom the hours"),
-    ("Esc while dragging", "Put the block back where it was"),
+    ("[D] [W] [M]", "Day, Week, Month"),
+    ("[T]", "My day"),
+    ("[B] or [Esc]", "Back from My day"),
+    ("[F]", "Focus screen"),
+    ("[Ctrl]+[K]", "Command bar"),
+    ("[Ctrl]+[Z]", "Undo"),
+    ("[Ctrl]+[Y] or [Ctrl]+[Shift]+[Z]", "Redo"),
+    ("[Ctrl]+[C] then [Ctrl]+[V]", "Copy the selected block, then paste it into the selected day"),
+    ("[Ctrl]+[D]", "Duplicate the selected block"),
+    ("[Delete]", "Delete the selected block"),
+    ("[Ctrl]+[S]", "Save now"),
+    ("[Ctrl]+[=] [-] [0]", "Zoom the hours in, out, or back to normal"),
+    ("[Ctrl] and the mouse wheel", "Zoom the hours"),
+    ("[Esc] while dragging", "Put the block back where it was"),
 )
 FOCUS_RUNNING_NOTE = "Work on this until the timer ends. Pause if something interrupts you."
 FOCUS_ENDED_NOTE = "Time is up. Mark it finished, take a break, or give it more time."
@@ -1300,13 +1315,102 @@ def _line(words: str, name: str) -> QLabel:
     return made
 
 
+def keys_words(marked: str) -> str:
+    """A shortcut as it is said: its keys without their brackets."""
+    return marked.replace("[", "").replace("]", "")
+
+
+def keycaps(marked: str) -> QWidget:
+    """A shortcut drawn as keys: each key in brackets a keycap, the words between them plain."""
+    row = QWidget()
+    row.setObjectName("helpKey")
+    row.setAccessibleName(keys_words(marked))
+    line = QHBoxLayout(row)
+    line.setContentsMargins(0, 0, 0, 0)
+    line.setSpacing(4)
+    for part in re.split(r"(\[[^\]]+\])", marked):
+        if not part.strip():
+            continue
+        cap = part.startswith("[")
+        made = QLabel(part[1:-1] if cap else part.strip())
+        made.setObjectName("helpKeycap" if cap else "helpKeyJoin")
+        made.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # At the top of the row, at their own height: stretched to a two-line description they were
+        # drawn as tall slabs.
+        line.addWidget(made, 0, Qt.AlignmentFlag.AlignTop)
+    line.addStretch(1)
+    return row
+
+
+class ScrollFade(QWidget):
+    """The words fading out at one edge of a scroll area while there is more past it, so a cut line
+    reads as more to scroll to, not as the end."""
+
+    def __init__(self, area: QScrollArea, top: bool) -> None:
+        super().__init__(area.viewport())
+        self.setObjectName("scrollFadeTop" if top else "scrollFadeBottom")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._area, self._top = area, top
+        bar = area.verticalScrollBar()
+        bar.valueChanged.connect(self._follow)
+        bar.rangeChanged.connect(self._follow)
+        area.viewport().installEventFilter(self)
+        self._follow()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() == QEvent.Type.Resize:
+            self._follow()
+        return False
+
+    def _follow(self, *_args: object) -> None:
+        view = self._area.viewport()
+        self.setGeometry(0, 0 if self._top else view.height() - FADE_PX, view.width(), FADE_PX)
+        bar = self._area.verticalScrollBar()
+        self.setVisible(bar.value() > bar.minimum() if self._top else bar.value() < bar.maximum())
+        self.raise_()
+
+    def paintEvent(self, _event: QPaintEvent) -> None:  # noqa: N802
+        page = self._area.window().palette().color(QPalette.ColorRole.Window)
+        clear = QColor(page)
+        clear.setAlpha(0)
+        ramp = QLinearGradient(0, 0, 0, self.height())
+        ramp.setColorAt(0, page if self._top else clear)
+        ramp.setColorAt(1, clear if self._top else page)
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), ramp)
+        painter.end()
+
+
+def _logo(side: int) -> QLabel:
+    ratio = QGuiApplication.primaryScreen().devicePixelRatio() if QGuiApplication.primaryScreen() else 1.0
+    made = QLabel()
+    made.setObjectName("aboutLogo")
+    made.setFixedSize(side, side)
+    picture = QPixmap(str(LOGO))
+    if not picture.isNull():
+        picture = picture.scaled(
+            round(side * ratio),
+            round(side * ratio),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        picture.setDevicePixelRatio(ratio)
+        made.setPixmap(picture)
+    return made
+
+
 class AboutDialog(Dialog):
     def __init__(self, parent: QWidget | None, storage: dict | None, folder: str) -> None:
         super().__init__(parent)
         self.setWindowTitle("About FlexWeek")
         self.setMinimumWidth(ABOUT_MIN_WIDTH)
         layout = QVBoxLayout(self)
-        layout.addWidget(_line(f"FlexWeek {VERSION}", "aboutVersion"))
+        brand = QHBoxLayout()
+        brand.setSpacing(SECTION_GAP)
+        brand.addWidget(_logo(ABOUT_LOGO_PX))
+        brand.addWidget(_line(f"FlexWeek {VERSION}", "aboutVersion"), 1)
+        layout.addLayout(brand)
+        layout.addSpacing(SECTION_GAP // 2)
         layout.addWidget(_line(ABOUT_LINE, "aboutWhat"))
         if (storage or {}).get("mode") == "hosted":
             saved = _line(
@@ -1327,9 +1431,8 @@ class AboutDialog(Dialog):
 
 
 class HelpDialog(Dialog):
-    """Enough to find your way until the tutorial and guides exist: the screens on the left, the
-    keys on the right. One column at large text or over a narrow window, where two would each be
-    too narrow to read."""
+    """Enough to find your way: the screens on the left, the keys on the right, drawn as keycaps.
+    One column at large text or over a narrow window, where two would each be too narrow to read."""
 
     def __init__(self, parent: QWidget | None) -> None:
         super().__init__(parent)
@@ -1342,8 +1445,6 @@ class HelpDialog(Dialog):
         body = QWidget()
         column = QVBoxLayout(body)
         column.setContentsMargins(0, 0, 0, 0)
-        column.addWidget(_line(HELP_INTRO, "helpIntro"))
-        column.addSpacing(SECTION_GAP)
         sides = QBoxLayout(
             QBoxLayout.Direction.LeftToRight if self.columns == 2 else QBoxLayout.Direction.TopToBottom
         )
@@ -1376,10 +1477,7 @@ class HelpDialog(Dialog):
         keys.setHorizontalSpacing(SECTION_GAP)
         keys.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
         for key, what in HELP_KEYS:
-            name = QLabel(key)
-            name.setObjectName("helpKey")
-            name.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-            keys.addRow(name, _line(what, "helpKeyDoes"))
+            keys.addRow(keycaps(key), _line(what, "helpKeyDoes"))
         keys_side.addWidget(key_list)
         keys_side.addStretch(1)
         sides.addLayout(keys_side, 1)
@@ -1393,6 +1491,7 @@ class HelpDialog(Dialog):
         area.setFrameShape(QFrame.Shape.NoFrame)
         area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         area.setWidget(body)
+        self.fades = (ScrollFade(area, top=True), ScrollFade(area, top=False))
         layout = QVBoxLayout(self)
         layout.addWidget(area)
         layout.addWidget(_close_row(self))

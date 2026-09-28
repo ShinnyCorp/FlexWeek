@@ -28,6 +28,26 @@ All notable changes to FlexWeek are documented here. Format follows
   40 % white instead of full white. Day, Week, Month and My day, and every
   choice of two or three in Settings, read in white on black with the chosen
   one filled yellow, where the view control was yellow on light grey.
+- Sign in: the FlexWeek wordmark sits on the page above one centred card,
+  rounded as a sheet and lifted with the large shadow, under one heading
+  ("Welcome to FlexWeek", or "Welcome back"). The password box has an eye
+  inside it that shows and hides the password, in place of a Show button that
+  made the box narrower than the username's; logging out hides it again.
+  Creating an account hides Forgot password, and Forgot password turns the card
+  into Reset your password, with its own one filled button. The card widens
+  with Large text, so no line on it is cut.
+- The recovery codes are in Inter with figures of one width, on a quiet panel,
+  instead of a second, heavier fixed-width face.
+- Setup: each page and its Back, Skip and Next buttons are centred up to 880
+  pixels wide, where they were pinned to the left. The rail marks each step
+  with its number in a ring and a finished one with a tick. Next is the only
+  filled button: Add custom hours and Send a test reminder are plain. The line
+  about no school days shows only when no school day is picked. Play is an
+  icon. Its titles and headings are on the type scale. The style cards'
+  pictures are unchanged until the revised designs are built.
+- Help: the shortcuts are drawn as keys, the words fade out at a scroll edge
+  with more past it, and the line saying a tutorial is coming is gone. About
+  shows the FlexWeek logo beside the version.
 
 ### Fixed
 - Changing the look with the week open, to High contrast above all, no longer

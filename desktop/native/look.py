@@ -16,7 +16,17 @@ from copy import deepcopy
 from functools import lru_cache
 
 from desktop.native.calendar import CATEGORIES
-from desktop.native.tokens import RADIUS_CARD, RADIUS_CONTROL, SINK, mix_oklab
+from desktop.native.tokens import (
+    RADIUS_CARD,
+    RADIUS_CONTROL,
+    RADIUS_SHEET,
+    SINK,
+    SPACING,
+    WEIGHT_REGULAR,
+    WEIGHT_STRONG,
+    mix_oklab,
+    type_pt,
+)
 
 LOOK_KNOBS = {
     "surface": ("frost", "flat"),
@@ -798,21 +808,24 @@ def settings_rules(palette: dict, radius: int, size: int, pad: int, depth: str) 
     )
 
 
-def setup_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> str:
+def setup_rules(palette: dict, radius: int, size: int, pad: int, depth: str, text: str = "normal") -> str:
     """First-run setup: a rail of steps beside one question at a time, and cards to pick from.
 
     Groups, chips and Back take the depth's edges like every other control. A card keeps a ring of
     one width whether or not it is picked, so picking one never nudges its picture: the ring is the
-    accent when picked and, except on a flat look, a soft line otherwise.
+    accent when picked and, except on a flat look, a soft line otherwise. Sizes and weights are the
+    type scale's (decision 4 of 0.17).
     """
     edges = _depth_rules(depth, palette)
+    strong = f"font-weight: {WEIGHT_STRONG};"
+    heading = f"font-size: {type_pt('heading', text)}pt; {strong}"
     card_radius = max(radius, 10)
     ring = "transparent" if depth == "flat" else mix(palette["hairline_strong"], palette["panel"], 0.6)
     # A card is larger than a control, so it is lifted with the text colour, never the accent.
     lift = mix(palette["text"], palette["panel"], 0.04)
     quiet = (
         "setupQuiet", "setupSkip", "setupSkipAll", "setupOwnLook", "setupAddActivity", "setupAddHomework",
-        "setupSuggest", "setupPlay", "setupChange", "setupFineTune",
+        "setupSuggest", "setupChange", "setupFineTune",
     )
     quiet_rule = ", ".join(f"QPushButton#{name}" for name in quiet)
     quiet_hover = ", ".join(f"QPushButton#{name}:hover" for name in quiet)
@@ -825,32 +838,33 @@ def setup_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> 
         # colour. On a card that is a band of background across the middle of it.
         f"QWidget#setupRow, QWidget#setupBody {{ background: transparent; border: none; padding: 0; }}"
         f"QScrollArea#setupScroll {{ background: transparent; border: none; padding: 0; }}"
-        f"QLabel#setupBrand {{ font-size: {size + 2}pt; font-weight: 700; color: {palette['accent']}; }}"
+        f"QLabel#setupBrand {{ {heading} color: {palette['text']}; }}"
         f"QPushButton#setupRailItem {{ background: transparent; color: {palette['muted']}; border: none; "
-        f"text-align: left; padding: {pad + 2}px {pad}px; font-weight: 500; min-height: 0; }}"
+        f"text-align: left; padding: {pad + 2}px {pad}px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"
         f"QPushButton#setupRailItem:hover {{ color: {palette['text']}; }}"
         f"QPushButton#setupRailItem[done=\"true\"] {{ color: {palette['text']}; }}"
-        f"QPushButton#setupRailItem[current=\"true\"] {{ color: {palette['text']}; font-weight: 700; }}"
+        f"QPushButton#setupRailItem[current=\"true\"] {{ color: {palette['text']}; {strong} }}"
         f"QPushButton#setupRailItem:disabled {{ background: transparent; "
         f"color: {mix(palette['muted'], palette['panel'], 0.55)}; }}"
         f"QFrame#setupRailMarker {{ background: {palette['accent']}; border: none; padding: 0; "
         f"border-radius: 1px; }}"
-        f"QLabel#setupTitle {{ font-size: {size + 8}pt; font-weight: 700; }}"
-        f"QLabel#setupNote {{ color: {palette['muted']}; font-size: {size + 1}pt; }}"
+        f"QLabel#setupTitle {{ font-size: {type_pt('title', text)}pt; {strong} }}"
+        f"QLabel#setupNote {{ color: {palette['muted']}; font-size: {type_pt('body', text)}pt; }}"
         f"QLabel#setupHint, QLabel#setupFieldLabel {{ color: {palette['muted']}; }}"
-        f"QLabel#setupSection {{ font-size: {size + 1}pt; font-weight: 700; margin-top: 8px; }}"
+        # A margin on a label turns on its indent, which set each section 5 pixels right of the title.
+        f"QLabel#setupSection {{ {heading} margin-top: {SPACING[1]}px; qproperty-indent: 0; }}"
         f"QLabel#setupError {{ color: {palette['error']}; font-weight: 600; }}"
-        f"QLabel#setupSummaryName {{ font-weight: 700; }}"
+        f"QLabel#setupSummaryName {{ {strong} }}"
         f"QFrame#setupChoice {{ background: {palette['panel']}; border: 2px solid {ring}; "
         f"border-radius: {card_radius}px; padding: 0; }}"
         f"QFrame#setupChoice:hover {{ background: {lift}; }}"
         f"QFrame#setupChoice:focus {{ border-color: {mix(palette['accent'], palette['panel'], 0.5)}; }}"
         f"QFrame#setupChoice[selected=\"true\"] {{ border-color: {palette['accent']}; background: {lift}; }}"
-        f"QLabel#setupChoiceName {{ font-weight: 700; font-size: {size + 1}pt; }}"
+        f"QLabel#setupChoiceName {{ {heading} }}"
         f"QLabel#setupChoiceNote {{ color: {palette['muted']}; }}"
         f"QFrame#setupGroup {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
         f"{pills} {{ background: {palette['field']}; color: {palette['text']}; {edges} "
-        f"border-radius: 14px; padding: 4px 12px; font-weight: 500; min-height: 0; }}"
+        f"border-radius: 14px; padding: 4px 12px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"
         f"QPushButton#setupDay {{ padding: 4px 9px; }}"
         f"{pills_hover} {{ background: {mix(palette['accent'], palette['field'], 0.14)}; }}"
         f"QPushButton#setupChip:checked, QPushButton#setupDay:checked {{ background: {palette['accent']}; "
@@ -864,7 +878,66 @@ def setup_rules(palette: dict, radius: int, size: int, pad: int, depth: str) -> 
         f"QPushButton#setupChange {{ padding: 0 2px; }}"
         f"QPushButton#setupBack {{ background: transparent; color: {palette['text']}; {edges} }}"
         f"QPushButton#setupBack:hover {{ background: {mix(palette['accent'], palette['window'], 0.1)}; }}"
-        f"QPushButton#setupNext {{ padding: {pad}px {pad * 3}px; font-weight: 700; }}"
+        f"QPushButton#setupNext {{ padding: {pad}px {pad * 3}px; {strong} }}"
+        # Play is an icon on its own, with a quiet ground under the pointer instead of an underline.
+        f"QPushButton#setupPlay {{ background: transparent; border: none; padding: {SPACING[0]}px; "
+        f"border-radius: {radius}px; min-height: 0; }}"
+        f"QPushButton#setupPlay:hover {{ background: {palette['hairline']}; }}"
+    )
+
+
+def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str:
+    """Sign in and the recovery codes (decision 25 of 0.17): the wordmark on the page above one card
+    rounded as a sheet, one heading, the small print as links, and the codes set as code.
+
+    A stylesheet has no shadows; window.py lifts the card with the large one.
+    """
+    text = knobs["text"]
+    edges = _depth_rules(knobs["depth"], palette)
+    inset = SPACING[5] if knobs["density"] == "comfortable" else SPACING[4]
+    title = f"font-size: {type_pt('title', text)}pt; font-weight: {WEIGHT_STRONG};"
+    sheet = RADIUS_SHEET if card_radius else 0
+    ring = mix(palette["accent"], palette["field"], 0.4)
+    links = "QPushButton#authSwitch, QPushButton#forgotPassword"
+    return (
+        f"QWidget#authCard {{ background: {palette['panel']}; border-radius: {sheet}px; "
+        f"padding: {inset}px; {edges} }}"
+        f"QLabel#authBrand {{ {title} color: {palette['text']}; }}"
+        f"QLabel#authHeading {{ {title} }}"
+        f"QLabel#authNote {{ color: {palette['muted']}; }}"
+        f"QLabel#passwordHint, QLabel#usernameHint {{ color: {palette['muted']}; "
+        f"font-size: {type_pt('caption', text)}pt; }}"
+        # Inter with figures of one width and a little air between letters reads as code.
+        f"QLabel#recoveryList {{ background: {mix(palette['text'], palette['panel'], 0.05)}; "
+        f"border-radius: {radius}px; padding: {SPACING[2]}px {SPACING[3]}px; letter-spacing: 0.5px; }}"
+        f"QToolButton#passwordReveal {{ background: transparent; border: none; padding: 0; "
+        f"border-radius: {radius}px; }}"
+        f"QToolButton#passwordReveal:hover {{ background: {palette['hairline']}; }}"
+        f"QToolButton#passwordReveal:focus {{ border: 2px solid {ring}; }}"
+        f"{links} {{ background: transparent; color: {palette['accent']}; border: none; "
+        f"padding: {SPACING[0]}px 0; min-height: 0; }}"
+        f"QPushButton#authSwitch:hover, QPushButton#forgotPassword:hover {{ color: {palette['text']}; "
+        "text-decoration: underline; }"
+    )
+
+
+def help_rules(palette: dict, text: str, radius: int, depth: str) -> str:
+    """Help's shortcuts as keycaps, a key's bottom edge a little heavier, and About's name beside the
+    logo (decision 27 of 0.17). A flat look draws no lines, so there a key is a tinted tile."""
+    caption = f"font-size: {type_pt('caption', text)}pt;"
+    line = palette["hairline_strong"]
+    if depth == "flat":
+        cap = f"background: {mix(palette['text'], palette['window'], 0.08)}; border: none;"
+    else:
+        cap = f"background: {palette['panel']}; border: 1px solid {line}; border-bottom: 2px solid {line};"
+    return (
+        f"QLabel#aboutVersion {{ font-size: {type_pt('title', text)}pt; font-weight: {WEIGHT_STRONG}; }}"
+        f"QLabel#helpScreenName {{ font-weight: {WEIGHT_STRONG}; }}"
+        "QWidget#helpKey { background: transparent; }"
+        f"QLabel#helpKeycap {{ {cap} color: {palette['text']}; {caption} font-weight: {WEIGHT_STRONG}; "
+        f"border-radius: {radius}px; padding: 1px 6px; min-width: 8px; }}"
+        # Level with the letters on the caps beside them, which sit below a border and a pixel of padding.
+        f"QLabel#helpKeyJoin {{ color: {palette['muted']}; {caption} padding-top: 2px; }}"
     )
 
 
@@ -960,15 +1033,10 @@ def pack_stylesheet(
         f"QLabel#focusTask {{ font-weight: 600; }}"
         f"QLabel#focusPhase {{ color: {palette['muted']}; }}"
         f"QLabel#focusTime {{ font-family: {MONO_FAMILY}; font-weight: 700; }}"
-        f"QLabel#recoveryList {{ font-family: {MONO_FAMILY}; }}"
         f"QLabel#recoveryStatus {{ color: {palette['error']}; }}"
         # How many recovery codes are left is an ordinary fact until none are.
         f"QLabel#recoveryCount {{ color: {palette['muted']}; }}"
         f'QLabel#recoveryCount[problem="true"] {{ color: {palette["error"]}; font-weight: 600; }}'
-        f"QWidget#authCard {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
-        f"QLabel#authBrand {{ font-size: {size + 8}pt; font-weight: 700; color: {palette['accent']}; }}"
-        f"QLabel#authHeading {{ font-weight: 600; font-size: {size + 3}pt; }}"
-        f"QLabel#authNote, QLabel#passwordHint, QLabel#usernameHint {{ color: {palette['muted']}; }}"
         f"QLabel#validationError {{ color: {palette['error']}; font-weight: 600; }}"
         f"QLabel#homeworkEstimateHint {{ color: {palette['muted']}; }}"
         f"QLabel#homeworkEstimateHint[problem=\"true\"] {{ color: {palette['error']}; font-weight: 600; }}"
@@ -1011,18 +1079,16 @@ def pack_stylesheet(
         # One filled button on the page: the thing the app is for.
         f"QLabel#blockDurationLine {{ color: {palette['muted']}; }}"
         f"QLabel#blockDurationLine[problem=\"true\"] {{ color: {palette['error']}; font-weight: 600; }}"
-        f"QLabel#aboutVersion {{ font-size: {size + 4}pt; font-weight: 700; }}"
-        f"QLabel#helpKey {{ font-weight: 600; }}"
-        f"QLabel#helpScreenName {{ font-weight: 700; }}"
-        f"QPushButton#moreButton, QPushButton#settingsGear {{ background: transparent; "
+        + help_rules(palette, knobs["text"], radius, knobs["depth"])
+        + f"QPushButton#moreButton, QPushButton#settingsGear {{ background: transparent; "
         f"color: {palette['muted']}; {edges} }}"
-        + setup_rules(palette, radius, size, pad, knobs["depth"])
+        + setup_rules(palette, radius, size, pad, knobs["depth"], knobs["text"])
         + settings_rules(palette, radius, size, pad, knobs["depth"])
-        + f"QPushButton#authSwitch, QPushButton#forgotPassword, QPushButton#updateSkip {{ "
+        + auth_rules(palette, knobs, radius, card_radius)
+        + f"QPushButton#updateSkip {{ "
         f"background: transparent; "
         f"color: {palette['accent']}; border: none; padding: {pad}px 0; "
         f"font-size: {size - 1}pt; text-align: left; min-height: 0; }}"
-        f"QPushButton#authSwitch:hover, QPushButton#forgotPassword:hover, "
         f"QPushButton#updateSkip:hover {{ "
         f"color: {palette['text']}; text-decoration: underline; }}"
         # A ringing alarm is the one thing in the app that has to be read from across a room.

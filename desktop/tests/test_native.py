@@ -170,9 +170,12 @@ def test_the_password_can_be_shown(qapp: QApplication, server: LocalServer) -> N
     HELD.append(window)
     window.password.setText(PASSWORD)
     assert window.password.echoMode() == QLineEdit.EchoMode.Password
-    window.password_reveal.setChecked(True)
+    window.password_reveal.click()
     assert window.password.echoMode() == QLineEdit.EchoMode.Normal
-    assert window.password_reveal.text() == "Hide"
+    assert window.password_reveal.toolTip() == "Hide password"
+    window.password_reveal.click()
+    assert window.password.echoMode() == QLineEdit.EchoMode.Password
+    assert window.password_reveal.toolTip() == "Show password"
 
 
 def test_a_short_username_is_named_before_the_request(qapp: QApplication, server: LocalServer) -> None:

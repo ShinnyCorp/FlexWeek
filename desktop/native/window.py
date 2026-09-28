@@ -9,7 +9,7 @@ from copy import deepcopy
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QStandardPaths, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QObject, QPoint, QSize, QStandardPaths, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -40,12 +40,13 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStackedWidget,
     QSystemTrayIcon,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from backend.slots import minutes_to_hhmm
-from desktop.native import autostart
+from desktop.native import autostart, icons
 from desktop.native.calendar import (
     CATEGORIES,
     DAY_FULL,
@@ -60,10 +61,11 @@ from desktop.native.calendar import (
 from desktop.native.client import PASSWORD_LENGTH_HINT, USERNAME_HINT, sign_in_problem, sign_up_problem
 from desktop.native.command_bar import Command, CommandBar
 from desktop.native.controller import ROUTINE_STATUS, NativeSession
+from desktop.native.elevation import lift
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import phase_duration_ms
 from desktop.native.focus_screen import FocusScreen
-from desktop.native.fonts import load_fonts
+from desktop.native.fonts import load_fonts, time_font
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
 from desktop.native.hours.geometry import Span, drag_step
 from desktop.native.hours.hand import Create, Hand, Move, MoveDate, Place, span_words
@@ -109,6 +111,7 @@ from desktop.native.settings import (
 from desktop.native.setup import REMINDERS, SETUP_VERSION, STYLE, SetupPage, SetupState
 from desktop.native.sound import Bell
 from desktop.native.spotify import LISTENING, STARTING, SpotifyPlayer, open_in_app
+from desktop.native.tokens import SHADOW_LARGE, SPACING, TEXT_SCALE
 from desktop.native.tones import FALLBACK
 from desktop.native.update import RELEASE_PAGE, due_for_check, sanitize_updates
 from desktop.native.updater import Updater, apply_update
@@ -211,7 +214,19 @@ LOG_OUT_QUESTION = (
 PLAN_SHORT = "Plan"
 SUGGEST_SHORT = "Suggest"
 NAV_ARROW_PX = 34
-AUTH_CARD_WIDTH = 380
+AUTH_CARD_WIDTH = 420
+# One heading on the sign-in card: a greeting there, and what the page is for when making an account.
+FIRST_GREETING = "Welcome to FlexWeek"
+AGAIN_GREETING = "Welcome back"
+CREATE_HEADING = "Create your account"
+CREATE_NOTE = "FlexWeek fits homework around school and sports. Your week is saved to your account."
+RESET_HEADING = "Reset your password"
+RESET_NOTE = "Use one of the recovery codes you saved when you made your account."
+# What the sign-in card is for at the moment.
+SIGN_IN, CREATE, RESET = "sign in", "create", "reset"
+# The eye inside the password box, and the room it keeps clear of the typing.
+REVEAL_PX = 28
+REVEAL_ICON_PX = 16
 # Long enough for the student to read that the update installed before the window goes.
 UPDATE_QUIT_MS = 1200
 # How long after the last change the week saves itself. Long enough that dragging a block does not
@@ -236,9 +251,10 @@ NOTICE_LINES = 3
 
 
 def brand_row() -> QHBoxLayout:
-    """The icon beside the wordmark, as on the app's window and installer."""
+    """The icon beside the wordmark, as on the app's window and installer, centred over the card."""
     row = QHBoxLayout()
     row.setSpacing(10)
+    row.addStretch(1)
     ratio = QGuiApplication.primaryScreen().devicePixelRatio() if QGuiApplication.primaryScreen() else 1.0
     picture = QPixmap(str(LOGO))
     if not picture.isNull():
@@ -257,6 +273,40 @@ def brand_row() -> QHBoxLayout:
     row.addWidget(brand)
     row.addStretch(1)
     return row
+
+
+class PasswordField(QLineEdit):
+    """A password box with an eye inside its right edge that shows what is typed and hides it again.
+    A Show button beside the box made it 76 pixels narrower than the username box above it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setEchoMode(QLineEdit.EchoMode.Password)
+        self.setTextMargins(0, 0, REVEAL_PX, 0)
+        self._colour = "#5b6474"
+        self.reveal = QToolButton(self)
+        self.reveal.setObjectName("passwordReveal")
+        self.reveal.setCheckable(True)
+        self.reveal.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.reveal.setIconSize(QSize(REVEAL_ICON_PX, REVEAL_ICON_PX))
+        self.reveal.toggled.connect(self._show)
+        self._show(False)
+
+    def set_colour(self, colour: str) -> None:
+        self._colour = colour
+        self._show(self.reveal.isChecked())
+
+    def _show(self, shown: bool) -> None:
+        self.setEchoMode(QLineEdit.EchoMode.Normal if shown else QLineEdit.EchoMode.Password)
+        words = "Hide password" if shown else "Show password"
+        self.reveal.setIcon(icons.icon("eye-off" if shown else "eye", self._colour))
+        self.reveal.setToolTip(words)
+        self.reveal.setAccessibleName(words)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        side = min(REVEAL_PX, self.height() - 4)
+        self.reveal.setGeometry(self.width() - side - 4, (self.height() - side) // 2, side, side)
 
 
 class NativeWindow(QMainWindow):
@@ -296,7 +346,7 @@ class NativeWindow(QMainWindow):
         self._day_mode = False
         self._opened_on_preference = False
         self._views: dict[str, LayoutView] = {}
-        self._making_account = False
+        self._entry_mode = SIGN_IN
         self._updates = sanitize_updates(None)
         self._zoom: dict[str, int] = {}
         self._shown: tuple | None = None
@@ -342,6 +392,8 @@ class NativeWindow(QMainWindow):
         self._autosave.setInterval(AUTOSAVE_TICK_MS)
         self._autosave.timeout.connect(self._autosave_tick)
         self._autosave.start()
+        # The sign-in and recovery cards, which the look lifts off the page with the large shadow.
+        self._entry_cards: list[QFrame] = []
         self._build_auth()
         self._build_recovery()
         self._build_week()
@@ -430,30 +482,41 @@ class NativeWindow(QMainWindow):
         session.save()
 
     def _toggle_auth_mode(self) -> None:
-        self._making_account = not self._making_account
+        self._entry_mode = CREATE if self._entry_mode == SIGN_IN else SIGN_IN
+        self._sync_auth_mode()
+
+    def _open_reset(self) -> None:
+        self._entry_mode = RESET
         self._sync_auth_mode()
 
     def _sync_auth_mode(self) -> None:
         """Sign in is the door, and creating an account is the small print under it: a student signs
-        in many times and creates an account once."""
-        making = self._making_account
+        in many times and creates an account once. A forgotten password is the card's third use, with
+        its own heading and its own one filled button, rather than a second form under Sign in."""
+        mode = self._entry_mode
         kept = self.session.kept
         back = kept is not None and kept.signed_in_before()
-        self.auth_heading.setText("Create your account" if making else "Sign in")
-        if making:
-            note = "FlexWeek fits homework around school and sports. Your week is saved to your account."
-        else:
-            note = "Welcome back." if back else "Welcome."
+        greeting = AGAIN_GREETING if back else FIRST_GREETING
+        self.auth_heading.setText({SIGN_IN: greeting, CREATE: CREATE_HEADING, RESET: RESET_HEADING}[mode])
+        note = {SIGN_IN: "", CREATE: CREATE_NOTE, RESET: RESET_NOTE}[mode]
         self.auth_note.setText(note)
-        self.create_button.setVisible(making)
-        self.sign_in_button.setVisible(not making)
-        self.password_hint.setVisible(making)
-        self.username_hint.setVisible(making)
+        self.auth_note.setVisible(bool(note))
+        self.password.setVisible(mode != RESET)
+        self.password_hint.setVisible(mode == CREATE)
+        self.username_hint.setVisible(mode == CREATE)
+        self.sign_in_button.setVisible(mode == SIGN_IN)
+        self.create_button.setVisible(mode == CREATE)
+        self._show_recover(mode == RESET)
+        # A new account has no password to forget.
+        self.forgot_button.setVisible(mode == SIGN_IN)
         self.auth_switch.setText(
-            "Already have an account? Sign in" if making else "New here? Create an account"
+            {SIGN_IN: "New here? Create an account", CREATE: "Already have an account? Sign in"}.get(
+                mode, "Back to sign in"
+            )
         )
-        self.sign_in_button.setDefault(not making)
-        self.create_button.setDefault(making)
+        self.sign_in_button.setDefault(mode == SIGN_IN)
+        self.create_button.setDefault(mode == CREATE)
+        self.recover_button.setDefault(mode == RESET)
 
     def listen_for_instances(self, name: str) -> bool:
         server = QLocalServer(self)
@@ -482,62 +545,89 @@ class NativeWindow(QMainWindow):
                 switch_page(self._stack, page, self._motion)
                 return
 
-    def _build_auth(self) -> None:
+    def _entry_card(self, name: str) -> QVBoxLayout:
+        """A page for signing in or for the recovery codes: the wordmark on the page, and under it the
+        page's card in the middle of the window. The layout inside the card is returned to fill.
+
+        The first screen anyone sees. Left to a plain page layout it stretched every field and button
+        the full width of the window, so it read as an unstyled form with a lot of nothing under it.
+        """
         page = QWidget()
-        page.setObjectName("authPage")
-        # The first screen anyone sees. Left to a plain page layout it stretched every field and
-        # button the full width of the window, so it read as an unstyled form with a lot of nothing
-        # under it. The content sits in a card of its own, centred.
+        page.setObjectName(name)
         outer = QVBoxLayout(page)
         outer.addStretch(1)
+        outer.addLayout(brand_row())
+        outer.addSpacing(SPACING[4])
         middle = QHBoxLayout()
         middle.addStretch(1)
         card = QFrame()
         card.setObjectName("authCard")
-        card.setMaximumWidth(AUTH_CARD_WIDTH)
-        card.setMinimumWidth(AUTH_CARD_WIDTH)
+        card.setFixedWidth(AUTH_CARD_WIDTH)
         middle.addWidget(card)
         middle.addStretch(1)
         outer.addLayout(middle)
         outer.addStretch(1)
+        self._entry_cards.append(card)
+        self._stack.addWidget(page)
         layout = QVBoxLayout(card)
-        # A frame, so the card's padding is the spacing knob's, as every card's is.
+        # A frame, so the card's padding is the look's, as every card's is.
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addLayout(brand_row())
+        layout.setSpacing(SPACING[2])
+        return layout
+
+    def _link(self, words: str, name: str, layout: QVBoxLayout) -> QPushButton:
+        """Small print under the card's button, drawn as a link and centred under it."""
+        link = QPushButton(words)
+        link.setObjectName(name)
+        link.setFlat(True)
+        link.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout.addWidget(link, 0, Qt.AlignmentFlag.AlignHCenter)
+        return link
+
+    def _build_auth(self) -> None:
+        layout = self._entry_card("authPage")
         self.auth_heading = QLabel()
         self.auth_heading.setObjectName("authHeading")
+        self.auth_heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.auth_heading.setWordWrap(True)
         layout.addWidget(self.auth_heading)
         self.auth_note = QLabel()
         self.auth_note.setObjectName("authNote")
+        self.auth_note.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.auth_note.setWordWrap(True)
         layout.addWidget(self.auth_note)
+        layout.addSpacing(SPACING[0])
         self.username = QLineEdit()
         self.username.setObjectName("username")
         self.username.setMaxLength(32)
         self.username.setPlaceholderText("Username")
+        self.username.setAccessibleName("Username")
         layout.addWidget(self.username)
         self.username_hint = QLabel(USERNAME_HINT)
         self.username_hint.setObjectName("usernameHint")
         self.username_hint.setWordWrap(True)
         layout.addWidget(self.username_hint)
-        self.password = QLineEdit()
+        self.password = PasswordField()
         self.password.setObjectName("password")
-        self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.password.setMaxLength(128)
         self.password.setPlaceholderText("Password")
-        password_row = QHBoxLayout()
-        password_row.addWidget(self.password, 1)
-        self.password_reveal = QPushButton("Show")
-        self.password_reveal.setObjectName("passwordReveal")
-        self.password_reveal.setProperty("quiet", True)
-        self.password_reveal.setCheckable(True)
-        self.password_reveal.toggled.connect(self._toggle_password)
-        password_row.addWidget(self.password_reveal)
-        layout.addLayout(password_row)
+        self.password.setAccessibleName("Password")
+        self.password_reveal = self.password.reveal
+        layout.addWidget(self.password)
         self.password_hint = QLabel(PASSWORD_LENGTH_HINT)
         self.password_hint.setObjectName("passwordHint")
         self.password_hint.setWordWrap(True)
         layout.addWidget(self.password_hint)
+        self.recovery_code = QLineEdit()
+        self.recovery_code.setObjectName("recoveryCode")
+        self.recovery_code.setPlaceholderText("Recovery code")
+        self.recovery_code.setAccessibleName("Recovery code")
+        layout.addWidget(self.recovery_code)
+        self.new_recovery_password = PasswordField()
+        self.new_recovery_password.setObjectName("recoverPassword")
+        self.new_recovery_password.setPlaceholderText("New password")
+        self.new_recovery_password.setAccessibleName("New password")
+        layout.addWidget(self.new_recovery_password)
         # On by default: most students plan on their own laptop, and signing in was the first thing
         # FlexWeek asked at every launch. Log out forgets it, for a shared computer.
         self.keep_signed_in = QCheckBox("Keep me signed in on this computer")
@@ -555,56 +645,28 @@ class NativeWindow(QMainWindow):
         self.create_button.setObjectName("createAccount")
         self.create_button.clicked.connect(self._create_account)
         layout.addWidget(self.create_button)
-        forgot = QPushButton("Forgot password")
-        forgot.setObjectName("forgotPassword")
-        forgot.setFlat(True)
-        forgot.setCursor(Qt.CursorShape.PointingHandCursor)
-        forgot.clicked.connect(self._toggle_recover)
-        layout.addWidget(forgot)
-        self.auth_switch = QPushButton()
-        self.auth_switch.setObjectName("authSwitch")
-        self.auth_switch.setFlat(True)
-        self.auth_switch.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.auth_switch.clicked.connect(self._toggle_auth_mode)
-        layout.addWidget(self.auth_switch)
-        self.recovery_code = QLineEdit()
-        self.recovery_code.setObjectName("recoveryCode")
-        self.recovery_code.setPlaceholderText("Recovery code")
-        self.recovery_code.setVisible(False)
-        layout.addWidget(self.recovery_code)
-        self.new_recovery_password = QLineEdit()
-        self.new_recovery_password.setObjectName("recoverPassword")
-        self.new_recovery_password.setEchoMode(QLineEdit.EchoMode.Password)
-        self.new_recovery_password.setPlaceholderText("New password")
-        self.new_recovery_password.setVisible(False)
-        layout.addWidget(self.new_recovery_password)
         self.recover_button = QPushButton("Reset password")
         self.recover_button.setObjectName("recoverAccount")
-        self.recover_button.setVisible(False)
         self.recover_button.clicked.connect(self._recover_account)
         layout.addWidget(self.recover_button)
+        self.forgot_button = self._link("Forgot password", "forgotPassword", layout)
+        self.forgot_button.clicked.connect(self._open_reset)
+        self.auth_switch = self._link("", "authSwitch", layout)
+        self.auth_switch.clicked.connect(self._toggle_auth_mode)
         self.auth_status = QLabel()
         self.auth_status.setObjectName("authStatus")
+        self.auth_status.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.auth_status.setWordWrap(True)
+        # Nothing said, nothing drawn: an empty line left a band of card under the last link.
+        self.auth_status.setVisible(False)
         layout.addWidget(self.auth_status)
-        self._stack.addWidget(page)
 
     def _build_recovery(self) -> None:
-        page = QWidget()
-        page.setObjectName("recoveryPage")
-        outer = QVBoxLayout(page)
-        outer.addStretch(1)
-        middle = QHBoxLayout()
-        middle.addStretch(1)
-        card = QFrame()
-        card.setObjectName("authCard")
-        card.setMaximumWidth(AUTH_CARD_WIDTH)
-        card.setMinimumWidth(AUTH_CARD_WIDTH)
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addLayout(brand_row())
+        layout = self._entry_card("recoveryPage")
         heading = QLabel("Save these recovery codes")
         heading.setObjectName("authHeading")
+        heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        heading.setWordWrap(True)
         layout.addWidget(heading)
         note = QLabel(
             "They are the only way to reset your password. FlexWeek cannot email you. "
@@ -612,10 +674,14 @@ class NativeWindow(QMainWindow):
         )
         note.setWordWrap(True)
         note.setObjectName("authNote")
+        note.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(note)
         self.recovery_list = QLabel()
         self.recovery_list.setObjectName("recoveryList")
         self.recovery_list.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        # The app's own face with figures of one width, so the codes line up as code without a second
+        # typeface heavier and wider than everything around them.
+        self.recovery_list.setFont(time_font(self.recovery_list.font()))
         layout.addWidget(self.recovery_list)
         # Selecting eight lines by mouse was the only way to keep them.
         keep_row = QHBoxLayout()
@@ -649,11 +715,6 @@ class NativeWindow(QMainWindow):
         self.recovery_continue.setEnabled(False)
         self.recovery_continue.clicked.connect(self._finish_recovery)
         layout.addWidget(self.recovery_continue)
-        middle.addWidget(card)
-        middle.addStretch(1)
-        outer.addLayout(middle)
-        outer.addStretch(1)
-        self._stack.addWidget(page)
 
     def _build_week(self) -> None:
         page = QWidget()
@@ -1156,7 +1217,7 @@ class NativeWindow(QMainWindow):
             self._close_settings(save=False)
             self._day_mode = False
             self._opened_on_preference = False
-            self._making_account = False
+            self._entry_mode = SIGN_IN
             self._setup_active = False
             self._setup_checked = False
             self._setup_prefs = {}
@@ -1165,6 +1226,8 @@ class NativeWindow(QMainWindow):
             self._sync_auth_mode()
             self.username.clear()
             self.password.clear()
+            # Left shown on a shared computer, the next student's password would be shown too.
+            self.password_reveal.setChecked(False)
             self._show_page("authPage")
             return
         self.account_name.setText(account["username"])
@@ -1522,6 +1585,7 @@ class NativeWindow(QMainWindow):
         """What the session says goes in the toast, on the week's page, unless it is still going
         ("Saving…") or routine ("Saved."). The student's own request is answered either way."""
         self.auth_status.setText(message)
+        self.auth_status.setVisible(bool(message))
         if not message:
             # The session took back what it said, as Cancel on Running late's preview does.
             if not self.toast.button.isVisible():
@@ -1637,10 +1701,6 @@ class NativeWindow(QMainWindow):
 
     def _on_recovery_ack(self, checked: bool) -> None:
         self.recovery_continue.setEnabled(checked and not self.session.busy)
-
-    def _toggle_password(self, shown: bool) -> None:
-        self.password.setEchoMode(QLineEdit.EchoMode.Normal if shown else QLineEdit.EchoMode.Password)
-        self.password_reveal.setText("Hide" if shown else "Show")
 
     def _create_account(self) -> None:
         name, password = self.username.text().strip(), self.password.text()
@@ -2409,11 +2469,9 @@ class NativeWindow(QMainWindow):
             dialog.protected(), dialog.study_windows(), dialog.day_cutoff(), dialog.work_windows()
         )
 
-    def _toggle_recover(self) -> None:
-        visible = not self.recovery_code.isVisible()
-        self.recovery_code.setVisible(visible)
-        self.new_recovery_password.setVisible(visible)
-        self.recover_button.setVisible(visible)
+    def _show_recover(self, shown: bool) -> None:
+        for widget in (self.recovery_code, self.new_recovery_password, self.recover_button):
+            widget.setVisible(shown)
 
     def _recover_account(self) -> None:
         self.session.keep_signed_in = self.keep_signed_in.isChecked()
@@ -2972,12 +3030,29 @@ class NativeWindow(QMainWindow):
             self.day_view.set_look(self._look, palette)
             self.month_grid.set_palette(palette)
             self.add_menu.set_palette(palette, chips)
+            self._dress_entry(palette)
+            self.setup_page.set_palette(palette)
         if page_sheet != self._page_sheet:
             # The planner holds the design's page and nothing of the chrome.
             self._page_sheet = page_sheet
             self.planner.setStyleSheet(page_sheet)
         self._sync_add_button()
         self._refresh_layout()
+
+    def _dress_entry(self, palette: dict) -> None:
+        """The eye in the muted text colour, and the sign-in and recovery cards lifted off the page
+        with the large shadow, unless the look's shadows are flat or drawn as hard edges."""
+        for field in (self.password, self.new_recovery_password):
+            field.set_colour(palette["muted"])
+        knobs = effective_look(self._look)
+        soft = knobs["depth"] == "soft"
+        for card in self._entry_cards:
+            # As wide as its words: a card sized for Normal text cut Large text's lines short.
+            card.setFixedWidth(round(AUTH_CARD_WIDTH * TEXT_SCALE[knobs["text"]]))
+            if soft:
+                lift(card, SHADOW_LARGE, palette["axis"] == "dark")
+            else:
+                card.setGraphicsEffect(None)
 
     def _install_tray(self) -> None:
         tray = QSystemTrayIcon(self._icon, self)
