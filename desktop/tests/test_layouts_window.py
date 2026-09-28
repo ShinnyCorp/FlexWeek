@@ -732,7 +732,7 @@ def test_summaries_speak_minutes_not_session_counts(qapp: QApplication, window: 
     window._on_week()
     qapp.processEvents()
     shown = labels()
-    assert "THIS WEEK · DRAG ACROSS DAYS" in shown
+    assert "This week" in shown
     assert not any(sessions.search(text) for text in shown)
 
     # Timeline's week in figures: the minutes of homework planned, and how many homework are done.
@@ -873,12 +873,14 @@ def test_todays_app_keeps_the_clock_day_and_chip_month(qapp: QApplication, windo
 def test_bentos_buttons_reach_the_products_own_add_and_plan(
     qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Bento draws no Add of its own since 0.17: the top bar's is the one it uses."""
     asked: list[str] = []
     monkeypatch.setattr(NativeWindow, "_add_homework", lambda self: asked.append("add"))
     monkeypatch.setattr(type(window.session), "solve", lambda self: asked.append("plan"))
     window._layout = {"main": "bento", "day": "one", "options": {}}
     window._on_week()
-    click(window, "bentoAdd")
+    assert window.planner.currentWidget().findChild(QPushButton, "bentoAdd") is None
+    click(window, "addButton")
     click(window, "solveButton")
     click(window, "viewMyDay")
     assert asked == ["add", "plan"]
