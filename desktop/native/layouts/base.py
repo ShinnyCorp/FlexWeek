@@ -18,6 +18,7 @@ from desktop.native.calendar import CATEGORIES
 from desktop.native.hours.hand import Hand, is_date_surface, is_surface
 from desktop.native.hours.hand import Verdict as HandVerdict
 from desktop.native.hours.zoom import HoursScroll
+from desktop.native.icons import tint
 from desktop.native.look import category_paint, luminance
 from desktop.native.weekmodel import Occurrence, WeekModel
 
@@ -111,6 +112,11 @@ def plural(count: int, word: str) -> str:
 def mark_of(category: str) -> str:
     """A category's strong colour, the one the web client paints with."""
     return (CATEGORIES.get(category) or {}).get("mark") or "#94a3b8"
+
+
+def family(tokens: dict[str, str]) -> str:
+    """Light or dark, read from the page, since a colourway names no family of its own."""
+    return "dark" if luminance(tokens["bg"]) < 0.2 else "light"
 
 
 def family_fill(category: str, tokens: dict[str, str]) -> str:
@@ -294,9 +300,13 @@ class LayoutView(QWidget):
         board.raise_()
 
 
+DAY_ICONS = {"Finished": "check", "Focus": "timer", "Late": "clock", "Back": "chevron-left"}
+
+
 def day_buttons(view: LayoutView, scene: Scene, item: Occurrence | None, prefix: str) -> list[QPushButton]:
     """What a student does while living the day, written once for every day screen: finish the
-    homework, start focus, say they are running late, go back to planning."""
+    homework, start focus, say they are running late, go back to planning. One is filled, the step
+    this minute is for: Homework finished, or else Running late."""
     made = []
     if scene.options.get("actions") != "hide":
         if item is not None and item.work and item.assignment_id:
@@ -310,12 +320,15 @@ def day_buttons(view: LayoutView, scene: Scene, item: Occurrence | None, prefix:
             )
             made += [finished, focus]
         if work_left(scene):
-            late = button("Running late", f"{prefix}Late")
+            late = button("Running late", f"{prefix}Late", "" if made else "main")
             late.clicked.connect(view.late_requested.emit)
             made.append(late)
     back = button("Back to planning", f"{prefix}Back")
     back.clicked.connect(view.back_requested.emit)
-    return [*made, back]
+    made.append(back)
+    for entry in made:
+        tint(entry, DAY_ICONS[entry.objectName().removeprefix(prefix)])
+    return made
 
 
 def plan_buttons(view: LayoutView, prefix: str, add_words: str) -> list[QPushButton]:

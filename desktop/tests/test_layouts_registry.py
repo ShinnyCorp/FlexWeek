@@ -125,7 +125,7 @@ def test_options_are_the_students_choice_over_the_designs_defaults() -> None:
         "actions": "hide",
         "daybar": "show",
     }
-    assert options_for(None, "dial") == {"colour": MATCH, "hours": "day", "list": "show", "week": "show"}
+    assert options_for(None, "dial") == {"colour": MATCH, "list": "show", "week": "show"}
     assert options_for(choice, "classic") == {}
 
 
@@ -267,14 +267,18 @@ def test_a_dark_colourway_is_readable_like_any_other() -> None:
                 assert contrast_failures(tokens_for(layout_id, value, palette)) == [], (layout_id, value)
 
 
-def test_poster_is_readable_in_every_accent_and_a_refusal_never_wears_it() -> None:
-    """Poster takes the student's accent onto its black page, so it is held to the rules in every
-    accent of every pack, light and dark, not only in the one the other tests use."""
+@pytest.mark.parametrize(("layout_id", "colour"), [("one", "black"), ("dial", "midnight")])
+def test_a_colourway_in_the_students_accent_reads_in_every_one(layout_id: str, colour: str) -> None:
+    """One thing's Poster and Day dial's Night take the student's accent onto their dark pages, so
+    each is held to the rules in every accent of every pack, light and dark, not only in the one the
+    other tests use, and a refusal never wears it."""
     import math
 
+    named = next(tokens for value, _, tokens in LAYOUTS[layout_id].colourways if value == colour)
+    assert "accent" not in named
     failures, close = [], {}
     for pack, dark, accent in itertools.product(PACKS, (False, True), ACCENTS):
-        tokens = tokens_for("one", "black", resolved_palette(pack, dark, None, accent))
+        tokens = tokens_for(layout_id, colour, resolved_palette(pack, dark, None, accent))
         failures += [(pack, dark, accent, item) for item in contrast_failures(tokens)]
         if (gap := math.dist(_lab(tokens["accent"]), _lab(tokens["danger"]))) < 25:
             close[(pack, dark, accent)] = round(gap, 1)

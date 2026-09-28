@@ -178,7 +178,6 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "The day as a clock face, read out hour by hour beside it.",
             (
                 _colour(DIAL),
-                _HOURS,
                 _show("list", "Hour by hour list"),
                 _show("week", "Small dials for the week"),
             ),

@@ -292,18 +292,21 @@ def test_homework_due_today_with_no_time_is_given_one_by_carrying_its_title_onto
     assert (math["days"], math.get("start")) == ([THURSDAY], "21:00")
 
 
-def test_the_dial_picks_nothing_up_in_its_gap_outside_its_ring_or_in_its_middle(
+def test_the_dial_picks_nothing_up_in_free_time_outside_its_ring_or_in_its_middle(
     qapp: QApplication, window: NativeWindow
 ) -> None:
+    """The ring is the whole day, so midnight at its bottom is free time a block can be carried to,
+    but pressing there, like pressing off the ring, picks nothing up."""
     _view, face = my_day(qapp, window, "dial")
     said = reported(window)
     track = face.track_for(THURSDAY)
     centre = face.mapToGlobal(track.centre.toPoint())
-    middle = round((track.inner + track.outer) / 2)
-    gap, beyond = centre + QPoint(0, middle), centre + QPoint(0, -round(track.outer) - 12)
+    free, beyond = face.point_for(THURSDAY, 0), centre + QPoint(0, -round(track.outer) - 12)
+    assert face.track_at(face.mapFromGlobal(free)) is not None
     essay_middle = face.point_for(THURSDAY, 19 * 60 + 30)
-    for pressed in (gap, beyond, centre):
-        assert face.track_at(face.mapFromGlobal(pressed)) is None
+    for pressed in (free, beyond, centre):
+        if pressed != free:
+            assert face.track_at(face.mapFromGlobal(pressed)) is None
         QTest.mousePress(
             face, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, face.mapFromGlobal(pressed)
         )

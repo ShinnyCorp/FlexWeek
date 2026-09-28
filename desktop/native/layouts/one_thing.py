@@ -16,7 +16,7 @@ from desktop.native.fonts import at_scale
 from desktop.native.hours.canvas import BlockPainter, Drawn, HoursCanvas
 from desktop.native.hours.geometry import Axis, LinearTrack, Span
 from desktop.native.hours.hand import Gesture, Hand, Held
-from desktop.native.icons import pixmap, tint
+from desktop.native.icons import pixmap
 from desktop.native.layouts.base import (
     LayoutView,
     Scene,
@@ -24,13 +24,14 @@ from desktop.native.layouts.base import (
     css,
     day_buttons,
     empty,
+    family,
     label,
     plural,
     rules,
 )
 from desktop.native.look import category_paint
 from desktop.native.ring import CountdownRing, ring_colours
-from desktop.native.tokens import RADIUS_CARD, SPACING, WEIGHT_STRONG, luminance, type_pt
+from desktop.native.tokens import RADIUS_CARD, SPACING, WEIGHT_STRONG, type_pt
 from desktop.native.weekmodel import Occurrence, Waiting, clock_label, length_label, range_label
 from desktop.native.widgets import FittedLabel
 
@@ -41,7 +42,6 @@ RING_MAX, RING_ROOMY, RING_MIN = 440, 320, 200
 THEN_ROWS = 4
 # The most of the ring's inside the title may take, so the number stays the thing that is read.
 TITLE_SHARE = 0.4
-ICONS = {"oneFinished": "check", "oneFocus": "timer", "oneLate": "clock", "oneBack": "chevron-left"}
 
 
 def _small(font: QFont) -> QFont:
@@ -210,11 +210,6 @@ class Thing(QLabel):
             self.hand.press(self, self.held, event.globalPosition().toPoint())
             return
         super().mousePressEvent(event)
-
-
-def family(tokens: dict[str, str]) -> str:
-    """Light or dark, read from the page, since a colourway names no family of its own."""
-    return "dark" if luminance(tokens["bg"]) < 0.2 else "light"
 
 
 def countdown(minutes: int) -> tuple[str, str]:
@@ -456,13 +451,8 @@ class OneThingView(LayoutView):
         row = QHBoxLayout()
         row.setSpacing(scene.px(SPACING[2]))
         row.addStretch()
-        made = day_buttons(self, scene, item, "one")
-        # One filled button, the step this minute is for: Homework finished, or else Running late.
-        if made[0].property("kind") != "main" and made[0].objectName() != "oneBack":
-            made[0].setProperty("kind", "main")
-        for entry in made:
+        for entry in day_buttons(self, scene, item, "one"):
             row.addWidget(entry)
-            tint(entry, ICONS[entry.objectName()])
         row.addStretch()
         return row
 

@@ -355,20 +355,19 @@ ONE = (
 )
 DIAL = (
     (
+        # 0.16's navy, refined as 0.17 picked, and saved under its old name. It wears the student's accent.
         "midnight",
-        "Midnight",
+        "Night",
         _tokens(
-            bg="#0a0d1a",
-            bg_ink="#e8ecff",
-            bg_muted="#b6c0ea",
-            surface="#141a33",
-            text="#e8ecff",
-            muted="#b6c0ea",
-            accent="#8ea2ff",
-            accent_ink="#0a0d1a",
-            line="#2b3564",
-            danger="#ff4d6d",
-            danger_ink="#0a0d1a",
+            bg="#0b0f1d",
+            bg_ink="#e7eaf6",
+            bg_muted="#9ea6c4",
+            surface="#141a2e",
+            text="#e7eaf6",
+            muted="#9ea6c4",
+            line="#343c5e",
+            danger="#ff8a7a",
+            danger_ink="#0b0f1d",
         ),
     ),
     (
