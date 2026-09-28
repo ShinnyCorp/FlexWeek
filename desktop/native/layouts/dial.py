@@ -700,7 +700,8 @@ class DayDialView(LayoutView):
                 "QLabel#dialRowTagText": css(
                     color=muted, font_size=size("caption"), font_weight=WEIGHT_REGULAR
                 ),
-                "#dialNone, #dialUnplaced": css(border_top=edge),
+                # Styled so their rule is drawn, and clear so the window's page colour is not.
+                "#dialNone, #dialUnplaced": css(background="transparent", border_top=edge),
                 "#dialNone QLabel": css(color=muted),
                 "QLabel#dialMiniName": css(color=muted, font_size=size("caption")),
                 "QLabel#dialMiniDate": css(font_size=size("caption"), font_weight=WEIGHT_STRONG),

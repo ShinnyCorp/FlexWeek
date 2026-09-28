@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QStandardPaths, Qt
+    from PySide6.QtCore import QPoint, QStandardPaths, Qt
     from PySide6.QtGui import QImage
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import (
@@ -622,6 +622,19 @@ def test_my_day_opens_whichever_day_screen_was_picked(qapp: QApplication, window
     assert view.findChild(QLabel, "dialTitle").text() == "History essay"
     click(window, "dialBack")
     assert window.planner.currentWidget() is window.week_table
+
+
+def test_the_dials_list_is_one_card_in_the_real_window(qapp: QApplication, window: NativeWindow) -> None:
+    """The window's stylesheet paints every styled widget in the page colour. Drawn offscreen alone the
+    list's last row was on its card; in the window it sat on a grey band."""
+    window._layout = {"main": "classic", "day": "dial", "options": {}}
+    click(window, "viewMyDay")
+    qapp.processEvents()
+    view = window.planner.currentWidget()
+    closing = view.findChild(QWidget, "dialNone")
+    # Right of its words, where only the background is drawn.
+    spot = closing.mapTo(view, QPoint(closing.width() - 8, closing.height() // 2))
+    assert view.grab().toImage().pixelColor(spot).name() == view.scene.tokens["surface"]
 
 
 def test_summaries_speak_minutes_not_session_counts(qapp: QApplication, window: NativeWindow) -> None:
