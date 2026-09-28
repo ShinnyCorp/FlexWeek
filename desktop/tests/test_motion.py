@@ -192,7 +192,8 @@ def test_a_notice_that_arrives_while_the_last_one_rises_lands_where_it_belongs(q
     hours.setGeometry(0, 72, 600, 280)
     toast.show_message("Running late: 16:30-17:00 is now locked.")
     QTest.qWait(DURATION_MS["extra"] + 150)
-    assert toast.y() + toast.height() == 72 + 280 - TOAST_FOOT
+    # The card, inside the room the toast keeps round it for its shadow.
+    assert toast.y() + toast.card.geometry().bottom() + 1 == 72 + 280 - TOAST_FOOT
     host.close()
 
 

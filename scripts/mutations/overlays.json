@@ -1,0 +1,149 @@
+[
+  {
+    "file": "desktop/native/window.py",
+    "name": "Quick focus starts at once instead of waiting for Start",
+    "old": "        \"\"\"The focus screen, ready: nothing starts until Start, as with F (decision 19 of 0.17).\"\"\"\n        self._open_focus_screen()\n",
+    "new": "        \"\"\"The focus screen, ready: nothing starts until Start, as with F (decision 19 of 0.17).\"\"\"\n        self._start_quick_focus()\n",
+    "test": "desktop/tests/test_focus_screen.py::test_quick_focus_fills_the_window_and_esc_comes_back"
+  },
+  {
+    "file": "desktop/native/window.py",
+    "name": "the toast stays when the student leaves its page",
+    "old": "                    self.toast.hide()\n                switch_page(self._stack, page, self._motion)",
+    "new": "                    pass\n                switch_page(self._stack, page, self._motion)",
+    "test": "desktop/tests/test_drag_results.py::test_the_toast_belongs_to_the_page_it_was_said_on"
+  },
+  {
+    "file": "desktop/native/widgets.py",
+    "name": "the toast is centred over the page again",
+    "old": "        self.setGeometry(max(0, right - width), max(0, bottom - height), width, height)",
+    "new": "        self.setGeometry(area.left() + (area.width() - width) // 2, max(0, bottom - height), width, height)",
+    "test": "desktop/tests/test_drag_results.py::test_the_toast_sits_bottom_right_of_the_page_and_lets_the_pointer_through"
+  },
+  {
+    "file": "desktop/native/look.py",
+    "name": "the toast is a pale card on a light look",
+    "old": "            \"background\": palette[\"text\"],\n",
+    "new": "            \"background\": palette[\"panel\"],\n",
+    "test": "desktop/tests/test_overlays.py::test_the_toast_is_dark_with_light_words_and_undo_reads_on_it_in_every_look"
+  },
+  {
+    "file": "desktop/native/look.py",
+    "name": "Undo is the plain accent on a light look's toast",
+    "old": "            \"action\": mix_oklab(palette[\"accent\"], palette[\"window\"], 0.45),\n",
+    "new": "            \"action\": palette[\"accent\"],\n",
+    "test": "desktop/tests/test_overlays.py::test_undo_is_the_accents_light_shade_on_a_light_look_and_the_accent_on_a_dark_one"
+  },
+  {
+    "file": "desktop/native/ring.py",
+    "name": "the ring's arc runs anticlockwise",
+    "old": "    return 90 * 16, -round(share * 360 * 16)",
+    "new": "    return 90 * 16, round(share * 360 * 16)",
+    "test": "desktop/tests/test_ring.py::test_the_arc_is_the_time_left_from_the_top_clockwise_on_the_track"
+  },
+  {
+    "file": "desktop/native/ring.py",
+    "name": "the ring draws no number",
+    "old": "        painter.drawText(QPointF(left, baseline), self._number)\n",
+    "new": "        painter.drawText(QPointF(left, baseline), '')\n",
+    "test": "desktop/tests/test_ring.py::test_the_number_is_drawn_in_the_middle_and_its_unit_beside_it_muted"
+  },
+  {
+    "file": "desktop/native/ring.py",
+    "name": "a long number spills past the ring",
+    "old": "        if wide > room > 0:\n",
+    "new": "        if False:\n",
+    "test": "desktop/tests/test_ring.py::test_a_long_number_shrinks_to_stay_inside_the_ring"
+  },
+  {
+    "file": "desktop/native/ring.py",
+    "name": "the ring's scale draws nothing",
+    "old": "        if not self._ticks:\n            return\n        side = self._side()",
+    "new": "        if True:\n            return\n        side = self._side()",
+    "test": "desktop/tests/test_ring.py::test_the_scale_draws_marks_outside_the_track"
+  },
+  {
+    "file": "desktop/native/focus_screen.py",
+    "name": "the ring stays full while the timer runs",
+    "old": "            self.ring.set_left(min(left, whole) / whole if running else 0.0)",
+    "new": "            self.ring.set_left(1.0 if running else 0.0)",
+    "test": "desktop/tests/test_focus_screen.py::test_the_ring_counts_down_with_the_timer"
+  },
+  {
+    "file": "desktop/native/focus_screen.py",
+    "name": "Pause is drawn as plain as Skip",
+    "old": "        self.pause = self._button(\"Pause\", \"focusScreenPause\", self.pause_requested)",
+    "new": "        self.pause = self._button(\"Pause\", \"focusScreenPause\", self.pause_requested, quiet=True)",
+    "test": "desktop/tests/test_focus_screen.py::test_pause_is_the_one_filled_button_and_skip_and_finish_are_words"
+  },
+  {
+    "file": "desktop/native/menus.py",
+    "name": "Delete is painted in the text colour",
+    "old": "        ink = colours.danger if danger else (colours.text if enabled else colours.muted)",
+    "new": "        ink = colours.text if enabled else colours.muted",
+    "test": "desktop/tests/test_context_menu.py::test_a_delete_row_is_painted_red_and_the_rest_in_the_text_colour"
+  },
+  {
+    "file": "desktop/native/window.py",
+    "name": "the deletes are not set apart by a line",
+    "old": "        menu.addSeparator()\n        if block.get(\"start\") or assignment is None:",
+    "new": "        if block.get(\"start\") or assignment is None:",
+    "test": "desktop/tests/test_context_menu.py::test_a_right_click_offers_four_things_and_finished_only_for_homework"
+  },
+  {
+    "file": "desktop/native/window.py",
+    "name": "Log out sits with Help and About",
+    "old": "                more_menu.addSeparator()\n            action = mark(",
+    "new": "                pass\n            action = mark(",
+    "test": "desktop/tests/test_more_menu_words.py::test_every_row_under_more_has_an_icon_and_log_out_stands_apart"
+  },
+  {
+    "file": "desktop/native/menus.py",
+    "name": "a menu keeps no shadow in a look with depth",
+    "old": "        if colours.lifted:\n",
+    "new": "        if False:\n",
+    "test": "desktop/tests/test_overlays.py::test_a_menu_casts_the_large_shadow_only_in_a_look_with_depth"
+  },
+  {
+    "file": "desktop/native/menus.py",
+    "name": "a menu opens its shadow's room below and right of the pointer",
+    "old": "            self.move(self.pos() - QPoint(MENU_EDGE, MENU_EDGE))\n",
+    "new": "            pass\n",
+    "test": "desktop/tests/test_overlays.py::test_a_menus_panel_opens_where_qt_put_the_menu_with_its_shadow_round_it"
+  },
+  {
+    "file": "desktop/native/look.py",
+    "name": "High contrast's row under the pointer is 6 %, which no one can see",
+    "old": "    amount = max(share, HIGH_CONTRAST_HOVER) if palette.get(\"family\") == \"contrast\" else share",
+    "new": "    amount = share",
+    "test": "desktop/tests/test_overlays.py::test_a_row_under_the_pointer_shows_and_keeps_its_words_readable_in_every_look"
+  },
+  {
+    "file": "desktop/native/command_bar.py",
+    "name": "Ctrl+K lists its groups in a fixed order, so Enter may run a worse match",
+    "old": "    order = sorted(rows, key=place)",
+    "new": "    order = sorted(rows, key=lambda group: GROUPS.index(group))",
+    "test": "desktop/tests/test_command_bar.py::test_the_group_with_the_best_match_comes_first_so_enter_runs_it"
+  },
+  {
+    "file": "desktop/native/command_bar.py",
+    "name": "Ctrl+K's arrows land on a group label",
+    "old": "            if self.list.item(row).data(KEY_ROLE):\n",
+    "new": "            if True:\n",
+    "test": "desktop/tests/test_command_bar.py::test_every_row_has_an_icon_and_the_views_their_keys"
+  },
+  {
+    "file": "desktop/native/look.py",
+    "name": "Ctrl+K dims the window 35 %",
+    "old": "\"QWidget#commandBar { background: rgba(0, 0, 0, 102); }\"",
+    "new": "\"QWidget#commandBar { background: rgba(0, 0, 0, 90); }\"",
+    "test": "desktop/tests/test_command_bar.py::test_the_window_is_dimmed_40_percent_and_the_box_is_lifted_with_the_large_shadow"
+  },
+  {
+    "file": "desktop/native/command_bar.py",
+    "name": "Ctrl+K's box casts no shadow",
+    "old": "            lift(self.box, shadow, dark)\n",
+    "new": "            self.box.setGraphicsEffect(None)\n",
+    "test": "desktop/tests/test_command_bar.py::test_the_window_is_dimmed_40_percent_and_the_box_is_lifted_with_the_large_shadow"
+  }
+]
