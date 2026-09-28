@@ -226,30 +226,40 @@ class Problem:
 
 
 def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
-    """Every pair that reads under 4.5 to 1: text on the page, a card and the calendar, muted text on a
-    card, and each block's words on its category's fill. Muted text follows from the text, so its fix
-    moves the text; a block drawn on the card (Edge, Outline) is the text on the card or calendar."""
+    """Every pair that reads under 4.5 to 1, named as the Customise mock-up names them: text and muted
+    text on the page, cards and the calendar, accent text on cards, text on accent buttons, and each
+    block's words on its category's fill. Text and muted text are moved to read on every surface at
+    once; a block drawn on the card (Edge, Outline) is the text on the card or the calendar."""
     look = {"preset": "default", "knobs": {}, "custom": custom}
     palette = resolved_palette("system", system_dark, look)
-    text = palette["text"]
+    surfaces = (palette["window"], palette["panel"], palette["grid"])
+    text, muted, accent = palette["text"], palette["muted"], palette["accent"]
     found: list[Problem] = []
-    for words, ink, ground in (
-        ("Text on the page", text, palette["window"]),
-        ("Text on a card", text, palette["panel"]),
-        ("Text on the calendar", text, palette["grid"]),
-        ("Muted text on a card", palette["muted"], palette["panel"]),
+    for words, ink, ground, field in (
+        ("Text on the page", text, palette["window"], "text"),
+        ("Text on cards", text, palette["panel"], "text"),
+        ("Text on the calendar", text, palette["grid"], "text"),
+        ("Muted text on the page", muted, palette["window"], "muted"),
+        ("Muted text on cards", muted, palette["panel"], "muted"),
+        ("Accent text on cards", accent, palette["panel"], "accent"),
+        ("Text on accent buttons", palette["accent_ink"], accent, "accent"),
     ):
         ratio = contrast(ink, ground)
         if ratio < AA_TEXT:
-            fixed = fit_lightness(text, (ground,), AA_TEXT)
-            found.append(Problem(words, ink, ground, ratio, ("colours", "text"), fixed))
+            if field == "accent":
+                # Its words on the page and cards, and white or black on it, which any colour reads.
+                fixed = fit_lightness(accent, surfaces[:2], AA_TEXT)
+                found.append(Problem(words, ink, ground, ratio, ("accent",), fixed))
+                continue
+            fixed = fit_lightness(ink, surfaces, AA_TEXT)
+            found.append(Problem(words, ink, ground, ratio, ("colours", field), fixed))
     for key, info in CATEGORIES.items():
         fill, mark = category_paint(key, palette)
         drawn = block_paint(look, palette, fill, info["kind"], mark)
         ratio = contrast(drawn["ink"], drawn["fill"])
         if drawn["fill"] == fill and ratio < AA_TEXT:
             fixed = fit_lightness(fill, (drawn["ink"],), AA_TEXT)
-            words = f"{info['label']} blocks"
+            words = f"Text on {info['label']} blocks"
             found.append(Problem(words, drawn["ink"], fill, ratio, ("categories", key), fixed))
     return found
 
@@ -257,8 +267,10 @@ def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
 def apply_fix(custom: dict, problem: Problem) -> dict:
     """`custom` with the problem's colour moved. A category given as a hue becomes the exact colour."""
     fixed = dict(custom)
-    group, key = problem.field
-    if group == "colours":
+    group, key = (*problem.field, "")[:2]
+    if group == "accent":
+        fixed["accent"] = problem.fixed
+    elif group == "colours":
         fixed["colours"] = {**custom.get("colours", {}), key: problem.fixed}
     else:
         fixed["categories"] = {**custom.get("categories", {}), key: {"colour": problem.fixed}}

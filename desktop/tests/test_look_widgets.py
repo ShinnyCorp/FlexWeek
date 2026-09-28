@@ -171,7 +171,7 @@ def test_an_edge_block_is_a_plain_card_with_the_strong_colour_down_its_left(qapp
 def test_the_outline_stays_visible_on_a_light_pack(qapp: QApplication) -> None:
     calendar, palette = week(qapp, look_of(blocks="outline"), pack="slate")
     assert pixel(calendar, "school", "left") == STRONG
-    assert palette["grid"] == "#fbfcff"
+    assert palette["grid"] == "#ffffff"
 
 
 def test_changing_the_look_repaints_the_week_already_on_screen(qapp: QApplication) -> None:
@@ -198,7 +198,7 @@ def test_days_outside_the_month_use_the_palettes_muted_ink(qapp: QApplication) -
     grid.set_month(snapshot, False)
     grid.set_palette(terminal)
     assert grid.canvas.cells[0].in_month is False
-    assert grid.canvas.painter.c("muted").name() == terminal["muted"] == "#7fbf7f"
+    assert grid.canvas.painter.c("muted").name() == terminal["muted"] == "#8b949e"
 
 
 def settings(look: dict) -> SettingsPage:

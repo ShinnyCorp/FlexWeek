@@ -534,8 +534,9 @@ BASE_LABELS = {
     "poster": "Poster",
     "pastel": "Pastel",
 }
-# The four colours a student sets; muted text, the raised card and the strong line follow from them.
-CUSTOM_COLOURS = ("page", "card", "text", "line")
+# The colours a student sets. Muted text follows from the text and the card unless set too; the
+# raised card and the strong line always follow.
+CUSTOM_COLOURS = ("page", "card", "text", "line", "muted")
 HOUR_LINES = ("none", "faint", "clear")
 NOW_LINES = ("accent", "text")
 # The motion levels of decision 33; Lane F's motion.py runs them.
@@ -785,11 +786,13 @@ def _customised(palette: dict, custom: dict) -> dict:
         table["axis"] = axis
         sunk = card if axis == "light" else mix(card, page, 0.42)
         table.update(window=page, panel=card, field=sunk, grid=sunk, text=text, hairline=line)
+        if "muted" in colours:
+            table["muted"] = colours["muted"]
         if {"page", "card", "text"} & colours.keys():
             raised = mix(text, card, 0.05)
             flex_reads = contrast(table["block_flex_ink"], table["block_flex"]) >= AA_TEXT
             table.update(
-                muted=_derived_muted(text, card, page),
+                muted=colours.get("muted") or _derived_muted(text, card, page),
                 card_2=raised,
                 block_locked=raised if contrast(text, raised) >= AA_TEXT else card,
                 block_locked_ink=text,
@@ -849,8 +852,10 @@ def resolved_palette(pack: object, system_dark: bool, look: dict | None, accent:
         # Flat has no raised surfaces: panels and inputs sit in the page and only hairlines divide them.
         palette["panel"] = palette["window"]
         palette["field"] = palette["window"]
+    # A colour the student typed stays as typed; the readability check offers its fix instead.
+    own = custom is not None and _hex(custom.get("accent")) is not None
     readable = fit_lightness(palette["accent"], (palette["window"], palette["panel"]), AA_TEXT)
-    if readable != palette["accent"]:
+    if readable != palette["accent"] and not own:
         palette["accent"] = readable
         palette["accent_ink"] = readable_ink(readable)
     if custom is not None and custom.get("now_line") == "text":

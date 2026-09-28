@@ -143,10 +143,19 @@ def test_a_colour_of_the_students_own_as_the_accent() -> None:
     palette = resolved_palette("system", False, worn({"base": "light", "accent": "#9a3412"}))
     assert palette["accent"] == "#9a3412"
     assert contrast(palette["accent_ink"], palette["accent"]) >= AA_TEXT
-    # One so pale its words would not read on the page is darkened, the least it takes.
-    pale = resolved_palette("system", False, worn({"base": "light", "accent": "#9fd3ff"}))
-    assert contrast(pale["accent"], pale["window"]) >= AA_TEXT
-    assert abs(oklch_of(pale["accent"])[2] - oklch_of("#9fd3ff")[2]) < 3
+    # One so pale its words would not read stays as typed, and the check offers the darker shade.
+    pale = {"base": "light", "accent": "#9fd3ff"}
+    assert resolved_palette("system", False, worn(pale))["accent"] == "#9fd3ff"
+    problem = next(p for p in readability(pale) if p.words == "Accent text on cards")
+    mended = resolved_palette("system", False, worn(apply_fix(pale, problem)))
+    assert mended["accent"] == problem.fixed
+    for ground in ("window", "panel"):
+        assert contrast(mended["accent"], mended[ground]) >= AA_TEXT, ground
+    assert contrast(mended["accent_ink"], mended["accent"]) >= AA_TEXT
+    assert abs(oklch_of(mended["accent"])[2] - oklch_of("#9fd3ff")[2]) < 3
+    # A swatch on a tinted page is its own darker shade already, as in the built-in looks.
+    swatch = resolved_palette("system", False, worn({"base": "slate", "accent": "default"}))
+    assert swatch["accent"] == "#3b6cc1"
 
 
 def test_unknown_settings_and_bad_values_are_dropped_and_said_never_a_crash() -> None:
@@ -204,17 +213,24 @@ def test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_t
     }
     problems = readability(custom)
     said = {problem.words for problem in problems}
-    assert {"Text on the page", "Text on a card", "Muted text on a card"} <= said
+    assert {"Text on the page", "Text on cards", "Muted text on the page", "Muted text on cards"} <= said
     for problem in problems:
         assert problem.ratio < AA_TEXT
         mended = apply_fix(custom, problem)
         palette = resolved_palette("system", False, worn(mended))
+        if problem.field[0] == "colours":
+            # Moved to read on the page, the cards and the calendar at once.
+            key = problem.field[1]
+            for ground in ("window", "panel", "grid"):
+                assert contrast(palette[key], palette[ground]) >= AA_TEXT, problem
         if problem.field == ("colours", "text"):
-            grounds = {"Text on the page": "window", "Text on the calendar": "grid"}
-            ground = grounds.get(problem.words, "panel")
-            assert contrast(palette["text"], palette[ground]) >= AA_TEXT, problem
             # Its lightness moved; its hue and chroma, what makes it the student's colour, stayed.
             assert oklch_of(palette["text"])[0] < oklch_of("#9a9a9a")[0]
+    # Muted text can be set too, and its fix moves it and not the text.
+    quiet = {"base": "light", "colours": {"muted": "#c0c0c0"}}
+    problem = next(p for p in readability(quiet) if p.words == "Muted text on cards")
+    assert problem.field == ("colours", "muted")
+    assert resolved_palette("system", False, worn(apply_fix(quiet, problem)))["text"] == "#111827"
     ended = fixed_until_it_reads(custom)
     assert readability(ended) == []
 
@@ -233,7 +249,7 @@ def test_a_block_colour_that_does_not_read_is_moved_until_its_words_do(
 
     monkeypatch.setattr(custom_look, "block_paint", in_the_text)
     problem = next(p for p in readability(custom, True) if p.field == ("categories", "study"))
-    assert problem.ratio < AA_TEXT and problem.words == "Study blocks"
+    assert problem.ratio < AA_TEXT and problem.words == "Text on Study blocks"
     mended = apply_fix(custom, problem)
     assert mended["categories"]["study"] == {"colour": problem.fixed}
     palette = resolved_palette("system", True, worn(mended))

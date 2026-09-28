@@ -9,7 +9,7 @@
  {
   "file": "desktop/native/look.py",
   "name": "the accent's words left unreadable on a tinted page",
-  "old": "    if readable != palette[\"accent\"]:\n",
+  "old": "    if readable != palette[\"accent\"] and not own:\n",
   "new": "    if False:\n",
   "test": "desktop/tests/test_tokens.py::test_text_reads_on_every_fill_card_and_page[Slate-layered-default]"
  },
@@ -86,8 +86,22 @@
  {
   "file": "desktop/native/custom_look.py",
   "name": "a readability fix that does not move the text",
-  "old": "            fixed = fit_lightness(text, (ground,), AA_TEXT)\n",
-  "new": "            fixed = text\n",
+  "old": "            fixed = fit_lightness(ink, surfaces, AA_TEXT)\n",
+  "new": "            fixed = ink\n",
+  "test": "desktop/tests/test_custom_look.py::test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_to_one"
+ },
+ {
+  "file": "desktop/native/custom_look.py",
+  "name": "a pale accent's fix that does not move it",
+  "old": "                fixed = fit_lightness(accent, surfaces[:2], AA_TEXT)\n",
+  "new": "                fixed = accent\n",
+  "test": "desktop/tests/test_custom_look.py::test_a_colour_of_the_students_own_as_the_accent"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "a set muted colour ignored",
+  "old": "            table[\"muted\"] = colours[\"muted\"]\n",
+  "new": "            pass\n",
   "test": "desktop/tests/test_custom_look.py::test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_to_one"
  },
  {
