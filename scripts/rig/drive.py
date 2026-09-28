@@ -355,6 +355,13 @@ def child_main(args: argparse.Namespace) -> int:
             track = surface.track_for(day, minute)
             return surface.mapToGlobal(track.point_for(min(minute + 1.25, track.last))).toPoint()
 
+        def carried(self, press: QPoint, start: int, day: int, to: int) -> QPoint:
+            """Where to let go of a block pressed at `press`, which starts at `start`, so that it starts at
+            `to` on `day`: as far into the time there as the press was into the block. Aimed by minutes,
+            not by the distance between the two days, so a day drawn at another scale, as Clay's cards
+            peeking beside the one in front are, is aimed at as well."""
+            return self.at(day, to + round(self.minute_under(press) - start))
+
         def block_rect(self, block_id: str, day: int) -> QRect:
             for surface in self.surfaces("hours"):
                 rect = surface.block_rect(block_id, day)
@@ -536,7 +543,7 @@ def child_main(args: argparse.Namespace) -> int:
         yield from r.tab("week")
         yield from r.reveal(3, 17 * 60 + 30, 20 * 60 + 30)
         box = r.block_rect(ids["essay"], 3)
-        yield from r.drag(middle(box), middle(box) + (r.at(4, 18 * 60) - r.at(3, 19 * 60)))
+        yield from r.drag(middle(box), r.carried(middle(box), 19 * 60, 4, 18 * 60))
         yield from r.settled()
         got = block(ids["essay"])
         expect((got["days"], got["start"]) == ([4], "18:00"), f"essay is {got['days']} {got['start']}")
@@ -690,7 +697,7 @@ def child_main(args: argparse.Namespace) -> int:
             xdo("key", "d")
             yield ("wait", 500)
 
-        yield from r.drag(middle(box), middle(box) + (r.at(4, 18 * 60) - r.at(3, 19 * 60)), held=to_day)
+        yield from r.drag(middle(box), r.carried(middle(box), 19 * 60, 4, 18 * 60), held=to_day)
         yield ("wait", 400)
         unchanged(revision)
 
@@ -750,7 +757,7 @@ def child_main(args: argparse.Namespace) -> int:
             yield ("wait", 200)
 
         yield from r.drag(
-            middle(box), middle(box) + (r.at(4, 18 * 60) - r.at(3, 19 * 60)), held=meanwhile, rest=100
+            middle(box), r.carried(middle(box), 19 * 60, 4, 18 * 60), held=meanwhile, rest=100
         )
         yield from r.settled()
         essays = [b for b in session.blocks if b.get("assignment_id") == "essay"]
@@ -837,7 +844,7 @@ def child_main(args: argparse.Namespace) -> int:
         yield from r.tab("week")
         yield from r.reveal(3, 17 * 60 + 30, 20 * 60 + 30)
         box = r.block_rect(ids["essay"], 3)
-        yield from r.drag(middle(box), middle(box) + (r.at(4, 18 * 60) - r.at(3, 19 * 60)))
+        yield from r.drag(middle(box), r.carried(middle(box), 19 * 60, 4, 18 * 60))
         yield from r.settled()
         yield from r.tab("week")
         expect(
@@ -941,7 +948,7 @@ def child_main(args: argparse.Namespace) -> int:
         expect(abs(after - before) <= 15, f"the pointer was over {before:.0f} and is now over {after:.0f}")
         yield from r.reveal(3, 17 * 60 + 30, 20 * 60 + 30)
         box = r.block_rect(ids["essay"], 3)
-        yield from r.drag(middle(box), middle(box) + (r.at(4, 18 * 60) - r.at(3, 19 * 60)))
+        yield from r.drag(middle(box), r.carried(middle(box), 19 * 60, 4, 18 * 60))
         yield from r.settled()
         got = block(ids["essay"])
         expect((got["days"], got["start"]) == ([4], "18:00"), f"essay is {got['days']} {got['start']}")

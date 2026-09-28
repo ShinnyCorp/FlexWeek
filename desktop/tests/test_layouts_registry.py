@@ -268,11 +268,13 @@ def test_a_dark_colourway_is_readable_like_any_other() -> None:
                 assert contrast_failures(tokens_for(layout_id, value, palette)) == [], (layout_id, value)
 
 
-@pytest.mark.parametrize(("layout_id", "colour"), [("one", "black"), ("dial", "midnight")])
+@pytest.mark.parametrize(
+    ("layout_id", "colour"), [("one", "black"), ("dial", "midnight"), ("clay", "pastel")]
+)
 def test_a_colourway_in_the_students_accent_reads_in_every_one(layout_id: str, colour: str) -> None:
-    """One thing's Poster and Day dial's Night take the student's accent onto their dark pages, so
-    each is held to the rules in every accent of every pack, light and dark, not only in the one the
-    other tests use, and a refusal never wears it."""
+    """One thing's Poster and Day dial's Night take the student's accent onto their dark pages, and
+    Clay deck's Clay onto its lavender one, so each is held to the rules in every accent of every pack,
+    light and dark, not only in the one the other tests use, and a refusal never wears it."""
     import math
 
     named = next(tokens for value, _, tokens in LAYOUTS[layout_id].colourways if value == colour)

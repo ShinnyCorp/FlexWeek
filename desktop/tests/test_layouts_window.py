@@ -492,7 +492,7 @@ def test_the_knobs_settings_hides_for_a_design_change_nothing_in_it(
         window.session.preferences = {**base, **(prefs or {})}
         window._look = sanitize_look({"preset": "default", "knobs": knobs})
         # In its own colours: in Match my look a design wears the look, Surface included.
-        colour = {main: {"colour": signature(main)}}
+        colour = {main: {"colour": own_accent(main)}}
         window._layout = sanitize_layout({"main": main, "day": "one", "options": colour})
         window._apply_appearance()
         window._on_week()
@@ -1117,6 +1117,12 @@ def signature(layout_id: str) -> str:
     return LAYOUTS[layout_id].colourways[0][0]
 
 
+def own_accent(layout_id: str) -> str:
+    """A design's first colourway with an accent of its own. One that wears the student's accent, as
+    Clay's does, changes with it."""
+    return next(value for value, _, tokens in LAYOUTS[layout_id].colourways if "accent" in tokens)
+
+
 def test_the_chrome_follows_the_look_whatever_design_is_on_screen(
     qapp: QApplication, window: NativeWindow
 ) -> None:
@@ -1134,7 +1140,7 @@ def test_the_chrome_follows_the_look_whatever_design_is_on_screen(
     plain = resolved_palette(pack, system_dark, window._look, accent)
 
     for layout_id in ("bento", "mission", "clay"):
-        colour = signature(layout_id)
+        colour = own_accent(layout_id)
         window._layout = {"main": layout_id, "day": "one", "options": {layout_id: {"colour": colour}}}
         window._on_week()
         for view in ("week", "day", "month"):
