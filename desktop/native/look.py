@@ -1304,10 +1304,11 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
 
 def help_rules(palette: dict, text: str, radius: int, depth: str) -> str:
     """Help's shortcuts as keycaps, a key's bottom edge a little heavier, and About's name beside the
-    logo (decision 27 of 0.17). A flat look draws no lines, so there a key is a tinted tile."""
+    logo (decision 27 of 0.17). A look with no shadows draws no lines, so there a key is a tinted
+    tile."""
     caption = f"font-size: {type_pt('caption', text)}pt;"
     line = palette["hairline_strong"]
-    if depth == "flat":
+    if depth == "none":
         cap = f"background: {mix(palette['text'], palette['window'], 0.08)}; border: none;"
     else:
         cap = f"background: {palette['panel']}; border: 1px solid {line}; border-bottom: 2px solid {line};"

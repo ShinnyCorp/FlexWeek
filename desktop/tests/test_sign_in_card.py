@@ -142,8 +142,8 @@ def test_the_card_is_a_sheet_lifted_with_the_large_shadow_where_the_look_has_sha
     assert inside == QColor("#1a1d21"), inside.name()
     # Three pixels in lies clear of a 16-pixel corner, and on the edge of a 10-pixel one, a card's.
     assert inside.lightness() - corner.lightness() >= 5, "the corner is rounded as a sheet"
-    dress(window, monkeypatch, "light-frost", preset="terminal")
-    assert card(window).graphicsEffect() is None, "a flat look has no shadows"
+    dress(window, monkeypatch, "light-frost", preset="default", knobs={"depth": "none"})
+    assert card(window).graphicsEffect() is None, "a look with no shadows lifts nothing"
 
 
 @pytest.mark.parametrize("mode", ["sign in", "create", "reset"])
