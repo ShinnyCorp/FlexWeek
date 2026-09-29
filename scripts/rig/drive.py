@@ -774,7 +774,7 @@ def child_main(args: argparse.Namespace) -> int:
         held_at = r.minute_under(grab) - 19 * 60
         reachable = r.minute_under(edge) - held_at
         under: list[float] = []
-        yield from r.drag(grab, edge, held=lambda: under.append(r.minute_under(edge)), rest=900)
+        yield from r.drag(grab, edge, held=lambda: under.append(r.minute_under(edge)), rest=1500)
         yield from r.settled()
         start = minutes(block(ids["essay"])["start"])
         expect(
