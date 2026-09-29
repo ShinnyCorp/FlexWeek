@@ -463,11 +463,6 @@ def pack_axis(pack: object) -> str:
     return "system"
 
 
-def pack_motion(pack: object) -> str:
-    chosen = known_pack(pack)
-    return "extra" if chosen in {"light-frost", "dark-frost"} else "normal"
-
-
 def resolved_pack_theme(pack: object, system_dark: bool) -> str:
     chosen = known_pack(pack)
     if chosen == "system":
@@ -755,12 +750,13 @@ def text_scale(choice: dict | None) -> float:
 
 def look_motion(pack: object, look: dict | None) -> str:
     """The motion level a look starts at when the student never chose one: a custom look's own, Reduce
-    for Paper ("distinct page turns, sharp transitions"), else the pack's."""
+    for Paper ("distinct page turns, sharp transitions"), else Normal. Light and Dark once started at
+    More, 0.16's leftover, so choosing Light moved more than System did."""
     selected = sanitize_look(look)
     custom = selected.get("custom")
     if custom is not None:
         return custom.get("motion") or ("reduce" if LOOK_BASES[custom["base"]][1] == "paper" else "normal")
-    return "reduce" if selected["preset"] == "paper" else pack_motion(pack)
+    return "reduce" if selected["preset"] == "paper" else "normal"
 
 
 def preset_knobs(preset: object) -> dict:

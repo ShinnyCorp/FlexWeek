@@ -37,8 +37,8 @@
  {
   "file": "desktop/native/look.py",
   "name": "Paper at the pack's motion",
-  "old": "    return \"reduce\" if selected[\"preset\"] == \"paper\" else pack_motion(pack)",
-  "new": "    return pack_motion(pack)",
+  "old": "    return \"reduce\" if selected[\"preset\"] == \"paper\" else \"normal\"",
+  "new": "    return \"normal\"",
   "test": "desktop/tests/test_look.py::test_paper_starts_at_reduce_motion"
  },
  {

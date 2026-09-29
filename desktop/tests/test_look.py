@@ -33,7 +33,6 @@ from desktop.native.look import (
     look_motion,
     look_overrides,
     pack_axis,
-    pack_motion,
     pack_stylesheet,
     parse_look_menu_token,
     preset_knobs,
@@ -472,9 +471,10 @@ def test_paper_draws_the_family_quieter_and_poster_bolder() -> None:
 
 def test_paper_starts_at_reduce_motion() -> None:
     """E-Ink's "distinct page turns, sharp transitions": Paper's level when the student never chose
-    one. The others keep the pack's."""
+    one. Every other look starts at Normal, Light and Dark included."""
     assert look_motion("light-frost", look_of("paper")) == "reduce"
-    assert look_motion("light-frost", look_of("default")) == pack_motion("light-frost") == "extra"
+    for pack in ("light-frost", "dark-frost", "system", "slate"):
+        assert look_motion(pack, look_of("default")) == "normal", pack
     assert look_motion("slate", look_of("ink")) == "normal"
 
 

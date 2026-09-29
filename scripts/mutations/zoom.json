@@ -9,15 +9,15 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "Daily Scheduler's full 7 px edges on short blocks",
-  "old": "        edge = min(EDGE_PX, length / 5)\n",
-  "new": "        edge = EDGE_PX\n",
+  "old": "        if from_start <= min(EDGE_PX, length / 5 - lead):\n",
+  "new": "        if from_start <= EDGE_PX:\n",
   "test": "desktop/tests/test_hours_zoom.py::test_a_quarter_hour_on_the_day_moves_from_a_quarter_half_and_three_quarters_in"
  },
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "edges shrink to nothing",
-  "old": "        edge = min(EDGE_PX, length / 5)\n",
-  "new": "        edge = 0\n",
+  "old": "        if from_start <= min(EDGE_PX, length / 5 - lead):\n",
+  "new": "        if from_start < 0:\n",
   "test": "desktop/tests/test_hours_zoom.py::test_an_hour_still_resizes_from_its_edges_at_every_level"
  },
  {
