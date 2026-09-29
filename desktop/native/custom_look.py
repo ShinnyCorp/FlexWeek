@@ -136,6 +136,17 @@ def save_look(saved: list[dict], custom: dict, name: object) -> list[dict]:
     return kept
 
 
+def free_name(saved: list[dict], name: object) -> str:
+    """`name` as a new saved look can have it: tidied, and numbered ("My look 2") past the saved looks
+    that have it already, since `save_look` puts a look of the same name in their place."""
+    clean = _name(name)
+    stem = clean[: NAME_MAX - 3]
+    free, count = clean, 2
+    while _find(saved, free) >= 0:
+        free, count = f"{stem} {count}", count + 1
+    return free
+
+
 def rename_look(saved: list[dict], old: str, new: object) -> list[dict]:
     at = _find(saved, old)
     if at < 0:

@@ -2917,7 +2917,8 @@ class NativeWindow(QMainWindow):
             self._show_page("settingsPage")
             return
         page = SettingsPage(
-            self, self.session.preferences, self._look, self.session.reminder_limits, self._layout
+            self, self.session.preferences, self._look, self.session.reminder_limits, self._layout,
+            saved_looks=self._saved_looks,
         )
         page.motion_level = self._motion
         page.account_requested.connect(self._open_account)
@@ -2937,10 +2938,11 @@ class NativeWindow(QMainWindow):
         def apply() -> None:
             nonlocal login
             look, layout = page.look_choice(), page.layout_choice()
-            if look != self._look or layout != self._layout:
+            if look != self._look or layout != self._layout or page.saved_looks != self._saved_looks:
                 self._look = look
                 self.session.look = look
                 self._layout = layout
+                self._saved_looks = list(page.saved_looks)
                 self._save_look()
                 self._on_week()
             wanted = page.updates()

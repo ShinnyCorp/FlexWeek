@@ -106,15 +106,25 @@ def test_the_accent_is_swatches_in_the_looks_own_colours(qapp: QApplication, win
     page.close_page()
 
 
-def test_customise_has_its_row_under_look(qapp: QApplication, window: NativeWindow) -> None:  # noqa: F811
-    """Its lane builds what it opens (plan, "Customise"); until then it waits, and says so."""
+def test_customise_has_its_row_under_look_and_opens_the_look_editor(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """Plan, "Customise": B, the look editor, full window over Settings."""
     page = open_settings(qapp, window)
     button = page.findChild(QPushButton, "prefCustomise")
     label = page.colours_card.layout().labelForField(button)
     assert isinstance(label, QLabel) and label.text() == "Customise"
-    assert not button.isEnabled() and button.toolTip()
+    assert button.isEnabled() and button.toolTip()
     look = page.findChild(QWidget, "prefTheme")
     assert button.mapTo(page, QPoint(0, 0)).y() > look.mapTo(page, QPoint(0, 0)).y()
+    button.click()
+    for _ in range(10):
+        qapp.processEvents()
+    editor = page.findChild(QWidget, "lookEditor")
+    assert editor is not None and editor.isVisible()
+    assert editor.geometry() == page.rect(), "the editor fills the page"
+    assert not page.nav.isVisible(), "Settings' own list is put away under it"
     page.close_page()
 
 
