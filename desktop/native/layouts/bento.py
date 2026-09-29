@@ -1814,6 +1814,7 @@ class BentoView(LayoutView):
         inner.setContentsMargins(px(16), px(16), px(8) if painted else 0, px(12))
         inner.setSpacing(px(10))
         inner.addLayout(self._today_heading(scene, day))
+        self._waiting_side(scene, inner)
         ink = hero_ink(scene.tokens)
         said = coming(scene) if day == scene.today else None
         if said is not None:
@@ -1848,7 +1849,6 @@ class BentoView(LayoutView):
             glance.show_week(scene.week, scene.today, scene.minute, scene.tokens, ink, scene.scale)
             inner.addWidget(glance, 1)
             inner.addWidget(self._legend(scene, ink, columns=3))
-        self._waiting_side(scene, inner)
         body.addWidget(side)
         grid = self._grid
         others = [other for other in range(7) if other != day]
@@ -1887,8 +1887,10 @@ class BentoView(LayoutView):
         return self._heading(scene, name, line, "calendar-days", hero_ink(scene.tokens))
 
     def _waiting_side(self, scene: Scene, box: QVBoxLayout) -> None:
-        """Not placed yet, under the Today hero's side, two chips to a row: the drag onto the hours
-        this hero would otherwise have no way to start. Nothing when everything has a time."""
+        """Not placed yet, first on the Today hero's side under the day's name, two chips to a row: the
+        drag onto the hours this hero would otherwise have no way to start. Nothing when everything has
+        a time. Under Next and the glance or the day's summary, which grow with their words, a short
+        window or large text scrolled it out of sight."""
         waiting = scene.week.waiting
         if not waiting:
             return
@@ -1902,6 +1904,7 @@ class BentoView(LayoutView):
         for index, item in enumerate(waiting):
             grid.addWidget(self._chip(scene, item, index), index // 2, index % 2)
         box.addLayout(grid)
+        box.addWidget(_rule())
 
     def _tile_day(self, scene: Scene, day: int) -> TileDay:
         week = scene.week
