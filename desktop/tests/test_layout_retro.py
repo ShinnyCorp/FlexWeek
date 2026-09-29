@@ -439,15 +439,19 @@ def test_what_has_no_time_is_shown_once_in_the_notepad_or_under_the_hours_when_i
     qapp: QApplication,
 ) -> None:
     view = shown(qapp)
-    waiting = [chip.objectName() for chip in view.findChildren(TrayChip) if chip.block_id == "poster-1"]
-    assert waiting == ["retroNoteWaiting0"]
+
+    def seen() -> list[str]:
+        # A closed window is kept, hidden, with its chip in it: out of sight, out of the mouse's and
+        # Tab's reach. A chip made as a click is handled shows once the event loop runs again.
+        qapp.processEvents()
+        chips = view.findChildren(TrayChip)
+        return [chip.objectName() for chip in chips if chip.block_id == "poster-1" and chip.isVisible()]
+
+    assert seen() == ["retroNoteWaiting0"]
     QTest.mouseClick(view.findChild(QPushButton, "retroClose-notes"), Qt.MouseButton.LeftButton)
-    waiting = [chip.objectName() for chip in view.findChildren(TrayChip) if chip.block_id == "poster-1"]
-    assert waiting == ["retroWaiting0"]
-    assert view.findChild(TrayChip, "retroWaiting0").isVisible()
+    assert seen() == ["retroWaiting0"]
     QTest.mouseClick(task(view, "notes"), Qt.MouseButton.LeftButton)
-    waiting = [chip.objectName() for chip in view.findChildren(TrayChip) if chip.block_id == "poster-1"]
-    assert waiting == ["retroNoteWaiting0"]
+    assert seen() == ["retroNoteWaiting0"]
 
 
 def test_a_notepad_line_short_of_room_puts_its_length_and_time_under_its_title(qapp: QApplication) -> None:

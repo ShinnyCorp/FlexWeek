@@ -19,7 +19,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, Qt
-    from PySide6.QtGui import QCursor, QWheelEvent
+    from PySide6.QtGui import QCursor
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
@@ -92,13 +92,13 @@ def pairs(view: ClayDeckView) -> list[tuple[str, str]]:
     return list(zip(names, values, strict=True))
 
 
-def wheel(target: QWidget, at: QPointF, notch: int) -> None:
-    """One notch of the wheel over `at` in `target`, away from the student (1) or toward (-1)."""
-    event = QWheelEvent(
-        at, QPointF(target.mapToGlobal(at.toPoint())), QPoint(0, 0), QPoint(0, 120 * notch),
-        Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier, Qt.ScrollPhase.NoScrollPhase, False,
-    )
-    QApplication.sendEvent(target, event)
+def wheel(target: QWidget, notch: int) -> None:
+    """One notch of the wheel over the middle of `target`, away from the student (1) or toward (-1),
+    arriving at the window as a real one does. Qt passes a wheel that a widget ignores on to its
+    parents only when it came from the system, so one sent to `target` alone never reached the row."""
+    window = target.window()
+    at = target.mapTo(window, target.rect().center())
+    QTest.wheelEvent(window.windowHandle(), QPointF(at), QPoint(0, 120 * notch))
 
 
 def rest(qapp: QApplication, seconds: float) -> None:
@@ -200,11 +200,11 @@ def test_the_wheel_slides_the_row_over_a_neighbour_and_scrolls_the_hours_over_th
 ) -> None:
     view = shown(qapp)
     friday = view.findChild(HoursCanvas, "clayPeek4")
-    wheel(friday, QPointF(friday.rect().center()), -1)
+    wheel(friday, -1)
     assert view.row.front == 4
     # At the top of the hours, where the wheel has nothing left to scroll and passes on to the row.
     visible_scrolls(view)[0].verticalScrollBar().setValue(0)
-    wheel(front(view), QPointF(front(view).rect().center()), 1)
+    wheel(front(view), 1)
     assert view.row.front == 4
 
 
