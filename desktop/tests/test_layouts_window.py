@@ -630,7 +630,7 @@ def test_timelines_pages_are_its_paper_in_the_real_window(qapp: QApplication, wi
     they showed the pages; in the window they would be grey bands on white paper."""
     window._layout = {"main": "timeline", "day": "one", "options": {}}
     window._on_week()
-    qapp.processEvents()
+    faded_in()
     view = window.planner.currentWidget()
     paper = view.scene.tokens["surface"]
     assert paper != view.scene.tokens["bg"], "the page and the paper differ, or this checks nothing"
@@ -645,7 +645,7 @@ def test_timelines_pages_are_its_paper_in_the_real_window(qapp: QApplication, wi
     assert image.pixelColor(header.mapTo(view, QPoint(round(hours.gutter) - 3, 3))).name() == paper
     click(window, "viewDay")
     settled(qapp, window)
-    qapp.processEvents()
+    faded_in()
     notes = view.findChild(QWidget, "timelineNotesPage")
     image = view.grab().toImage()
     assert image.pixelColor(notes.mapTo(view, QPoint(notes.width() - 3, 3))).name() == paper
@@ -705,7 +705,7 @@ def test_the_dials_list_is_one_card_in_the_real_window(qapp: QApplication, windo
     list's last row was on its card; in the window it sat on a grey band."""
     window._layout = {"main": "classic", "day": "dial", "options": {}}
     click(window, "viewMyDay")
-    qapp.processEvents()
+    faded_in()
     view = window.planner.currentWidget()
     closing = view.findChild(QWidget, "dialNone")
     # Right of its words, where only the background is drawn.
