@@ -20,8 +20,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     import shiboken6
-    from PySide6.QtCore import QEvent, QPoint, Qt
-    from PySide6.QtGui import QColor, QHelpEvent, QTextDocumentFragment
+    from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, Qt
+    from PySide6.QtGui import QColor, QHelpEvent, QMouseEvent, QTextDocumentFragment
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import (
         QApplication,
@@ -35,7 +35,8 @@ if importlib.util.find_spec("PySide6") is not None:
     )
 
     from desktop.native.hours.chips import TrayChip
-    from desktop.native.hours.geometry import Axis
+    from desktop.native.hours.geometry import Axis, Span
+    from desktop.native.hours.hand import Hand, Move, Verdict
     from desktop.native.hours.zoom import HoursScroll
     from desktop.native.layouts.base import Scene
     from desktop.native.layouts.mission import WEEK_SCALE, Bar, MissionCanvas, MissionView
@@ -61,12 +62,13 @@ def shown(
     minute: str = "13:40",
     size: tuple[int, int] = (1366, 760),
     scale: float = 1.0,
+    hand: Hand | None = None,
     **chosen: str,
 ) -> MissionView:
     """Mission on the test week, Thursday 13:40 unless told otherwise."""
     options = {**options_for(None, "mission"), **chosen}
     palette = resolved_palette("light-frost", False, None, "default")
-    view = MissionView()
+    view = MissionView(hand=hand)
     view.resize(*size)
     week = build_week(WEEK, blocks or BLOCKS, homework or HOMEWORK, TRACE)
     view.show_week(
@@ -165,6 +167,62 @@ def test_two_blocks_at_one_time_take_separate_scope_rows(qapp: QApplication) -> 
     boxes = [rect for item, rect in hours.drawn(track) if item.block_id in {"dinner", "quiz"}]
     assert len(boxes) == 2
     assert boxes[0].bottom() < boxes[1].top() or boxes[1].bottom() < boxes[0].top()
+
+
+CLUB = block("club", "locked", [0], "15:15", 45, title="Robotics club", category="extra")
+
+
+def test_blocks_sharing_their_time_are_each_as_tall_as_a_block_alone(qapp: QApplication) -> None:
+    """Monday's maths (15:45 to 16:30) shares a quarter hour with the club (15:15 to 16:00). They sit
+    side by side in Monday's lane, and each has the room a block alone in its lane has, as the
+    mock-up gives every block: the lane takes the room of two. Too short for their names, each has
+    its name written after it, in its own row. Each day's name stays beside its lane."""
+    view = shown(qapp, blocks=[*BLOCKS, CLUB], size=(1280, 744))
+    hours = view.findChild(MissionCanvas, "missionHours")
+
+    def rect(block_id: str, day: int):
+        return next(rect for item, rect in hours.drawn(hours.track_for(day)) if item.block_id == block_id)
+
+    maths, club, alone = rect("math-1", 0), rect("club", 0), rect("school", 1)
+    assert maths.top() > club.bottom() or club.top() > maths.bottom(), "they are not side by side"
+    assert min(maths.height(), club.height()) >= alone.height()
+    image = hours.grab().toImage()
+    for box in (maths, club):
+        ink = sum(
+            QColor(image.pixel(x, y)).lightness() < 110
+            for x in range(round(box.right()) + 4, round(box.right()) + 60)
+            for y in range(round(box.top()) + 6, round(box.top()) + 24)
+        )
+        assert ink > 20, "no name after it"
+    for day in range(7):
+        name = view.findChild(QPushButton, f"missionDay{day}")
+        middle = hours.mapFromGlobal(name.mapToGlobal(name.rect().center())).y()
+        lane = hours.painter.lane(hours.track_for(day))
+        assert lane.top() < middle < lane.bottom(), f"day {day}'s name is not beside its lane"
+
+
+def test_a_block_sharing_its_time_is_picked_up_and_dropped_on_another_lane(qapp: QApplication) -> None:
+    host = QWidget()
+    hand = Hand(lambda block_id, from_day, span: Verdict(True, ""), host)
+    said: list[object] = []
+    hand.committed.connect(said.append)
+    view = shown(qapp, blocks=[*BLOCKS, CLUB], size=(1280, 744), hand=hand)
+    hours = view.findChild(MissionCanvas, "missionHours")
+    start = hours.block_rect("math-1", 0).center()
+    # 70 pixels at 56 an hour is an hour and a quarter later, in Tuesday's lane.
+    end = QPoint(start.x() + 70, hours.point_for(1, 12 * 60).y())
+
+    def send(kind: QEvent.Type, at: QPoint, held: bool) -> None:
+        buttons = Qt.MouseButton.LeftButton if held else Qt.MouseButton.NoButton
+        event = QMouseEvent(kind, QPointF(hours.mapFromGlobal(at)), QPointF(at), Qt.MouseButton.LeftButton,
+                            buttons, Qt.KeyboardModifier.NoModifier)
+        QApplication.sendEvent(hours, event)
+
+    send(QEvent.Type.MouseButtonPress, start, True)
+    for step in range(1, 9):
+        send(QEvent.Type.MouseMove, start + (end - start) * step / 8, True)
+    send(QEvent.Type.MouseButtonRelease, end, False)
+    assert said == [Move("math-1", 0, Span(1, 17 * 60, 17 * 60 + 45))]
 
 
 def test_week_name_opens_a_real_day_and_todays_date_is_a_chip(qapp: QApplication) -> None:
@@ -344,6 +402,35 @@ def test_day_says_what_is_still_to_come_today_and_the_free_time_left(qapp: QAppl
         )
     ] == [("14:30–18:00", "3:30"), ("18:30–18:45", "0:15"), ("19:45–20:00", "0:15"), ("21:30–22:00", "0:30")]
     assert words(free.findChild(QLabel, "missionFoot")) == "Room for Poster-1, 2:00, before 22:00."
+
+
+def test_up_next_shows_whole_rows_and_leaves_out_what_does_not_fit(qapp: QApplication) -> None:
+    """At 15:40 four things are still to come on Thursday, and at 1280 by 744 the card has room for
+    fewer. It shows the first ones whole, never the next cut at its foot, and its head still counts
+    all four."""
+    soccer = block("soccer", "locked", [1, 3], "16:00", 90, title="Soccer practice", category="exercise")
+    view = shown(qapp, surface="day", iso_day="2026-09-17", minute="15:40", size=(1280, 744),
+                 blocks=[*BLOCKS, soccer])
+    coming = view.findChild(QFrame, "missionUpNext")
+    assert words(coming.findChild(QLabel, "missionMuted")) == "4 more today"
+
+    def showing(row: QWidget) -> QRect:
+        """The part of a row on screen: inside every widget it is in, up to the card."""
+        if not row.isVisibleTo(coming):
+            return QRect()
+        seen = QRect(row.mapTo(coming, QPoint(0, 0)), row.size())
+        inside = row.parentWidget()
+        while inside is not coming:
+            seen &= QRect(inside.mapTo(coming, QPoint(0, 0)), inside.size())
+            inside = inside.parentWidget()
+        return seen
+
+    rows = coming.findChildren(QFrame, "missionListRow")
+    shows = [row for row in rows if not showing(row).isEmpty()]
+    assert 0 < len(shows) < len(rows)
+    assert [showing(row).size() for row in shows] == [row.size() for row in shows], "a row is cut"
+    titles = [row.findChild(FittedLabel, "missionRowTitle").full_text() for row in shows]
+    assert titles == ["Soccer practice", "Dinner", "Essay-1", "Chem-1"][: len(shows)]
 
 
 def test_late_in_the_day_the_free_time_says_when_what_waits_will_not_fit(qapp: QApplication) -> None:

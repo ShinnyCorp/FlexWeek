@@ -1162,16 +1162,15 @@ class BentoCanvas(HoursCanvas):
 class BentoHours(HoursScroll):
     """Hours that open at now in the middle, as every design's hours open (decision 12 of 0.17), and
     a day or week without now as the mock-up frames it: the first block a quarter of an hour under
-    the top."""
+    the top. Only opening is framed so: a time asked for later is the time shown."""
 
     # The first block's start, set each render; None frames nothing.
     first: int | None = None
 
-    def scroll_to(self, minute: int, above: int | None = 90) -> None:
-        if above is None or self.first is None or not self.isVisible() or not self.canvas.tracks:
-            super().scroll_to(minute, above)
-            return
-        super().scroll_to(self.first - 15, 0)
+    def open_at(self, key: object, minute: int, above: int | None = 90) -> None:
+        if above is not None and self.first is not None:
+            minute, above = self.first, 15
+        super().open_at(key, minute, above)
 
 
 class Row(QPushButton):
@@ -1323,15 +1322,18 @@ class BentoView(LayoutView):
         grid, px = self._grid, scene.px
         nxt, due, load, tray = tiles
         if self.cramped:
+            # Not placed yet stays beside the hours, where a drag onto them starts. Under them, it was
+            # past the bottom of a small window with large text.
             grid.setColumnStretch(0, 1)
-            grid.setColumnStretch(1, 1)
-            grid.addWidget(hero, 0, 0, 1, 2)
+            for tile in (load, tray):
+                tile.setFixedWidth(px(SIDE))
+            grid.addWidget(hero, 0, 0)
+            grid.addWidget(tray, 0, 1)
             grid.setRowMinimumHeight(0, px(420))
             if nxt is not None:
                 grid.addWidget(nxt, 1, 0, 1, 2)
-            grid.addWidget(due, 2, 0, 2, 1)
+            grid.addWidget(due, 2, 0)
             grid.addWidget(load, 2, 1)
-            grid.addWidget(tray, 3, 1)
         else:
             grid.setColumnStretch(0, 1)
             grid.addWidget(hero, 0, 0, 3, 1)

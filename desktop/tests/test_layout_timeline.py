@@ -450,18 +450,19 @@ def test_day_is_one_column_of_the_whole_day_on_the_left_page_and_its_notes_on_th
     assert (heading.title.text(), heading.chip.text(), heading.chip.isVisible()) == ("Thursday", "17", True)
 
 
-def test_day_sums_the_day_up_says_what_is_next_lists_what_is_due_and_rules_a_space_for_notes(
+def test_day_sums_the_day_up_says_what_is_next_and_lists_what_is_due_with_nothing_to_write_in(
     qapp: QApplication,
 ) -> None:
     view = shown(qapp, "day")
-    assert texts(view, "timelineLabel") == ["Today", "Next", "Due this week", "Notes"]
+    assert texts(view, "timelineLabel") == ["Today", "Next", "Due this week"]
     assert texts(view, "timelineTrayLabel") == ["Not placed yet"]
     assert texts(view, "timelineSum") == ["2 h 30 min planned · 0 done"]
     shares = list(zip(texts(view, "timelineShare"), texts(view, "timelineShareLength"), strict=True))
     assert shares == [("School", "6 h 30 min"), ("Meals", "30 min"), ("Homework", "2 h 30 min")]
     (line,) = view.findChildren(QLabel, "timelineNext")
     assert plain(line) == "Dinner at 18:00, in 4 h 20 min"
-    assert view.findChild(QWidget, "timelineRuled").isVisible()
+    # No ruled space for notes: it looked writable and kept nothing.
+    assert view.findChild(QWidget, "timelineRuled") is None
     assert [chip.held.title for chip in view.findChildren(TrayChip) if chip.isVisible()] == ["Poster-1"]
 
 
@@ -470,7 +471,7 @@ def test_another_day_is_named_for_itself_and_claims_no_next(qapp: QApplication) 
     kept = scroll_of(view)
     view.show_week(replace(view.scene, iso_day="2026-09-14"))
     qapp.processEvents()
-    assert texts(view, "timelineLabel") == ["Monday", "Due this week", "Notes"]
+    assert texts(view, "timelineLabel") == ["Monday", "Due this week"]
     assert view.findChild(QPushButton, "timelineDayHead").title.text() == "Monday"
     assert [track.day for track in canvas(view).tracks] == [0]
     assert scroll_of(view) is kept

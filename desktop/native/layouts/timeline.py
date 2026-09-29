@@ -7,8 +7,9 @@ started on. At the foot of the left page are the week's figures and what is next
 right, the homework not placed yet as sticky notes, and what is due this week.
 
 Day opens the planner at one day: its hours on the left page; on the right its summary, what is next,
-what is due this week, what is not placed yet, and a ruled space for notes. Both are the shared hours,
-on the window's hand.
+what is due this week and what is not placed yet. The mock-up's ruled space for notes is left out
+until FlexWeek can keep notes: lines that look writable and keep nothing would mislead (Jonathan,
+2026-09-29). Both are the shared hours, on the window's hand.
 """
 
 from __future__ import annotations
@@ -109,8 +110,6 @@ COMPACT = 0.6
 SHEET = 3
 # The gutter's shade, from the fold out across each page.
 FOLD, FOLD_SHADE = 30, 0.07
-# The notes' ruled lines on Day.
-RULED = 32
 
 
 def _spread(inner: float, area: QRectF) -> list[LinearTrack]:
@@ -626,27 +625,6 @@ class Note(TrayChip):
         painter.end()
 
 
-class Ruled(QFrame):
-    """The ruled space for notes at the foot of Day's right page."""
-
-    def __init__(self, tokens: dict[str, str], scale: float) -> None:
-        super().__init__()
-        self.setObjectName("timelineRuled")
-        self.rule = QColor(mix_oklab(tokens["line"], tokens["surface"], 0.5))
-        self.pitch = RULED * scale
-        self.setMinimumHeight(round(self.pitch))
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-
-    def paintEvent(self, event: object) -> None:  # noqa: N802
-        painter = QPainter(self)
-        painter.setPen(QPen(self.rule, 1))
-        at = self.pitch * 0.6
-        while at < self.height():
-            painter.drawLine(QPointF(0, at), QPointF(self.width(), at))
-            at += self.pitch
-        painter.end()
-
-
 class Split(QFrame):
     """Two parts side by side while it is `wide` enough for both, and one over the other when not,
     as the foot of the right page is in a narrow window or at large text."""
@@ -897,9 +875,7 @@ class TimelineView(LayoutView):
         section.setSpacing(px(6))
         self._waiting(scene, section, square=False)
         notes.addLayout(section)
-        section = self._section(scene, "Notes")
-        section.addWidget(Ruled(scene.tokens, scene.scale), 1)
-        notes.addLayout(section, 1)
+        notes.addStretch(1)
 
     def shown_day(self, scene: Scene) -> int:
         if scene.surface == "day" and scene.iso_day:

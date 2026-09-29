@@ -213,7 +213,7 @@ All notable changes to FlexWeek are documented here. Format follows
   are the week in figures and what is next; at the foot of the right, sticky
   notes of what is not placed yet and what is due this week. A day's name opens
   it. Day opens the planner at that day: its hours on the left page, and on the
-  right its summary, what is next, what is due, the notes and a ruled space.
+  right its summary, what is next, what is due and the notes.
 - Mission control is an ops board. Four figures run across the top: homework
   planned today, homework due this week, the free time left today until 22:00,
   and the focus minutes on this week's homework. Under them the days are lanes
