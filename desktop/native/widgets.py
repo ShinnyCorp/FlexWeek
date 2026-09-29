@@ -1160,51 +1160,62 @@ class Switch(QCheckBox):
         policy.setHeightForWidth(True)
         self.setSizePolicy(policy)
 
-    def _toggle(self) -> tuple[QStyleOptionButton, QRect, int]:
-        """The style's option with no words, where it draws the toggle, and the room after it."""
+    def _toggle(self) -> tuple[QStyleOptionButton, int]:
+        """The style's option with no words, its rect the first line's row, and where the words start.
+
+        The style centres the toggle in the rect it is given. Given the whole switch, the toggle sat
+        by the middle of words that wrapped, and the words, drawn from there, ran past its foot."""
         option = QStyleOptionButton()
         self.initStyleOption(option)
         option.text = ""
         mark = self.style().subElementRect(QStyle.SubElement.SE_CheckBoxIndicator, option, self)
         gap = self.style().pixelMetric(QStyle.PixelMetric.PM_CheckBoxLabelSpacing, option, self)
-        return option, mark, mark.right() + 1 + gap
+        option.rect = QRect(0, 0, self.width(), max(mark.height(), self.fontMetrics().height()))
+        return option, mark.right() + 1 + gap
 
     def _words(self, width: int) -> QRect:
-        return self.fontMetrics().boundingRect(
-            QRect(0, 0, max(width, 1), 100_000), int(Qt.TextFlag.TextWordWrap), self.text()
+        """Where the words go on a switch `width` wide: after the toggle, the first line level with it."""
+        option, start = self._toggle()
+        column = max(width - start - 2, 1)
+        lines = self.fontMetrics().boundingRect(
+            QRect(0, 0, column, 100_000), int(Qt.TextFlag.TextWordWrap), self.text()
         )
+        top = (option.rect.height() - self.fontMetrics().height()) // 2
+        return QRect(start, top, column, lines.height())
 
     def sizeHint(self) -> QSize:  # noqa: N802
-        _option, mark, start = self._toggle()
-        words = self.fontMetrics().size(0, self.text())
-        return QSize(start + words.width() + 2, max(mark.height(), words.height()) + 2)
+        _option, start = self._toggle()
+        width = start + self.fontMetrics().size(0, self.text()).width() + 2
+        return QSize(width, self.heightForWidth(width))
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
-        _option, mark, start = self._toggle()
+        _option, start = self._toggle()
         longest = max((self.fontMetrics().horizontalAdvance(word) for word in self.text().split()), default=0)
-        return QSize(start + longest + 2, mark.height())
+        # One line high, as a label's: how tall its words are when they wrap is heightForWidth's answer.
+        return QSize(start + longest + 2, self.sizeHint().height())
 
     def hasHeightForWidth(self) -> bool:  # noqa: N802
         return True
 
     def heightForWidth(self, width: int) -> int:  # noqa: N802
-        _option, mark, start = self._toggle()
-        return max(mark.height(), self._words(width - start - 2).height()) + 2
+        option, _start = self._toggle()
+        return max(option.rect.height(), self._words(width).bottom() + 1) + 2
 
     def hitButton(self, pos: QPoint) -> bool:  # noqa: N802
         return self.rect().contains(pos)
 
     def paintEvent(self, event: object) -> None:  # noqa: N802
-        option, mark, start = self._toggle()
+        option, _start = self._toggle()
+        words = self._words(self.width())
+        # A row taller than the words, as beside the Look editor's colour chips, keeps them in its middle.
+        top = max(0, (self.height() - max(option.rect.height(), words.bottom() + 1)) // 2)
+        option.rect = option.rect.translated(0, top)
         painter = QStylePainter(self)
         painter.drawControl(QStyle.ControlElement.CE_CheckBox, option)
         group = QPalette.ColorGroup.Active if self.isEnabled() else QPalette.ColorGroup.Disabled
         painter.setPen(self.palette().color(group, QPalette.ColorRole.WindowText))
-        words = self._words(self.width() - start - 2)
-        # The first line sits level with the toggle; the rest run under it.
-        top = max(0, (mark.height() - self.fontMetrics().height()) // 2) + mark.top()
         painter.drawText(
-            QRect(start, top, self.width() - start - 2, words.height()),
+            words.translated(0, top),
             int(Qt.TextFlag.TextWordWrap | Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
             self.text(),
         )
