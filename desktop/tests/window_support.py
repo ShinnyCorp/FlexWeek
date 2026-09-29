@@ -100,7 +100,8 @@ def signed_out(qapp: QApplication, server: LocalServer) -> Iterator[NativeWindow
 
 @pytest.fixture()
 def window(qapp: QApplication, signed_out: NativeWindow) -> NativeWindow:
-    """Signed in on the week page, setup skipped, preferences loaded."""
+    """Signed in on the week page, setup skipped, preferences loaded. The week page has finished
+    fading in: a test that read the top bar's pixels straight away read them through the fade."""
     signed_out.username.setText(USERNAME)
     signed_out.password.setText(PASSWORD)
     signed_out.findChild(QPushButton, "createAccount").click()
@@ -108,4 +109,5 @@ def window(qapp: QApplication, signed_out: NativeWindow) -> NativeWindow:
     signed_out.recovery_ack.setChecked(True)
     signed_out.recovery_continue.click()
     past_setup(qapp, signed_out)
+    still(signed_out)
     return signed_out

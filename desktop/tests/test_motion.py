@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 import os
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 
 import pytest
 
@@ -84,6 +85,17 @@ def two_pages(qapp: QApplication) -> tuple[QStackedWidget, QWidget, QWidget]:
     return stack, first, second
 
 
+def within(seconds: float, done: Callable[[], bool]) -> bool:
+    """Whether `done` comes true within `seconds`, looked at every few milliseconds. One look after a
+    fixed wait failed on a busy test worker that had not yet run the fade's last frame."""
+    deadline = time.monotonic() + seconds
+    while not done():
+        if time.monotonic() > deadline:
+            return False
+        QTest.qWait(5)
+    return True
+
+
 @pytest.mark.parametrize(
     ("preference", "look", "level"),
     [
@@ -134,14 +146,19 @@ def test_a_switch_fades_through_the_old_page_out_before_the_new_one_shows(qapp: 
     """Two pages were read on top of each other halfway through a cross-fade (decision 28 of 0.17)."""
     stack, _first, second = two_pages(qapp)
     switch_page(stack, second, "normal")
-    effect = second.graphicsEffect()
-    assert effect is not None and effect.opacity == 0, "the new page waits, unseen, for the old one to go"
-    assert len(pictures(stack)) == 1
-    QTest.qWait(duration(PAGE_OUT_MS, "normal") + 40)
-    assert 0 < effect.opacity < 1, "then comes in"
-    QTest.qWait(THROUGH_MS)
-    assert second.graphicsEffect() is None, "an effect left in place slows every later repaint"
-    assert pictures(stack) == []
+    frames: list[tuple[float, float]] = []
+
+    def frame() -> bool:
+        """Note how opaque the old page and the new one are painted; true once the fade is over."""
+        old, new = pictures(stack), second.graphicsEffect()
+        going = max((picture.graphicsEffect().opacity for picture in old), default=0.0)
+        frames.append((going, new.opacity if new else 1.0))
+        return not old and new is None
+
+    assert within(2, frame), "an effect left in place slows every later repaint"
+    assert frames[0] == (1.0, 0.0), "the new page waits, unseen, for the old one to go"
+    assert [both for both in frames if min(both) > 0] == [], "the two pages are never painted at once"
+    assert any(0 < new < 1 for _old, new in frames), "then comes in"
     stack.close()
 
 
@@ -245,8 +262,7 @@ def test_under_reduce_settings_fades_through_rather_than_over_the_page(qapp: QAp
     effect = second.graphicsEffect()
     assert effect.offset == QPoint() and effect.opacity == 0
     assert stack.findChildren(Dim) == []
-    QTest.qWait(THROUGH_MS)
-    assert second.graphicsEffect() is None and pictures(stack) == []
+    assert within(2, lambda: second.graphicsEffect() is None and pictures(stack) == [])
     stack.close()
 
 
