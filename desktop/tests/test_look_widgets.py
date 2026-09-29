@@ -38,7 +38,13 @@ if importlib.util.find_spec("PySide6") is not None:
         preset_knobs,
         resolved_palette,
     )
-    from desktop.native.settings import AboutDialog, SettingsPage
+    from desktop.native.settings import (
+        OWN_LOOK_ACCENT_NOTE,
+        OWN_LOOK_KNOBS_NOTE,
+        SAVED_LOOK,
+        AboutDialog,
+        SettingsPage,
+    )
     from desktop.native.tokens import SINK, mix_oklab
     from desktop.native.weekmodel import build_week
     from desktop.native.widgets import DIALOG_MARGIN, use_app_style
@@ -272,6 +278,50 @@ def test_opening_settings_shows_the_look_on_screen_and_changes_nothing(qapp: QAp
     assert dialog.findChild(QComboBox, "lookPreset") is None
     assert dialog.look.findData(look_menu_token("preset", "terminal")) >= 0
     assert dialog.look.findData(look_menu_token("pack", "system")) >= 0
+
+
+def test_a_look_of_your_own_shows_what_it_sets_and_leaves_changes_to_customise(qapp: QApplication) -> None:
+    """A custom look sets every knob and the accent, so the ones in Settings changed nothing while it
+    was worn. They show its values and cannot be changed, and a line says where they can; a built-in
+    look hands them back with the knob moved before it was put on."""
+    night = {
+        "name": "Night study",
+        "base": "dark",
+        "accent": "sea",
+        "spacing": "compact",
+        "shadows": "none",
+        "body_font": "serif",
+    }
+    built_in = {"preset": "terminal", "knobs": {}}
+    dialog = SettingsPage(None, {"accent": "gold"}, built_in, {}, saved_looks=[night])
+    dialog.fine_tune.setChecked(True)
+    move(dialog, "corners", "rounded")
+    choose(dialog, SAVED_LOOK + "Night study")
+    assert shown(dialog) == {
+        "surface": "layered",
+        "corners": "soft",
+        "depth": "none",
+        "font": "serif",
+        "blocks": "edge",
+        "density": "compact",
+        "text": "normal",
+    }
+    assert not any(box.isEnabled() for box in dialog.knobs.values())
+    assert dialog.accent.currentData() == "sea" and not dialog.accent.isEnabled()
+    assert dialog.own_look_note.isVisibleTo(dialog)
+    assert dialog.own_look_note.text() == OWN_LOOK_KNOBS_NOTE.format(name="Night study")
+    assert dialog.accent_note.isVisibleTo(dialog)
+    assert dialog.accent_note.text() == OWN_LOOK_ACCENT_NOTE.format(name="Night study")
+    assert dialog.updates()["accent"] == "gold", "the account's accent stays for the other looks"
+    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "rounded"}, "custom": night}
+    choose(dialog, look_menu_token("preset", "paper"))
+    assert dialog.look_choice() == {"preset": "paper", "knobs": {"corners": "rounded"}}
+    assert shown(dialog) == {**preset_knobs("paper"), "corners": "rounded"}
+    assert all(box.isEnabled() for box in dialog.knobs.values())
+    assert dialog.accent.currentData() == "gold" and dialog.accent.isEnabled()
+    assert not dialog.own_look_note.isVisibleTo(dialog) and not dialog.accent_note.isVisibleTo(dialog)
+    move(dialog, "depth", "bold")
+    assert dialog.look_choice() == {"preset": "paper", "knobs": {"corners": "rounded", "depth": "bold"}}
 
 
 def wait_until(qapp: QApplication, predicate, timeout: float = 8.0) -> None:

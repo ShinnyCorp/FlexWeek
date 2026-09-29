@@ -1174,6 +1174,9 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f"border: {chosen_edge}; }}"
         'QPushButton[segment="true"]:disabled { background: transparent; '
         f'color: {palette["hairline_strong"]}; }}'
+        # Still raised, so a choice that cannot be changed here says which it is.
+        f'QPushButton[segment="true"]:checked:disabled {{ background: {palette["field"]}; '
+        f'color: {palette["muted"]}; border: {chosen_edge}; }}'
     )
 
 

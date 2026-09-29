@@ -1316,6 +1316,7 @@ class SwatchButton(QAbstractButton):
     so it is told by more than its colour."""
 
     SIZE = 28
+    DISABLED = 0.4
 
     def __init__(self, text: str) -> None:
         super().__init__()
@@ -1338,6 +1339,9 @@ class SwatchButton(QAbstractButton):
     def paintEvent(self, _event: object) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        if not self.isEnabled() and not self.isChecked():
+            # As a segment that cannot be chosen: faint, with the chosen one still clear.
+            painter.setOpacity(self.DISABLED)
         ring = self.SIZE + 2 * SPACING[0]
         left = (self.width() - ring) / 2
         colour = QColor(self.fill)
