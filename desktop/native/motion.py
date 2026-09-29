@@ -272,11 +272,14 @@ def appear(
     shift: int = 0,
     delay_ms: int = 0,
     ms: int = EASE_MS,
+    grow: bool = False,
 ) -> None:
     """Fade `widget` in where it already is. A notice or a sheet can rise into place, and a page can
     come in from `shift` pixels to the side. `delay_ms` keeps it unseen first, to follow the page
     before it out or to stagger a list. All in Normal's pixels and milliseconds. A window's insides
-    have nothing under them to fade over, so a dialog fades its content, not itself."""
+    have nothing under them to fade over, so a dialog fades its content, not itself. `grow` is for
+    a widget a layout has just made room for: where things may travel its height opens from nothing,
+    so what the layout puts below it moves with it rather than jumping."""
     settle(widget)
     wait, length = duration(delay_ms, level), duration(ms, level)
     if wait + length == 0 or not widget.isVisible():
@@ -284,13 +287,21 @@ def appear(
     start = QPoint(distance(shift, level), distance(RISE_PX, level) if rise else 0)
     effect = Shift(widget, start)
     widget.setGraphicsEffect(effect)
+    full = widget.sizeHint().height() if grow and moves(level) else 0
+    limit = widget.maximumHeight()
 
     def step(at: float) -> None:
         share = _along(at, wait, length)
         effect.set(share, start * (1 - share))
+        if full:
+            widget.setMaximumHeight(round(full * share))
 
-    # An effect left in place makes every later repaint of the widget go through it.
-    _run(widget, wait + length, step, lambda: widget.setGraphicsEffect(None))
+    def done() -> None:
+        # An effect left in place makes every later repaint of the widget go through it.
+        widget.setGraphicsEffect(None)
+        widget.setMaximumHeight(limit)
+
+    _run(widget, wait + length, step, done)
 
 
 def fade_through(picture: QLabel | None, incoming: Iterable[QWidget], level: str, direction: int = 0) -> None:
