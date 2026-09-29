@@ -128,8 +128,8 @@
  {
   "name": "High contrast silent about its own yellow",
   "file": "desktop/native/settings.py",
-  "old": "        self._colours_form.setRowVisible(self.accent_note, self.look_choice()[\"preset\"] in OWN_ACCENT)\n",
-  "new": "        self._colours_form.setRowVisible(self.accent_note, False)\n",
+  "old": "        own_accent = custom is None and self._look[\"preset\"] in OWN_ACCENT\n",
+  "new": "        own_accent = False\n",
   "test": "desktop/tests/test_settings_look.py::test_high_contrast_says_it_keeps_its_own_yellow"
  }
 ]

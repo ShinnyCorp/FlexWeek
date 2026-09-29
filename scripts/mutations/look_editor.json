@@ -121,7 +121,7 @@
  {
   "file": "desktop/native/settings.py",
   "name": "a saved look chosen under More looks is not worn",
-  "old": "                self._look = wear(self._look, saved)",
+  "old": "                self._look = wear(before, saved)",
   "new": "                pass",
   "test": "desktop/tests/test_look_editor.py::test_done_keeps_the_look_by_its_name_and_more_looks_offers_it_beside_the_ten"
  },
