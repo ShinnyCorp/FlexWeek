@@ -646,8 +646,7 @@ class WholeRows(QWidget):
 
     def _show(self) -> None:
         """Every row if all have room, else the first that fit less the last of them, whose room
-        goes to "and N more". The first row always has its room. The last row shown has no rule
-        under it."""
+        goes to "and N more". The last row shown has no rule under it."""
         tall = [self._tall(row) for row in self.rows]
         fit = 0
         room = self.height()
