@@ -4,7 +4,6 @@ every block is written in the canvas's own font, whatever was drawn before it.""
 from __future__ import annotations
 
 import importlib.util
-import math
 import os
 from collections.abc import Iterator
 
@@ -21,16 +20,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt
     from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter
-    from PySide6.QtWidgets import QApplication, QWidget
+    from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
     from desktop.native.fonts import TABULAR, load_fonts
     from desktop.native.hours import canvas as canvas_module
     from desktop.native.hours.canvas import BlockPainter, Drawn, HoursCanvas, fit_lines
-    from desktop.native.hours.geometry import LinearTrack
+    from desktop.native.hours.geometry import Axis, LinearTrack
     from desktop.native.hours.hand import Hand, Verdict
-    from desktop.native.layouts.base import Scene
-    from desktop.native.layouts.registry import options_for, tokens_for
-    from desktop.native.layouts.timeline import TimelineView
+    from desktop.native.hours.zoom import HoursScroll, Scale
     from desktop.native.look import mix, resolved_palette
     from desktop.native.weekmodel import build_week, minute_of
 
@@ -204,18 +201,42 @@ if importlib.util.find_spec("PySide6") is not None:
             super().drawText(*args)
 
 
-def timeline_week(qapp: QApplication) -> TimelineView:
-    options = options_for(None, "timeline")
-    palette = resolved_palette("light-frost", False, None, "default")
-    week = build_week(WEEK, BLOCKS, HOMEWORK, TRACE)
-    tokens = tokens_for("timeline", options["colour"], palette)
-    view = TimelineView()
-    HOSTS.append(view)
-    view.resize(1150, 700)
-    view.show_week(Scene(week, 3, minute_of("17:00"), options, tokens))
-    view.show()
+def lane_week(qapp: QApplication) -> HoursCanvas:
+    """Seven lanes whose time runs across at 64 pixels an hour, with the hour labels in a strip
+    above them, as Mission control lays its week out."""
+
+    def lanes(area: QRectF) -> list[LinearTrack]:
+        tall = area.height() / 7
+        return [
+            LinearTrack(
+                day,
+                QRectF(area.left() + 24, area.top() + day * tall + 6, area.width() - 48, tall - 12),
+                Axis.ACROSS,
+            )
+            for day in range(7)
+        ]
+
+    host = QWidget()
+    HOSTS.append(host)
+    canvas = HoursCanvas(
+        Hand(lambda block_id, from_day, span: Verdict(True, ""), host),
+        BlockPainter(resolved_palette("light-frost", False, None, "default")),
+        lanes,
+    )
+    scroll = HoursScroll(
+        canvas,
+        Scale("lanes.week", (48, 64, 80, 96), 64),
+        lambda px: 24 * px + 48,
+        name="lanes",
+        gutter=170,
+        axis=Axis.ACROSS,
+    )
+    QVBoxLayout(host).addWidget(scroll)
+    host.resize(1150, 700)
+    canvas.set_week(build_week(WEEK, BLOCKS, HOMEWORK, TRACE).occurrences, 3, minute_of("17:00"))
+    host.show()
     qapp.processEvents()
-    return view
+    return canvas
 
 
 def words_on(canvas: HoursCanvas, block_id: str, day: int) -> list[str]:
@@ -225,36 +246,36 @@ def words_on(canvas: HoursCanvas, block_id: str, day: int) -> list[str]:
 
 
 @pytest.mark.parametrize("points", [9, 13])
-def test_a_short_block_on_sideways_hours_is_its_first_letter_not_dots(
+def test_a_block_with_no_room_for_three_letters_is_its_colour_alone(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch, points: int
 ) -> None:
-    """Timeline's Week at 64 pixels an hour draws the 30-minute Dinner 30 pixels wide: no room for
-    any of its name, in three lines of small text or one of large. It says "D", its first letter,
-    and nothing else; not lines of "…". A block with room still says its name."""
+    """A week of lanes at 64 pixels an hour draws the 30-minute Dinner 30 pixels wide: no room for
+    three letters of its name. Decision 14 of 0.17: below three letters, the colour alone, not "D"
+    seven times down the week and not lines of "…". A block with room still says its name."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
     usual = QFont(qapp.font())
     font = QFont(usual)
     font.setPointSize(points)
     qapp.setFont(font)
     try:
-        canvas = timeline_week(qapp).hours_surfaces()[0]
+        canvas = lane_week(qapp)
         assert canvas.block_rect("dinner", 0).width() < 34
         Said.words = []
         canvas.repaint()
     finally:
         qapp.setFont(usual)
     for day in range(7):
-        assert words_on(canvas, "dinner", day) == ["D"], f"Dinner on day {day}"
+        assert words_on(canvas, "dinner", day) == [], f"Dinner on day {day}"
     assert words_on(canvas, "school", 0)[0].startswith("School")
 
 
 def test_an_hour_label_at_the_edge_of_what_shows_is_moved_inside_it(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Timeline's Week scrolled so 08:00 sits on the left edge of what shows, then so 20:00 sits on
+    """A week of lanes scrolled so 08:00 sits on the left edge of what shows, then so 20:00 sits on
     its right edge: each label is written whole inside what shows, not cut to ")8:00" or "20:0"."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
-    canvas = timeline_week(qapp).hours_surfaces()[0]
+    canvas = lane_week(qapp)
     scroll = canvas._scroll_area()
     port, bar = scroll.viewport(), scroll.horizontalScrollBar()
     track = canvas.tracks[0]
@@ -287,7 +308,11 @@ HOUR_PX = 48
 
 
 def three_days(
-    now_min: int | None = None, blocks: tuple[dict, ...] = (ESSAY,), hour_px: int = HOUR_PX
+    now_min: int | None = None,
+    blocks: tuple[dict, ...] = (ESSAY,),
+    hour_px: int = HOUR_PX,
+    palette: dict | None = None,
+    days: int = 3,
 ) -> HoursCanvas:
     """Three days from 08:00 to 20:00, at Today's app's default 48 pixels an hour unless told, in
     Inter at the normal text size, with today on the first when there is a now."""
@@ -296,14 +321,14 @@ def three_days(
     def columns(area: QRectF) -> list[LinearTrack]:
         return [
             LinearTrack(day, QRectF(60 + 150 * day, 10, 140, 12 * hour_px), first=8 * 60, last=20 * 60)
-            for day in range(3)
+            for day in range(days)
         ]
 
     host = QWidget()
     HOSTS.append(host)
     canvas = HoursCanvas(
         Hand(lambda block_id, from_day, span: Verdict(True, ""), host),
-        BlockPainter(resolved_palette("system", False, None)),
+        BlockPainter(palette or resolved_palette("system", False, None)),
         columns,
         gutter=56,
     )
@@ -325,7 +350,7 @@ def test_every_time_on_the_hours_is_written_in_figures_of_one_width(
     Said.fonts = []
     canvas.grab()
     timed = [(text, font) for text, font in Said.fonts if any(letter.isdigit() for letter in text)]
-    assert {"08:00", "20:00"} <= {text for text, _font in timed}
+    assert {"09:00", "19:00"} <= {text for text, _font in timed}
     assert any("16:00–17:30" in text for text, _font in timed)
     for text, font in timed:
         assert font.featureValue(QFont.Tag(TABULAR)) == 1, text
@@ -334,26 +359,47 @@ def test_every_time_on_the_hours_is_written_in_figures_of_one_width(
 CLUB = {"id": "club", "title": "Club", "kind": "locked", "days": [1], "start": "19:00", "duration_min": 60}
 
 
-def test_a_one_hour_block_says_its_name_and_its_times_on_two_lines(
+DINNER = {"id": "dinner", "title": "Dinner", "kind": "locked", "days": [1], "start": "18:30",
+          "duration_min": 30}
+
+
+def test_a_block_says_the_most_it_can_without_cutting_a_word_or_ending_a_line_in_a_dot(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Club at 19:00 for an hour was one shortened line, "Club · 19:00–20:00 · …", when it had room
-    for its name in bold and its times in the smaller font below: the test asked for two bold lines.
-    Here it has just that room, which is less than two bold lines, and at the default 48 pixels an
-    hour it has more."""
+    """Decision 14 of 0.17. Club at 19:00 for an hour says its name and its times at the week's 48
+    pixels an hour, and its length on a line of its own once there is room; a half-hour Dinner says
+    "Dinner 18:30" on one line. No line ends in "·", which 0.16 left dangling after every time."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
-    font = QFont("Inter", 12)
-    bold = QFont(font)
-    bold.setBold(True)
-    bold_line = QFontMetricsF(bold).height()
-    just = math.ceil(bold_line + 1 + QFontMetricsF(canvas_module._small(font)).height())
-    assert just < 2 * bold_line
-    # A block's words have its height less 7 pixels: 2 between blocks, 3 above and 2 below.
-    for hour_px in (just + 7, HOUR_PX):
-        canvas = three_days(blocks=(CLUB,), hour_px=hour_px)
+    for hour_px, club in ((HOUR_PX, ["Club", "19:00–20:00"]), (96, ["Club", "19:00–20:00", "1 h"])):
+        canvas = three_days(blocks=(CLUB, DINNER), hour_px=hour_px)
         Said.words = []
         canvas.grab()
-        assert words_on(canvas, "club", 1) == ["Club", "19:00–20:00 · 1 h"], hour_px
+        assert words_on(canvas, "club", 1) == club, hour_px
+        assert not any(text.rstrip().endswith("·") for text, _where in Said.words)
+    canvas = three_days(blocks=(DINNER,))
+    Said.words = []
+    canvas.grab()
+    assert words_on(canvas, "dinner", 1) == ["Dinner", "18:30"]
+    dinner = [where for text, where in Said.words if text in ("Dinner", "18:30")]
+    assert abs(dinner[0].center().y() - dinner[1].center().y()) < 3, "Dinner and its time on one line"
+
+
+def test_a_word_too_wide_for_its_block_is_shortened_only_when_nothing_else_fits(qapp: QApplication) -> None:
+    """A word is never cut while a smaller arrangement would say it whole; with none, the title gives
+    way with "…", and with no room for three letters there are no words at all."""
+    from desktop.native.hours.canvas import block_layout
+    from desktop.native.hours.geometry import Span
+
+    title, small = BlockPainter(resolved_palette("system", False, None)).fonts(QFont("Inter", 12))
+    tall = QFontMetricsF(title).lineSpacing() * 4
+    drawn = Drawn("long", "Photosynthesis", "class", False, Span(1, 9 * 60, 10 * 60), 0, 1)
+    whole = QFontMetricsF(title).horizontalAdvance("Photosynthesis")
+    said = [line.text for line in block_layout(drawn, title, small, QRectF(0, 0, whole + 2, tall))]
+    assert said[0] == "Photosynthesis"
+    narrow = [line.text for line in block_layout(drawn, title, small, QRectF(0, 0, whole / 2, tall))]
+    assert narrow[0].endswith("…") and narrow[0] != "…"
+    three = QFontMetricsF(title).horizontalAdvance("Pho")
+    assert block_layout(drawn, title, small, QRectF(0, 0, three - 1, tall)) == []
 
 
 def rows(palette: dict, today: bool) -> QImage:
@@ -369,28 +415,47 @@ def rows(palette: dict, today: bool) -> QImage:
 
 def test_the_hours_have_a_rule_at_each_hour_and_none_at_the_half(qapp: QApplication) -> None:
     """The dashed half-hour rules crowded the grid. On a dark look the hour rules take the stronger
-    hairline, since the plain one all but vanished on the page."""
-    for pack, dark, rule in (("slate", False, "hairline"), ("nocturne", True, "hairline_strong")):
-        palette = resolved_palette(pack, dark, None)
+    hairline, since the plain one all but vanished on the page; High contrast's are 40 % white, since
+    full white turned the grid into graph paper. Nocturne, Ink and Terminal draw looks.css's 8 % of
+    their text."""
+    high_contrast = {"preset": "high-contrast", "knobs": {}}
+    for pack, dark, look, rule in (
+        ("slate", False, None, resolved_palette("slate", False, None)["hairline"]),
+        ("dark-frost", True, None, resolved_palette("dark-frost", True, None)["hairline_strong"]),
+        ("nocturne", True, None, mix("#e0e4f0", "#0a0e27", 0.08)),
+        ("light-frost", False, high_contrast, "#666666"),
+    ):
+        palette = resolved_palette(pack, dark, look)
         image = rows(palette, today=False)
         at = {minute: 10 + (minute - 8 * 60) * HOUR_PX // 60 for minute in (8 * 60 + 30, 9 * 60)}
-        assert QColor(image.pixel(60, at[9 * 60])).name() == palette[rule], pack
+        assert QColor(image.pixel(60, at[9 * 60])).name() == rule, pack
         assert QColor(image.pixel(60, at[8 * 60 + 30])).name() == palette["window"], pack
 
 
-def test_today_is_washed_in_a_tenth_of_the_accent(qapp: QApplication) -> None:
-    palette = resolved_palette("slate", False, None)
-    washed = QColor(rows(palette, today=True).pixel(60, 10 + HOUR_PX // 2))
-    wanted = QColor(mix(palette["accent"], palette["window"], 0.10))
-    for got, want in zip(washed.getRgb()[:3], wanted.getRgb()[:3], strict=True):
-        assert abs(got - want) <= 1, (washed.name(), wanted.name())
+def _near(got: QColor, want: str) -> bool:
+    return all(abs(a - b) <= 1 for a, b in zip(got.getRgb()[:3], QColor(want).getRgb()[:3], strict=True))
+
+
+def test_today_is_washed_in_a_little_of_the_text_colour_on_a_week_and_not_at_all_on_a_day(
+    qapp: QApplication,
+) -> None:
+    """Decision 13 of 0.17: 3 % of the text colour at most, never the accent, which picked as Gold
+    turned today's column khaki; and none on Day, where washing the one day marks nothing."""
+    for pack, dark, accent in (("light-frost", False, "gold"), ("dark-frost", True, "default")):
+        palette = resolved_palette(pack, dark, None, accent)
+        y = 10 + HOUR_PX // 2
+        week = three_days(now_min=15 * 60 + 40, palette=palette).grab().toImage()
+        assert _near(week.pixelColor(130, y), mix(palette["text"], palette["window"], 0.03)), pack
+        assert _near(week.pixelColor(280, y), palette["window"]), pack
+        day = three_days(now_min=15 * 60 + 40, palette=palette, days=1).grab().toImage()
+        assert _near(day.pixelColor(130, y), palette["window"]), pack
 
 
 def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The line said where now is but not what time it is. At 15:40 it starts from a pill in the
-    error colour reading "15:40", level with the line."""
+    """The line said where now is but not what time it is. At 15:40 it starts from a pill reading
+    "15:40", level with the line, in the accent: red is for what cannot be, and now is not that."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
     canvas = three_days(now_min=15 * 60 + 40)
     Said.inks = []
@@ -401,5 +466,100 @@ def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
     assert len(written) == 1
     assert abs(written[0].center().y() - line_y) <= 2
     assert track.area.left() <= written[0].left() < track.area.left() + 12
-    error = resolved_palette("system", False, None)["error"]
-    assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == error
+    accent = resolved_palette("system", False, None)["accent"]
+    assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == accent
+
+
+def custom_hours(custom: dict) -> tuple[HoursCanvas, dict]:
+    """Three days at 15:40 in a custom look on Light, with its painter."""
+    look = {"preset": "default", "knobs": {}, "custom": {"base": "light", **custom}}
+    palette = resolved_palette("system", False, look)
+    canvas = three_days(now_min=15 * 60 + 40, palette=palette)
+    canvas.set_painter(BlockPainter(palette, look))
+    return canvas, palette
+
+
+def test_a_custom_look_sets_todays_wash_the_now_line_and_the_edge(qapp: QApplication) -> None:
+    """Customise's grid and block settings: today's highlight off, the now line in the text colour,
+    and a 6-pixel category edge, where the look's own are a 3 % wash, the accent and 3 pixels."""
+    y = 10 + HOUR_PX // 2
+    plain, plain_palette = custom_hours({"blocks": "edge"})
+    changed, palette = custom_hours(
+        {"blocks": "edge", "today_highlight": False, "now_line": "text", "edge_width": 6}
+    )
+    before, after = plain.grab().toImage(), changed.grab().toImage()
+    assert _near(before.pixelColor(130, y), mix(plain_palette["text"], plain_palette["window"], 0.03))
+    assert _near(after.pixelColor(130, y), palette["window"])
+    track = changed.tracks[0]
+    line_y = round(track.area.top() + track.offset(15 * 60 + 40))
+    x = int(track.area.right()) - 3
+    assert before.pixelColor(x, line_y).name() == plain_palette["accent"]
+    assert after.pixelColor(x, line_y).name() == palette["text"]
+    block = changed.block_rect("essay", 1)
+    middle = block.center().y()
+    # Five pixels in is past the look's own 3-pixel edge and inside the custom look's 6.
+    assert not _near(before.pixelColor(block.left() + 5, middle), plain_palette["block_edge"])
+    assert _near(after.pixelColor(block.left() + 5, middle), palette["block_edge"])
+
+
+def test_a_custom_look_can_leave_out_a_blocks_times_or_its_length(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    for shown, missing, custom in (
+        ("16:00–17:30", "1 h 30 min", {"show_lengths": False}),
+        ("1 h 30 min", "16:00–17:30", {"show_times": False}),
+    ):
+        canvas, _palette = custom_hours(custom)
+        Said.words = []
+        canvas.grab()
+        written = " ".join(text for text, _where in Said.words)
+        assert shown in written and missing not in written, custom
+
+
+def test_a_short_block_at_large_text_keeps_its_title_first_and_whole_words(qapp: QApplication) -> None:
+    """At Large text a 45-minute block on the week has room for one line. "Piano lesson" is said
+    whole; "Math worksheet", which cannot be, gives way at a space, "Math…", and its name comes before
+    its time: not "Mat… 19:00", nor "Math works…"."""
+    from desktop.native.hours.canvas import TEXT_LEFT, TEXT_RIGHT, TEXT_TOP, block_layout
+    from desktop.native.hours.geometry import Span
+
+    large = {"preset": "default", "knobs": {"text": "large"}}
+    title, small = BlockPainter(resolved_palette("system", False, None), large).fonts(QFont("Inter", 15))
+    # A column of the week beside the rail at 1280, 45 minutes at 48 pixels an hour.
+    rect = QRectF(0, 0, 128, 45 * 48 / 60 - 3)
+    room = rect.adjusted(TEXT_LEFT, TEXT_TOP, -TEXT_RIGHT, -1)
+    tight = QRectF(room.left(), 1, room.width(), rect.height() - 1)
+
+    def said(name: str, homework: bool) -> list[str]:
+        span = Span(1, 19 * 60, 19 * 60 + 45)
+        drawn = Drawn(name, name, "assignments" if homework else "extra", homework, span, 0, 1)
+        return [line.text for line in block_layout(drawn, title, small, room, tight=tight, book=homework)]
+
+    assert said("Piano lesson", False)[0] == "Piano lesson"
+    assert said("Math worksheet", True) == ["Math…"]
+
+
+def test_a_half_hour_in_high_contrast_says_its_name_on_the_week(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """High contrast's text is Large, where a half-hour on the week is one caption line exactly. Kept a
+    pixel clear of its top, Dinner said nothing, and High contrast draws blocks as outlines, so there
+    was no colour to say it either: an empty box."""
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    look = {"preset": "high-contrast", "knobs": {}}
+    palette = resolved_palette("system", False, look)
+    dinner = {
+        "id": "dinner",
+        "title": "Dinner",
+        "kind": "locked",
+        "category": "meals",
+        "days": [0],
+        "start": "18:30",
+        "duration_min": 30,
+    }
+    canvas = three_days(blocks=(dinner,), palette=palette)
+    canvas.set_painter(BlockPainter(palette, look))
+    Said.words = []
+    canvas.grab()
+    assert "Dinner" in [text for text, _where in Said.words]

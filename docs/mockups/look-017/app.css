@@ -1,0 +1,60 @@
+/* The mock-up's own page around the stage, and the shared top bar inside it. */
+
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 "Inter", sans-serif; background: #eceef2; color: #1d2330; }
+body.bare { background: transparent; }
+button { font: inherit; cursor: pointer; }
+
+.tabs { display: flex; gap: 8px; align-items: center; padding: 10px 16px; background: #fff; border-bottom: 1px solid #dde1e7; position: sticky; top: 0; z-index: 5; }
+.tabs strong { margin-right: 16px; }
+.body { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
+.side { width: 220px; flex: none; display: flex; flex-direction: column; gap: 4px; }
+.side h2, .info h2, .main h2 { font-size: 15px; margin: 0 0 8px; }
+.side-item { text-align: left; background: transparent; border: 0; border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; }
+.side-item small { color: #6b7280; }
+.side-item.on { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.main { flex: 1; min-width: 0; }
+.main.full { max-width: 1400px; }
+.info { width: 300px; flex: none; background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.info h3 { font-size: 12px; text-transform: none; color: #6b7280; margin: 14px 0 6px; }
+.info ul { margin: 0; padding-left: 18px; }
+.controls { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.row { display: flex; gap: 6px; align-items: center; }
+.row.wrap { flex-wrap: wrap; }
+.row label { width: 64px; color: #6b7280; font-size: 12px; }
+.chip { border: 1px solid #d5d9e0; background: #fff; border-radius: 999px; padding: 4px 12px; }
+.chip.on { background: #1d2330; color: #fff; border-color: #1d2330; }
+.pick { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+.pick h3 { width: 100%; }
+.note { color: #6b7280; margin: 0 0 12px; }
+.fw-scaled { overflow: hidden; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.looks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
+.look-cell { background: transparent; border: 0; padding: 0; text-align: left; display: flex; flex-direction: column; gap: 6px; }
+.picks { width: 100%; max-width: 520px; font: 14px/1.5 "JetBrains Mono", monospace; padding: 10px; border-radius: 8px; border: 1px solid #d5d9e0; display: block; margin-bottom: 8px; }
+
+/* The stage: FlexWeek's 1280x800 window. */
+.fw-stage { position: relative; overflow: hidden; }
+.fw-stage.system-stage { width: 1280px; min-height: 800px; overflow: visible; }
+.fw-current { width: 1280px; height: 800px; display: block; }
+.fw-empty { display: grid; place-items: center; height: 100%; color: var(--muted, #888); font-size: 18px; }
+.fw-error { color: #c42b1c; padding: 16px; white-space: pre-wrap; font-size: 12px; }
+.fw-content { position: relative; overflow: hidden; }
+.fw-icon { display: inline-block; vertical-align: -3px; flex: none; }
+
+.fw-bar { height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 var(--s4); background: var(--page); color: var(--text); }
+.fw-bar-left, .fw-bar-right { display: flex; align-items: center; gap: var(--s2); }
+.fw-title { font-family: var(--font-head); font-size: var(--t-title); font-weight: var(--w-strong); margin-left: var(--s2); letter-spacing: -0.01em; }
+.fw-iconbtn { width: 32px; height: 32px; display: inline-grid; place-items: center; border-radius: var(--r-control); color: var(--text); }
+.fw-btn { height: 32px; display: inline-flex; align-items: center; gap: 4px; padding: 0 var(--s3); border-radius: var(--r-control); font-size: var(--t-body); font-weight: var(--w-regular); }
+.fw-btn.quiet { color: var(--text); }
+.fw-btn.secondary { color: var(--accent); background: var(--accent-tint); font-weight: var(--w-strong); }
+.fw-segs { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--r-pill); background: color-mix(in oklab, var(--text) 6%, var(--page)); }
+.fw-segs .seg { height: 26px; display: inline-flex; align-items: center; padding: 0 var(--s3); border-radius: var(--r-pill); color: var(--muted); font-size: var(--t-body); }
+.fw-segs .seg.on { background: var(--card); color: var(--text); font-weight: var(--w-strong); box-shadow: var(--shadow-sm); }
+.fw-add { display: inline-flex; height: 32px; border-radius: var(--r-control); background: var(--accent); color: var(--accent-ink); overflow: hidden; font-weight: var(--w-strong); }
+.fw-add .main { display: inline-flex; align-items: center; gap: 4px; padding: 0 var(--s3); }
+.fw-add .more { display: inline-grid; place-items: center; width: 28px; border-left: 1px solid color-mix(in oklab, var(--accent-ink) 30%, transparent); }
+.look-poster .fw-add, .look-poster .fw-btn.secondary { box-shadow: var(--shadow-sm); border: 2px solid var(--text); }
+.look-high-contrast .fw-segs { background: #000; outline: 1px solid #fff; }
+.look-high-contrast .fw-segs .seg { color: #fff; }
+.look-high-contrast .fw-segs .seg.on { background: #ffd400; color: #000; }

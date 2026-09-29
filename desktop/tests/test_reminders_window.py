@@ -206,7 +206,7 @@ def launch(qapp: QApplication, server: LocalServer, name: str, opened: list, *, 
         window.recovery_continue.click()
         past_setup(qapp, window)
     else:
-        if window._making_account:
+        if window.sign_in_button.isHidden():
             window.findChild(QPushButton, "authSwitch").click()
         window.keep_signed_in.setChecked(False)
         window.sign_in_button.click()

@@ -30,8 +30,8 @@
  {
   "file": "backend/models.py",
   "name": "a work window starts at any minute",
-  "old": "        if not (start_fits_day(start) and on_slot(start)):\n            raise ValueError(\"start must be on the 00:00\u201324:00 grid\")\n        return value\n\n    @field_validator(\"end\")\n",
-  "new": "        if not start_fits_day(start):\n            raise ValueError(\"start must be on the 00:00\u201324:00 grid\")\n        return value\n\n    @field_validator(\"end\")\n",
+  "old": "        if not (start_fits_day(start) and on_slot(start)):\n            raise ValueError(\"start must be on the 00:00–24:00 grid\")\n        return value\n\n    @field_validator(\"end\")\n",
+  "new": "        if not start_fits_day(start):\n            raise ValueError(\"start must be on the 00:00–24:00 grid\")\n        return value\n\n    @field_validator(\"end\")\n",
   "test": "backend/tests/test_stage4_api.py::test_estimates_and_the_planners_windows_stay_on_the_quarter_hour"
  },
  {

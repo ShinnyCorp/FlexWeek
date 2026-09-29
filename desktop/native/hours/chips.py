@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QEvent, QSize, Qt
 from PySide6.QtGui import QContextMenuEvent, QMouseEvent, QResizeEvent
 from PySide6.QtWidgets import QPushButton, QWidget
 
@@ -45,6 +45,16 @@ class TrayChip(QPushButton):
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
+        self._fit()
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        # A new look can change the text size and the borders without changing the chip's width, and
+        # at High contrast's large text the words then ran off its edge.
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self._fit()
+
+    def _fit(self) -> None:
         fonts = self.fontMetrics()
         chrome = super().sizeHint().width() - fonts.horizontalAdvance(self.text())
         room = max(self.width() - chrome, 0)

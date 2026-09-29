@@ -113,6 +113,15 @@ def test_explicit_normal_motion_stays_on_the_wire(alice: TestClient) -> None:
     assert loaded["motion"] == "normal"
 
 
+def test_reduce_motion_is_kept_and_an_unknown_level_is_rejected(alice: TestClient) -> None:
+    """Decision 33 of 0.17: Reduce, fades without movement, is a level a student can keep."""
+    saved = alice.put("/api/preferences", json={**defaults(), "motion": "reduce"}, headers=WRITE)
+    assert saved.status_code == 200, saved.text
+    assert alice.get("/api/preferences").json()["motion"] == "reduce"
+    rejected = alice.put("/api/preferences", json={**defaults(), "motion": "more"}, headers=WRITE)
+    assert rejected.status_code == 422
+
+
 def test_a_set_pack_keeps_theme_on_its_axis(alice: TestClient) -> None:
     rejected = alice.put(
         "/api/preferences",

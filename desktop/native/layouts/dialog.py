@@ -29,7 +29,7 @@ from desktop.native.layouts.registry import (
     options_for,
 )
 from desktop.native.previews import Previews
-from desktop.native.widgets import ChoiceCard, Choices, FlowLayout, Segmented, Switch
+from desktop.native.widgets import ChoiceCard, Choices, FlowLayout, Form, Segmented, Switch
 
 SLOTS = (
     ("main", "plan", "Main view", "Where you plan your week."),
@@ -38,9 +38,9 @@ SLOTS = (
 DESIGN_LINE = (
     "A design is how FlexWeek lays out your week. Your blocks and homework are the same in every one."
 )
-# Look and Accent are shown only for a design that uses them, so a design with colours of its own
-# says how to get them back, under the colours it is about.
-COLOUR_NOTE = "Pick Match my look to use your own Look and Accent."
+# A design in colours of its own wears them on its page only, so it says what keeps the student's,
+# under the colours it is about.
+COLOUR_NOTE = "Only the design's page takes these colours. The rest of FlexWeek keeps your Look and Accent."
 # The width setup's design cards are drawn at, so a picture drawn for one is ready for the other.
 PICTURE_WIDTH = 206
 # A choice of more than this many is a dropdown; up to it, the choices sit side by side.
@@ -137,7 +137,7 @@ class LayoutSection(QFrame):
         body.addWidget(self.pick)
         self._form_host = QWidget()
         self._form_host.setObjectName("settingsRow")
-        self._form = QFormLayout(self._form_host)
+        self._form = Form(self._form_host)
         # A long option drops its choices under its name rather than pushing the page wider than the
         # room it has.
         self._form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)

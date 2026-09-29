@@ -11,8 +11,8 @@ import pytest
 
 from desktop.native.layouts.registry import (
     LAYOUTS,
+    LEVELS,
     MATCH,
-    complete,
     contrast_failures,
     layouts_for,
     options_for,
@@ -29,7 +29,8 @@ from desktop.native.look import (
     palette_from_tokens,
     resolved_palette,
 )
-from desktop.tests.test_look import EVERY_LOOK, TEXT_PAIRS, _lab
+from desktop.native.tokens import oklch_of
+from desktop.tests.test_look import TEXT_PAIRS, _lab
 
 DESIGNS = [spec.id for spec in LAYOUTS.values() if spec.options]
 
@@ -58,19 +59,26 @@ def test_two_main_views_and_one_day_screen_are_standard_and_the_rest_experimenta
         assert sanitize_layout({slot: spec.id})[slot] == spec.id, "a saved experimental choice still loads"
 
 
-def test_every_design_offers_all_three_levels() -> None:
-    for layout_id in DESIGNS:
-        levels = {option.level for option in LAYOUTS[layout_id].options}
-        assert levels == {"style", "detail"}, layout_id
+def test_every_option_sits_at_a_level_the_dialog_draws() -> None:
+    """Fine-tune is only for a design with something to fine-tune: since 0.17 both of Bento's heroes
+    draw every tile, so it only styles. An option at a level the dialog does not draw is never shown."""
+    drawn = {level for level, _ in LEVELS}
+    for spec in LAYOUTS.values():
+        assert {option.level for option in spec.options} <= drawn, spec.id
 
 
-def test_every_design_ships_its_own_colours_first_and_can_follow_the_students_look() -> None:
+def test_every_design_follows_the_students_look_until_one_of_its_own_colourways_is_picked() -> None:
+    """Decision 3 of 0.17: a design's default is Match my look, and its signature colourways stay
+    as choices. A colourway saved before then still loads as saved."""
     for layout_id in DESIGNS:
         spec = LAYOUTS[layout_id]
         colour = spec.options[0]
         assert colour.key == "colour" and colour.level == "style", layout_id
-        assert colour.default == spec.colourways[0][0], layout_id
-        assert colour.values == (*[value for value, _, _ in spec.colourways], MATCH), layout_id
+        assert colour.default == MATCH, layout_id
+        assert colour.values == (MATCH, *[value for value, _, _ in spec.colourways]), layout_id
+        signature = spec.colourways[0][0]
+        saved = sanitize_layout({"options": {layout_id: {"colour": signature}}})
+        assert options_for(saved, layout_id)["colour"] == signature, layout_id
 
 
 def test_option_keys_and_choices_are_unambiguous() -> None:
@@ -121,7 +129,7 @@ def test_options_are_the_students_choice_over_the_designs_defaults() -> None:
         "actions": "hide",
         "daybar": "show",
     }
-    assert options_for(None, "dial") == {"colour": "midnight", "hours": "day", "list": "show", "week": "show"}
+    assert options_for(None, "dial") == {"colour": MATCH, "list": "show", "week": "show"}
     assert options_for(choice, "classic") == {}
 
 
@@ -132,35 +140,30 @@ def test_every_shipped_colourway_is_readable(layout_id: str) -> None:
         assert contrast_failures(tokens_for(layout_id, value, palette)) == [], (layout_id, value)
 
 
-def test_every_design_dresses_the_window_in_colours_its_text_reads_on() -> None:
-    """A design's colours dress the whole window: the top bar, Day, Month and every dialog. Retro's
-    dark desktops put their white page text on its grey windows and fields, 1.82 to 1."""
-    bases = [
-        resolved_palette(pack, dark, {"preset": preset, "knobs": {"surface": surface}}, accent)
-        for pack, dark, preset, accent, surface in EVERY_LOOK
-    ]
-    # Match my look follows the look, so it is checked in every one; a design's own colours are fixed,
-    # and the look lends them only its block colours, so a light and a dark look are enough.
-    dressed = [(MATCH, palette_from_tokens(tokens_for(DESIGNS[0], MATCH, base), base)) for base in bases]
+def test_every_design_dresses_its_page_in_colours_its_text_reads_on() -> None:
+    """A design in its own colours dresses its whole page: its panels, buttons, fields and scroll
+    bars (the chrome keeps the look). Retro's dark desktops put their white page text on its grey
+    windows and fields, 1.82 to 1. A design's colours are fixed, and the look lends them only its
+    block colours, so a light and a dark look are enough."""
     light, dark = resolved_palette("light-frost", False, None), resolved_palette("nocturne", True, None)
-    dressed += [
+    dressed = [
         (f"{layout_id} {value}", palette_from_tokens(tokens_for(layout_id, value, base), base))
         for layout_id in DESIGNS
         for value, _, _ in LAYOUTS[layout_id].colourways
         for base in (light, dark)
     ]
     failures = {
-        (name, ink, paper, round(contrast(chrome[ink], chrome[paper]), 2))
-        for name, chrome in dressed
+        (name, ink, paper, round(contrast(page[ink], page[paper]), 2))
+        for name, page in dressed
         for ink, paper in TEXT_PAIRS
-        if contrast(chrome[ink], chrome[paper]) < AA_TEXT
+        if contrast(page[ink], page[paper]) < AA_TEXT
     }
     assert sorted(failures) == []
 
 
 def test_match_my_look_is_readable_in_every_look_the_app_has() -> None:
     failures = []
-    combos = list(itertools.product(PACKS, (False, True), LOOK_PRESETS, ACCENT_COLORS, ("frost", "flat")))
+    combos = list(itertools.product(PACKS, (False, True), LOOK_PRESETS, ACCENT_COLORS, ("layered", "flat")))
     for pack, dark, preset, accent, surface in combos:
         look = {"preset": preset, "knobs": {"surface": surface}}
         tokens = tokens_for("bento", MATCH, resolved_palette(pack, dark, look, accent))
@@ -172,7 +175,12 @@ def test_match_my_look_is_readable_in_every_look_the_app_has() -> None:
 def test_a_design_can_ask_for_a_colour_its_colourway_does_not_name() -> None:
     palette = resolved_palette("light-frost", False, None, "default")
     tokens = tokens_for("one", "black", palette)
-    assert (tokens["bg"], tokens["cta"], tokens["cta_ink"]) == ("#000000", "#fb923c", "#000000")
+    # Poster names no accent, so it wears the student's own in place of 0.16's orange: the same hue,
+    # lightened until it reads on the black page.
+    assert tokens["bg"] == "#000000" and tokens["cta"] == tokens["accent"]
+    assert oklch_of(tokens["accent"])[2] == pytest.approx(oklch_of(palette["accent"])[2], abs=2)
+    assert oklch_of(tokens["accent"])[0] > oklch_of(palette["accent"])[0]
+    assert contrast(tokens["cta_ink"], tokens["cta"]) >= 4.5
     # Derived from the colourway itself. Borrowed from the student's light look it was white on pale.
     for key in ("card_a", "card_b", "card_c", "card_d"):
         assert contrast(tokens["text"], tokens[key]) >= 4.5
@@ -206,7 +214,7 @@ def test_a_bar_that_carries_no_text_is_free_to_be_seen() -> None:
     1.01 at worst, so Terminal's came out dark brown on black. A bar has no text on it."""
     worst = 99.0
     for pack, dark, preset, accent, surface in itertools.product(
-        PACKS, (False, True), LOOK_PRESETS, ACCENT_COLORS, ("frost", "flat")
+        PACKS, (False, True), LOOK_PRESETS, ACCENT_COLORS, ("layered", "flat")
     ):
         look = {"preset": preset, "knobs": {"surface": surface}}
         tokens = tokens_for("bento", MATCH, resolved_palette(pack, dark, look, accent))
@@ -240,7 +248,7 @@ def test_every_design_offers_a_dark_colourway() -> None:
 
 
 def test_every_design_offers_a_light_colourway_too() -> None:
-    """The same argument the other way: Mission control is three shades of dark."""
+    """The same argument the other way: every one of Mission control's colourways is dark."""
     missing = [
         layout_id
         for layout_id, spec in LAYOUTS.items()
@@ -256,10 +264,41 @@ def test_every_design_offers_a_light_colourway_too() -> None:
 
 
 def test_a_dark_colourway_is_readable_like_any_other() -> None:
+    palette = resolved_palette("light-frost", False, None)
     for layout_id, spec in LAYOUTS.items():
         for value, _label, tokens in spec.colourways:
             if relative_luminance(tokens["bg"]) < 0.35:
-                assert contrast_failures(complete(tokens)) == [], (layout_id, value)
+                assert contrast_failures(tokens_for(layout_id, value, palette)) == [], (layout_id, value)
+
+
+@pytest.mark.parametrize(
+    ("layout_id", "colour"), [("one", "black"), ("dial", "midnight"), ("clay", "pastel")]
+)
+def test_a_colourway_in_the_students_accent_reads_in_every_one(layout_id: str, colour: str) -> None:
+    """One thing's Poster and Day dial's Night take the student's accent onto their dark pages, and
+    Clay deck's Clay onto its lavender one, so each is held to the rules in every accent of every pack,
+    light and dark, not only in the one the other tests use, and a refusal never wears it."""
+    import math
+
+    named = next(tokens for value, _, tokens in LAYOUTS[layout_id].colourways if value == colour)
+    assert "accent" not in named
+    failures, close = [], {}
+    for pack, dark, accent in itertools.product(PACKS, (False, True), ACCENTS):
+        tokens = tokens_for(layout_id, colour, resolved_palette(pack, dark, None, accent))
+        failures += [(pack, dark, accent, item) for item in contrast_failures(tokens)]
+        for ground in ("bg", "surface"):
+            if (ratio := contrast(tokens["accent"], tokens[ground])) < AA_TEXT:
+                failures.append((pack, dark, accent, f"accent on {ground} {ratio:.2f}"))
+        if (gap := math.dist(_lab(tokens["accent"]), _lab(tokens["danger"]))) < 25:
+            close[(pack, dark, accent)] = round(gap, 1)
+    assert failures == []
+    assert close == {}
+
+
+def test_a_dark_looks_accent_already_reads_on_night_and_is_worn_as_it_is() -> None:
+    palette = resolved_palette("nocturne", True, None, "default")
+    tokens = tokens_for("dial", "midnight", palette)
+    assert (tokens["accent"], tokens["accent_ink"]) == (palette["accent"], palette["accent_ink"])
 
 
 def test_a_refusal_never_wears_the_accent() -> None:
@@ -275,7 +314,7 @@ def test_a_refusal_never_wears_the_accent() -> None:
         for value, _, _ in spec.colourways
     }
     for pack, dark, preset, accent, surface in itertools.product(
-        PACKS, (False, True), LOOK_PRESETS, ACCENTS, ("frost", "flat")
+        PACKS, (False, True), LOOK_PRESETS, ACCENTS, ("layered", "flat")
     ):
         look = {"preset": preset, "knobs": {"surface": surface}}
         where = f"match {pack}/{'dark' if dark else 'light'}/{preset}/{accent}"

@@ -1,30 +1,48 @@
-"""Day dial: a day screen. The day is a clock face, and a list beside it reads the arcs out in words.
+"""Day dial: a day screen. The whole day is a 24-hour ring, noon at the top and midnight at the bottom,
+and the day's list beside it reads the ring out in words.
 
-The face is painted, so it cannot be tabbed through. The hour-by-hour list is its keyboard and
-screen-reader twin: every arc is also a row that opens the same block.
+The face is painted, so it cannot be tabbed through. The day's list is its keyboard and screen-reader
+twin: every segment of the ring is also a row that opens the same block.
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
+from dataclasses import dataclass
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import (
     QColor,
     QContextMenuEvent,
     QFont,
+    QFontMetrics,
     QFontMetricsF,
     QMouseEvent,
     QPainter,
+    QPainterPath,
     QPaintEvent,
     QPen,
+    QResizeEvent,
 )
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QStyle,
+    QVBoxLayout,
+    QWidget,
+)
 
 from desktop.native.calendar import DAY_FULL, DAYS
+from desktop.native.fonts import at_scale, time_font
 from desktop.native.hours.canvas import fit_lines
 from desktop.native.hours.geometry import DialTrack, Span
 from desktop.native.hours.hand import Gesture, Hand, Held
+from desktop.native.icons import pixmap
 from desktop.native.layouts.base import (
     LayoutView,
     Scene,
@@ -33,23 +51,137 @@ from desktop.native.layouts.base import (
     css,
     day_buttons,
     empty,
+    family,
     label,
-    mark_of,
     plural,
     rules,
     scrolling,
 )
-from desktop.native.weekmodel import Occurrence, clock_label, length_label, planned_line
+from desktop.native.look import category_paint
+from desktop.native.motion import duration, moves
+from desktop.native.tokens import (
+    RADIUS_CARD,
+    RADIUS_CONTROL,
+    SPACING,
+    WEIGHT_NUMBER,
+    WEIGHT_REGULAR,
+    WEIGHT_STRONG,
+    fit_lightness,
+    mix_oklab,
+    type_pt,
+)
+from desktop.native.weekmodel import (
+    END_OF_DAY,
+    Occurrence,
+    clock_label,
+    length_label,
+    planned_line,
+    range_label,
+    short_clock,
+)
+from desktop.native.widgets import FittedLabel
 
-HOURS = {"day": (6 * 60, 22 * 60), "full": (0, 24 * 60)}
-SWEEP = 300.0
+# The mock-up's face at Normal text: 600 across, the ring from 190 to 232 about its centre, and room
+# outside it for the ticks and the hour labels.
+FACE_MAX, FACE_MIN = 600, 240
+INNER_SHARE = 190 / 232
+LABEL_ROOM = 62
+GAP, MINI_GAP = 2.0, 3.0
+MINI = 60
+SIDE_MIN = 360
+# The time on the face is the display size half again and more, and gives way to a small ring.
+TIME_SCALE = 1.6
+TIME_SHARE = 0.31
+# How far the time sits from the hub, and its note below it, at the full size.
+HUB_GAP, NOTE_GAP = 31, 34
+EVENING = 22 * 60
+# The hand easing to where the time has moved it (decision 35 of 0.17), as the mock-up's does.
+HAND_MS = 240
+ICON = 18
+
+
+@dataclass(frozen=True)
+class Segment:
+    """A stretch of the ring: one block, or free time when `item` is None."""
+
+    start: int
+    end: int
+    item: Occurrence | None = None
+
+
+def segments(blocks: Sequence[Occurrence]) -> list[Segment]:
+    """The whole day, midnight to midnight, as the stretches the ring draws.
+
+    Where blocks overlap, homework shows over a fixed block and a later start over an earlier one, as
+    `day_queue` puts them: a study hall inside School is the part the student acts on, and School
+    goes on either side of it."""
+    cuts = sorted({0, END_OF_DAY, *(item.start for item in blocks), *(item.end for item in blocks)})
+    made: list[Segment] = []
+    for start, end in zip(cuts, cuts[1:], strict=False):
+        over = [item for item in blocks if item.start < end and start < item.end]
+        item = max(over, key=lambda entry: (entry.work, entry.start), default=None)
+        if made and made[-1].item == item:
+            made[-1] = Segment(made[-1].start, end, item)
+        else:
+            made.append(Segment(start, end, item))
+    return made
+
+
+def free_minutes(blocks: Sequence[Occurrence], start: int, end: int) -> int:
+    """Minutes from `start` to `end` that nothing still to do takes."""
+    taken = sorted(
+        (max(item.start, start), min(item.end, end))
+        for item in blocks
+        if item.live and item.start < end and item.end > start
+    )
+    free, at = 0, start
+    for first, last in taken:
+        free += max(first - at, 0)
+        at = max(at, last)
+    return free + max(end - at, 0)
+
+
+def turn(minute: float) -> float:
+    """Degrees clockwise from the top of the face: midnight at the bottom, noon at the top."""
+    return minute / END_OF_DAY * 360 - 180
+
+
+def at(centre: QPointF, radius: float, degrees: float) -> QPointF:
+    angle = math.radians(degrees)
+    return QPointF(centre.x() + radius * math.sin(angle), centre.y() - radius * math.cos(angle))
+
+
+def sector(centre: QPointF, inner: float, outer: float, first: float, last: float) -> QPainterPath:
+    """The ring between two radii, from one turn to another."""
+    big = QRectF(centre.x() - outer, centre.y() - outer, outer * 2, outer * 2)
+    small = QRectF(centre.x() - inner, centre.y() - inner, inner * 2, inner * 2)
+    path = QPainterPath()
+    # Qt measures arcs anticlockwise from three o'clock.
+    path.arcMoveTo(big, 90 - first)
+    path.arcTo(big, 90 - first, first - last)
+    path.arcTo(small, 90 - last, last - first)
+    path.closeSubpath()
+    return path
+
+
+def hour_label(hour: int) -> str:
+    """"14" on the 24-hour clock, "2 PM" on the 12-hour one."""
+    return short_clock(hour * 60).removesuffix(":00")
+
+
+def over_until(scene: Scene, day: int) -> int:
+    """How much of `day` is over: all of a day gone by, none of one to come, today up to now."""
+    if scene.today is None or day > scene.today:
+        return 0
+    return END_OF_DAY if day < scene.today else scene.minute
 
 
 class DialFace(QWidget):
-    """One day as arcs on a ring. Fixed blocks sit on the ring, homework on a thinner ring outside it.
+    """One day as a ring of segments. The big face also has ticks, hour labels, the hand and the time;
+    the small ones in the week strip are the ring alone, with the hand on today's.
 
-    The big face is a surface for the window's hand: its ring is a `DialTrack`, and an arc pressed
-    there is carried round it to a new time. The small faces in the week strip only open their day."""
+    The big face is a surface for the window's hand: its ring is a `DialTrack`, and a segment pressed
+    there is carried round it to a new time. A small face only opens its day."""
 
     block_clicked = Signal(str)
     day_clicked = Signal(int)
@@ -59,12 +191,16 @@ class DialFace(QWidget):
         self.day, self.mini, self.hand = day, mini, hand
         self.takes_blocks = hand is not None and not mini
         self._blocks: tuple[Occurrence, ...] = ()
-        self._minute: int | None = None
-        self._span = HOURS["day"]
+        self._over = 0
+        self._now: int | None = None
+        # The minute the hand points at while it eases to `_now`.
+        self._hand_at: float | None = None
+        self._easing = QVariantAnimation(self)
+        self._easing.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._easing.valueChanged.connect(self._eased)
         self._tokens: dict[str, str] = {}
-        self._chosen = False
+        self._scale = 1.0
         self.setObjectName(f"dialMini{day}" if mini else "dialFace")
-        self.setMinimumSize(64, 64) if mini else self.setMinimumSize(280, 280)
         if mini:
             self.setCursor(Qt.CursorShape.PointingHandCursor)
         if self.takes_blocks:
@@ -74,60 +210,70 @@ class DialFace(QWidget):
     def set_day(
         self,
         blocks: tuple[Occurrence, ...],
-        minute: int | None,
-        span: tuple[int, int],
+        over: int,
         tokens: dict[str, str],
-        chosen: bool = False,
+        now: int | None = None,
+        scale: float = 1.0,
     ) -> None:
-        self._blocks, self._minute, self._span, self._tokens, self._chosen = (
-            blocks,
-            minute,
-            span,
-            tokens,
-            chosen,
-        )
+        """`over` is the minute before which the day is over, drawn paler; `now` draws the hand."""
+        self._blocks, self._over, self._tokens, self._now, self._scale = blocks, over, tokens, now, scale
         said = ", ".join(f"{item.title} {clock_label(item.start)}" for item in blocks) or "nothing planned"
         self.setAccessibleName(f"{DAY_FULL[self.day]}: {said}")
+        # The time and its note are painted, so they are said here too.
+        time = clock_label(now) if now is not None else ""
+        self.setAccessibleDescription(". ".join(part for part in (time, self._note()) if part))
         self.update()
 
-    def _geometry(self) -> tuple[QPointF, float, float]:
+    def ease_hand(self, since: int) -> None:
+        """Move the hand from `since` to now, easing, where things may travel; else it is simply there."""
+        length = duration(HAND_MS)
+        if self._now is None or since == self._now or not moves() or not length:
+            return
+        self._easing.stop()
+        self._easing.setStartValue(float(since))
+        self._easing.setEndValue(float(self._now))
+        self._easing.setDuration(length)
+        self._hand_at = float(since)
+        self._easing.start()
+
+    def _eased(self, minute: object) -> None:
+        self._hand_at = None if minute == self._easing.endValue() else float(minute)
+        self.update()
+
+    def _radii(self) -> tuple[QPointF, float, float]:
+        """The centre and the ring's inner and outer edge."""
         side = min(self.width(), self.height())
-        return QPointF(self.width() / 2, self.height() / 2), side * 0.36, side * (0.13 if self.mini else 0.10)
+        centre = QPointF(self.width() / 2, self.height() / 2)
+        if self.mini:
+            outer = side / 2 - 2
+            return centre, outer - side * 8 / MINI, outer
+        outer = max(side / 2 - LABEL_ROOM * self._scale, 20)
+        return centre, outer * INNER_SHARE, outer
 
     @property
     def track(self) -> DialTrack:
-        """The day's minutes round the face: every arc is drawn, pressed and carried on this."""
-        centre, radius, width = self._geometry()
-        first, last = self._span
-        return DialTrack(self.day, centre, radius - width, radius + width * 1.3, first, last, SWEEP)
+        """The day's minutes round the face: every segment is drawn, pressed and carried on this."""
+        centre, inner, outer = self._radii()
+        return DialTrack(self.day, centre, inner, outer, 0, END_OF_DAY, 360.0)
 
-    def _angle(self, minute: int) -> float:
-        track = self.track
-        return track.turn_at(track.point_for(minute))
+    def _paint_of(self, category: str) -> tuple[str, str]:
+        """A category's fill, for what is over, and its mark, for what is still to come."""
+        tokens = self._tokens
+        fill, mark = category_paint(category, {"family": family(tokens), "panel": tokens["surface"]})
+        return fill or mix_oklab(tokens["bg_muted"], tokens["bg"], 0.35), mark or tokens["bg_muted"]
 
-    def _arc(
-        self,
-        painter: QPainter,
-        radius: float,
-        width: float,
-        first: int,
-        last: int,
-        colour: QColor,
-        style: Qt.PenStyle = Qt.PenStyle.SolidLine,
-    ) -> None:
-        centre, _, _ = self._geometry()
-        pen = QPen(colour, width, style)
-        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
-        painter.setPen(pen)
-        box = QRectF(centre.x() - radius, centre.y() - radius, radius * 2, radius * 2)
-        begin, finish = self._angle(first), self._angle(last)
-        # Qt measures arcs anticlockwise from three o'clock in sixteenths of a degree.
-        painter.drawArc(box, round((90 - begin) * 16), round(-(finish - begin) * 16))
+    def _free(self, past: bool) -> QColor:
+        dark = family(self._tokens) == "dark"
+        share = (0.06 if dark else 0.04) if past else (0.11 if dark else 0.08)
+        return QColor(mix_oklab(self._tokens["bg_ink"], self._tokens["bg"], share))
 
-    def _ring(self, work: bool) -> tuple[float, float]:
-        """The radius and width an arc is drawn at: homework on the thin outer ring."""
-        _, radius, width = self._geometry()
-        return (radius + width * 0.8, width * 0.5) if work else (radius, width)
+    def _shown(self) -> list[Occurrence]:
+        """The day's blocks, less the one the hand has lifted off this face."""
+        preview = self.hand.preview if self.takes_blocks and self.hand is not None else None
+        held = preview.held if preview is not None else None
+        if held is None or held.kind is not Gesture.MOVE or held.from_day != self.day:
+            return list(self._blocks)
+        return [item for item in self._blocks if item.block_id != held.block_id]
 
     def _held(self) -> tuple[Held, Span, bool, str] | None:
         """What the hand is carrying over this face: what it is, where it would go, whether it can,
@@ -139,120 +285,196 @@ class DialFace(QWidget):
             return None
         return preview.held, preview.span, preview.verdict.ok, preview.verdict.words
 
-    def _shown(self) -> list[Occurrence]:
-        """The day's arcs, less the one the hand has lifted off this face."""
-        preview = self.hand.preview if self.takes_blocks and self.hand is not None else None
-        held = preview.held if preview is not None else None
-        if held is None or held.kind is not Gesture.MOVE or held.from_day != self.day:
-            return list(self._blocks)
-        return [item for item in self._blocks if item.block_id != held.block_id]
-
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         if not self._tokens:
             return
-        tokens = self._tokens
-        centre, radius, width = self._geometry()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self._arc(painter, radius, width, self._span[0], self._span[1], QColor(tokens["line"]))
-        for item in self._shown():
-            colour = QColor(mark_of(item.category))
-            if not item.live:
-                colour.setAlphaF(0.35)
-            self._arc(painter, *self._ring(item.work), item.start, item.end, colour)
-        if self.mini:
-            if self._chosen:
-                painter.setPen(QPen(QColor(tokens["accent"]), 2))
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.drawEllipse(centre, radius * 0.55, radius * 0.55)
-            painter.end()
-            return
-        held = self._held()
+        centre, inner, outer = self._radii()
+        for piece in segments(self._shown()):
+            self._paint_segment(painter, piece, centre, inner, outer)
+        held = None if self.mini else self._held()
         if held is not None:
             thing, span, ok, _words = held
-            work = next((item.work for item in self._blocks if item.block_id == thing.block_id), True)
-            ring, thick = self._ring(work)
-            # Where the carried block would go, ringed in the accent, or in red where it cannot.
-            self._arc(
-                painter, ring, thick + 6, span.start, span.end, QColor(tokens["accent" if ok else "danger"])
-            )
             category = next((item.category for item in self._blocks if item.block_id == thing.block_id), "")
-            self._arc(painter, ring, thick, span.start, span.end, QColor(mark_of(category)))
-        painter.setPen(QColor(tokens["bg_muted"]))
-        small = QFont(self.font())
-        small.setPixelSize(max(round(radius * 0.085), 10))
-        painter.setFont(small)
-        step = 2 if self._span == HOURS["day"] else 3
-        for hour in range(self._span[0] // 60, self._span[1] // 60 + 1, step):
-            turn = math.radians(self._angle(hour * 60))
-            spot = QPointF(
-                centre.x() + (radius - width * 1.25) * math.sin(turn),
-                centre.y() - (radius - width * 1.25) * math.cos(turn),
-            )
-            painter.drawText(
-                QRectF(spot.x() - 16, spot.y() - 10, 32, 20), Qt.AlignmentFlag.AlignCenter, str(hour)
-            )
-        big = QFont(self.font())
-        big.setPixelSize(max(round(radius * 0.26), 16))
-        big.setBold(True)
-        painter.setFont(big)
-        painter.setPen(QColor(tokens["bg_ink"]))
-        words = clock_label(self._minute) if self._minute is not None else DAYS[self.day]
-        painter.drawText(
-            QRectF(centre.x() - radius, centre.y() + radius * 0.12, radius * 2, radius * 0.4),
-            Qt.AlignmentFlag.AlignCenter,
-            words,
-        )
-        if self._minute is not None:
-            turn = math.radians(self._angle(self._minute))
-            hand = QPen(QColor(tokens["danger"]), 3)
-            hand.setCapStyle(Qt.PenCapStyle.RoundCap)
-            painter.setPen(hand)
-            painter.drawLine(
-                centre,
-                QPointF(
-                    centre.x() + (radius + width) * math.sin(turn),
-                    centre.y() - (radius + width) * math.cos(turn),
-                ),
-            )
-            painter.setBrush(QColor(tokens["danger"]))
-            painter.drawEllipse(centre, 6, 6)
-        if held is not None and held[3]:
-            self._paint_words(painter, held[3], held[2])
+            path = sector(centre, inner, outer, turn(span.start), turn(span.end))
+            # Where the carried block would go, edged in the accent, or in red where it cannot.
+            painter.setPen(QPen(QColor(self._tokens["accent" if ok else "danger"]), 3))
+            painter.setBrush(QColor(self._paint_of(category)[1]))
+            painter.drawPath(path)
+        if not self.mini:
+            self._paint_ticks(painter, centre, outer)
+        if self._now is not None:
+            self._paint_hand(painter, centre, inner)
+        if not self.mini:
+            box, lines = self._time_lines()
+            for words, font, colour, baseline in lines:
+                painter.setFont(font)
+                painter.setPen(QColor(self._tokens[colour]))
+                width = QFontMetricsF(font).horizontalAdvance(words)
+                painter.drawText(QPointF(centre.x() - width / 2, baseline), words)
+            if held is not None and held[3]:
+                self._paint_words(painter, held[3], held[2], box)
         painter.end()
 
-    def _paint_words(self, painter: QPainter, words: str, ok: bool) -> None:
-        """The held block's words on a pill above the clock, as wide as the ring, so they stay on
-        the face wherever the arc is carried."""
-        centre, radius, _width = self._geometry()
-        font = QFont(self.font())
-        font.setPixelSize(max(round(radius * 0.08), 12))
-        font.setBold(True)
+    def _fill(self, painter: QPainter, path: QPainterPath, colour: QColor) -> None:
+        # Stroked in its own colour, as the mock-up draws them, which rounds the corners a little.
+        pen = QPen(colour, 2)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(colour)
+        painter.drawPath(path)
+
+    def _paint_segment(
+        self, painter: QPainter, piece: Segment, centre: QPointF, inner: float, outer: float
+    ) -> None:
+        gap = MINI_GAP if self.mini else GAP
+        first, last = turn(piece.start) + gap / 2, turn(piece.end) - gap / 2
+        if last <= first:
+            return
+        item, over = piece.item, self._over
+        if item is None:
+            # The free time holding now is split there with no gap, its elapsed part fainter.
+            parts = [(first, last, piece.end <= over)]
+            if piece.start < over < piece.end:
+                parts = [(first, turn(over), True), (turn(over), last, False)]
+            for begin, finish, past in parts:
+                if finish > begin:
+                    self._fill(painter, sector(centre, inner, outer, begin, finish), self._free(past))
+            return
+        past = piece.end <= over or not item.live
+        fill, mark = self._paint_of(item.category)
+        self._fill(painter, sector(centre, inner, outer, first, last), QColor(fill if past else mark))
+        size = round(ICON * self._scale)
+        middle = (inner + outer) / 2
+        if self.mini or not item.work or math.radians(last - first) * middle < size + 6:
+            return
+        spot = at(centre, middle, (first + last) / 2)
+        icon = pixmap("book-open", self._tokens["bg_ink" if past else "bg"], size, self.devicePixelRatioF())
+        painter.drawPixmap(QPointF(spot.x() - size / 2, spot.y() - size / 2), icon)
+
+    def _paint_ticks(self, painter: QPainter, centre: QPointF, outer: float) -> None:
+        """An hour tick outside the ring every hour, longer every six, and a label every two."""
+        scale, tokens = self._scale, self._tokens
+        font = at_scale(self.font(), "caption", scale)
+        painter.setFont(font)
         metrics = QFontMetricsF(font)
-        room = min(2 * radius, self.width() - 16) - 20
-        lines = fit_lines(words, font, room, metrics.lineSpacing() * 3)
+        for hour in range(24):
+            degrees = turn(hour * 60)
+            long = hour % 6 == 0
+            pen = QPen(QColor(tokens["bg_muted" if long else "line"]), 1.5)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            reach = (17 if long else 12) * scale
+            painter.drawLine(at(centre, outer + 7 * scale, degrees), at(centre, outer + reach, degrees))
+            if hour % 2 == 0:
+                words = hour_label(hour)
+                # A label wider than "06", as "6 PM" is, moves out by the difference so it clears its tick.
+                wider = metrics.horizontalAdvance(words) - metrics.horizontalAdvance("06")
+                across = abs(math.sin(math.radians(degrees))) * wider / 2
+                spot = at(centre, outer + 32 * scale + across, degrees)
+                painter.setPen(QColor(tokens["bg_muted"]))
+                room = QRectF(spot.x() - 40, spot.y() - 12, 80, 24)
+                painter.drawText(room, Qt.AlignmentFlag.AlignCenter, words)
+
+    def _hand_tip(self, centre: QPointF, inner: float, minute: float | None = None) -> QPointF:
+        """The hand reaches the ring's inner edge and no further. It points at `minute`, or at now."""
+        pointing = minute if minute is not None else self._now or 0
+        return at(centre, inner - (4 if self.mini else 8), turn(pointing))
+
+    def _paint_hand(self, painter: QPainter, centre: QPointF, inner: float) -> None:
+        accent = QColor(self._tokens["accent"])
+        pen = QPen(accent, 1.75 if self.mini else 3)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(centre, self._hand_tip(centre, inner, self._hand_at))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(accent)
+        painter.drawEllipse(centre, 3 if self.mini else 8, 3 if self.mini else 8)
+        if not self.mini:
+            painter.setBrush(QColor(self._tokens["bg"]))
+            painter.drawEllipse(centre, 3, 3)
+
+    def _note(self) -> str:
+        if self._now is None or self._now >= EVENING:
+            return ""
+        free = free_minutes(self._blocks, self._now, EVENING)
+        until = clock_label(EVENING)
+        return f"{length_label(free)} free until {until}" if free else f"No free time until {until}"
+
+    def _time_lines(self) -> tuple[QRectF, list[tuple[str, QFont, str, float]]]:
+        """The time and its note as one block of words, and each line's font, colour and baseline.
+
+        The block sits under the hub, or above it when the hand would cross it there, as it does when
+        it points down around midnight. Another day shows its name in the middle, with no hand."""
+        centre, inner, _outer = self._radii()
+        full = type_pt("display", self._scale) * TIME_SCALE
+        big = time_font(at_scale(self.font(), "display", self._scale, WEIGHT_NUMBER))
+        big.setPointSizeF(min(full, inner * TIME_SHARE * 72 / max(self.logicalDpiY(), 1)))
+        big.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 98)
+        shrink = big.pointSizeF() / full
+        words = clock_label(self._now) if self._now is not None else DAYS[self.day]
+        metrics = QFontMetricsF(big)
+        lines = [(words, big, "bg_ink", metrics.capHeight())]
+        width, height = metrics.horizontalAdvance(words), metrics.capHeight() + metrics.descent()
+        note = self._note()
+        small = at_scale(self.font(), "body", self._scale)
+        quiet = QFontMetricsF(small)
+        baseline = metrics.capHeight() + NOTE_GAP * shrink
+        # The note only where it fits inside the ring.
+        reach = math.hypot(quiet.horizontalAdvance(note) / 2, HUB_GAP * shrink + baseline + quiet.descent())
+        if note and reach < inner - 6:
+            lines.append((note, small, "bg_muted", baseline))
+            width = max(width, quiet.horizontalAdvance(note))
+            height = baseline + quiet.descent()
+        if self._now is None:
+            top = centre.y() - metrics.capHeight() / 2
+        else:
+            top = centre.y() + HUB_GAP * shrink
+            below = QRectF(centre.x() - width / 2, top, width, height)
+            tip = self._hand_tip(centre, inner)
+            if any(below.contains(centre + (tip - centre) * (step / 40)) for step in range(41)):
+                top = centre.y() - HUB_GAP * shrink - height
+        return (
+            QRectF(centre.x() - width / 2, top, width, height),
+            [(text, font, colour, top + offset) for text, font, colour, offset in lines],
+        )
+
+    def time_box(self) -> QRectF:
+        """Where the time and its note are drawn, for the tests."""
+        return self._time_lines()[0]
+
+    def _paint_words(self, painter: QPainter, words: str, ok: bool, time: QRectF) -> None:
+        """The held block's words on a pill across the hub from the time, as wide as the ring allows,
+        so they stay on the face wherever the segment is carried."""
+        centre, inner, _outer = self._radii()
+        font = at_scale(self.font(), "body", self._scale, WEIGHT_STRONG)
+        metrics = QFontMetricsF(font)
+        lines = fit_lines(words, font, 2 * inner - 40, metrics.lineSpacing() * 3)
         if not lines:
             return
         wide = max(metrics.horizontalAdvance(line) for line in lines) + 20
         tall = metrics.lineSpacing() * len(lines) + 10
-        pill = QRectF(centre.x() - wide / 2, centre.y() + radius * 0.06 - tall, wide, tall)
+        top = centre.y() - 14 - tall if time.top() >= centre.y() - 1 else centre.y() + 14
+        pill = QRectF(centre.x() - wide / 2, top, wide, tall)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(self._tokens["accent" if ok else "danger"]))
-        painter.drawRoundedRect(pill, min(tall / 2, 14), min(tall / 2, 14))
-        painter.setPen(QColor(self._tokens["accent_ink"]))
+        painter.drawRoundedRect(pill, RADIUS_CONTROL, RADIUS_CONTROL)
+        painter.setPen(QColor(self._tokens["accent_ink" if ok else "danger_ink"]))
         painter.setFont(font)
         painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, "\n".join(lines))
+
+    def _runs_of(self, block_id: str) -> list[Segment]:
+        return [piece for piece in segments(self._shown()) if piece.item and piece.item.block_id == block_id]
 
     def block_at(self, spot: QPointF) -> Occurrence | None:
         track = self.track
         if not track.contains(spot):
             return None
-        centre, radius, width = self._geometry()
         minute = track.minute_at(spot)
-        under = [item for item in self._blocks if item.start <= minute < item.end]
-        outer = math.hypot(spot.x() - centre.x(), spot.y() - centre.y()) > radius + width * 0.5
-        under.sort(key=lambda item: item.work != outer)
-        return under[0] if under else None
+        return next(
+            (piece.item for piece in segments(self._blocks) if piece.start <= minute < piece.end), None
+        )
 
     # The hand's surface
 
@@ -317,29 +539,21 @@ class DialFace(QWidget):
         return self.mapToGlobal(track.point_for(minute).toPoint())
 
     def block_rect(self, block_id: str, day: int) -> QRect | None:
-        """A box as big as the arc, centred on its middle, so its centre is on the block."""
-        item = next(
-            (entry for entry in self._shown() if entry.block_id == block_id and entry.day == day), None
-        )
-        if item is None or day != self.day or not self.takes_blocks:
+        """A box as big as the block's longest segment, centred on its middle, so its centre is on
+        the block."""
+        runs = self._runs_of(block_id)
+        if day != self.day or not self.takes_blocks or not runs:
             return None
-        centre, _, _ = self._geometry()
-        ring, thick = self._ring(item.work)
-        start, end = max(item.start, self._span[0]), min(item.end, self._span[1])
-        if end <= start:
-            return None
-        points = []
-        for share in (0, 0.25, 0.5, 0.75, 1):
-            turn = math.radians(self._angle(round(start + (end - start) * share)))
-            for reach in (ring - thick / 2, ring + thick / 2):
-                points.append(
-                    QPointF(centre.x() + reach * math.sin(turn), centre.y() - reach * math.cos(turn))
-                )
+        longest = max(runs, key=lambda piece: piece.end - piece.start)
+        centre, inner, outer = self._radii()
+        points = [
+            at(centre, reach, turn(longest.start + (longest.end - longest.start) * share))
+            for share in (0, 0.25, 0.5, 0.75, 1)
+            for reach in (inner, outer)
+        ]
         xs, ys = [point.x() for point in points], [point.y() for point in points]
-        middle = math.radians(self._angle((start + end) // 2))
-        at = QPointF(centre.x() + ring * math.sin(middle), centre.y() - ring * math.cos(middle))
         size = QRectF(0, 0, max(xs) - min(xs), max(ys) - min(ys))
-        size.moveCenter(at)
+        size.moveCenter(at(centre, (inner + outer) / 2, turn((longest.start + longest.end) / 2)))
         box = size.toRect()
         return QRect(self.mapToGlobal(box.topLeft()), box.size())
 
@@ -378,29 +592,41 @@ class DialFace(QWidget):
         return preview.verdict.words if preview is not None else ""
 
 
+def _quiet(widget: QWidget) -> QWidget:
+    """A part of a row that lets the pointer through to the row, which opens the block."""
+    widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    return widget
+
+
 class DayDialView(LayoutView):
+    """The day as a dial (0.17's Dial): the ring on the left, the Next card and the day's list beside
+    it, and the week's small dials along the bottom."""
+
     layout_id = "dial"
 
     def __init__(self, parent: QWidget | None = None, *, hand: Hand | None = None) -> None:
         super().__init__(parent, hand=hand)
         self._day: int | None = None
+        self._face: DialFace | None = None
+        # The day and minute the hand last pointed at, for it to ease on from there.
+        self._hand_was: tuple[int, int] | None = None
+        self._side: QWidget | None = None
         # A view's minimum height must not become the window's: three designs pushed it past a 768 pixel
         # laptop screen. Inside a scroll area, what does not fit scrolls and the window keeps its size.
-        outer = QVBoxLayout(self)
+        outer = self._outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
         self._page = QWidget()
         self._page.setObjectName("dialPage")
         self._root = QHBoxLayout(self._page)
-        self._root.setContentsMargins(22, 16, 22, 16)
-        self._root.setSpacing(26)
-        outer.addWidget(scrolling(self._page, "dialScroll"), 1)
+        self._scroll = scrolling(self._page, "dialScroll")
+        outer.addWidget(self._scroll, 1)
         # The week strip is how another day is reached, so it is pinned below the scroller rather
         # than left at the bottom of a column. At large text it used to be sliced in half, with the
         # day names off screen entirely.
         self._strip_host = QWidget()
         self._strip_host.setObjectName("dialStrip")
         self._strip = QVBoxLayout(self._strip_host)
-        self._strip.setContentsMargins(22, 0, 22, 10)
         outer.addWidget(self._strip_host)
 
     def shown_day(self, scene: Scene) -> int:
@@ -416,171 +642,165 @@ class DayDialView(LayoutView):
     def render(self, scene: Scene, week_changed: bool) -> None:
         if week_changed:
             self._day = None
-        tokens, name = scene.tokens, self.objectName()
         day = self.shown_day(scene)
         is_today = day == scene.today
-        span = HOURS.get(scene.options.get("hours", "day"), HOURS["day"])
-        small = css(font_size=f"{scene.px(13)}px", letter_spacing="1px")
-        self.setStyleSheet(
-            base_sheet(name, tokens)
-            + rules(
-                name,
-                {
-                    "#dialScroll, #dialPage": css(background=tokens["bg"]),
-                    "#dialCard": css(
-                        background=tokens["surface"],
-                        border=f"1px solid {tokens['line']}",
-                        border_radius=f"{scene.px(16)}px",
-                    ),
-                    "#dialCard QLabel": css(color=tokens["text"]),
-                    "#dialCard #dialKicker, #dialCard #dialThen": css(color=tokens["muted"]) + small,
-                    "#dialTitle": css(font_size=f"{scene.px(30)}px", font_weight=700),
-                    "#dialHeading": css(color=tokens["bg_muted"]) + small,
-                    "#dialWaiting": css(color=tokens["bg_ink"]) + small,
-                    "#dialMiniName": css(color=tokens["bg_muted"], font_size=f"{scene.px(12)}px"),
-                    "QPushButton": css(
-                        background="transparent",
-                        color=tokens["bg_ink"],
-                        border=f"1px solid {tokens['line']}",
-                        border_radius=f"{scene.px(22)}px",
-                        padding=f"0 {scene.px(18)}px",
-                        min_height=f"{scene.px(44)}px",
-                        font_size=f"{scene.px(14)}px",
-                        font_weight=600,
-                    ),
-                    "#dialCard QPushButton": css(color=tokens["text"]),
-                    'QPushButton[kind="main"]': css(
-                        background=tokens["accent"], color=tokens["accent_ink"], border_color=tokens["accent"]
-                    ),
-                    'QPushButton[kind="row"]': css(
-                        background=tokens["surface"],
-                        color=tokens["text"],
-                        border="none",
-                        border_left=f"4px solid {tokens['line']}",
-                        border_radius=f"{scene.px(8)}px",
-                        text_align="left",
-                        padding=f"0 {scene.px(10)}px",
-                        min_height=f"{scene.px(38)}px",
-                        font_weight=400,
-                    ),
-                    'QPushButton[kind="row"][state="past"]': css(
-                        color=tokens["muted"], text_decoration="line-through"
-                    ),
-                    'QPushButton[kind="row"][state="now"]': css(
-                        border=f"1px solid {tokens['accent']}",
-                        border_left=f"4px solid {tokens['accent']}",
-                        font_weight=700,
-                    ),
-                    "QPushButton:focus": css(border=f"2px solid {tokens['accent']}"),
-                },
-            )
-        )
+        px = scene.px
+        self.setStyleSheet(self._sheet(scene))
+        self._root.setContentsMargins(px(SPACING[3]), px(SPACING[3]), px(SPACING[4]), 0)
+        self._root.setSpacing(px(SPACING[4]))
+        self._strip.setContentsMargins(px(SPACING[3]), px(SPACING[3]), px(SPACING[4]), px(SPACING[4]))
         empty(self._root)
-        face = DialFace(day, False, self.hand)
-        face.set_day(scene.week.on_day(day), scene.minute if is_today else None, span, tokens)
-        face.block_clicked.connect(self.block_activated.emit)
-        self._root.addWidget(face, 6)
-        side = QVBoxLayout()
-        side.setSpacing(scene.px(10))
+        self._face = DialFace(day, False, self.hand)
+        now = scene.minute if is_today else None
+        self._face.set_day(scene.week.on_day(day), over_until(scene, day), scene.tokens, now, scene.scale)
+        was, self._hand_was = self._hand_was, (day, now) if now is not None else None
+        if was is not None and was[0] == day and now is not None:
+            self._face.ease_hand(was[1])
+        self._face.block_clicked.connect(self.block_activated.emit)
+        self._root.addWidget(self._face, 0, Qt.AlignmentFlag.AlignTop)
+        self._side = QWidget()
+        self._side.setObjectName("dialSide")
+        side = QVBoxLayout(self._side)
+        side.setContentsMargins(0, px(SPACING[4]), 0, 0)
+        side.setSpacing(px(SPACING[3]))
         side.addWidget(self._card(scene, day, is_today))
-        blocks = scene.week.on_day(day)
         if scene.options.get("list") != "hide":
-            side.addWidget(
-                label(("Today" if is_today else DAY_FULL[day]).upper() + ", HOUR BY HOUR", "dialHeading")
-            )
-            current = scene.week.day_queue(day, scene.minute).current if is_today else None
-            for index, item in enumerate(blocks):
-                row = button(
-                    f"{clock_label(item.start)}    {item.title}    ·  {length_label(item.minutes)}",
-                    f"dialRow{index}",
-                    "row",
-                )
-                past = not item.live or (
-                    item.end <= scene.minute if is_today else (scene.today is not None and day < scene.today)
-                )
-                row.setProperty("state", "now" if item == current else "past" if past else "")
-                row.setStyleSheet(f"border-left-color: {mark_of(item.category)};")
-                row.clicked.connect(lambda _=False, key=item.block_id: self.block_activated.emit(key))
-                side.addWidget(row)
-            if not blocks:
-                if is_today:
-                    heading, title, line = scene.week.leftover_parts(day)
-                    words = (
-                        f"{title} · {heading}"
-                        if scene.week.leftover_kind(day) == "needs_time"
-                        else (line or heading)
-                    )
-                    side.addWidget(label(words, "dialHeading"))
-                else:
-                    side.addWidget(label("A free day.", "dialHeading"))
-        if scene.week.waiting:
-            them = "it" if len(scene.week.waiting) == 1 else "them"
-            side.addWidget(
-                label(
-                    f"{plural(len(scene.week.waiting), 'task')} not placed yet."
-                    f" Go back to planning to give {them} a time.",
-                    "dialWaiting",
-                    wrap=True,
-                )
-            )
+            side.addWidget(self._list(scene, day, is_today))
         side.addStretch(1)
-        self._root.addLayout(side, 5)
+        self._root.addWidget(self._side, 1)
         empty(self._strip)
         wanted = scene.options.get("week") != "hide"
         self._strip_host.setVisible(wanted)
         if wanted:
-            self._strip.addLayout(self._minis(scene, day, span))
+            self._strip.addWidget(self._week(scene, day))
+        # Shown now rather than on the event loop's next pass, so _fit measures them.
+        for part in (self._face, self._side, *self._strip_host.findChildren(QFrame, "dialWeek")):
+            part.show()
+        self._fit()
+
+    def _sheet(self, scene: Scene) -> str:
+        tokens = scene.tokens
+
+        def size(role: str) -> str:
+            return f"{type_pt(role, scene.scale)}pt"
+
+        def pill(role: str, padding: int) -> str:
+            # Qt draws a radius over half the height as square corners, so it is measured.
+            return f"{(QFontMetrics(at_scale(self.font(), role, scene.scale)).height() + 2 * padding) // 2}px"
+
+        ink, muted, text, card = tokens["bg_ink"], tokens["muted"], tokens["text"], tokens["surface"]
+        edge = f"1px solid {tokens['line']}"
+        tint = mix_oklab(tokens["accent"], card, 0.10)
+        # Words on the cards are the colourway's card text. Each label's own rule names its type, so it
+        # ties with the card's rule and wins by coming after it.
+        return base_sheet(self.objectName(), tokens) + rules(
+            self.objectName(),
+            {
+                "#dialScroll, #dialPage, #dialSide, #dialStrip": css(background=tokens["bg"]),
+                "#dialCard, #dialList, #dialWeek": css(
+                    background=card, border=edge, border_radius=f"{round(RADIUS_CARD * 1.4)}px"
+                ),
+                "#dialCard QLabel, #dialList QLabel, #dialWeek QLabel": css(
+                    color=text, font_size=size("body")
+                ),
+                "QLabel#dialKicker, QLabel#dialListLabel": css(color=muted, font_weight=WEIGHT_STRONG),
+                "QLabel#dialIn": css(
+                    color=fit_lightness(tokens["accent"], (tint,), 4.5),
+                    background=tint,
+                    font_weight=WEIGHT_STRONG,
+                    border_radius=pill("body", 2),
+                    padding="2px 10px",
+                ),
+                "QLabel#dialTitle": css(font_size=size("title"), font_weight=WEIGHT_STRONG),
+                "QLabel#dialThen, QLabel#dialCount, QLabel#dialRowLength, QLabel#dialWaitingList": css(
+                    color=muted
+                ),
+                "QLabel#dialRowName, QLabel#dialWaiting": css(font_weight=WEIGHT_STRONG),
+                'QPushButton[state="past"] #dialRowTime, QPushButton[state="past"] #dialRowName': css(
+                    color=muted
+                ),
+                "#dialRowTag": css(
+                    background=mix_oklab(text, card, 0.06), border_radius=f"{RADIUS_CONTROL}px"
+                ),
+                "QLabel#dialRowTagText": css(
+                    color=muted, font_size=size("caption"), font_weight=WEIGHT_REGULAR
+                ),
+                # Styled so their rule is drawn, and clear so the window's page colour is not.
+                "#dialNone, #dialUnplaced": css(background="transparent", border_top=edge),
+                "#dialNone QLabel": css(color=muted),
+                "QLabel#dialMiniName": css(color=muted, font_size=size("caption")),
+                "QLabel#dialMiniDate": css(font_size=size("caption"), font_weight=WEIGHT_STRONG),
+                'QLabel#dialMiniName[chosen="true"]': css(color=text, font_weight=WEIGHT_STRONG),
+                'QLabel#dialMiniDate[today="true"]': css(
+                    background=tokens["accent"],
+                    color=tokens["accent_ink"],
+                    border_radius=pill("caption", 0),
+                    padding="0 6px",
+                ),
+                "QPushButton": css(
+                    background=card,
+                    color=text,
+                    border=edge,
+                    border_radius=f"{RADIUS_CONTROL}px",
+                    padding=f"0 {scene.px(14)}px 0 {scene.px(SPACING[2])}px",
+                    min_height=f"{scene.px(36)}px",
+                    font_size=size("body"),
+                    font_weight=WEIGHT_STRONG,
+                ),
+                "QPushButton:hover": css(background=mix_oklab(text, card, 0.06)),
+                'QPushButton[kind="main"]': css(
+                    background=tokens["accent"], color=tokens["accent_ink"], border_color=tokens["accent"]
+                ),
+                'QPushButton[kind="row"]': css(
+                    background="transparent",
+                    border="none",
+                    border_top=edge,
+                    border_radius="0px",
+                    padding="0px",
+                    min_height=f"{scene.px(40)}px",
+                ),
+                'QPushButton[kind="row"]:hover': css(background=mix_oklab(text, card, 0.04)),
+                # Rung only when reached with the keyboard, as every button in the app is.
+                'QPushButton[keyfocus="true"]:focus': css(border_color=tokens["accent"]),
+                'QPushButton[kind="main"][keyfocus="true"]:focus': css(border_color=ink),
+                'QPushButton[kind="row"][keyfocus="true"]:focus': css(background=tint),
+            },
+        )
 
     def _card(self, scene: Scene, day: int, is_today: bool) -> QFrame:
+        """What is on now or next, with the day's buttons; or, for another day, what it holds."""
         card = QFrame()
         card.setObjectName("dialCard")
+        px = scene.px
         inner = QVBoxLayout(card)
-        inner.setContentsMargins(scene.px(18), scene.px(14), scene.px(18), scene.px(16))
-        actions = QHBoxLayout()
-        actions.setSpacing(scene.px(8))
+        inner.setContentsMargins(px(SPACING[4]), px(SPACING[3]), px(SPACING[4]), px(SPACING[4]))
+        inner.setSpacing(0)
+        top = QHBoxLayout()
+        top.setSpacing(px(SPACING[2]))
+        heading = QHBoxLayout()
+        heading.setSpacing(px(10))
+        item, pill, line = None, "", ""
         if is_today:
             found = scene.week.day_queue(day, scene.minute)
             item = found.queue[0] if found.queue else None
             if item is None:
-                heading, title, _line = scene.week.leftover_parts(day)
-                kicker, title = heading.upper(), title
+                kicker, title, line = scene.week.leftover_parts(day)
             elif item == found.current:
-                kicker, title = (
-                    f"NOW · UNTIL {clock_label(item.end)} · "
-                    f"{length_label(item.end - scene.minute).upper()} LEFT",
-                    item.title,
-                )
+                kicker, title, pill = "Now", item.title, f"{length_label(item.end - scene.minute)} left"
             else:
-                kicker, title = (
-                    f"UP NEXT · {clock_label(item.start)} · "
-                    f"IN {length_label(item.start - scene.minute).upper()}",
-                    item.title,
-                )
-            inner.addWidget(label(kicker, "dialKicker"))
-            inner.addWidget(label(title, "dialTitle", wrap=True))
-            if len(found.queue) > 1:
-                inner.addWidget(
-                    label(
-                        f"THEN {found.queue[1].title.upper()} AT {clock_label(found.queue[1].start)}",
-                        "dialThen",
-                    )
-                )
+                kicker, title, pill = "Up next", item.title, f"in {length_label(item.start - scene.minute)}"
+            if item is not None:
+                line = f"{range_label(item.start, item.end)} · {length_label(item.minutes)}"
+                if len(found.queue) > 1:
+                    after = found.queue[1]
+                    line += f" · then {after.title} at {clock_label(after.start)}"
             made = day_buttons(self, scene, item, "dial")
         else:
-            work = [item for item in scene.week.on_day(day) if item.work]
+            work = [entry for entry in scene.week.on_day(day) if entry.work]
             date = scene.week.date_of(day)
-            inner.addWidget(
-                label(f"{DAY_FULL[day].upper()}, {date.strftime('%B').upper()} {date.day}", "dialKicker")
-            )
-            inner.addWidget(
-                label(
-                    planned_line(
-                        sum(item.minutes for item in work),
-                        sum(item.minutes for item in work if item.done),
-                    ),
-                    "dialTitle",
-                    wrap=True,
-                )
+            kicker = f"{DAY_FULL[day]}, {date.strftime('%B')} {date.day}"
+            title = planned_line(
+                sum(entry.minutes for entry in work), sum(entry.minutes for entry in work if entry.done)
             )
             made = []
             if scene.today is not None:
@@ -588,32 +808,240 @@ class DayDialView(LayoutView):
                 today.clicked.connect(lambda _=False, target=scene.today: self._show_day(target))
                 made.append(today)
             else:
-                inner.addWidget(
-                    label("THIS IS NOT THE CURRENT WEEK, SO THERE IS NO NOW TO SHOW.", "dialThen", wrap=True)
-                )
+                line = "This is not the current week, so there is no now to show."
             back = button("Back to planning", "dialBack")
             back.clicked.connect(self.back_requested.emit)
             made.append(back)
-        for entry in made:
-            actions.addWidget(entry)
-        actions.addStretch()
+        said = label(kicker, "dialKicker")
+        # Said once: a heading that only repeats the title goes.
+        said.setVisible(kicker != title)
+        top.addWidget(said)
+        top.addStretch()
+        if pill:
+            top.addWidget(label(pill, "dialIn"))
+        inner.addLayout(top)
+        inner.addSpacing(px(SPACING[1]))
+        if item is not None:
+            dot = QFrame()
+            dot.setObjectName("dialDot")
+            dot.setFixedSize(10, 10)
+            dot.setStyleSheet(
+                f"background: {self._mark(scene, item.category)}; border-radius: 5px; border: none;"
+            )
+            heading.addWidget(dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        heading.addWidget(label(title, "dialTitle", wrap=True), 1)
+        inner.addLayout(heading)
+        if line:
+            inner.addSpacing(px(SPACING[0]))
+            inner.addWidget(label(line, "dialThen", wrap=True))
+        inner.addSpacing(px(SPACING[3]))
+        # Two to a row, so the card stays narrow enough to leave the dial its room.
+        actions = QGridLayout()
+        actions.setHorizontalSpacing(px(SPACING[1]))
+        actions.setVerticalSpacing(px(SPACING[1]))
+        for index, entry in enumerate(made):
+            actions.addWidget(entry, index // 2, index % 2)
+        actions.setColumnStretch(2, 1)
         inner.addLayout(actions)
         return card
 
-    def _minis(self, scene: Scene, day: int, span: tuple[int, int]) -> QHBoxLayout:
-        strip = QHBoxLayout()
-        strip.setSpacing(scene.px(8))
+    def _mark(self, scene: Scene, category: str) -> str:
+        tokens = scene.tokens
+        mark = category_paint(category, {"family": family(tokens), "panel": tokens["surface"]})[1]
+        return mark or tokens["muted"]
+
+    def _list(self, scene: Scene, day: int, is_today: bool) -> QFrame:
+        """The day in rows: start time, category mark, title and length, in columns. What is over is
+        marked Done rather than struck through, and every row opens its block."""
+        box = QFrame()
+        box.setObjectName("dialList")
+        px = scene.px
+        column = QVBoxLayout(box)
+        column.setContentsMargins(px(SPACING[4]), px(SPACING[3]), px(SPACING[4]), px(SPACING[2]))
+        column.setSpacing(0)
+        blocks = scene.week.on_day(day)
+        header = QHBoxLayout()
+        header.addWidget(label("Today" if is_today else DAY_FULL[day], "dialListLabel"))
+        header.addStretch()
+        header.addWidget(label(plural(len(blocks), "thing"), "dialCount"))
+        column.addLayout(header)
+        column.addSpacing(px(SPACING[0]))
+        found = scene.week.day_queue(day, scene.minute) if is_today else None
+        closing = found is not None and bool(found.queue)
+        times = QFontMetrics(at_scale(self.font(), "body", scene.scale))
+        shown = [item.start for item in blocks] + ([max(item.end for item in blocks)] if closing else [])
+        time_width = max((times.horizontalAdvance(clock_label(minute)) for minute in shown), default=0) + 2
+        over = over_until(scene, day)
+        for index, item in enumerate(blocks):
+            current = found.current if found is not None else None
+            column.addWidget(self._row(scene, index, item, item == current, over, time_width))
+        if closing:
+            # Said once, where the day ends: the card is still about what comes next.
+            column.addWidget(self._closing(scene, max(item.end for item in blocks), time_width))
+        if scene.week.waiting:
+            column.addWidget(self._unplaced(scene))
+        return box
+
+    def _row(
+        self, scene: Scene, index: int, item: Occurrence, is_now: bool, over: int, time_width: int
+    ) -> QPushButton:
+        px, tokens = scene.px, scene.tokens
+        past = not item.live or item.end <= over
+        state = "now" if is_now else "past" if past else ""
+        row = button("", f"dialRow{index}", "row")
+        row.setProperty("state", state)
+        tag = "Missed" if item.missed else "Done" if past else ""
+        pinned = "Pinned" if item.pinned else ""
+        said = [clock_label(item.start), item.title, length_label(item.minutes), tag, pinned]
+        row.setAccessibleName(", ".join(part for part in said if part))
+        line = QHBoxLayout(row)
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(px(SPACING[2]))
+        when = label(clock_label(item.start), "dialRowTime")
+        when.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        when.setFixedWidth(time_width)
+        line.addWidget(_quiet(when))
+        fill, mark = category_paint(item.category, {"family": family(tokens), "panel": tokens["surface"]})
+        mark = mark or tokens["muted"]
+        edge = QFrame()
+        edge.setObjectName("dialRowMark")
+        edge.setFixedSize(4, px(20))
+        edge.setStyleSheet(
+            f"background: {fill or mark}; border: 1px solid {mark}; border-radius: 2px;"
+            if past
+            else f"background: {mark}; border: none; border-radius: 2px;"
+        )
+        line.addWidget(_quiet(edge))
+        name = QHBoxLayout()
+        name.setSpacing(px(6))
+        if item.work:
+            book = QLabel()
+            book.setPixmap(pixmap("book-open", tokens["muted"], 14, self.devicePixelRatioF()))
+            name.addWidget(_quiet(book))
+        title = FittedLabel(minimum=40)
+        title.setObjectName("dialRowName")
+        title.set_full_text(item.title)
+        name.addWidget(_quiet(title))
+        if tag:
+            name.addWidget(_quiet(self._tag(scene, tag, "check" if tag == "Done" else "")))
+        if item.pinned:
+            name.addWidget(_quiet(self._tag(scene, "Pinned", "")))
+        name.addStretch(1)
+        line.addLayout(name, 1)
+        length = label(length_label(item.minutes), "dialRowLength")
+        length.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        length.setMinimumWidth(px(80))
+        line.addWidget(_quiet(length))
+        row.clicked.connect(lambda _=False, key=item.block_id: self.block_activated.emit(key))
+        return row
+
+    def _tag(self, scene: Scene, word: str, icon: str) -> QFrame:
+        tag = QFrame()
+        tag.setObjectName("dialRowTag")
+        line = QHBoxLayout(tag)
+        line.setContentsMargins(scene.px(6), 0, scene.px(6), 0)
+        line.setSpacing(scene.px(3))
+        if icon:
+            mark = QLabel()
+            mark.setPixmap(pixmap(icon, scene.tokens["muted"], 12, self.devicePixelRatioF()))
+            line.addWidget(mark)
+        line.addWidget(label(word, "dialRowTagText"))
+        tag.setFixedHeight(scene.px(20))
+        return tag
+
+    def _closing(self, scene: Scene, minute: int, time_width: int) -> QWidget:
+        row = QWidget()
+        row.setObjectName("dialNone")
+        row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        row.setMinimumHeight(scene.px(40))
+        line = QHBoxLayout(row)
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(scene.px(SPACING[2]))
+        when = label(clock_label(minute), "dialNoneTime")
+        when.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        when.setFixedWidth(time_width)
+        line.addWidget(when)
+        line.addSpacing(4)
+        line.addWidget(label("Nothing else today", "dialNoneName"), 1)
+        return row
+
+    def _unplaced(self, scene: Scene) -> QWidget:
+        """Homework with no time yet, counted, and named after it as far as there is room."""
+        waiting = scene.week.waiting
+        row = QWidget()
+        row.setObjectName("dialUnplaced")
+        row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        line = QHBoxLayout(row)
+        line.setContentsMargins(0, scene.px(SPACING[2]), 0, scene.px(SPACING[1]))
+        line.setSpacing(scene.px(SPACING[1]))
+        book = QLabel()
+        book.setPixmap(
+            pixmap("book-open", self._mark(scene, "assignments"), 16, self.devicePixelRatioF())
+        )
+        line.addWidget(book)
+        line.addWidget(label(f"{len(waiting)} homework not placed yet", "dialWaiting"))
+        names = FittedLabel(minimum=40)
+        names.setObjectName("dialWaitingList")
+        names.set_full_text("· " + ", ".join(item.title for item in waiting))
+        line.addWidget(names, 1)
+        return row
+
+    def _week(self, scene: Scene, day: int) -> QFrame:
+        """The week's small dials, labelled, today's with its hand and the days gone by paler."""
+        card = QFrame()
+        card.setObjectName("dialWeek")
+        px = scene.px
+        strip = QHBoxLayout(card)
+        strip.setContentsMargins(px(SPACING[3]), px(SPACING[1]), px(SPACING[3]), px(SPACING[1]))
+        strip.setSpacing(px(SPACING[1]))
         for index, name in enumerate(DAYS):
             cell = QVBoxLayout()
+            cell.setSpacing(px(SPACING[0]))
             mini = DialFace(index, True)
-            mini.setFixedHeight(scene.px(72))
-            mini.set_day(scene.week.on_day(index), None, span, scene.tokens, chosen=index == day)
-            mini.day_clicked.connect(self._show_day)
-            cell.addWidget(mini)
-            cell.addWidget(
-                label(f"{name} {scene.week.date_of(index).day}", "dialMiniName"),
-                0,
-                Qt.AlignmentFlag.AlignHCenter,
+            mini.setFixedSize(px(MINI), px(MINI))
+            mini.set_day(
+                scene.week.on_day(index),
+                over_until(scene, index),
+                scene.tokens,
+                scene.minute if index == scene.today else None,
+                scene.scale,
             )
-            strip.addLayout(cell)
-        return strip
+            mini.day_clicked.connect(self._show_day)
+            cell.addWidget(mini, 0, Qt.AlignmentFlag.AlignHCenter)
+            said = QHBoxLayout()
+            said.setSpacing(px(SPACING[0]))
+            said.addStretch()
+            short = label(name, "dialMiniName")
+            short.setProperty("chosen", index in (day, scene.today))
+            said.addWidget(short)
+            date = label(str(scene.week.date_of(index).day), "dialMiniDate")
+            date.setProperty("today", index == scene.today)
+            said.addWidget(date)
+            said.addStretch()
+            cell.addLayout(said)
+            strip.addLayout(cell, 1)
+        return card
+
+    def _fit(self) -> None:
+        """The dial as large as the room allows, up to its size in the mock-up, and never so large
+        that the day's list beside it loses its columns."""
+        face, side, scene = self._face, self._side, self._scene
+        if face is None or side is None or scene is None:
+            return
+        for child in self.findChildren(QWidget):
+            child.ensurePolished()
+        # The strip below takes its height first; the dial has what is left of the scroller.
+        self._outer.activate()
+        margins = self._root.contentsMargins()
+        # Room is kept for the scroller's bar, which a long list brings, so it never pushes the page
+        # sideways.
+        bar = self._scroll.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+        across = self._scroll.width() - bar - margins.left() - margins.right() - self._root.spacing()
+        across -= max(side.minimumSizeHint().width(), scene.px(SIDE_MIN))
+        down = self._scroll.height() - margins.top() - margins.bottom()
+        size = max(min(scene.px(FACE_MAX), across, down), scene.px(FACE_MIN))
+        face.setFixedSize(size, size)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._fit()

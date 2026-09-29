@@ -644,7 +644,7 @@ class Preferences(BaseModel):
         default="default", exclude_if=lambda value: value == "default"
     )
     accent_chips: bool = Field(default=False, exclude_if=lambda value: value is False)
-    motion: Literal["off", "normal", "extra"] | None = Field(
+    motion: Literal["off", "normal", "extra", "reduce"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     # One sound for reminders, the end of a focus session and new alarms. "spotify" plays

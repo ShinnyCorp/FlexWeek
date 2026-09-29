@@ -116,7 +116,8 @@ def span_shown(scroll: HoursScroll) -> tuple[float, float]:
 
 
 def opens_at(qapp: QApplication, window: NativeWindow, minute: int, where: str) -> None:
-    """`minute` is on screen, with at most three hours before it, or the hours go no further."""
+    """`minute` is on screen, with at most half of what shows before it, or the hours go no further:
+    now opens in the middle (decision 12 of 0.17), a first block a little below the top."""
     for _ in range(4):
         qapp.processEvents()
     scroll = hours(window)
@@ -124,7 +125,8 @@ def opens_at(qapp: QApplication, window: NativeWindow, minute: int, where: str) 
     assert first <= minute <= last, f"{where}: {minute // 60:02d}:{minute % 60:02d} is not on screen"
     bar = scroll.verticalScrollBar() if scroll.axis is Axis.DOWN else scroll.horizontalScrollBar()
     at_end = bar.value() == bar.maximum()
-    assert minute - first <= 181 or at_end, f"{where}: opens {minute - first:.0f} minutes above it"
+    half = (last - first) / 2 + 1
+    assert minute - first <= half or at_end, f"{where}: opens {minute - first:.0f} minutes above it"
 
 
 def test_todays_app_opens_an_empty_next_week_at_eight_once_there_is_homework(
@@ -186,3 +188,79 @@ def test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_o
         opens_at(qapp, window, 8 * 60, f"{design} Friday, first block")
         press("prevWeek")
         opens_at(qapp, window, NOW, f"{design} Thursday again")
+
+
+def test_todays_app_opens_at_now_every_time_it_is_shown_and_not_on_a_save(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Decision 12 of 0.17. Scrolled away, Week opened on the night again after Month, a new look or
+    Settings. Each of those opens it at now; a save while it shows leaves it where it is."""
+    from desktop.native.look import sanitize_look
+
+    session = window.session
+    window._layout = sanitize_layout({"main": "classic", "day": "one"})
+    window._apply_appearance()
+    window._on_week()
+
+    def press(name: str) -> None:
+        window.findChild(QPushButton, name).click()
+        wait_until(qapp, lambda: not session.busy)
+
+    def away() -> None:
+        hours(window).verticalScrollBar().setValue(0)
+        qapp.processEvents()
+
+    def new_look() -> None:
+        window._look = sanitize_look({"preset": "high-contrast"})
+        window._apply_appearance()
+        window._on_week()
+
+    def settings() -> None:
+        window._open_settings()
+        window._close_settings(save=False)
+
+    press("viewWeek")
+    opens_at(qapp, window, NOW, "Week")
+    away()
+    session.save()
+    wait_until(qapp, lambda: not session.busy)
+    window._on_week()
+    assert hours(window).verticalScrollBar().value() == 0, "a refresh moved the week the student scrolled"
+    for how, act in (
+        ("after Month", lambda: (press("viewMonth"), press("viewWeek"))),
+        ("in a new look", new_look),
+        ("back from Settings", settings),
+    ):
+        away()
+        act()
+        opens_at(qapp, window, NOW, f"Week {how}")
+
+
+def test_after_plan_the_week_scrolls_to_the_first_homework_it_placed(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Decision 34 of 0.17: the blocks a plan placed landed off screen while the week stayed where it
+    was, so what it did went unseen."""
+    session = window.session
+    window._layout = sanitize_layout({"main": "classic", "day": "one"})
+    window._apply_appearance()
+    window._on_week()
+    window.findChild(QPushButton, "viewWeek").click()
+    wait_until(qapp, lambda: not session.busy)
+    session.add_homework(
+        {"id": "essay", "title": "History essay", "due": sunday_due(session.week_start), "estimate_min": 60,
+         "revision": 0}
+    )
+    session.save()
+    wait_until(qapp, lambda: not session.busy and not session.dirty)
+    hours(window).verticalScrollBar().setValue(0)
+    qapp.processEvents()
+    session.solve()
+    wait_until(qapp, lambda: session.plan_first is not None and not session.busy)
+    for _ in range(4):
+        qapp.processEvents()
+    placed = next(block for block in session.blocks if block.get("assignment_id") == "essay")
+    assert placed.get("start"), "the plan gave the essay a time"
+    start = int(placed["start"][:2]) * 60 + int(placed["start"][3:])
+    first, last = span_shown(hours(window))
+    assert first <= start <= last, f"{placed['start']} is not on screen ({first:.0f} to {last:.0f})"

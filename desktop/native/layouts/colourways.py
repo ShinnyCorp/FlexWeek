@@ -16,23 +16,26 @@ def _tokens(**colours: str) -> dict[str, str]:
 
 TIMELINE = (
     (
+        # The mock-up's Ruled paper, saved under 0.16's name, with FlexWeek's blue as its accent as the
+        # mock-up draws it: a colourway's page stays the same whichever accent the look wears.
         "paper",
-        "Paper",
+        "Ruled paper",
         _tokens(
-            bg="#f6f4ef",
-            bg_ink="#1d1b16",
-            bg_muted="#5f594c",
-            surface="#ffffff",
-            text="#1d1b16",
-            muted="#5f594c",
-            accent="#1d1b16",
-            accent_ink="#f6f4ef",
-            line="#d9d3c4",
-            danger="#b3202a",
+            bg="#fdfbf7",
+            bg_ink="#1a1a1a",
+            bg_muted="#5c5750",
+            surface="#fffdf9",
+            text="#1a1a1a",
+            muted="#5c5750",
+            accent="#3d6fc4",
+            accent_ink="#ffffff",
+            line="#cfc7b9",
+            danger="#c42b1c",
             danger_ink="#ffffff",
         ),
     ),
     (
+        # 0.16's night paper, with FlexWeek's blue on dark for its accent in place of 0.16's white.
         "night",
         "Night",
         _tokens(
@@ -42,8 +45,8 @@ TIMELINE = (
             surface="#1f232d",
             text="#eef0f6",
             muted="#aab2c5",
-            accent="#eef0f6",
-            accent_ink="#14161c",
+            accent="#7fa8ff",
+            accent_ink="#0b1224",
             line="#333a4a",
             danger="#ff6b7a",
             danger_ink="#14161c",
@@ -51,6 +54,25 @@ TIMELINE = (
     ),
 )
 MISSION = (
+    (
+        # The mock-up's signature, near black, with FlexWeek's blue on dark as the mock-up draws it: a
+        # colourway's page stays the same whichever accent the look wears.
+        "deck",
+        "Flight deck",
+        _tokens(
+            bg="#0b0f14",
+            bg_ink="#e6edf5",
+            bg_muted="#8d9aab",
+            surface="#121821",
+            text="#e6edf5",
+            muted="#8d9aab",
+            accent="#7fa8ff",
+            accent_ink="#0b1224",
+            line="#2c3846",
+            danger="#ff8a7a",
+            danger_ink="#0b0f14",
+        ),
+    ),
     (
         "cyan",
         "Cyan",
@@ -103,12 +125,15 @@ MISSION = (
         ),
     ),
 )
+# Bento's colourways paint the hero tile alone, `hero` in `hero_ink` with `hero_muted` for its small
+# print; the page and the other tiles are the colourway's own. Indigo is the mock-up's: the light page,
+# as 0.17 draws it, with the indigo on the hero only.
 BENTO = (
     (
         "indigo",
         "Indigo",
         _tokens(
-            bg="#eef2ff",
+            bg="#f7f8fa",
             bg_ink="#1e1b4b",
             bg_muted="#4b4a75",
             surface="#ffffff",
@@ -116,11 +141,12 @@ BENTO = (
             muted="#4b4a75",
             accent="#4f46e5",
             accent_ink="#ffffff",
-            line="#e0e7ff",
+            line="#e4e7ec",
             danger="#991b1b",
             danger_ink="#ffffff",
-            cta="#c2410c",
-            cta_ink="#ffffff",
+            hero="#4338ca",
+            hero_ink="#ffffff",
+            hero_muted="#e0e7ff",
         ),
     ),
     (
@@ -138,8 +164,9 @@ BENTO = (
             line="#fde0cf",
             danger="#9f1239",
             danger_ink="#ffffff",
-            cta="#7c2d12",
-            cta_ink="#ffffff",
+            hero="#c2410c",
+            hero_ink="#ffffff",
+            hero_muted="#fff1e6",
         ),
     ),
     (
@@ -157,8 +184,9 @@ BENTO = (
             line="#e4e4e7",
             danger="#991b1b",
             danger_ink="#ffffff",
-            cta="#3f3f46",
-            cta_ink="#ffffff",
+            hero="#18181b",
+            hero_ink="#ffffff",
+            hero_muted="#d4d4d8",
         ),
     ),
     (
@@ -176,11 +204,16 @@ BENTO = (
             line="#26304a",
             danger="#fca5a5",
             danger_ink="#0b1020",
-            cta="#fb923c",
-            cta_ink="#0b1020",
+            hero="#3730a3",
+            hero_ink="#ffffff",
+            hero_muted="#c7d2fe",
         ),
     ),
 )
+# Retro's colourways name the desktop (`bg`) and the title bars, which run from `title` to `title_end`
+# with `title_ink` on them. Teal is Windows 98's own desktop and title bar. Inside the windows the
+# greys are Windows 98's whichever colourway, and under Match my look the look's accent takes the
+# desktop and the title bars.
 RETRO = (
     (
         "teal",
@@ -197,6 +230,9 @@ RETRO = (
             line="#808080",
             danger="#800000",
             danger_ink="#ffffff",
+            title="#000080",
+            title_end="#1084d0",
+            title_ink="#ffffff",
         ),
     ),
     (
@@ -214,6 +250,9 @@ RETRO = (
             line="#808080",
             danger="#800000",
             danger_ink="#ffffff",
+            title="#4b0082",
+            title_end="#8a4fb5",
+            title_ink="#ffffff",
         ),
     ),
     (
@@ -231,29 +270,27 @@ RETRO = (
             line="#808080",
             danger="#800000",
             danger_ink="#ffffff",
+            title="#1f2d3d",
+            title_end="#56789a",
+            title_ink="#ffffff",
         ),
     ),
 )
 CLAY = (
     (
+        # The mock-up's signature, lavender clay, saved under 0.16's Pastel. It wears the student's accent.
         "pastel",
-        "Pastel",
+        "Clay",
         _tokens(
-            bg="#f3ecff",
-            bg_ink="#3a2f4d",
-            bg_muted="#4a3f5e",
-            surface="#ffffff",
-            text="#3a2f4d",
-            muted="#4a3f5e",
-            accent="#3a2f4d",
-            accent_ink="#ffffff",
-            line="#e3d9f5",
-            danger="#9b1c4a",
+            bg="#efe9fa",
+            bg_ink="#221c36",
+            bg_muted="#595272",
+            surface="#f9f6ff",
+            text="#221c36",
+            muted="#595272",
+            line="#e2daf2",
+            danger="#b3261e",
             danger_ink="#ffffff",
-            card_a="#fdbcb4",
-            card_b="#add8e6",
-            card_c="#c9f7d0",
-            card_d="#e6e6fa",
         ),
     ),
     (
@@ -271,10 +308,6 @@ CLAY = (
             line="#cdeedd",
             danger="#9b1c1c",
             danger_ink="#ffffff",
-            card_a="#b8f0d3",
-            card_b="#d3f3b0",
-            card_c="#b5ece9",
-            card_d="#f4f3b3",
         ),
     ),
     (
@@ -292,10 +325,6 @@ CLAY = (
             line="#fbdcc6",
             danger="#9b1c1c",
             danger_ink="#ffffff",
-            card_a="#ffd0a8",
-            card_b="#ffc2c2",
-            card_c="#ffe7a3",
-            card_d="#f7c6e0",
         ),
     ),
     (
@@ -320,18 +349,17 @@ CLAY = (
 )
 ONE = (
     (
+        # 0.16's black page with the student's accent in place of its orange, as 0.17 picked.
         "black",
-        "Black and orange",
+        "Poster",
         _tokens(
             bg="#000000",
             bg_ink="#ffffff",
-            bg_muted="#bdbdbd",
-            surface="#000000",
+            bg_muted="#a3a3a3",
+            surface="#141414",
             text="#ffffff",
-            muted="#bdbdbd",
-            accent="#fb923c",
-            accent_ink="#000000",
-            line="#3a3a3a",
+            muted="#a3a3a3",
+            line="#3d3d3d",
             danger="#ff4d6d",
             danger_ink="#000000",
         ),
@@ -356,20 +384,19 @@ ONE = (
 )
 DIAL = (
     (
+        # 0.16's navy, refined as 0.17 picked, and saved under its old name. It wears the student's accent.
         "midnight",
-        "Midnight",
+        "Night",
         _tokens(
-            bg="#0a0d1a",
-            bg_ink="#e8ecff",
-            bg_muted="#b6c0ea",
-            surface="#141a33",
-            text="#e8ecff",
-            muted="#b6c0ea",
-            accent="#8ea2ff",
-            accent_ink="#0a0d1a",
-            line="#2b3564",
-            danger="#ff4d6d",
-            danger_ink="#0a0d1a",
+            bg="#0b0f1d",
+            bg_ink="#e7eaf6",
+            bg_muted="#9ea6c4",
+            surface="#141a2e",
+            text="#e7eaf6",
+            muted="#9ea6c4",
+            line="#343c5e",
+            danger="#ff8a7a",
+            danger_ink="#0b0f1d",
         ),
     ),
     (

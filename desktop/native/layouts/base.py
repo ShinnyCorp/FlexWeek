@@ -7,10 +7,10 @@ adds homework, plans, or finishes anything by itself, so there is one planner, n
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QApplication, QFrame, QLabel, QLayout, QPushButton, QScrollArea, QWidget
 
@@ -18,6 +18,8 @@ from desktop.native.calendar import CATEGORIES
 from desktop.native.hours.hand import Hand, is_date_surface, is_surface
 from desktop.native.hours.hand import Verdict as HandVerdict
 from desktop.native.hours.zoom import HoursScroll
+from desktop.native.icons import tint
+from desktop.native.look import category_paint, luminance
 from desktop.native.weekmodel import Occurrence, WeekModel
 
 
@@ -112,6 +114,41 @@ def mark_of(category: str) -> str:
     return (CATEGORIES.get(category) or {}).get("mark") or "#94a3b8"
 
 
+def family(tokens: dict[str, str]) -> str:
+    """Light or dark, read from the page, since a colourway names no family of its own."""
+    return "dark" if luminance(tokens["bg"]) < 0.2 else "light"
+
+
+def family_fill(category: str, tokens: dict[str, str]) -> str:
+    """A category's fill in the one family (decision 9 of 0.17) on a design's cards: pale on light
+    ones, its tone sunk into dark ones. Lightening or darkening the mark, as designs did, turned the
+    darker homework mark into a neon red and a dark look's blocks into ink under dark words."""
+    family = "dark" if luminance(tokens["surface"]) < 0.2 else "light"
+    return category_paint(category, {"family": family, "panel": tokens["surface"]})[0] or tokens["surface"]
+
+
+def short_length(minutes: int) -> str:
+    """A length where room is short: "1 h 30", "45 min", "2 h"."""
+    hours, rest = divmod(max(minutes, 0), 60)
+    if not hours:
+        return f"{rest} min"
+    return f"{hours} h {rest}" if rest else f"{hours} h"
+
+
+def free_stretches(items: Sequence[Occurrence], start: int, end: int) -> list[tuple[int, int]]:
+    """The stretches from `start` to `end` that nothing still to do takes."""
+    free, at = [], start
+    for item in sorted(items, key=lambda entry: entry.start):
+        if not item.live or item.end <= at or item.start >= end:
+            continue
+        if item.start > at:
+            free.append((at, item.start))
+        at = max(at, item.end)
+    if at < end:
+        free.append((at, end))
+    return free
+
+
 def work_left(scene: Scene) -> int:
     """Placed homework minutes still ahead today. Running late is only offered while there are some."""
     if scene.today is None:
@@ -143,6 +180,8 @@ class LayoutView(QWidget):
     my_day_requested = Signal()
     back_requested = Signal()
     day_activated = Signal(str)
+    # The app's own menu, opening up from this point on the screen, as Retro desktop's Start asks.
+    menu_requested = Signal(QPoint)
     # A level the student chose on hours this design made, to remember: the scale's key and pixels an hour.
     zoomed = Signal(str, int)
 
@@ -285,34 +324,35 @@ class LayoutView(QWidget):
         board.raise_()
 
 
-def day_buttons(
-    view: LayoutView, scene: Scene, item: Occurrence | None, prefix: str, *, upper: bool = False
-) -> list[QPushButton]:
+DAY_ICONS = {"Finished": "check", "Focus": "timer", "Late": "clock", "Back": "chevron-left"}
+
+
+def day_buttons(view: LayoutView, scene: Scene, item: Occurrence | None, prefix: str) -> list[QPushButton]:
     """What a student does while living the day, written once for every day screen: finish the
-    homework, start focus, say they are running late, go back to planning."""
-
-    def word(text: str) -> str:
-        return text.upper() if upper else text
-
+    homework, start focus, say they are running late, go back to planning. One is filled, the step
+    this minute is for: Homework finished, or else Running late."""
     made = []
     if scene.options.get("actions") != "hide":
         if item is not None and item.work and item.assignment_id:
-            finished = button(word("Homework finished"), f"{prefix}Finished", "main")
+            finished = button("Homework finished", f"{prefix}Finished", "main")
             finished.clicked.connect(
                 lambda _=False, key=item.assignment_id: view.finished_requested.emit(key)
             )
-            focus = button(word("Start focus"), f"{prefix}Focus")
+            focus = button("Start focus", f"{prefix}Focus")
             focus.clicked.connect(
                 lambda _=False, entry=item: view.focus_requested.emit(entry.block_id, entry.day)
             )
             made += [finished, focus]
         if work_left(scene):
-            late = button(word("Running late"), f"{prefix}Late")
+            late = button("Running late", f"{prefix}Late", "" if made else "main")
             late.clicked.connect(view.late_requested.emit)
             made.append(late)
-    back = button(word("Back to planning"), f"{prefix}Back")
+    back = button("Back to planning", f"{prefix}Back")
     back.clicked.connect(view.back_requested.emit)
-    return [*made, back]
+    made.append(back)
+    for entry in made:
+        tint(entry, DAY_ICONS[entry.objectName().removeprefix(prefix)])
+    return made
 
 
 def plan_buttons(view: LayoutView, prefix: str, add_words: str) -> list[QPushButton]:

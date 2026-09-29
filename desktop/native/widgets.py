@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 from PySide6.QtCore import (
+    Property,
     QDate,
     QEvent,
     QObject,
@@ -21,11 +22,13 @@ from PySide6.QtCore import (
     Qt,
     QTime,
     QTimer,
+    QVariantAnimation,
     Signal,
 )
 from PySide6.QtGui import (
     QAction,
     QColor,
+    QFontMetrics,
     QHideEvent,
     QIcon,
     QKeyEvent,
@@ -33,12 +36,15 @@ from PySide6.QtGui import (
     QMoveEvent,
     QPainter,
     QPainterPath,
+    QPalette,
     QPen,
     QPixmap,
     QResizeEvent,
     QShowEvent,
 )
 from PySide6.QtWidgets import (
+    QAbstractButton,
+    QAbstractScrollArea,
     QAbstractSpinBox,
     QApplication,
     QButtonGroup,
@@ -61,12 +67,15 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProxyStyle,
     QPushButton,
-    QRadioButton,
     QScrollArea,
+    QScrollBar,
     QSizePolicy,
     QSpacerItem,
     QSpinBox,
     QStyle,
+    QStyleOptionButton,
+    QStyleOptionSlider,
+    QStylePainter,
     QTimeEdit,
     QVBoxLayout,
     QWidget,
@@ -82,6 +91,7 @@ from backend.slots import (
     hhmm_to_minutes,
     minutes_to_hhmm,
 )
+from desktop.native import icons
 from desktop.native.calendar import (
     CATEGORIES,
     SETUP_SCHOOL_ID,
@@ -91,8 +101,11 @@ from desktop.native.calendar import (
     span_clash,
     span_problem,
 )
-from desktop.native.fonts import time_font
-from desktop.native.motion import app_level, appear, settle, vanish
+from desktop.native.elevation import lift
+from desktop.native.fonts import time_font, weighted
+from desktop.native.icons import pixmap as icon_pixmap
+from desktop.native.menus import Menu
+from desktop.native.motion import OUT, SEGMENT_MS, app_level, appear, between, duration, moves, settle, vanish
 from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
     LATE_MINUTES,
@@ -101,6 +114,7 @@ from desktop.native.reuse import (
     routine_source_blocks,
     row_conflict,
 )
+from desktop.native.tokens import SHADOW_LARGE, SPACING, WEIGHT_REGULAR, WEIGHT_STRONG, Shadow
 from desktop.native.weekmodel import due_label, hhmm_text, length_label, time_format
 from desktop.native.work_windows import WorkWindowsEditor
 
@@ -132,6 +146,7 @@ HOMEWORK_REFUSED = "Check the homework details and try again."
 PLAN_REVIEW_MAX = 132
 UNFINISHED_MAX = 132
 REPEAT_NOTE = "Tick more days to repeat it this week."
+SCHOOL_HOURS_NOTE = "The days and times you are at school, so nothing is planned then."
 ROUTINE_LIST_MIN_HEIGHT = 130
 REPLAN_TIP = (
     "Find new times for all of this week's homework, as if none had a time yet. Homework you placed "
@@ -181,6 +196,210 @@ def steady_wheel(app: QApplication) -> None:
         app.installEventFilter(WheelGuard(app))
 
 
+# The focus reasons that mean the student moved with the keyboard.
+KEYED = (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason, Qt.FocusReason.ShortcutFocusReason)
+
+
+class KeyFocus(QObject):
+    """Marks a button reached with the keyboard, so its focus ring shows, and clears the mark when a click
+    focuses it: Qt's `:focus` also holds after a click, which would ring every button pressed. Other
+    reasons, such as the window coming back to the front, leave the mark as it was."""
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() == QEvent.Type.FocusIn and isinstance(watched, QAbstractButton):
+            reason = event.reason()
+            if reason in KEYED or reason == Qt.FocusReason.MouseFocusReason:
+                keyed = reason in KEYED
+                if bool(watched.property("keyfocus")) != keyed:
+                    watched.setProperty("keyfocus", keyed)
+                    watched.style().unpolish(watched)
+                    watched.style().polish(watched)
+        return False
+
+
+def keyboard_focus_rings(app: QApplication) -> None:
+    if app.findChild(KeyFocus) is None:
+        app.installEventFilter(KeyFocus(app))
+
+
+class OverlayBar(QObject):
+    """Draws a scroll bar marked `overlay` as a thin rounded handle that widens under the pointer. The
+    bar lies over the edge of what scrolls (AppStyle makes it transient), so the content keeps its
+    whole width, as a phone's or a Mac's does."""
+
+    REST, WIDE, EDGE = 4, 8, 2
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if not isinstance(watched, QScrollBar):
+            return False
+        kind = event.type()
+        if kind in (QEvent.Type.Enter, QEvent.Type.Leave):
+            watched.setProperty("hovered", kind == QEvent.Type.Enter)
+            watched.update()
+        elif kind == QEvent.Type.Paint:
+            self._paint(watched)
+            return True
+        return False
+
+    def _paint(self, bar: QScrollBar) -> None:
+        if bar.maximum() <= bar.minimum():
+            return
+        option = QStyleOptionSlider()
+        bar.initStyleOption(option)
+        handle = QRectF(
+            bar.style().subControlRect(
+                QStyle.ComplexControl.CC_ScrollBar, option, QStyle.SubControl.SC_ScrollBarSlider, bar
+            )
+        )
+        wide = bool(bar.property("hovered")) or bar.isSliderDown()
+        thick = self.WIDE if wide else self.REST
+        down = bar.orientation() == Qt.Orientation.Vertical
+        across = (bar.width() if down else bar.height()) - thick - self.EDGE
+        if down:
+            pill = QRectF(
+                across, handle.top() + self.EDGE, thick, max(handle.height() - 2 * self.EDGE, thick)
+            )
+        else:
+            pill = QRectF(
+                handle.left() + self.EDGE, across, max(handle.width() - 2 * self.EDGE, thick), thick
+            )
+        ink = bar.palette().color(QPalette.ColorRole.WindowText)
+        painter = QPainter(bar)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        if wide:
+            track = QColor(ink)
+            track.setAlphaF(0.06)
+            painter.setBrush(track)
+            groove = QRectF(bar.rect()).adjusted(1, 1, -1, -1)
+            painter.drawRoundedRect(
+                groove, min(groove.width(), groove.height()) / 2, min(groove.width(), groove.height()) / 2
+            )
+        ink.setAlphaF(0.65 if bar.isSliderDown() else 0.5 if wide else 0.3)
+        painter.setBrush(ink)
+        painter.drawRoundedRect(pill, thick / 2, thick / 2)
+        painter.end()
+
+
+def overlay_scroll_bars(area: QAbstractScrollArea) -> None:
+    """Decision 12's scroll bars on `area`: thin, laid over its content's edge, wider under the pointer.
+    Called before the area is first shown, which is when it lays its bars out."""
+    global _OVERLAY
+    if _OVERLAY is None:
+        _OVERLAY = OverlayBar()
+    for bar in (area.verticalScrollBar(), area.horizontalScrollBar()):
+        bar.setProperty("overlay", True)
+        bar.installEventFilter(_OVERLAY)
+
+
+_OVERLAY: OverlayBar | None = None
+
+
+def overlaid(widget: object) -> bool:
+    return isinstance(widget, QScrollBar) and bool(widget.property("overlay"))
+
+
+class SegmentTrack(QFrame):
+    """A segmented control's track, a pill, with the chosen segment raised on it as a pill of its own
+    and lifted with the small shadow. Painted, since a stylesheet's corner cannot follow a height
+    that the text size sets, and so the chosen pill can slide to the segment chosen next (decision
+    32 of 0.17), or cross-fade to it where things may not travel. The stylesheet gives the colours:
+    `alternate-background-color` is the track, `selection-background-color` the chosen segment and
+    `color` an outline, drawn when it differs from the track; `qproperty-shade` is the shadow's
+    opacity out of 255, or 0 for none."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._shade = 0
+        # Where the chosen pill was last drawn, and where it leaves from for the segment just chosen.
+        self._drawn: QRectF | None = None
+        self._from = QRectF()
+        self._slide = QVariantAnimation(self)
+        self._slide.setStartValue(0.0)
+        self._slide.setEndValue(1.0)
+        self._slide.valueChanged.connect(lambda _share: self.update())
+
+    def _get_shade(self) -> int:
+        return self._shade
+
+    def _set_shade(self, value: int) -> None:
+        self._shade = value
+        self.update()
+
+    shade = Property(int, _get_shade, _set_shade)
+
+    def add(self, button: QAbstractButton) -> None:
+        self.layout().addWidget(button)
+        button.toggled.connect(self._chosen)
+
+    def _chosen(self, on: bool) -> None:
+        length = duration(SEGMENT_MS)
+        if on and self._drawn is not None and self.isVisible() and length:
+            self._from = QRectF(self._drawn)
+            self._slide.stop()
+            self._slide.setDuration(length)
+            self._slide.start()
+        self.update()
+
+    def _pills(self, target: QRectF) -> list[tuple[QRectF, float]]:
+        """The chosen pill as drawn now, with its opacity: sliding from where it was, or where things
+        may not travel, fading from there to here."""
+        if self._slide.state() == QVariantAnimation.State.Stopped:
+            return [(target, 1.0)]
+        share = OUT.valueForProgress(self._slide.currentTime() / max(self._slide.duration(), 1))
+        start = self._from
+        if not moves():
+            return [(start, 1 - share), (target, share)]
+        return [(between(start, target, share), 1.0)]
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        colours = self.palette()
+        track = colours.color(QPalette.ColorRole.AlternateBase)
+        outline = colours.color(QPalette.ColorRole.WindowText)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        box = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        painter.setPen(QPen(outline, 1) if outline != track else Qt.PenStyle.NoPen)
+        painter.setBrush(track)
+        painter.drawRoundedRect(box, box.height() / 2, box.height() / 2)
+        chosen = next(
+            (b for b in self.findChildren(QAbstractButton) if b.isChecked() and b.isVisible()), None
+        )
+        self._drawn = None
+        if chosen is not None:
+            painter.setPen(Qt.PenStyle.NoPen)
+            shade = self._shade
+            for pill, opacity in self._pills(QRectF(chosen.geometry())):
+                self._drawn = pill
+                radius = pill.height() / 2
+                painter.setOpacity(opacity)
+                # The small shadow (decision 6), 0 1 3: three widening rings, each a third of its opacity.
+                for spread in (1.5, 1.0, 0.5) if shade else ():
+                    painter.setBrush(QColor(0, 0, 0, round(shade / 3)))
+                    painter.drawRoundedRect(
+                        pill.adjusted(-spread, 1 - spread, spread, 1 + spread), radius, radius
+                    )
+                painter.setBrush(colours.color(QPalette.ColorRole.Highlight))
+                painter.drawRoundedRect(pill, radius, radius)
+        painter.end()
+
+
+class Segment(QPushButton):
+    """One choice on a SegmentTrack, always as wide as its words at the chosen weight, so choosing it
+    moves nothing and cuts nothing."""
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        hint = super().sizeHint()
+        words = self.text()
+        extra = QFontMetrics(weighted(self.font(), WEIGHT_STRONG)).horizontalAdvance(words)
+        return QSize(
+            hint.width() + max(0, extra - self.fontMetrics().horizontalAdvance(words)), hint.height()
+        )
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return self.sizeHint()
+
+
 # How far a dialog's content sits in from its edges. Qt's styles give about 11 px.
 DIALOG_MARGIN = 24
 LAYOUT_MARGINS = (
@@ -199,7 +418,15 @@ class AppStyle(QProxyStyle):
     def pixelMetric(self, metric, option=None, widget=None):  # noqa: N802
         if metric in LAYOUT_MARGINS and isinstance(widget, QDialog):
             return DIALOG_MARGIN
+        if metric == QStyle.PixelMetric.PM_ScrollView_ScrollBarOverlap and overlaid(widget):
+            # The whole bar lies over the content, which keeps its width.
+            return super().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, option, widget)
         return super().pixelMetric(metric, option, widget)
+
+    def styleHint(self, hint, option=None, widget=None, returnData=None):  # noqa: N802
+        if hint == QStyle.StyleHint.SH_ScrollBar_Transient and overlaid(widget):
+            return 1
+        return super().styleHint(hint, option, widget, returnData)
 
     def polish(self, target):  # Qt names one method for a widget, a palette and the application.
         if isinstance(target, QTimeEdit):
@@ -268,6 +495,9 @@ def fit_scroll_dialog(dialog: QDialog, *, min_height: int = DIALOG_USABLE_HEIGHT
 TOAST_MS = 6000
 TOAST_MARGIN = 24
 TOAST_MIN_WIDTH = 280
+TOAST_MAX_WIDTH = 420
+# Room round the toast's card for its shadow.
+TOAST_SHADOW = 4
 # Between the toast's bottom edge and the foot of the hours, and between its words and its button.
 TOAST_FOOT = 16
 TOAST_GAP = 12
@@ -458,21 +688,29 @@ class EndsLayout(QLayout):
         return top + self._gap + below + margins.top() + margins.bottom()
 
 
-class Toast(QFrame):
-    """One notice at a time, floating over the foot of the hours, with at most one button.
+class Toast(QWidget):
+    """One notice at a time, bottom right of the page it was said on, with at most one button.
 
-    The frame and its words let the pointer through to the hours under them. The button is laid over
-    the frame as the window's own child, since Qt passes a widget's clicks on only with its children's.
-    `over` is the widget whose foot it floats over; while that is hidden, the window's.
+    Dark with light words, the 16 corners of a sheet and the small shadow (decision 20 of 0.17). The
+    toast itself is the part that moves and fades; the painted card inside it carries the shadow, as a
+    widget holds one effect. The toast and its words let the pointer through to what is under them.
+    The button is laid over the card as the window's own child, since Qt passes a widget's clicks on
+    only with its children's. `over` is the page area it sits in; while that is hidden, the window.
     """
 
     def __init__(self, parent: QWidget, over: QWidget) -> None:
         super().__init__(parent)
         self._over = over
-        self.setObjectName("toast")
+        self.setObjectName("toastHost")
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        row = QHBoxLayout(self)
+        around = QHBoxLayout(self)
+        around.setContentsMargins(TOAST_SHADOW, TOAST_SHADOW, TOAST_SHADOW, TOAST_SHADOW)
+        self.card = QFrame()
+        self.card.setObjectName("toast")
+        self.card.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        around.addWidget(self.card)
+        row = QHBoxLayout(self.card)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(TOAST_GAP)
         self.label = QLabel()
@@ -487,6 +725,7 @@ class Toast(QFrame):
         self.button.hide()
         self.button.clicked.connect(self._pressed)
         self._callback: Callable[[], None] | None = None
+        self._action_colour = "#a1bbe4"
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(TOAST_MS)
@@ -494,6 +733,15 @@ class Toast(QFrame):
         # The window's Animations level. A notice rises into place and fades when it goes.
         self.motion = "normal"
         self.hide()
+
+    def set_look(self, action_colour: str, shadow: Shadow | None, dark: bool = False) -> None:
+        """The colour of the toast's button, for its icon, and the shadow, or none in a look without."""
+        self._action_colour = action_colour
+        if shadow is None:
+            self.card.setGraphicsEffect(None)
+        else:
+            lift(self.card, shadow, dark)
+        self._dress_button()
 
     def text(self) -> str:
         return self.label.text()
@@ -503,17 +751,15 @@ class Toast(QFrame):
         self.setAccessibleName(text)
         self.setAccessibleDescription(text)
         self.button.setText(button)
+        self._dress_button()
         self._callback = callback if button else None
         size = self.button.sizeHint() if button else QSize(0, 0)
         self._slot.changeSize(size.width(), size.height(), QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.layout().invalidate()
-        # A rise still running would carry the notice back to where the last one was meant to go.
+        self.card.layout().invalidate()
+        # The last notice's rise ends where it was going, and its fade-out ends it, so this one
+        # comes in on its own.
         settle(self)
         settle(self.button)
-        # A notice that arrives while the last one fades out takes its place instead of vanishing too.
-        for widget in (self, self.button):
-            if widget.graphicsEffect() is not None:
-                widget.setGraphicsEffect(None)
         was_shown = self.isVisible()
         self.show()
         self.reposition()
@@ -521,10 +767,17 @@ class Toast(QFrame):
         self.button.setVisible(bool(button))
         self.button.raise_()
         if not was_shown:
+            # The button is the window's own child, so it rises beside the card rather than with it.
             appear(self, self.motion, rise=True)
-            appear(self.button, self.motion)
+            appear(self.button, self.motion, rise=True)
         # One with something to press stays long enough to reach for it.
         self._timer.start(TOAST_MS * 2 if button else TOAST_MS)
+
+    def _dress_button(self) -> None:
+        # Undo is the one button with a picture: the arrow back, in the button's own colour.
+        undo = self.button.text() == "Undo"
+        self.button.setIcon(icons.icon("undo-2", self._action_colour) if undo else QIcon())
+        self.button.setIconSize(QSize(14, 14))
 
     def reposition(self) -> None:
         host = self.parentWidget()
@@ -537,11 +790,13 @@ class Toast(QFrame):
         self.label.setWordWrap(False)
         natural = self.sizeHint().width()
         self.label.setWordWrap(True)
-        width = min(max(natural, TOAST_MIN_WIDTH), max(120, area.width() - 2 * TOAST_MARGIN))
+        room = max(120, min(TOAST_MAX_WIDTH, area.width() - 2 * TOAST_FOOT) + 2 * TOAST_SHADOW)
+        width = min(max(natural, TOAST_MIN_WIDTH), room)
         height = max(self.heightForWidth(width), self.minimumSizeHint().height())
-        # Over the foot of the hours, and never past the bottom of the window.
-        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT
-        self.setGeometry(area.left() + (area.width() - width) // 2, max(0, bottom - height), width, height)
+        # Bottom right of the page, 16 pixels in from its corner, and never past the window's foot.
+        right = area.left() + area.width() - TOAST_FOOT + TOAST_SHADOW
+        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT + TOAST_SHADOW
+        self.setGeometry(max(0, right - width), max(0, bottom - height), width, height)
 
     def moveEvent(self, event: QMoveEvent) -> None:  # noqa: N802
         super().moveEvent(event)
@@ -559,7 +814,7 @@ class Toast(QFrame):
             self.button.hide()
 
     def _place_button(self) -> None:
-        inside = self.contentsRect()
+        inside = self.card.contentsRect().translated(self.card.pos())
         size = self.button.sizeHint()
         self.button.setGeometry(
             self.x() + inside.right() + 1 - size.width(),
@@ -649,7 +904,7 @@ class FlowLayout(QLayout):
         return y + row_height - rect.y() + margins.bottom()
 
 
-class AddMenu(QMenu):
+class AddMenu(Menu):
     """Everything that adds something to the week, in one menu.
 
     This was a strip of eight chips above the calendar, which armed a type for dragging, plus two Add
@@ -666,15 +921,12 @@ class AddMenu(QMenu):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("addMenu")
-        self.setToolTipsVisible(True)
-        for name, words, asked in (
-            ("addMenuHomework", "Add homework…", self.homework_requested),
-            ("addMenuFixed", "Add fixed time…", self.fixed_requested),
-            ("addMenuSchool", "School hours…", self.school_requested),
+        for name, words, icon, asked in (
+            ("addMenuHomework", "Add homework…", "book-open", self.homework_requested),
+            ("addMenuFixed", "Add fixed time…", "clock", self.fixed_requested),
+            ("addMenuSchool", "School hours…", "school", self.school_requested),
         ):
-            action = self.addAction(words)
-            action.setObjectName(name)
-            action.triggered.connect(asked.emit)
+            self.add(words, icon, name=name).triggered.connect(asked.emit)
         self.addSeparator()
         add_heading(self, "Then drag on the calendar")
         self._actions: dict[str, QAction] = {}
@@ -761,10 +1013,22 @@ def _switch_file(on: bool, track: str, knob: str) -> str:
     return path.as_posix()
 
 
+def _icon_file(name: str, colour: str) -> str:
+    """Lucide's `name` in `colour` as an image file, for a style sheet's `image:`, at twice 16 pixels."""
+    folder = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation))
+    path = folder / f"flexweek-icon-{name}-{QColor(colour).name()[1:]}.png"
+    if not path.is_file():
+        folder.mkdir(parents=True, exist_ok=True)
+        icons.pixmap(name, colour, 32).save(str(path))
+    return path.as_posix()
+
+
 def control_art(palette: dict) -> dict[str, str]:
     """The images the control rules in `pack_stylesheet` draw with: a tick in the accent's ink,
-    chevrons for dropdowns and steppers in the muted ink, and a switch on, off and greyed."""
+    chevrons for dropdowns and steppers in the muted ink, a switch on, off and greyed, and the
+    chevron after More in the text colour."""
     return {
+        "more": _icon_file("chevron-down", palette["text"]),
         "tick": _art_file("tick", palette["accent_ink"]),
         "down": _art_file("down", palette["muted"]),
         "up": _art_file("up", palette["muted"]),
@@ -849,13 +1113,25 @@ class ChoiceCard(QFrame):
         super().keyPressEvent(event)
 
 
-def info_card(title: str, note: str) -> tuple[QFrame, QVBoxLayout]:
-    """A card in a dialog: what it is for, as a heading and a sentence, then its controls."""
+def plain_card() -> tuple[QFrame, QVBoxLayout]:
+    """A dialog's body as one card on its page, with no heading of its own: the window names it."""
     card = QFrame()
     card.setObjectName("dialogCard")
     box = QVBoxLayout(card)
     box.setContentsMargins(16, 16, 16, 16)
     box.setSpacing(8)
+    return card, box
+
+
+def info_card(title: str, note: str) -> tuple[QFrame, QVBoxLayout]:
+    """A card in a dialog: what it is for, as a heading and a sentence, then its controls."""
+    card = QFrame()
+    card.setObjectName("dialogCard")
+    box = QVBoxLayout(card)
+    # 12 above and below, a step under the sides: Account's three cards at the 13-point body stood 778
+    # pixels tall, more than a 1366 by 768 laptop has.
+    box.setContentsMargins(SPACING[3], SPACING[2], SPACING[3], SPACING[2])
+    box.setSpacing(SPACING[1])
     heading = QLabel(title)
     heading.setObjectName("cardTitle")
     # One line, not wrapped: a dialog's height is fixed before its words wrap, so a sentence that
@@ -869,12 +1145,80 @@ def info_card(title: str, note: str) -> tuple[QFrame, QVBoxLayout]:
 
 class Switch(QCheckBox):
     """On or off, drawn as a toggle by the style sheet. Still a check box, so it is read, set and
-    announced as one."""
+    announced as one.
+
+    Its words wrap under their own first line, as a label's do: a check box's words are one line, so
+    at Large text "Split long homework into focus sessions" made Settings wider than an 800 pixel
+    window. The style draws the toggle; the words are drawn here."""
 
     def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
         super().__init__(text, parent)
         self.setProperty("switch", True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # A check box's own policy makes its one line the least it may be given.
+        policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
+
+    def _toggle(self) -> tuple[QStyleOptionButton, int]:
+        """The style's option with no words, its rect the first line's row, and where the words start.
+
+        The style centres the toggle in the rect it is given. Given the whole switch, the toggle sat
+        by the middle of words that wrapped, and the words, drawn from there, ran past its foot."""
+        option = QStyleOptionButton()
+        self.initStyleOption(option)
+        option.text = ""
+        mark = self.style().subElementRect(QStyle.SubElement.SE_CheckBoxIndicator, option, self)
+        gap = self.style().pixelMetric(QStyle.PixelMetric.PM_CheckBoxLabelSpacing, option, self)
+        option.rect = QRect(0, 0, self.width(), max(mark.height(), self.fontMetrics().height()))
+        return option, mark.right() + 1 + gap
+
+    def _words(self, width: int) -> QRect:
+        """Where the words go on a switch `width` wide: after the toggle, the first line level with it."""
+        option, start = self._toggle()
+        column = max(width - start - 2, 1)
+        lines = self.fontMetrics().boundingRect(
+            QRect(0, 0, column, 100_000), int(Qt.TextFlag.TextWordWrap), self.text()
+        )
+        top = (option.rect.height() - self.fontMetrics().height()) // 2
+        return QRect(start, top, column, lines.height())
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        _option, start = self._toggle()
+        width = start + self.fontMetrics().size(0, self.text()).width() + 2
+        return QSize(width, self.heightForWidth(width))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        _option, start = self._toggle()
+        longest = max((self.fontMetrics().horizontalAdvance(word) for word in self.text().split()), default=0)
+        # One line high, as a label's: how tall its words are when they wrap is heightForWidth's answer.
+        return QSize(start + longest + 2, self.sizeHint().height())
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802
+        option, _start = self._toggle()
+        return max(option.rect.height(), self._words(width).bottom() + 1) + 2
+
+    def hitButton(self, pos: QPoint) -> bool:  # noqa: N802
+        return self.rect().contains(pos)
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        option, _start = self._toggle()
+        words = self._words(self.width())
+        # A row taller than the words, as beside the Look editor's colour chips, keeps them in its middle.
+        top = max(0, (self.height() - max(option.rect.height(), words.bottom() + 1)) // 2)
+        option.rect = option.rect.translated(0, top)
+        painter = QStylePainter(self)
+        painter.drawControl(QStyle.ControlElement.CE_CheckBox, option)
+        group = QPalette.ColorGroup.Active if self.isEnabled() else QPalette.ColorGroup.Disabled
+        painter.setPen(self.palette().color(group, QPalette.ColorRole.WindowText))
+        painter.drawText(
+            words.translated(0, top),
+            int(Qt.TextFlag.TextWordWrap | Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
+            self.text(),
+        )
 
 
 class Choices(QFrame):
@@ -952,17 +1296,128 @@ class Segmented(Choices):
         button = QPushButton(text)
         button.setObjectName(f"{self.objectName()}-{data}" if self.objectName() else "")
         button.setProperty("segment", True)
+        # A choice shown, never what Enter presses in a dialog.
+        button.setAutoDefault(False)
         button.setCheckable(True)
         button.setAccessibleName(text)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._group.addButton(button, index)
         self._line.addWidget(button)
         self._buttons.append(button)
+        # A segment ticked from code chooses it too, as a radio button's tick does.
+        button.toggled.connect(self._follow)
         if self._index < 0:
             self.setCurrentIndex(index)
 
     def buttons(self) -> list[QPushButton]:
         return list(self._buttons)
+
+    def _follow(self, on: bool) -> None:
+        index = self._buttons.index(self.sender()) if self.sender() in self._buttons else -1
+        if on and index != self._index:
+            self.setCurrentIndex(index)
+
+    def _show(self, index: int) -> None:
+        for at, button in enumerate(self._buttons):
+            button.setChecked(at == index)
+
+
+class SwatchButton(QAbstractButton):
+    """One colour to pick: a round swatch with its name under it. The chosen one is ringed and ticked,
+    so it is told by more than its colour."""
+
+    SIZE = 28
+    DISABLED = 0.4
+
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self.setText(text)
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAccessibleName(text)
+        self.fill = "#808080"
+        self.ink = "#ffffff"
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        words = self.fontMetrics()
+        ring = self.SIZE + 2 * SPACING[0]
+        return QSize(max(ring, words.horizontalAdvance(self.text()) + SPACING[1]), ring + words.height() + 2)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return self.sizeHint()
+
+    def paintEvent(self, _event: object) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        if not self.isEnabled() and not self.isChecked():
+            # As a segment that cannot be chosen: faint, with the chosen one still clear.
+            painter.setOpacity(self.DISABLED)
+        ring = self.SIZE + 2 * SPACING[0]
+        left = (self.width() - ring) / 2
+        colour = QColor(self.fill)
+        if self.isChecked() or self.hasFocus():
+            # A ring clear of the swatch: the accent's own colour when chosen, half of it on focus.
+            edge = QColor(colour)
+            if not self.isChecked():
+                edge.setAlphaF(0.4)
+            painter.setPen(QPen(edge, 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(QRectF(left + 1, 1, ring - 2, ring - 2))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(colour)
+        inset = SPACING[0]
+        painter.drawEllipse(QRectF(left + inset, inset, self.SIZE, self.SIZE))
+        if self.isChecked():
+            tick = 16
+            ratio = self.devicePixelRatioF()
+            mark = icon_pixmap("check", self.ink, tick, ratio)
+            painter.drawPixmap(round(left + (ring - tick) / 2), round((ring - tick) / 2), mark)
+        words = self.palette().color(QPalette.ColorRole.WindowText)
+        painter.setPen(words)
+        painter.setFont(weighted(self.font(), WEIGHT_STRONG if self.isChecked() else WEIGHT_REGULAR))
+        below = QRectF(0, ring + 2, self.width(), self.height() - ring - 2)
+        painter.drawText(below, int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop), self.text())
+        painter.end()
+
+
+class Swatches(Choices):
+    """A few colours side by side, as swatches, answering the calls a dropdown answers."""
+
+    def __init__(self, choices: tuple[tuple[str, object], ...] = (), name: str = "") -> None:
+        super().__init__()
+        bare(self)
+        if name:
+            self.setObjectName(name)
+        self._line = QHBoxLayout(self)
+        self._line.setContentsMargins(0, 0, 0, 0)
+        self._line.setSpacing(SPACING[2])
+        self._buttons: list[SwatchButton] = []
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(False)
+        self._group.idClicked.connect(self.setCurrentIndex)
+        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        for text, data in choices:
+            self.addItem(text, data)
+
+    def addItem(self, text: str, data: object = None) -> None:  # noqa: N802
+        index = self._remember(text, data)
+        button = SwatchButton(text)
+        button.setObjectName(f"{self.objectName()}-{data}" if self.objectName() else "")
+        self._group.addButton(button, index)
+        self._line.addWidget(button)
+        self._buttons.append(button)
+        if self._index < 0:
+            self.setCurrentIndex(index)
+
+    def buttons(self) -> list[SwatchButton]:
+        return list(self._buttons)
+
+    def set_colours(self, colours: dict[object, tuple[str, str]]) -> None:
+        """Each swatch's (colour, tick colour), by its value."""
+        for data, button in zip(self._data, self._buttons, strict=True):
+            button.fill, button.ink = colours.get(data, (button.fill, button.ink))
+            button.update()
 
     def _show(self, index: int) -> None:
         for at, button in enumerate(self._buttons):
@@ -1182,14 +1637,22 @@ def _error_label() -> QLabel:
     return label
 
 
-def _buttons() -> QDialogButtonBox:
-    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+def _buttons(dialog: QDialog) -> QDialogButtonBox:
+    """Save and Cancel, in the order the platform puts them. Made inside `dialog`, so Save is the
+    dialog's own default: made outside it, Enter pressed the first button after the title instead,
+    More details in the homework editor."""
+    choices = QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+    buttons = QDialogButtonBox(choices, dialog)
     buttons.setObjectName("dialogButtons")
     for button in buttons.buttons():
         # KDE's style puts a floppy disk on Save and a red X on Cancel.
         button.setIcon(QIcon())
     buttons.button(QDialogButtonBox.StandardButton.Save).setDefault(True)
-    buttons.button(QDialogButtonBox.StandardButton.Cancel).setProperty("quiet", True)
+    cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+    cancel.setProperty("quiet", True)
+    # Already under the style sheet, so it is drawn again as the plain button it now is.
+    cancel.style().unpolish(cancel)
+    cancel.style().polish(cancel)
     return buttons
 
 
@@ -1219,16 +1682,316 @@ def _preset_locked(category: str | None, day: int, start: str, duration_min: int
     }
 
 
+def bare(widget: QWidget) -> QWidget:
+    """A box that only holds other widgets: it paints nothing, so a dialog's body is its card and not
+    a pale box inside it."""
+    widget.setProperty("bare", True)
+    return widget
+
+
+def _first_line(field: QWidget | QLayout | None) -> QWidget | None:
+    """The control on a field's first line: the field itself, or the first control in a box of them."""
+    if isinstance(field, QLayout):
+        for index in range(field.count()):
+            item = field.itemAt(index)
+            found = _first_line(item.widget() or item.layout())
+            if found is not None:
+                return found
+        return None
+    lead = getattr(field, "first_line", None)
+    if callable(lead):
+        return lead()
+    holder = (QFrame, QAbstractSpinBox, QComboBox, QLineEdit, QAbstractButton, QLabel)
+    if field is not None and not isinstance(field, holder) and field.layout() is not None:
+        return _first_line(field.layout())
+    return field
+
+
+class FieldLabel(QLabel):
+    """A form's label, as tall as its field's first line and centred in it, so its words sit on the
+    same line as the words in the field. QFormLayout set a label level with the field's top edge,
+    a few pixels above them (decision 23 of 0.17)."""
+
+    def __init__(self, words: str, line: QWidget | None) -> None:
+        super().__init__(words)
+        self._line = line
+        self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        # Fixed, so the form gives it exactly its height and does not stretch it down a tall field.
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+
+    def _tall(self, size: QSize) -> QSize:
+        if self._line is None:
+            return size
+        return QSize(size.width(), max(size.height(), self._line.sizeHint().height()))
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        return self._tall(super().sizeHint())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return self._tall(super().minimumSizeHint())
+
+
+class Form(QFormLayout):
+    """A form whose labels sit on their fields' line of words. A text label given with its field is
+    made a FieldLabel for that field."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+    def addRow(self, *row: object) -> None:  # noqa: N802
+        if len(row) == 2 and isinstance(row[0], str):
+            words, field = row
+            super().addRow(FieldLabel(words, _first_line(field)), field)
+            return
+        super().addRow(*row)
+
+
+def field_kind(widget: QWidget) -> str | None:
+    """What a field holds, which decides its width. A text field is none of these: it takes the row."""
+    if isinstance(widget, QTimeEdit):
+        return "time"
+    if isinstance(widget, QDateEdit):
+        return "date"
+    if isinstance(widget, QSpinBox):
+        return "number"
+    if isinstance(widget, QComboBox) and not widget.isEditable():
+        return "choice"
+    return None
+
+
+def even_fields(root: QWidget) -> None:
+    """One width per kind of field (decision 23 of 0.17): every time box as wide as the widest time box
+    in `root`, and so for dates, numbers and dropdowns. Each was as wide as its text or its row: a
+    200-pixel date in a 340-pixel column, and Start and End 420 pixels for five characters."""
+    kinds: dict[str, list[QWidget]] = {}
+    for widget in root.findChildren(QWidget):
+        kind = field_kind(widget)
+        # A popup's own boxes, such as a date's calendar, are in a window of their own.
+        if kind is not None and widget.window() is root.window():
+            kinds.setdefault(kind, []).append(widget)
+    for fields in kinds.values():
+        width = max(field.sizeHint().width() for field in fields)
+        for field in fields:
+            if field.width() != width or field.minimumWidth() != width:
+                field.setFixedWidth(width)
+
+
+class FitScroll(QScrollArea):
+    """A dialog's body that scrolls only past the room it is given. A plain scroll area asks for a
+    modest fixed height, so a dialog opened short of its content, or tall with nothing in it."""
+
+    def __init__(self, body: QWidget, name: str) -> None:
+        super().__init__()
+        self.setObjectName(name)
+        bare(self)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # The keyboard starts on the first field in it, not on the box around them.
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setWidget(bare(body))
+
+    def _extra(self) -> QSize:
+        margins = self.contentsMargins()
+        return QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        wanted = self.widget().sizeHint() + self._extra()
+        return QSize(max(super().sizeHint().width(), wanted.width()), wanted.height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        # As wide as its widest row, since it never scrolls sideways; as short as a few lines.
+        least = super().minimumSizeHint()
+        return QSize(max(least.width(), self.widget().minimumSizeHint().width() + self._extra().width()),
+                     least.height())
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802
+        return self.widget().hasHeightForWidth()
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802
+        extra = self._extra()
+        return self.widget().heightForWidth(width - extra.width()) + extra.height()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        # A scroll area hears its content change size but keeps asking its dialog for the old one.
+        if watched is self.widget() and event.type() == QEvent.Type.LayoutRequest:
+            self.updateGeometry()
+        return super().eventFilter(watched, event)
+
+
+# A sheet's card is lifted off the dimmed window by the large shadow (decision 6 of 0.17), which needs
+# this much room around the card to be drawn; the card keeps SHEET_GAP from the window's edges, and the
+# window behind it is dimmed by SHEET_DIM of black.
+SHEET_ROOM = SHADOW_LARGE.y + SHADOW_LARGE.blur
+SHEET_GAP = SPACING[4]
+SHEET_PAD = SPACING[4]
+SHEET_DIM = 0.4
+
+
+class SheetShade(QWidget):
+    """The window under a sheet, dimmed, so the sheet reads as the one thing to answer. It only paints:
+    the sheet is modal, so the window takes no clicks while it is up."""
+
+    def __init__(self, host: QWidget) -> None:
+        super().__init__(host)
+        self.setObjectName("sheetShade")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+    def paintEvent(self, _event: object) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, round(255 * SHEET_DIM)))
+        painter.end()
+
+
 class Dialog(QDialog):
-    """A dialog that eases in the first time it shows, at the app's motion level."""
+    """A dialog that eases in the first time it shows, at the app's motion level, with one width for
+    each kind of field in it.
+
+    A sheet (decision 23 of 0.17) is drawn inside its window rather than as a window of its own: its
+    card, with the large shadow, over the window dimmed. To Qt it is still a modal dialog, so the
+    window's keys wait for it and `activeModalWidget` finds it. Made without a parent it is a window."""
 
     _appeared = False
+    _shade: SheetShade | None = None
+
+    def __init__(self, parent: QWidget | None = None, *, sheet: bool = False) -> None:
+        super().__init__(parent)
+        self.sheet = sheet and parent is not None
+        self.card: QFrame | None = None
+        # The sheet's card and the room for its shadow, which fade in as one: the card's own effect
+        # is its shadow, and a widget holds one effect.
+        self._face: QWidget | None = None
+        if self.sheet:
+            self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            self.setProperty("sheet", True)
+
+    def card_body(self) -> QVBoxLayout:
+        """The layout the dialog's content goes in, on its one card: the sheet itself, or the card on a
+        window's page. The body is the card, not a box drawn inside it."""
+        outer = QVBoxLayout(self)
+        self.card = QFrame()
+        self.card.setObjectName("sheetCard")
+        inner = QVBoxLayout(self.card)
+        inner.setContentsMargins(SHEET_PAD, SHEET_PAD, SHEET_PAD, SHEET_PAD)
+        inner.setSpacing(SPACING[2])
+        if self.sheet:
+            self._face = bare(QWidget())
+            self._face.setObjectName("sheetFace")
+            around = QVBoxLayout(self._face)
+            around.setContentsMargins(SHEET_ROOM, SHEET_ROOM, SHEET_ROOM, SHEET_ROOM)
+            around.addWidget(self.card)
+            outer.setContentsMargins(0, 0, 0, 0)
+            outer.addWidget(self._face)
+        else:
+            outer.addWidget(self.card)
+        return inner
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         super().showEvent(event)
+        even_fields(self)
+        if self.sheet:
+            self._over_window()
+        self.refit()
         if not self._appeared:
             self._appeared = True
-            appear(self, app_level())
+            level = app_level()
+            for part in self._content():
+                appear(part, level, rise=True)
+            if self._shade is not None:
+                appear(self._shade, level)
+
+    def _content(self) -> list[QWidget]:
+        """What fades in and rises the first time the dialog shows (decision 31 of 0.17): a window's
+        own opacity is ignored on Wayland, and an effect on a window draws its insides over nothing,
+        so the fade goes on what the window holds."""
+        if self._face is not None:
+            return [self._face]
+        if self.card is not None:
+            return [self.card]
+        direct = Qt.FindChildOption.FindDirectChildrenOnly
+        return [
+            child
+            for child in self.findChildren(QWidget, options=direct)
+            if not child.isWindow() and child.graphicsEffect() is None
+        ]
+
+    def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802
+        super().hideEvent(event)
+        if self._shade is not None:
+            self._shade.deleteLater()
+            self._shade = None
+            self.parentWidget().window().removeEventFilter(self)
+
+    def refit(self, *_changed: object) -> None:
+        """Size the dialog to what it holds again, once what changed has been laid out: its fonts
+        and padding arrive with the style sheet after it shows, and More details makes it taller."""
+        QTimer.singleShot(0, self._refit_now)
+
+    def _refit_now(self) -> None:
+        if not self.isVisible():
+            return
+        # A card keeps telling its dialog the size it had before the style sheet reached it, so
+        # fields were squeezed over each other; each part is asked again.
+        for child in self.findChildren(QWidget):
+            child.updateGeometry()
+        layout = self.layout()
+        if layout is None:
+            return
+        layout.activate()
+        if self.sheet:
+            self._over_window()
+            return
+        wanted = self.sizeHint()
+        width = max(self.width(), wanted.width())
+        tall = layout.totalHeightForWidth(width) if layout.hasHeightForWidth() else wanted.height()
+        height = max(self.height(), wanted.height(), tall)
+        screen = self.screen().availableGeometry() if self.screen() else None
+        if screen is not None:
+            width, height = min(width, screen.width() - 48), min(height, screen.height() - 48)
+        if (width, height) != (self.width(), self.height()):
+            self.resize(width, height)
+
+    def _over_window(self) -> None:
+        """The sheet at its content's size, as much as its window has room for, centred over it, and
+        the window dimmed behind it."""
+        host = self.parentWidget().window()
+        room = host.geometry()
+        most_w = room.width() - 2 * SHEET_GAP + 2 * SHEET_ROOM
+        most_h = room.height() - 2 * SHEET_GAP + 2 * SHEET_ROOM
+        # Measured from the card itself: the dialog's layout keeps the card's size from before its fonts
+        # arrived.
+        card = self.card
+        shadow = 2 * SHEET_ROOM
+        hint = card.sizeHint().expandedTo(card.minimumSizeHint()).expandedTo(card.minimumSize())
+        inner = min(hint.width(), most_w - shadow)
+        # Words that wrap need the height they take at this width, not at the width they would like.
+        tall = card.heightForWidth(inner) if card.hasHeightForWidth() else hint.height()
+        width = inner + shadow
+        height = min(max(hint.height(), tall) + shadow, most_h)
+        self.setFixedSize(width, height)
+        self.move(room.x() + (room.width() - width) // 2, room.y() + (room.height() - height) // 2)
+        if self.card is not None and self.card.graphicsEffect() is None:
+            dark = self.palette().color(QPalette.ColorRole.WindowText).lightness() > 128
+            lift(self.card, SHADOW_LARGE, dark)
+        if self._shade is None:
+            self._shade = SheetShade(host)
+            # Gone with the sheet however it goes, even if it is freed while still on screen.
+            self.destroyed.connect(self._shade.deleteLater)
+            host.installEventFilter(self)
+        self._shade.setGeometry(host.rect())
+        self._shade.show()
+        self._shade.raise_()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if (
+            self._shade is not None
+            and watched is self.parentWidget().window()
+            and event.type() in (QEvent.Type.Resize, QEvent.Type.Move)
+        ):
+            self._over_window()
+        return super().eventFilter(watched, event)
 
 
 class BlockDialog(Dialog):
@@ -1243,7 +2006,7 @@ class BlockDialog(Dialog):
         occurrence_day: int | None = None,
         from_range: bool = False,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent, sheet=True)
         if block is not None:
             self._original = deepcopy(block)
         elif from_range:
@@ -1267,28 +2030,10 @@ class BlockDialog(Dialog):
         series = existing and is_series(self._original)
         self.setWindowTitle("Edit event" if existing else "New event")
         self.setObjectName("blockDialog")
-        layout = QVBoxLayout(self)
-        self.scope_occurrence = QRadioButton("This day only")
-        self.scope_occurrence.setObjectName("scopeOccurrence")
-        self.scope_series = QRadioButton("Every selected day")
-        self.scope_series.setObjectName("scopeSeries")
-        self.scope_series.setChecked(True)
-        scope_row = QHBoxLayout()
-        scope_row.addWidget(self.scope_occurrence)
-        scope_row.addWidget(self.scope_series)
-        scope_box = QWidget()
-        scope_box.setObjectName("editScope")
-        scope_box.setLayout(scope_row)
-        scope_box.setVisible(bool(series and occurrence_day is not None))
-        layout.addWidget(scope_box)
-        note = QLabel("Changes apply to every selected day in this series.")
-        note.setObjectName("seriesScope")
-        # isHidden, not isVisible: nothing is visible before the dialog is shown, so the note stood over
-        # "This day only" and "Every selected day" and contradicted the first.
-        note.setVisible(existing and len(self._original.get("days") or []) > 1 and scope_box.isHidden())
-        layout.addWidget(note)
-        form = QFormLayout()
-        layout.addLayout(form)
+        layout = self.card_body()
+        body = QWidget()
+        form = Form(body)
+        form.setContentsMargins(0, 0, 0, 0)
         self.title = _line("blockTitle", self._original["title"])
         form.addRow("Title", self.title)
         self.days = []
@@ -1307,11 +2052,27 @@ class BlockDialog(Dialog):
         days_field = QVBoxLayout()
         days_field.addLayout(choices)
         days_field.addWidget(self.repeat_note)
-        # Level with the boxes rather than halfway down to the note.
-        days_label = QLabel("Days")
-        days_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        form.addRow(days_label, days_field)
-        self.scope_occurrence.toggled.connect(self._sync_scope)
+        # The label sits on the boxes' line, not halfway down to the note.
+        form.addRow("Days", days_field)
+        # Which days a change reaches matters only for a block that repeats, opened on one of its days:
+        # a choice of two, under the days it is about (decision 23 of 0.17).
+        scopes = (("This day only", "occurrence"), ("Every selected day", "series"))
+        self.scope_choice = Segmented(scopes, "editScope")
+        self.scope_occurrence, self.scope_series = self.scope_choice.buttons()
+        self.scope_occurrence.setObjectName("scopeOccurrence")
+        self.scope_series.setObjectName("scopeSeries")
+        self.scope_choice.setCurrentIndex(1)
+        scope_box = self.scope_choice
+        form.addRow("Apply to", scope_box)
+        form.setRowVisible(scope_box, bool(series and occurrence_day is not None))
+        note = QLabel("Changes apply to every selected day in this series.")
+        note.setObjectName("seriesScope")
+        # isHidden, not isVisible: nothing is visible before the dialog is shown, so the note stood over
+        # "This day only" and "Every selected day" and contradicted the first.
+        form.addRow("", note)
+        repeating = existing and len(self._original.get("days") or []) > 1
+        form.setRowVisible(note, repeating and scope_box.isHidden())
+        self.scope_choice.currentIndexChanged.connect(self._sync_scope)
         self.start = QTimeEdit(QTime.fromString(self._original.get("start") or start, "HH:mm"))
         self.start.setDisplayFormat(time_format())
         self.start.setObjectName("blockStart")
@@ -1350,8 +2111,9 @@ class BlockDialog(Dialog):
         self.missed.setObjectName("blockMissed")
         already = occurrence_day in (self._original.get("missed_days") or [])
         self.missed.setChecked(already)
-        self.missed.setVisible(bool(existing and occurrence_day is not None))
         form.addRow("", self.missed)
+        form.setRowVisible(self.missed, bool(existing and occurrence_day is not None))
+        layout.addWidget(FitScroll(body, "blockScroll"), 1)
         self.error = _error_label()
         layout.addWidget(self.error)
         # Delete is not one of the dialog's answers: quiet words at the left, away from Save.
@@ -1364,14 +2126,14 @@ class BlockDialog(Dialog):
         self.delete_button.clicked.connect(self._delete)
         row.addWidget(self.delete_button)
         row.addStretch(1)
-        buttons = _buttons()
+        buttons = _buttons(self)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         row.addWidget(buttons)
         layout.addLayout(row)
         self._sync_scope()
 
-    def _sync_scope(self) -> None:
+    def _sync_scope(self, *_index: object) -> None:
         occurrence = self.scope_occurrence.isChecked() and self._occurrence_day is not None
         # "This day only" ticks one day. Going back used to leave it that way, so Save took the block
         # off every other day. The series' ticks are kept while the one-day view is showing.
@@ -1499,26 +2261,20 @@ class SchoolHoursDialog(Dialog):
         self.setObjectName("schoolHoursDialog")
         self.setWindowTitle("School hours")
         layout = QVBoxLayout(self)
-        heading = QLabel("School hours")
-        heading.setObjectName("setupSection")
-        layout.addWidget(heading)
-        note = QLabel("The days and times you are at school, so nothing is planned then.")
-        note.setObjectName("setupHint")
-        note.setWordWrap(True)
-        layout.addWidget(note)
+        card, box = info_card("School hours", SCHOOL_HOURS_NOTE)
         start = (school or {}).get("start") or "08:00"
         minutes = int((school or {}).get("duration_min") or 390)
         self.days = DayPicker(list((school or {}).get("days") or ([] if school else [0, 1, 2, 3, 4])))
         self.times = TimeRange(start, minutes_to_hhmm(hhmm_to_minutes(start) + minutes), "School")
-        layout.addWidget(self.days)
-        layout.addWidget(self.times)
+        box.addWidget(self.days)
+        box.addWidget(self.times, 0, Qt.AlignmentFlag.AlignLeft)
         hint = QLabel("No school days picked means no school on the calendar.")
         hint.setObjectName("setupHint")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
+        box.addWidget(hint)
         self.error = _error_label()
-        layout.addWidget(self.error)
-        buttons = _buttons()
+        box.addWidget(self.error)
+        layout.addWidget(card)
+        buttons = _buttons(self)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -1649,7 +2405,7 @@ class HomeworkDialog(Dialog):
         waiting: bool = False,
         pinned: bool = False,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent, sheet=True)
         info = CATEGORIES.get(category or "")
         self._original = (
             deepcopy(assignment)
@@ -1676,13 +2432,13 @@ class HomeworkDialog(Dialog):
         self._request: str | None = None
         self.setWindowTitle("Edit homework" if assignment else "Add homework")
         self.setObjectName("homeworkDialog")
-        layout = QVBoxLayout(self)
+        layout = self.card_body()
         # The body scrolls so the dialog cannot outgrow a laptop screen. It already carried notes,
         # links and a checklist; one more row took it to 815px, past the bottom of a 768px display.
         body = QWidget()
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
-        form = QFormLayout()
+        form = Form()
         body_layout.addLayout(form)
         self.title = _line("homeworkTitle", self._original["title"])
         # Homework saved with no category is still homework, so it gets the same hint.
@@ -1701,8 +2457,10 @@ class HomeworkDialog(Dialog):
             # Stored before the limit, so the student is told before they try to save it.
             self._say_length()
         self.error = _error_label()
-        self.error.hide()
         form.addRow("", self.error)
+        # The row goes with its words: an empty one left a gap above Finished.
+        form.setRowVisible(self.error, False)
+        self._form = form
         self.completed = QCheckBox("Finished")
         self.completed.setObjectName("homeworkCompleted")
         self.completed.setChecked(bool(self._original.get("completed")))
@@ -1732,11 +2490,11 @@ class HomeworkDialog(Dialog):
         self.more_details.setProperty("quiet", True)
         self.more_details.setCheckable(True)
         form.addRow("", self.more_details)
-        details = QWidget()
+        details = bare(QWidget())
         details.setObjectName("homeworkDetails")
         details_layout = QVBoxLayout(details)
         details_layout.setContentsMargins(0, 0, 0, 0)
-        extra = QFormLayout()
+        extra = Form()
         details_layout.addLayout(extra)
         self.course = _line("homeworkCourse", self._original.get("course") or "", 40)
         extra.addRow("Course", self.course)
@@ -1766,7 +2524,9 @@ class HomeworkDialog(Dialog):
         self.link_label.setPlaceholderText("Link label")
         self.link_url = _line("homeworkLinkUrl", "", 500)
         self.link_url.setPlaceholderText("https://")
+        # Save is the answer; Add link, Add step and Spread are plain beside it.
         add_link = QPushButton("Add link")
+        add_link.setProperty("quiet", True)
         add_link.setObjectName("addHomeworkLink")
         add_link.clicked.connect(self._add_link)
         link_row.addWidget(self.link_label)
@@ -1783,6 +2543,7 @@ class HomeworkDialog(Dialog):
         self.check_text = _line("homeworkCheckText", "", 80)
         self.check_text.setPlaceholderText("Checklist step")
         add_check = QPushButton("Add step")
+        add_check.setProperty("quiet", True)
         add_check.setObjectName("addHomeworkCheck")
         add_check.clicked.connect(self._add_check)
         check_row.addWidget(self.check_text)
@@ -1795,6 +2556,7 @@ class HomeworkDialog(Dialog):
             self._append_check(step["id"], step["text"], step.get("done", False))
         if assignment is not None:
             spread = QPushButton("Spread across days")
+            spread.setProperty("quiet", True)
             spread.setObjectName("spreadHomework")
             spread.clicked.connect(self._request_spread)
             spread.setToolTip("Save these edits first, then spread.")
@@ -1819,15 +2581,12 @@ class HomeworkDialog(Dialog):
         )
         self.more_details.setChecked(open_details)
         details.setVisible(open_details)
-        area = QScrollArea()
-        area.setObjectName("homeworkScroll")
-        area.setWidgetResizable(True)
-        area.setFrameShape(QFrame.Shape.NoFrame)
-        area.setWidget(body)
-        area.setMinimumHeight(320)
-        layout.addWidget(area)
+        # The sheet grows with the details, up to the room its window has.
+        self.more_details.toggled.connect(self.refit)
+        area = FitScroll(body, "homeworkScroll")
+        layout.addWidget(area, 1)
         # A scroll area does not claim its content's width, so without this the dialog comes up narrow.
-        self.setMinimumWidth(HOMEWORK_MIN_WIDTH)
+        self.card.setMinimumWidth(HOMEWORK_MIN_WIDTH)
         self._scroll = area
         # Delete is not one of the dialog's answers: quiet words at the left, away from Save, as the
         # block editor has it. Only homework that exists can go.
@@ -1840,7 +2599,7 @@ class HomeworkDialog(Dialog):
         self.delete_button.clicked.connect(self._delete)
         row.addWidget(self.delete_button)
         row.addStretch(1)
-        buttons = _buttons()
+        buttons = _buttons(self)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         row.addWidget(buttons)
@@ -1848,11 +2607,12 @@ class HomeworkDialog(Dialog):
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         super().showEvent(event)
-        fit_scroll_dialog(self)
+        if not self.sheet:
+            fit_scroll_dialog(self)
 
     def _show_error(self, text: str) -> None:
         self.error.setText(text)
-        self.error.setVisible(bool(text))
+        self._form.setRowVisible(self.error, bool(text))
         if text:
             self._scroll.ensureWidgetVisible(self.error)
 
@@ -2024,22 +2784,22 @@ class PreviewDialog(Dialog):
         self._first = True
         self._rebuilding = False
         layout = QVBoxLayout(self)
+        card, box = plain_card()
         heading = QLabel(title)
         heading.setObjectName("stage3PreviewTitle")
-        layout.addWidget(heading)
+        box.addWidget(heading)
         note = QLabel(summary)
         note.setObjectName("stage3PreviewSummary")
         note.setWordWrap(True)
-        layout.addWidget(note)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
+        box.addWidget(note)
         self._list = QWidget()
         self._list_layout = QVBoxLayout(self._list)
-        scroll.setWidget(self._list)
-        layout.addWidget(scroll)
+        self._list_layout.setContentsMargins(0, 0, 0, 0)
+        box.addWidget(FitScroll(self._list, "stage3PreviewScroll"), 1)
         self.error = _error_label()
         self.error.setObjectName("stage3PreviewError")
-        layout.addWidget(self.error)
+        box.addWidget(self.error)
+        layout.addWidget(card, 1)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
@@ -2072,6 +2832,7 @@ class PreviewDialog(Dialog):
         self._first = False
         selected = [row for row in self._rows if row.get("checked")]
         self.confirm.setEnabled(bool(selected) and not conflicted)
+        even_fields(self)
         if conflicted:
             self.error.setText("Resolve conflicts or select at least one item before saving.")
         else:
@@ -2283,8 +3044,10 @@ class AlertStrip(QWidget):
         self.text.setText(f"{notice.get('title') or 'FlexWeek'}{' — ' + body if body else ''}{more}")
 
 
-class PlanReview(QWidget):
-    """What the plan just did, in the solver's own words.
+class PlanReview(QFrame):
+    """What the plan just did, in the solver's own words, as one slim bar (decision 18 of 0.17):
+    "Placed 2 · 1 without a time · Details", Got it filled and Replan as text. Details opens the
+    solver's sentences, and they are open already when something has no time.
 
     The client used to take one explanation out of however many the solver gave and drop it in the
     status line, and never mentioned a move at all outside Running late. Explaining what could not
@@ -2298,26 +3061,41 @@ class PlanReview(QWidget):
         super().__init__(parent)
         self.setObjectName("planReview")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        row = QHBoxLayout()
+        row.setSpacing(8)
         self.heading = QLabel()
         self.heading.setObjectName("planReviewHeading")
-        layout.addWidget(self.heading)
-        self.list = QListWidget()
-        self.list.setObjectName("planReviewList")
-        layout.addWidget(self.list)
-        row = QHBoxLayout()
-        dismiss = QPushButton("Got it")
-        dismiss.setObjectName("planReviewDismiss")
-        dismiss.setToolTip("Hide this list.")
-        dismiss.clicked.connect(self._dismiss)
+        row.addWidget(self.heading)
+        self.details = QPushButton("Details")
+        self.details.setObjectName("planReviewDetails")
+        self.details.setCheckable(True)
+        self.details.setToolTip("Show what the plan did, and why.")
+        self.details.toggled.connect(self._show_details)
+        row.addWidget(self.details)
+        row.addStretch(1)
         replan = QPushButton("Replan all my homework")
         replan.setObjectName("planReviewReplan")
         replan.setToolTip(REPLAN_TIP)
         replan.clicked.connect(self.replan_requested.emit)
-        row.addWidget(dismiss)
+        dismiss = QPushButton("Got it")
+        dismiss.setObjectName("planReviewDismiss")
+        dismiss.setToolTip("Hide this list.")
+        dismiss.clicked.connect(self._dismiss)
         row.addWidget(replan)
-        row.addStretch(1)
+        row.addWidget(dismiss)
         layout.addLayout(row)
+        self.list = QListWidget()
+        self.list.setObjectName("planReviewList")
+        self.list.setWordWrap(True)
+        layout.addWidget(self.list)
+        self.list.hide()
         self.hide()
+
+    def _show_details(self, shown: bool) -> None:
+        self.list.setVisible(shown)
+        self.details.setText("Hide details" if shown else "Details")
 
     def _dismiss(self) -> None:
         self.hide()
@@ -2365,20 +3143,27 @@ class PlanReview(QWidget):
                 said.append(f"{titles.get(item['block_id'], 'Homework')}: {item['message']}")
         return said
 
-    def set_trace(self, trace: dict | None, titles: dict[str, str], week_start: str) -> None:
+    def set_trace(
+        self, trace: dict | None, titles: dict[str, str], week_start: str, counts: tuple[int, int]
+    ) -> None:
+        """`counts` are the plan's own, homework it gave a time and homework it could not, the
+        numbers the toast says. The trace's placed list holds every block with a time, School
+        included, so counted here it said 2 placed where the toast said 0."""
         self.list.clear()
         said = self.rows_for(trace or {}, titles, week_start) if trace else []
         if not said:
             self.hide()
             return
-        placed = len(trace.get("placed") or [])
-        unplaced = len(trace.get("unplaced") or [])
-        self.heading.setText(f"Your plan: {placed} placed, {unplaced} without a time")
+        placed, waiting = counts
+        parts = [f"Placed {placed}"] + ([f"{waiting} without a time"] if waiting else [])
+        self.heading.setText(" · ".join(parts))
         for line in said:
             self.list.addItem(QListWidgetItem(line))
         # As tall as it needs and no taller. One line in a box four lines deep reads as an error.
         row = self.list.sizeHintForRow(0) if self.list.count() else 0
         self.list.setFixedHeight(min(row * len(said) + 2 * self.list.frameWidth() + 4, PLAN_REVIEW_MAX))
+        self.details.setChecked(bool(waiting))
+        self._show_details(bool(waiting))
         self.show()
 
 
@@ -2408,7 +3193,8 @@ class ChooseTimeDialog(Dialog):
         self._block, self._blocks, self._due = block, blocks, due
         self._duration = int(block.get("duration_min") or SLOT_MIN)
         layout = QVBoxLayout(self)
-        form = QFormLayout()
+        card, box = plain_card()
+        form = Form()
         self.day = QComboBox()
         self.day.setObjectName("chooseTimeDay")
         monday = date.fromisoformat(week_start)
@@ -2426,16 +3212,17 @@ class ChooseTimeDialog(Dialog):
         self.start.setMaximumTime(QTime(latest // 60, latest % 60))
         form.addRow("Start", self.start)
         form.addRow("Length", QLabel(length_label(self._duration)))
-        layout.addLayout(form)
+        box.addLayout(form)
         self.problem = QLabel()
         self.problem.setObjectName("validationError")
         self.problem.setWordWrap(True)
-        layout.addWidget(self.problem)
+        box.addWidget(self.problem)
         # Another block at that time is allowed, as on the calendar; this says which, so it is a choice.
         self.beside = QLabel()
         self.beside.setObjectName("chooseTimeBeside")
         self.beside.setWordWrap(True)
-        layout.addWidget(self.beside)
+        box.addWidget(self.beside)
+        layout.addWidget(card)
         choices = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         self.buttons = QDialogButtonBox(choices)
         self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setProperty("quiet", True)
@@ -2656,17 +3443,18 @@ class LateDialog(Dialog):
         preview.setObjectName("latePreview")
         preview.setProperty("quiet", True)
         preview.clicked.connect(self.preview_requested.emit)
-        self.accept_button = QPushButton("Accept late start")
+        # The answers where the platform puts them; Preview is a step before them, at the left.
+        answers = QDialogButtonBox()
+        self.accept_button = answers.addButton("Accept late start", QDialogButtonBox.ButtonRole.AcceptRole)
         self.accept_button.setObjectName("lateAccept")
         self.accept_button.setEnabled(False)
-        self.accept_button.clicked.connect(self.accept)
-        cancel = QPushButton("Cancel")
+        cancel = answers.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
         cancel.setProperty("quiet", True)
-        cancel.clicked.connect(self.reject)
+        answers.accepted.connect(self.accept)
+        answers.rejected.connect(self.reject)
         buttons.addWidget(preview)
         buttons.addStretch(1)
-        buttons.addWidget(cancel)
-        buttons.addWidget(self.accept_button)
+        buttons.addWidget(answers)
         layout.addLayout(buttons)
 
     def chosen_minutes(self) -> int:
@@ -2708,7 +3496,9 @@ class SpreadDialog(Dialog):
         # The same vocabulary as every other surface: "1 h 30 min total · due Thu 17 Sep".
         due = due_label(assignment.get("due"), monday_of(from_date))
         total = length_label(int(assignment.get("estimate_min") or 0))
-        layout.addWidget(QLabel(f"{total} total · due {due}"))
+        card, box = info_card(assignment["title"], f"{total} total · due {due}")
+        form = Form()
+        box.addLayout(form)
         self.session = QComboBox()
         self.session.setObjectName("spreadSession")
         remaining = max(SLOT_MIN, int(assignment.get("unplanned_min") or SLOT_MIN))
@@ -2716,16 +3506,17 @@ class SpreadDialog(Dialog):
         for minutes in range(SLOT_MIN, 181, SLOT_MIN):
             self.session.addItem(f"{minutes} minutes", minutes)
         self.session.setCurrentIndex(max(0, self.session.findData(chosen)))
-        layout.addWidget(self.session)
+        form.addRow("Sessions of", self.session)
         self.from_date = QDateEdit(QDate.fromString(from_date, "yyyy-MM-dd"))
         self.from_date.setObjectName("spreadFrom")
         self.from_date.setDisplayFormat(DATE_FORMAT)
         self.from_date.setCalendarPopup(True)
         self.from_date.setMaximumDate(QDate.fromString(assignment["due"][:10], "yyyy-MM-dd"))
-        layout.addWidget(self.from_date)
+        form.addRow("Starting", self.from_date)
         self.error = _error_label()
-        layout.addWidget(self.error)
-        buttons = _buttons()
+        box.addWidget(self.error)
+        layout.addWidget(card)
+        buttons = _buttons(self)
         buttons.button(QDialogButtonBox.StandardButton.Save).setText("Preview sessions")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -2747,15 +3538,14 @@ class AvailabilityDialog(Dialog):
         self._protected = deepcopy(preferences.get("protected") or [])
         self._study = deepcopy(preferences.get("study_windows") or [])
         layout = QVBoxLayout(self)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        card, box = plain_card()
         body = QWidget()
         self._body = body
         body.installEventFilter(self)
         form = QVBoxLayout(body)
-        scroll.setWidget(body)
-        layout.addWidget(scroll)
+        form.setContentsMargins(0, 0, 0, 0)
+        box.addWidget(FitScroll(body, "availabilityScroll"))
+        layout.addWidget(card, 1)
         form.addWidget(QLabel("Protected time"))
         self.protected_list = QListWidget()
         self.protected_list.setObjectName("protectedWindows")
@@ -2812,7 +3602,7 @@ class AvailabilityDialog(Dialog):
         form.addWidget(self.work_editor)
         self.error = _error_label()
         form.addWidget(self.error)
-        buttons = _buttons()
+        buttons = _buttons(self)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -2832,7 +3622,8 @@ class AvailabilityDialog(Dialog):
 
     def _fit_width(self) -> None:
         """Wide enough for every row, so the dialog only ever scrolls up and down."""
-        wanted = self._body.minimumSizeHint().width() + 2 * self.layout().contentsMargins().left() + 32
+        even_fields(self)
+        wanted = self._body.minimumSizeHint().width() + 2 * self.layout().contentsMargins().left() + 64
         if wanted > self.minimumWidth():
             self.setMinimumWidth(wanted)
 

@@ -2,8 +2,9 @@
 
 Every design draws its own Day and Week, and Month is shared, but there is one way to move time
 around: one `Hand` per window runs every gesture, and surfaces only lay out, paint and say what is
-under a point. This file describes the engine as it ships in 0.15.0.
-The code in `desktop/native/hours/` is the authority; each module's docstring says what it owns.
+under a point. This file describes the engine as it ships in 0.15.0, with what 0.16 and 0.17
+changed, and the window around it as 0.17 left it. The code in `desktop/native/hours/` and
+`desktop/native/motion.py` is the authority; each module's docstring says what it owns.
 
 ## Modules
 
@@ -16,6 +17,7 @@ The code in `desktop/native/hours/` is the authority; each module's docstring sa
 | `chips.py` | `TrayChip`: homework with no time, anywhere in a design, dragged onto any hours; a click opens it. |
 | `month.py` | Month as Daily Scheduler draws it. `month_cells` builds each date's chips; `MonthCanvas` paints them and carries a chip with a time to another date; `MonthGrid` is what Today's app and every design show. |
 | `classic.py` | Today's app's Day and Week, the worked example a design copies from. |
+| `rail.py` | Today's app's rail (0.17): the column left of Day and Week with a running timer, a mini month that folds away, what is next, the chips of homework not placed yet and the focus list. Under `NARROW_WIDTH` (1150 pixels) it folds into one line above the hours. |
 
 ## The contract a surface keeps
 
@@ -84,10 +86,11 @@ self.hand.holding.connect(self._hold_renders)       # from the press to the rele
   `_create_range`, or `move_to_date` (one write of both weeks through `/api/changes`, retry-safe,
   shown only once the server accepts it; a drop after a save that failed is refused in words).
 - Once a change's save lands, the toast says what it did ("Moved History essay to Fri 18:00."),
-  with Undo for that one change. Since 0.16 it floats over the foot of the hours rather than
-  taking a row of the page, so its coming and going never moves the hours. One that lands while
-  something is held waits for the release, and it goes once a later save makes its step no longer
-  the last, or on a switch to another view.
+  with Undo for that one change. Since 0.16 it floats over the page rather than taking a row of
+  it, so its coming and going never moves the hours; since 0.17 it sits at the page's bottom
+  right (`Toast.reposition`). One that lands while something is held waits for the release, and
+  it goes once a later save makes its step no longer the last, or on a switch to another view,
+  week, day, design or page.
 - Renders are held from the press, so nothing the press started on is deleted by a re-render; the
   last scene arrives on release.
 - Asking for anywhere else while a block is held (another view, week, day or design) cancels the
@@ -107,8 +110,10 @@ self.hand.holding.connect(self._hold_renders)       # from the press to the rele
   opens one editor, not two, and its second click never lands on the editor the first opened. A
   right-click selects the block under the pointer and asks for its menu through the hand
   (`menu_requested`); it never picks the block up.
-- After a new week or plan, `HoursCanvas.set_week` slides each block that moved from where it was
-  and fades in the new ones, unless animations are off; a block just dropped does not slide.
+- After a plan, `HoursCanvas.set_week` slides each block that moved from where it was and fades in
+  the new ones, unless animations are off; at Reduce a block that moved fades in where it went
+  instead (0.17). A block just dropped does not slide, and a week with nothing in common with the
+  last, such as the next week, shows at once.
 - Overlaps are allowed and drawn side by side.
 - The pointer resting 300 ms within 36 pixels of a scroll area's edge scrolls it; passing through
   does not. With scroll areas inside one another, the nearest one that has room to scroll that way
@@ -123,6 +128,55 @@ self.hand.holding.connect(self._hold_renders)       # from the press to the rele
   cycle is freed by the garbage collector at a moment of its choosing, which once hung the app in
   the middle of a paint.
 
+## The window around the hours (0.17)
+
+The chrome follows the look. `NativeWindow._apply_appearance` dresses the whole window from
+`resolved_palette` and `pack_stylesheet`, so the top bar, the window's frame, dialogs, the focus
+screen, Settings and Today's app always wear the student's look and accent. A design's colourway
+reaches only its own page: `_page_palette` returns the colourway's palette, or `None` under Match
+my look, and its stylesheet is set on `self.planner` alone. A colourway that names no accent wears
+the student's, which `tokens_for` moves in lightness until it reads at 4.5 to 1 on that
+colourway's page. A design never restyles the top bar.
+
+Page changes go through `desktop/native/motion.py`, and nothing waits for them: the new page is
+live and laid out at once, and a picture of the old one (`hold_picture`) is laid over it and faded.
+What comes in is painted faded and to one side by a `Shift` effect while the widget itself sits
+where it belongs, so layouts keep it there and a click lands where it will be.
+
+- `fade_through(picture, incoming, level, direction)` fades the old picture out in `PAGE_OUT_MS`
+  (90) and each incoming widget in over `PAGE_IN_MS` (120) after it, so two pages are never read
+  on top of each other. With a direction the old drifts and the new slides `SLIDE_PX` (12).
+- `switch_page(stack, page, level, direction)` shows a page of a `QStackedWidget` that way. The
+  window's pages use it, as do Settings' sections, setup's pages and the look editor's Play it on
+  the preview.
+- `slide_over(stack, page, level, back=False)` is Settings: it slides in from the right over the
+  week, which a `Dim` darkens by `OVER_DIM` (20 %), in `OVER_MS` (200), and `back=True` slides it
+  away. Where nothing may travel it falls back to `switch_page`. `NativeWindow._show_page` picks
+  `slide_over` into and out of `settingsPage` and `switch_page` for every other page, and hides the
+  toast of the page being left.
+- Chrome and content change in one frame. Before another view, My day or another design,
+  `_begin_turn` holds a picture of everything under the top bar, where each part was
+  (`_places`), and a direction when Day, Week and Month change (`VIEW_ORDER`). The new page is
+  built and dressed, then `_finish_turn` trims the picture to the parts that moved and calls
+  `fade_through`, so a part that stayed put, such as the rail between Week and Day, neither blinks
+  nor drifts.
+- The week's arrows hold a picture of the planner while the next week, day or month loads
+  (`_travel`), then let it fade and drift `DRIFT_PX` (16) the way the student went.
+- The look editor opens over Settings, not over the week: `SettingsPage._open_customise` puts a
+  `LookEditor` on Settings' own `_screens` stack in front of its body, at once, and
+  `_close_customise` takes it off. What the editor changes reaches the window through Settings'
+  `changed` signal, as every other setting does.
+- Sheets, dialogs and notices fade and rise `RISE_PX` (8) through an effect on their content
+  (`appear`), since Wayland ignores a window's own opacity. Ctrl+K fades the same way, and its
+  box rises by moving (`glide`), since the box's one effect is its shadow.
+
+The level comes from `motion_level(preference, look_motion(look))`: the student's Animations
+setting, or the look's own when none was chosen. `apply_ui_effects` makes it the app's level, and
+`duration`, `distance` and `moves` scale every length and distance by `LEVELS`: `normal`,
+`extra` (More, 1.45 times as long and 4/3 as far), `reduce` (the same fades, nothing travels) and
+`off` (nothing animates). A design's own motion (Clay deck's row, a Bento tile's lift, the dial's
+hand, Retro desktop's zoom rectangle) asks the same functions, and nothing loops.
+
 ## How it is proven
 
 Unit tests (`test_hours_geometry`, `test_hours_hand`, `test_hours_zoom`, `test_hours_targets`,
@@ -132,6 +186,8 @@ server: Today's app passes Day 14/14, Week 17/17 and Month 9/9, and every design
 screens pass theirs. The `rig` job in `.github/workflows/verify.yml` runs Today's app's Day and Week
 on every push under Xvfb and Openbox; it first ran on GitHub on 25 September, 14/14 and 17/17.
 `scripts/mutate.py` breaks one rule at a time; every spec in `scripts/mutations/` is caught.
+Since 0.17, `test_motion` holds the page changes and the four levels, with its mutation cases in
+`scripts/mutations/motion.json`.
 
 ## Why this shape
 

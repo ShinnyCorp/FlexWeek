@@ -18,7 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from desktop.native.layouts.colourways import BENTO, CLAY, DIAL, MISSION, ONE, RETRO, TIMELINE, Colourways
-from desktop.native.look import contrast, mix, readable_ink
+from desktop.native.look import AA_TEXT, contrast, mix, readable_ink
+from desktop.native.tokens import fit_lightness
 
 MATCH = "match"
 
@@ -62,17 +63,15 @@ class LayoutSpec:
 
 
 def _colour(spec_colourways: Colourways) -> Option:
+    """Match my look first, so it is what a design wears until a student picks one of its own
+    colourways (decision 3 of 0.17). A colourway saved before then still loads as saved."""
     named = tuple(Choice(value, label) for value, label, _ in spec_colourways)
-    return Option("colour", "Colours", "style", (*named, Choice(MATCH, "Match my look")))
+    return Option("colour", "Colours", "style", (Choice(MATCH, "Match my look"), *named))
 
 
 def _show(key: str, label: str, level: str = "detail") -> Option:
     return Option(key, label, level, (Choice("show", "Show"), Choice("hide", "Hide")))
 
-
-_HOURS = Option(
-    "hours", "Hours shown", "detail", (Choice("day", "06:00 to 22:00"), Choice("full", "All 24 hours"))
-)
 
 LAYOUTS: dict[str, LayoutSpec] = {
     spec.id: spec
@@ -88,7 +87,7 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "timeline",
             "plan",
             "Timeline",
-            "One day as a ruled page, and the week as seven lines of hours down the page.",
+            "The week as a paper planner opened flat, and a day as its page of hours beside its notes.",
             (
                 _colour(TIMELINE),
                 Option(
@@ -96,13 +95,6 @@ LAYOUTS: dict[str, LayoutSpec] = {
                     "Spacing",
                     "style",
                     (Choice("comfortable", "Comfortable"), Choice("compact", "Compact")),
-                ),
-                # Never "hidden": the strip is how a day is picked, so without it the week is out of reach.
-                Option(
-                    "strip",
-                    "Week strip",
-                    "detail",
-                    (Choice("bars", "With load bars"), Choice("names", "Day names only")),
                 ),
                 _show("finished", "Finished and past items"),
             ),
@@ -113,8 +105,8 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "mission",
             "plan",
             "Mission control",
-            "Days as lanes across the screen, with a deadline radar.",
-            (_colour(MISSION), _HOURS, _show("side", "Deadline radar and load")),
+            "Today in numbers across the top, the days as lanes of hours, and deadlines by time left.",
+            (_colour(MISSION), _show("figures", "Figures across the top")),
             MISSION,
             purpose="Dashboard",
             experimental=True,
@@ -123,15 +115,13 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "bento",
             "plan",
             "Bento",
-            "A live day or week in one big tile, with homework and deadlines beside it.",
+            "The week's hours as one big tile, or today's with the other days as small tiles, and your "
+            "homework around them.",
             (
                 _colour(BENTO),
+                Option("hero", "Hero", "style", (Choice("week", "Week"), Choice("today", "Today"))),
                 Option(
                     "corners", "Tile corners", "style", (Choice("soft", "Soft"), Choice("square", "Square"))
-                ),
-                Option(
-                    "tiles", "Supporting tiles", "detail",
-                    (Choice("all", "All"), Choice("essentials", "Hero and tray only")),
                 ),
             ),
             BENTO,
@@ -142,7 +132,7 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "retro",
             "plan",
             "Retro desktop",
-            "Schedule.exe and Week.exe, a deadlines notepad, and a taskbar.",
+            "Your week in a Windows 98 window, with the homework in Notepad, what is next and a taskbar.",
             (
                 _colour(RETRO),
                 Option(
@@ -160,11 +150,8 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "clay",
             "plan",
             "Clay deck",
-            "One large Day card and seven live cards on Week.",
-            (
-                _colour(CLAY),
-                Option("tilt", "Week cards", "detail", (Choice("on", "Fanned"), Choice("off", "Straight"))),
-            ),
+            "One day at a time on a large card, the days either side peeking, moved with the arrows.",
+            (_colour(CLAY), _show("peek", "Days either side")),
             CLAY,
             purpose="Agenda",
             experimental=True,
@@ -176,7 +163,6 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "The day as a clock face, read out hour by hour beside it.",
             (
                 _colour(DIAL),
-                _HOURS,
                 _show("list", "Hour by hour list"),
                 _show("week", "Small dials for the week"),
             ),
@@ -309,9 +295,15 @@ def complete(tokens: dict[str, str]) -> dict[str, str]:
 
 
 def match_tokens(palette: dict) -> dict[str, str]:
-    """A design in the student's own look: the colours the rest of the app is already wearing."""
+    """A design in the student's own look: the colours the rest of the app is already wearing. Its
+    cards are the look's cards, never tinted with the accent, which is not spread over anything larger
+    than a control (decision 1 of 0.17). On a flat look, where cards sit in the page, a little of the
+    text colour tells them from it."""
+    surface, page = palette["panel"], palette["window"]
+    card = surface if contrast(surface, page) >= 1.02 else mix(palette["text"], page, 0.05)
     return complete(
         {
+            **{f"card_{name}": card for name in "abcd"},
             "bg": palette["window"],
             "bg_ink": palette["text"],
             "bg_muted": palette["muted"],
@@ -331,7 +323,16 @@ def tokens_for(layout_id: str, colour: str, palette: dict) -> dict[str, str]:
     """The colours a layout paints with. Every design can ask for every token, so a view never has to
     guard a missing key."""
     chosen = next((tokens for value, _, tokens in LAYOUTS[layout_id].colourways if value == colour), None)
-    return match_tokens(palette) if chosen is None else complete(chosen)
+    if chosen is None:
+        return match_tokens(palette)
+    if "accent" in chosen:
+        return complete(chosen)
+    # A colourway that names no accent, as One thing's Poster and Day dial's Night, wears the
+    # student's own. Its lightness moves as little as it takes to read on the colourway's page, as
+    # the look moves it for the look's: a light look's blue on Poster's black read at 4.2 to 1.
+    accent = fit_lightness(palette["accent"], (chosen["bg"], chosen["surface"]), AA_TEXT)
+    ink = palette["accent_ink"] if accent == palette["accent"] else readable_ink(accent)
+    return complete({"accent": accent, "accent_ink": ink, **chosen})
 
 
 def contrast_failures(tokens: dict[str, str], floor: float = 4.5) -> list[str]:

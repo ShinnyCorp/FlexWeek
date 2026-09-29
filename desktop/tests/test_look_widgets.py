@@ -32,16 +32,20 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.hours.hand import Hand, Verdict
     from desktop.native.hours.month import MonthGrid
     from desktop.native.look import (
-        DARK_FILL,
         LOOK_DEFAULTS,
         effective_look,
         look_menu_token,
-        mix,
-        pack_stylesheet,
         preset_knobs,
         resolved_palette,
     )
-    from desktop.native.settings import AboutDialog, SettingsPage
+    from desktop.native.settings import (
+        OWN_LOOK_ACCENT_NOTE,
+        OWN_LOOK_KNOBS_NOTE,
+        SAVED_LOOK,
+        AboutDialog,
+        SettingsPage,
+    )
+    from desktop.native.tokens import SINK, mix_oklab
     from desktop.native.weekmodel import build_week
     from desktop.native.widgets import DIALOG_MARGIN, use_app_style
     from desktop.native.window import NativeWindow
@@ -59,7 +63,9 @@ SCHOOL = {
     "days": [0],
 }
 CLUB = {"id": "club", "title": "Club", "kind": "locked", "start": "10:00", "duration_min": 30, "days": [1]}
-PALE, STRONG = "#bfdbfe", "#3b82f6"
+# School's colours: the pale fill and strong mark of a light look, and the tone and mark of a dark one.
+PALE, STRONG = "#d1e7ff", "#4687d8"
+TONE, DEEP_MARK = "#65a7fa", "#65a7fa"
 # The hosts of the hands these tests make: a hand is its host's Qt child and keeps no reference to it.
 HOSTS: list = []
 
@@ -131,53 +137,59 @@ def pixel(calendar: ClassicWeek, block_id: str, where: str) -> str:
 
 def test_the_category_table_is_what_these_tests_assume() -> None:
     assert (CATEGORIES["class"]["color"], CATEGORIES["class"]["mark"]) == (PALE, STRONG)
+    assert CATEGORIES["class"]["dark"] == (TONE, DEEP_MARK)
 
 
 def test_a_filled_block_is_the_pale_category_colour_with_ink_that_reads(qapp: QApplication) -> None:
-    calendar, palette = week(qapp, look_of(), pack="slate")
-    assert shape(calendar, "school") == (PALE, "#000000", None, None)
+    calendar, palette = week(qapp, look_of(blocks="filled"), pack="slate")
+    assert shape(calendar, "school") == (PALE, palette["text"], None, None)
     # No category: the palette's own block colours, not a fixed light grey that glares on a dark pack.
     assert shape(calendar, "club")[:2] == (palette["block_locked"], palette["block_locked_ink"])
     assert pixel(calendar, "school", "inside") == PALE
 
 
 def test_a_filled_block_on_a_dark_pack_is_deep_with_light_ink(qapp: QApplication) -> None:
-    """Pale blue on near-black glared, and its black ink read as a hole in the page."""
-    calendar, palette = week(qapp, look_of())
-    deep = mix(STRONG, palette["panel"], DARK_FILL)
-    assert shape(calendar, "school") == (deep, "#ffffff", None, None)
+    """Pale blue on near-black glared, and its black ink read as a hole in the page. The fill is
+    School's tone sunk into the panel, as CSS's color-mix in OKLab makes it, in the look's own ink."""
+    calendar, palette = week(qapp, look_of(blocks="filled"))
+    deep = mix_oklab(TONE, palette["panel"], SINK)
+    assert shape(calendar, "school") == (deep, palette["text"], None, None)
     assert pixel(calendar, "school", "inside") == deep
     assert shape(calendar, "club")[:2] == (palette["block_locked"], palette["block_locked_ink"])
 
 
 def test_an_outlined_block_is_drawn_as_one_outline_in_the_strong_colour(qapp: QApplication) -> None:
-    calendar, palette = week(qapp, look_of(blocks="outlined"))
-    assert shape(calendar, "school")[:3] == (palette["grid"], palette["text"], STRONG)
-    assert pixel(calendar, "school", "left") == STRONG
+    calendar, palette = week(qapp, look_of(blocks="outline"))
+    assert shape(calendar, "school")[:3] == (palette["grid"], palette["text"], DEEP_MARK)
+    assert pixel(calendar, "school", "left") == DEEP_MARK
     assert pixel(calendar, "school", "inside") == palette["grid"]
 
 
-def test_an_edge_block_is_a_plain_card_with_the_strong_colour_down_its_left(qapp: QApplication) -> None:
-    calendar, palette = week(qapp, look_of(blocks="edge"))
-    fill, _ink, _outline, edge = shape(calendar, "school")
-    assert (fill, edge) == (palette["panel"], STRONG)
-    assert pixel(calendar, "school", "left") == STRONG
-    assert pixel(calendar, "school", "inside") == palette["panel"]
+def test_an_edge_block_is_its_category_fill_with_the_strong_colour_down_its_left(qapp: QApplication) -> None:
+    """Edge, the default since decision 14 of 0.17: the fill a Filled block has, and the mark as a
+    3-pixel edge."""
+    calendar, palette = week(qapp, look_of())
+    deep = mix_oklab(TONE, palette["panel"], SINK)
+    fill, _ink, outline, edge = shape(calendar, "school")
+    assert (fill, outline, edge) == (deep, None, DEEP_MARK)
+    assert pixel(calendar, "school", "left") == DEEP_MARK
+    assert pixel(calendar, "school", "inside") == deep
 
 
 def test_the_outline_stays_visible_on_a_light_pack(qapp: QApplication) -> None:
-    calendar, palette = week(qapp, look_of(blocks="outlined"), pack="slate")
+    calendar, palette = week(qapp, look_of(blocks="outline"), pack="slate")
     assert pixel(calendar, "school", "left") == STRONG
-    assert palette["grid"] == "#fbfcff"
+    assert palette["grid"] == "#ffffff"
 
 
 def test_changing_the_look_repaints_the_week_already_on_screen(qapp: QApplication) -> None:
-    calendar, palette = week(qapp, look_of(), pack="slate")
-    assert shape(calendar, "school")[0] == PALE
+    calendar, palette = week(qapp, look_of(blocks="filled"), pack="slate")
+    assert shape(calendar, "school")[::3] == (PALE, None)
+    assert pixel(calendar, "school", "left") == PALE
     calendar.set_look(look_of(blocks="edge"), palette)
     fill, _ink, _outline, edge = shape(calendar, "school")
-    assert (fill, edge) == (palette["panel"], STRONG)
-    assert pixel(calendar, "school", "inside") == palette["panel"]
+    assert (fill, edge) == (PALE, STRONG)
+    assert pixel(calendar, "school", "left") == STRONG
 
 
 def test_days_outside_the_month_use_the_palettes_muted_ink(qapp: QApplication) -> None:
@@ -195,7 +207,7 @@ def test_days_outside_the_month_use_the_palettes_muted_ink(qapp: QApplication) -
     grid.set_month(snapshot, False)
     grid.set_palette(terminal)
     assert grid.canvas.cells[0].in_month is False
-    assert grid.canvas.painter.c("muted").name() == terminal["muted"] == "#7fbf7f"
+    assert grid.canvas.painter.c("muted").name() == terminal["muted"] == "#8b949e"
 
 
 def settings(look: dict) -> SettingsPage:
@@ -240,32 +252,76 @@ def test_choosing_terminal_in_settings_applies_every_one_of_its_knobs(qapp: QApp
 
 def test_a_knob_moved_by_hand_stays_when_the_look_changes(qapp: QApplication) -> None:
     dialog = settings({"preset": "default", "knobs": {}})
-    move(dialog, "corners", "pill")
+    move(dialog, "corners", "rounded")
     choose(dialog, look_menu_token("preset", "terminal"))
-    assert shown(dialog)["corners"] == "pill"
+    assert shown(dialog)["corners"] == "rounded"
     assert shown(dialog)["font"] == "mono"
-    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "pill"}}
-    move(dialog, "depth", "hard")
-    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "pill", "depth": "hard"}}
+    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "rounded"}}
+    move(dialog, "depth", "bold")
+    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "rounded", "depth": "bold"}}
     assert effective_look(dialog.look_choice())["font"] == "mono"
     choose(dialog, look_menu_token("pack", "system"))
-    assert shown(dialog)["corners"] == "pill"
-    assert shown(dialog)["depth"] == "hard"
+    assert shown(dialog)["corners"] == "rounded"
+    assert shown(dialog)["depth"] == "bold"
     assert shown(dialog)["font"] == "sans"
-    assert dialog.look_choice() == {"preset": "default", "knobs": {"corners": "pill", "depth": "hard"}}
+    assert dialog.look_choice() == {"preset": "default", "knobs": {"corners": "rounded", "depth": "bold"}}
 
 
 def test_opening_settings_shows_the_look_on_screen_and_changes_nothing(qapp: QApplication) -> None:
-    stored = {"preset": "terminal", "knobs": {"text": "large", "corners": "pill"}}
+    stored = {"preset": "terminal", "knobs": {"text": "large", "corners": "rounded"}}
     dialog = settings(stored)
     # Each box shows what the student sees, not the first value in its list.
-    assert shown(dialog) == {**preset_knobs("terminal"), "text": "large", "corners": "pill"}
+    assert shown(dialog) == {**preset_knobs("terminal"), "text": "large", "corners": "rounded"}
     # Pressing OK untouched must hand back exactly what was stored: the preset connection is made
     # after the stored preset is selected, so opening the dialog never resets a student's own knobs.
     assert dialog.look_choice() == stored
     assert dialog.findChild(QComboBox, "lookPreset") is None
     assert dialog.look.findData(look_menu_token("preset", "terminal")) >= 0
     assert dialog.look.findData(look_menu_token("pack", "system")) >= 0
+
+
+def test_a_look_of_your_own_shows_what_it_sets_and_leaves_changes_to_customise(qapp: QApplication) -> None:
+    """A custom look sets every knob and the accent, so the ones in Settings changed nothing while it
+    was worn. They show its values and cannot be changed, and a line says where they can; a built-in
+    look hands them back with the knob moved before it was put on."""
+    night = {
+        "name": "Night study",
+        "base": "dark",
+        "accent": "sea",
+        "spacing": "compact",
+        "shadows": "none",
+        "body_font": "serif",
+    }
+    built_in = {"preset": "terminal", "knobs": {}}
+    dialog = SettingsPage(None, {"accent": "gold"}, built_in, {}, saved_looks=[night])
+    dialog.fine_tune.setChecked(True)
+    move(dialog, "corners", "rounded")
+    choose(dialog, SAVED_LOOK + "Night study")
+    assert shown(dialog) == {
+        "surface": "layered",
+        "corners": "soft",
+        "depth": "none",
+        "font": "serif",
+        "blocks": "edge",
+        "density": "compact",
+        "text": "normal",
+    }
+    assert not any(box.isEnabled() for box in dialog.knobs.values())
+    assert dialog.accent.currentData() == "sea" and not dialog.accent.isEnabled()
+    assert dialog.own_look_note.isVisibleTo(dialog)
+    assert dialog.own_look_note.text() == OWN_LOOK_KNOBS_NOTE.format(name="Night study")
+    assert dialog.accent_note.isVisibleTo(dialog)
+    assert dialog.accent_note.text() == OWN_LOOK_ACCENT_NOTE.format(name="Night study")
+    assert dialog.updates()["accent"] == "gold", "the account's accent stays for the other looks"
+    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "rounded"}, "custom": night}
+    choose(dialog, look_menu_token("preset", "paper"))
+    assert dialog.look_choice() == {"preset": "paper", "knobs": {"corners": "rounded"}}
+    assert shown(dialog) == {**preset_knobs("paper"), "corners": "rounded"}
+    assert all(box.isEnabled() for box in dialog.knobs.values())
+    assert dialog.accent.currentData() == "gold" and dialog.accent.isEnabled()
+    assert not dialog.own_look_note.isVisibleTo(dialog) and not dialog.accent_note.isVisibleTo(dialog)
+    move(dialog, "depth", "bold")
+    assert dialog.look_choice() == {"preset": "paper", "knobs": {"corners": "rounded", "depth": "bold"}}
 
 
 def wait_until(qapp: QApplication, predicate, timeout: float = 8.0) -> None:
@@ -295,13 +351,13 @@ def test_a_look_chosen_in_the_window_reaches_the_calendar_not_only_the_styleshee
         window.session.add_block(dict(SCHOOL))
         window.session.save()
         wait_until(qapp, lambda: window.session.revision == 1 and not window.session.busy)
-        assert painted(window, "school")[0] == PALE
+        assert painted(window, "school") == (PALE, STRONG)
 
         # What Settings does when the student presses OK.
-        window._look = look_of(blocks="edge")
+        window._look = look_of(blocks="outlined")
         window._apply_appearance()
         fill, edge = painted(window, "school")
-        assert edge == STRONG
+        assert edge is None
         assert fill != PALE
         assert "border: 1px solid" in window.styleSheet()
     finally:
@@ -336,6 +392,14 @@ def test_todays_name_above_the_week_is_marked_and_no_other(qapp: QApplication) -
     assert [label.property("today") for label in calendar._name_labels] == [False] * 7
     calendar.set_week(build_week(WEEK, [SCHOOL, CLUB], {}, None), 2, 7 * 60)
     assert [label.property("today") for label in calendar._name_labels] == [False, False, True] + [False] * 4
-    sheet = pack_stylesheet("slate", False, look_of())
-    assert f'QLabel[today="true"] {{ color: {palette["accent"]}; font-weight: 700; ' in sheet
-    assert f'border-bottom: 2px solid {palette["accent"]}; border-radius: 0; }}' in sheet
+    # Decision 13 of 0.17: today's date in an accent chip, and no other date in the accent.
+    qapp.processEvents()
+    accent = QColor(palette["accent"])
+    for day, label in enumerate(calendar._name_labels):
+        image = label.grab().toImage()
+        lit = sum(
+            QColor(image.pixel(x, y)) == accent
+            for x in range(0, image.width(), 2)
+            for y in range(0, image.height(), 2)
+        )
+        assert (lit > 20) == (day == 2), f"day {day}: {lit} accent pixels"

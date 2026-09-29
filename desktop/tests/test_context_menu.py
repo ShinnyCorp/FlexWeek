@@ -13,11 +13,12 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QContextMenuEvent, QMouseEvent
-from PySide6.QtWidgets import QApplication, QDialog, QMenu, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QDialog, QPushButton, QWidget
 
 from desktop.native import window as window_module
 from desktop.native.calendar import sunday_due
 from desktop.native.hours.chips import TrayChip
+from desktop.native.menus import DANGER, ICON, Menu
 from desktop.native.widgets import BlockDialog, HomeworkDialog, PreviewDialog
 from desktop.native.window import NativeWindow
 from desktop.tests.window_support import (  # noqa: F401
@@ -91,20 +92,25 @@ def click(widget: QWidget, at: QPoint, double: bool = False) -> None:
         QApplication.sendEvent(widget, event)
 
 
+# A placed homework's menu: what changes it, a line, then the two deletes.
+EVERY_ROW = ["Open\tEnter", "Duplicate\tCtrl+D", "Finished", "---", "Delete\tDel", "Delete homework"]
+
+
 @pytest.fixture()
 def menus(monkeypatch: pytest.MonkeyPatch) -> dict:
     """Every menu shown, as its items' words, and the item to choose from the next one, by name."""
-    seen: dict = {"shown": [], "choose": None, "at": []}
+    seen: dict = {"shown": [], "choose": None, "at": [], "rows": []}
 
-    class Shown(QMenu):
+    class Shown(Menu):
         def exec(self, at: QPoint | None = None, *_rest: object) -> object:
-            seen["shown"].append([action.text() for action in self.actions()])
+            seen["shown"].append([action.text() or "---" for action in self.actions()])
+            seen["rows"].append(list(self.actions()))
             seen["at"].append(at)
             wanted = seen["choose"]
             return next((action for action in self.actions() if action.objectName() == wanted), None)
 
     # The window's own name for it: a method set on Qt's class is not the one Qt's object calls.
-    monkeypatch.setattr(window_module, "QMenu", Shown)
+    monkeypatch.setattr(window_module, "Menu", Shown)
     return seen
 
 
@@ -139,12 +145,12 @@ def test_a_right_click_offers_four_things_and_finished_only_for_homework(
     at = centre(window, essay_id(window), 2)
     before = [dict(block) for block in window.session.blocks]
     right_click(hours, at)
-    assert menus["shown"] == [["Open", "Duplicate\tCtrl+D", "Finished", "Delete", "Delete homework"]]
+    assert menus["shown"] == [EVERY_ROW]
     assert menus["at"] == [at], "the menu opens where the pointer is"
     chosen = (window.session.selected_block_id, window.session.selected_occurrence_day)
     assert chosen == (essay_id(window), 2)
     right_click(hours, centre(window, "school", 3))
-    assert menus["shown"][-1] == ["Open", "Duplicate\tCtrl+D", "Delete"]
+    assert menus["shown"][-1] == ["Open\tEnter", "Duplicate\tCtrl+D", "---", "Delete\tDel"]
     assert window.session.selected_occurrence_day == 3
     assert window.session.blocks == before, "choosing nothing changes nothing"
 
@@ -204,7 +210,7 @@ def test_homework_with_no_time_has_a_menu_too(qapp: QApplication, window: Native
     ]
     right_click(chips[0], chips[0].mapToGlobal(chips[0].rect().center()))
     # Nothing to duplicate until it has a time, and no one time to delete: the homework is the entry.
-    assert menus["shown"] == [["Open", "Finished", "Delete homework"]]
+    assert menus["shown"] == [["Open\tEnter", "Finished", "---", "Delete homework"]]
 
 
 def test_delete_homework_asks_first_and_takes_it_away_with_an_undo(
@@ -241,7 +247,7 @@ def test_a_months_chip_has_the_same_menu_but_only_in_the_open_week(
     canvas.reveal(wednesday)
     qapp.processEvents()
     right_click(canvas, canvas.chip_point(essay_id(window), wednesday))
-    assert menus["shown"] == [["Open", "Duplicate\tCtrl+D", "Finished", "Delete", "Delete homework"]]
+    assert menus["shown"] == [EVERY_ROW]
     this_week = {(monday + timedelta(days=offset)).isoformat() for offset in range(7)}
     elsewhere = [cell for cell in canvas.cells if cell.iso not in this_week]
     assert elsewhere, "the month shows a week other than this one"
@@ -254,3 +260,48 @@ def test_a_months_chip_has_the_same_menu_but_only_in_the_open_week(
         at = canvas.chip_point("school", cell.iso) if cell in school_there else canvas.cell_point(cell.iso)
         right_click(canvas, at)
     assert len(menus["shown"]) == 1, "another week's School is not this week's, so it has no menu here"
+
+
+def test_the_menu_has_an_icon_on_every_row_and_red_only_for_deleting(
+    qapp: QApplication, window: NativeWindow, menus: dict
+) -> None:
+    """Decision 22: icons, a separator before the deletes, and the error red for Delete and Delete
+    homework alone (Red means a problem, decision 8)."""
+    right_click(window.week_table.hours, centre(window, essay_id(window), 2))
+    rows = [action for action in menus["rows"][0] if not action.isSeparator()]
+    assert all(action.property(ICON) for action in rows), [action.text() for action in rows]
+    red = [action.text() for action in rows if action.property(DANGER)]
+    assert red == ["Delete\tDel", "Delete homework"]
+
+
+def test_a_delete_row_is_painted_red_and_the_rest_in_the_text_colour(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QColor
+
+    from desktop.native.look import resolved_palette
+    from desktop.native.menus import menu_colours
+
+    palette = resolved_palette("light-frost", False, None)
+    menu = Menu(window)
+    menu.set_colours(menu_colours(palette, lifted=False))
+    menu.add("Open", "pencil")
+    menu.addSeparator()
+    menu.add("Delete", "trash", danger=True)
+    menu.popup(QPoint(100, 100))
+    qapp.processEvents()
+    image = menu.grab().toImage()
+
+    def colours_in(words: str) -> set[str]:
+        box = menu.actionGeometry(next(action for action in menu.actions() if action.text() == words))
+        return {
+            image.pixelColor(x, y).name()
+            for x in range(box.left(), box.right())
+            for y in range(box.top(), box.bottom())
+        }
+
+    red, ink = QColor(palette["error"]).name(), QColor(palette["text"]).name()
+    assert red in colours_in("Delete") and ink not in colours_in("Delete")
+    assert ink in colours_in("Open") and red not in colours_in("Open")
+    menu.close()

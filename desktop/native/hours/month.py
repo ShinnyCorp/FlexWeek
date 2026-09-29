@@ -35,21 +35,28 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from backend.models import due_is_timed
-from desktop.native.calendar import CATEGORIES, DAYS
+from desktop.native.calendar import DAYS
+from desktop.native.fonts import caption, weighted
 from desktop.native.hours.geometry import Span
 from desktop.native.hours.hand import Gesture, Hand, Held, Verdict
-from desktop.native.look import resolved_palette
+from desktop.native.look import category_paint, luminance, resolved_palette
+from desktop.native.tokens import WEIGHT_STRONG
 from desktop.native.weekmodel import WeekModel, clock_label, hhmm_text
+from desktop.native.widgets import overlay_scroll_bars
 
 # The row of day names, kept above the dates while they scroll.
 HEADER = 26
 # The fewest chips a date always has room for; past them the month scrolls rather than squeezing.
 LEAST_CHIPS = 2
+# A week's row grows with its busiest date up to this many chips; past them it says "+N more"
+# (decision 17 of 0.17: rows sized to their chips, not six even rows).
+MOST_CHIPS = 6
+# This week's band: this much of the text colour over its dates, as the week washes today.
+BAND = 0.04
 # A month opened on a week late in it still shows at least this many weeks.
 LEAST_AHEAD = 2
 # Layout passes to wait for the canvas's new height before scrolling to the opening week anyway.
 REVEAL_TRIES = 3
-FALLBACK_MARK = "#94a3b8"
 
 
 @dataclass(frozen=True)
@@ -65,6 +72,8 @@ class MonthChip:
     due: bool = False
     due_time: str | None = None
     done: bool = False
+    # Due on a date already gone and not finished.
+    late: bool = False
 
     @property
     def carried(self) -> bool:
@@ -72,9 +81,16 @@ class MonthChip:
         return self.block_id is not None and self.start is not None and not self.due
 
     @property
+    def flag(self) -> str:
+        """What a deadline chip leads with, drawn bold: "Due" and its time if it has one."""
+        if not self.due:
+            return ""
+        return f"Due {hhmm_text(self.due_time)}" if self.due_time else "Due"
+
+    @property
     def words(self) -> str:
         if self.due:
-            return f"Due {hhmm_text(self.due_time)} {self.title}" if self.due_time else f"Due {self.title}"
+            return f"{self.flag} {self.title}"
         return f"{clock_label(self.start or 0)} {self.title}"
 
 
@@ -121,6 +137,7 @@ def month_cells(snapshot: dict | None, weeks: Mapping[str, WeekModel], today_iso
                     due=True,
                     due_time=due[11:16] if due and due_is_timed(due) else None,
                     done=bool(item.get("completed")),
+                    late=iso < today_iso and not item.get("completed"),
                 )
             )
         blocks: list[MonthChip] = []
@@ -177,8 +194,14 @@ class MonthPainter:
     def c(self, name: str) -> QColor:
         return QColor(self.colours[name])
 
-    def cell(self, painter: QPainter, box: QRectF, cell: MonthCell) -> None:
-        painter.fillRect(box, self.c("panel") if cell.in_month else self.c("window"))
+    def cell(self, painter: QPainter, box: QRectF, cell: MonthCell, band: bool = False) -> None:
+        # A date outside the month is told by its dimmed number, not a tint: tinted, it looked like today.
+        # This week is banded in a little of the text colour, never the accent.
+        painter.fillRect(box, self.c("panel"))
+        if band:
+            wash = self.c("text")
+            wash.setAlphaF(BAND)
+            painter.fillRect(box, wash)
         painter.setPen(QPen(self.c("hairline"), 1))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(box)
@@ -196,22 +219,41 @@ class MonthPainter:
         painter.drawText(spot, Qt.AlignmentFlag.AlignCenter, str(cell.day_number))
 
     def chip(self, painter: QPainter, box: QRectF, chip: MonthChip, faded: bool, held: bool) -> None:
-        mark = QColor((CATEGORIES.get(chip.category) or {}).get("mark") or FALLBACK_MARK)
-        fill = QColor(mark)
-        fill.setAlpha(24 if chip.due else 60)
+        """A block in its category's fill, as the week draws it, or a deadline as a quiet chip led by
+        a bold "Due". A column of red boxes was the most alarming thing in the app for its most
+        ordinary fact; the flag is red only once the date has gone."""
+        category_fill = None if chip.due else category_paint(chip.category, self.colours)[0]
+        if category_fill is None:
+            fill = self.c("text")
+            fill.setAlpha(18)
+        else:
+            fill = QColor(category_fill)
         ink = self.c("text")
+        flag = self.c("error") if chip.late else self.c("text")
         if faded or chip.done or held:
             fill.setAlpha(fill.alpha() // 2)
             ink.setAlpha(120)
-        painter.setPen(QPen(mark, 1) if chip.due else Qt.PenStyle.NoPen)
+            flag.setAlpha(120)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(fill)
         painter.drawRoundedRect(box, 4, 4)
-        painter.setPen(ink)
         room = box.adjusted(5, 0, -3, 0)
-        words = QFontMetrics(painter.font()).elidedText(
-            chip.words, Qt.TextElideMode.ElideRight, int(room.width())
-        )
-        painter.drawText(room, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, words)
+        align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+        words = chip.words
+        if chip.due:
+            plain = painter.font()
+            bold = weighted(plain, WEIGHT_STRONG)
+            painter.setFont(bold)
+            painter.setPen(flag)
+            elide = QFontMetrics(bold).elidedText
+            painter.drawText(room, align, elide(chip.flag, Qt.TextElideMode.ElideRight, int(room.width())))
+            room.setLeft(room.left() + QFontMetrics(bold).horizontalAdvance(chip.flag + " "))
+            painter.setFont(plain)
+            words = chip.title
+        painter.setPen(ink)
+        if room.width() > 0:
+            elide = QFontMetrics(painter.font()).elidedText
+            painter.drawText(room, align, elide(words, Qt.TextElideMode.ElideRight, int(room.width())))
 
     def more(self, painter: QPainter, box: QRectF, count: int) -> None:
         painter.setPen(self.c("muted"))
@@ -246,9 +288,10 @@ class MonthCanvas(QWidget):
         # can stand for a block on another week, such as School.
         self.open_week: str | None = None
         self._pressed: str | None = None
-        # The row the month opened on, and the height of the view it scrolls in.
+        # The row the month opened on, the height of the view it scrolls in, and each row's height.
         self._lead = 0
         self._room = 0
+        self._heights: list[float] = []
         hand.preview_changed.connect(self.update)
 
     def set_cells(self, cells: list[MonthCell]) -> None:
@@ -277,13 +320,36 @@ class MonthCanvas(QWidget):
         self._fit()
 
     def _fit(self) -> None:
-        # A whole month fits a laptop's screen, so its first row is always on top. Opened on a later
-        # week, the rows grow until the weeks from that one on fill the view, and the ones before it
-        # are above, a scroll away.
-        rows = self.rows()
-        least = rows * self.least_row()
-        filled = math.ceil(self._room * rows / max(rows - self._lead, LEAST_AHEAD)) if self._lead else 0
-        self.setMinimumHeight(max(least, filled))
+        """Each week's row as tall as its busiest date's chips, from two to six. Room over is shared
+        by the weeks from the one the month opened on, which fill the view; the ones before it are
+        above, a scroll away."""
+        heights = [self.base_row(row) for row in range(self.rows())]
+        start = min(self._lead, max(len(heights) - LEAST_AHEAD, 0))
+        spare = self._room - sum(heights[start:])
+        if spare > 0 and heights:
+            share = spare / (len(heights) - start)
+            heights = [height + (share if at >= start else 0) for at, height in enumerate(heights)]
+        self._heights = heights
+        self.setMinimumHeight(math.ceil(sum(heights)))
+        self.update()
+
+    def base_row(self, row: int) -> float:
+        """A week's row at its own size: its busiest date's chips, from LEAST_CHIPS to MOST_CHIPS,
+        and a line for "+N more"."""
+        busiest = max((len(cell.chips) for cell in self.cells[row * 7 : row * 7 + 7]), default=0)
+        chips = min(max(busiest, LEAST_CHIPS), MOST_CHIPS)
+        return round(self.number_height() + chips * self.pitch() + self.pitch() + 4)
+
+    def _row_tops(self) -> list[float]:
+        """Where each row starts, with any height the view adds shared by every row."""
+        heights = self._heights if len(self._heights) == self.rows() else [self.least_row()] * self.rows()
+        extra = max(self.height() - sum(heights), 0) / max(len(heights), 1)
+        tops, at = [], 0.0
+        for height in heights:
+            tops.append(at)
+            at += height + extra
+        tops.append(at)
+        return tops
 
     # Where things are
 
@@ -291,9 +357,7 @@ class MonthCanvas(QWidget):
         return max(1, (len(self.cells) + 6) // 7)
 
     def _small(self) -> QFont:
-        font = QFont(self.font())
-        font.setPointSizeF(max(font.pointSizeF() * 0.86, 7))
-        return font
+        return caption(self.font())
 
     def chip_height(self) -> float:
         return QFontMetrics(self._small()).height() + 2
@@ -310,8 +374,8 @@ class MonthCanvas(QWidget):
     def cell_rect(self, index: int) -> QRectF:
         row, column = divmod(index, 7)
         wide = self.width() / 7
-        tall = self.height() / self.rows()
-        return QRectF(column * wide, row * tall, wide, tall)
+        tops = self._row_tops()
+        return QRectF(column * wide, tops[row], wide, tops[row + 1] - tops[row])
 
     def index_of(self, iso: str) -> int | None:
         return next((at for at, cell in enumerate(self.cells) if cell.iso == iso), None)
@@ -364,9 +428,10 @@ class MonthCanvas(QWidget):
         painter.fillRect(self.rect(), self.painter.c("window"))
         held = self.hand.preview_held()
         target = self.hand.month_target if held is not None else None
+        bands = {at // 7 for at, cell in enumerate(self.cells) if cell.today}
         for at, cell in enumerate(self.cells):
             box = self.cell_rect(at)
-            self.painter.cell(painter, box, cell)
+            self.painter.cell(painter, box, cell, at // 7 in bands)
             painter.setFont(self.font())
             self.painter.day_number(painter, box, cell)
             painter.setFont(self._small())
@@ -498,14 +563,11 @@ class MonthNames(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.fillRect(self.rect(), self.canvas.painter.c("window"))
-        font = QFont(self.canvas._small())
-        font.setBold(True)
+        font = weighted(self.canvas._small(), WEIGHT_STRONG)
         painter.setFont(font)
         wide = self.width() / 7
         for column in range(7):
-            self.canvas.painter.header(
-                painter, QRectF(column * wide, 0, wide, self.height()), DAYS[column].upper()
-            )
+            self.canvas.painter.header(painter, QRectF(column * wide, 0, wide, self.height()), DAYS[column])
         painter.end()
 
 
@@ -515,6 +577,7 @@ class MonthScroll(QScrollArea):
     def __init__(self, canvas: MonthCanvas, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("monthScroll")
+        overlay_scroll_bars(self)
         self.names = MonthNames(canvas, self)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setWidgetResizable(True)
@@ -591,6 +654,8 @@ class MonthGrid(QWidget):
                     "hairline": tokens["line"],
                     "accent": tokens["accent"],
                     "accent_ink": tokens.get("accent_ink", "#ffffff"),
+                    # A dark design's cells take its categories sunk into them, as a dark look's do.
+                    "family": "dark" if luminance(tokens["surface"]) < 0.2 else "light",
                 }
             )
         )

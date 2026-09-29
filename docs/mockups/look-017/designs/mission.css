@@ -1,0 +1,256 @@
+/* Mission control (Dashboard): A, Flight deck, and B, Ops board. Every class starts .mc-.
+   Figures in the mono face, words in the body face. */
+
+.design-mission {
+  --mc-label-w: 64px;
+  --mc-wash: color-mix(in oklab, var(--text) 3%, var(--card));
+  --mc-soft-accent: color-mix(in oklab, var(--accent) 55%, var(--card));
+  --mc-rule: var(--grid-rule);
+  --mc-soft: var(--hairline);
+  font-family: var(--font-body);
+  color: var(--text);
+}
+
+/* Poster draws every hairline in black; inside the lanes and cards, rules and separators stay quiet. */
+.look-poster .design-mission {
+  --mc-rule: color-mix(in oklab, var(--text) 14%, var(--card));
+  --mc-soft: color-mix(in oklab, var(--text) 18%, var(--card));
+}
+
+.design-mission .mc-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.design-mission .mc-muted { color: var(--muted); }
+.design-mission .mc-open { color: var(--accent); font-weight: var(--w-strong); }
+.design-mission .mc-label { color: var(--muted); font-size: var(--t-caption); font-weight: var(--w-strong); }
+.design-mission .mc-book { display: inline-flex; flex: none; margin-right: 5px; }
+.design-mission .mc-book .fw-icon { vertical-align: 0; }
+.design-mission .mc-chip {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--r-pill);
+  background: var(--accent); color: var(--accent-ink); font-size: var(--t-caption); font-weight: var(--w-strong);
+}
+.design-mission .mc-date { color: var(--muted); font-size: var(--t-caption); }
+
+.design-mission .mc-zoom {
+  display: inline-flex; align-items: center; height: 28px; border-radius: var(--r-pill);
+  border: 1px solid var(--hairline-strong); background: var(--card); color: var(--text);
+}
+.design-mission .mc-zoom > span { width: 30px; display: inline-grid; place-items: center; }
+.design-mission .mc-zoom > i { width: 1px; height: 14px; background: var(--hairline-strong); }
+
+/* Cards. */
+.design-mission .mc-card {
+  background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-card);
+  box-shadow: var(--shadow-sm); padding: var(--s3) 14px; min-width: 0;
+}
+.design-mission .mc-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); }
+.design-mission .mc-card-head .mc-muted { font-size: var(--t-caption); white-space: nowrap; }
+
+/* --- The frame of A and B ------------------------------------------------------------------- */
+
+.mc-a, .mc-b { height: 100%; display: flex; flex-direction: column; padding: 0 var(--s4) var(--s4); }
+.mc-b { padding-top: 4px; gap: var(--s3); }
+.mc-head { height: 40px; flex: none; display: flex; align-items: center; justify-content: space-between; }
+.mc-head-line { display: block; color: var(--muted); font-size: var(--t-body); }
+.mc-head-line strong { color: var(--text); font-weight: var(--w-strong); }
+.mc-sep { display: inline-block; vertical-align: middle; width: 3px; height: 3px; border-radius: 50%; background: var(--muted); margin: 0 10px; }
+.design-mission .mc-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 312px; gap: var(--s4); }
+.mc-b .mc-body { grid-template-columns: 1fr 364px; }
+.design-mission .mc-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: var(--s3); }
+.design-mission .mc-side { min-height: 0; display: flex; flex-direction: column; gap: var(--s3); }
+
+/* --- Lanes ----------------------------------------------------------------------------------- */
+
+.design-mission .mc-lanes { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.design-mission .mc-lanes.one { flex: none; }
+.design-mission .mc-axis { height: 26px; flex: none; display: grid; grid-template-columns: var(--mc-label-w) 1fr; }
+.design-mission .mc-axis-hours { position: relative; margin-right: 12px; }
+.design-mission .mc-axis-hours > span {
+  position: absolute; bottom: 7px; transform: translateX(-50%);
+  color: var(--muted); font-family: var(--font-mono); font-size: var(--t-caption); font-variant-numeric: tabular-nums;
+}
+.design-mission .mc-axis-hours > .mc-now-pill {
+  bottom: 4px; height: 20px; display: inline-flex; align-items: center; padding: 0 6px;
+  border-radius: var(--r-pill); background: var(--accent); color: var(--accent-ink); font-weight: var(--w-strong);
+}
+.design-mission .mc-lane-list { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.design-mission .mc-lane { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--mc-label-w) 1fr; }
+.design-mission .mc-lane-name { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 3px; }
+.design-mission .mc-lane-name strong { font-size: var(--t-body); font-weight: var(--w-strong); }
+.design-mission .mc-track {
+  position: relative; margin-right: 12px; border-radius: var(--r-control);
+  background-color: var(--card); border: 1px solid var(--hairline);
+  background-image: linear-gradient(to right, var(--mc-rule) 1px, transparent 1px);
+  background-size: calc(100% / 14) 100%;
+}
+.design-mission .mc-lane.today .mc-track { background-color: var(--mc-wash); border-color: color-mix(in oklab, var(--accent) 45%, var(--hairline)); }
+.design-mission .mc-now { position: absolute; top: -1px; bottom: -1px; width: 2px; margin-left: -1px; background: var(--accent); z-index: 4; }
+.design-mission .mc-now-rule {
+  position: absolute; top: 26px; bottom: 0; left: 0; right: 0; pointer-events: none; z-index: 2;
+  display: grid; grid-template-columns: var(--mc-label-w) 1fr;
+}
+.design-mission .mc-now-rule > div { position: relative; margin-right: 12px; }
+.design-mission .mc-now-rule i { position: absolute; top: 0; bottom: 0; width: 1px; background: color-mix(in oklab, var(--accent) 45%, transparent); }
+
+/* Blocks: the category fill with a 3-pixel edge; figures in mono. */
+.design-mission .mc-block {
+  position: absolute; top: 7px; bottom: 7px; z-index: 3; overflow: hidden;
+  background: var(--fill); color: var(--block-ink); border-radius: var(--r-control);
+}
+.design-mission .mc-block::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--mark); }
+.design-mission .mc-b-in {
+  position: absolute; inset: 0; overflow: hidden; display: flex; flex-direction: column; gap: 2px;
+  padding: 6px 7px 6px 10px;
+}
+.design-mission .mc-b-title { display: block; font-size: var(--t-caption); font-weight: var(--w-strong); line-height: 1.25; }
+.design-mission .mc-b-time,
+.design-mission .mc-b-len {
+  display: block; color: color-mix(in oklab, var(--block-ink) 70%, var(--fill)); font-family: var(--font-mono);
+  font-size: var(--t-caption); line-height: 1.25; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.design-mission .mc-start,
+.design-mission .mc-b-word,
+.design-mission .mc-b-len,
+.design-mission .mc-block[data-fit="start"] .mc-range,
+.design-mission .mc-block:is([data-fit="title"], [data-fit="word"], [data-fit="bare"]) .mc-b-time,
+.design-mission .mc-block:is([data-fit="word"], [data-fit="bare"]) .mc-b-name,
+.design-mission .mc-block[data-fit="bare"] .mc-b-word { display: none; }
+.design-mission .mc-block[data-fit="long"] .mc-b-len { display: block; }
+.design-mission .mc-block[data-fit="start"] .mc-start { display: inline; }
+.design-mission .mc-block[data-fit="word"] .mc-b-word { display: inline; }
+.design-mission .mc-block[data-fit="bare"] .mc-b-in { align-items: center; padding: 8px 0 0 3px; }
+.design-mission .mc-block[data-fit="bare"] .mc-book { margin: 0; }
+
+/* A label beside a block too narrow for its title. */
+.design-mission .mc-out {
+  position: absolute; top: 13px; z-index: 3; display: flex; flex-direction: column; gap: 2px;
+  white-space: nowrap; pointer-events: none;
+}
+.design-mission .mc-out strong { font-size: var(--t-caption); font-weight: var(--w-strong); line-height: 1.25; white-space: normal; }
+.design-mission .mc-out .mc-num { color: var(--muted); font-size: var(--t-caption); line-height: 1.25; }
+.design-mission .mc-out.left { align-items: flex-end; text-align: right; }
+.design-mission .mc-out.no-time .mc-num { display: none; }
+
+/* Ticks: 30 minutes or less, a coloured mark named on hover. */
+.design-mission .mc-tick { position: absolute; top: 7px; bottom: 7px; z-index: 3; }
+.design-mission .mc-tick i {
+  position: absolute; left: 50%; top: 8px; bottom: 8px; width: 6px; margin-left: -3px;
+  border-radius: var(--r-control); background: var(--mark);
+}
+.design-mission .mc-tick.hover { z-index: 6; }
+.design-mission .mc-tick.hover i { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
+.design-mission .mc-tip {
+  position: absolute; bottom: calc(100% - 2px); left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; white-space: nowrap;
+  background: var(--card-2); color: var(--text); border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-control); box-shadow: var(--shadow-lg);
+}
+.design-mission .mc-tip strong { font-size: var(--t-caption); font-weight: var(--w-strong); }
+.design-mission .mc-tip span { color: var(--muted); font-size: var(--t-caption); }
+.design-mission .mc-tip .mc-num { color: var(--text); }
+
+/* The day: one wide lane. */
+.design-mission .mc-lanes.one .mc-lane-list { height: 196px; flex: none; }
+.mc-b .mc-lanes.one .mc-lane-list { height: 296px; }
+.design-mission .mc-lanes.one .mc-block,
+.design-mission .mc-lanes.one .mc-tick { top: 10px; bottom: 10px; }
+
+/* --- The right column: Next, the chart, the deadlines ---------------------------------------- */
+
+.design-mission .mc-next-row { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; font-size: var(--t-body); }
+.design-mission .mc-next-title { display: inline-flex; align-items: center; gap: var(--s2); font-weight: var(--w-strong); }
+.design-mission .mc-next-title i,
+.design-mission .mc-cat i { width: 8px; height: 8px; border-radius: 50%; background: var(--mark); flex: none; }
+
+.design-mission .mc-plot { position: relative; height: 142px; margin-top: var(--s3); }
+.design-mission .mc-grid {
+  position: absolute; top: 20px; bottom: 24px; left: 0; right: 0;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.design-mission .mc-grid span { position: relative; height: 0; border-top: 1px solid var(--mc-soft); margin-left: 30px; }
+.design-mission .mc-grid span:last-child { border-top-color: var(--hairline-strong); }
+.design-mission .mc-grid span::before {
+  content: attr(data-v); position: absolute; right: calc(100% + 6px); top: -9px; line-height: 16px;
+  color: var(--muted); font-family: var(--font-mono); font-size: var(--t-caption); white-space: nowrap;
+}
+.design-mission .mc-cols { position: absolute; top: 20px; bottom: 0; left: 30px; right: 0; display: grid; grid-template-columns: repeat(7, 1fr); }
+.design-mission .mc-col { display: flex; flex-direction: column; min-width: 0; }
+.design-mission .mc-col-plot { position: relative; flex: 1; }
+.design-mission .mc-col-plot i {
+  position: absolute; bottom: 0; left: 50%; width: 20px; margin-left: -10px;
+  background: var(--mc-soft-accent); border-radius: var(--r-control) var(--r-control) 0 0;
+}
+.design-mission .mc-col.on .mc-col-plot i { background: var(--accent); }
+.design-mission .mc-col-plot i.zero { height: 2px; background: var(--hairline-strong); border-radius: 0; }
+.design-mission .mc-col-plot i:not(.zero) { height: var(--h); }
+.design-mission .mc-col-val {
+  position: absolute; left: 50%; bottom: calc(var(--h) + 3px); transform: translateX(-50%); white-space: nowrap;
+  font-size: var(--t-caption); color: var(--text);
+}
+.design-mission .mc-col-day { height: 24px; display: grid; place-items: end center; color: var(--muted); font-size: var(--t-caption); }
+.design-mission .mc-col.on .mc-col-day { color: var(--text); font-weight: var(--w-strong); }
+
+.design-mission .mc-deadlines { flex: 1; min-height: 0; overflow: hidden; }
+.design-mission .mc-deadlines ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.design-mission .mc-deadlines li { padding: 9px 0; border-top: 1px solid var(--mc-soft); display: flex; flex-direction: column; gap: 3px; }
+.design-mission .mc-deadlines li:first-child { border-top: 0; }
+.design-mission .mc-dl-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); font-size: var(--t-body); }
+.design-mission .mc-dl-title { display: inline-flex; align-items: center; white-space: nowrap; }
+.design-mission .mc-left { color: var(--text); }
+.design-mission .mc-dl-sub { display: flex; justify-content: space-between; font-size: var(--t-caption); padding-left: 18px; }
+
+/* The day's table under the lane. */
+.design-mission .mc-today { flex: 1; min-height: 0; }
+.design-mission table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: var(--t-body); }
+.design-mission th {
+  text-align: left; color: var(--muted); font-size: var(--t-caption); font-weight: var(--w-strong);
+  padding: 6px 0; border-bottom: 1px solid var(--mc-soft);
+}
+.design-mission td { padding: 0; height: 43px; border-bottom: 1px solid var(--mc-soft); white-space: nowrap; }
+.design-mission tr:last-child td { border-bottom: 0; }
+.design-mission .r { text-align: right; }
+.design-mission tr.past td,
+.design-mission tr.free td { color: var(--muted); }
+.design-mission .mc-cat { display: inline-flex; align-items: center; gap: var(--s2); }
+.design-mission .mc-cat .mc-book { margin-right: 0; }
+
+/* --- B, Ops board ---------------------------------------------------------------------------- */
+
+.mc-strip { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s3); }
+.mc-fig { display: flex; flex-direction: column; padding-bottom: 10px; }
+.mc-fig-icon { color: var(--muted); display: inline-flex; }
+.mc-fig-value { margin-top: 2px; display: flex; align-items: baseline; gap: 2px; line-height: 1.15; }
+.mc-fig-value .mc-num { font-size: var(--t-display); font-weight: var(--w-number); letter-spacing: -0.02em; }
+.mc-fig-value .mc-unit { font-size: var(--t-heading); color: var(--muted); margin: 0 6px 0 3px; }
+.mc-fig-sub { color: var(--muted); font-size: var(--t-caption); white-space: nowrap; overflow: hidden; }
+.mc-fig-sub .mc-num { color: var(--text); }
+
+.mc-b .mc-lane-list { gap: 5px; }
+.mc-b .mc-table { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.mc-b .mc-th,
+.mc-b .mc-rows li { display: grid; grid-template-columns: 1fr 52px 80px; column-gap: var(--s3); align-items: center; }
+.mc-b .mc-th {
+  margin-top: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--mc-soft);
+  color: var(--muted); font-size: var(--t-caption); font-weight: var(--w-strong);
+}
+.mc-b .mc-rows { list-style: none; margin: 0; padding: 0; }
+.mc-b .mc-rows li { row-gap: 8px; padding: 14px 0 13px; border-bottom: 1px solid var(--mc-soft); font-size: var(--t-body); }
+.mc-b .mc-rows .mc-bar { grid-column: 1; margin-left: 18px; }
+.mc-b .mc-rows .mc-state { grid-column: 2 / 4; }
+.mc-b .mc-dl-title { min-width: 0; }
+.design-mission .mc-bar { display: block; height: 3px; background: var(--mc-soft); overflow: hidden; }
+.design-mission .mc-bar i { display: block; height: 100%; background: var(--accent); }
+.mc-b .mc-state { font-size: var(--t-caption); color: var(--muted); white-space: nowrap; }
+.mc-b .mc-state .mc-num { color: var(--text); }
+.mc-b .mc-foot { margin: auto 0 0; padding-top: var(--s3); color: var(--muted); font-size: var(--t-caption); line-height: 1.4; }
+
+.mc-b .mc-pair { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.mc-b .mc-pair .mc-card { display: flex; flex-direction: column; }
+.mc-b .mc-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.mc-b .mc-list li {
+  display: grid; align-items: center; column-gap: var(--s3); height: 48px;
+  border-bottom: 1px solid var(--mc-soft); font-size: var(--t-body); white-space: nowrap;
+}
+.mc-b .mc-list li:last-child { border-bottom: 0; }
+.mc-b .mc-upnext li { grid-template-columns: auto 1fr auto; }
+.mc-b .mc-free li { grid-template-columns: auto 1fr auto; }
+.mc-b .mc-list .mc-when { color: var(--text); }
+.mc-b .mc-upnext .r { font-size: var(--t-caption); }
