@@ -50,10 +50,10 @@ from desktop.native.hours.geometry import (
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
 from desktop.native.look import (
     block_paint,
+    block_time_colour,
     category_paint,
     contrast,
     look_measures,
-    mix,
     readable_ink,
     text_scale,
 )
@@ -67,8 +67,6 @@ EDGE_PX = 7
 EDGE_WIDTH = 3
 RADIUS_BLOCK = RADIUS_CONTROL
 TEXT_LEFT, TEXT_RIGHT, TEXT_TOP = 8, 5, 3
-# A block's times and length, in its ink laid this much over its fill.
-MUTED_INK = 0.72
 # Homework: a block of it carries a book as well as its colour, for a student who cannot tell the colours.
 HOMEWORK_CATEGORIES = ("assignments", "homework")
 BOOK = "book-open"
@@ -291,7 +289,7 @@ class BlockPainter:
         room = QRectF(start, QPointF(rect.right() - TEXT_RIGHT, rect.bottom() - 1))
         room = room.intersected(visible.adjusted(TEXT_TOP, TEXT_TOP, -TEXT_RIGHT, -1))
         paper = fill if fill is not None else self.c("window")
-        muted = QColor(mix(ink.name(), paper.name(), MUTED_INK))
+        muted = QColor(block_time_colour(ink.name(), paper.name()))
         book = self._book_colour(drawn, ink, paper, edge)
         if drawn.held:
             refused = drawn.verdict is not None and not drawn.verdict.ok
