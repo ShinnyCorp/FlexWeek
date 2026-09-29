@@ -73,7 +73,7 @@ def child_main(args: argparse.Namespace) -> int:
 
     from desktop.native.calendar import sunday_due
     from desktop.native.client import _error
-    from desktop.native.hours.geometry import Axis
+    from desktop.native.hours.geometry import FIRST, Axis
     from desktop.native.hours.hand import surface_at
     from desktop.native.hours.zoom import HoursScroll
     from desktop.native.layouts.registry import sanitize_layout
@@ -327,8 +327,14 @@ def child_main(args: argparse.Namespace) -> int:
             raise NoSurface(f"no {kind} shows day {day} at {minute} in {self.design}")
 
         def reveal(self, day: int, first: int, last: int) -> Step:
-            """Scroll so this stretch of the day is on screen before anything is measured."""
-            reveal = getattr(self.surface("hours", day, first), "reveal", None)
+            """Scroll so this stretch of the day is on screen before anything is measured. A day shown
+            only in part, as Clay's cards beside the one in front show the stretch the front shows, is
+            revealed by the surface that shows it: Clay's brings the day to the front."""
+            try:
+                surface = self.surface("hours", day, first)
+            except NoSurface:
+                surface = self.surface("hours", day)
+            reveal = getattr(surface, "reveal", None)
             if reveal is not None:
                 reveal(day, first, last)
             yield ("wait", 150)
@@ -727,9 +733,12 @@ def child_main(args: argparse.Namespace) -> int:
             start <= reachable - 60,
             f"essay starts {hhmm(start)}; without scrolling it could reach {hhmm(round(reachable))}",
         )
+        # Hours as short as Clay's scroll back to midnight while it rests, and a block held half an
+        # hour in starts there, no earlier.
+        let_go = max(under[0] - held_at, FIRST)
         expect(
-            abs(start - (under[0] - held_at)) <= 20,
-            f"essay starts {hhmm(start)} but was let go at {hhmm(round(under[0] - held_at))}",
+            abs(start - let_go) <= 20,
+            f"essay starts {hhmm(start)} but was let go at {hhmm(round(let_go))}",
         )
 
     def week_save_mid_drag(r: Rig) -> Step:

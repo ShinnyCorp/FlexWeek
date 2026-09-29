@@ -1007,9 +1007,18 @@ class HoursCanvas(QWidget):
         if track is None:
             return None
         upright = track.upright(point)
+        minute = track.minute_at(point)
+        down = track.axis is Axis.DOWN
+        across = upright.x() if down else upright.y()
         hit = None
         for drawn, rect in self.drawn(track):
-            if not drawn.held and rect.contains(upright):
+            if drawn.held:
+                continue
+            # Anywhere in its time across its drawing: the drawing stops short of both ends so blocks
+            # back to back stand apart, and at 38 pixels an hour that gap is a third of a quarter hour,
+            # where a press started a new block over it.
+            beside = rect.left() <= across <= rect.right() if down else rect.top() <= across <= rect.bottom()
+            if rect.contains(upright) or (beside and drawn.span.start <= minute < drawn.span.end):
                 hit = (drawn, rect, track)
         return hit
 
@@ -1183,9 +1192,9 @@ class HoursCanvas(QWidget):
         a fifth of the block, so a short block still moves when pressed a quarter of the way in."""
         down = track.axis is Axis.DOWN
         # The drawing stops a pixel short of the block's start and two of its end, so blocks back to
-        # back stand apart. An edge is pressed on the drawing, but it is at most a fifth of the block's
-        # own time less those pixels: a fifth of the drawing let a 15-minute block on Day resize when
-        # pressed three quarters of the way into its time.
+        # back stand apart. An edge is pressed on the drawing or the gap past it, but is at most a
+        # fifth of the block's own time less those pixels: a fifth of the drawing let a 15-minute
+        # block on Day resize when pressed three quarters of the way into its time.
         lead, trail = 1.0, BETWEEN - 1.0
         length = (rect.height() if down else rect.width()) + lead + trail
         if length < 2 * EDGE_PX + 6:
