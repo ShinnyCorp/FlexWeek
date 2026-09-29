@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import gc
 import importlib.util
 import os
 import shutil
@@ -61,6 +62,37 @@ def nothing_leaves_the_test(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         monkeypatch.setattr(spotify, "system_remote", spotify.NoRemote)
         monkeypatch.setattr(QDesktopServices, "openUrl", staticmethod(lambda _url: False))
     yield
+
+
+@pytest.fixture(autouse=True)
+def no_window_is_left_for_the_garbage_collector() -> Iterator[None]:
+    """A widget Python owns that a test leaves in a reference cycle is deleted whenever the collector
+    next runs, in whichever thread runs it. That was often the local server's thread in a later test,
+    and a whole dialog torn down there crashed the worker with a segmentation fault. The collector runs
+    here instead, on this thread, and any such widget fails the test that left it."""
+    yield
+    if importlib.util.find_spec("PySide6") is None:
+        return
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QApplication
+    from shiboken6 import isValid, ownedByPython
+
+    # A timer still waiting holds its widget; once it has run, the widget is either freed or garbage.
+    if QApplication.instance() is not None:
+        QApplication.processEvents()
+    gc.set_debug(gc.DEBUG_SAVEALL)
+    try:
+        gc.collect()
+        left = [
+            f"{type(item).__name__} {item.objectName()!r}"
+            for item in gc.garbage
+            if isinstance(item, QObject) and isValid(item) and ownedByPython(item)
+        ]
+    finally:
+        gc.set_debug(0)
+        gc.garbage.clear()
+        gc.collect()
+    assert left == [], "left for the garbage collector"
 
 
 @pytest.fixture(autouse=True)

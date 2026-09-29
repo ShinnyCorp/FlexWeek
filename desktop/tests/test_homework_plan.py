@@ -627,7 +627,9 @@ def test_homework_editor_refuses_each_field_in_its_own_words(
         elif field == "checklist":
             dialog._append_check("step", value, False)
         else:
-            monkeypatch.setattr(dialog, "_chosen_due", lambda: value)
+            # On the class: undone on the instance, the patch left the dialog's own bound method in its
+            # dict, a cycle the collector later freed in the local server's thread of another test.
+            monkeypatch.setattr(HomeworkDialog, "_chosen_due", lambda _dialog: value)
         dialog.accept()
         assert dialog.isVisible(), "invalid homework stays open"
         assert dialog.error.text() == said
