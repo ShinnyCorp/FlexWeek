@@ -62,7 +62,7 @@ pub fn run(backend_only: bool, workers: Option<u32>, python: Option<&Path>) -> u
     }
     if !backend_only && !pyside_present(&python) {
         eprintln!(
-            "Full verification needs requirements-desktop.txt. --web-only omits desktop explicitly."
+            "Full verification needs requirements-desktop.txt. --backend-only omits desktop explicitly."
         );
         return 1;
     }
