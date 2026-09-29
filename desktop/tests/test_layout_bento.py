@@ -17,7 +17,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     import shiboken6
-    from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF
+    from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QRect
     from PySide6.QtGui import QEnterEvent
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
@@ -419,6 +419,46 @@ def test_a_narrow_window_or_large_text_puts_the_tiles_under_the_hero_but_not_the
         # Not placed yet stays beside the hours, where a drag onto them starts.
         assert tray.left() > hero.right() and tray.top() == hero.top(), (size, scale)
         assert view.findChild(QWidget, "bentoScroll").horizontalScrollBar().maximum() == 0, (size, scale)
+
+
+def in_sight(widget: QWidget, view: QWidget) -> QRect:
+    """The part of a widget that no scroll area or tile it sits in cuts off, in the view's coordinates."""
+    rect = QRect(widget.mapTo(view, QPoint(0, 0)), widget.size())
+    parent = widget.parentWidget()
+    while parent is not view:
+        rect = rect.intersected(QRect(parent.mapTo(view, QPoint(0, 0)), parent.size()))
+        parent = parent.parentWidget()
+    return rect.intersected(view.rect())
+
+
+def test_the_today_hero_keeps_the_first_homework_not_placed_yet_in_sight_beside_its_hours(
+    qapp: QApplication,
+) -> None:
+    long_next = [
+        {**item, "title": "History essay outline and annotated bibliography"}
+        if item["id"] == "dinner"
+        else item
+        for item in BLOCKS
+    ]
+    # The planner's size in the window: 1150 by 640 with large text, the shortest window (556) wide
+    # and narrow at both text sizes, and 1280 by 768.
+    for size, scale in (
+        ((1132, 568), 1.2),
+        ((1132, 484), 1.2),
+        ((1132, 499), 1.0),
+        ((782, 430), 1.2),
+        ((782, 460), 1.0),
+        ((1262, 711), 1.0),
+    ):
+        for surface in ("week", "day"):
+            for blocks in (BLOCKS, long_next):
+                view = shown(
+                    qapp, surface, size=size, scale=scale, clock="15:40", blocks=blocks, hero="today"
+                )
+                case = (size, scale, surface, blocks[1]["title"])
+                chip = view.findChild(TrayChip, "bentoWaiting0")
+                assert in_sight(chip, view) == QRect(chip.mapTo(view, QPoint(0, 0)), chip.size()), case
+                assert in_sight(hours(view), view).height() >= 88, case
 
 
 def test_an_uncategorized_block_remains_readable_in_midnight(qapp: QApplication) -> None:
