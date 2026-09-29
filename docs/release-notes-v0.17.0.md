@@ -1,8 +1,7 @@
-# FlexWeek 0.17.0 release notes (draft)
+# FlexWeek 0.17.0 release notes
 
-Paste-ready body for the v0.17.0 GitHub release, drafted before the release is cut:
-`desktop/native/version.py` and the CHANGELOG heading take 0.17.0 then. The download sections
-follow `docs/github-release.md` and are copied from 0.16.0 unchanged. The builds carry four more
+Paste-ready body for the v0.17.0 GitHub release. The download sections follow
+`docs/github-release.md` and are copied from 0.16.0 unchanged. The builds carry four more
 typefaces in `desktop/assets/fonts` (Newsreader, JetBrains Mono, Pixelify Sans and VT323, each with
 its OFL licence); both build scripts ship `desktop/assets` whole, so packaging did not change.
 

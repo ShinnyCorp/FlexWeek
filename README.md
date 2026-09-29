@@ -93,7 +93,10 @@ in Today's app with Day dial as the day screen. The gear opens Settings in
 place of the week, where look and layout live together; Timeline is the other
 standard design, and the rest are under Experimental styles. Every design can
 be dark: Today's app through its look, the others through a dark colourway of
-their own. The week saves itself a moment after each change and retries on
+their own. Under Look there are ten looks, and **Customise…** opens the Look
+editor, where any look's colours, categories, corners, type, blocks, grid and
+motion can be changed, checked for readability and saved as your own. Animations
+can be Normal, More, Reduce (fades only) or Off. The week saves itself a moment after each change and retries on
 its own if a save fails. A save that conflicts with another window is never written over: saving
 stops and FlexWeek asks you to reload the saved week. A forgotten password is recovered
 with one of the eight recovery codes shown when the account was made.

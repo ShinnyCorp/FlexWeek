@@ -657,6 +657,18 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-29, `feat/0.17-look`: 0.17.0 prepared on Jonathan's word to release once the UI was done:
+  version, dated changelog, `docs/release-notes-v0.17.0.md`, and README's usage text (ten looks,
+  Customise…, four animation levels). 0.17 is the design system and ten looks, the six designs he
+  picked (One thing's Countdown, Day dial, Timeline's Planner spread, Mission control's Ops board,
+  Bento with Hero: Week | Today, Clay deck's Card carousel, Retro desktop's Windows 98), the Look
+  editor, and motion with four levels. Written by lane subagents, then verified: Grok's pass found 13
+  failing tests and a rig that could not start (scratch XDG config broke Xwayland); the rig on the
+  normal environment then found a Retro segfault (a kept widget leaving its row by setParent, so
+  PySide held a freed layout item) and Bento and Clay drag failures; all fixed and merged, every
+  design 40/40 or 3/3 on the rig. Deferred to a patch: `~/.flexweek-ui-harness/scratch/017-patch-list.md`,
+  including the parked test-suite segfault with a lead from the Retro fix. The Rust engine contract
+  waits on branch `engine/contract` for Jonathan to read; fwtest's S1b fixes are with Grok.
 - 2026-09-26, `feat/0.16-polish`: 0.16.0 prepared on Jonathan's "let's finalize": version,
   dated changelog, `docs/release-notes-v0.16.0.md` and README's usage text. Since the review round:
   homework can be deleted with Undo across weeks (eaa326a), and the gate runs pytest on every core

@@ -71,22 +71,22 @@ def top(widget: QWidget, within: QWidget) -> int:
     return widget.mapTo(within, widget.rect().topLeft()).y()
 
 
-def test_this_build_says_0_16_0_and_is_not_offered_0_15_0(
+def test_this_build_says_0_17_0_and_is_not_offered_0_16_0(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
-    assert VERSION == "0.16.0"
+    assert VERSION == "0.17.0"
     release = {
-        "tag_name": "v0.15.0",
+        "tag_name": "v0.16.0",
         "assets": [
             {"name": name, "browser_download_url": f"https://example.invalid/{name}"}
             for name in (WINDOWS_SETUP, WINDOWS_SETUP + ".sha256")
         ],
     }
     assert available(release, "windows") is None
-    assert available({**release, "tag_name": "v0.16.1"}, "windows")["version"] == "0.16.1"
+    assert available({**release, "tag_name": "v0.17.1"}, "windows")["version"] == "0.17.1"
     dialog = prefs(window)
-    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.16.0"
+    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.17.0"
     dialog.close_page()
 
 

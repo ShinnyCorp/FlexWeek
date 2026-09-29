@@ -3,7 +3,7 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.17.0] - Unreleased
+## [0.17.0] - 2026-09-29
 
 ### Added
 - Newsreader and JetBrains Mono ship with the app, as Inter does, in four
@@ -299,6 +299,32 @@ All notable changes to FlexWeek are documented here. Format follows
   design's settings are kept.
 
 ### Fixed
+- Retro desktop no longer closes FlexWeek when it redraws its day. Its hours
+  were kept aside while Week.exe's row still listed them, and the next redraw
+  could reach freed memory.
+- After Retro desktop, the zoom keys and the rest of the keyboard work again.
+  Three of its labels opened for a moment as windows of their own and took
+  the keyboard from FlexWeek's window.
+- Bento opens its week at now, as every design does. In a narrow window, and
+  in the Today hero at any size, Not placed yet stays in view beside the hours,
+  so homework can always be dragged onto them; it fell below the window with
+  large text.
+- Holding a block at the edge of Bento's hours scrolls from the time on
+  screen, not from the first block of the day.
+- A short block pressed anywhere in its time is picked up, its last pixel
+  included, in every design. A press in the gap at its end started a new block
+  over it.
+- In Mission control, blocks that share their time in one lane each get a whole
+  row, so a short one reads rather than shrinking to a sliver, and the cards
+  under the lanes show whole rows only.
+- Setup's pictures of the designs are taken once each has finished laying out,
+  at the size the designs were drawn at: Mission control's showed a scroll bar
+  beside a half-drawn table, and Timeline's short day names sat over the wrong
+  hours.
+- A look of your own draws its text on blocks in the colour you chose, and
+  Readability says when that is hard to read on a category's colour, with a Fix.
+  Blocks swapped the text to black or white instead, so the warning never
+  showed. The Look editor's type follows the Text knob as every screen does.
 - While a look of your own is worn, Settings shows the accent and Fine-tune
   choices it sets, and they cannot be changed there: a line under each says
   the look sets them and to open Customise…. They looked live and changed
