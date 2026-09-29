@@ -21,8 +21,12 @@ from desktop.native.layouts.views import VIEW_CLASSES
 from desktop.native.look import effective_look, resolved_palette, text_scale
 from desktop.native.weekmodel import build_week
 
-# Drawn at a laptop's window size and scaled down, so each design lays out as it does in use.
+# Drawn at a laptop's window size and scaled down, so each design lays out as it does in use. The
+# Look editor's pictures are drawn at CANVAS; setup's at PICTURE, the size every 0.17 design was drawn
+# at in its mock-up, since at 1040 wide Bento (narrow under 1150) put its tiles under the hero and
+# the picture showed a page scroll bar.
 CANVAS = QSize(1040, 650)
+PICTURE = QSize(1280, 800)
 SETTLE_MS = 100
 # Wednesday at ten past four: school is over, and there is homework to do and more due.
 SAMPLE_DAY, SAMPLE_MINUTE = 2, 16 * 60 + 10
@@ -84,19 +88,21 @@ def system_dark() -> bool:
     return QGuiApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
 
 
-def _settle(widget: QWidget) -> None:
+def _settle(widget: QWidget, size: QSize) -> None:
     # Laid out and painted without ever reaching the screen. A view finishes laying out on the event
     # loop (a scroll area learns its page's size from a posted request; Retro arranges its windows on
     # a timer), so the loop runs until it is idle, a few milliseconds. Taken sooner, the picture shows
     # a half-laid-out page and a scroll bar the view then drops. Clicks wait; the cap is for a loop
     # that is never idle.
     widget.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
-    widget.resize(CANVAS)
+    widget.resize(size)
     widget.show()
     QGuiApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents, SETTLE_MS)
 
 
-def render(main: str, colour: str | None, pack: str, look: dict | None, width: int) -> QPixmap:
+def render(
+    main: str, colour: str | None, pack: str, look: dict | None, width: int, size: QSize = PICTURE
+) -> QPixmap:
     """A picture of `main` in `colour` (or, for Today's app, in `pack`), `width` pixels wide."""
     dark = system_dark()
     palette = resolved_palette(pack, dark, look)
@@ -124,7 +130,7 @@ def render(main: str, colour: str | None, pack: str, look: dict | None, width: i
         widget = ClassicWeek(Hand(lambda block_id, from_day, span: Verdict(False, ""), host))
         widget.set_look(look, palette)
         widget.set_week(build_week(monday, blocks, homework, None), SAMPLE_DAY, SAMPLE_MINUTE)
-    _settle(widget)
+    _settle(widget, size)
     picture = widget.grab()
     widget.close()
     widget.deleteLater()

@@ -1265,7 +1265,7 @@ class LookEditor(QWidget):
         if week is not None:
             picture = week.grab()
         else:
-            picture = render_preview("classic", None, self._pack, self._look, CANVAS.width())
+            picture = render_preview("classic", None, self._pack, self._look, CANVAS.width(), CANVAS)
         for page in self.pictures:
             page.show_picture(picture, self._fit)
 
