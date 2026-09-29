@@ -12,10 +12,11 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPaintEvent, QPen, QResizeEvent
 from PySide6.QtWidgets import QSizePolicy, QSpacerItem, QVBoxLayout, QWidget
 
+from desktop.native.motion import OUT, duration, moves
 from desktop.native.tokens import WEIGHT_NUMBER, WEIGHT_STRONG, mix_oklab, type_pt
 
 # The mock-up's ring (designs/one.js): 18 wide on a 340 circle in a 440 box, the scale outside it.
@@ -25,6 +26,8 @@ SCALE_ROOM = 50 / 440
 NUMBER_TIMES = 3.2
 # How far the track sits from the page towards the text, by the look's family.
 TRACK_SHARE = {"light": 0.09, "dark": 0.15, "contrast": 0.32}
+# How long the arc eases to a new minute at Normal, as the mock-up's does (designs/one.css).
+ARC_MS = 300
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,9 @@ class CountdownRing(QWidget):
         self._scale = 1.0
         self._ticks = 0
         self._labels: tuple[str, ...] = ()
+        self._ease = QVariantAnimation(self)
+        self._ease.setEasingCurve(OUT)
+        self._ease.valueChanged.connect(self._eased)
         column = QVBoxLayout(self)
         column.setSpacing(0)
         column.addStretch(1)
@@ -83,7 +89,25 @@ class CountdownRing(QWidget):
         self.update()
 
     def set_left(self, share: float) -> None:
+        self._ease.stop()
         self._left = min(max(share, 0.0), 1.0)
+        self.update()
+
+    def run_down(self, since: float, share: float, level: str) -> None:
+        """`share` left, the arc easing down to it from `since`, the share drawn before, where things
+        may travel at `level`. A share that grew is a new countdown and is there at once: the arc run
+        back round the ring would read as the clock going backwards."""
+        self.set_left(share)
+        length = duration(ARC_MS, level)
+        if since <= self._left or length == 0 or not moves(level):
+            return
+        self._ease.setStartValue(min(since, 1.0))
+        self._ease.setEndValue(self._left)
+        self._ease.setDuration(length)
+        self._ease.start()
+
+    def _eased(self, share: object) -> None:
+        self._left = float(share)
         self.update()
 
     def set_number(self, number: str, unit: str = "") -> None:
@@ -115,6 +139,7 @@ class CountdownRing(QWidget):
         return self._number
 
     def left(self) -> float:
+        """The share the arc is drawn at now, part way there while it eases."""
         return self._left
 
     def inside(self) -> QSize:

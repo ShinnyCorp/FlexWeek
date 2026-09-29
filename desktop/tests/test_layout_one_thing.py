@@ -28,7 +28,8 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.layouts.one_thing import RING_ROOMY, DayBar, OneThingView
     from desktop.native.layouts.registry import options_for, tokens_for
     from desktop.native.look import resolved_palette
-    from desktop.native.ring import CountdownRing
+    from desktop.native.motion import apply_ui_effects, duration
+    from desktop.native.ring import ARC_MS, CountdownRing
     from desktop.native.weekmodel import build_week, minute_of
     from desktop.native.widgets import FittedLabel
 
@@ -112,6 +113,65 @@ def test_the_ring_is_the_hour_ahead_like_a_kitchen_timer(qapp: QApplication) -> 
     assert counts(shown(qapp, "15:20")) == ("2:40", 1.0)
     assert counts(shown(qapp, "15:00")) == ("3", 1.0)
     assert shown(qapp, "15:00").findChild(CountdownRing).accessibleName() == "3 h until it starts"
+
+
+def ring_of(view: OneThingView) -> CountdownRing:
+    return view.findChild(CountdownRing)
+
+
+def held_at(ring: CountdownRing, ms: int) -> float:
+    """The share the ring draws `ms` into its ease, held there rather than timed."""
+    ring._ease.pause()
+    ring._ease.setCurrentTime(ms)
+    return ring.left()
+
+
+@pytest.mark.parametrize("level", ["normal", "extra"])
+def test_a_minute_passing_eases_the_ring_down_rather_than_jumping(qapp: QApplication, level: str) -> None:
+    """As the mock-up's arc does. The layout is built again each minute, and the new ring carries on
+    from what the last one drew. More takes a little longer than Normal."""
+    apply_ui_effects(level)
+    try:
+        view = shown(qapp, "13:40")
+        view.show_week(scene("13:41"))
+        ring = ring_of(view)
+        assert ring.number() == "49", "the number is the new minute's at once"
+        assert ring.left() == pytest.approx(50 / 60), "the arc leaves from where it was"
+        assert 49 / 60 < held_at(ring, duration(ARC_MS, "normal") // 3) < 50 / 60
+        assert held_at(ring, duration(ARC_MS, level)) == pytest.approx(49 / 60)
+        assert (ring._ease.duration() > duration(ARC_MS, "normal")) is (level == "extra")
+    finally:
+        apply_ui_effects("normal")
+
+
+def test_built_again_mid_ease_the_ring_goes_on_from_where_it_was_drawn(qapp: QApplication) -> None:
+    apply_ui_effects("normal")
+    view = shown(qapp, "13:40")
+    view.show_week(scene("13:41"))
+    midway = held_at(ring_of(view), duration(ARC_MS) // 2)
+    view.show_week(scene("13:41"))
+    assert ring_of(view).left() == pytest.approx(midway)
+
+
+@pytest.mark.parametrize("level", ["reduce", "off"])
+def test_under_reduce_the_ring_is_at_the_new_minute_at_once(qapp: QApplication, level: str) -> None:
+    apply_ui_effects(level)
+    try:
+        view = shown(qapp, "13:40")
+        view.show_week(scene("13:41"))
+        assert ring_of(view).left() == pytest.approx(49 / 60)
+    finally:
+        apply_ui_effects("normal")
+
+
+def test_a_new_countdown_fills_the_ring_at_once_rather_than_sweeping_it_back(qapp: QApplication) -> None:
+    """School's last minute, then Dinner three and a half hours off: the arc is not run back round the
+    ring, which would read as the clock going backwards."""
+    apply_ui_effects("normal")
+    view = shown(qapp, "14:29")
+    assert counts(view) == ("1", round(1 / 60, 3))
+    view.show_week(scene("14:30"))
+    assert counts(view) == ("3:30", 1.0)
 
 
 def test_a_fixed_block_offers_no_homework_buttons(qapp: QApplication) -> None:
