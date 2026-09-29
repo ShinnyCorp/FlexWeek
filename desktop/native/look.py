@@ -176,6 +176,8 @@ HEADING_NAMES = (
     "aboutVersion",
     "updateHeading",
     "prefsHeading",
+    "lookEditorTitle",
+    "lookGroupName",
     "layoutMainHeading",
     "layoutDayHeading",
     "cardTitle",
@@ -189,6 +191,8 @@ HEADING_NAMES = (
     "bentoFigure",
 )
 AA_TEXT = 4.5
+# The luminance under which a colour is dark: a custom page under it makes a dark look.
+MID_GREY = 0.18
 # Room round a drawn menu's panel for its shadow: its window is this much larger on every side.
 MENU_EDGE = 24
 # How far High contrast lays its text over a row under the pointer; OKLab mixes 6 % of white on black
@@ -794,7 +798,7 @@ def _customised(palette: dict, custom: dict) -> dict:
         card = colours.get("card", table["panel"])
         text = colours.get("text", table["text"])
         line = colours.get("line", table["hairline"])
-        axis = "dark" if luminance(page) < 0.18 else "light"
+        axis = "dark" if luminance(page) < MID_GREY else "light"
         if axis != table["axis"] or table["family"] != "contrast":
             table["family"] = axis
         table["axis"] = axis
@@ -946,13 +950,17 @@ def block_paint(
     neutral = palette["block_flex" if flexible else "block_locked"]
     neutral_ink = palette["block_flex_ink" if flexible else "block_locked_ink"]
     mark = mark or category_color or palette["block_edge"]
-    mode = effective_look(look)["blocks"]
+    selected = sanitize_look(look)
+    mode = effective_look(selected)["blocks"]
     if mode == "outline":
         return {"mode": mode, "fill": palette["grid"], "ink": palette["text"], "outline": mark, "edge": None}
     edge = mark if mode == "edge" else None
     if category_color:
         text = palette["text"]
-        ink = text if contrast(text, category_color) >= AA_TEXT else readable_ink(category_color)
+        # A look of the student's own writes its text as chosen, as the mock-up does, so a colour it does
+        # not read on shows on the week, and Readability names it with its Fix.
+        own = "custom" in selected
+        ink = text if own or contrast(text, category_color) >= AA_TEXT else readable_ink(category_color)
         return {"mode": mode, "fill": category_color, "ink": ink, "outline": None, "edge": edge}
     return {"mode": mode, "fill": neutral, "ink": neutral_ink, "outline": None, "edge": edge}
 
@@ -1152,8 +1160,15 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f"QLabel#settingsTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; }}"
         f"QFrame#settingsCard, QFrame#dialogCard {{ background: {palette['panel']}; "
         f"border-radius: {card_radius}px; padding: 0; {edges} }}"
-        "QLabel#prefsHeading, QLabel#layoutMainHeading, QLabel#layoutDayHeading, QLabel#cardTitle { "
+        "QLabel#prefsHeading, QLabel#layoutMainHeading, QLabel#layoutDayHeading, QLabel#cardTitle, "
+        "QLabel#lookEditorTitle, QLabel#lookGroupName { "
         f"font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; color: {palette['text']}; }}"
+        # The look editor, a page of Settings: its notes, values, tag and small buttons are captions;
+        # the names of its settings, its sample blocks and its colour pairs are strong.
+        "QLabel#lookNote, QLabel#lookOut, QLabel#lookEditorState, QLabel#lookMessageText, QLabel#lookTag, "
+        f'QCheckBox[exact="true"], QPushButton[small="true"] {{ font-size: {pt["caption"]}; }}'
+        "QLabel#lookFieldLabel, QLabel#lookCategoryName, QLabel#lookTag, QLabel#lookChip, QLabel#lookPair { "
+        f"font-weight: {WEIGHT_STRONG}; }}"
         "QLabel#settingsCardNote, QLabel#cardNote, QLabel#settingsExperimental, QLabel#prefPlanningNote, "
         "QLabel#prefDndNote, "
         "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits { "
