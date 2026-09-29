@@ -1160,24 +1160,18 @@ class BentoCanvas(HoursCanvas):
 
 
 class BentoHours(HoursScroll):
-    """Hours that open as the mock-up frames them: the first block a quarter of an hour under the
-    top, as long as now stays an hour clear of the bottom; otherwise now in the middle, as every
-    design's hours open (decision 12 of 0.17)."""
+    """Hours that open at now in the middle, as every design's hours open (decision 12 of 0.17), and
+    a day or week without now as the mock-up frames it: the first block a quarter of an hour under
+    the top."""
 
     # The first block's start, set each render; None frames nothing.
     first: int | None = None
 
     def scroll_to(self, minute: int, above: int | None = 90) -> None:
-        tracks = self.canvas.tracks
-        if self.first is None or not self.isVisible() or not tracks:
+        if above is None or self.first is None or not self.isVisible() or not self.canvas.tracks:
             super().scroll_to(minute, above)
             return
-        top = self.first - 15
-        shown = self.viewport().height() / tracks[0].per_minute()
-        if above is not None or minute - top <= shown - 60:
-            super().scroll_to(top, 0)
-        else:
-            super().scroll_to(minute, above)
+        super().scroll_to(self.first - 15, 0)
 
 
 class Row(QPushButton):
