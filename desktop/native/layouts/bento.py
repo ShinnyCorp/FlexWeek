@@ -56,6 +56,7 @@ from desktop.native.layouts.base import (
     plural,
     rules,
     scrolling,
+    short_length,
 )
 from desktop.native.look import category_paint, look_measures
 from desktop.native.motion import app_level
@@ -104,14 +105,6 @@ LEAST_FREE = 30
 DUE_ROWS = 5
 # How far a day tile rises as it lifts, and how long it takes (the Bento Box Grid entry's hover).
 RISE, LIFT_MS = 2, 200
-
-
-def short_length(minutes: int) -> str:
-    """A length where room is short: "1 h 30", "45 min", "2 h"."""
-    hours, rest = divmod(max(minutes, 0), 60)
-    if not hours:
-        return f"{rest} min"
-    return f"{hours} h {rest}" if rest else f"{hours} h"
 
 
 def planned_words(minutes: int) -> str:

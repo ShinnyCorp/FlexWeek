@@ -282,9 +282,9 @@
  {
   "file": "desktop/native/layouts/retro.py",
   "name": "a notepad line runs off the page",
-  "old": "        if fonts.horizontalAdvance(fitted) > room:\n",
-  "new": "        if False:\n",
-  "test": "desktop/tests/test_layout_retro.py::test_a_notepad_line_short_of_room_puts_its_date_under_its_title"
+  "old": "    if len(line.title) <= title and title + 2 + len(rest) <= chars:\n",
+  "new": "    if True:\n",
+  "test": "desktop/tests/test_layout_retro.py::test_a_notepad_line_short_of_room_puts_its_length_and_time_under_its_title"
  },
  {
   "file": "desktop/native/layouts/retro.py",

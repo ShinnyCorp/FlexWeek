@@ -80,6 +80,7 @@ from desktop.native.layouts.empty import EmptyWeek, nothing_yet
 from desktop.native.layouts.registry import MATCH, options_for, sanitize_layout, tokens_for
 from desktop.native.layouts.views import VIEW_CLASSES
 from desktop.native.look import (
+    MENU_EDGE,
     effective_look,
     look_measures,
     look_motion,
@@ -1148,6 +1149,7 @@ class NativeWindow(QMainWindow):
             view.late_requested.connect(self._open_late)
             view.my_day_requested.connect(self._enter_day)
             view.back_requested.connect(self._leave_day)
+            view.menu_requested.connect(self._menu_from)
             view.day_activated.connect(self.session.open_day)
             view.remembered_zoom = self._zoom
             view.zoomed.connect(self._remember_zoom)
@@ -1280,6 +1282,11 @@ class NativeWindow(QMainWindow):
             self._day_mode = True
         elif wanted == "week":
             self._day_mode = False
+
+    def _menu_from(self, point: QPoint) -> None:
+        """More's menu, opening up from `point` on the screen, as Retro desktop's Start opens it."""
+        menu = self.more_menu
+        menu.popup(point - QPoint(0, menu.sizeHint().height() - 2 * MENU_EDGE))
 
     def _enter_day(self) -> None:
         if self.session.account is None:

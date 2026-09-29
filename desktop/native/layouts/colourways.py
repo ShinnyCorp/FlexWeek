@@ -210,6 +210,10 @@ BENTO = (
         ),
     ),
 )
+# Retro's colourways name the desktop (`bg`) and the title bars, which run from `title` to `title_end`
+# with `title_ink` on them. Teal is Windows 98's own desktop and title bar. Inside the windows the
+# greys are Windows 98's whichever colourway, and under Match my look the look's accent takes the
+# desktop and the title bars.
 RETRO = (
     (
         "teal",
@@ -226,6 +230,9 @@ RETRO = (
             line="#808080",
             danger="#800000",
             danger_ink="#ffffff",
+            title="#000080",
+            title_end="#1084d0",
+            title_ink="#ffffff",
         ),
     ),
     (
@@ -243,6 +250,9 @@ RETRO = (
             line="#808080",
             danger="#800000",
             danger_ink="#ffffff",
+            title="#4b0082",
+            title_end="#8a4fb5",
+            title_ink="#ffffff",
         ),
     ),
     (
@@ -260,6 +270,9 @@ RETRO = (
             line="#808080",
             danger="#800000",
             danger_ink="#ffffff",
+            title="#1f2d3d",
+            title_end="#56789a",
+            title_ink="#ffffff",
         ),
     ),
 )

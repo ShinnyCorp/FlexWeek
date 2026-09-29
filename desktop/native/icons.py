@@ -29,19 +29,22 @@ def _source(name: str) -> str:
     return (ICON_DIR / f"{name}.svg").read_text(encoding="utf-8")
 
 
-def svg(name: str, colour: str) -> bytes:
-    """The icon's SVG in `colour`, at the system's stroke."""
-    text = _source(name).replace("currentColor", colour)
-    return text.replace('stroke-width="2"', f'stroke-width="{STROKE}"').encode("utf-8")
+def svg(name: str, colour: str, stroke: str = STROKE, fill: str = "none") -> bytes:
+    """The icon's SVG in `colour`, at the system's stroke unless given another, its shapes filled
+    with `fill` if given: Retro desktop's icons are drawn white inside, as Windows 98's were."""
+    text = _source(name).replace("currentColor", colour).replace('fill="none"', f'fill="{fill}"')
+    return text.replace('stroke-width="2"', f'stroke-width="{stroke}"').encode("utf-8")
 
 
 @cache
-def pixmap(name: str, colour: str, size: int = 16, ratio: float = 1.0) -> QPixmap:
+def pixmap(
+    name: str, colour: str, size: int = 16, ratio: float = 1.0, stroke: str = STROKE, fill: str = "none"
+) -> QPixmap:
     """`name` drawn `size` pixels square in `colour`, sharp on a screen of device pixel `ratio`."""
     side = max(1, round(size * ratio))
     made = QPixmap(side, side)
     made.fill(Qt.GlobalColor.transparent)
-    renderer = QSvgRenderer(QByteArray(svg(name, colour)))
+    renderer = QSvgRenderer(QByteArray(svg(name, colour, stroke, fill)))
     painter = QPainter(made)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     renderer.render(painter, QRectF(0, 0, side, side))

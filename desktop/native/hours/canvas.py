@@ -130,6 +130,9 @@ class BlockPainter:
     # Where the time now is written: on a pill at the start of its line, or in the gutter beside it,
     # where it takes the place of the hour labels near it.
     now_in_gutter = False
+    # A title with no room for its first word says nothing, and its colour says it is there, rather
+    # than cutting inside the word ("Robot…"). Retro desktop's; the others keep decision 14's cut.
+    whole_words = False
 
     def __init__(self, colours: dict[str, str], look: dict | None = None, *, wide: bool = False) -> None:
         self.colours = colours
@@ -307,6 +310,8 @@ class BlockPainter:
         lay = block_layout(
             drawn, title_font, small, room, tight=tight, wide=self.wide, book=book is not None, shown=shown
         )
+        if self.whole_words and cuts_a_word(lay, drawn.title):
+            return
         _paint_layout(painter, lay, title_font, small, ink, muted, book, muted)
 
     def _book_colour(self, drawn: Drawn, ink: QColor, paper: QColor, edge: QColor | None) -> QColor | None:
@@ -530,6 +535,17 @@ def word_elide(text: str, metrics: QFontMetricsF, width: float) -> str:
     if kept:
         return kept + "…"
     return metrics.elidedText(text, Qt.TextElideMode.ElideRight, width)
+
+
+def cuts_a_word(lay: list[Written], title: str) -> bool:
+    """Whether a block's words cut its title inside a word: "Robot…" for "Robotics club"."""
+    whole = set(_words(title))
+    for line in lay:
+        if line.title and line.text.endswith("…"):
+            kept = line.text[:-1].split()
+            if not kept or kept[-1] not in whole:
+                return True
+    return False
 
 
 def _clamp(lines: list[str], most: int, metrics: QFontMetricsF, width: float, indent: float) -> list[str]:

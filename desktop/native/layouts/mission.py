@@ -63,6 +63,7 @@ from desktop.native.layouts.base import (
     css,
     empty,
     family,
+    free_stretches,
     label,
     plural,
     rules,
@@ -191,20 +192,6 @@ def minutes_left(week: WeekModel, today: int | None, minute: int, due: str | Non
         return None
     day, at = due_sort_key(due)[:2]
     return (day - week.date_of(today)).days * 24 * 60 + at - minute
-
-
-def free_stretches(items: Sequence[Occurrence], start: int, end: int) -> list[tuple[int, int]]:
-    """The stretches from `start` to `end` that nothing still to do takes."""
-    free, at = [], start
-    for item in sorted(items, key=lambda entry: entry.start):
-        if not item.live or item.end <= at or item.start >= end:
-            continue
-        if item.start > at:
-            free.append((at, item.start))
-        at = max(at, item.end)
-    if at < end:
-        free.append((at, end))
-    return free
 
 
 def _paint(tokens: dict[str, str], category: str) -> tuple[str, str]:

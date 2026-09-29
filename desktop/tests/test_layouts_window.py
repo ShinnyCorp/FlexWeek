@@ -2052,6 +2052,25 @@ def test_month_hides_the_whole_week_surface(qapp: QApplication, window: NativeWi
     assert board is not None and board.isVisible()
 
 
+def test_retros_start_opens_mores_menu_up_from_the_taskbar(qapp: QApplication, window: NativeWindow) -> None:
+    """Start is the app's own menu, More's, opening up over the taskbar as Windows 98's did; it asks
+    for nothing More does not already offer."""
+    from desktop.native.look import MENU_EDGE
+
+    window._layout = sanitize_layout({"main": "retro", "day": "one"})
+    window._day_mode = False
+    window.session.set_view("week")
+    window._on_week()
+    qapp.processEvents()
+    start = window.planner.currentWidget().findChild(QPushButton, "retroStart")
+    start.click()
+    wait_until(qapp, window.more_menu.isVisible)
+    corner = start.mapToGlobal(start.rect().topLeft())
+    panel = window.more_menu.geometry().adjusted(MENU_EDGE, MENU_EDGE, -MENU_EDGE, -MENU_EDGE)
+    assert panel.bottom() <= corner.y() + 1, (panel, corner)
+    window.more_menu.close()
+
+
 def test_finishing_from_my_day_offers_undo_on_the_notice(qapp: QApplication, window: NativeWindow) -> None:
     """Mutation that turns this red: _finish_homework never calls _set_notice."""
     one_thing(window)
