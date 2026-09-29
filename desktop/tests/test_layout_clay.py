@@ -18,13 +18,15 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, Qt
-    from PySide6.QtGui import QCursor
+    from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, QRectF, Qt
+    from PySide6.QtGui import QCursor, QFont, QImage, QPainter
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
     from desktop.native import motion
-    from desktop.native.hours.canvas import HoursCanvas
+    from desktop.native.hours import canvas as canvas_module
+    from desktop.native.hours.canvas import Drawn, HoursCanvas
+    from desktop.native.hours.geometry import Span
     from desktop.native.hours.zoom import HoursScroll
     from desktop.native.layouts.base import Scene
     from desktop.native.layouts.clay import ClayChip, ClayDeckView, slots
@@ -386,3 +388,56 @@ def test_day_and_week_keep_separate_scrolls(qapp: QApplication) -> None:
     view.show_week(week_scene)
     qapp.processEvents()
     assert visible_scrolls(view) == [week_scroll]
+
+
+if importlib.util.find_spec("PySide6") is not None:
+
+    class Wrote(QPainter):
+        """A painter that keeps every string drawn with it."""
+
+        words: list[str] = []
+
+        def drawText(self, *args: object) -> None:  # noqa: N802
+            Wrote.words.append(next(arg for arg in reversed(args) if isinstance(arg, str)))
+            super().drawText(*args)
+
+
+@pytest.mark.parametrize("points", [9, 13])
+def test_a_short_block_on_a_side_card_keeps_its_name_where_a_shortened_one_fits(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, points: int
+) -> None:
+    """A half hour is 10 pixels tall on a card at 70 %, and its name is still written there, as the
+    half hour Dinner is on the card in front. The name is shortened at a word with the ellipsis where
+    the block is narrow, and where not even three letters of it fit, the colour alone is left."""
+    monkeypatch.setattr(canvas_module, "QPainter", Wrote)
+    usual = QFont(qapp.font())
+    font = QFont(usual)
+    font.setPointSize(points)
+    qapp.setFont(font)
+    try:
+        view = shown(qapp)
+        side = view.findChild(HoursCanvas, "clayPeek2")
+        box = side.block_rect("dinner", 2)
+        assert box is not None and box.height() < 12
+        Wrote.words = []
+        side.repaint()
+        assert any(word.startswith("Dinner") for word in Wrote.words), "Dinner has lost its name"
+
+        painter = side.painter
+        drawn = Drawn("tea", "Tea and toast", "meals", False, Span(2, 18 * 60, 18 * 60 + 30), 0, 1)
+        image = QImage(400, 40, QImage.Format.Format_ARGB32)
+        page = QRectF(0, 0, 400, 40)
+
+        def written(width: float) -> list[str]:
+            Wrote.words = []
+            paint = Wrote(image)
+            painter.block(paint, QRectF(10, 10, width, 10), drawn, page)
+            paint.end()
+            return Wrote.words
+
+        assert written(200)[0].startswith("Tea and toast")
+        narrow = written(70)
+        assert narrow and narrow[0].endswith("…") and narrow[0].startswith("Tea")
+        assert written(24) == []
+    finally:
+        qapp.setFont(usual)
