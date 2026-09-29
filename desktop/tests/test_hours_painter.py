@@ -262,11 +262,23 @@ def test_a_block_with_no_room_for_three_letters_is_its_colour_alone(
         assert canvas.block_rect("dinner", 0).width() < 34
         Said.words = []
         canvas.repaint()
+        school = words_on(canvas, "school", 0)
+        # Dinner in view, or it says nothing because it is off screen, whatever the check for letters.
+        scroll = canvas.parentWidget()
+        while not isinstance(scroll, HoursScroll):
+            scroll = scroll.parentWidget()
+        scroll.scroll_to(minute_of("18:00"))
+        qapp.processEvents()
+        port = scroll.viewport()
+        seen = QRect(port.mapToGlobal(QPoint(0, 0)), port.size())
+        assert all(seen.contains(canvas.block_rect("dinner", day)) for day in range(7))
+        Said.words = []
+        canvas.repaint()
     finally:
         qapp.setFont(usual)
     for day in range(7):
         assert words_on(canvas, "dinner", day) == [], f"Dinner on day {day}"
-    assert words_on(canvas, "school", 0)[0].startswith("School")
+    assert school[0].startswith("School")
 
 
 @pytest.mark.parametrize("axis", [Axis.DOWN, Axis.ACROSS])

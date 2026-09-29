@@ -289,8 +289,8 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "one line kept a pixel clear of a block's top again",
-  "old": "        tight = QRectF(room.left(), max(rect.top(), room.top() - TEXT_TOP), room.width(), 0)\n",
-  "new": "        tight = QRectF(room.left(), max(rect.top() + 1, room.top() - TEXT_TOP + 1), room.width(), 0)\n",
+  "old": "        tight = QRectF(room.left(), max(rect.top(), visible.top(), room.top() - TEXT_TOP), room.width(), 0)\n",
+  "new": "        tight = QRectF(room.left(), max(rect.top() + 1, visible.top() + 1, room.top() - TEXT_TOP + 1), room.width(), 0)\n",
   "test": "desktop/tests/test_hours_painter.py::test_a_half_hour_in_high_contrast_says_its_name_on_the_week"
  }
 ]
