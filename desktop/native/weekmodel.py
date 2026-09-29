@@ -342,7 +342,8 @@ def build_week(
                 )
             )
     occurrences.sort(key=lambda item: (item.day, item.start, item.block_id))
-    waiting.sort(key=lambda item: due_sort_key(item.due, item.block_id))
+    # Session ids are random, so an id alone leaves same-due homework in a different order each run.
+    waiting.sort(key=lambda item: (*due_sort_key(item.due, item.title), item.block_id))
     # The timer adds its minutes to the homework, or to a block with none (focus.credit_target). A
     # homework's are all of its own, from whichever week they were timed in.
     worked = {block.get("assignment_id") for block in blocks} - {None}

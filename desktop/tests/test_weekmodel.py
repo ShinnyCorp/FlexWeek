@@ -111,6 +111,25 @@ def test_work_nobody_has_planned_yet_says_so() -> None:
     ]
 
 
+def test_waiting_work_that_shares_a_due_date_comes_in_title_order_whatever_the_ids() -> None:
+    titles = ["Zoology", "Algebra", "Music", "Biology"]
+    homework = {t: {"id": t, "title": t, "due": "2026-09-17T23:59", "completed": False} for t in titles}
+    for ids in (["a", "b", "c", "d"], ["d", "c", "b", "a"], ["q", "z", "b", "m"]):
+        blocks = [
+            block(block_id, "flexible", [], None, 30, title=title, assignment_id=title)
+            for block_id, title in zip(ids, titles, strict=True)
+        ]
+        for order in (blocks, blocks[::-1]):
+            week = build_week(WEEK, order, homework, None)
+            assert [item.title for item in week.waiting] == ["Algebra", "Biology", "Music", "Zoology"]
+
+
+def test_waiting_work_with_the_same_due_and_title_breaks_the_tie_by_id() -> None:
+    homework = {"essay": {"id": "essay", "title": "Essay", "due": "2026-09-17T23:59", "completed": False}}
+    blocks = [block(i, "flexible", [], None, 30, title="Essay", assignment_id="essay") for i in ("s2", "s1")]
+    assert [item.block_id for item in build_week(WEEK, blocks, homework, None).waiting] == ["s1", "s2"]
+
+
 def test_risk_is_the_solvers_verdict_and_the_most_squeezed_comes_first() -> None:
     week = build_week(WEEK, BLOCKS, HOMEWORK, TRACE)
     assert [(item.block_id, item.slack, item.slack_words) for item in week.open_work()] == [
