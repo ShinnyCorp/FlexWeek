@@ -212,7 +212,7 @@ def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_
     dialog = settings.AboutDialog(window, window.session.storage_info, folder)
     said = [label.text() for label in dialog.findChildren(QLabel) if label.text()]
     assert said == [
-        "FlexWeek 0.16.0",
+        "FlexWeek 0.17.0",
         "FlexWeek plans your homework around school, sports and everything else in your week.",
         "Your plans are saved on this computer.",
     ]
