@@ -18,6 +18,7 @@ never its own rules for dragging.
 
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -34,8 +35,11 @@ from desktop.native.hours.geometry import DRAG_STEPS, Span, Track, snap
 from desktop.native.weekmodel import clock_text, length_label
 
 # A drag near a scroll area's edge scrolls it only after resting there this long, so passing
-# through the edge on the way in never shifts the hours under the pointer.
-EDGE_PX, DWELL_S, SCROLL_STEP = 36, 0.3, 10
+# through the edge on the way in never shifts the hours under the pointer. Once it starts, the hours
+# move by time, not by pixels, so a zoomed-out day is as easy to aim at as a zoomed-in one.
+EDGE_PX, DWELL_S, SCROLL_MINUTES_PER_S = 36, 0.3, 120
+# The longest stretch one scroll step may cover, so a stalled event loop cannot jump the hours.
+LONGEST_STEP_S = 0.1
 SECOND_CLICK = (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick, QEvent.Type.MouseButtonRelease)
 
 
@@ -202,6 +206,8 @@ class Hand(QObject):
         self._home: tuple[QWidget, Track] | None = None
         self._track: tuple[QWidget, Track] | None = None
         self._edge: tuple[QScrollArea, int, int, float] | None = None
+        self._stepped_at = 0.0
+        self._owed = 0.0
         self._scroller = QTimer(self)
         self._scroller.setInterval(16)
         self._scroller.timeout.connect(self._scroll_tick)
@@ -468,7 +474,9 @@ class Hand(QObject):
             return
         area, direction = found
         if self._edge is None or self._edge[0] is not area or self._edge[1:3] != direction:
-            self._edge = (area, *direction, time.monotonic())
+            now = time.monotonic()
+            self._edge = (area, *direction, now)
+            self._stepped_at, self._owed = now + DWELL_S, 0.0
             self._scroller.start()
 
     def _scroll_tick(self) -> None:
@@ -479,12 +487,22 @@ class Hand(QObject):
         if not isValid(area):
             self._edge = None
             return
-        if time.monotonic() - since < DWELL_S:
+        now = time.monotonic()
+        if now - since < DWELL_S:
             return
+        found = self._track or self._home
+        if found is None:
+            return
+        # Whole pixels only, so what a step falls short of is owed to the next one.
+        seconds = min(now - self._stepped_at, LONGEST_STEP_S)
+        self._stepped_at = now
+        self._owed += _pixels_per_minute(found[1]) * SCROLL_MINUTES_PER_S * seconds
+        pixels = int(self._owed)
+        self._owed -= pixels
         if dy:
-            area.verticalScrollBar().setValue(area.verticalScrollBar().value() + dy * SCROLL_STEP)
+            area.verticalScrollBar().setValue(area.verticalScrollBar().value() + dy * pixels)
         if dx:
-            area.horizontalScrollBar().setValue(area.horizontalScrollBar().value() + dx * SCROLL_STEP)
+            area.horizontalScrollBar().setValue(area.horizontalScrollBar().value() + dx * pixels)
         self._follow(self._last)
 
     # Letting go
@@ -497,6 +515,7 @@ class Hand(QObject):
         self._home = self._track = None
         self._active = False
         self._edge = None
+        self._owed = 0.0
         self._scroller.stop()
         self._chip.hide()
         had = self.preview is not None or self.month_target is not None
@@ -509,6 +528,12 @@ class Hand(QObject):
             self.active_changed.emit(False)
         if was_holding:
             self.holding.emit(False)
+
+
+def _pixels_per_minute(track: Track) -> float:
+    """How many pixels a minute takes along a track, however it is laid, from its two ends."""
+    a, b = track.point_for(track.first), track.point_for(track.last)
+    return math.hypot(b.x() - a.x(), b.y() - a.y()) / (track.last - track.first)
 
 
 def _edge_at(at: QPoint) -> tuple[QScrollArea, tuple[int, int]] | None:

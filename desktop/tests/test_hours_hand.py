@@ -25,6 +25,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
+    from desktop.native.hours import hand as hand_module
     from desktop.native.hours.canvas import EDGE_PX, BlockPainter, HoursCanvas
     from desktop.native.hours.geometry import Axis, LinearTrack, Span
     from desktop.native.hours.hand import Create, Gesture, Hand, Held, Move, Place, Verdict, span_words
@@ -282,6 +283,35 @@ def test_passing_through_an_edge_does_not_scroll_but_resting_there_does(qapp: QA
         qapp.processEvents()
     assert bar.value() > 0, "rested at the edge: it scrolls"
     rig.send(rig.canvas, QEvent.Type.MouseButtonRelease, bottom, False)
+
+
+def test_a_rested_edge_scrolls_the_same_minutes_a_second_at_any_zoom(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = [1000.0]
+    monkeypatch.setattr(hand_module, "time", type("Clock", (), {"monotonic": staticmethod(lambda: now[0])}))
+    seconds = 2.0
+    rates = []
+    for height in (1000, 2400):
+        rig = Rig(qapp, height=height)
+        rig.window.resize(760, 500)
+        qapp.processEvents()
+        bar = rig.scroll.verticalScrollBar()
+        bar.setValue(0)
+        bottom = rig.scroll.viewport().mapToGlobal(QPoint(150, rig.scroll.viewport().height() - 10))
+        start = rig.at(1, 6 * 60 + 30)
+        rig.send(rig.canvas, QEvent.Type.MouseButtonPress, start, True)
+        rig.send(rig.canvas, QEvent.Type.MouseMove, start + QPoint(0, 40), True)
+        rig.send(rig.canvas, QEvent.Type.MouseMove, bottom, True)
+        now[0] += hand_module.DWELL_S
+        for _ in range(round((seconds - hand_module.DWELL_S) / 0.016)):
+            now[0] += 0.016
+            rig.hand._scroll_tick()
+        rig.send(rig.canvas, QEvent.Type.MouseButtonRelease, bottom, False)
+        per_minute = height / (rig.canvas.tracks[0].last - rig.canvas.tracks[0].first)
+        rates.append(bar.value() / per_minute / (seconds - hand_module.DWELL_S))
+    assert rates[0] == pytest.approx(rates[1], rel=0.05), f"minutes a second by zoom: {rates}"
+    assert rates[0] == pytest.approx(hand_module.SCROLL_MINUTES_PER_S, rel=0.05)
 
 
 def test_a_click_on_a_block_opens_it_and_a_drag_only_moves_it(qapp: QApplication) -> None:
