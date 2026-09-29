@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QPoint, QStandardPaths, Qt
+    from PySide6.QtCore import QPoint, QRect, QStandardPaths, Qt
     from PySide6.QtGui import QImage
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import (
@@ -42,7 +42,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.layouts.one_thing import OneThingView
     from desktop.native.layouts.registry import LAYOUTS, sanitize_layout
     from desktop.native.layouts.views import VIEW_CLASSES
-    from desktop.native.motion import DURATION_MS
+    from desktop.native.motion import EASE_MS, PAGE_IN_MS, PAGE_OUT_MS, duration
     from desktop.native.settings import SettingsPage
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
@@ -146,8 +146,8 @@ def one_thing(window: NativeWindow) -> None:
 
 
 def faded_in() -> None:
-    """A new page fades in; a picture of it is what the student sees once it has."""
-    QTest.qWait(DURATION_MS["extra"] + 100)
+    """A new page fades through; a picture of it is what the student sees once it has."""
+    QTest.qWait(duration(PAGE_OUT_MS + PAGE_IN_MS, "extra") + 100)
 
 
 def test_my_day_puts_planning_away_and_back_brings_it_back(qapp: QApplication, window: NativeWindow) -> None:
@@ -2164,42 +2164,82 @@ def _fades(host: QWidget) -> list[QLabel]:
     return [label for label in host.findChildren(QLabel, FADE_NAME) if label.isVisible()]
 
 
-def test_a_new_view_is_live_at_once_while_the_old_one_fades(qapp: QApplication, window: NativeWindow) -> None:
-    from desktop.native.motion import DURATION_MS
+def at_level(window: NativeWindow, level: str) -> None:
+    window.session.preferences = {**(window.session.preferences or {}), "motion": level}
+    window._apply_appearance()
+    faded_in()
 
-    window._motion = "normal"
-    window.planner.resize(window.planner.size())
+
+def test_a_new_view_is_live_at_once_while_the_old_one_fades(qapp: QApplication, window: NativeWindow) -> None:
+    at_level(window, "normal")
     click(window, "viewMonth")
-    assert window.planner.currentWidget() is window._planner_widget("month")
-    assert len(_fades(window.planner)) == 1
-    QTest.qWait(DURATION_MS["normal"] + 200)
-    assert _fades(window.planner) == []
+    month = window._planner_widget("month")
+    assert window.planner.currentWidget() is month
+    assert len(_fades(window)) == 1
+    effect = month.graphicsEffect()
+    assert effect.opacity == 0, "Month waits for the week to go (decision 28 of 0.17)"
+    assert effect.offset.x() > 0, "and comes in from the right, where its segment is"
+    faded_in()
+    assert _fades(window) == [] and month.graphicsEffect() is None
+    click(window, "viewDay")
+    assert window.planner.currentWidget().graphicsEffect().offset.x() < 0, "Day comes in from the left"
+
+
+def test_my_day_changes_its_chrome_and_its_page_in_the_same_frame(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Decision 29 of 0.17: the planning chrome and the rail went at once while the old week still
+    faded, so for a moment neither page was on screen as it is."""
+    at_level(window, "normal")
+    page = window._week_page
+    top = window._top_bar.geometry().bottom() + 1
+    under_bar = QRect(0, top, page.width(), page.height() - top)
+    before = page.grab(under_bar).toImage()
+    assert window.rail.isVisible()
+    click(window, "viewMyDay")
+    assert not window.rail.isVisible() and not window.plan_chrome.isVisible()
+    assert page.grab(under_bar).toImage() == before, "the first frame is still the week, rail and all"
+    assert window.planner.currentWidget().graphicsEffect().opacity == 0
+    faded_in()
+    assert _fades(window) == []
+    assert page.grab(under_bar).toImage() != before
+
+
+def test_settings_slide_in_over_the_week_and_away_again(qapp: QApplication, window: NativeWindow) -> None:
+    at_level(window, "normal")
+    window._open_settings()
+    settings = window._settings
+    assert window._stack.currentWidget() is settings
+    assert settings.graphicsEffect().offset.x() == window._stack.width(), "from the right edge"
+    (week,) = _fades(window._stack)
+    faded_in()
+    assert _fades(window) == [] and settings.graphicsEffect() is None
+    settings.close_page()
+    assert window._stack.currentWidget().objectName() == "weekPage", "the week is live at once"
+    (leaving,) = _fades(window._stack)
+    faded_in()
+    assert _fades(window) == []
 
 
 def test_the_next_week_slides_in_as_the_last_one_drifts_away(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    from desktop.native.motion import DURATION_MS
-
-    window._motion = "normal"
+    at_level(window, "normal")
     start = window.session.week_start
     click(window, "nextWeek")
     assert window._travel_direction == -1
     wait_until(qapp, lambda: window.session.week_start != start and not window.session.busy)
-    QTest.qWait(DURATION_MS["normal"] + 200)
-    assert _fades(window.planner) == []
+    QTest.qWait(duration(EASE_MS, "normal") + 200)
+    assert _fades(window) == []
 
 
 def test_animations_off_turns_every_fade_off(qapp: QApplication, window: NativeWindow) -> None:
-    from desktop.native.motion import DURATION_MS
-
     # The fixture's first homework swaps the new account's empty week for the hours, with a fade.
-    QTest.qWait(DURATION_MS["normal"] + 200)
-    window.session.preferences = {**(window.session.preferences or {}), "motion": "off"}
-    window._apply_appearance()
+    at_level(window, "off")
     assert window._motion == "off"
     click(window, "viewMonth")
-    assert _fades(window.planner) == []
+    assert _fades(window) == []
+    assert window.planner.currentWidget().graphicsEffect() is None
     dialog = SettingsPage(None, window.session.preferences, window._look, {}, window._layout)
     assert combo(dialog, "prefMotion").currentData() == "off"
     assert dialog.updates()["motion"] == "off"

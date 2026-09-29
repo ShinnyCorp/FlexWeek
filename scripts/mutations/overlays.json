@@ -9,8 +9,8 @@
   {
     "file": "desktop/native/window.py",
     "name": "the toast stays when the student leaves its page",
-    "old": "                    self.toast.hide()\n                switch_page(self._stack, page, self._motion)",
-    "new": "                    pass\n                switch_page(self._stack, page, self._motion)",
+    "old": "                    self.toast.hide()\n                if name == \"settingsPage\":",
+    "new": "                    pass\n                if name == \"settingsPage\":",
     "test": "desktop/tests/test_drag_results.py::test_the_toast_belongs_to_the_page_it_was_said_on"
   },
   {

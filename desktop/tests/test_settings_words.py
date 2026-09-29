@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.native.layouts.registry import sanitize_layout
+from desktop.native.look import look_menu_token
 from desktop.native.settings import SettingsPage
 from desktop.native.update import WINDOWS_SETUP, available
 from desktop.native.version import VERSION
@@ -258,7 +259,8 @@ def test_on_or_off_is_a_switch_and_two_or_three_choices_are_side_by_side(
     window: NativeWindow,  # noqa: F811
 ) -> None:
     """R11: toggles for on and off, segmented controls for two or three choices, and the drop-down
-    kept for the lists too long to lay side by side."""
+    kept for the lists too long to lay side by side. Animations' four short levels are side by side
+    too (decision 33 of 0.17)."""
     dialog = prefs(window)
     boxes = [box for box in dialog.findChildren(QCheckBox) if not box.objectName().startswith("alarmDay")]
     assert boxes and all(isinstance(box, Switch) for box in boxes), [
@@ -268,8 +270,9 @@ def test_on_or_off_is_a_switch_and_two_or_three_choices_are_side_by_side(
     assert isinstance(spacing, Segmented)
     assert [button.text() for button in spacing.buttons()] == ["Comfortable", "Compact"]
     assert label_for(spacing) == "Spacing"
-    for control in (dialog.motion, dialog.preferred_view, dialog.drag_step, *dialog.knobs.values()):
+    for control in (dialog.preferred_view, dialog.drag_step, *dialog.knobs.values()):
         assert isinstance(control, Segmented) and 2 <= control.count() <= 3, control.objectName()
+    assert isinstance(dialog.motion, Segmented) and dialog.motion.count() == 4
     # A design's colours stay a list: each design adds its own, and Match my look comes last.
     for box in dialog.findChildren(QComboBox):
         assert box.count() > 3 or box.objectName().endswith("-colour"), box.objectName()
@@ -279,6 +282,28 @@ def test_on_or_off_is_a_switch_and_two_or_three_choices_are_side_by_side(
     spacing.buttons()[1].click()
     assert spacing.currentData() == "compact" and said
     assert dialog.look_choice()["knobs"].get("density") == "compact"
+    dialog.close_page()
+
+
+def test_animations_has_four_levels_and_follows_the_look_until_one_is_chosen(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """Decision 33 of 0.17: Normal, More, Reduce and Off, kept as the ids saved preferences and custom
+    looks already use, and Paper starts at Reduce. Settings used to save whatever it showed, so the
+    first change anywhere in Settings pinned the level and a look chosen after it could not set it."""
+    dialog = prefs(window)
+    motion = dialog.motion
+    assert [button.text() for button in motion.buttons()] == ["Normal", "More", "Reduce", "Off"]
+    assert [motion.itemData(index) for index in range(motion.count())] == ["normal", "extra", "reduce", "off"]
+    assert dialog.updates()["motion"] is None, "never chosen: the look's own"
+    dialog.look.setCurrentIndex(dialog.look.findData(look_menu_token("preset", "paper")))
+    assert motion.currentData() == "reduce", "Paper starts at Reduce"
+    assert dialog.updates()["motion"] is None
+    motion.buttons()[1].click()
+    assert dialog.updates()["motion"] == "extra"
+    dialog.look.setCurrentIndex(dialog.look.findData(look_menu_token("preset", "ink")))
+    assert motion.currentData() == "extra", "once chosen, the level stays whatever the look"
     dialog.close_page()
 
 

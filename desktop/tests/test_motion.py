@@ -1,4 +1,5 @@
-"""Motion never delays a click: the new page is live at once, and only a picture of the old one fades."""
+"""Motion never delays a click: the new page is live at once, only a picture of the old one fades, and
+what comes in is painted on its way while the widget already sits where it belongs."""
 
 from __future__ import annotations
 
@@ -15,28 +16,48 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QPropertyAnimation, QRect, QRectF
-    from PySide6.QtGui import QImage
+    from PySide6.QtCore import QPoint, QRect, QRectF, Qt
+    from PySide6.QtGui import QColor, QImage, QPalette
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QStackedWidget, QVBoxLayout, QWidget
+    from PySide6.QtWidgets import (
+        QApplication,
+        QFrame,
+        QGraphicsDropShadowEffect,
+        QHBoxLayout,
+        QLabel,
+        QStackedWidget,
+        QVBoxLayout,
+        QWidget,
+    )
 
     from desktop.native.hours.canvas import BlockPainter, HoursCanvas
     from desktop.native.hours.geometry import LinearTrack
     from desktop.native.hours.hand import Hand, Verdict
-    from desktop.native.look import resolved_palette
+    from desktop.native.look import MOTION_LEVELS, resolved_palette
     from desktop.native.motion import (
-        DURATION_MS,
+        EASE_MS,
         FADE_NAME,
+        LEVELS,
+        OVER_MS,
+        PAGE_IN_MS,
+        PAGE_OUT_MS,
+        RISE_PX,
+        SEGMENT_MS,
+        SLIDE_PX,
+        Dim,
         app_level,
         appear,
         apply_ui_effects,
+        distance,
+        duration,
         glide,
         motion_level,
-        slide_page,
+        moves,
+        slide_over,
         switch_page,
     )
     from desktop.native.weekmodel import Occurrence
-    from desktop.native.widgets import Dialog
+    from desktop.native.widgets import Dialog, Segment, SegmentTrack
 
 
 @pytest.fixture(scope="module")
@@ -46,6 +67,10 @@ def qapp() -> Iterator[QApplication]:
 
 def pictures(host: QWidget) -> list[QLabel]:
     return [label for label in host.findChildren(QLabel, FADE_NAME) if label.isVisible()]
+
+
+# Long enough for a page to fade through at the slowest level, with room for a busy machine.
+THROUGH_MS = duration(PAGE_OUT_MS + PAGE_IN_MS, "extra") + 150
 
 
 def two_pages(qapp: QApplication) -> tuple[QStackedWidget, QWidget, QWidget]:
@@ -61,10 +86,38 @@ def two_pages(qapp: QApplication) -> tuple[QStackedWidget, QWidget, QWidget]:
 
 @pytest.mark.parametrize(
     ("preference", "look", "level"),
-    [("off", "extra", "off"), (None, "extra", "extra"), (None, None, "normal"), ("fast", "normal", "normal")],
+    [
+        ("off", "extra", "off"),
+        (None, "extra", "extra"),
+        (None, None, "normal"),
+        ("fast", "normal", "normal"),
+        (None, "reduce", "reduce"),
+        ("reduce", "normal", "reduce"),
+    ],
 )
 def test_the_students_setting_wins_over_the_looks_own(preference: object, look: object, level: str) -> None:
     assert motion_level(preference, look) == level
+
+
+def test_the_four_levels_are_the_ones_preferences_and_custom_looks_store() -> None:
+    assert tuple(LEVELS) == MOTION_LEVELS == ("normal", "extra", "reduce", "off")
+
+
+def test_normal_runs_the_plans_numbers_and_the_other_levels_scale_them() -> None:
+    """Decisions 28 and 30 to 33 of 0.17: 90 ms out and 120 in, a 12-pixel slide, an 8-pixel rise,
+    Settings in 200 ms and the segment in 160. Reduce keeps every fade at Normal's length and moves
+    nothing; More is longer and further; Off is at once."""
+    normal = {ms: duration(ms, "normal") for ms in (PAGE_OUT_MS, PAGE_IN_MS, OVER_MS, SEGMENT_MS)}
+    assert list(normal.values()) == [90, 120, 200, 160]
+    assert (distance(SLIDE_PX, "normal"), distance(RISE_PX, "normal")) == (12, 8)
+    for ms in normal:
+        assert duration(ms, "reduce") == normal[ms]
+        assert duration(ms, "extra") > normal[ms]
+        assert duration(ms, "off") == 0
+    for px in (SLIDE_PX, RISE_PX):
+        assert distance(px, "reduce") == distance(px, "off") == 0
+        assert distance(px, "extra") > distance(px, "normal")
+    assert [moves(level) for level in MOTION_LEVELS] == [True, True, False, False]
 
 
 def test_a_switch_is_immediate_and_its_fade_clears_itself(qapp: QApplication) -> None:
@@ -72,20 +125,23 @@ def test_a_switch_is_immediate_and_its_fade_clears_itself(qapp: QApplication) ->
     switch_page(stack, second, "normal")
     assert stack.currentWidget() is second, "the new page is live before any animation"
     assert len(pictures(stack)) == 1
-    QTest.qWait(DURATION_MS["normal"] + 150)
+    QTest.qWait(THROUGH_MS)
     assert pictures(stack) == []
     stack.close()
 
 
-def test_a_switch_crossfades_the_new_page_in_under_the_old_one(qapp: QApplication) -> None:
+def test_a_switch_fades_through_the_old_page_out_before_the_new_one_shows(qapp: QApplication) -> None:
+    """Two pages were read on top of each other halfway through a cross-fade (decision 28 of 0.17)."""
     stack, _first, second = two_pages(qapp)
     switch_page(stack, second, "normal")
-    QTest.qWait(40)
     effect = second.graphicsEffect()
-    assert effect is not None and 0 < effect.opacity() < 1, "the new page is on its way in"
-    assert len(pictures(stack)) == 1, "while the old one is on its way out"
-    QTest.qWait(DURATION_MS["normal"] + 150)
+    assert effect is not None and effect.opacity == 0, "the new page waits, unseen, for the old one to go"
+    assert len(pictures(stack)) == 1
+    QTest.qWait(duration(PAGE_OUT_MS, "normal") + 40)
+    assert 0 < effect.opacity < 1, "then comes in"
+    QTest.qWait(THROUGH_MS)
     assert second.graphicsEffect() is None, "an effect left in place slows every later repaint"
+    assert pictures(stack) == []
     stack.close()
 
 
@@ -104,8 +160,9 @@ def test_quick_switches_never_stack_pictures(qapp: QApplication) -> None:
     switch_page(stack, first, "extra")
     qapp.processEvents()
     assert len(pictures(stack)) == 1
-    QTest.qWait(DURATION_MS["extra"] + 150)
+    QTest.qWait(THROUGH_MS)
     assert pictures(stack) == []
+    assert (first.graphicsEffect(), second.graphicsEffect()) == (None, None)
     stack.close()
 
 
@@ -117,8 +174,10 @@ def test_a_notice_rises_into_place_and_leaves_no_effect_behind(qapp: QApplicatio
     host.show()
     qapp.processEvents()
     appear(notice, "normal", rise=True)
-    assert notice.graphicsEffect() is not None
-    QTest.qWait(DURATION_MS["normal"] + 150)
+    effect = notice.graphicsEffect()
+    assert effect is not None and effect.offset == QPoint(0, 8), "it starts 8 pixels low"
+    assert (notice.x(), notice.y()) == (40, 60), "painted low: the notice itself is already in place"
+    QTest.qWait(duration(EASE_MS, "normal") + 150)
     assert (notice.x(), notice.y()) == (40, 60)
     assert notice.graphicsEffect() is None, "an effect left in place slows every later repaint"
     host.close()
@@ -126,15 +185,68 @@ def test_a_notice_rises_into_place_and_leaves_no_effect_behind(qapp: QApplicatio
 
 def test_a_page_slides_in_from_the_side_it_is_heading_and_lands_in_place(qapp: QApplication) -> None:
     stack, _first, second = two_pages(qapp)
-    slide_page(stack, second, "normal", 1)
+    switch_page(stack, second, "normal", 1)
     assert stack.currentWidget() is second, "the new page is live before any animation"
+    assert second.graphicsEffect().offset == QPoint(12, 0), "going forward, it comes in from the right"
+    assert second.pos().isNull(), "painted to the side: the page itself is where clicks find it"
     QTest.qWait(40)
-    assert second.x() > 0, "going forward, the new page comes in from the right"
-    assert len(pictures(stack)) == 1
-    QTest.qWait(DURATION_MS["normal"] + 150)
+    (old,) = pictures(stack)
+    assert old.graphicsEffect().offset.x() < 0, "the old page drifts away to the left"
+    QTest.qWait(THROUGH_MS)
     assert second.pos().isNull()
     assert second.graphicsEffect() is None
     assert pictures(stack) == []
+    stack.close()
+
+
+def test_under_reduce_a_page_fades_through_and_moves_nothing(qapp: QApplication) -> None:
+    stack, _first, second = two_pages(qapp)
+    switch_page(stack, second, "reduce", 1)
+    effect = second.graphicsEffect()
+    assert effect.offset == QPoint() and effect.opacity == 0, "no slide, and still a fade"
+    QTest.qWait(40)
+    (old,) = pictures(stack)
+    assert old.graphicsEffect().offset == QPoint(), "no drift"
+    assert old.graphicsEffect().opacity < 1
+    QTest.qWait(THROUGH_MS)
+    assert pictures(stack) == [] and second.graphicsEffect() is None
+    stack.close()
+
+
+def test_settings_slides_in_from_the_right_over_the_page_dimmed(qapp: QApplication) -> None:
+    """Decision 30 of 0.17: Settings slides in over the week dimmed 20 %, rather than fading over it."""
+    stack, first, second = two_pages(qapp)
+    slide_over(stack, second, "normal")
+    assert stack.currentWidget() is second
+    effect = second.graphicsEffect()
+    assert effect.offset == QPoint(stack.width(), 0) and effect.opacity == 1, "it starts off the right edge"
+    (week,) = pictures(stack)
+    kids = stack.children()
+    assert kids.index(week) < kids.index(second), "the page it covers stays under it"
+    assert len(week.findChildren(Dim)) == 1
+    QTest.qWait(duration(OVER_MS, "normal") // 2)
+    assert 0 < effect.offset.x() < stack.width()
+    assert 0 < week.findChildren(Dim)[0].share < 1, "the page under it is dimming"
+    QTest.qWait(duration(OVER_MS, "extra") + 150)
+    assert pictures(stack) == [] and second.graphicsEffect() is None
+    slide_over(stack, first, "normal", back=True)
+    assert stack.currentWidget() is first and first.graphicsEffect() is None, "the page under it is live"
+    (leaving,) = pictures(stack)
+    assert leaving.graphicsEffect().offset == QPoint(), "it slides away from where it was"
+    assert len(stack.findChildren(Dim, options=Qt.FindChildOption.FindDirectChildrenOnly)) == 1
+    QTest.qWait(duration(OVER_MS, "extra") + 150)
+    assert pictures(stack) == [] and stack.findChildren(Dim) == []
+    stack.close()
+
+
+def test_under_reduce_settings_fades_through_rather_than_over_the_page(qapp: QApplication) -> None:
+    stack, _first, second = two_pages(qapp)
+    slide_over(stack, second, "reduce")
+    effect = second.graphicsEffect()
+    assert effect.offset == QPoint() and effect.opacity == 0
+    assert stack.findChildren(Dim) == []
+    QTest.qWait(THROUGH_MS)
+    assert second.graphicsEffect() is None and pictures(stack) == []
     stack.close()
 
 
@@ -150,7 +262,7 @@ def test_an_animation_cut_short_by_another_leaves_the_widget_where_it_belongs(qa
     appear(notice, "extra", rise=True)
     QTest.qWait(40)
     appear(notice, "extra", rise=True)
-    QTest.qWait(DURATION_MS["extra"] + 150)
+    QTest.qWait(duration(EASE_MS, "extra") + 150)
     assert (notice.x(), notice.y()) == (40, 60)
     assert notice.graphicsEffect() is None
     host.close()
@@ -167,10 +279,12 @@ def test_a_glide_ends_on_its_target(qapp: QApplication) -> None:
     QTest.qWait(40)
     assert 10 < marker.y() < 120, "it moves there rather than jumping"
     glide(marker, QRect(10, 200, 3, 24), "normal")
-    QTest.qWait(DURATION_MS["normal"] + 200)
+    QTest.qWait(duration(EASE_MS + 60, "normal") + 200)
     assert marker.geometry() == QRect(10, 200, 3, 24)
     glide(marker, QRect(10, 40, 3, 24), "off")
     assert marker.geometry() == QRect(10, 40, 3, 24), "with animations off it is simply there"
+    glide(marker, QRect(10, 90, 3, 24), "reduce")
+    assert marker.geometry() == QRect(10, 90, 3, 24), "under Reduce it does not travel either"
     host.close()
 
 
@@ -191,7 +305,7 @@ def test_a_notice_that_arrives_while_the_last_one_rises_lands_where_it_belongs(q
     QTest.qWait(30)
     hours.setGeometry(0, 72, 600, 280)
     toast.show_message("Running late: 16:30-17:00 is now locked.")
-    QTest.qWait(DURATION_MS["extra"] + 150)
+    QTest.qWait(duration(EASE_MS, "extra") + 150)
     # The card, inside the room the toast keeps round it for its shadow.
     assert toast.y() + toast.card.geometry().bottom() + 1 == 72 + 280 - TOAST_FOOT
     host.close()
@@ -250,7 +364,46 @@ def test_after_a_plan_blocks_slide_to_their_places_and_new_ones_fade_in(qapp: QA
     hours.canvas.set_week(LATER)
     QTest.qWait(40)
     assert hours.picture() != final, "partway there, not already there"
-    QTest.qWait(DURATION_MS[app_level()] + 150)
+    QTest.qWait(duration(EASE_MS) + 150)
+    assert hours.picture() == final
+    hours.window.close()
+
+
+def first_frame_and_last(qapp: QApplication, level: str) -> tuple[QImage, QImage, QPoint]:
+    """The hours the moment a plan moved the essay from Tuesday 9:00, as they end up, and where the
+    essay was."""
+    apply_ui_effects(level)
+    hours = Hours(qapp)
+    was = hours.canvas.tracks[1].rect_for(9 * 60, 10 * 60).center().toPoint()
+    final = hours.settled_picture(LATER)
+    hours.canvas.set_week(LATER)
+    first = hours.picture()
+    hours.window.close()
+    return first, final, was
+
+
+def test_under_reduce_a_moved_block_fades_in_where_it_went_rather_than_sliding(qapp: QApplication) -> None:
+    """The review's motion-sensitive student: fades yes, sliding blocks no."""
+    try:
+        first, final, was = first_frame_and_last(qapp, "normal")
+        assert first.pixelColor(was) != final.pixelColor(was), "Normal starts it where it was"
+        first, final, was = first_frame_and_last(qapp, "reduce")
+        assert first.pixelColor(was) == final.pixelColor(was), "Reduce never draws it there"
+        assert first != final, "but it still fades in"
+    finally:
+        apply_ui_effects("normal")
+
+
+def test_laying_the_hours_out_again_where_nothing_moved_keeps_the_slide(qapp: QApplication) -> None:
+    """Decision 34 of 0.17: after Plan the hours scroll to what it placed, and the slide was cut
+    short by that scroll's layout, so nothing was seen to move."""
+    hours = Hours(qapp)
+    final = hours.settled_picture(LATER)
+    hours.canvas.set_week(LATER)
+    hours.canvas.relayout()
+    QTest.qWait(40)
+    assert hours.picture() != final, "still on its way"
+    QTest.qWait(duration(EASE_MS) + 150)
     assert hours.picture() == final
     hours.window.close()
 
@@ -278,24 +431,110 @@ def test_animations_off_means_no_animation_anywhere(qapp: QApplication) -> None:
         assert pictures(stack) == [] and second.graphicsEffect() is None
         stack.close()
         dialog = Dialog()
+        QVBoxLayout(dialog).addWidget(QLabel("Nothing moves"))
         dialog.show()
         qapp.processEvents()
         assert dialog.windowOpacity() == 1.0
-        assert dialog.findChildren(QPropertyAnimation) == []
+        assert [child for child in dialog.findChildren(QWidget) if child.graphicsEffect()] == []
         dialog.close()
     finally:
         apply_ui_effects("normal")
 
 
-def test_a_dialog_eases_in_once(qapp: QApplication) -> None:
+def test_a_dialog_fades_and_rises_through_its_content_once(qapp: QApplication) -> None:
+    """Decision 31 of 0.17: a window's own opacity is ignored on Wayland, so dialogs appeared in one
+    frame there. What the dialog holds fades and rises instead; the window is never faded."""
+    apply_ui_effects("normal")
     dialog = Dialog()
+    words = QLabel("Are you sure?")
+    # Named, as most of a dialog's parts are: a search for unnamed children found none of them.
+    words.setObjectName("question")
+    QVBoxLayout(dialog).addWidget(words)
     dialog.resize(300, 200)
     dialog.show()
+    effect = words.graphicsEffect()
+    assert effect is not None and effect.offset == QPoint(0, RISE_PX)
     QTest.qWait(40)
-    assert 0 < dialog.windowOpacity() < 1
-    QTest.qWait(DURATION_MS[app_level()] + 150)
+    assert 0 < effect.opacity < 1
     assert dialog.windowOpacity() == 1.0
+    QTest.qWait(duration(EASE_MS) + 150)
+    assert words.graphicsEffect() is None
     dialog.hide()
     dialog.show()
-    assert dialog.windowOpacity() == 1.0, "shown again, it is simply there"
+    assert words.graphicsEffect() is None, "shown again, it is simply there"
     dialog.close()
+
+
+def test_a_sheet_fades_its_card_and_shadow_as_one_and_keeps_the_shadow(qapp: QApplication) -> None:
+    apply_ui_effects("normal")
+    window = QWidget()
+    window.resize(900, 700)
+    window.show()
+    qapp.processEvents()
+    sheet = Dialog(window, sheet=True)
+    sheet.card_body().addWidget(QLabel("Homework"))
+    sheet.show()
+    qapp.processEvents()
+    shadow = sheet.card.graphicsEffect()
+    assert isinstance(shadow, QGraphicsDropShadowEffect)
+    face = sheet.card.parentWidget()
+    assert face is not sheet and face.graphicsEffect() is not None, "the card and its shadow fade together"
+    shade = window.findChild(QWidget, "sheetShade")
+    assert shade.graphicsEffect() is not None, "the dimming comes in with it"
+    QTest.qWait(duration(EASE_MS) + 150)
+    assert face.graphicsEffect() is None and shade.graphicsEffect() is None
+    assert sheet.card.graphicsEffect() is shadow, "the fade leaves the card's shadow alone"
+    sheet.close()
+    window.close()
+
+
+def segments(qapp: QApplication) -> tuple[SegmentTrack, list[Segment]]:
+    track = SegmentTrack()
+    track.setLayout(QHBoxLayout())
+    track.layout().setContentsMargins(0, 0, 0, 0)
+    colours = track.palette()
+    colours.setColor(QPalette.ColorRole.AlternateBase, QColor("#ffffff"))
+    colours.setColor(QPalette.ColorRole.WindowText, QColor("#ffffff"))
+    colours.setColor(QPalette.ColorRole.Highlight, QColor("#ff0000"))
+    track.setPalette(colours)
+    made = []
+    for words in ("Day", "Week", "Month"):
+        button = Segment(words)
+        button.setCheckable(True)
+        button.setStyleSheet("background: transparent; border: none; color: #ffffff;")
+        track.add(button)
+        made.append(button)
+    made[0].setChecked(True)
+    track.show()
+    qapp.processEvents()
+    track.grab()
+    return track, made
+
+
+def pill_on(track: SegmentTrack, button: Segment) -> bool:
+    """Whether the chosen pill, red here, is drawn under the top middle of `button`, above its words."""
+    spot = track.grab().toImage().pixelColor(button.geometry().center().x(), button.geometry().top() + 2)
+    return spot.red() > 200 and spot.green() < 80
+
+
+def test_the_segmented_selection_slides_to_the_segment_chosen(qapp: QApplication) -> None:
+    """Decision 32 of 0.17: the view control's selection jumped."""
+    apply_ui_effects("normal")
+    track, (day, week, month) = segments(qapp)
+    assert pill_on(track, day)
+    month.setChecked(True)
+    day.setChecked(False)
+    assert pill_on(track, day) and not pill_on(track, month), "it leaves from where it was"
+    # Held a fifth of the way through, where an eased slide is about halfway, rather than timed.
+    track._slide.pause()
+    track._slide.setCurrentTime(duration(SEGMENT_MS) // 5)
+    assert pill_on(track, week), "and passes over the segment between, as no fade would"
+    track._slide.resume()
+    QTest.qWait(duration(SEGMENT_MS) + 150)
+    assert pill_on(track, month) and not pill_on(track, day)
+    apply_ui_effects("off")
+    day.setChecked(True)
+    month.setChecked(False)
+    assert pill_on(track, day) and not pill_on(track, month), "with animations off it is simply there"
+    apply_ui_effects("normal")
+    track.close()

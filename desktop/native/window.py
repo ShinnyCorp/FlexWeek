@@ -9,7 +9,7 @@ from copy import deepcopy
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QSize, QStandardPaths, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, QStandardPaths, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -92,7 +92,18 @@ from desktop.native.look import (
     toast_colours,
 )
 from desktop.native.menus import Menu, mark, menu_colours
-from desktop.native.motion import appear, apply_ui_effects, fade_away, hold_picture, motion_level, switch_page
+from desktop.native.motion import (
+    DRIFT_PX,
+    appear,
+    apply_ui_effects,
+    fade_away,
+    fade_through,
+    hold_picture,
+    motion_level,
+    slide_over,
+    switch_page,
+    trim_picture,
+)
 from desktop.native.remind import REMINDER_POLL_MS, clock_parts
 from desktop.native.reuse import (
     due_point,
@@ -166,6 +177,8 @@ WINDOW_SIZE = (1280, 800)
 WINDOW_MIN_WIDTH = 800
 # The longest the old week's picture waits for the next one before it fades anyway.
 TRAVEL_WAIT_MS = 900
+# The views in the order the top bar's segments show them, which a change of view slides along.
+VIEW_ORDER = ("day", "week", "month")
 PLAN_LABEL = "Plan my homework"
 SUGGEST_LABEL = "Suggest times"
 PLAN_TIP = (
@@ -373,6 +386,8 @@ class NativeWindow(QMainWindow):
         self._page_sheet = ""
         self._travel_picture: QLabel | None = None
         self._travel_direction = 0
+        # What the planner last showed (_planner_now), so a change of view, My day or design is seen.
+        self._planner_shown: tuple | None = None
         self._stack.setObjectName("nativeStack")
         self.setCentralWidget(self._stack)
         self._more_pairs = []
@@ -583,10 +598,16 @@ class NativeWindow(QMainWindow):
         for index in range(self._stack.count()):
             page = self._stack.widget(index)
             if page.objectName() == name:
-                if page is not self._stack.currentWidget():
+                leaving = self._stack.currentWidget()
+                if page is not leaving:
                     # What the toast said was about the page the student is leaving.
                     self.toast.hide()
-                switch_page(self._stack, page, self._motion)
+                if name == "settingsPage":
+                    slide_over(self._stack, page, self._motion)
+                elif leaving is not None and leaving.objectName() == "settingsPage":
+                    slide_over(self._stack, page, self._motion, back=True)
+                else:
+                    switch_page(self._stack, page, self._motion)
                 if name == "weekPage":
                     self._open_at_now()
                 return
@@ -1559,6 +1580,7 @@ class NativeWindow(QMainWindow):
             self._changed_ms = self.session.now_ms()
         if self._on_recovery() and not self._allow_week_page:
             return
+        turn = self._begin_turn()
         self._honour_preferred_view()
         self._set_clock()
         self._check_updates(asked=False)
@@ -1578,7 +1600,10 @@ class NativeWindow(QMainWindow):
         # The rail goes with Today's app's Day and Week. Put away before the page changes, another
         # design is laid out once at its whole width, not first cramped beside the rail and again.
         self._place_rail(shown in (self.week_table, self.day_view))
-        switch_page(self.planner, shown, self._motion)
+        if turn is None:
+            switch_page(self.planner, shown, self._motion)
+        else:
+            self.planner.setCurrentWidget(shown)
         self._release_travel()
         for name in ("viewDay", "viewWeek", "viewMonth", "viewMyDay"):
             button = self.findChild(QPushButton, name)
@@ -1656,6 +1681,7 @@ class NativeWindow(QMainWindow):
         self._sync_chrome()
         self._apply_appearance()
         self._open_at_now()
+        self._finish_turn(turn)
         if self._pending_spread_ui and self.session.spread_preview:
             self._pending_spread_ui = False
             preview = self.session.spread_preview
@@ -1816,6 +1842,68 @@ class NativeWindow(QMainWindow):
         self.session.keep_signed_in = self.keep_signed_in.isChecked()
         self.session.login(name, password)
 
+    def _planner_now(self) -> tuple:
+        """What the planner shows, as far as a change of it is a new page."""
+        return (self._day_mode, self.session.planner_view, self._layout["main"], self._layout["day"])
+
+    def _turn_pieces(self) -> tuple[QWidget, ...]:
+        """What sits under the top bar beside the planner, and may come or go with a view."""
+        return (
+            self.plan_chrome,
+            self.rail,
+            self.focus_panel,
+            self.unfinished_panel,
+            self.plan_review,
+            self.alert_strip,
+            self.planner,
+        )
+
+    def _places(self) -> dict[QWidget, QRect | None]:
+        page = self._week_page
+        return {
+            piece: QRect(piece.mapTo(page, QPoint(0, 0)), piece.size()) if piece.isVisibleTo(page) else None
+            for piece in self._turn_pieces()
+        }
+
+    def _begin_turn(self) -> tuple[QLabel, dict, int] | None:
+        """Before another view, My day or another design is shown: a picture of everything under the
+        top bar, where each part of it was, and which way the segments go, so the new page, with its
+        chrome and colours, fades through in one frame once it is built (decisions 28 and 29)."""
+        was, now = self._planner_shown, self._planner_now()
+        self._planner_shown = now
+        page = self._week_page
+        if was is None or was == now or self._stack.currentWidget() is not page:
+            return None
+        top = self._top_bar.geometry().bottom() + 1
+        picture = hold_picture(page, self._motion, QRect(0, top, page.width(), page.height() - top))
+        if picture is None:
+            return None
+        direction = 0
+        # Day, Week and Month slide toward the segment chosen; My day and a new design only fade.
+        if not was[0] and not now[0] and was[2:] == now[2:] and {was[1], now[1]} <= set(VIEW_ORDER):
+            step = VIEW_ORDER.index(now[1]) - VIEW_ORDER.index(was[1])
+            direction = (step > 0) - (step < 0)
+        return picture, self._places(), direction
+
+    def _finish_turn(self, turn: tuple[QLabel, dict, int] | None) -> None:
+        """The new page is built and dressed: what changed fades through to it. The parts that stayed
+        where they were are left out of the picture, so they neither blink nor drift."""
+        if turn is None:
+            return
+        picture, before, direction = turn
+        self._week_page.layout().activate()
+        after = self._places()
+        changed = [piece for piece in self._turn_pieces() if before[piece] != after[piece]]
+        area = before[self.planner] or QRect()
+        for piece in changed:
+            area = area.united(before[piece] or QRect())
+        if area.isEmpty():
+            picture.deleteLater()
+            return
+        trim_picture(picture, area)
+        incoming = [piece for piece in changed if piece is not self.planner and piece.isVisible()]
+        fade_through(picture, [*incoming, self.planner.currentWidget()], self._motion, direction)
+
     def _travel(self, direction: int) -> None:
         """Hold a picture of the planner while the next week, day or month loads, then let it drift
         away in the direction the student went. Without it the old week blinked to the new one."""
@@ -1827,7 +1915,7 @@ class NativeWindow(QMainWindow):
 
     def _release_travel(self) -> None:
         picture, self._travel_picture = self._travel_picture, None
-        fade_away(picture, self._motion, self._travel_direction)
+        fade_away(picture, self._motion, drift=self._travel_direction * DRIFT_PX)
 
     def _go_previous(self) -> None:
         self._travel(1)

@@ -37,6 +37,7 @@ from desktop.tests.window_support import (  # noqa: F401
     server,
     settled,
     signed_out,
+    still,
     wait_until,
     window,
 )
@@ -136,6 +137,7 @@ def test_save_is_the_one_filled_button_and_delete_is_quiet_at_the_bottom_left(
     dialog = BlockDialog(window, soccer(), occurrence_day=3)
     dialog.show()
     qapp.processEvents()
+    still(dialog)
     box = dialog.findChild(QDialogButtonBox)
     save = box.button(QDialogButtonBox.StandardButton.Save) or next(
         button for button in box.buttons() if button.text() == "Save"

@@ -59,7 +59,7 @@ from desktop.native.layouts.base import (
     short_length,
 )
 from desktop.native.look import category_paint, look_measures
-from desktop.native.motion import app_level
+from desktop.native.motion import duration, moves
 from desktop.native.tokens import (
     RADIUS_CARD,
     RADIUS_CONTROL,
@@ -808,9 +808,9 @@ class DayTile(QPushButton):
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.lift = 0.0
         # Reduce motion and Off lift it at once and in place: the shadow and the edge, no rise.
-        self.moves = app_level() in ("normal", "extra")
+        self.moves = moves()
         self._lifting = QVariantAnimation(self)
-        self._lifting.setDuration(LIFT_MS)
+        self._lifting.setDuration(duration(LIFT_MS))
         self._lifting.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._lifting.valueChanged.connect(self._lifted)
 

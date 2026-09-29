@@ -22,7 +22,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import (
+    QAbstractAnimation,
+    QEvent,
+    QObject,
+    QPoint,
+    QPointF,
+    QRect,
+    QRectF,
+    QSize,
+    Qt,
+    QTimer,
+    QVariantAnimation,
+    Signal,
+)
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -74,6 +87,7 @@ from desktop.native.layouts.base import (
 )
 from desktop.native.layouts.colourways import RETRO
 from desktop.native.look import AA_TEXT, category_paint, look_measures, type_sizes
+from desktop.native.motion import app_level, appear, between, duration, moves
 from desktop.native.reuse import MONTHS
 from desktop.native.tokens import (
     WEIGHT_REGULAR,
@@ -118,6 +132,8 @@ ICON_PX = 32
 # A scroll bar's width and its buttons' length, and a caption button's size.
 BAR = 17
 CAP = QSize(20, 18)
+# How long Windows 98's zoom rectangle takes to fly a window's title bar out (decision 35 of 0.17).
+ZOOM_MS = 200
 # Free time shorter than this is not worth listing; the list runs to the end of the mock-up's hours.
 FREE_LEAST = 20
 FREE_FROM, FREE_UNTIL = 8 * 60, 22 * 60
@@ -1346,6 +1362,32 @@ class Divider(QWidget):
         painter.fillRect(QRect(1, 0, 1, self.height()), QColor(self.scheme.hi))
 
 
+class Zoom(QWidget):
+    """Windows 98's zoom rectangle: the title bar of a window opening, flown from the button or icon
+    that opened it to where the window's title bar lands, growing on the way. It only paints."""
+
+    def __init__(self, parent: QWidget, colours: Scheme, start: QRectF, end: QRectF) -> None:
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.colours, self.start, self.end, self.share = colours, start, end, 0.0
+        self.setGeometry(parent.rect())
+        self.show()
+        self.raise_()
+
+    def fly(self, share: object) -> None:
+        self.share = float(share)
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        rect = between(self.start, self.end, self.share)
+        gradient = QLinearGradient(rect.left(), 0, rect.right(), 0)
+        gradient.setColorAt(0, QColor(self.colours.title))
+        gradient.setColorAt(1, QColor(self.colours.title_end))
+        painter = QPainter(self)
+        painter.fillRect(rect, gradient)
+        painter.end()
+
+
 def picture(name: str, colour: str, size: int, ratio: float, stroke: str = "2", fill: str = "none") -> QLabel:
     """An icon that is only a picture, such as the tray's bell."""
     made = QLabel()
@@ -1399,7 +1441,7 @@ class RetroView(LayoutView):
                 else DeskIcon((words, art, inside), name, self._scheme)
             )
             if opens:
-                icon.clicked.connect(lambda _=False, key=opens: self._bring(key))
+                icon.clicked.connect(lambda _=False, key=opens, icon=icon: self._bring(key, icon))
             icon.setProperty("opens", opens or "")
             icon.setProperty("role", "icon")
             icon.setParent(self._desk)
@@ -1439,12 +1481,37 @@ class RetroView(LayoutView):
         self._windows[key].raise_()
         self._mark_front()
 
-    def _bring(self, key: str) -> None:
-        """Open a window if it is closed, and put it in front."""
+    def _bring(self, key: str, opener: QWidget | None = None) -> None:
+        """Open a window if it is closed, zooming out from `opener`, and put it in front."""
         if not self._open.get(key):
+            # Where the opener is now: a taskbar button is made again as the window opens.
+            start = QRectF(QRect(opener.mapTo(self, QPoint(0, 0)), opener.size())) if opener else None
             self._open[key] = True
             self._rerender()
+            self._zoom(key, start)
         self._front(key)
+
+    def _zoom(self, key: str, start: QRectF | None) -> None:
+        """Windows 98's zoom rectangle (decision 35 of 0.17): the window's title bar flies out from
+        what opened it, and the window shows where it lands. Where things may not travel, the window
+        fades in instead."""
+        window = self._windows[key]
+        level = app_level()
+        if start is None or not moves(level):
+            appear(window, level)
+            return
+        window.layout().activate()
+        end = QRectF(QRect(window.bar.mapTo(self, QPoint(0, 0)), window.bar.size()))
+        flight = Zoom(self, self._scheme, start, end)
+        # Live at once, as every window is, and seen once its title bar has landed.
+        appear(window, level, delay_ms=ZOOM_MS, ms=0)
+        clock = QVariantAnimation(flight)
+        clock.setStartValue(0.0)
+        clock.setEndValue(1.0)
+        clock.setDuration(duration(ZOOM_MS, level))
+        clock.valueChanged.connect(flight.fly)
+        clock.finished.connect(flight.deleteLater)
+        clock.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _hide(self, key: str) -> None:
         self._open[key] = False
@@ -1472,7 +1539,7 @@ class RetroView(LayoutView):
         """A taskbar button, as Windows 98's: a closed window opens in front, the one in front is put
         away, any other comes to the front."""
         if not self._open.get(key):
-            self._bring(key)
+            self._bring(key, self.findChild(Button98, f"retroTask-{key}"))
         elif self._shown_front() == key:
             self._hide(key)
         else:

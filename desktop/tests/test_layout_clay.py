@@ -227,6 +227,23 @@ def test_the_row_slides_in_240_ms_and_jumps_with_motion_off(qapp: QApplication) 
     assert view.row.front == 5
 
 
+def test_under_reduce_the_row_changes_where_it_is_under_a_fading_picture(qapp: QApplication) -> None:
+    """Decision 35 of 0.17: Clay's own motion keeps to the levels. Reduce fades and moves nothing;
+    More slides longer than Normal."""
+    view = shown(qapp)
+    motion.apply_ui_effects("reduce")
+    view.findChild(QPushButton, "clayAhead").click()
+    assert view.row._slide.state() == QAbstractAnimation.State.Stopped, "nothing slides"
+    assert view.row.front == 4 and front(view).tracks[0].day == 4, "Friday is in front at once"
+    fading = [label for label in view.row.findChildren(QLabel, motion.FADE_NAME) if label.isVisible()]
+    assert len(fading) == 1, "the row as it was fades away over it"
+    rest(qapp, 0.4)
+    assert [label for label in view.row.findChildren(QLabel, motion.FADE_NAME) if label.isVisible()] == []
+    motion.apply_ui_effects("extra")
+    view.findChild(QPushButton, "clayAhead").click()
+    assert view.row._slide.duration() == motion.duration(240, "extra") > 240
+
+
 def test_a_block_held_on_an_arrow_slides_the_row_to_the_next_day(qapp: QApplication) -> None:
     """How a block reaches a day that is not beside the one in front: rest it on an arrow."""
     view = shown(qapp)

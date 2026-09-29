@@ -22,6 +22,7 @@ from PySide6.QtCore import (
     Qt,
     QTime,
     QTimer,
+    QVariantAnimation,
     Signal,
 )
 from PySide6.QtGui import (
@@ -104,7 +105,7 @@ from desktop.native.elevation import lift
 from desktop.native.fonts import time_font, weighted
 from desktop.native.icons import pixmap as icon_pixmap
 from desktop.native.menus import Menu
-from desktop.native.motion import app_level, appear, settle, vanish
+from desktop.native.motion import OUT, SEGMENT_MS, app_level, appear, between, duration, moves, settle, vanish
 from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
     LATE_MINUTES,
@@ -301,13 +302,22 @@ def overlaid(widget: object) -> bool:
 class SegmentTrack(QFrame):
     """A segmented control's track, a pill, with the chosen segment raised on it as a pill of its own
     and lifted with the small shadow. Painted, since a stylesheet's corner cannot follow a height
-    that the text size sets. The stylesheet gives the colours: `alternate-background-color` is the
-    track, `selection-background-color` the chosen segment and `color` an outline, drawn when it
-    differs from the track; `qproperty-shade` is the shadow's opacity out of 255, or 0 for none."""
+    that the text size sets, and so the chosen pill can slide to the segment chosen next (decision
+    32 of 0.17), or cross-fade to it where things may not travel. The stylesheet gives the colours:
+    `alternate-background-color` is the track, `selection-background-color` the chosen segment and
+    `color` an outline, drawn when it differs from the track; `qproperty-shade` is the shadow's
+    opacity out of 255, or 0 for none."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._shade = 0
+        # Where the chosen pill was last drawn, and where it leaves from for the segment just chosen.
+        self._drawn: QRectF | None = None
+        self._from = QRectF()
+        self._slide = QVariantAnimation(self)
+        self._slide.setStartValue(0.0)
+        self._slide.setEndValue(1.0)
+        self._slide.valueChanged.connect(lambda _share: self.update())
 
     def _get_shade(self) -> int:
         return self._shade
@@ -320,7 +330,27 @@ class SegmentTrack(QFrame):
 
     def add(self, button: QAbstractButton) -> None:
         self.layout().addWidget(button)
-        button.toggled.connect(self.update)
+        button.toggled.connect(self._chosen)
+
+    def _chosen(self, on: bool) -> None:
+        length = duration(SEGMENT_MS)
+        if on and self._drawn is not None and self.isVisible() and length:
+            self._from = QRectF(self._drawn)
+            self._slide.stop()
+            self._slide.setDuration(length)
+            self._slide.start()
+        self.update()
+
+    def _pills(self, target: QRectF) -> list[tuple[QRectF, float]]:
+        """The chosen pill as drawn now, with its opacity: sliding from where it was, or where things
+        may not travel, fading from there to here."""
+        if self._slide.state() == QVariantAnimation.State.Stopped:
+            return [(target, 1.0)]
+        share = OUT.valueForProgress(self._slide.currentTime() / max(self._slide.duration(), 1))
+        start = self._from
+        if not moves():
+            return [(start, 1 - share), (target, share)]
+        return [(between(start, target, share), 1.0)]
 
     def paintEvent(self, event: object) -> None:  # noqa: N802
         colours = self.palette()
@@ -335,19 +365,22 @@ class SegmentTrack(QFrame):
         chosen = next(
             (b for b in self.findChildren(QAbstractButton) if b.isChecked() and b.isVisible()), None
         )
+        self._drawn = None
         if chosen is not None:
-            pill = QRectF(chosen.geometry())
-            radius = pill.height() / 2
             painter.setPen(Qt.PenStyle.NoPen)
             shade = self._shade
-            # The small shadow (decision 6), 0 1 3: three widening rings, each a third of its opacity.
-            for spread in (1.5, 1.0, 0.5) if shade else ():
-                painter.setBrush(QColor(0, 0, 0, round(shade / 3)))
-                painter.drawRoundedRect(
-                    pill.adjusted(-spread, 1 - spread, spread, 1 + spread), radius, radius
-                )
-            painter.setBrush(colours.color(QPalette.ColorRole.Highlight))
-            painter.drawRoundedRect(pill, radius, radius)
+            for pill, opacity in self._pills(QRectF(chosen.geometry())):
+                self._drawn = pill
+                radius = pill.height() / 2
+                painter.setOpacity(opacity)
+                # The small shadow (decision 6), 0 1 3: three widening rings, each a third of its opacity.
+                for spread in (1.5, 1.0, 0.5) if shade else ():
+                    painter.setBrush(QColor(0, 0, 0, round(shade / 3)))
+                    painter.drawRoundedRect(
+                        pill.adjusted(-spread, 1 - spread, spread, 1 + spread), radius, radius
+                    )
+                painter.setBrush(colours.color(QPalette.ColorRole.Highlight))
+                painter.drawRoundedRect(pill, radius, radius)
         painter.end()
 
 
@@ -723,13 +756,10 @@ class Toast(QWidget):
         size = self.button.sizeHint() if button else QSize(0, 0)
         self._slot.changeSize(size.width(), size.height(), QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.card.layout().invalidate()
-        # A rise still running would carry the notice back to where the last one was meant to go.
+        # The last notice's rise ends where it was going, and its fade-out ends it, so this one
+        # comes in on its own.
         settle(self)
         settle(self.button)
-        # A notice that arrives while the last one fades out takes its place instead of vanishing too.
-        for widget in (self, self.button):
-            if widget.graphicsEffect() is not None:
-                widget.setGraphicsEffect(None)
         was_shown = self.isVisible()
         self.show()
         self.reposition()
@@ -737,8 +767,9 @@ class Toast(QWidget):
         self.button.setVisible(bool(button))
         self.button.raise_()
         if not was_shown:
+            # The button is the window's own child, so it rises beside the card rather than with it.
             appear(self, self.motion, rise=True)
-            appear(self.button, self.motion)
+            appear(self.button, self.motion, rise=True)
         # One with something to press stays long enough to reach for it.
         self._timer.start(TOAST_MS * 2 if button else TOAST_MS)
 
@@ -1813,6 +1844,9 @@ class Dialog(QDialog):
         super().__init__(parent)
         self.sheet = sheet and parent is not None
         self.card: QFrame | None = None
+        # The sheet's card and the room for its shadow, which fade in as one: the card's own effect
+        # is its shadow, and a widget holds one effect.
+        self._face: QWidget | None = None
         if self.sheet:
             self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -1827,9 +1861,16 @@ class Dialog(QDialog):
         inner = QVBoxLayout(self.card)
         inner.setContentsMargins(SHEET_PAD, SHEET_PAD, SHEET_PAD, SHEET_PAD)
         inner.setSpacing(SPACING[2])
-        outer.addWidget(self.card)
         if self.sheet:
-            outer.setContentsMargins(SHEET_ROOM, SHEET_ROOM, SHEET_ROOM, SHEET_ROOM)
+            self._face = bare(QWidget())
+            self._face.setObjectName("sheetFace")
+            around = QVBoxLayout(self._face)
+            around.setContentsMargins(SHEET_ROOM, SHEET_ROOM, SHEET_ROOM, SHEET_ROOM)
+            around.addWidget(self.card)
+            outer.setContentsMargins(0, 0, 0, 0)
+            outer.addWidget(self._face)
+        else:
+            outer.addWidget(self.card)
         return inner
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
@@ -1840,7 +1881,26 @@ class Dialog(QDialog):
         self.refit()
         if not self._appeared:
             self._appeared = True
-            appear(self, app_level())
+            level = app_level()
+            for part in self._content():
+                appear(part, level, rise=True)
+            if self._shade is not None:
+                appear(self._shade, level)
+
+    def _content(self) -> list[QWidget]:
+        """What fades in and rises the first time the dialog shows (decision 31 of 0.17): a window's
+        own opacity is ignored on Wayland, and an effect on a window draws its insides over nothing,
+        so the fade goes on what the window holds."""
+        if self._face is not None:
+            return [self._face]
+        if self.card is not None:
+            return [self.card]
+        direct = Qt.FindChildOption.FindDirectChildrenOnly
+        return [
+            child
+            for child in self.findChildren(QWidget, options=direct)
+            if not child.isWindow() and child.graphicsEffect() is None
+        ]
 
     def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802
         super().hideEvent(event)

@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QPoint, QRectF, QSize, Qt
+    from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt
     from PySide6.QtGui import QColor, QFont, QImage, QPainter
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
@@ -34,10 +34,12 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.layouts.registry import MATCH, options_for, tokens_for
     from desktop.native.layouts.retro import (
         NOT_PLACED,
+        ZOOM_MS,
         Deadline,
         RetroPainter,
         RetroView,
         Started,
+        Zoom,
         arrange,
         deadlines,
         due_heading,
@@ -56,6 +58,7 @@ if importlib.util.find_spec("PySide6") is not None:
         luminance,
         resolved_palette,
     )
+    from desktop.native.motion import apply_ui_effects, duration
     from desktop.native.weekmodel import build_week, minute_of
 
 NBSP = "\u00a0"
@@ -243,6 +246,37 @@ def test_a_window_closes_and_the_taskbar_brings_it_back(qapp: QApplication) -> N
     assert task(view, "notes").property("open") == "false"
     task(view, "notes").click()
     assert "retroWindow-notes" in windows(view)
+
+
+def test_a_window_opens_with_windows_98s_zoom_rectangle_within_the_levels(qapp: QApplication) -> None:
+    """Decision 35 of 0.17: the title bar of a window opened from the taskbar flies out from its button
+    to where the window's lands, and the window shows there. Under Reduce it fades in instead, and with
+    animations off it is simply there. Live at once in every level."""
+    try:
+        for level in ("normal", "reduce", "off"):
+            apply_ui_effects(level)
+            view = shown(qapp)
+            view.findChild(QPushButton, "retroClose-notes").click()
+            task(view, "notes").click()
+            notes = view.findChild(QFrame, "retroWindow-notes")
+            assert "retroWindow-notes" in windows(view), level
+            zooms = [child for child in view.children() if isinstance(child, Zoom)]
+            effect = notes.graphicsEffect()
+            if level == "normal":
+                assert len(zooms) == 1, "a title bar flies out"
+                zoom = zooms[0]
+                assert zoom.start.top() > zoom.end.top(), "up from the taskbar"
+                assert zoom.end == QRectF(QRect(notes.bar.mapTo(view, QPoint(0, 0)), notes.bar.size()))
+                assert effect.opacity == 0, "the window waits for its title bar to land"
+            elif level == "reduce":
+                assert zooms == [] and effect.offset == QPoint() and effect.opacity == 0, "a fade, no zoom"
+            else:
+                assert zooms == [] and effect is None
+            QTest.qWait(duration(ZOOM_MS, "normal") + 200)
+            assert notes.graphicsEffect() is None, level
+            assert [child for child in view.children() if isinstance(child, Zoom)] == [], level
+    finally:
+        apply_ui_effects("normal")
 
 
 def test_a_taskbar_button_brings_its_window_forward_or_puts_the_one_in_front_away(qapp: QApplication) -> None:

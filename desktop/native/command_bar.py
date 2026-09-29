@@ -10,7 +10,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QEvent, QModelIndex, QObject, QPersistentModelIndex, QRect, QSize, Qt, Signal
+from PySide6.QtCore import (
+    QEvent,
+    QModelIndex,
+    QObject,
+    QPersistentModelIndex,
+    QPoint,
+    QRect,
+    QSize,
+    Qt,
+    Signal,
+)
 from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter
 from PySide6.QtWidgets import (
     QFrame,
@@ -27,7 +37,7 @@ from PySide6.QtWidgets import (
 from desktop.native import icons
 from desktop.native.elevation import lift
 from desktop.native.fonts import caption, weighted
-from desktop.native.motion import appear
+from desktop.native.motion import EASE_MS, RISE_PX, appear, distance, glide, settle
 from desktop.native.tokens import WEIGHT_STRONG, Shadow
 
 BAR_WIDTH = 560
@@ -146,7 +156,7 @@ class CommandBar(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._commands: list[Command] = []
         self._icon_colour = "#5b6474"
-        # The window's Animations level: the dimmed window fades in with the box on it.
+        # The window's Animations level: the dimmed window fades in, and the box rises on it.
         self.motion = "normal"
         self.box = QFrame(self)
         self.box.setObjectName("commandBox")
@@ -203,6 +213,10 @@ class CommandBar(QWidget):
         self.raise_()
         self.input.setFocus()
         appear(self, self.motion)
+        # The box's own effect is its shadow, so it rises by moving (decision 31 of 0.17).
+        home = self.box.geometry()
+        self.box.move(home.topLeft() + QPoint(0, distance(RISE_PX, self.motion)))
+        glide(self.box, home, self.motion, ms=EASE_MS)
 
     def close_bar(self) -> None:
         self.hide()
@@ -221,6 +235,8 @@ class CommandBar(QWidget):
         return [self.list.item(row) for row in range(self.list.count())]
 
     def _fill(self, query: str) -> None:
+        # Typing lands the box where it belongs, since the list's height sizes it from here on.
+        settle(self.box)
         self.list.clear()
         for group, commands in grouped(query, self._commands):
             label = QListWidgetItem(group)
@@ -246,6 +262,7 @@ class CommandBar(QWidget):
         self.box.adjustSize()
 
     def _place(self) -> None:
+        settle(self.box)
         host = self.parentWidget()
         if host is None:
             return

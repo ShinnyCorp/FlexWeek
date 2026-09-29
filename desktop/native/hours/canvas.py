@@ -57,7 +57,7 @@ from desktop.native.look import (
     readable_ink,
     text_scale,
 )
-from desktop.native.motion import DURATION_MS, app_level
+from desktop.native.motion import EASE_MS, between, duration, moves
 from desktop.native.tokens import RADIUS_CONTROL, TYPE_PT, WEIGHT_REGULAR, WEIGHT_STRONG
 from desktop.native.weekmodel import Occurrence, clock_label, length_label, range_label, short_clock
 
@@ -422,16 +422,6 @@ def _write_lines(painter: QPainter, text: str, font: QFont, room: QRectF) -> Non
     for index, line in enumerate(fit_lines(text, font, room.width(), room.height())):
         box = QRectF(room.left(), room.top() + index * metrics.lineSpacing(), room.width(), metrics.height())
         painter.drawText(box, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, line)
-
-
-def _between(start: QRectF, end: QRectF, share: float) -> QRectF:
-    """The rectangle `share` of the way from `start` to `end`."""
-    return QRectF(
-        start.x() + (end.x() - start.x()) * share,
-        start.y() + (end.y() - start.y()) * share,
-        start.width() + (end.width() - start.width()) * share,
-        start.height() + (end.height() - start.height()) * share,
-    )
 
 
 def _small(font: QFont) -> QFont:
@@ -858,15 +848,17 @@ class HoursCanvas(QWidget):
         }
 
     def _settle_from(self, before: dict[Key, QRectF]) -> None:
-        """Slide each block that moved from where it was drawn, and fade in each that is new. A week
-        with nothing in common with the last, such as another week or the first, simply shows."""
+        """Slide each block that moved from where it was drawn, and fade in each that is new. Under
+        Reduce motion a moved block fades in where it went instead. A week with nothing in common with
+        the last, such as another week or the first, simply shows."""
         self._settling.stop()
         self._slides, self._fresh, self._progress = {}, set(), 1.0
-        level = app_level()
         now = self._last_rects
         shared = {key[0] for key in before} & {key[0] for key in now}
-        if DURATION_MS.get(level, 0) == 0 or not self.isVisible() or not shared:
+        length = duration(EASE_MS)
+        if length == 0 or not self.isVisible() or not shared:
             return
+        travels = moves()
         gone = {key[0]: rect for key, rect in before.items() if key not in now}
         for key, rect in now.items():
             if key[0] == self.hand.dropped:
@@ -878,10 +870,13 @@ class HoursCanvas(QWidget):
             if start is None:
                 self._fresh.add(key)
             elif start != rect:
-                self._slides[key] = start
+                if travels:
+                    self._slides[key] = start
+                else:
+                    self._fresh.add(key)
         if self._slides or self._fresh:
             self._progress = 0.0
-            self._settling.setDuration(DURATION_MS[level])
+            self._settling.setDuration(length)
             self._settling.start()
 
     def _settle_step(self, value: object) -> None:
@@ -895,7 +890,7 @@ class HoursCanvas(QWidget):
     def _shown_rect(self, key: Key, rect: QRectF) -> QRectF:
         """Where a block is drawn at this moment of its slide, in the canvas's coordinates."""
         start = self._slides.get(key)
-        return rect if start is None else _between(start, rect, self._progress)
+        return rect if start is None else between(start, rect, self._progress)
 
     def set_clock(self, today: int | None, now_min: int | None) -> None:
         if (today, now_min) != (self.today, self.now_min):
@@ -914,10 +909,13 @@ class HoursCanvas(QWidget):
     def relayout(self) -> None:
         area = QRectF(self.rect()).adjusted(self.gutter, self.header, 0, 0)
         self.tracks = self.lay_out(area) if area.width() > 0 and area.height() > 0 else []
-        # A zoom or a resize moves every block, and none of them should slide for it.
-        self._settling.stop()
-        self._settled()
-        self._last_rects = self._rects()
+        rects = self._rects()
+        if rects != self._last_rects:
+            # A zoom or a resize moves every block, and none of them should slide for it. Laid out
+            # again where nothing moved, as scrolling to what a plan placed does, the slide goes on.
+            self._settling.stop()
+            self._settled()
+        self._last_rects = rects
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -1047,7 +1045,7 @@ class HoursCanvas(QWidget):
                     key = (drawn.block_id, drawn.span.day)
                     if not drawn.held and key in self._slides:
                         start = track.transform.inverted()[0].mapRect(self._slides[key])
-                        rect = _between(start, rect, self._progress)
+                        rect = between(start, rect, self._progress)
                     elif not drawn.held and key in self._fresh:
                         painter.setOpacity(self._progress)
                     self.painter.block(painter, rect, drawn, upright_visible)

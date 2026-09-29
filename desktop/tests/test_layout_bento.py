@@ -316,7 +316,7 @@ def test_a_day_tile_says_its_first_item_its_load_its_homework_and_what_is_due(qa
     assert said(6) == "Sunday 20, first Dinner at 18:00, 30 min planned, 1 due"
 
 
-def test_a_pointed_at_day_lifts_and_does_not_rise_with_animations_off(qapp: QApplication) -> None:
+def test_a_pointed_at_day_lifts_and_does_not_rise_with_animations_off_or_reduced(qapp: QApplication) -> None:
     def pointed(view: BentoView) -> DayTile:
         tile = view.findChild(DayTile, "bentoDay4")
         at = QPointF(8, 8)
@@ -331,11 +331,12 @@ def test_a_pointed_at_day_lifts_and_does_not_rise_with_animations_off(qapp: QApp
         QTest.qWait(LIFT_MS + 150)
         assert tile.lift == 1.0
         assert tile.card().top() == rest.top() - RISE
-        apply_ui_effects("off")
-        view = shown(qapp, hero="today")
-        tile = pointed(view)
-        assert tile.lift == 1.0, "lifted at once"
-        assert tile.card() == rest, "and in place"
+        for level in ("off", "reduce"):
+            apply_ui_effects(level)
+            view = shown(qapp, hero="today")
+            tile = pointed(view)
+            assert tile.lift == 1.0, f"lifted at once under {level}"
+            assert tile.card() == rest, f"and in place under {level}"
     finally:
         apply_ui_effects("normal")
 

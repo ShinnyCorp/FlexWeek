@@ -10,6 +10,7 @@ import itertools
 import math
 import os
 from collections.abc import Iterator
+from dataclasses import replace
 
 import pytest
 
@@ -31,6 +32,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.layouts.dial import DayDialView, DialFace
     from desktop.native.layouts.registry import LAYOUTS, options_for, tokens_for
     from desktop.native.look import ACCENTS, category_paint, contrast, resolved_palette
+    from desktop.native.motion import apply_ui_effects, duration
     from desktop.native.weekmodel import build_week, minute_of, set_clock_24h
     from desktop.native.widgets import FittedLabel
 
@@ -495,3 +497,31 @@ def test_the_page_never_scrolls_sideways(qapp: QApplication, size: tuple[int, in
 def test_hiding_the_week_strip_still_works(qapp: QApplication) -> None:
     assert shown(qapp, "19:00", week="hide").findChild(QWidget, "dialStrip").isVisible() is False
     assert shown(qapp, "19:00").findChild(QWidget, "dialStrip").isVisible() is True
+
+
+def hand_on(face: DialFace, minute: int) -> bool:
+    """Whether the hand is drawn pointing at `minute`: the accent three quarters of the way out."""
+    centre, inner, _outer = face._radii()
+    tip = face._hand_tip(centre, inner, minute)
+    spot = centre + (tip - centre) * 0.75
+    # The pixel the point is in, whose every corner the 3-pixel hand covers.
+    pixel = QPoint(math.floor(spot.x()), math.floor(spot.y()))
+    return face.grab().toImage().pixelColor(pixel) == QColor(face._tokens["accent"])
+
+
+def test_the_hand_eases_to_where_the_time_moved_it_and_jumps_where_nothing_may_travel(
+    qapp: QApplication,
+) -> None:
+    """Decision 35 of 0.17: the dial's hand eases, 240 ms as the mock-up's does, within the levels."""
+    try:
+        for level, eases in (("normal", True), ("reduce", False), ("off", False)):
+            apply_ui_effects(level)
+            view = shown(qapp, "13:40")
+            view.show_week(replace(view.scene, minute=minute_of("15:10")))
+            face = view.findChild(DialFace, "dialFace")
+            assert hand_on(face, minute_of("13:40")) is eases, level
+            assert hand_on(face, minute_of("15:10")) is not eases, level
+            QTest.qWait(duration(240, "normal") + 150)
+            assert hand_on(face, minute_of("15:10")), level
+    finally:
+        apply_ui_effects("normal")
