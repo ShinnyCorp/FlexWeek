@@ -1677,7 +1677,7 @@ class NativeWindow(QMainWindow):
             self.plan_review.set_trace(fresh, titles, self.session.week_start, self.session.plan_counts)
             self._reveal_placed()
             if self.plan_review.isVisible() and not was_open:
-                appear(self.plan_review, self._motion)
+                appear(self.plan_review, self._motion, grow=True)
         self._sync_chrome()
         self._apply_appearance()
         self._open_at_now()
