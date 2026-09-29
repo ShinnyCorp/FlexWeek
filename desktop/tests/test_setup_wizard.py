@@ -131,7 +131,7 @@ def sign_in(qapp: QApplication, server: LocalServer, name: str) -> NativeWindow:
     window.resize(1180, 760)
     window.show()
     wait_until(qapp, lambda: page(window) == "authPage")
-    if window._making_account:
+    if window.sign_in_button.isHidden():
         window.findChild(QPushButton, "authSwitch").click()
     window.username.setText(name)
     window.password.setText(PASSWORD)
@@ -421,7 +421,7 @@ def test_a_new_account_starts_at_the_beginning_not_where_the_last_one_left(
     written(qapp, first)
     first.session.logout()
     wait_until(qapp, lambda: page(first) == "authPage")
-    if not first._making_account:
+    if first.create_button.isHidden():
         first.findChild(QPushButton, "authSwitch").click()
     first.username.setText("setup_after")
     first.password.setText(PASSWORD)
@@ -802,7 +802,8 @@ def test_the_planning_hours_presets_are_quiet_buttons_that_add_a_row(qapp: QAppl
     assert note.text() == "Each adds a row of hours you can change."
     after = editor.findChild(QPushButton, "workWindowPresetAfterschool")
     assert after.text() == "+ After school" and after.property("quiet") is True
-    assert editor.add_button.property("quiet") is not True, "Add custom hours stays the filled one"
+    # Next is setup's one filled button (decision 26 of 0.17), so Add custom hours is quiet here too.
+    assert editor.add_button.property("quiet") is True
     after.click()
     assert editor.windows() == [{"days": [0, 1, 2, 3, 4], "start": "15:30", "end": "18:00"}]
     setup.close()

@@ -38,7 +38,8 @@ def test_a_lane_reads_minutes_across_from_its_left_edge() -> None:
 def test_a_span_is_drawn_between_its_minutes_and_shares_the_width_when_it_overlaps() -> None:
     track = column()
     alone = track.rect_for(19 * 60, 20 * 60)
-    assert (alone.top(), alone.height()) == (100 + 13 * 60 + 1, 58)
+    # A pixel in from its start and two from its end: three between blocks back to back.
+    assert (alone.top(), alone.height()) == (100 + 13 * 60 + 1, 57)
     assert (alone.left(), alone.width()) == (52, 194)
     second = track.rect_for(19 * 60, 20 * 60, column=1, columns=2)
     assert (second.left(), second.width()) == (52 + 98, 96)

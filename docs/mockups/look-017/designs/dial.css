@@ -1,0 +1,205 @@
+/* Day dial. Soft UI Evolution: the look's page and cards, soft shadows, rounded rectangles, and
+   the dial drawn in the category family with a gap between segments. */
+
+.design-dial {
+  --dl-free: color-mix(in oklab, var(--text) 8%, var(--page));
+  --dl-free-past: color-mix(in oklab, var(--text) 4%, var(--page));
+}
+.dark-family .design-dial {
+  --dl-free: color-mix(in oklab, var(--text) 11%, var(--page));
+  --dl-free-past: color-mix(in oklab, var(--text) 6%, var(--page));
+}
+
+.dl-root {
+  position: relative;
+  height: 100%;
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+  font-variant-numeric: tabular-nums;
+}
+.dl-root p, .dl-root h2 { margin: 0; }
+
+/* The dial ---------------------------------------------------------------------------------- */
+
+.dl-svg { display: block; }
+.dl-free { fill: var(--dl-free); stroke: var(--dl-free); stroke-width: 2; stroke-linejoin: round; }
+.dl-free.past { fill: var(--dl-free-past); stroke: var(--dl-free-past); }
+.dl-seg { fill: var(--mark); stroke: var(--mark); stroke-width: 2; stroke-linejoin: round; }
+.dl-seg.past { fill: var(--fill); stroke: var(--fill); }
+.dl-book { stroke: var(--page); }
+.dl-book.past { stroke: var(--text); }
+.look-high-contrast .dl-free, .look-high-contrast .dl-free.past { fill: var(--page); stroke: var(--hairline); stroke-width: 1.5; }
+.look-high-contrast .dl-seg.past { stroke: var(--mark); stroke-width: 1.5; }
+
+.dl-tick { stroke: var(--hairline-strong); stroke-width: 1.5; stroke-linecap: round; }
+.dl-tick.long { stroke: var(--muted); }
+.dl-hour {
+  fill: var(--muted);
+  font-family: var(--font-body);
+  font-size: var(--t-caption);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.dl-hand { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; }
+.dl-hand.thin { stroke-width: 1.75; }
+.dl-hub { fill: var(--accent); }
+.dl-hub-in { fill: var(--page); }
+.dl-time {
+  fill: var(--text);
+  font-family: var(--font-body);
+  font-size: calc(var(--t-display) * 1.6);
+  font-weight: var(--w-number);
+  letter-spacing: -0.02em;
+  text-anchor: middle;
+}
+.dl-note { fill: var(--muted); font-family: var(--font-body); font-size: var(--t-body); text-anchor: middle; }
+.dl-blabel { font-family: var(--font-body); font-size: var(--t-caption); dominant-baseline: central; }
+.dl-bname { fill: var(--text); font-weight: var(--w-strong); }
+.dl-btime { fill: var(--muted); }
+.dl-window { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; }
+
+/* Cards ------------------------------------------------------------------------------------- */
+
+.dl-card {
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: calc(var(--r-card) * 1.4);
+  box-shadow: var(--shadow-sm);
+}
+.dl-label { font-size: var(--t-body); font-weight: var(--w-strong); color: var(--muted); }
+
+.dl-next { padding: var(--s4) var(--s5) var(--s5); }
+.dl-next-top { display: flex; justify-content: space-between; align-items: center; }
+.dl-in {
+  font-weight: var(--w-strong);
+  color: var(--accent);
+  background: var(--accent-tint);
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+}
+.dl-next-title {
+  margin-top: var(--s2) !important;
+  font-family: var(--font-head);
+  font-size: var(--t-title);
+  font-weight: var(--w-strong);
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dl-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--mark); flex: none; }
+.dl-next-sub { margin-top: var(--s1) !important; color: var(--muted); }
+.dl-next-sub span { white-space: nowrap; }
+.dl-actions { display: flex; gap: var(--s2); margin-top: var(--s4); }
+.dl-btn {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 0 var(--s3);
+  border-radius: var(--r-control);
+  border: 1px solid var(--hairline-strong);
+  font-weight: var(--w-strong);
+  color: var(--text);
+  background: var(--card);
+}
+.dl-btn .fw-icon { vertical-align: 0; }
+.dl-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.look-poster .dl-btn { border: 2px solid var(--hairline); box-shadow: var(--shadow-sm); }
+
+.dl-list { padding: var(--s4) var(--s5) var(--s3); }
+.dl-list header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--s1); }
+.dl-count { color: var(--muted); }
+.dl-list ol { list-style: none; margin: 0; padding: 0; }
+.dl-list li {
+  display: grid;
+  grid-template-columns: 44px 4px 1fr auto;
+  column-gap: var(--s3);
+  align-items: center;
+  height: 40px;
+  border-top: 1px solid var(--hairline);
+}
+.dl-lt { text-align: right; }
+.dl-lm { width: 4px; height: 20px; border-radius: 2px; background: var(--mark); }
+.dl-ln { display: flex; align-items: center; gap: 6px; font-weight: var(--w-strong); min-width: 0; white-space: nowrap; }
+.dl-ln .fw-icon { vertical-align: 0; color: var(--muted); }
+.dl-ll { text-align: right; color: var(--muted); min-width: 80px; }
+.dl-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: var(--s1);
+  padding: 0 6px;
+  height: 20px;
+  border-radius: var(--r-control);
+  background: color-mix(in oklab, var(--text) 6%, var(--card));
+  color: var(--muted);
+  font-size: var(--t-caption);
+  font-weight: var(--w-regular);
+}
+.dl-list li.past .dl-lt, .dl-list li.past .dl-ln { color: var(--muted); }
+.dl-list li.past .dl-lm { background: var(--fill); box-shadow: inset 0 0 0 1px var(--mark); }
+.dl-list li.dl-none .dl-lt, .dl-list li.dl-none .dl-ln { color: var(--muted); font-weight: var(--w-regular); }
+.dl-list li.dl-none .dl-lm { background: none; }
+.dl-unplaced {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s1) !important;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--hairline);
+  color: var(--muted);
+}
+.dl-unplaced .fw-icon { vertical-align: 0; color: var(--c-assignments-mark); }
+.dl-unplaced b { color: var(--text); font-weight: var(--w-strong); }
+
+/* A. Dial -------------------------------------------------------------------------------------- */
+
+.dl-a {
+  display: grid;
+  grid-template-columns: 600px 1fr;
+  grid-template-rows: 588px 1fr;
+  column-gap: var(--s5);
+  row-gap: var(--s4);
+  padding: var(--s4) var(--s5) var(--s5) var(--s4);
+}
+.dl-a .dl-side { display: flex; flex-direction: column; gap: var(--s4); padding-top: var(--s5); min-width: 0; }
+.dl-week {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  align-items: center;
+  padding: var(--s2) var(--s4);
+}
+.dl-wd { display: flex; flex-direction: column; align-items: center; gap: var(--s1); }
+.dl-mini { display: block; }
+.dl-wl { font-size: var(--t-caption); color: var(--muted); display: inline-flex; align-items: center; gap: 4px; height: 20px; }
+.dl-wl b { color: var(--text); font-weight: var(--w-strong); }
+.dl-wd.today .dl-wl { color: var(--text); font-weight: var(--w-strong); }
+.dl-wd.today .dl-wl b { background: var(--accent); color: var(--accent-ink); border-radius: var(--r-pill); padding: 0 6px; line-height: 18px; }
+
+/* B. Next twelve hours ---------------------------------------------------------------------------- */
+
+.dl-b { display: grid; grid-template-columns: 752px 1fr; column-gap: var(--s1); padding-right: var(--s5); }
+.dl-b .dl-side { display: flex; flex-direction: column; gap: var(--s4); padding: var(--s4) 0; min-width: 0; }
+.dl-whole { display: flex; align-items: center; gap: var(--s4); padding: var(--s2) var(--s5) var(--s2) var(--s3); }
+.dl-small { display: block; flex: none; }
+.dl-whole-text { display: flex; flex-direction: column; gap: 2px; }
+.dl-whole-t { font-weight: var(--w-strong); font-size: var(--t-heading); }
+.dl-whole-s { color: var(--muted); }
+.dl-whole-k { color: var(--muted); font-size: var(--t-caption); display: inline-flex; align-items: center; gap: 6px; margin-top: var(--s1); }
+.dl-key { width: 16px; height: 3px; border-radius: 2px; background: var(--accent); }
+.dl-b .dl-next { padding: var(--s4) var(--s5); }
+.dl-b .dl-list li { height: 36px; }
+.dl-b .dl-un-sep { display: none; }
+.dl-b .dl-un-list { display: block; }
+.dl-b .dl-unplaced { align-items: flex-start; }
+.dl-b .dl-unplaced .fw-icon { margin-top: 2px; }
+
+/* The hand eases to a new minute; nothing loops. */
+.dl-hand { transition: transform 240ms cubic-bezier(0.215, 0.61, 0.355, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .dl-hand { transition: none; }
+}

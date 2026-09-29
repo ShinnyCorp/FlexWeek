@@ -1,0 +1,121 @@
+[
+ {
+  "file": "desktop/native/window.py",
+  "name": "the plan bar counts the trace, School included",
+  "old": "            self.plan_review.set_trace(fresh, titles, self.session.week_start, self.session.plan_counts)\n",
+  "new": "            self.plan_review.set_trace(\n                fresh, titles, self.session.week_start, (len(fresh.get(\"placed\") or []), 0)\n            )\n",
+  "test": "desktop/tests/test_layouts_window.py::test_the_plan_bar_counts_what_the_toast_counts"
+ },
+ {
+  "file": "desktop/native/widgets.py",
+  "name": "the plan bar hides why something has no time",
+  "old": "        self.details.setChecked(bool(waiting))\n        self._show_details(bool(waiting))\n",
+  "new": "        self.details.setChecked(False)\n        self._show_details(False)\n",
+  "test": "desktop/tests/test_plan_review.py::test_the_panel_shows_the_count_and_can_be_dismissed"
+ },
+ {
+  "file": "desktop/native/hours/geometry.py",
+  "name": "blocks back to back two pixels apart",
+  "old": "BETWEEN = 3.0\n",
+  "new": "BETWEEN = 2.0\n",
+  "test": "desktop/tests/test_hours_geometry.py::test_a_span_is_drawn_between_its_minutes_and_shares_the_width_when_it_overlaps"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "Filled blocks the default again",
+  "old": "    # Decision 14 of 0.17: the category's fill with a 3-pixel edge in its mark.\n    \"blocks\": \"edge\",\n",
+  "new": "    \"blocks\": \"filled\",\n",
+  "test": "desktop/tests/test_look_widgets.py::test_an_edge_block_is_its_category_fill_with_the_strong_colour_down_its_left"
+ },
+ {
+  "file": "desktop/native/weekmodel.py",
+  "name": "a 12-hour range says PM twice",
+  "old": "    if first_half == last_half:\n",
+  "new": "    if False:\n",
+  "test": "desktop/tests/test_clock.py::test_the_hours_words"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "a short block cuts its title inside a word",
+  "old": "        return kept + \"…\"\n",
+  "new": "        return metrics.elidedText(text, Qt.TextElideMode.ElideRight, width)\n",
+  "test": "desktop/tests/test_hours_painter.py::test_a_short_block_at_large_text_keeps_its_title_first_and_whole_words"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "a cut title put after its time",
+  "old": "    for way in ways[:3] + ways[4:] + ways[3:4]:\n",
+  "new": "    for way in ways:\n",
+  "test": "desktop/tests/test_hours_painter.py::test_a_short_block_at_large_text_keeps_its_title_first_and_whole_words"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "the rail's month fold forgotten after a restart",
+  "old": "                \"rail\": {\"month\": self.rail.month_shown},\n",
+  "new": "",
+  "test": "desktop/tests/test_week_side.py::test_the_month_folds_away_from_its_header_and_stays_folded_after_a_restart"
+ },
+ {
+  "file": "desktop/native/hours/rail.py",
+  "name": "the focus list out of time order",
+  "old": "        ordered = sorted(\n",
+  "new": "        ordered = list(tasks) or sorted(\n",
+  "test": "desktop/tests/test_week_side.py::test_the_rail_holds_next_not_placed_yet_and_the_focus_list_left_of_the_week"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "a running timer above the hours, not in the rail",
+  "old": "        in_rail = shown and not narrow\n",
+  "new": "        in_rail = False\n",
+  "test": "desktop/tests/test_week_side.py::test_a_running_timer_is_the_rails_first_card"
+ },
+ {
+  "file": "desktop/native/hours/rail.py",
+  "name": "a rail chip widens the rail",
+  "old": "        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)\n",
+  "new": "",
+  "test": "desktop/tests/test_classic_hours.py::test_a_rail_chip_shortens_its_title_to_the_rail_and_keeps_its_length"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "a new look leaves the week on the night",
+  "old": "            # A new look is another first sight of the week: it opens at now again.\n            self._opened_hours = None\n",
+  "new": "",
+  "test": "desktop/tests/test_hours_open.py::test_todays_app_opens_at_now_every_time_it_is_shown_and_not_on_a_save"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "Week shown again stays where it was",
+  "old": "            shown.open_again()\n",
+  "new": "            pass\n",
+  "test": "desktop/tests/test_hours_open.py::test_todays_app_opens_at_now_every_time_it_is_shown_and_not_on_a_save"
+ },
+ {
+  "file": "desktop/native/hours/classic.py",
+  "name": "now at the top rather than the middle",
+  "old": "    scroll.open_at(key, opening_minute(week, today, now, day), None if at_now else 90)\n",
+  "new": "    scroll.open_at(key, opening_minute(week, today, now, day), 90)\n",
+  "test": "desktop/tests/test_hours_zoom.py::test_a_week_opened_while_hidden_scrolls_to_now_when_it_is_shown"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "Plan leaves its blocks off screen",
+  "old": "        shown.scroll.scroll_to(minute, 60)\n",
+  "new": "        pass\n",
+  "test": "desktop/tests/test_hours_open.py::test_after_plan_the_week_scrolls_to_the_first_homework_it_placed"
+ },
+ {
+  "file": "desktop/native/hours/month.py",
+  "name": "Month's rows all the same height",
+  "old": "        chips = min(max(busiest, LEAST_CHIPS), MOST_CHIPS)\n",
+  "new": "        chips = LEAST_CHIPS\n",
+  "test": "desktop/tests/test_hours_month.py::test_a_weeks_row_is_as_tall_as_its_busiest_date_and_this_week_is_banded"
+ },
+ {
+  "file": "desktop/native/hours/month.py",
+  "name": "this week not banded on Month",
+  "old": "        bands = {at // 7 for at, cell in enumerate(self.cells) if cell.today}\n",
+  "new": "        bands: set[int] = set()\n",
+  "test": "desktop/tests/test_hours_month.py::test_a_weeks_row_is_as_tall_as_its_busiest_date_and_this_week_is_banded"
+ }
+]

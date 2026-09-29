@@ -1,0 +1,128 @@
+[
+  {
+    "name": "Reduce lets things travel",
+    "file": "desktop/native/motion.py",
+    "old": "    \"reduce\": Level(1.0, 0.0),",
+    "new": "    \"reduce\": Level(1.0, 1.0),",
+    "test": "desktop/tests/test_motion.py::test_normal_runs_the_plans_numbers_and_the_other_levels_scale_them"
+  },
+  {
+    "name": "a page cross-fades instead of fading through",
+    "file": "desktop/native/motion.py",
+    "old": "        appear(widget, level, shift=direction * SLIDE_PX, delay_ms=PAGE_OUT_MS, ms=PAGE_IN_MS)",
+    "new": "        appear(widget, level, shift=direction * SLIDE_PX, delay_ms=0, ms=PAGE_IN_MS)",
+    "test": "desktop/tests/test_motion.py::test_a_switch_fades_through_the_old_page_out_before_the_new_one_shows"
+  },
+  {
+    "name": "Day, Week and Month do not slide",
+    "file": "desktop/native/window.py",
+    "old": "            direction = (step > 0) - (step < 0)",
+    "new": "            direction = 0",
+    "test": "desktop/tests/test_layouts_window.py::test_a_new_view_is_live_at_once_while_the_old_one_fades"
+  },
+  {
+    "name": "My day's chrome changes before its page",
+    "file": "desktop/native/window.py",
+    "old": "        changed = [piece for piece in self._turn_pieces() if before[piece] != after[piece]]\n",
+    "new": "        changed = [self.planner]\n",
+    "test": "desktop/tests/test_layouts_window.py::test_my_day_changes_its_chrome_and_its_page_in_the_same_frame"
+  },
+  {
+    "name": "Settings fades over the week instead of sliding over it",
+    "file": "desktop/native/window.py",
+    "old": "                if name == \"settingsPage\":\n                    slide_over(self._stack, page, self._motion)",
+    "new": "                if name == \"settingsPage\":\n                    switch_page(self._stack, page, self._motion)",
+    "test": "desktop/tests/test_layouts_window.py::test_settings_slide_in_over_the_week_and_away_again"
+  },
+  {
+    "name": "the week behind Settings is not dimmed",
+    "file": "desktop/native/motion.py",
+    "old": "        dim.share = 1 - share if back else share",
+    "new": "        dim.share = 0.0",
+    "test": "desktop/tests/test_motion.py::test_settings_slides_in_from_the_right_over_the_page_dimmed"
+  },
+  {
+    "name": "a dialog's content fades without rising",
+    "file": "desktop/native/widgets.py",
+    "old": "                appear(part, level, rise=True)",
+    "new": "                appear(part, level)",
+    "test": "desktop/tests/test_motion.py::test_a_dialog_fades_and_rises_through_its_content_once"
+  },
+  {
+    "name": "a sheet's dimming appears at once",
+    "file": "desktop/native/widgets.py",
+    "old": "            if self._shade is not None:\n                appear(self._shade, level)",
+    "new": "            if self._shade is not None:\n                pass",
+    "test": "desktop/tests/test_motion.py::test_a_sheet_fades_its_card_and_shadow_as_one_and_keeps_the_shadow"
+  },
+  {
+    "name": "Ctrl+K's box appears where it stays",
+    "file": "desktop/native/command_bar.py",
+    "old": "        self.box.move(home.topLeft() + QPoint(0, distance(RISE_PX, self.motion)))\n",
+    "new": "",
+    "test": "desktop/tests/test_command_bar.py::test_the_box_rises_8_pixels_into_place_as_the_window_dims"
+  },
+  {
+    "name": "the segmented selection jumps",
+    "file": "desktop/native/widgets.py",
+    "old": "        if on and self._drawn is not None and self.isVisible() and length:",
+    "new": "        if False:",
+    "test": "desktop/tests/test_motion.py::test_the_segmented_selection_slides_to_the_segment_chosen"
+  },
+  {
+    "name": "Animations are pinned by the first change in Settings",
+    "file": "desktop/native/settings.py",
+    "old": "            \"motion\": self._motion_chosen,",
+    "new": "            \"motion\": self.motion.currentData(),",
+    "test": "desktop/tests/test_settings_words.py::test_animations_has_four_levels_and_follows_the_look_until_one_is_chosen"
+  },
+  {
+    "name": "the server turns Reduce away",
+    "file": "backend/app.py",
+    "old": "    motion: Literal[\"off\", \"normal\", \"extra\", \"reduce\"] | None = Field(",
+    "new": "    motion: Literal[\"off\", \"normal\", \"extra\"] | None = Field(",
+    "test": "backend/tests/test_stage8_appearance.py::test_reduce_motion_is_kept_and_an_unknown_level_is_rejected"
+  },
+  {
+    "name": "scrolling to what a plan placed cuts its slide short",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "        if rects != self._last_rects:\n",
+    "new": "        if True:\n",
+    "test": "desktop/tests/test_motion.py::test_laying_the_hours_out_again_where_nothing_moved_keeps_the_slide"
+  },
+  {
+    "name": "a moved block slides under Reduce",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "                if travels:\n",
+    "new": "                if True:\n",
+    "test": "desktop/tests/test_motion.py::test_under_reduce_a_moved_block_fades_in_where_it_went_rather_than_sliding"
+  },
+  {
+    "name": "Clay's row slides under Reduce",
+    "file": "desktop/native/layouts/clay.py",
+    "old": "        slides = moving and moves(level)\n",
+    "new": "        slides = moving\n",
+    "test": "desktop/tests/test_layout_clay.py::test_under_reduce_the_row_changes_where_it_is_under_a_fading_picture"
+  },
+  {
+    "name": "Bento's tile rises under Reduce",
+    "file": "desktop/native/layouts/bento.py",
+    "old": "        self.moves = moves()\n",
+    "new": "        self.moves = True\n",
+    "test": "desktop/tests/test_layout_bento.py::test_a_pointed_at_day_lifts_and_does_not_rise_with_animations_off_or_reduced"
+  },
+  {
+    "name": "the dial's hand jumps",
+    "file": "desktop/native/layouts/dial.py",
+    "old": "            self._face.ease_hand(was[1])\n",
+    "new": "            pass\n",
+    "test": "desktop/tests/test_layout_dial.py::test_the_hand_eases_to_where_the_time_moved_it_and_jumps_where_nothing_may_travel"
+  },
+  {
+    "name": "Retro's windows open without the zoom rectangle",
+    "file": "desktop/native/layouts/retro.py",
+    "old": "        if start is None or not moves(level):\n",
+    "new": "        if True:\n",
+    "test": "desktop/tests/test_layout_retro.py::test_a_window_opens_with_windows_98s_zoom_rectangle_within_the_levels"
+  }
+]

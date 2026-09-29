@@ -11,7 +11,7 @@
   "name": "a tray chip keeps its whole words",
   "old": "        if fitted != self.text():\n            self.setText(fitted)\n",
   "new": "",
-  "test": "desktop/tests/test_classic_hours.py::test_a_tray_chip_shortens_its_words_to_the_room_it_has_and_keeps_its_title"
+  "test": "desktop/tests/test_classic_hours.py::test_a_tray_chip_shortens_its_title_and_keeps_its_length_whole"
  },
  {
   "file": "desktop/native/hours/chips.py",
@@ -142,7 +142,7 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "the repeat note sits in the Days field, not a row of its own",
-  "old": "        days_field = QVBoxLayout()\n        days_field.addLayout(choices)\n        days_field.addWidget(self.repeat_note)\n        # Level with the boxes rather than halfway down to the note.\n        days_label = QLabel(\"Days\")\n        days_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)\n        form.addRow(days_label, days_field)\n",
+  "old": "        days_field = QVBoxLayout()\n        days_field.addLayout(choices)\n        days_field.addWidget(self.repeat_note)\n        # The label sits on the boxes' line, not halfway down to the note.\n        form.addRow(\"Days\", days_field)\n",
   "new": "        self.repeat_note.setWordWrap(True)\n        form.addRow(\"Days\", choices)\n        form.addRow(\"\", self.repeat_note)\n",
   "test": "desktop/tests/test_block_editor_words.py::test_the_repeat_note_sits_whole_under_the_day_boxes"
  },
@@ -168,9 +168,9 @@
   "test": "desktop/tests/test_account_words.py::test_delete_account_names_the_account_and_keeps_it_when_refused"
  },
  {
-  "file": "desktop/native/window.py",
+  "file": "desktop/native/menus.py",
   "name": "More shows its descriptions",
-  "old": "        more_menu.setToolTipsVisible(True)\n",
+  "old": "        self.setToolTipsVisible(True)\n",
   "new": "",
   "test": "desktop/tests/test_more_menu_words.py::test_every_action_under_more_and_advanced_says_what_it_does"
  },
@@ -198,7 +198,7 @@
  {
   "file": "desktop/native/look.py",
   "name": "a description takes the chosen text size",
-  "old": "border-radius: {item}px; font-size: {size}pt; }}",
+  "old": "border-radius: {item}px; font-size: {pt['body']}; }}",
   "new": "border-radius: {item}px; }}",
   "test": "desktop/tests/test_more_menu_words.py::test_a_description_is_as_large_as_the_text_the_student_chose"
  },
@@ -233,8 +233,8 @@
  {
   "file": "desktop/native/look.py",
   "name": "headings stand out",
-  "old": "f\"font-size: {size + 1}pt; font-weight: 700; color: {palette['text']}; }}\"",
-  "new": "f\"font-size: {size + 1}pt; color: {palette['text']}; }}\"",
+  "old": "f\"font-size: {pt['heading']}; font-weight: {WEIGHT_STRONG}; color: {palette['text']}; }}\"",
+  "new": "f\"font-size: {pt['heading']}; color: {palette['text']}; }}\"",
   "test": "desktop/tests/test_settings_words.py::test_every_heading_on_appearance_stands_out_from_the_rows_under_it"
  },
  {
@@ -246,17 +246,10 @@
  },
  {
   "file": "desktop/native/look.py",
-  "name": "a plain button on a flat look has no edge",
-  "old": "quiet_edge = f\"background: {palette['hairline']}; border: none;\"",
-  "new": "quiet_edge = f\"background: transparent; border: 1px solid {palette['hairline_strong']};\"",
-  "test": "desktop/tests/test_look.py::test_depth_is_drawn_with_edges_because_qt_has_no_shadows"
- },
- {
-  "file": "desktop/native/look.py",
-  "name": "a design's window colours keep text readable",
+  "name": "a design's page colours keep text readable",
   "old": "if contrast(tokens[\"bg_ink\"], tokens[\"surface\"]) >= AA_TEXT:",
   "new": "if True:",
-  "test": "desktop/tests/test_layouts_registry.py::test_every_design_dresses_the_window_in_colours_its_text_reads_on"
+  "test": "desktop/tests/test_layouts_registry.py::test_every_design_dresses_its_page_in_colours_its_text_reads_on"
  },
  {
   "file": "desktop/native/hours/chips.py",
@@ -289,9 +282,9 @@
  {
   "file": "desktop/native/layouts/retro.py",
   "name": "a notepad line runs off the page",
-  "old": "        if fonts.horizontalAdvance(fitted) > room:\n",
-  "new": "        if False:\n",
-  "test": "desktop/tests/test_layout_retro.py::test_a_notepad_line_short_of_room_puts_its_date_under_its_title"
+  "old": "    if len(line.title) <= title and title + 2 + len(rest) <= chars:\n",
+  "new": "    if True:\n",
+  "test": "desktop/tests/test_layout_retro.py::test_a_notepad_line_short_of_room_puts_its_length_and_time_under_its_title"
  },
  {
   "file": "desktop/native/layouts/retro.py",
@@ -308,9 +301,9 @@
   "test": "desktop/tests/test_now_next.py::test_the_next_and_now_countdowns_move_with_the_minute_without_a_focus_timer"
  },
  {
-  "file": "desktop/native/hours/classic.py",
-  "name": "an empty now and next line still takes its row",
-  "old": "        self.next.setVisible(wide and bool(self._next))\n",
+  "file": "desktop/native/hours/rail.py",
+  "name": "an empty Next card still takes its room",
+  "old": "        self.next.setVisible(wide and has_next)\n",
   "new": "        self.next.setVisible(wide)\n",
   "test": "desktop/tests/test_now_next.py::test_the_next_and_now_countdowns_move_with_the_minute_without_a_focus_timer"
  },
@@ -408,29 +401,29 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "the toast takes the hours' clicks",
-  "old": "        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)\n        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)\n        row = QHBoxLayout(self)\n",
-  "new": "        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)\n        row = QHBoxLayout(self)\n",
-  "test": "desktop/tests/test_drag_results.py::test_the_toast_floats_over_the_foot_of_the_hours_and_lets_the_pointer_through"
+  "old": "        self.setObjectName(\"toastHost\")\n        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)\n",
+  "new": "        self.setObjectName(\"toastHost\")\n",
+  "test": "desktop/tests/test_drag_results.py::test_the_toast_sits_bottom_right_of_the_page_and_lets_the_pointer_through"
  },
  {
   "file": "desktop/native/widgets.py",
   "name": "the toast runs off the bottom of a short window",
-  "old": "        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT\n",
+  "old": "        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT + TOAST_SHADOW\n",
   "new": "        bottom = area.top() + area.height() + TOAST_FOOT * 4\n",
-  "test": "desktop/tests/test_drag_results.py::test_the_toast_floats_over_the_foot_of_the_hours_and_lets_the_pointer_through"
+  "test": "desktop/tests/test_drag_results.py::test_the_toast_sits_bottom_right_of_the_page_and_lets_the_pointer_through"
  },
  {
-  "file": "desktop/native/hours/classic.py",
-  "name": "Week's side never folds",
-  "old": "        if narrow == self.side.folded:\n            return\n",
-  "new": "        return\n",
-  "test": "desktop/tests/test_week_side.py::test_a_narrow_window_folds_the_side_into_one_line_and_blocks_say_their_names"
+  "file": "desktop/native/window.py",
+  "name": "the rail never folds",
+  "old": "        narrow = self.width() < NARROW_WIDTH\n        if narrow != self.rail.folded:\n",
+  "new": "        narrow = False\n        if narrow != self.rail.folded:\n",
+  "test": "desktop/tests/test_week_side.py::test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_say_their_names"
  },
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "a narrow block keeps its times and cuts its name",
-  "old": "        if drawn.short and not drawn.held:\n",
-  "new": "        if False:\n",
+  "old": "    if drawn.short:\n",
+  "new": "    if False:\n",
   "test": "desktop/tests/test_week_side.py::test_a_short_block_word_gives_its_name_the_room_its_times_took"
  },
  {
@@ -443,8 +436,8 @@
  {
   "file": "desktop/native/window.py",
   "name": "homework with no time offers a one-time Delete",
-  "old": "        if block.get(\"start\") or assignment is None:\n            offered.append((\"blockMenuDelete\", \"Delete\"))\n",
-  "new": "        if True:\n            offered.append((\"blockMenuDelete\", \"Delete\"))\n",
+  "old": "        if block.get(\"start\") or assignment is None:\n            menu.add(\"Delete\", ",
+  "new": "        if True:\n            menu.add(\"Delete\", ",
   "test": "desktop/tests/test_context_menu.py::test_homework_with_no_time_has_a_menu_too"
  },
  {
@@ -453,5 +446,40 @@
   "old": "        self.delete_button.setVisible(assignment is not None)\n",
   "new": "        self.delete_button.setVisible(True)\n",
   "test": "desktop/tests/test_delete_homework.py::test_the_editor_offers_delete_only_for_homework_that_exists"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "the chrome dressed by the design again",
+  "old": "            self.planner.setStyleSheet(page_sheet)\n",
+  "new": "            self.setStyleSheet(page_sheet or self._dressed[0])\n",
+  "test": "desktop/tests/test_layouts_window.py::test_the_chrome_follows_the_look_whatever_design_is_on_screen"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "a design's page in the look's colours",
+  "old": "        if colour == MATCH:\n            return None\n",
+  "new": "        if True:\n            return None\n",
+  "test": "desktop/tests/test_layouts_window.py::test_the_knobs_settings_hides_for_a_design_change_nothing_in_it[bento]"
+ },
+ {
+  "file": "desktop/native/layouts/registry.py",
+  "name": "a design's own colourway first again",
+  "old": "(Choice(MATCH, \"Match my look\"), *named)",
+  "new": "(*named, Choice(MATCH, \"Match my look\"))",
+  "test": "desktop/tests/test_layouts_registry.py::test_every_design_follows_the_students_look_until_one_of_its_own_colourways_is_picked"
+ },
+ {
+  "file": "desktop/native/hours/chips.py",
+  "name": "a tray chip keeps its words through a change of look",
+  "old": "        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):\n            self._fit()\n",
+  "new": "        if False:\n            self._fit()\n",
+  "test": "desktop/tests/test_tray_chip.py::test_a_chip_shortens_its_words_again_when_a_new_look_makes_them_larger"
+ },
+ {
+  "file": "desktop/native/hours/rail.py",
+  "name": "the focus list a row short",
+  "old": "                rows * self.tasks.sizeHintForRow(0) + margins.top() + margins.bottom() + 2\n",
+  "new": "                (rows - 1) * self.tasks.sizeHintForRow(0) + margins.top() + margins.bottom() + 2\n",
+  "test": "desktop/tests/test_week_side.py::test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way"
  }
 ]

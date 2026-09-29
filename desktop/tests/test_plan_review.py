@@ -113,7 +113,7 @@ def test_every_explanation_survives_not_just_the_first(qapp: QApplication) -> No
 def test_a_clean_plan_says_nothing(qapp: QApplication) -> None:
     panel = PlanReview()
     panel.set_trace(
-        {"placed": [{"id": "essay"}], "unplaced": [], "moves": [], "explanations": []}, TITLES, WEEK
+        {"placed": [{"id": "essay"}], "unplaced": [], "moves": [], "explanations": []}, TITLES, WEEK, (1, 0)
     )
     assert panel.isVisible() is False
     assert panel.rows_for({"placed": [], "unplaced": [], "moves": [], "explanations": []}, TITLES, WEEK) == []
@@ -124,11 +124,18 @@ def test_the_panel_shows_the_count_and_can_be_dismissed(qapp: QApplication) -> N
 
     panel = PlanReview()
     panel.show()
-    panel.set_trace(TRACE, TITLES, WEEK)
+    # The plan's own counts, not the trace's lists, which hold every block with a time.
+    panel.set_trace(TRACE, TITLES, WEEK, (1, 1))
     qapp.processEvents()
     assert panel.isVisible() is True
-    assert panel.heading.text() == "Your plan: 2 placed, 1 without a time"
+    assert panel.heading.text() == "Placed 1 · 1 without a time"
     assert panel.list.count() == 3
+    # Something has no time, so why is open already; Details folds it away.
+    assert panel.list.isVisible()
+    panel.findChild(QPushButton, "planReviewDetails").click()
+    assert not panel.list.isVisible()
+    panel.set_trace({**TRACE, "unplaced": []}, TITLES, WEEK, (2, 0))
+    assert panel.heading.text() == "Placed 2" and not panel.list.isVisible()
     seen: list[str] = []
     panel.dismissed.connect(lambda: seen.append("dismissed"))
     panel.findChild(QPushButton, "planReviewDismiss").click()
@@ -211,11 +218,12 @@ def test_the_box_is_as_tall_as_it_needs_and_no_taller(qapp: QApplication) -> Non
         },
         TITLES,
         WEEK,
+        (0, 1),
     )
     qapp.processEvents()
     many = PlanReview()
     many.show()
-    many.set_trace(TRACE, TITLES, WEEK)
+    many.set_trace(TRACE, TITLES, WEEK, (1, 1))
     qapp.processEvents()
     assert one.list.height() < many.list.height()
     assert many.list.height() <= 132

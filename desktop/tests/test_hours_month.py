@@ -232,6 +232,85 @@ def test_the_words_held_over_a_refused_date_say_no_in_red(qapp: QApplication) ->
     assert seen == [(words, True), ("19:00 History essay → Fri 25", False)]
 
 
+def painted_colours(qapp: QApplication, draw, palette: dict | None = None) -> set[str]:
+    """Every colour a painter call leaves on a small picture, in Light unless told."""
+    from PySide6.QtGui import QColor, QFont, QImage, QPainter
+
+    from desktop.native.hours.month import MonthPainter
+    from desktop.native.look import resolved_palette
+
+    palette = palette or resolved_palette("light-frost", False, None)
+    image = QImage(240, 40, QImage.Format.Format_ARGB32)
+    image.fill(QColor("#123456"))
+    painter = QPainter(image)
+    painter.setFont(QFont("Inter", 10))
+    draw(MonthPainter(palette), painter)
+    painter.end()
+    return {image.pixelColor(x, y).name() for x in range(image.width()) for y in range(image.height())}
+
+
+def test_a_deadline_is_a_quiet_chip_led_by_due_and_red_only_once_its_date_has_gone(
+    qapp: QApplication,
+) -> None:
+    """A column of red boxes down a Sunday was the most alarming thing in the app for its most
+    ordinary fact. A deadline is a neutral chip led by a bold "Due", and red is kept for past due."""
+    from PySide6.QtCore import QRectF
+
+    from desktop.native.calendar import CATEGORIES
+    from desktop.native.look import resolved_palette
+
+    palette = resolved_palette("light-frost", False, None)
+    cells = {cell.iso: cell for cell in month_cells(september(), {}, "2026-09-28")}
+    gone, coming = cells["2026-09-27"].chips[0], cells["2026-09-29"].chips[0]
+    assert (gone.late, coming.late) == (True, False)
+    assert (gone.flag, coming.flag) == ("Due", "Due 09:00")
+
+    box = QRectF(0, 0, 240, 40)
+
+    def chip(shown) -> set[str]:
+        return painted_colours(qapp, lambda month, painter: month.chip(painter, box, shown, False, False))
+
+    for shown in (gone, coming):
+        assert CATEGORIES["assignments"]["mark"] not in chip(shown), "outlined in homework's colour"
+    assert palette["error"] in chip(gone)
+    assert palette["error"] not in chip(coming)
+
+
+def test_a_block_on_month_is_its_category_as_the_week_fills_it(qapp: QApplication) -> None:
+    """One family (decision 9 of 0.17): a chip is the category's fill for the look, pale on Light and
+    sunk into the card on Dark, not the strong mark washed over the card."""
+    from PySide6.QtCore import QRectF
+
+    from desktop.native.hours.month import MonthChip
+    from desktop.native.look import category_paint, resolved_palette
+
+    box = QRectF(0, 0, 240, 40)
+    for pack, dark in (("light-frost", False), ("dark-frost", True)):
+        palette = resolved_palette(pack, dark, None)
+        for category in ("class", "assignments"):
+            chip = MonthChip(f"block:{category}", "Block", category, block_id=category, start=8 * 60)
+            seen = painted_colours(
+                qapp, lambda month, painter, chip=chip: month.chip(painter, box, chip, False, False), palette
+            )
+            assert category_paint(category, palette)[0] in seen, (pack, category)
+
+
+def test_a_date_outside_the_month_is_told_by_its_dimmed_number_not_a_tint(qapp: QApplication) -> None:
+    """Outside dates took the page's tint, the same as today's wash, so 1 to 4 September looked like
+    today. They are cards like the rest, with the number in the muted colour."""
+    from PySide6.QtCore import QRectF
+
+    from desktop.native.look import resolved_palette
+
+    palette = resolved_palette("light-frost", False, None)
+    outside = next(cell for cell in month_cells(september(), {}, "2026-09-28") if not cell.in_month)
+    box = QRectF(0, 0, 240, 40)
+    card = painted_colours(qapp, lambda month, painter: month.cell(painter, box, outside))
+    assert palette["panel"] in card and palette["window"] not in card
+    numbers = painted_colours(qapp, lambda month, painter: month.day_number(painter, box, outside))
+    assert palette["muted"] in numbers and palette["text"] not in numbers
+
+
 def test_a_month_with_no_window_is_freed_without_the_garbage_collector(qapp: QApplication) -> None:
     """A month drawn with no window gets a hand of its own. That hand once kept a reference back to
     the month, a cycle only the garbage collector could free, at a moment of its choosing."""
@@ -304,3 +383,44 @@ def test_a_month_revealed_before_its_first_layout_still_opens_on_the_week(qapp: 
     room = grid.scroll.viewport().height()
     grid.close()
     assert (shown, below >= room) == (3, True)
+
+
+def test_a_weeks_row_is_as_tall_as_its_busiest_date_and_this_week_is_banded(qapp: QApplication) -> None:
+    """Decision 17 of 0.17: not six even rows with empty space in the quiet weeks. A week's row grows
+    with its busiest date, up to six chips, and the week with today is banded in a little of the text
+    colour, not the accent."""
+    from PySide6.QtGui import QColor
+
+    from desktop.native.hours.month import MOST_CHIPS
+    from desktop.native.look import mix, resolved_palette
+
+    snapshot = build_month("2026-09", [], [])
+    busy = next(day for day in snapshot["days"] if day["date"] == "2026-09-16")
+    busy["blocks"] = [
+        {"id": f"b{hour}", "title": f"Club {hour}", "start": f"{hour:02d}:00", "duration_min": 60}
+        for hour in range(8, 17)
+    ]
+    grid = MonthGrid()
+    palette = resolved_palette("light-frost", False, None)
+    grid.set_palette(palette)
+    grid.resize(900, 300)
+    grid.set_month(snapshot, False)
+    canvas = grid.canvas
+    canvas.set_cells(month_cells(snapshot, {}, "2026-09-16"))
+    grid.show()
+    qapp.processEvents()
+    quiet, busy_row = canvas.cell_rect(0).height(), canvas.cell_rect(16).height()
+    assert busy_row > quiet, f"the busy week's row is {busy_row:.0f} px, a quiet one {quiet:.0f}"
+    shown, more = canvas.chip_boxes(16)
+    assert (len(shown), more) == (MOST_CHIPS, 9 - MOST_CHIPS)
+    image = canvas.grab().toImage()
+
+    def ground(index: int) -> str:
+        box = canvas.cell_rect(index)
+        return QColor(image.pixel(int(box.right()) - 4, int(box.bottom()) - 4)).name()
+
+    band = mix(palette["text"], palette["panel"], 0.04)
+    assert ground(16) != palette["panel"] and ground(16) == ground(20)
+    assert abs(QColor(ground(16)).lightness() - QColor(band).lightness()) <= 2
+    assert ground(0) == palette["panel"], "only this week is banded"
+    grid.close()

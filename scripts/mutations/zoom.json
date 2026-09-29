@@ -9,15 +9,15 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "Daily Scheduler's full 7 px edges on short blocks",
-  "old": "        edge = min(EDGE_PX, length / 5)\n",
-  "new": "        edge = EDGE_PX\n",
+  "old": "        if from_start <= min(EDGE_PX, length / 5 - lead):\n",
+  "new": "        if from_start <= EDGE_PX:\n",
   "test": "desktop/tests/test_hours_zoom.py::test_a_quarter_hour_on_the_day_moves_from_a_quarter_half_and_three_quarters_in"
  },
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "edges shrink to nothing",
-  "old": "        edge = min(EDGE_PX, length / 5)\n",
-  "new": "        edge = 0\n",
+  "old": "        if from_start <= min(EDGE_PX, length / 5 - lead):\n",
+  "new": "        if from_start < 0:\n",
   "test": "desktop/tests/test_hours_zoom.py::test_an_hour_still_resizes_from_its_edges_at_every_level"
  },
  {
@@ -128,15 +128,15 @@
  {
   "file": "desktop/native/layouts/mission.py",
   "name": "Mission opens at midnight",
-  "old": "        scroll.open_at((week.week_start, shown), opening_minute(week, scene.today, scene.minute, shown))\n",
+  "old": "        open_hours(scroll, (week.week_start, day) if is_day else week.week_start, week, scene.today,\n                   scene.minute, day if is_day else None)\n",
   "new": "",
   "test": "desktop/tests/test_hours_open.py::test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_or_week"
  },
  {
   "file": "desktop/native/layouts/timeline.py",
   "name": "Timeline's Day stays where the last day was",
-  "old": "        scroll.open_at((scene.week.week_start, day), opens, above=120)\n",
-  "new": "        scroll.open_at(scene.week.week_start, opens, above=120)\n",
+  "old": "        open_hours(hours, (scene.week.week_start, day), scene.week, scene.today, scene.minute, day)\n",
+  "new": "        open_hours(hours, scene.week.week_start, scene.week, scene.today, scene.minute, day)\n",
   "test": "desktop/tests/test_hours_open.py::test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_or_week"
  },
  {
@@ -148,10 +148,10 @@
  },
  {
   "file": "desktop/native/hours/canvas.py",
-  "name": "a block with no room for its name draws dots",
-  "old": "        if not named:\n            name = _initial(drawn.title, QFontMetrics(bold), room.width())\n",
-  "new": "",
-  "test": "desktop/tests/test_hours_painter.py::test_a_short_block_on_sideways_hours_is_its_first_letter_not_dots"
+  "name": "a block with no room for three letters draws dots",
+  "old": "    if width < indent + tm.horizontalAdvance(drawn.title.strip()[:3]) or tight.height() + 0.5 < tl:\n",
+  "new": "    if tight.height() + 0.5 < tl:\n",
+  "test": "desktop/tests/test_hours_painter.py::test_a_block_with_no_room_for_three_letters_is_its_colour_alone"
  },
  {
   "file": "desktop/native/hours/canvas.py",

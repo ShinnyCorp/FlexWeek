@@ -29,6 +29,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.look import pack_stylesheet, resolved_palette
     from desktop.native.widgets import control_art
     from desktop.tests.test_ui_dialogs import _dialog_classes, school
+    from desktop.tests.window_support import still
 
 
 @pytest.fixture(scope="module")
@@ -126,6 +127,8 @@ def test_every_dialog_has_at_most_one_filled_button(qapp: QApplication, pack: st
                 dialog.show()
                 for _ in range(3):
                     qapp.processEvents()
+                # What a dialog holds fades in as it opens, and a button caught mid-fade is not filled.
+                still(dialog)
                 found = filled(dialog, palette["accent"])
                 if len(found) > 1:
                     loud[f"{kind.__name__}#{index}"] = found

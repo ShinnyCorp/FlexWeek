@@ -31,6 +31,7 @@ from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import ModuleType
 
 MARKER = "rig-week-marker"
 ROOT = Path(__file__).resolve().parents[2]
@@ -72,7 +73,7 @@ def child_main(args: argparse.Namespace) -> int:
 
     from desktop.native.calendar import sunday_due
     from desktop.native.client import _error
-    from desktop.native.hours.geometry import Axis
+    from desktop.native.hours.geometry import FIRST, Axis
     from desktop.native.hours.hand import surface_at
     from desktop.native.hours.zoom import HoursScroll
     from desktop.native.layouts.registry import sanitize_layout
@@ -154,7 +155,9 @@ def child_main(args: argparse.Namespace) -> int:
         return int(hhmm[:2]) * 60 + int(hhmm[3:])
 
     def hhmm(minute: int) -> str:
-        return f"{minute // 60:02d}:{minute % 60:02d}"
+        # Before midnight as -00:26, not floor division's -1:34.
+        sign, minute = ("-" if minute < 0 else ""), abs(minute)
+        return f"{sign}{minute // 60:02d}:{minute % 60:02d}"
 
     class Recorder:
         """Frames of the window with the pointer drawn in, for the design's video."""
@@ -324,8 +327,14 @@ def child_main(args: argparse.Namespace) -> int:
             raise NoSurface(f"no {kind} shows day {day} at {minute} in {self.design}")
 
         def reveal(self, day: int, first: int, last: int) -> Step:
-            """Scroll so this stretch of the day is on screen before anything is measured."""
-            reveal = getattr(self.surface("hours", day, first), "reveal", None)
+            """Scroll so this stretch of the day is on screen before anything is measured. A day shown
+            only in part, as Clay's cards beside the one in front show the stretch the front shows, is
+            revealed by the surface that shows it: Clay's brings the day to the front."""
+            try:
+                surface = self.surface("hours", day, first)
+            except NoSurface:
+                surface = self.surface("hours", day)
+            reveal = getattr(surface, "reveal", None)
             if reveal is not None:
                 reveal(day, first, last)
             yield ("wait", 150)
@@ -353,6 +362,13 @@ def child_main(args: argparse.Namespace) -> int:
             surface = self.surface("hours", day, minute)
             track = surface.track_for(day, minute)
             return surface.mapToGlobal(track.point_for(min(minute + 1.25, track.last))).toPoint()
+
+        def carried(self, press: QPoint, start: int, day: int, to: int) -> QPoint:
+            """Where to let go of a block pressed at `press`, which starts at `start`, so that it starts at
+            `to` on `day`: as far into the time there as the press was into the block. Aimed by minutes,
+            not by the distance between the two days, so a day drawn at another scale, as Clay's cards
+            peeking beside the one in front are, is aimed at as well."""
+            return self.at(day, to + round(self.minute_under(press) - start))
 
         def block_rect(self, block_id: str, day: int) -> QRect:
             for surface in self.surfaces("hours"):
@@ -400,13 +416,12 @@ def child_main(args: argparse.Namespace) -> int:
             return (head + run - inside + across if end else head + inside + across).toPoint()
 
         def chip(self, block_id: str) -> QPoint:
-            """Something on screen that stands for this block and can be picked up."""
+            """This block's chip in a tray, on screen, to pick up. Not a row that only opens it, as
+            Bento's Due soon lists homework ahead of its tray."""
             for widget in window.findChildren(QWidget):
-                if not widget.isVisible():
-                    continue
-                if getattr(widget, "block_id", None) == block_id or widget.property("block_id") == block_id:
+                if widget.isVisible() and widget.property("tray") and widget.property("block_id") == block_id:
                     return widget.mapToGlobal(widget.rect().center())
-            raise NoSurface(f"nothing on screen stands for {block_id}")
+            raise NoSurface(f"no tray on screen has a chip for {block_id}")
 
         def settled(self) -> Step:
             """Wait for the save, then read the week back from the server and prove it is fresh.
@@ -535,7 +550,7 @@ def child_main(args: argparse.Namespace) -> int:
         yield from r.tab("week")
         yield from r.reveal(3, 17 * 60 + 30, 20 * 60 + 30)
         box = r.block_rect(ids["essay"], 3)
-        yield from r.drag(middle(box), middle(box) + (r.at(4, 18 * 60) - r.at(3, 19 * 60)))
+        yield from r.drag(middle(box), r.carried(middle(box), 19 * 60, 4, 18 * 60))
         yield from r.settled()
         got = block(ids["essay"])
         expect((got["days"], got["start"]) == ([4], "18:00"), f"essay is {got['days']} {got['start']}")
@@ -689,7 +704,7 @@ def child_main(args: argparse.Namespace) -> int:
             xdo("key", "d")
             yield ("wait", 500)
 
-        yield from r.drag(middle(box), middle(box) + (r.at(4, 18 * 60) - r.at(3, 19 * 60)), held=to_day)
+        yield from r.drag(middle(box), r.carried(middle(box), 19 * 60, 4, 18 * 60), held=to_day)
         yield ("wait", 400)
         unchanged(revision)
 
@@ -718,9 +733,12 @@ def child_main(args: argparse.Namespace) -> int:
             start <= reachable - 60,
             f"essay starts {hhmm(start)}; without scrolling it could reach {hhmm(round(reachable))}",
         )
+        # Hours as short as Clay's scroll back to midnight while it rests, and a block held half an
+        # hour in starts there, no earlier.
+        let_go = max(under[0] - held_at, FIRST)
         expect(
-            abs(start - (under[0] - held_at)) <= 20,
-            f"essay starts {hhmm(start)} but was let go at {hhmm(round(under[0] - held_at))}",
+            abs(start - let_go) <= 20,
+            f"essay starts {hhmm(start)} but was let go at {hhmm(round(let_go))}",
         )
 
     def week_save_mid_drag(r: Rig) -> Step:
@@ -749,7 +767,7 @@ def child_main(args: argparse.Namespace) -> int:
             yield ("wait", 200)
 
         yield from r.drag(
-            middle(box), middle(box) + (r.at(4, 18 * 60) - r.at(3, 19 * 60)), held=meanwhile, rest=100
+            middle(box), r.carried(middle(box), 19 * 60, 4, 18 * 60), held=meanwhile, rest=100
         )
         yield from r.settled()
         essays = [b for b in session.blocks if b.get("assignment_id") == "essay"]
@@ -836,7 +854,7 @@ def child_main(args: argparse.Namespace) -> int:
         yield from r.tab("week")
         yield from r.reveal(3, 17 * 60 + 30, 20 * 60 + 30)
         box = r.block_rect(ids["essay"], 3)
-        yield from r.drag(middle(box), middle(box) + (r.at(4, 18 * 60) - r.at(3, 19 * 60)))
+        yield from r.drag(middle(box), r.carried(middle(box), 19 * 60, 4, 18 * 60))
         yield from r.settled()
         yield from r.tab("week")
         expect(
@@ -878,7 +896,7 @@ def child_main(args: argparse.Namespace) -> int:
                 (
                     w
                     for w in window.findChildren(QPushButton)
-                    if w.property("block_id") == ids[key] and w.isVisible()
+                    if w.property("tray") and w.property("block_id") == ids[key] and w.isVisible()
                 ),
                 None,
             )
@@ -940,7 +958,7 @@ def child_main(args: argparse.Namespace) -> int:
         expect(abs(after - before) <= 15, f"the pointer was over {before:.0f} and is now over {after:.0f}")
         yield from r.reveal(3, 17 * 60 + 30, 20 * 60 + 30)
         box = r.block_rect(ids["essay"], 3)
-        yield from r.drag(middle(box), middle(box) + (r.at(4, 18 * 60) - r.at(3, 19 * 60)))
+        yield from r.drag(middle(box), r.carried(middle(box), 19 * 60, 4, 18 * 60))
         yield from r.settled()
         got = block(ids["essay"])
         expect((got["days"], got["start"]) == ([4], "18:00"), f"essay is {got['days']} {got['start']}")
@@ -1085,6 +1103,14 @@ def child_main(args: argparse.Namespace) -> int:
             "rig-piano": ("Piano", "17:45", 45),
             "rig-reading": ("Reading", "20:15", 45),
             "rig-chores": ("Chores", "21:15", 45),
+            # 0.17's Month grows a row to its chips when the window has the height, so a date is only
+            # short of room with more than a tall window can show.
+            "rig-run": ("Run", "06:00", 30),
+            "rig-stretch": ("Stretch", "06:45", 30),
+            "rig-breakfast": ("Breakfast", "07:15", 30),
+            "rig-journal": ("Journal", "22:00", 30),
+            "rig-tidy": ("Tidy", "22:45", 30),
+            "rig-podcast": ("Podcast", "23:15", 30),
         }
         for key, (title, start, length) in added.items():
             session.add_block(
@@ -1592,6 +1618,18 @@ def main() -> int:
     import hidden_session
 
     display = hidden_session.start(args.server)
+    try:
+        return drive(args, display, hidden_session)
+    finally:
+        # The hidden KWin and its bus go when the run does. Kept up for the next run, one outlived its
+        # rig by two hours beside Jonathan's own desktop, which froze under the load around it.
+        # FLEXWEEK_RIG_KEEP=1 keeps it, for runs back to back.
+        if not os.environ.get("FLEXWEEK_RIG_KEEP"):
+            hidden_session.stop()
+
+
+def drive(args: argparse.Namespace, display: str, hidden_session: ModuleType) -> int:
+    """Run the scenarios in a child on the hidden display, and return its exit code."""
     out = (
         Path(args.out)
         if args.out

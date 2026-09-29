@@ -309,7 +309,8 @@ def test_a_week_opened_while_hidden_scrolls_to_now_when_it_is_shown(qapp: QAppli
     view.set_week(build_week("2026-10-05", [], {}, None), 2, 12 * 60)
     view.show()
     settle(qapp)
-    assert 10 * 60 <= minute_at(view, 0) <= 11 * 60, "a new week opens a little above now"
+    top, bottom = minute_at(view, 0), minute_at(view, view.scroll.viewport().height())
+    assert abs((top + bottom) / 2 - 12 * 60) <= 2, "a new week opens with now in the middle"
 
 
 def dark_in(image: QImage, strip: QRect, left: int) -> int:
@@ -637,10 +638,10 @@ def test_tab_moves_the_focus_on_and_leaves_the_hours_where_they_are(qapp: QAppli
 
 
 def test_resting_at_the_edge_of_the_page_around_the_lanes_scrolls_the_page(qapp: QApplication) -> None:
-    """Timeline's week: lanes that scroll sideways on a page that scrolls down when the window is
-    short. Resting at the page's bottom edge over the lanes scrolls the page, which the lanes cannot,
-    so a block can be carried to a day below the fold; resting at the lanes' right edge still scrolls
-    the lanes."""
+    """Lanes that scroll sideways on a page that scrolls down when the window is short, as 0.16's
+    Timeline laid its week out. Resting at the page's bottom edge over the lanes scrolls the page,
+    which the lanes cannot, so a block can be carried to a day below the fold; resting at the lanes'
+    right edge still scrolls the lanes."""
     import time
 
     from PySide6.QtWidgets import QScrollArea, QVBoxLayout

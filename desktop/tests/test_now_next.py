@@ -21,7 +21,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QStandardPaths
-    from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+    from PySide6.QtWidgets import QApplication, QPushButton
 
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
@@ -97,23 +97,27 @@ def test_the_next_and_now_countdowns_move_with_the_minute_without_a_focus_timer(
     qapp: QApplication, window: tuple[NativeWindow, list[datetime]]
 ) -> None:
     made, clock = window
-    # On the week, the line is in its side.
-    line = made.findChild(QLabel, "weekNext")
+    # On the week, what is next is the rail's card: "Next", what, and when.
+    card = made.rail.next
+
+    def said() -> tuple[str, str, str]:
+        return card.label.text(), card.title.text(), card.when.text()
+
+    line = card
     assert made.session.focus is None
-    assert line.isVisible()
-    assert line.text() == "Next: Dinner at 18:00 (in 2 h 20 min)"
+    assert card.isVisible()
+    assert said() == ("Next", "Dinner", "18:00 · in 2 h 20 min")
     # The window looks at the clock on its own timer; here it looks every 20 ms, not every 20 s.
     made._layout_tick.setInterval(20)
     clock[0] += timedelta(minutes=1)
     pump(qapp, 0.3)
-    assert line.text() == "Next: Dinner at 18:00 (in 2 h 19 min)"
+    assert said() == ("Next", "Dinner", "18:00 · in 2 h 19 min")
     clock[0] += timedelta(hours=2, minutes=29)
     pump(qapp, 0.3)
-    assert line.text() == "Now: Dinner · 20 min left"
+    assert said() == ("Now", "Dinner", "until 18:30 · 20 min left")
     clock[0] += timedelta(minutes=1)
     pump(qapp, 0.3)
-    assert line.text() == "Now: Dinner · 19 min left"
+    assert said() == ("Now", "Dinner", "until 18:30 · 19 min left")
     clock[0] += timedelta(minutes=19)
     pump(qapp, 0.3)
-    assert line.text() == ""
-    assert not line.isVisible(), "nothing now or next today, so the line takes no room"
+    assert not line.isVisible(), "nothing now or next today, so the card takes no room"

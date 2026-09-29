@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.native.layouts.registry import sanitize_layout
+from desktop.native.look import look_menu_token
 from desktop.native.settings import SettingsPage
 from desktop.native.update import WINDOWS_SETUP, available
 from desktop.native.version import VERSION
@@ -70,22 +71,22 @@ def top(widget: QWidget, within: QWidget) -> int:
     return widget.mapTo(within, widget.rect().topLeft()).y()
 
 
-def test_this_build_says_0_16_0_and_is_not_offered_0_15_0(
+def test_this_build_says_0_17_0_and_is_not_offered_0_16_0(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
-    assert VERSION == "0.16.0"
+    assert VERSION == "0.17.0"
     release = {
-        "tag_name": "v0.15.0",
+        "tag_name": "v0.16.0",
         "assets": [
             {"name": name, "browser_download_url": f"https://example.invalid/{name}"}
             for name in (WINDOWS_SETUP, WINDOWS_SETUP + ".sha256")
         ],
     }
     assert available(release, "windows") is None
-    assert available({**release, "tag_name": "v0.16.1"}, "windows")["version"] == "0.16.1"
+    assert available({**release, "tag_name": "v0.17.1"}, "windows")["version"] == "0.17.1"
     dialog = prefs(window)
-    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.16.0"
+    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.17.0"
     dialog.close_page()
 
 
@@ -115,15 +116,19 @@ def test_appearance_opens_on_main_view_and_ends_with_animations_and_fine_tune(
     ]
     tops = [top(widget, appearance) for widget in order]
     assert tops == sorted(tops), tops
-    # What the note said, where it applies: under the colours it is about.
+    # What the note says, where it applies: under the colours it is about, once a design wears
+    # colours of its own rather than the student's look.
     colour = appearance.findChild(QComboBox, "layoutMain-colour")
     note = appearance.findChild(QLabel, "layoutMainColourNote")
-    assert note.text() == "Pick Match my look to use your own Look and Accent."
+    assert colour.currentData() == "match"
+    assert not note.isVisibleTo(dialog)
+    colour.setCurrentIndex(colour.findData("paper"))
+    qapp.processEvents()
+    assert note.text() == (
+        "Only the design's page takes these colours. The rest of FlexWeek keeps your Look and Accent."
+    )
     assert note.isVisibleTo(dialog)
     assert 0 < top(note, appearance) - top(colour, appearance) < 3 * colour.height()
-    colour.setCurrentIndex(colour.findData("match"))
-    qapp.processEvents()
-    assert not note.isVisibleTo(dialog)
     dialog.close_page()
 
 
@@ -254,7 +259,8 @@ def test_on_or_off_is_a_switch_and_two_or_three_choices_are_side_by_side(
     window: NativeWindow,  # noqa: F811
 ) -> None:
     """R11: toggles for on and off, segmented controls for two or three choices, and the drop-down
-    kept for the lists too long to lay side by side."""
+    kept for the lists too long to lay side by side. Animations' four short levels are side by side
+    too (decision 33 of 0.17)."""
     dialog = prefs(window)
     boxes = [box for box in dialog.findChildren(QCheckBox) if not box.objectName().startswith("alarmDay")]
     assert boxes and all(isinstance(box, Switch) for box in boxes), [
@@ -264,8 +270,9 @@ def test_on_or_off_is_a_switch_and_two_or_three_choices_are_side_by_side(
     assert isinstance(spacing, Segmented)
     assert [button.text() for button in spacing.buttons()] == ["Comfortable", "Compact"]
     assert label_for(spacing) == "Spacing"
-    for control in (dialog.motion, dialog.preferred_view, dialog.drag_step, *dialog.knobs.values()):
+    for control in (dialog.preferred_view, dialog.drag_step, *dialog.knobs.values()):
         assert isinstance(control, Segmented) and 2 <= control.count() <= 3, control.objectName()
+    assert isinstance(dialog.motion, Segmented) and dialog.motion.count() == 4
     # A design's colours stay a list: each design adds its own, and Match my look comes last.
     for box in dialog.findChildren(QComboBox):
         assert box.count() > 3 or box.objectName().endswith("-colour"), box.objectName()
@@ -275,6 +282,28 @@ def test_on_or_off_is_a_switch_and_two_or_three_choices_are_side_by_side(
     spacing.buttons()[1].click()
     assert spacing.currentData() == "compact" and said
     assert dialog.look_choice()["knobs"].get("density") == "compact"
+    dialog.close_page()
+
+
+def test_animations_has_four_levels_and_follows_the_look_until_one_is_chosen(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """Decision 33 of 0.17: Normal, More, Reduce and Off, kept as the ids saved preferences and custom
+    looks already use, and Paper starts at Reduce. Settings used to save whatever it showed, so the
+    first change anywhere in Settings pinned the level and a look chosen after it could not set it."""
+    dialog = prefs(window)
+    motion = dialog.motion
+    assert [button.text() for button in motion.buttons()] == ["Normal", "More", "Reduce", "Off"]
+    assert [motion.itemData(index) for index in range(motion.count())] == ["normal", "extra", "reduce", "off"]
+    assert dialog.updates()["motion"] is None, "never chosen: the look's own"
+    dialog.look.setCurrentIndex(dialog.look.findData(look_menu_token("preset", "paper")))
+    assert motion.currentData() == "reduce", "Paper starts at Reduce"
+    assert dialog.updates()["motion"] is None
+    motion.buttons()[1].click()
+    assert dialog.updates()["motion"] == "extra"
+    dialog.look.setCurrentIndex(dialog.look.findData(look_menu_token("preset", "ink")))
+    assert motion.currentData() == "extra", "once chosen, the level stays whatever the look"
     dialog.close_page()
 
 

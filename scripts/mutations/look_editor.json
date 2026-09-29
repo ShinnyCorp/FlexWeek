@@ -1,0 +1,149 @@
+[
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "the editor wears the look being made, and a bad colour greys its controls",
+  "old": "        self.setStyleSheet(sheet + rules)\n",
+  "new": "        self.setStyleSheet(\"\")\n",
+  "test": "desktop/tests/test_look_editor.py::test_customise_fills_the_window_and_a_change_is_worn_at_once_while_the_controls_keep_their_look"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "a change is not worn until the editor closes",
+  "old": "            self.worn.emit(self._look, [dict(entry) for entry in self._saved])\n        self._picture_soon.start()",
+  "new": "            pass\n        self._picture_soon.start()",
+  "test": "desktop/tests/test_look_editor.py::test_customise_fills_the_window_and_a_change_is_worn_at_once_while_the_controls_keep_their_look"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "the preview is taken once and never again",
+  "old": "            self.worn.emit(self._look, [dict(entry) for entry in self._saved])\n        self._picture_soon.start()",
+  "new": "            self.worn.emit(self._look, [dict(entry) for entry in self._saved])\n        pass",
+  "test": "desktop/tests/test_look_editor.py::test_the_preview_is_the_window_as_it_is_worn"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "leaving never asks",
+  "old": "        if not self._draft.changed():\n            self._close()\n            return\n        answer = self.ask_leave()",
+  "new": "        if True:\n            self._close()\n            return\n        answer = self.ask_leave()",
+  "test": "desktop/tests/test_look_editor.py::test_leaving_with_changes_not_saved_asks_once_to_save_keep_or_discard"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "discard puts back the look kept without saving",
+  "old": "        return sanitize_look({key: value for key, value in self._before.items() if key != \"custom\"})",
+  "new": "        return self._before",
+  "test": "desktop/tests/test_look_editor.py::test_leaving_with_changes_not_saved_asks_once_to_save_keep_or_discard"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "Done leaves without saving",
+  "old": "        if self._draft.changed() and not self._save(self._draft.saved_as):",
+  "new": "        if False:",
+  "test": "desktop/tests/test_look_editor.py::test_done_keeps_the_look_by_its_name_and_more_looks_offers_it_beside_the_ten"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "Fix all fixes nothing",
+  "old": "        custom = apply_fix(custom, found[0])",
+  "new": "        break",
+  "test": "desktop/tests/test_look_editor.py::test_every_pair_under_four_and_a_half_to_one_has_a_fix_and_fix_all_makes_them_read"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "every block colour its own line",
+  "old": "    together = len(blocks) >= 3",
+  "new": "    together = False",
+  "test": "desktop/tests/test_look_editor.py::test_three_block_colours_or_more_are_one_line_whose_fix_fixes_them_all"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "a ratio short of 4.5 shows as 4.5",
+  "old": "    return f\"{math.floor(ratio * 10) / 10:.1f}\"",
+  "new": "    return f\"{ratio:.1f}\"",
+  "test": "desktop/tests/test_look_editor.py::test_three_block_colours_or_more_are_one_line_whose_fix_fixes_them_all"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "Exact colour keeps the hue",
+  "old": "        self.changed.emit({\"colour\": self._fill} if on else",
+  "new": "        self.changed.emit({\"hue\": 0} if on else",
+  "test": "desktop/tests/test_look_editor.py::test_a_category_is_a_hue_on_the_family_or_an_exact_colour"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "four motion levels wider than the column",
+  "old": "        f'QScrollArea#lookEditorColumn QPushButton[segment=\"true\"] {{ padding: 4px {SPACING[1]}px; }}'",
+  "new": "        ''",
+  "test": "desktop/tests/test_look_editor.py::test_every_group_open_fits_the_column[light]"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "the column stays 360 at large text",
+  "old": "        self.column.setFixedWidth(round(COLUMN_WIDTH * max(1.0, float(measures[\"scale\"]))))",
+  "new": "        self.column.setFixedWidth(COLUMN_WIDTH)",
+  "test": "desktop/tests/test_look_editor.py::test_every_group_open_fits_the_column[high-contrast]"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "an import that is not a look says nothing",
+  "old": "            self._say(read.problems[0], problem=True, detail=\" \".join(read.problems))",
+  "new": "            pass",
+  "test": "desktop/tests/test_look_editor.py::test_a_look_exports_to_a_small_file_imports_back_and_a_file_that_is_not_one_says_so"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "Start from keeps the editor in the look it opened in",
+  "old": "        base = self._draft.look[\"base\"]\n        dressed = (base, self._accent, self._dark)",
+  "new": "        base = self._before.get(\"custom\", {}).get(\"base\", \"system\")\n        dressed = (base, self._accent, self._dark)",
+  "test": "desktop/tests/test_look_editor.py::test_start_from_another_look_dresses_the_editor_in_it_and_the_motion_levels_are_the_looks"
+ },
+ {
+  "file": "desktop/native/look_editor.py",
+  "name": "a saved look cannot be renamed",
+  "old": "            saved = rename_look(self._saved, old, wanted)",
+  "new": "            raise LookNameError(\"no\")",
+  "test": "desktop/tests/test_look_editor.py::test_a_saved_look_is_renamed_duplicated_and_deleted_from_the_editors_bar"
+ },
+ {
+  "file": "desktop/native/custom_look.py",
+  "name": "a new look replaces a saved look of its name",
+  "old": "    while _find(saved, free) >= 0:\n        free, count = f\"{stem} {count}\", count + 1\n    return free",
+  "new": "    return free",
+  "test": "desktop/tests/test_custom_look.py::test_a_new_look_is_numbered_past_the_saved_looks_rather_than_replacing_one"
+ },
+ {
+  "file": "desktop/native/settings.py",
+  "name": "saved looks missing from More looks",
+  "old": "        for name in names:\n            self._remember(name, SAVED_LOOK + name)",
+  "new": "        for name in []:\n            self._remember(name, SAVED_LOOK + name)",
+  "test": "desktop/tests/test_look_editor.py::test_done_keeps_the_look_by_its_name_and_more_looks_offers_it_beside_the_ten"
+ },
+ {
+  "file": "desktop/native/settings.py",
+  "name": "a saved look chosen under More looks is not worn",
+  "old": "                self._look = wear(before, saved)",
+  "new": "                pass",
+  "test": "desktop/tests/test_look_editor.py::test_done_keeps_the_look_by_its_name_and_more_looks_offers_it_beside_the_ten"
+ },
+ {
+  "file": "desktop/native/settings.py",
+  "name": "More looks names no look kept without saving",
+  "old": "        self.more.setPlaceholderText(UNSAVED_LOOK.format(name=name) if name else MORE_LOOKS_HINT)",
+  "new": "        self.more.setPlaceholderText(MORE_LOOKS_HINT)",
+  "test": "desktop/tests/test_look_editor.py::test_leaving_with_changes_not_saved_asks_once_to_save_keep_or_discard"
+ },
+ {
+  "file": "desktop/native/settings.py",
+  "name": "Customise opens nothing",
+  "old": "        self.customise.clicked.connect(self._open_customise)",
+  "new": "        pass",
+  "test": "desktop/tests/test_settings_look.py::test_customise_has_its_row_under_look_and_opens_the_look_editor"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "the window never keeps the saved looks",
+  "old": "                self._saved_looks = list(page.saved_looks)\n",
+  "new": "",
+  "test": "desktop/tests/test_look_editor.py::test_done_keeps_the_look_by_its_name_and_more_looks_offers_it_beside_the_ten"
+ }
+]

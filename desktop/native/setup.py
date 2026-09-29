@@ -13,8 +13,8 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from uuid import uuid4
 
-from PySide6.QtCore import QRect, Qt, QTime, QTimer, Signal
-from PySide6.QtGui import QResizeEvent, QShowEvent
+from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTime, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QButtonGroup,
@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QTimeEdit,
@@ -38,6 +39,7 @@ from PySide6.QtWidgets import (
 
 from backend.models import valid_spotify_url
 from backend.slots import SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm
+from desktop.native import icons
 from desktop.native.calendar import (
     DAY_FULL,
     SETUP_ACTIVITY_PREFIX,
@@ -45,6 +47,7 @@ from desktop.native.calendar import (
     is_setup_block,
     sunday_due,
 )
+from desktop.native.fonts import numeral
 from desktop.native.hours.geometry import drag_step
 from desktop.native.layouts.registry import (
     EXPERIMENTAL,
@@ -54,8 +57,17 @@ from desktop.native.layouts.registry import (
     options_for,
     sanitize_layout,
 )
-from desktop.native.look import PACK_LABELS, PACKS, effective_look, look_menu_items, sanitize_look
-from desktop.native.motion import appear, fade_away, glide, hold_picture, slide_page
+from desktop.native.look import (
+    KNOB_VALUE_LABELS,
+    LOOK_KNOBS,
+    PACK_LABELS,
+    PACKS,
+    effective_look,
+    look_menu_items,
+    resolved_palette,
+    sanitize_look,
+)
+from desktop.native.motion import appear, fade_away, glide, hold_picture, switch_page
 from desktop.native.previews import Previews
 from desktop.native.settings import (
     DRAG_STEP_CHOICES,
@@ -65,6 +77,7 @@ from desktop.native.settings import (
     SPOTIFY_TONE_NOTE,
 )
 from desktop.native.sound import Bell
+from desktop.native.tokens import WEIGHT_STRONG
 from desktop.native.tones import FALLBACK, RECIPES
 from desktop.native.weekmodel import clock_text, hhmm_text, time_format
 from desktop.native.widgets import DAYS, ChoiceCard, DueField, FlowLayout, rounded_picture
@@ -112,9 +125,15 @@ CUTOFFS = ("20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00")
 TEXT_SIZES = (("small", "Small"), ("normal", "Normal"), ("large", "Large"))
 SPACINGS = (("comfortable", "Comfortable"), ("compact", "Compact"))
 FONTS = (("sans", "Sans"), ("serif", "Serif"), ("mono", "Mono"))
-SHADOWS = (("soft", "Soft"), ("flat", "Flat"), ("hard", "Hard"))
+SHADOWS = tuple((value, KNOB_VALUE_LABELS[value]) for value in LOOK_KNOBS["depth"])
 TONE_NAMES = {tone: tone.title() for tone in RECIPES}
 STYLE_THUMB, LOOK_THUMB, COLOUR_THUMB = 264, 206, 400
+# The pages and the row of buttons under them, centred up to this width (decision 26 of 0.17).
+SETUP_COLUMN = 880
+# A step on the rail is marked by its number in a ring, or once it is done by a tick on the accent.
+BADGE_PX, TICK_PX = 20, 16
+PENDING, CURRENT, FINISHED = "pending", "current", "finished"
+PLAY_PX = 20
 
 
 @dataclass(frozen=True)
@@ -237,6 +256,35 @@ def _label(text: str, name: str = "", wrap: bool = True) -> QLabel:
     return made
 
 
+def step_badge(number: int, state: str, palette: dict, family: str, ratio: float = 1.0) -> QPixmap:
+    """A step's mark on the rail: its number in a ring, the ring in the accent on the step shown, and
+    a tick on the accent once the step is done."""
+    side = round(BADGE_PX * ratio)
+    made = QPixmap(side, side)
+    made.fill(Qt.GlobalColor.transparent)
+    made.setDevicePixelRatio(ratio)
+    painter = QPainter(made)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    ring = QRectF(1, 1, BADGE_PX - 2, BADGE_PX - 2)
+    if state == FINISHED:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(palette["accent"]))
+        painter.drawEllipse(ring)
+        tick = icons.pixmap("check", palette["accent_ink"], TICK_PX, ratio)
+        inset = (BADGE_PX - TICK_PX) / 2
+        painter.drawPixmap(QRectF(inset, inset, TICK_PX, TICK_PX), tick, QRectF(tick.rect()))
+    else:
+        current = state == CURRENT
+        painter.setPen(QPen(QColor(palette["accent" if current else "hairline_strong"]), 1.5))
+        painter.drawEllipse(ring)
+        font = numeral(QFont(family), 11, WEIGHT_STRONG)
+        painter.setFont(font)
+        painter.setPen(QColor(palette["text" if current else "muted"]))
+        painter.drawText(QRectF(0, 0, BADGE_PX, BADGE_PX), Qt.AlignmentFlag.AlignCenter, str(number))
+    painter.end()
+    return made
+
+
 def _repolish(widget: QWidget) -> None:
     widget.style().unpolish(widget)
     widget.style().polish(widget)
@@ -259,6 +307,23 @@ def _card_grid(box: QVBoxLayout) -> QGridLayout:
     grid.setSpacing(14)
     box.addWidget(cards)
     return grid
+
+
+def _centred_column(line: QHBoxLayout) -> QWidget:
+    """A column in the middle of `line`, as wide as it allows up to SETUP_COLUMN, with what is left
+    split evenly either side. A page pinned to the left left the right third of a wide window empty.
+
+    The column's stretch outweighs the two sides', so it takes the room until its maximum; Qt then
+    shares the rest between the sides alone. Centred by alignment instead, it kept its narrow hint.
+    """
+    column = QWidget()
+    column.setObjectName("setupRow")
+    column.setMaximumWidth(SETUP_COLUMN)
+    column.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    line.addStretch(1)
+    line.addWidget(column, SETUP_COLUMN)
+    line.addStretch(1)
+    return column
 
 
 def _row(*widgets: QWidget, stretch: bool = True) -> QWidget:
@@ -532,6 +597,9 @@ class SetupPage(QWidget):
         # it twice.
         self._made: dict[str, str] = {}
         self._pending_pictures: list[tuple[ChoiceCard, str, str | None, str, int]] = []
+        # The look's colours, for what a stylesheet cannot tint: the rail's marks and the Play icons.
+        self._palette = resolved_palette("light-frost", False, None)
+        self.play_buttons: list[QPushButton] = []
         self._warm = QTimer(self)
         self._warm.setSingleShot(True)
         self._warm.setInterval(0)
@@ -563,8 +631,11 @@ class SetupPage(QWidget):
         nav = QWidget()
         nav.setObjectName("setupNav")
         nav.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        line = QHBoxLayout(nav)
-        line.setContentsMargins(32, 12, 32, 16)
+        around = QHBoxLayout(nav)
+        around.setContentsMargins(32, 12, 32, 16)
+        buttons = _centred_column(around)
+        line = QHBoxLayout(buttons)
+        line.setContentsMargins(0, 0, 0, 0)
         line.setSpacing(10)
         self.back = QPushButton("Back")
         self.back.setObjectName("setupBack")
@@ -598,8 +669,9 @@ class SetupPage(QWidget):
         box.addSpacing(14)
         self.rail_items: list[QPushButton] = []
         for index, (name, steps) in enumerate(RAIL):
-            item = QPushButton(f"{index + 1}   {name}")
+            item = QPushButton(name)
             item.setObjectName("setupRailItem")
+            item.setIconSize(QSize(BADGE_PX, BADGE_PX))
             item.setCursor(Qt.CursorShape.PointingHandCursor)
             item.setAccessibleName(f"Step {index + 1}: {name}")
             item.clicked.connect(lambda _checked=False, step=steps[0]: self._jump(step))
@@ -627,9 +699,7 @@ class SetupPage(QWidget):
         body.setObjectName("setupBody")
         around = QHBoxLayout(body)
         around.setContentsMargins(32, 28, 32, 12)
-        column = QWidget()
-        column.setObjectName("setupRow")
-        column.setMaximumWidth(900)
+        column = _centred_column(around)
         box = QVBoxLayout(column)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(10)
@@ -639,8 +709,6 @@ class SetupPage(QWidget):
         box.addSpacing(6)
         box.addWidget(content)
         box.addStretch(1)
-        around.addWidget(column, 1)
-        around.addStretch(0)
         scroll.setWidget(body)
         return scroll
 
@@ -762,7 +830,10 @@ class SetupPage(QWidget):
         school_line.addWidget(self.school_days)
         school_line.addWidget(self.school_times)
         box.addWidget(school)
-        box.addWidget(_label("No school days picked means no school on the calendar.", "setupHint"))
+        # Said only when it is true: under a week of school days it read as a warning.
+        self.school_hint = _label("No school days picked means no school on the calendar.", "setupHint")
+        box.addWidget(self.school_hint)
+        self.school_days.changed.connect(self._follow_school)
         self._section(box, "Sports, clubs and jobs")
         self.activity_box = QVBoxLayout()
         self.activity_box.setSpacing(8)
@@ -809,6 +880,8 @@ class SetupPage(QWidget):
             box.addWidget(button)
         self._section(box, "When may FlexWeek plan homework?")
         self.work_editor = WorkWindowsEditor([])
+        # Next is the one filled button on every page; a second one here read as the way on.
+        self.work_editor.add_button.setProperty("quiet", True)
         box.addWidget(self.work_editor)
         return content
 
@@ -840,8 +913,12 @@ class SetupPage(QWidget):
             button.setObjectName(f"setupTone-{tone}")
             self.tones.addButton(button)
             self.tone_buttons[tone] = button
-            play = _quiet("▶ Play", "setupPlay")
+            play = _quiet("", "setupPlay")
+            play.setIcon(icons.icon("circle-play", self._palette["accent"]))
+            play.setIconSize(QSize(PLAY_PX, PLAY_PX))
+            play.setToolTip("Play")
             play.setAccessibleName(f"Play {TONE_NAMES[tone]}")
+            self.play_buttons.append(play)
             play.clicked.connect(lambda _checked=False, tone=tone: self._bell.once(tone, self.volume))
             grid.addWidget(button, row, 0, Qt.AlignmentFlag.AlignVCenter)
             grid.addWidget(play, row, 1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -862,6 +939,7 @@ class SetupPage(QWidget):
         self.tones.buttonToggled.connect(lambda *_args: self._follow_tone())
         self.test = QPushButton("Send a test reminder")
         self.test.setObjectName("setupTest")
+        self.test.setProperty("quiet", True)
         self.test.clicked.connect(self._send_test)
         self.test_result = _label("", "setupHint")
         box.addSpacing(6)
@@ -935,7 +1013,7 @@ class SetupPage(QWidget):
         self._prepare(step)
         self.stack.setCurrentWidget(self.pages[step])
         self._sync_chrome()
-        QTimer.singleShot(0, lambda: self._place_marker(animate=False))
+        QTimer.singleShot(0, self, lambda: self._place_marker(animate=False))
 
     def _fill_style(self) -> None:
         self._style_key = (
@@ -988,6 +1066,10 @@ class SetupPage(QWidget):
             self._add_activity()
         cutoff = self._state.preferences.get("day_cutoff")
         self.cutoff.setCurrentIndex(max(0, self.cutoff.findData(cutoff)))
+        self._follow_school()
+
+    def _follow_school(self) -> None:
+        self.school_hint.setVisible(not self.school_days.days())
 
     def _fill_homework(self) -> None:
         style = self._state.preferences.get("planning_style") or "suggest"
@@ -1081,7 +1163,7 @@ class SetupPage(QWidget):
         self._step = step
         self._furthest = max(self._furthest, step)
         self._prepare(step)
-        slide_page(self.stack, self.pages[step], self.motion, direction)
+        switch_page(self.stack, self.pages[step], self.motion, direction)
         self._sync_chrome()
         self._place_marker(animate=True)
         if step == DONE:
@@ -1105,11 +1187,32 @@ class SetupPage(QWidget):
         self.next.setText(FINISH_LABEL if self._step == DONE else NEXT_LABEL)
         for index, (_name, steps) in enumerate(RAIL):
             item = self.rail_items[index]
-            item.setProperty("current", self._step in steps)
-            item.setProperty("done", max(steps) < self._step or (self._furthest >= DONE and steps[0] != DONE))
+            current = self._step in steps
+            done = max(steps) < self._step or (self._furthest >= DONE and steps[0] != DONE)
+            item.setProperty("current", current)
+            item.setProperty("done", done)
             reachable = steps[0] <= self._furthest or (steps[0] == DONE and self._furthest >= DONE)
             item.setEnabled(reachable)
             _repolish(item)
+            state = CURRENT if current else FINISHED if done else PENDING
+            item.setIcon(self._badge(index + 1, state, item.font().family()))
+            item.setAccessibleDescription("Done" if state == FINISHED else "")
+
+    def _badge(self, number: int, state: str, family: str) -> QIcon:
+        made = QIcon()
+        for ratio in (1.0, 2.0):
+            badge = step_badge(number, state, self._palette, family, ratio)
+            # The same mark on a step not reached yet, not Qt's washed-out copy of it.
+            made.addPixmap(badge, QIcon.Mode.Normal)
+            made.addPixmap(badge, QIcon.Mode.Disabled)
+        return made
+
+    def set_palette(self, palette: dict) -> None:
+        """Tint what the stylesheet cannot reach in the look's colours."""
+        self._palette = palette
+        for play in self.play_buttons:
+            play.setIcon(icons.icon("circle-play", palette["accent"]))
+        self._sync_chrome()
 
     def _place_marker(self, animate: bool) -> None:
         current = next(
@@ -1128,11 +1231,11 @@ class SetupPage(QWidget):
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         super().showEvent(event)
-        QTimer.singleShot(0, lambda: self._place_marker(animate=False))
+        QTimer.singleShot(0, self, lambda: self._place_marker(animate=False))
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
-        QTimer.singleShot(0, lambda: self._place_marker(animate=False))
+        QTimer.singleShot(0, self, lambda: self._place_marker(animate=False))
 
     # The look pages
 

@@ -371,10 +371,12 @@ def test_a_chip_carried_on_month_says_what_it_did(qapp: QApplication, window: Na
 
 
 def advanced(window: NativeWindow, words: str) -> None:
-    """Pick the item under More > Advanced whose words start with `words`, as a click on it does."""
+    """Pick the item under More > Undo, copy and save whose words start with `words`, as a click does."""
     menu = window.more_button.menu()
     menu.aboutToShow.emit()
-    inner = next(action.menu() for action in menu.actions() if action.menu() and action.text() == "Advanced")
+    inner = next(
+        action.menu() for action in menu.actions() if action.menu() and action.text() == "Undo, copy and save"
+    )
     next(action for action in inner.actions() if action.text().startswith(words)).trigger()
 
 
@@ -482,11 +484,12 @@ def test_a_short_notice_keeps_its_words_on_one_line(qapp: QApplication, window: 
     assert window.toast.height() < 2 * text.fontMetrics().height() + 40
 
 
-def test_the_toast_floats_over_the_foot_of_the_hours_and_lets_the_pointer_through(
+def test_the_toast_sits_bottom_right_of_the_page_and_lets_the_pointer_through(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """Centred over the hours, 16 pixels above their foot, inside the window at any height, and only
-    its button takes a click: the hours under its words still take a drag."""
+    """Bottom right, clear of the rail on the left, its card 16 pixels in from the page's corner, inside the
+    window at any height (decision 20 of 0.17), and only its button takes a click: what is under its
+    words still takes a drag."""
     from desktop.native.widgets import TOAST_FOOT
 
     pressed = []
@@ -498,10 +501,12 @@ def test_the_toast_floats_over_the_foot_of_the_hours_and_lets_the_pointer_throug
         # Past its rise into place.
         QTest.qWait(400)
         toast, planner = window.toast, window.planner
-        foot = planner.mapTo(window, QPoint(0, planner.height())).y()
+        corner = planner.mapTo(window, QPoint(planner.width(), planner.height()))
+        card = toast.card.geometry().translated(toast.pos())
+        inset = (corner.x() - card.right() - 1, corner.y() - card.bottom() - 1)
+        assert inset == (TOAST_FOOT, TOAST_FOOT), height
         middle = planner.mapTo(window, QPoint(planner.width() // 2, 0)).x()
-        assert toast.geometry().bottom() + 1 == foot - TOAST_FOOT, height
-        assert abs(toast.geometry().center().x() - middle) <= 1, height
+        assert card.left() > middle, "in the right half of the page, clear of the rail"
         assert toast.geometry().bottom() < window.height(), height
         words = toast.geometry().topLeft() + QPoint(12, toast.height() // 2)
         assert window.childAt(words) is not toast and not toast.isAncestorOf(window.childAt(words))
@@ -512,6 +517,24 @@ def test_the_toast_floats_over_the_foot_of_the_hours_and_lets_the_pointer_throug
     QTest.mouseClick(window.toast.button, LEFT)
     assert pressed == [True]
     assert not window.toast.isVisible()
+
+
+def test_the_toast_belongs_to_the_page_it_was_said_on(qapp: QApplication, window: NativeWindow) -> None:
+    """Decision 20: "Planned 2 homework blocks." stayed over the focus screen, which has nothing to do
+    with planning. Leaving the page takes the toast; coming back does not bring it."""
+    window._set_notice("Planned 2 homework blocks.", "Undo", lambda: None)
+    qapp.processEvents()
+    assert window.toast.isVisible()
+    window._open_focus_screen()
+    qapp.processEvents()
+    assert not window.toast.isVisible() and not window.toast.button.isVisible()
+    window._close_focus_screen()
+    qapp.processEvents()
+    assert not window.toast.isVisible(), "it does not come back with the page"
+    window._set_notice("Moved History essay to Fri 18:00.", "Undo", lambda: None)
+    window._show_page("weekPage")
+    qapp.processEvents()
+    assert window.toast.isVisible(), "the page it is on, asked for again, is not leaving"
 
 
 def test_a_view_switch_takes_the_toast_away(qapp: QApplication, window: NativeWindow) -> None:

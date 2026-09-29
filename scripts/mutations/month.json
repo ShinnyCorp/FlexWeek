@@ -138,5 +138,40 @@
   "old": "        if not self.scroll.viewport().isVisible() and tries > 0:\n",
   "new": "        if False:\n",
   "test": "desktop/tests/test_hours_month.py::test_a_month_revealed_before_its_first_layout_still_opens_on_the_week"
+ },
+ {
+  "file": "desktop/native/hours/month.py",
+  "name": "a deadline outlined in homework's colour again",
+  "old": "        painter.setPen(Qt.PenStyle.NoPen)\n        painter.setBrush(fill)\n",
+  "new": "        painter.setPen(QPen(QColor(\"#831a1d\"), 1) if chip.due else Qt.PenStyle.NoPen)\n        painter.setBrush(fill)\n",
+  "test": "desktop/tests/test_hours_month.py::test_a_deadline_is_a_quiet_chip_led_by_due_and_red_only_once_its_date_has_gone"
+ },
+ {
+  "file": "desktop/native/hours/month.py",
+  "name": "every deadline flagged red",
+  "old": "        flag = self.c(\"error\") if chip.late else self.c(\"text\")\n",
+  "new": "        flag = self.c(\"error\")\n",
+  "test": "desktop/tests/test_hours_month.py::test_a_deadline_is_a_quiet_chip_led_by_due_and_red_only_once_its_date_has_gone"
+ },
+ {
+  "file": "desktop/native/hours/month.py",
+  "name": "a deadline gone by not flagged",
+  "old": "                    late=iso < today_iso and not item.get(\"completed\"),\n",
+  "new": "                    late=False,\n",
+  "test": "desktop/tests/test_hours_month.py::test_a_deadline_is_a_quiet_chip_led_by_due_and_red_only_once_its_date_has_gone"
+ },
+ {
+  "file": "desktop/native/hours/month.py",
+  "name": "dates outside the month tinted again",
+  "old": "        painter.fillRect(box, self.c(\"panel\"))\n",
+  "new": "        painter.fillRect(box, self.c(\"panel\") if cell.in_month else self.c(\"window\"))\n",
+  "test": "desktop/tests/test_hours_month.py::test_a_date_outside_the_month_is_told_by_its_dimmed_number_not_a_tint"
+ },
+ {
+  "file": "desktop/native/hours/month.py",
+  "name": "a block on Month in another colour than its fill",
+  "old": "        category_fill = None if chip.due else category_paint(chip.category, self.colours)[0]\n",
+  "new": "        category_fill = None if chip.due else \"#831a1d\"\n",
+  "test": "desktop/tests/test_hours_month.py::test_a_block_on_month_is_its_category_as_the_week_fills_it"
  }
 ]

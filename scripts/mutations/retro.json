@@ -1,0 +1,93 @@
+[
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "the taskbar never puts the window in front away",
+  "old": "        elif self._shown_front() == key:\n",
+  "new": "        elif False:\n",
+  "test": "desktop/tests/test_layout_retro.py::test_a_taskbar_button_brings_its_window_forward_or_puts_the_one_in_front_away"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "a maximised window stays where it was",
+  "old": "            if window.maximised:\n",
+  "new": "            if False:\n",
+  "test": "desktop/tests/test_layout_retro.py::test_minimise_hides_a_window_and_maximise_fills_the_desktop_and_restores_it"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "Start asks for nothing",
+  "old": "self.menu_requested.emit(start.mapToGlobal(QPoint(0, 0)))",
+  "new": "None",
+  "test": "desktop/tests/test_layout_retro.py::test_start_opens_the_apps_own_menu_from_its_corner"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "the icons keep their room however narrow Week.exe gets",
+  "old": "    icons_shown = width - ICONS_WIDE - side - 2 * MARGIN >= round(WEEK_ROOMY * scale)\n",
+  "new": "    icons_shown = True\n",
+  "test": "desktop/tests/test_layout_retro.py::test_the_icons_give_way_before_week_exe_gets_narrow"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "Retro's blocks cut inside a word",
+  "old": "    whole_words = True\n",
+  "new": "    whole_words = False\n",
+  "test": "desktop/tests/test_layout_retro.py::test_a_block_with_no_room_for_its_first_word_says_nothing_rather_than_cut_it"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "whole words asked for and not kept",
+  "old": "        if self.whole_words and cuts_a_word(lay, drawn.title):\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_layout_retro.py::test_a_block_with_no_room_for_its_first_word_says_nothing_rather_than_cut_it"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "High contrast in Windows 98's greys",
+  "old": "    elif high_contrast(tokens):\n",
+  "new": "    elif False:\n",
+  "test": "desktop/tests/test_layout_retro.py::test_high_contrast_is_windows_98s_high_contrast_black"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "Match my look keeps the look's page for a desktop",
+  "old": "        desk = mix_oklab(accent, tokens[\"bg\"], 0.42) if dark else accent\n",
+  "new": "        desk = tokens[\"bg\"]\n",
+  "test": "desktop/tests/test_layout_retro.py::test_match_my_look_puts_the_accent_on_the_desktop_and_the_title_bars"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "each day name shortens on its own",
+  "old": "if all(head._fits() for head in row)",
+  "new": "if self._fits()",
+  "test": "desktop/tests/test_layout_retro.py::test_a_narrow_week_names_every_day_alike"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "a status cell lets its frame cut its words",
+  "old": "        if len(self.choices) > 1:\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_layout_retro.py::test_the_status_bar_says_less_rather_than_cutting_its_words"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "a length breaks over two lines",
+  "old": "    return words.replace(\" \", \"\\u00a0\")\n",
+  "new": "    return words\n",
+  "test": "desktop/tests/test_layout_retro.py::test_ok_dismisses_up_next_and_it_says_what_is_coming"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "Windows 98's bar scrolls nothing",
+  "old": "        shown.valueChanged.connect(source.setValue)\n",
+  "new": "",
+  "test": "desktop/tests/test_layout_retro.py::test_the_week_scrolls_on_windows_98s_bar_in_step_with_the_hours"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "Notepad's title column never gives way",
+  "old": "    return max(min(title, chars - length - when - 4), 0), length\n",
+  "new": "    return title, length\n",
+  "test": "desktop/tests/test_layout_retro.py::test_notepads_columns_and_their_fallbacks"
+ }
+]

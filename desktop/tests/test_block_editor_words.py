@@ -37,6 +37,7 @@ from desktop.tests.window_support import (  # noqa: F401
     server,
     settled,
     signed_out,
+    still,
     wait_until,
     window,
 )
@@ -136,6 +137,7 @@ def test_save_is_the_one_filled_button_and_delete_is_quiet_at_the_bottom_left(
     dialog = BlockDialog(window, soccer(), occurrence_day=3)
     dialog.show()
     qapp.processEvents()
+    still(dialog)
     box = dialog.findChild(QDialogButtonBox)
     save = box.button(QDialogButtonBox.StandardButton.Save) or next(
         button for button in box.buttons() if button.text() == "Save"
@@ -146,7 +148,8 @@ def test_save_is_the_one_filled_button_and_delete_is_quiet_at_the_bottom_left(
     assert save.isDefault()
 
     picture = dialog.grab().toImage()
-    background = picture.pixelColor(2, 2)
+    # The editor is a sheet (decision 23 of 0.17): its buttons sit on its card, not on a window.
+    background = picture.pixelColor(dialog.card.mapTo(dialog, QPoint(6, dialog.card.height() // 2)))
 
     def fill(button: QPushButton) -> QColor:
         # Above the words, inside the edge: the button's own paint and nothing else.
@@ -239,7 +242,7 @@ def test_the_question_before_deleting_draws_its_answer_red_and_cancel_plain(
     window: NativeWindow,  # noqa: F811
 ) -> None:
     pack, dark, accent = window._look_inputs()
-    red = QColor(window._chrome_palette(resolved_palette(pack, dark, window._look, accent))["error"])
+    red = QColor(resolved_palette(pack, dark, window._look, accent)["error"])
     box = widgets.confirm_box(window, "Delete event", "Delete Soccer practice? You can undo this.", "Delete")
     box.show()
     qapp.processEvents()

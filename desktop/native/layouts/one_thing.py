@@ -1,4 +1,5 @@
-"""One thing: a day screen. The whole window is the thing that is on now, or next if nothing is.
+"""One thing: a day screen. The whole window is the thing that is on now, or next if nothing is,
+counted down on a ring.
 
 It deliberately cannot plan. Its value is that it shows less, so the only way out is back to planning.
 It can move the day's own blocks, though, through the window's hand: drag one along the day bar, or
@@ -8,34 +9,39 @@ drag the thing itself onto it, to put it later, as Running late does.
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, QRectF, Qt, Signal
-from PySide6.QtGui import (
-    QFont,
-    QFontMetrics,
-    QKeyEvent,
-    QMouseEvent,
-    QPainter,
-    QPen,
-    QResizeEvent,
-)
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
+from PySide6.QtGui import QFont, QFontMetrics, QKeyEvent, QMouseEvent, QPainter, QPen, QResizeEvent
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from desktop.native.calendar import DAY_FULL
+from desktop.native.fonts import at_scale
 from desktop.native.hours.canvas import BlockPainter, Drawn, HoursCanvas
 from desktop.native.hours.geometry import Axis, LinearTrack, Span
 from desktop.native.hours.hand import Gesture, Hand, Held
+from desktop.native.icons import pixmap
 from desktop.native.layouts.base import (
     LayoutView,
     Scene,
     base_sheet,
+    css,
     day_buttons,
     empty,
+    family,
     label,
+    plural,
     rules,
 )
-from desktop.native.weekmodel import Occurrence, Waiting, clock_label, length_label
+from desktop.native.look import category_paint
+from desktop.native.ring import CountdownRing, ring_colours
+from desktop.native.tokens import RADIUS_CARD, SPACING, WEIGHT_STRONG, type_pt
+from desktop.native.weekmodel import Occurrence, Waiting, clock_label, length_label, range_label
+from desktop.native.widgets import FittedLabel
 
 DAY_START, DAY_END = 6 * 60, 22 * 60
 BAR_TALL = 22
+# The ring's side in the mock-up at Normal text. Then's rows give way before it goes under RING_ROOMY.
+RING_MAX, RING_ROOMY, RING_MIN = 440, 320, 200
+THEN_ROWS = 4
+# The most of the ring's inside the title may take, so the number stays the thing that is read.
+TITLE_SHARE = 0.4
 
 
 def _small(font: QFont) -> QFont:
@@ -184,6 +190,7 @@ class Thing(QLabel):
         self.hand = hand
         self.held: Held | None = None
         self.setObjectName("oneTitle")
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setWordWrap(True)
         self.setTextFormat(Qt.TextFormat.PlainText)
 
@@ -205,15 +212,44 @@ class Thing(QLabel):
         super().mousePressEvent(event)
 
 
+def countdown(minutes: int) -> tuple[str, str]:
+    """The ring's number and its unit: 20 min, and from an hour 3 h or 3:20 h."""
+    if minutes < 60:
+        return str(max(minutes, 0)), "min"
+    hours, rest = divmod(minutes, 60)
+    return (f"{hours}:{rest:02d}" if rest else str(hours)), "h"
+
+
+def shortened(words: str, metrics: QFontMetrics, width: int, lines: int) -> str:
+    """`words` in one line, or two, the last shortened with an ellipsis: the first of two is whole
+    words."""
+    first, rest = "", words.split()
+    while lines > 1 and rest and metrics.horizontalAdvance(f"{first} {rest[0]}".strip()) <= width:
+        first = f"{first} {rest.pop(0)}".strip()
+    if not first:
+        return metrics.elidedText(words, Qt.TextElideMode.ElideRight, width)
+    if not rest:
+        return first
+    return f"{first}\n{metrics.elidedText(' '.join(rest), Qt.TextElideMode.ElideRight, width)}"
+
+
 class OneThingView(LayoutView):
+    """The thing as a countdown (0.17's Countdown): the ring is the hour ahead, like a kitchen timer,
+    its arc the minutes to go, and what comes after is listed under it."""
+
     layout_id = "one"
 
     def __init__(self, parent: QWidget | None = None, *, hand: Hand | None = None) -> None:
         super().__init__(parent, hand=hand)
         self._skip = 0
         self._title = Thing(self.hand)
+        self._title_words = ""
+        self._ring: CountdownRing | None = None
+        self._then: QWidget | None = None
+        self._rows: list[QWidget] = []
         self._root = QVBoxLayout(self)
-        self._root.setContentsMargins(30, 22, 30, 22)
+        self._root.setContentsMargins(SPACING[5] * 2, SPACING[4], SPACING[5] * 2, SPACING[5])
+        self._root.setSpacing(0)
 
     def _queue(self, scene: Scene) -> tuple[tuple[Occurrence, ...], Occurrence | None]:
         if scene.today is None:
@@ -226,91 +262,168 @@ class OneThingView(LayoutView):
     def render(self, scene: Scene, week_changed: bool) -> None:
         if week_changed:
             self._skip = 0
-        tokens = scene.tokens
         queue, current = self._queue(scene)
         self._skip = min(self._skip, max(len(queue) - 1, 0))
         item = queue[self._skip] if queue else None
         is_now = item is not None and item == current
-        self.setStyleSheet(
-            base_sheet(self.objectName(), tokens)
-            + rules(
-                self.objectName(),
-                {
-                    "#oneDate, #oneLeft, #oneThen, #oneHint": f"color: {tokens['bg_muted']};"
-                    f" font-size: {scene.px(15)}px; letter-spacing: 2px;",
-                    "#oneLabel": f"color: {tokens['accent']}; font-size: {scene.px(26)}px;"
-                    " font-weight: 700; letter-spacing: 5px;",
-                    "#oneTitle": f"color: {tokens['bg_ink']}; font-weight: 800;",
-                    "#oneLine": f"color: {tokens['accent']}; font-size: {scene.px(40)}px; font-weight: 700;",
-                    "#oneProgress": f"background: {tokens['line']}; border: none; border-radius: 0;"
-                    f" max-height: {scene.px(6)}px; min-height: {scene.px(6)}px; padding: 0;",
-                    "#oneProgress::chunk": f"background: {tokens['accent']};",
-                    "QPushButton": f"background: {tokens['bg']}; color: {tokens['bg_ink']};"
-                    f" border: 2px solid {tokens['bg_ink']}; border-radius: 0; padding: 0 {scene.px(22)}px;"
-                    f" min-height: {scene.px(48)}px; font-size: {scene.px(15)}px; font-weight: 600;"
-                    " letter-spacing: 2px;",
-                    'QPushButton[kind="main"]': f"background: {tokens['accent']};"
-                    f" color: {tokens['accent_ink']}; border-color: {tokens['accent']};",
-                    "QPushButton:focus": f"border: 3px solid {tokens['accent']};",
-                },
-            )
-        )
+        self.setStyleSheet(self._sheet(scene))
         empty(self._root)
-        self._title = Thing(self.hand)
         top = QHBoxLayout()
-        when = (
-            "Another week"
-            if scene.today is None
-            else f"{DAY_FULL[scene.today]} {scene.week.date_of(scene.today).day}"
-        )
-        top.addWidget(label(f"{when} · {clock_label(scene.minute)}".upper(), "oneDate"))
+        top.addWidget(label(f"Now {clock_label(scene.minute)}", "oneDate"))
         top.addStretch()
-        top.addWidget(label(self._left_text(scene).upper(), "oneLeft"))
+        top.addWidget(label(self._left_text(scene), "oneLeft"))
         self._root.addLayout(top)
         self._root.addStretch(1)
-        heading, line = self._words(scene, item, is_now, current is not None)
-        self._root.addWidget(label(heading.upper(), "oneLabel"))
-        self._title.setText((item.title if item else self._empty_title(scene)).upper())
+        self._ring = self._dial(scene, item, is_now, current is not None)
+        self._root.addWidget(self._ring, 0, Qt.AlignmentFlag.AlignHCenter)
+        self._root.addSpacing(scene.px(SPACING[4]))
+        self._then = self._then_list(scene, queue[self._skip + 1 : self._skip + 1 + THEN_ROWS])
+        self._root.addWidget(self._then, 0, Qt.AlignmentFlag.AlignHCenter)
+        self._root.addSpacing(scene.px(SPACING[4]))
+        self._root.addLayout(self._actions(scene, item))
+        self._root.addStretch(1)
+        if scene.options.get("daybar") != "hide" and scene.today is not None:
+            bar = DayBar(self.hand, scene.today, scene.tokens, item.block_id if item is not None else None)
+            bar.set_week(scene.week.on_day(scene.today), scene.today, scene.minute)
+            bar.block_clicked.connect(self.block_activated.emit)
+            self._root.addWidget(bar)
+        self._fit()
+
+    def _sheet(self, scene: Scene) -> str:
+        tokens = scene.tokens
+
+        def size(role: str) -> str:
+            return f"{type_pt(role, scene.scale)}pt"
+
+        ink, muted, strong = tokens["bg_ink"], tokens["bg_muted"], WEIGHT_STRONG
+        quiet = f"2px solid {tokens['line']}"
+        return base_sheet(self.objectName(), tokens) + rules(
+            self.objectName(),
+            {
+                "#oneDate, #oneLeft, #oneLine, #oneRowTime, #oneRowLength": css(
+                    color=muted, font_size=size("body")
+                ),
+                "#oneLabel": css(color=muted, font_size=size("heading"), font_weight=strong),
+                "#oneTitle": css(color=ink, font_size=size("title"), font_weight=strong),
+                "#oneThenLabel": css(color=muted, font_size=size("body"), font_weight=strong),
+                "#oneRowName": css(color=ink, font_size=size("body"), font_weight=strong),
+                "#oneRule": css(background=tokens["line"]),
+                "#oneRow": css(border_bottom=f"1px solid {tokens['line']}"),
+                "QPushButton": css(
+                    background="transparent",
+                    color=ink,
+                    border=quiet,
+                    border_radius=f"{RADIUS_CARD}px",
+                    padding=f"0 {scene.px(SPACING[4])}px 0 {scene.px(SPACING[3])}px",
+                    min_height=f"{scene.px(40)}px",
+                    font_size=size("body"),
+                    font_weight=strong,
+                ),
+                "QPushButton:hover": css(background=tokens["surface"]),
+                'QPushButton[kind="main"]': css(
+                    background=tokens["accent"], color=tokens["accent_ink"], border_color=tokens["accent"]
+                ),
+                # Rung only when reached with the keyboard, as every button in the app is.
+                'QPushButton[keyfocus="true"]:focus': css(border_color=tokens["accent"]),
+                'QPushButton[kind="main"][keyfocus="true"]:focus': css(border_color=ink),
+            },
+        )
+
+    def _dial(self, scene: Scene, item: Occurrence | None, is_now: bool, has_current: bool) -> CountdownRing:
+        tokens = scene.tokens
+        ring = CountdownRing()
+        ring.set_colours(
+            ring_colours(
+                {
+                    "family": family(tokens),
+                    "text": tokens["bg_ink"],
+                    "window": tokens["bg"],
+                    "accent": tokens["accent"],
+                    "muted": tokens["bg_muted"],
+                }
+            )
+        )
+        ring.set_text_scale(scene.scale)
+        ring.set_scale(12, ("0", "15", "30", "45"))
+        heading, line = self._words(scene, item, is_now, has_current)
+        self._title = Thing(self.hand)
+        self._title_words = item.title if item else self._empty_title(scene)
+        self._title.setText(self._title_words)
         if item is not None:
             self._title.setAccessibleDescription("Press Enter to open it")
         # The thing itself can be carried onto the day bar, to a later time.
         needs_time = scene.today is not None and scene.week.leftover_kind(scene.today) == "needs_time"
         self._title.carry(item or (scene.week.due_today_unplaced(scene.today)[0] if needs_time else None))
-        self._root.addWidget(self._title)
-        self._root.addWidget(label(line.upper(), "oneLine", wrap=True))
-        if is_now and item is not None:
-            progress = QProgressBar()
-            progress.setObjectName("oneProgress")
-            progress.setTextVisible(False)
-            progress.setRange(0, max(item.minutes, 1))
-            progress.setValue(scene.minute - item.start)
-            progress.setMaximumWidth(scene.px(720))
-            progress.setAccessibleName(
-                f"{round((scene.minute - item.start) / max(item.minutes, 1) * 100)} percent through"
-            )
-            self._root.addSpacing(scene.px(14))
-            self._root.addWidget(progress)
-        self._root.addSpacing(scene.px(24))
-        self._root.addLayout(self._actions(scene, item))
-        self._root.addStretch(1)
-        if scene.options.get("daybar") != "hide" and scene.today is not None:
-            bar = DayBar(self.hand, scene.today, tokens, item.block_id if item is not None else None)
-            bar.set_week(scene.week.on_day(scene.today), scene.today, scene.minute)
-            bar.block_clicked.connect(self.block_activated.emit)
-            self._root.addWidget(bar)
-        foot = QHBoxLayout()
-        then = queue[self._skip + 1 : self._skip + 3]
-        said = ", ".join(f"{entry.title} {clock_label(entry.start)}" for entry in then)
-        foot.addWidget(label(("Then: " + (said or "nothing")).upper(), "oneThen"))
-        foot.addStretch()
-        foot.addWidget(label("SPACE: WHAT COMES AFTER · B: BACK TO PLANNING", "oneHint"))
-        self._root.addLayout(foot)
-        self._fit_title()
+        kicker = label(heading, "oneLabel")
+        kicker.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if heading == self._title_words:
+            kicker.hide()
+        ring.above.addWidget(kicker)
+        ring.above.addWidget(self._title)
+        when = label(line, "oneLine", wrap=True)
+        when.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ring.below.addWidget(when)
+        if item is None:
+            ring.set_left(0.0)
+        else:
+            to_go = (item.end if is_now else item.start) - scene.minute
+            ring.set_left(min(to_go, 60) / 60)
+            ring.set_number(*countdown(to_go))
+            ring.setAccessibleName(f"{length_label(to_go)} {'left' if is_now else 'until it starts'}")
+        return ring
+
+    def _then_list(self, scene: Scene, then: tuple[Occurrence, ...]) -> QWidget:
+        """What comes after, a row each: its time, its category's dot, its name and its length."""
+        box = QWidget()
+        box.setObjectName("oneThen")
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        column.addWidget(label("Then", "oneThenLabel"))
+        column.addSpacing(scene.px(SPACING[1]))
+        rule = QFrame()
+        rule.setObjectName("oneRule")
+        rule.setFixedHeight(1)
+        column.addWidget(rule)
+        tokens = scene.tokens
+        paint = {"family": family(tokens), "panel": tokens["surface"]}
+        times = QFontMetrics(at_scale(self.font(), "body", scene.scale))
+        time_width = max((times.horizontalAdvance(clock_label(entry.start)) for entry in then), default=0)
+        self._rows = []
+        for entry in then:
+            row = QFrame()
+            row.setObjectName("oneRow")
+            row.setMinimumHeight(scene.px(36))
+            line = QHBoxLayout(row)
+            line.setContentsMargins(0, 0, 0, 0)
+            line.setSpacing(scene.px(SPACING[2]))
+            when = label(clock_label(entry.start), "oneRowTime")
+            when.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            when.setFixedWidth(time_width + 2)
+            line.addWidget(when)
+            dot = QFrame()
+            dot.setFixedSize(10, 10)
+            mark = category_paint(entry.category, paint)[1] or tokens["bg_muted"]
+            dot.setStyleSheet(f"background: {mark}; border-radius: 5px;")
+            line.addWidget(dot)
+            if entry.work:
+                book = QLabel()
+                book.setPixmap(pixmap("book-open", tokens["bg_muted"], 14, self.devicePixelRatioF()))
+                line.addWidget(book)
+            name = FittedLabel(minimum=40)
+            name.setObjectName("oneRowName")
+            name.set_full_text(entry.title)
+            line.addWidget(name, 1)
+            line.addWidget(label(length_label(entry.minutes), "oneRowLength"))
+            column.addWidget(row)
+            self._rows.append(row)
+        return box
 
     def _left_text(self, scene: Scene) -> str:
         if scene.today is None:
-            return ""
-        return f"{length_label(scene.week.minutes_left_today(scene.today, scene.minute))} left today"
+            return "Another week"
+        left = sum(1 for item in scene.week.on_day(scene.today) if item.live and item.end > scene.minute)
+        return f"{plural(left, 'thing')} left today" if left else "Nothing left today"
 
     def _empty_title(self, scene: Scene) -> str:
         if scene.today is None:
@@ -325,61 +438,80 @@ class OneThingView(LayoutView):
         if item is None:
             heading, _title, line = scene.week.leftover_parts(scene.today)
             tomorrow = scene.week.on_day(scene.today + 1)
-            if (
-                scene.week.leftover_kind(scene.today) == "calendar_only"
-                and scene.today < 6
-                and tomorrow
-            ):
+            if scene.week.leftover_kind(scene.today) == "calendar_only" and scene.today < 6 and tomorrow:
                 line = f"Tomorrow starts with {tomorrow[0].title} at {clock_label(tomorrow[0].start)}"
             return heading, line or heading
         if is_now:
-            return "Now", f"until {clock_label(item.end)} · {length_label(item.end - scene.minute)} left"
+            return "Now", range_label(item.start, item.end)
         first_upcoming = 1 if has_current else 0
         heading = "Up next" if self._skip == first_upcoming else "Later today"
-        return heading, f"{clock_label(item.start)} · in {length_label(item.start - scene.minute)}"
+        return heading, range_label(item.start, item.end)
 
     def _actions(self, scene: Scene, item: Occurrence | None) -> QHBoxLayout:
         row = QHBoxLayout()
-        row.setSpacing(scene.px(10))
-        for entry in day_buttons(self, scene, item, "one", upper=True):
+        row.setSpacing(scene.px(SPACING[2]))
+        row.addStretch()
+        for entry in day_buttons(self, scene, item, "one"):
             row.addWidget(entry)
         row.addStretch()
         return row
 
-    def _fit_title(self) -> None:
-        """As large as the window allows, and never so large that a wrapped line is cut off.
-
-        The room is measured, not guessed: a word-wrapped label asks for one line as its minimum, so the
-        layout squeezed the title rather than anything else and its second line vanished.
-        """
+    def _fit(self) -> None:
+        """The ring as large as the window allows, up to its size in the mock-up. Then's rows give way
+        from the bottom before the ring goes under RING_ROOMY, so a short window keeps the countdown."""
+        ring, then = self._ring, self._then
+        if ring is None or then is None:
+            return
         scale = self._scene.scale if self._scene else 1.0
-        size = round(min(max(self.width() * 0.085, 44), 124) * scale)
-        self._title.setMinimumHeight(0)
-        self._title.ensurePolished()
-        self._root.invalidate()
-        others = self._root.totalMinimumSize().height() - self._title.minimumSizeHint().height()
-        font = QFont(self._title.font())
-        font.setWeight(QFont.Weight.ExtraBold)
+        for child in self.findChildren(QWidget):
+            child.ensurePolished()
         margins = self._root.contentsMargins()
-        width = max(self.width() - margins.left() - margins.right(), 200)
-        room = max(self.height() - others - 8, 40)
-        needed = room
+        across = self.width() - margins.left() - margins.right()
+        ring.setFixedSize(RING_MIN, RING_MIN)
+        shown = len(self._rows)
         while True:
-            font.setPixelSize(size)
-            needed = (
-                QFontMetrics(font)
-                .boundingRect(QRect(0, 0, width, 10_000), int(Qt.TextFlag.TextWordWrap), self._title.text())
-                .height()
-            )
-            if needed <= room or size <= 22:
+            for index, row in enumerate(self._rows):
+                row.setVisible(index < shown)
+            then.setVisible(shown > 0)
+            self._root.invalidate()
+            others = self._root.totalMinimumSize().height() - RING_MIN
+            side = min(across, round(RING_MAX * scale), self.height() - others)
+            if shown == 0 or side >= round(RING_ROOMY * scale):
                 break
-            size -= 4
-        self._title.setStyleSheet(f"font-size: {size}px;")
-        self._title.setMinimumHeight(needed)
+            shown -= 1
+        side = max(side, RING_MIN)
+        ring.setFixedSize(side, side)
+        then.setFixedWidth(max(min(across, round(RING_MAX * scale)), 0))
+        self._fit_title()
+
+    def _fit_title(self) -> None:
+        """Inside the ring, in at most TITLE_SHARE of its height and two lines: at the title size, at
+        the heading size when it needs more, and past that shortened, with the whole name in its
+        tooltip. The number takes the height left over."""
+        ring, title = self._ring, self._title
+        if ring is None:
+            return
+        scale = self._scene.scale if self._scene else 1.0
+        inside = ring.inside()
+        width, budget = max(inside.width(), 40), inside.height() * TITLE_SHARE
+        words = shown = self._title_words
+        for role in ("title", "heading"):
+            metrics = QFontMetrics(at_scale(title.font(), role, scale, WEIGHT_STRONG))
+            tall = metrics.boundingRect(QRect(0, 0, width, 10_000), int(Qt.TextFlag.TextWordWrap), words)
+            if round(tall.height() / metrics.lineSpacing()) <= 2 and tall.height() <= budget:
+                break
+        else:
+            lines = 2 if metrics.lineSpacing() * 2 <= budget else 1
+            shown = shortened(words, metrics, width, lines)
+        title.setStyleSheet(f"font-size: {type_pt(role, scale)}pt;")
+        title.setText(shown)
+        title.setToolTip(words if shown != words else "")
+        title.setAccessibleName(words)
+        ring.lines_changed()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
-        self._fit_title()
+        self._fit()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         scene = self._scene

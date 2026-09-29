@@ -26,6 +26,8 @@ FIRST, LAST = DAY_START_MIN, DAY_END_MIN
 DRAG_STEPS = (5, 15)
 # Space between blocks that share a time, and between a block and its track's sides.
 GAP = 2.0
+# Space between a block and the next one back to back with it.
+BETWEEN = 3.0
 
 
 class Axis(Enum):
@@ -132,7 +134,9 @@ class LinearTrack:
         return (minute - self.first) * self.per_minute()
 
     def rect_for(self, start: int, end: int, column: int = 0, columns: int = 1) -> QRectF:
-        """Where a span is drawn, in the track's upright frame, as one of `columns` side by side."""
+        """Where a span is drawn, in the track's upright frame, as one of `columns` side by side. A
+        pixel in from its start and two from its end, so two blocks back to back are three apart and
+        never read as one (decision 14 of 0.17)."""
         start, end = max(start, self.first), min(end, self.last)
         if self.axis is Axis.DOWN:
             width = (self.area.width() - 2 * GAP) / columns
@@ -140,13 +144,13 @@ class LinearTrack:
                 self.area.left() + GAP + column * width,
                 self.area.top() + self.offset(start) + 1,
                 width - GAP,
-                max(self.offset(end) - self.offset(start) - 2, 4.0),
+                max(self.offset(end) - self.offset(start) - BETWEEN, 4.0),
             )
         height = (self.area.height() - 2 * GAP) / columns
         return QRectF(
             self.area.left() + self.offset(start) + 1,
             self.area.top() + GAP + column * height,
-            max(self.offset(end) - self.offset(start) - 2, 4.0),
+            max(self.offset(end) - self.offset(start) - BETWEEN, 4.0),
             height - GAP,
         )
 

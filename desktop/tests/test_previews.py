@@ -9,6 +9,8 @@ from collections.abc import Iterator
 
 import pytest
 
+from desktop.native.layouts.registry import LAYOUTS
+
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="Desktop dependencies absent"
 )
@@ -17,10 +19,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QEvent, QObject
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtGui import QImage
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication, QWidget
     from shiboken6 import isValid
 
-    from desktop.native.previews import render
+    from desktop.native.previews import CANVAS, render
 
 
 @pytest.fixture(scope="module")
@@ -50,3 +54,26 @@ def test_a_picture_leaves_nothing_alive_for_the_garbage_collector(qapp: QApplica
         gc.collect()
     assert not picture.isNull()
     assert alive == []
+
+
+@pytest.mark.parametrize("main", list(LAYOUTS))
+def test_a_picture_is_of_the_design_once_it_has_finished_laying_out(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, main: str
+) -> None:
+    """The designs finish laying out on the event loop, at the size they are given. Taken before the
+    loop ran, Mission control's picture showed its page's scroll bar beside a half-laid-out table, and
+    Timeline's its days' short names over the wrong hours. A picture is the design as it settles: what
+    the view shows when the loop has run on a while longer."""
+    grab = QWidget.grab
+    taken: list[tuple[QImage, QImage]] = []
+
+    def grab_and_again_later(widget: QWidget, *args: object) -> object:
+        picture = grab(widget, *args)
+        QTest.qWait(200)
+        taken.append((picture.toImage(), grab(widget, *args).toImage()))
+        return picture
+
+    monkeypatch.setattr(QWidget, "grab", grab_and_again_later)
+    render(main, None, "system", None, CANVAS.width())
+    [(picture, later)] = taken
+    assert picture == later

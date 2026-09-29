@@ -22,6 +22,33 @@ if os.environ.get("PYTEST_XDIST_WORKER"):
 
 
 @pytest.fixture(autouse=True)
+def the_pointer_finds_windows_past_the_screens_edge(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Qt's offscreen screen is 800 by 800, and QApplication.widgetAt finds nothing past its edge: with
+    the rail on the left, Thursday and Friday of a 1280 pixel window lay past it, and a drag there
+    could not find the hours to drop on. Where Qt finds nothing, the window under the point does.
+    (A larger screen from offscreen's config file left Qt holding a screen that was gone, and a test
+    now and then crashed on it.)"""
+    if importlib.util.find_spec("PySide6") is not None:
+        from PySide6.QtCore import QPoint
+        from PySide6.QtWidgets import QApplication
+
+        real = QApplication.widgetAt
+
+        def widget_at(*where: object) -> object:
+            found = real(*where)
+            if found is not None:
+                return found
+            point = where[0] if len(where) == 1 else QPoint(*where)
+            for window in reversed(QApplication.topLevelWidgets()):
+                if window.isVisible() and window.geometry().contains(point):
+                    return window.childAt(window.mapFromGlobal(point)) or window
+            return None
+
+        monkeypatch.setattr(QApplication, "widgetAt", staticmethod(widget_at))
+    yield
+
+
+@pytest.fixture(autouse=True)
 def nothing_leaves_the_test(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """No test reaches this computer's own apps. A Spotify alarm tells the Spotify app to play, over
     the session bus or by opening its address, and the developer's Spotify was running: a test would

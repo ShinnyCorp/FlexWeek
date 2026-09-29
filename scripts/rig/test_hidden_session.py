@@ -188,3 +188,24 @@ def test_stop_does_not_signal_a_reused_pid(monkeypatch, tmp_path) -> None:
     finally:
         process.terminate()
         process.wait(timeout=3)
+
+
+def test_a_rig_run_stops_its_hidden_desktop_unless_asked_to_keep_it(monkeypatch, tmp_path):
+    """Kept up for the next run, a hidden KWin and its bus outlived a rig by two hours beside the
+    student's own desktop, which froze under the load. The run stops what it started."""
+    from scripts.rig import drive
+
+    calls = []
+    monkeypatch.setattr(hidden, "start", lambda server: calls.append(("start", server)) or ":99")
+    monkeypatch.setattr(hidden, "stop", lambda: calls.append(("stop",)))
+    monkeypatch.setattr(hidden, "bus", lambda: "unix:path=/nowhere")
+    monkeypatch.setitem(sys.modules, "hidden_session", hidden)
+    monkeypatch.setattr(drive.subprocess, "run", lambda *_a, **_k: subprocess.CompletedProcess([], 3))
+    monkeypatch.delenv("FLEXWEEK_RIG_KEEP", raising=False)
+    monkeypatch.setattr(sys, "argv", ["drive.py", "--out", str(tmp_path / "out")])
+    assert drive.main() == 3
+    assert calls == [("start", "auto"), ("stop",)]
+    calls.clear()
+    monkeypatch.setenv("FLEXWEEK_RIG_KEEP", "1")
+    assert drive.main() == 3
+    assert calls == [("start", "auto")], "kept for runs back to back"
