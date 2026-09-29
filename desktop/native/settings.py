@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpinBox,
+    QStackedLayout,
     QStackedWidget,
     QTimeEdit,
     QVBoxLayout,
@@ -54,6 +55,7 @@ from backend.models import valid_spotify_url
 from backend.slots import SLOT_MIN
 from desktop.native import autostart
 from desktop.native.calendar import DAY_FULL
+from desktop.native.custom_look import sanitize_saved, wear
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
 from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import drag_step
@@ -77,6 +79,7 @@ from desktop.native.look import (
     resolved_palette,
     sanitize_look,
 )
+from desktop.native.look_editor import LookEditor
 from desktop.native.motion import slide_page
 from desktop.native.remind import ALARM_SNOOZE_MIN
 from desktop.native.sound import Bell
@@ -121,7 +124,11 @@ MORE_LOOKS_HINT = "Choose another look"
 ACCENT_LABELS = {"default": "Blue"}
 OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
 CUSTOMISE = "Customise"
-CUSTOMISE_TIP = "Your own colours, corners and fonts. Coming in this version."
+CUSTOMISE_TIP = "Change any look, colours, corners and fonts included, and save it as your own."
+# A saved look's choice under More looks, after the ten, by its name.
+SAVED_LOOK = "saved:"
+YOUR_LOOKS = "Your looks"
+UNSAVED_LOOK = "{name} (not saved)"
 MOTION_CHOICES = (("Normal", "normal"), ("More movement", "extra"), ("Off", "off"))
 PREFERRED_VIEWS = (("Whatever I had open", None), ("Week", "week"), ("Day", "day"))
 KNOB_LABELS = {
@@ -334,6 +341,29 @@ class LookPicker(Choices):
         box.addLayout(line)
         self.main.currentIndexChanged.connect(self._picked_main)
         self.more.activated.connect(self._picked_more)
+        self._built_in = (self.count(), self.more.count())
+
+    def set_saved(self, names: list[str]) -> None:
+        """The student's saved looks, under the others in More looks (decision 24 and plan, "Saved
+        looks"), each chosen by its name."""
+        choices, listed = self._built_in
+        del self._texts[choices:], self._data[choices:]
+        while self.more.count() > listed:
+            self.more.removeItem(self.more.count() - 1)
+        if names:
+            self.more.insertSeparator(listed)
+            self.more.addItem(YOUR_LOOKS)
+            # A heading, not a look to choose.
+            self.more.model().item(self.more.count() - 1).setEnabled(False)
+        for name in names:
+            self._remember(name, SAVED_LOOK + name)
+            self.more.addItem(name, SAVED_LOOK + name)
+        self.more.setMaxVisibleItems(max(10, self.more.count()))
+
+    def show_unsaved(self, name: str | None) -> None:
+        """With a look of the student's own worn and not saved, More looks names it where it would
+        otherwise ask for a look."""
+        self.more.setPlaceholderText(UNSAVED_LOOK.format(name=name) if name else MORE_LOOKS_HINT)
 
     def first_line(self) -> QWidget:
         """What the Look label sits beside: the three looks, not the middle of both lines."""
@@ -352,7 +382,8 @@ class LookPicker(Choices):
         for box in (self.main, self.more):
             box.blockSignals(True)
         self.main.setCurrentIndex(self.main.findData(token))
-        self.more.setCurrentIndex(self.more.findData(token))
+        # The heading and the line above the saved looks carry no value, as nothing chosen does.
+        self.more.setCurrentIndex(self.more.findData(token) if token is not None else -1)
         for box in (self.main, self.more):
             box.blockSignals(False)
 
@@ -508,6 +539,7 @@ class SettingsPage(QWidget):
         look: dict,
         reminder_limits: dict,
         week_layout: dict | None = None,
+        saved_looks: list[dict] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("settingsPage")
@@ -518,18 +550,18 @@ class SettingsPage(QWidget):
         chosen_layout = sanitize_layout(week_layout)
         self._alarms = [deepcopy(item) for item in preferences.get("alarms") or []]
         self._pack = known_pack(preferences.get("theme_pack"))
+        # The looks the student saved, which the window keeps with the device's look.
+        self.saved_looks = sanitize_saved(saved_looks)
         self.look = LookPicker("prefTheme")
-        index = self.look.findData(look_menu_value(self._pack, self._look))
-        self.look.setCurrentIndex(max(0, index))
+        self._show_look()
         swatches = tuple((ACCENT_LABELS.get(name, name.title()), name) for name in ACCENTS)
         self.accent = Swatches(swatches, "prefAccent")
         index = self.accent.findData(preferences.get("accent") or "default")
         self.accent.setCurrentIndex(max(0, index))
         self.accent_note = _note(OWN_ACCENT_NOTE, "settingsCardNote")
-        # Where Customise opens (plan, "Customise"). Its lane builds what it does.
         self.customise = _page_button(f"{CUSTOMISE}…", "prefCustomise")
         self.customise.setToolTip(CUSTOMISE_TIP)
-        self.customise.setEnabled(False)
+        self.customise.clicked.connect(self._open_customise)
         self.accent_chips = Switch("Use the accent on category chips")
         self.accent_chips.setObjectName("prefAccentChips")
         self.accent_chips.setChecked(bool(preferences.get("accent_chips")))
@@ -873,11 +905,16 @@ class SettingsPage(QWidget):
         column.setSpacing(0)
         column.addWidget(self.stack, 1)
         column.addWidget(footer)
-        outer = QHBoxLayout(self)
+        # Settings, and over them the look editor while it is open.
+        self.body = QWidget()
+        outer = QHBoxLayout(self.body)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         outer.addWidget(rail)
         outer.addLayout(column, 1)
+        self._screens = QStackedLayout(self)
+        self._screens.addWidget(self.body)
+        self.editor: LookEditor | None = None
         self._render_alarms()
         self._split_lengths(self.auto_split.isChecked(), say=False)
         self.auto_split.toggled.connect(self._split_lengths)
@@ -1162,6 +1199,9 @@ class SettingsPage(QWidget):
         kept = look_overrides(previous, shown)
         parsed = parse_look_menu_token(self.look.currentData())
         if parsed is None:
+            saved = self._saved_look(self.look.currentData())
+            if saved is not None:
+                self._look = wear(self._look, saved)
             return
         kind, name = parsed
         if kind == "pack":
@@ -1175,6 +1215,53 @@ class SettingsPage(QWidget):
             box.blockSignals(True)
             box.setCurrentIndex(max(0, box.findData(bundle[knob])))
             box.blockSignals(False)
+
+    def _saved_look(self, token: object) -> dict | None:
+        if not isinstance(token, str) or not token.startswith(SAVED_LOOK):
+            return None
+        name = token.removeprefix(SAVED_LOOK)
+        return next((look for look in self.saved_looks if look["name"] == name), None)
+
+    def _show_look(self) -> None:
+        """Look as worn: one of the looks, a saved look by its name, or nothing for a look of the
+        student's own that is not saved."""
+        self.look.set_saved([look["name"] for look in self.saved_looks])
+        custom = self._look.get("custom")
+        unsaved = custom is not None and custom not in self.saved_looks
+        if custom is None:
+            index = max(0, self.look.findData(look_menu_value(self._pack, self._look)))
+        else:
+            index = -1 if unsaved else self.look.findData(SAVED_LOOK + custom["name"])
+        self.look.show_unsaved(custom.get("name") if unsaved else None)
+        self.look.blockSignals(True)
+        self.look.setCurrentIndex(index)
+        self.look.blockSignals(False)
+
+    def _open_customise(self) -> None:
+        """The look editor over Settings (plan, "Customise", B). What it changes is worn at once, as
+        every other setting here is."""
+        if self.editor is not None:
+            return
+        self.editor = LookEditor(self, self._look, self.saved_looks, self._pack, self.accent.currentData())
+        self.editor.worn.connect(self._wear_look)
+        self.editor.closed.connect(self._close_customise)
+        self._screens.addWidget(self.editor)
+        self._screens.setCurrentWidget(self.editor)
+        self.editor.back.setFocus()
+
+    def _wear_look(self, look: dict, saved: list[dict]) -> None:
+        self._look = sanitize_look(look)
+        self.saved_looks = saved
+        self.changed.emit()
+
+    def _close_customise(self) -> None:
+        editor, self.editor = self.editor, None
+        self._show_look()
+        self._screens.setCurrentWidget(self.body)
+        if editor is not None:
+            self._screens.removeWidget(editor)
+            editor.deleteLater()
+        self.customise.setFocus()
 
     def look_choice(self) -> dict:
         parsed = parse_look_menu_token(self.look.currentData())

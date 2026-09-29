@@ -16,6 +16,7 @@ from desktop.native.custom_look import (
     delete_look,
     duplicate_look,
     export_look,
+    free_name,
     import_look,
     readability,
     rename_look,
@@ -295,6 +296,22 @@ def test_saved_looks_are_named_saved_renamed_duplicated_deleted_and_reset() -> N
     stored = json.loads(json.dumps([*saved, {"base": "neon", "name": "Bad"}, {**saved[0]}, "junk"]))
     assert sanitize_saved(stored) == saved
     assert sanitize_saved("junk") == []
+
+
+def test_a_new_look_is_numbered_past_the_saved_looks_rather_than_replacing_one() -> None:
+    """Save as new, Done on a new look and Import keep every saved look: save_look puts a look of the
+    same name in its place, so a new one takes the next free name."""
+    saved = save_look(save_look([], {"base": "light"}, "My look"), {"base": "dark"}, "My look 2")
+    assert free_name(saved, "  Exams  week ") == "Exams week"
+    assert free_name(saved, "my look") == "my look 3"
+    kept = save_look(saved, {"base": "paper"}, free_name(saved, "My look"))
+    assert [look["name"] for look in kept] == ["My look", "My look 2", "My look 3"]
+    assert kept[0]["base"] == "light", "the look already saved under the name is untouched"
+    long = "x" * 40
+    numbered = free_name(save_look([], {"base": "light"}, long), long)
+    assert numbered == "x" * 37 + " 2" and len(numbered) <= 40
+    with pytest.raises(LookNameError, match="one of FlexWeek's own looks"):
+        free_name(saved, "Paper")
 
 
 def test_starting_from_the_look_on_screen_keeps_what_the_student_had_moved() -> None:
