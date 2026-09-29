@@ -19,10 +19,11 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt
+    from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, QSize, Qt
     from PySide6.QtGui import QColor, QFont, QImage, QPainter
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
+    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QLayout, QLayoutItem, QPushButton, QWidget
+    from shiboken6 import isValid
 
     from desktop.native.fonts import load_fonts
     from desktop.native.hours.canvas import Drawn, Written, cuts_a_word
@@ -533,6 +534,42 @@ def test_redraw_keeps_each_tabs_scroll_zoom_and_position(qapp: QApplication) -> 
     assert view.findChild(HoursScroll, "retroWeekScroll") is week
     assert day.parentWidget() is not None
     assert (week.px, week.verticalScrollBar().value()) == (56, 180)
+
+
+def item_holding(layout: QLayout, widget: QWidget) -> QLayoutItem | None:
+    for index in range(layout.count()):
+        item = layout.itemAt(index)
+        if item.widget() is widget:
+            return item
+        inner = item.layout()
+        if inner is not None and (found := item_holding(inner, widget)) is not None:
+            return found
+    return None
+
+
+def test_redraw_takes_the_hours_out_of_their_row_before_keeping_them(qapp: QApplication) -> None:
+    """Moved out while Week.exe's row still listed them, the hours made Qt delete the row's item behind
+    PySide, whose wrapper for it lived on. What Qt made next at that address reached Python as that
+    item, and the rig crashed with a segfault."""
+    view = shown(qapp, surface="day", iso_day="2026-09-17")
+    window = view.findChild(QFrame, "retroWindow-week")
+    hours = view.findChild(QFrame, "retroDayScrollField")
+    held = item_holding(window.layout(), hours)
+    assert held is not None
+    wrapped_as_they_left: list[bool] = []
+
+    class Watch(QObject):
+        def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+            if event.type() == QEvent.Type.ChildRemoved and event.child() is hours:
+                wrapped_as_they_left.append(isValid(held))
+            return False
+
+    watch = Watch()
+    window.installEventFilter(watch)
+    view.show_week(scene("13:41", surface="day", iso_day="2026-09-17"))
+    window.removeEventFilter(watch)
+    assert view.findChild(QFrame, "retroDayScrollField") is hours
+    assert wrapped_as_they_left == [False]
 
 
 @pytest.mark.parametrize(
