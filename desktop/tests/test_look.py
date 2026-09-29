@@ -24,6 +24,7 @@ from desktop.native.look import (
     LOOK_PRESETS,
     PACKS,
     block_paint,
+    block_time_colour,
     category_paint,
     contrast,
     effective_look,
@@ -390,6 +391,27 @@ def test_a_filled_block_is_readable_on_every_category_colour() -> None:
         ratio = contrast(readable_ink(color), color)
         assert ratio >= AA_TEXT, f"{name} {color}: best ink is only {ratio:.2f} to 1"
 
+
+def test_a_blocks_times_read_in_every_look_and_block_style() -> None:
+    """Times and length are drawn quieter than the title, but Terminal's read at 3.95 to 1: they give
+    up quiet before they give up 4.5 to 1."""
+    for pack, system_dark, preset, accent, surface in EVERY_LOOK:
+        palette = resolved_palette(pack, system_dark, look_of(preset, surface=surface), accent)
+        for blocks, (name, category) in product(LOOK_KNOBS["blocks"], CATEGORIES.items()):
+            fill, mark = category_paint(name, palette)
+            drawn = block_paint(look_of(preset, blocks=blocks), palette, fill, category["kind"], mark)
+            paper = drawn["fill"] or palette["window"]
+            ratio = contrast(block_time_colour(drawn["ink"], paper), paper)
+            where = f"{pack}/{system_dark}/{preset}/{accent}/{surface}/{blocks} {name}"
+            assert ratio >= AA_TEXT, f"{where}: {ratio:.2f}"
+
+
+def test_a_blocks_times_stay_quieter_than_its_title_where_they_can() -> None:
+    palette = resolved_palette("system", False, look_of("default"), "default")
+    fill, mark = category_paint("study", palette)
+    drawn = block_paint(look_of("default"), palette, fill, CATEGORIES["study"]["kind"], mark)
+    times = block_time_colour(drawn["ink"], drawn["fill"])
+    assert contrast(times, drawn["fill"]) < contrast(drawn["ink"], drawn["fill"])
 
 def test_a_filled_block_on_a_dark_look_is_its_colour_sunk_into_the_panel_with_light_ink() -> None:
     """A pale fill on near-black glared off the page. Every dark look, packs and presets, fills a
