@@ -13,7 +13,7 @@ struct Cli {
 enum Command {
     /// Stop processes left by a finished job and drop its record.
     Clean,
-    /// Run the same checks as scripts/verify.py.
+    /// Run ruff, mypy, pytest and the diff whitespace checks.
     Gate {
         /// Skip the desktop import check and run only backend/tests.
         #[arg(long)]

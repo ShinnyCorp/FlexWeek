@@ -657,6 +657,15 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-29, `tooling/fwtest-adopt`: FlexWeek's checks now run through `fwtest`, on Jonathan's
+  approval after S3's parity evidence. `scripts/verify.py` and `scripts/mutate.py` are deleted;
+  README, spec.md's Validation, `docs/verification.md` and roadmap.md's open release item say
+  `fwtest gate`, `fwtest mutate [SPEC]`, `fwtest rig ...`, `fwtest run -- CMD` and `fwtest clean`,
+  built with `cargo build --release` in `tools/fwtest`. CI builds it with Rust stable, runs its
+  cargo checks, then `fwtest gate --backend-only` and `fwtest rig --server xvfb ...`; its Python is
+  linked in as `.venv/bin/python`. `chore/agents-md-kit` is merged, so the rules file is the kit's
+  `AGENTS.md`. Gate: 2222 passed, VERIFIED; look.json: 42 caught. CI's run is unverified until
+  pushed. Next: the coordinator pushes and deletes `~/.flexweek-ui-harness/run-alone.sh`.
 - 2026-09-29, `feat/0.17-look`: 0.17.0 prepared on Jonathan's word to release once the UI was done:
   version, dated changelog, `docs/release-notes-v0.17.0.md`, and README's usage text (ten looks,
   Customise…, four animation levels). 0.17 is the design system and ten looks, the six designs he
