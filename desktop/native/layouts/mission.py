@@ -53,7 +53,7 @@ from desktop.native.hours.canvas import (
 )
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.classic import open_hours
-from desktop.native.hours.geometry import Axis, LinearTrack
+from desktop.native.hours.geometry import Axis, LinearTrack, overlap_columns
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import HoursScroll, Scale
 from desktop.native.layouts.base import (
@@ -200,14 +200,29 @@ def _paint(tokens: dict[str, str], category: str) -> tuple[str, str]:
     return fill or tokens["surface"], mark or tokens["line"]
 
 
-def _lanes(days: tuple[int, ...], inset: tuple[int, int], area: QRectF) -> list[LinearTrack]:
+def _rows(week: WeekModel, days: tuple[int, ...]) -> tuple[int, ...]:
+    """The most blocks each day's lane holds side by side, where blocks share their time."""
+    return tuple(
+        max((count for _, count in overlap_columns([(item.start, item.end) for item in week.on_day(day)])),
+            default=1)
+        for day in days
+    )
+
+
+def _lanes(
+    days: tuple[int, ...], rows: tuple[int, ...], inset: tuple[int, int], area: QRectF
+) -> list[LinearTrack]:
     """A lane per day down the canvas, `GAP` apart, with time across from `LEAD` in to `TAIL` short of
-    its right edge. A track lies `inset` inside its lane, so a block sits clear of the lane's edge."""
-    pitch = (area.height() + GAP) / len(days)
+    its right edge, and a lane's room for each of `rows`: blocks that share their time sit side by
+    side, each as tall as a block alone. A track lies `inset` inside its lane, so a block sits clear of
+    the lane's edge."""
+    unit = (area.height() - GAP * (len(days) - 1)) / sum(rows)
     tracks = []
-    for at, day in enumerate(days):
-        lane = QRectF(area.left() + LEAD, area.top() + at * pitch, area.width() - LEAD - TAIL, pitch - GAP)
+    top = area.top()
+    for day, count in zip(days, rows, strict=True):
+        lane = QRectF(area.left() + LEAD, top, area.width() - LEAD - TAIL, unit * count)
         tracks.append(LinearTrack(day, lane.adjusted(0, inset[0], 0, -inset[1]), Axis.ACROSS))
+        top = lane.bottom() + GAP
     return tracks
 
 
@@ -242,7 +257,7 @@ class MissionPainter(BlockPainter):
         self.inset = DAY_INSET if day else WEEK_INSET
         # Per day, set by the canvas before it paints: the lane's two ends and what takes room on it,
         # blocks and the names already written beside them.
-        self.taken: dict[int, tuple[float, float, list[tuple[float, float]]]] = {}
+        self.taken: dict[int, tuple[float, float, list[QRectF]]] = {}
 
     def lane(self, track: LinearTrack) -> QRectF:
         return track.area.adjusted(0, -self.inset[0], 0, self.inset[1])
@@ -410,17 +425,19 @@ class MissionPainter(BlockPainter):
         painter.drawPixmap(at, icons.pixmap(BOOK, colour.name(), size, ratio))
 
     def _beside(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> bool:
-        """The name, and its start if there is room, written beside the block where the lane is free,
-        as a Gantt chart labels a short bar: after it, else before it. On up to two lines, with no
-        word broken, and clear of the lane's edges."""
+        """The name, and its start if there is room, written beside the block where its row of the
+        lane is free, as a Gantt chart labels a short bar: after it, else before it. On up to two
+        lines, with no word broken, and clear of the lane's edges."""
         found = self.taken.get(drawn.span.day)
-        if found is None or drawn.columns > 1:
+        if found is None:
             return False
         first, last, taken = found
         title, small = self.fonts(painter.font())
         tm, sm = QFontMetricsF(title), QFontMetricsF(small)
-        after = min([start for start, _ in taken if start >= rect.right() - 0.5] + [last])
-        before = max([end for _, end in taken if end <= rect.left() + 0.5] + [first])
+        row = [box for box in taken if box.top() < rect.bottom() and box.bottom() > rect.top()]
+        ends = rect.left(), rect.right()
+        after = min([max(box.left(), ends[1]) for box in row if box.right() > ends[1] + 0.5] + [last])
+        before = max([min(box.right(), ends[0]) for box in row if box.left() < ends[0] - 0.5] + [first])
         top = rect.top() + 6
         room = rect.bottom() + 3 - top
         start = clock_label(drawn.span.start)
@@ -447,7 +464,7 @@ class MissionPainter(BlockPainter):
                     painter.setFont(small)
                     box = QRectF(left, top + len(lines) * tm.lineSpacing(), wide, sm.height())
                     painter.drawText(box, align | Qt.AlignmentFlag.AlignTop, start)
-                taken.append((left - 5, left + wide + 5))
+                taken.append(QRectF(left - 5, rect.top(), wide + 10, rect.height()))
                 return True
         return False
 
@@ -481,7 +498,7 @@ class MissionCanvas(HoursCanvas):
                 track.day: (
                     track.area.left(),
                     track.area.right(),
-                    [(rect.left(), rect.right()) for drawn, rect in self.drawn(track) if not drawn.held],
+                    [rect for drawn, rect in self.drawn(track) if not drawn.held],
                 )
                 for track in self.tracks
             }
@@ -593,6 +610,54 @@ class Wrapped(QLabel):
         tall = self.heightForWidth(self.width())
         if tall != self.minimumHeight():
             self.setMinimumHeight(tall)
+
+
+class WholeRows(QWidget):
+    """Rows one under another, as many as have room to show whole, in order: those after are left
+    out, never cut at the card's foot, and the card's head says how many there are. Beside the lanes
+    they ask for no more room than the first row, so the lanes, not the rows, set the page's height.
+    Under the lanes, where the page scrolls, `every` row shows."""
+
+    def __init__(self, rows: list[QWidget], name: str, every: bool) -> None:
+        super().__init__()
+        self.setObjectName(name)
+        self.setProperty("rows", True)
+        self.rows = rows
+        self.every = every
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        for row in rows:
+            column.addWidget(row)
+        column.addStretch(1)
+        if not every:
+            self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
+            self.setMinimumHeight(self._tall(rows[0]) if rows else 0)
+        self._show()
+
+    def _tall(self, row: QWidget) -> int:
+        tall = row.heightForWidth(self.width()) if row.hasHeightForWidth() else row.sizeHint().height()
+        return min(max(tall, row.minimumHeight()), row.maximumHeight())
+
+    def _show(self) -> None:
+        """The first row always, and each after it while it has room. The last shown has no rule
+        under it."""
+        room, shown = self.height(), 0
+        for at, row in enumerate(self.rows):
+            room -= self._tall(row)
+            fits = self.every or at == 0 or room >= 0
+            row.setVisible(fits)
+            shown += fits
+        for at, row in enumerate(self.rows):
+            last = at == shown - 1
+            if row.property("last") != last:
+                row.setProperty("last", last)
+                row.style().unpolish(row)
+                row.style().polish(row)
+
+    def resizeEvent(self, event: object) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._show()
 
 
 class Bar(QWidget):
@@ -735,7 +800,8 @@ class MissionView(LayoutView):
         is_day = key == "day"
         day = self.shown_day(scene)
         days = (day,) if is_day else tuple(range(7))
-        lay_out = partial(_lanes, days, DAY_INSET if is_day else WEEK_INSET)
+        rows = (1,) if is_day else _rows(week, days)
+        lay_out = partial(_lanes, days, rows, DAY_INSET if is_day else WEEK_INSET)
         scroll = self._scrolls.get(key)
         if scroll is None:
             canvas = MissionCanvas(self.hand, MissionPainter(scene.tokens, day=is_day), lay_out)
@@ -765,7 +831,7 @@ class MissionView(LayoutView):
             self._scrolls[key] = scroll
         canvas = scroll.canvas
         assert isinstance(canvas, MissionCanvas)
-        self._names(scene, canvas, scroll, days, not is_day)
+        self._names(scene, canvas, scroll, days, rows, not is_day)
         canvas.set_painter(MissionPainter(scene.tokens, day=is_day))
         canvas._lay_out = lay_out
         canvas.relayout()
@@ -780,12 +846,12 @@ class MissionView(LayoutView):
             scroll.setMaximumHeight(px(AXIS) + px(DAY_LANE))
         else:
             lane = LANE_UNDER if self.cramped else LANE_LEAST
-            scroll.setMinimumHeight(px(AXIS) + 7 * px(lane) + 6 * GAP)
+            scroll.setMinimumHeight(px(AXIS) + sum(rows) * px(lane) + 6 * GAP)
         return scroll
 
     def _names(self, scene: Scene, canvas: MissionCanvas, scroll: HoursScroll, days: tuple[int, ...],
-               opens: bool) -> None:
-        """The day names in the strip beside the lanes, one for each lane."""
+               rows: tuple[int, ...], opens: bool) -> None:
+        """The day names in the strip beside the lanes, one for each lane and as tall."""
         column = scroll.header.findChild(QWidget, "missionNames").layout()
         if tuple(canvas.names) != days:
             for name in canvas.names.values():
@@ -798,8 +864,9 @@ class MissionView(LayoutView):
                     made.clicked.connect(lambda _=False, chosen=day: self._open_day(chosen))
                 column.addWidget(made, 1)
                 canvas.names[day] = made
-        for day, name in canvas.names.items():
+        for (day, name), count in zip(canvas.names.items(), rows, strict=True):
             name.set_date(scene.week.date_of(day).day, day == scene.today)
+            column.setStretchFactor(name, count)
 
     def _open_day(self, day: int) -> None:
         if self._scene is not None:
@@ -1035,7 +1102,7 @@ class MissionView(LayoutView):
         head.addWidget(side)
         box.addLayout(head)
         box.addSpacing(scene.px(8))
-        box.addWidget(self._scrolled(scene, f"{name}Rows", rows), 1)
+        box.addWidget(WholeRows(rows, f"{name}Rows", every=self.cramped), 1)
         if foot:
             box.addSpacing(scene.px(12))
             box.addWidget(Wrapped(foot, "missionFoot", rich=True))
@@ -1066,10 +1133,9 @@ class MissionView(LayoutView):
             area.setMinimumHeight(scene.px(48))
         return area
 
-    def _list_row(self, scene: Scene, parts: list[QWidget], last: bool) -> QFrame:
+    def _list_row(self, scene: Scene, parts: list[QWidget]) -> QFrame:
         row = QFrame()
         row.setObjectName("missionListRow")
-        row.setProperty("last", last)
         row.setFixedHeight(scene.px(48))
         line = QHBoxLayout(row)
         line.setContentsMargins(0, 0, 0, 0)
@@ -1115,9 +1181,8 @@ class MissionView(LayoutView):
                     self._what(scene, item),
                     label(f"in {length_label(item.start - minute)}", "missionIn"),
                 ],
-                at == len(coming) - 1,
             )
-            for at, item in enumerate(coming)
+            for item in coming
         ]
         if not coming:
             heading, title, _line = week.leftover_parts(today)
@@ -1152,9 +1217,8 @@ class MissionView(LayoutView):
                     Bar((end - start) / longest, soft, scene.tokens["accent"], max(scene.px(3), 3)),
                     label(clock_length(end - start), "missionFigure"),
                 ],
-                at == len(stretches) - 1,
             )
-            for at, (start, end) in enumerate(stretches)
+            for start, end in stretches
         ]
         if not stretches:
             none = f"No free time left before {clock_label(EVENING)}."
@@ -1184,9 +1248,8 @@ class MissionView(LayoutView):
                     self._what(scene, item),
                     label(clock_length(item.minutes), "missionFigure"),
                 ],
-                at == len(items) - 1,
             )
-            for at, item in enumerate(items)
+            for item in items
         ]
         if not items:
             rows.append(Wrapped("Nothing planned.", "missionHint"))
