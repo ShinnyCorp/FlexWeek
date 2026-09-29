@@ -23,6 +23,7 @@ pub fn lock(root: &Path) -> io::Result<MachineLock> {
         .write(true)
         .custom_flags(nix::libc::O_CLOEXEC)
         .open(root.join("lock"))?;
+    // SAFETY: `file` stays in MachineLock for the lock's lifetime, so the fd remains valid.
     let rc = unsafe { nix::libc::flock(file.as_raw_fd(), nix::libc::LOCK_EX) };
     if rc != 0 {
         return Err(io::Error::last_os_error());
@@ -111,6 +112,7 @@ fn ours(pid: i32) -> bool {
 
 impl Drop for MachineLock {
     fn drop(&mut self) {
+        // SAFETY: the fd is still open; unlocking at drop matches the LOCK_EX taken in `lock`.
         unsafe {
             nix::libc::flock(self.file.as_raw_fd(), nix::libc::LOCK_UN);
         }

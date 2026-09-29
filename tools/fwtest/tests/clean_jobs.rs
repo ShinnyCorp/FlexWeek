@@ -3,9 +3,9 @@
 use std::process::Command;
 use std::time::Duration;
 
-use fwtest::clean::{self, sample_job};
+use fwtest::clean;
 use fwtest::identity::{self, StopResult};
-use fwtest::job::{self, ProcRef};
+use fwtest::job::{self, JobLimits, JobRecord, ProcRef};
 
 fn scratch_root() -> std::path::PathBuf {
     let path = std::env::temp_dir().join(format!(
@@ -124,4 +124,26 @@ fn clean_cli_on_an_empty_home_exits_0() {
     );
     assert!(output.stdout.is_empty());
     let _ = std::fs::remove_dir_all(home);
+}
+
+fn sample_job(id: &str, owner_pid: i32, owner_ticks: u64, processes: Vec<ProcRef>) -> JobRecord {
+    JobRecord {
+        id: id.to_string(),
+        checkout: std::path::Path::new("/tmp/fwtest-checkout").to_path_buf(),
+        argv: vec!["sleep".to_string(), "120".to_string()],
+        started: "2026-09-28T06:15:00Z".to_string(),
+        owner: ProcRef {
+            pid: owner_pid,
+            start_ticks: owner_ticks,
+            comm: "fwtest".to_string(),
+        },
+        processes,
+        limits: JobLimits {
+            nice: 19,
+            io: "idle".to_string(),
+            cpus: vec![0, 1],
+            timeout: 600,
+        },
+        scope: None,
+    }
 }

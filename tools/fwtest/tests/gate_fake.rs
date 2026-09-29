@@ -47,6 +47,7 @@ fn fake_checkout(home: &Path) -> (PathBuf, PathBuf) {
         &python,
         r#"#!/bin/sh
 printf '%s\n' "$*" >> "$FWTEST_FAKE_LOG"
+printf 'cwd=%s\n' "$(pwd)" >> "$FWTEST_FAKE_LOG"
 if [ "$1" = "-c" ]; then
   printf '%s\n' "3 14"
   exit 0
@@ -218,5 +219,45 @@ fn skipped_pytest_results_are_not_success() {
         "{stderr}"
     );
     assert!(!stdout.contains("VERIFIED:"));
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn gate_from_a_subdirectory_still_runs_at_the_checkout() {
+    let home = scratch();
+    let (repo, python) = fake_checkout(&home);
+    let nested = repo.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    let output = fwtest(&home, &repo, &python)
+        .current_dir(&nested)
+        .args(["gate", "--backend-only", "--workers", "2"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    let log = fs::read_to_string(home.join("calls.log")).unwrap();
+    let wanted = format!("cwd={}", repo.display());
+    let nested_cwd = format!("cwd={}", nested.display());
+    let mut job_cwds = Vec::new();
+    let mut lines = log.lines();
+    while let Some(line) = lines.next() {
+        if line.contains(" ruff ") || line.contains(" mypy ") || line.contains(" pytest ") {
+            if let Some(cwd) = lines.next() {
+                job_cwds.push(cwd.to_string());
+            }
+        }
+    }
+    assert!(
+        !job_cwds.is_empty() && job_cwds.iter().all(|cwd| cwd == &wanted),
+        "gate jobs did not all run at the checkout:\n{log}"
+    );
+    assert!(
+        !job_cwds.iter().any(|cwd| cwd == &nested_cwd),
+        "a gate job still ran in the subdirectory:\n{log}"
+    );
     let _ = fs::remove_dir_all(home);
 }

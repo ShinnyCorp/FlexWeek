@@ -123,6 +123,66 @@ fn one_caught_case_exits_clean() {
 }
 
 #[test]
+fn an_unknown_case_name_exits_2() {
+    let home = scratch();
+    let repo = home.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    git_init(&repo);
+    copy_fixture(&repo);
+    let output = fwtest(&home, &repo)
+        .args(["mutate", "--case", "no such case", "mutations.json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("no case named no such case"),
+        "stderr:\n{stderr}\nstdout:\n{stdout}"
+    );
+    assert!(!stdout.contains("every mutation was caught"), "{stdout}");
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn mutate_from_a_subdirectory_runs_the_comment_case() {
+    let home = scratch();
+    let repo = home.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    git_init(&repo);
+    copy_fixture(&repo);
+    let nested = repo.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    let output = fwtest(&home, &repo)
+        .current_dir(&nested)
+        .args([
+            "mutate",
+            "--case",
+            "a comment changes nothing",
+            repo.join("mutations.json").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stdout.contains("GREEN") && stdout.contains("a comment changes nothing"),
+        "from a subdirectory the comment case should run and survive:\n{stdout}\n{stderr}"
+    );
+    assert!(!stdout.contains("every mutation was caught"), "{stdout}");
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
 fn clean_restores_a_file_left_by_a_killed_mutate() {
     let home = scratch();
     let repo = home.join("repo");

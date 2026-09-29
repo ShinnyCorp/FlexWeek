@@ -98,3 +98,63 @@ printf 'hidden-stop\n' >> "{log}"
     );
     let _ = fs::remove_dir_all(home);
 }
+
+#[test]
+fn rig_from_a_subdirectory_runs_at_the_checkout() {
+    let home = scratch();
+    let repo = home.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    let git = Command::new("git")
+        .arg("init")
+        .current_dir(&repo)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(git.success());
+    let log = home.join("rig.log");
+    write_script(
+        &repo.join("scripts/rig/drive.py"),
+        &format!(
+            r#"#!/bin/sh
+printf 'cwd=%s\n' "$(pwd)" >> "{log}"
+"#,
+            log = log.display()
+        ),
+    );
+    write_script(
+        &repo.join("scripts/rig/hidden_session.py"),
+        &format!(
+            r#"#!/bin/sh
+printf 'stop-cwd=%s\n' "$(pwd)" >> "{log}"
+"#,
+            log = log.display()
+        ),
+    );
+    let python = home.join("python");
+    write_script(&python, "#!/bin/sh\nexec \"$@\"\n");
+    let nested = repo.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    let status = Command::new(env!("CARGO_BIN_EXE_fwtest"))
+        .current_dir(&nested)
+        .env("HOME", &home)
+        .env("XDG_RUNTIME_DIR", home.join("no-systemd"))
+        .env("DBUS_SESSION_BUS_ADDRESS", "")
+        .env("FWTEST_QUEUE_POLL_SECS", "1")
+        .env("FWTEST_QUEUE_WAIT_SECS", "8")
+        .env("FWTEST_PYTHON", &python)
+        .args(["rig", "--design", "classic"])
+        .status()
+        .unwrap();
+    assert!(status.success(), "{status}");
+    let text = fs::read_to_string(&log).unwrap();
+    let cwd = format!("cwd={}", repo.display());
+    let stop = format!("stop-cwd={}", repo.display());
+    assert!(text.contains(&cwd), "{text}");
+    assert!(text.contains(&stop), "{text}");
+    assert!(
+        !text.contains(&format!("cwd={}", nested.display())),
+        "{text}"
+    );
+    let _ = fs::remove_dir_all(home);
+}

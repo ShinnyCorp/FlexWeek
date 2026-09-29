@@ -100,8 +100,34 @@ pub fn restore_finished(root: &Path) -> io::Result<usize> {
         if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
             continue;
         }
-        let text = fs::read_to_string(&path)?;
-        let record: EditRecord = serde_json::from_str(&text).map_err(io::Error::other)?;
+        let text = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) => {
+                eprintln!("{}: {error}", path.display());
+                continue;
+            }
+        };
+        let record: EditRecord = match serde_json::from_str(&text) {
+            Ok(record) => record,
+            Err(error) => {
+                eprintln!("{}: {error}", path.display());
+                match job::set_aside(&path) {
+                    Ok(dest) => eprintln!("set aside as {}", dest.display()),
+                    Err(move_err) => {
+                        eprintln!("could not set aside {}: {move_err}", path.display())
+                    }
+                }
+                continue;
+            }
+        };
+        if !record.backup.is_file() {
+            eprintln!(
+                "missing backup for {} (case {}); leaving the edit record",
+                record.file.display(),
+                record.case
+            );
+            continue;
+        }
         fs::copy(&record.backup, &record.file)?;
         delete_bytecode(&record.file);
         fs::remove_file(&path)?;
@@ -113,7 +139,9 @@ pub fn restore_finished(root: &Path) -> io::Result<usize> {
 
 fn live_job(root: &Path) -> io::Result<bool> {
     for path in job::list_job_files(root)? {
-        let job = job::load_job_file(&path)?;
+        let Some(job) = job::load_or_set_aside(&path)? else {
+            continue;
+        };
         if job::owner_is_live(&job)? {
             return Ok(true);
         }

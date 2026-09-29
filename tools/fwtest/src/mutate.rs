@@ -2,7 +2,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Deserialize;
 
@@ -19,14 +18,14 @@ struct Case {
 }
 
 pub fn run(specs: &[PathBuf], case_name: Option<&str>, python: Option<&Path>) -> u8 {
-    let checkout = match git_toplevel() {
+    let checkout = match crate::state::git_toplevel() {
         Ok(path) => path,
         Err(message) => {
             eprintln!("{message}");
             return 2;
         }
     };
-    let python = match resolve_python(python, &checkout) {
+    let python = match crate::state::resolve_python(python, &checkout) {
         Ok(path) => path,
         Err(message) => {
             eprintln!("{message}");
@@ -44,12 +43,13 @@ pub fn run(specs: &[PathBuf], case_name: Option<&str>, python: Option<&Path>) ->
             return 1;
         }
     };
-    // Safe: this runs before any job thread, and the vars are only read by children.
+    // SAFETY: this runs on the main thread before any job thread starts. Children inherit the vars.
     unsafe {
         std::env::set_var("PYTHONDONTWRITEBYTECODE", "1");
         std::env::set_var("QT_QPA_PLATFORM", "offscreen");
     }
     let mut missed = 0u32;
+    let mut saw_case = false;
     for spec in files {
         let stem = spec
             .file_stem()
@@ -74,6 +74,7 @@ pub fn run(specs: &[PathBuf], case_name: Option<&str>, python: Option<&Path>) ->
             if case_name.is_some_and(|wanted| wanted != case.name) {
                 continue;
             }
+            saw_case = true;
             let outcome = run_case(&session, &checkout, &python, &stem, &case);
             println!(
                 "{:7} {:10} {:56} {}",
@@ -83,6 +84,12 @@ pub fn run(specs: &[PathBuf], case_name: Option<&str>, python: Option<&Path>) ->
                 missed += 1;
             }
         }
+    }
+    if let Some(name) = case_name
+        && !saw_case
+    {
+        eprintln!("no case named {name}");
+        return 2;
     }
     if missed == 0 {
         println!("every mutation was caught");
@@ -152,7 +159,7 @@ fn run_case(session: &Session, checkout: &Path, python: &Path, stem: &str, case:
         "-p".into(),
         "no:cacheprovider".into(),
     ];
-    let code = match session.run(&command, None) {
+    let code = match session.run_in(&command, None, checkout) {
         Ok(code) => code,
         Err(error) => {
             drop(guard);
@@ -238,36 +245,4 @@ fn spec_files(checkout: &Path, specs: &[PathBuf]) -> Result<Vec<PathBuf>, String
         return Err(format!("no mutation specs in {}", dir.display()));
     }
     Ok(files)
-}
-
-fn git_toplevel() -> Result<PathBuf, String> {
-    let output = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .map_err(|error| format!("git rev-parse failed: {error}"))?;
-    if !output.status.success() {
-        return Err("fwtest mutate must be run inside a git checkout".to_string());
-    }
-    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if path.is_empty() {
-        return Err("fwtest mutate must be run inside a git checkout".to_string());
-    }
-    Ok(PathBuf::from(path))
-}
-
-fn resolve_python(explicit: Option<&Path>, checkout: &Path) -> Result<PathBuf, String> {
-    if let Some(path) = explicit {
-        return Ok(path.to_path_buf());
-    }
-    if let Some(path) = std::env::var_os("FWTEST_PYTHON").filter(|value| !value.is_empty()) {
-        return Ok(PathBuf::from(path));
-    }
-    let venv = checkout.join(".venv/bin/python");
-    if venv.is_file() {
-        return Ok(venv);
-    }
-    Err(format!(
-        "No project Python. Pass --python, set FWTEST_PYTHON, or create {}.",
-        venv.display()
-    ))
 }

@@ -57,6 +57,14 @@ pub fn parse_stat(text: &str) -> Result<ProcIdentity, StatParseError> {
     })
 }
 
+pub fn io_error_means_gone(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::NotFound
+        || matches!(
+            error.raw_os_error(),
+            Some(nix::libc::ENOENT) | Some(nix::libc::ESRCH)
+        )
+}
+
 pub fn read_identity(pid: i32) -> io::Result<Option<ProcIdentity>> {
     if pid <= 0 {
         return Ok(None);
@@ -66,7 +74,7 @@ pub fn read_identity(pid: i32) -> io::Result<Option<ProcIdentity>> {
             Ok(identity) if identity.pid == pid => Ok(Some(identity)),
             _ => Ok(None),
         },
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) if io_error_means_gone(&error) => Ok(None),
         Err(error) => Err(error),
     }
 }
@@ -103,12 +111,12 @@ pub fn stop_if_ours(pid: i32, start_ticks: u64) -> io::Result<StopResult> {
             StopResult::Gone
         });
     }
-    signal(pid, Signal::SIGTERM)?;
+    send(pid, Signal::SIGTERM)?;
     if wait_until_gone(pid, start_ticks, Duration::from_secs(3))? {
         return Ok(StopResult::Stopped);
     }
     if is_live_match(pid, start_ticks)? {
-        signal(pid, Signal::SIGKILL)?;
+        send(pid, Signal::SIGKILL)?;
     }
     if wait_until_gone(pid, start_ticks, Duration::from_secs(3))? {
         Ok(StopResult::Stopped)
@@ -119,7 +127,7 @@ pub fn stop_if_ours(pid: i32, start_ticks: u64) -> io::Result<StopResult> {
     }
 }
 
-fn signal(pid: i32, signal: Signal) -> io::Result<()> {
+pub(crate) fn send(pid: i32, signal: Signal) -> io::Result<()> {
     match kill(Pid::from_raw(pid), signal) {
         Ok(()) => Ok(()),
         Err(nix::errno::Errno::ESRCH) => Ok(()),
@@ -137,7 +145,7 @@ pub fn stop_all(targets: &[(i32, u64)]) -> io::Result<Vec<i32>> {
     }
     for (pid, ticks) in targets {
         if live(*pid, *ticks)? {
-            signal(*pid, Signal::SIGTERM)?;
+            send(*pid, Signal::SIGTERM)?;
         }
     }
     let first = std::time::Instant::now();
@@ -146,14 +154,14 @@ pub fn stop_all(targets: &[(i32, u64)]) -> io::Result<Vec<i32>> {
             .iter()
             .any(|(pid, ticks)| live(*pid, *ticks).unwrap_or(false))
         {
-            reap(targets);
+            reap_pids(targets.iter().map(|(pid, _)| *pid));
             return Ok(Vec::new());
         }
         std::thread::sleep(Duration::from_millis(50));
     }
     for (pid, ticks) in targets {
         if live(*pid, *ticks)? {
-            signal(*pid, Signal::SIGKILL)?;
+            send(*pid, Signal::SIGKILL)?;
         }
     }
     let second = std::time::Instant::now();
@@ -166,7 +174,7 @@ pub fn stop_all(targets: &[(i32, u64)]) -> io::Result<Vec<i32>> {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    reap(targets);
+    reap_pids(targets.iter().map(|(pid, _)| *pid));
     let mut survived = Vec::new();
     for (pid, ticks) in targets {
         if live(*pid, *ticks)? {
@@ -176,11 +184,13 @@ pub fn stop_all(targets: &[(i32, u64)]) -> io::Result<Vec<i32>> {
     Ok(survived)
 }
 
-fn reap(targets: &[(i32, u64)]) {
-    for (pid, _) in targets {
+pub(crate) fn reap_pids(pids: impl IntoIterator<Item = i32>) {
+    for pid in pids {
         let mut status = 0;
+        // SAFETY: WNOHANG waitpid on a pid we may not own returns ECHILD; the
+        // status pointer is a local integer the kernel writes on success.
         unsafe {
-            nix::libc::waitpid(*pid, &mut status, nix::libc::WNOHANG);
+            nix::libc::waitpid(pid, &mut status, nix::libc::WNOHANG);
         }
     }
 }
@@ -213,6 +223,17 @@ mod tests {
         assert_eq!(parsed.pgrp, 2);
         assert_eq!(parsed.nice, 16);
         assert_eq!(parsed.start_ticks, 424242);
+    }
+
+    #[test]
+    fn esrch_is_treated_as_gone() {
+        let error = std::io::Error::from_raw_os_error(nix::libc::ESRCH);
+        assert!(
+            super::io_error_means_gone(&error),
+            "ESRCH should count as gone; kind={:?} raw={:?}",
+            error.kind(),
+            error.raw_os_error()
+        );
     }
 
     #[test]

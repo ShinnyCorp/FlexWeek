@@ -79,6 +79,33 @@ pub fn load_job_file(path: &Path) -> io::Result<JobRecord> {
     serde_json::from_str(&text).map_err(io::Error::other)
 }
 
+pub fn set_aside(path: &Path) -> io::Result<PathBuf> {
+    let mut name = path
+        .file_name()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "record path has no name"))?
+        .to_os_string();
+    name.push(".bad");
+    let dest = path.with_file_name(name);
+    fs::rename(path, &dest)?;
+    Ok(dest)
+}
+
+pub fn load_or_set_aside(path: &Path) -> io::Result<Option<JobRecord>> {
+    match load_job_file(path) {
+        Ok(job) => Ok(Some(job)),
+        Err(error) => {
+            eprintln!("{}: {error}", path.display());
+            match set_aside(path) {
+                Ok(dest) => eprintln!("set aside as {}", dest.display()),
+                Err(move_err) => {
+                    eprintln!("could not set aside {}: {move_err}", path.display())
+                }
+            }
+            Ok(None)
+        }
+    }
+}
+
 pub fn list_job_files(root: &Path) -> io::Result<Vec<PathBuf>> {
     let dir = jobs_dir(root);
     if !dir.exists() {

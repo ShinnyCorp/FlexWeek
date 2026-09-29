@@ -1,20 +1,19 @@
 //! `fwtest rig` runs the rig driver as one job, then stops the hidden session,
 //! then stops anything still left. `FLEXWEEK_RIG_KEEP` is never passed through.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 
 use crate::contain;
 
 pub fn run(extra: &[String], python: Option<&Path>) -> u8 {
-    let checkout = match git_toplevel() {
+    let checkout = match crate::state::git_toplevel() {
         Ok(path) => path,
         Err(message) => {
             eprintln!("{message}");
             return 2;
         }
     };
-    let python = match resolve_python(python, &checkout) {
+    let python = match crate::state::resolve_python(python, &checkout) {
         Ok(path) => path,
         Err(message) => {
             eprintln!("{message}");
@@ -31,7 +30,8 @@ pub fn run(extra: &[String], python: Option<&Path>) -> u8 {
         Ok(session) => session,
         Err(code) => return code,
     };
-    // Safe: this runs before the job thread. The child must not see the keep flag.
+    // SAFETY: this runs on the main thread before the job starts. The child must
+    // not see the keep flag.
     unsafe {
         std::env::remove_var("FLEXWEEK_RIG_KEEP");
     }
@@ -40,7 +40,7 @@ pub fn run(extra: &[String], python: Option<&Path>) -> u8 {
         drive.to_string_lossy().into_owned(),
     ];
     drive_cmd.extend(extra.iter().cloned());
-    let drive_code = match session.run(&drive_cmd, None) {
+    let drive_code = match session.run_in(&drive_cmd, None, &checkout) {
         Ok(code) => code,
         Err(error) => {
             eprintln!("rig driver failed: {error}");
@@ -52,7 +52,7 @@ pub fn run(extra: &[String], python: Option<&Path>) -> u8 {
         hidden.to_string_lossy().into_owned(),
         "stop".to_string(),
     ];
-    let stop_code = match session.run(&stop_cmd, None) {
+    let stop_code = match session.run_in(&stop_cmd, None, &checkout) {
         Ok(code) => code,
         Err(error) => {
             eprintln!("hidden session stop failed: {error}");
@@ -66,36 +66,4 @@ pub fn run(extra: &[String], python: Option<&Path>) -> u8 {
         return stop_code;
     }
     0
-}
-
-fn git_toplevel() -> Result<PathBuf, String> {
-    let output = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .map_err(|error| format!("git rev-parse failed: {error}"))?;
-    if !output.status.success() {
-        return Err("fwtest rig must be run inside a git checkout".to_string());
-    }
-    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if path.is_empty() {
-        return Err("fwtest rig must be run inside a git checkout".to_string());
-    }
-    Ok(PathBuf::from(path))
-}
-
-fn resolve_python(explicit: Option<&Path>, checkout: &Path) -> Result<PathBuf, String> {
-    if let Some(path) = explicit {
-        return Ok(path.to_path_buf());
-    }
-    if let Some(path) = std::env::var_os("FWTEST_PYTHON").filter(|value| !value.is_empty()) {
-        return Ok(PathBuf::from(path));
-    }
-    let venv = checkout.join(".venv/bin/python");
-    if venv.is_file() {
-        return Ok(venv);
-    }
-    Err(format!(
-        "No project Python. Pass --python, set FWTEST_PYTHON, or create {}.",
-        venv.display()
-    ))
 }

@@ -9,7 +9,7 @@ use std::path::Path;
 
 use crate::ExitCode;
 use crate::identity::{self, StopResult};
-use crate::job::{self, JobRecord};
+use crate::job;
 use crate::state;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -26,14 +26,8 @@ pub fn clean(root: &Path) -> io::Result<CleanReport> {
     // still owns a file; `restore_finished` checks that itself.
     crate::edits::restore_finished(root)?;
     for path in job::list_job_files(root)? {
-        let job = match job::load_job_file(&path) {
-            Ok(job) => job,
-            Err(error) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("{}: {error}", path.display()),
-                ));
-            }
+        let Some(job) = job::load_or_set_aside(&path)? else {
+            continue;
         };
         if job::owner_is_live(&job)? {
             continue;
@@ -106,32 +100,5 @@ pub fn run() -> ExitCode {
             eprintln!("clean failed: {error}");
             ExitCode::CHECK_FAILED
         }
-    }
-}
-
-pub fn sample_job(
-    id: &str,
-    owner_pid: i32,
-    owner_ticks: u64,
-    processes: Vec<job::ProcRef>,
-) -> JobRecord {
-    JobRecord {
-        id: id.to_string(),
-        checkout: Path::new("/tmp/fwtest-checkout").to_path_buf(),
-        argv: vec!["sleep".to_string(), "120".to_string()],
-        started: "2026-09-28T06:15:00Z".to_string(),
-        owner: job::ProcRef {
-            pid: owner_pid,
-            start_ticks: owner_ticks,
-            comm: "fwtest".to_string(),
-        },
-        processes,
-        limits: job::JobLimits {
-            nice: 19,
-            io: "idle".to_string(),
-            cpus: vec![0, 1],
-            timeout: 600,
-        },
-        scope: None,
     }
 }

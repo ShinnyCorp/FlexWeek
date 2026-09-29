@@ -4,7 +4,7 @@
 //! wording. Each step is one contained command. The per-step limit is 480
 //! seconds unless `FWTEST_STEP_TIMEOUT_SECS` is set (tests use a few seconds).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use crate::contain::{self, half_cpus};
@@ -38,14 +38,14 @@ pub fn run(backend_only: bool, workers: Option<u32>, python: Option<&Path>) -> u
         eprintln!("--workers must be at least 1");
         return 2;
     }
-    let checkout = match git_toplevel() {
+    let checkout = match crate::state::git_toplevel() {
         Ok(path) => path,
         Err(message) => {
             eprintln!("{message}");
             return 2;
         }
     };
-    let python = match resolve_python(python, &checkout) {
+    let python = match crate::state::resolve_python(python, &checkout) {
         Ok(path) => path,
         Err(message) => {
             eprintln!("{message}");
@@ -90,7 +90,7 @@ pub fn run(backend_only: bool, workers: Option<u32>, python: Option<&Path>) -> u
     for (name, command) in steps(&python, workers, backend_only, &junit, &base) {
         println!("\n{name}");
         let _ = std::io::Write::flush(&mut std::io::stdout());
-        let code = match session.run(&command, Some(timeout)) {
+        let code = match session.run_in(&command, Some(timeout), &checkout) {
             Ok(code) => code,
             Err(error) => {
                 eprintln!("FAILED: {name}: {error}");
@@ -194,23 +194,6 @@ pub fn steps(
     ]
 }
 
-fn resolve_python(explicit: Option<&Path>, checkout: &Path) -> Result<PathBuf, String> {
-    if let Some(path) = explicit {
-        return Ok(path.to_path_buf());
-    }
-    if let Some(path) = std::env::var_os("FWTEST_PYTHON").filter(|value| !value.is_empty()) {
-        return Ok(PathBuf::from(path));
-    }
-    let venv = checkout.join(".venv/bin/python");
-    if venv.is_file() {
-        return Ok(venv);
-    }
-    Err(format!(
-        "No project Python. Pass --python, set FWTEST_PYTHON, or create {}.",
-        venv.display()
-    ))
-}
-
 fn python_is_314(python: &Path) -> bool {
     let output = Command::new(python)
         .args([
@@ -263,21 +246,6 @@ fn diff_base(checkout: &Path) -> Result<String, String> {
         }
     }
     Err("Could not find a base revision for committed diff checks.".to_string())
-}
-
-fn git_toplevel() -> Result<PathBuf, String> {
-    let output = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .map_err(|error| format!("git rev-parse failed: {error}"))?;
-    if !output.status.success() {
-        return Err("fwtest gate must be run inside a git checkout".to_string());
-    }
-    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if path.is_empty() {
-        return Err("fwtest gate must be run inside a git checkout".to_string());
-    }
-    Ok(PathBuf::from(path))
 }
 
 fn junit_totals(path: &Path) -> std::io::Result<(u64, u64)> {
