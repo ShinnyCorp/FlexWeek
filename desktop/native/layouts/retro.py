@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QScrollArea,
     QScrollBar,
@@ -1586,7 +1587,13 @@ class RetroView(LayoutView):
             self._opened_for = wanted
             self._open = {win.key: wanted == "all" or win.key == "week" for win in WINDOWS}
         self.setStyleSheet(self._sheet(scene))
+        rows = self._windows["week"].body.findChildren(QLayout)
         for grid in self._grids.values():
+            # Out of its row through the row first. Moved while the row still lists it, Qt deletes the
+            # row's item unseen by PySide, whose wrapper for that item then stands for whatever Qt makes
+            # at its address next. A widget reached Python as a layout item, and the app segfaulted.
+            for row in rows:
+                row.removeWidget(grid)
             grid.hide()
             grid.setParent(self._parked)
         self._desk.colour = colours.desk
