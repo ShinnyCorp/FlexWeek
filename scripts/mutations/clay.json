@@ -100,8 +100,8 @@
  {
   "file": "desktop/native/layouts/clay.py",
   "name": "the row slides with motion off",
-  "old": "        moving = how == \"slide\" and duration(SLIDE_MS, level) > 0 and self.isVisible() and bool(self._rects)\n",
-  "new": "        moving = how == \"slide\" and self.isVisible() and bool(self._rects)\n",
+  "old": "        level = app_level()\n",
+  "new": "        level = \"normal\"\n",
   "test": "desktop/tests/test_layout_clay.py::test_the_row_slides_in_240_ms_and_jumps_with_motion_off"
  },
  {

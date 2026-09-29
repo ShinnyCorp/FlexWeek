@@ -261,11 +261,16 @@ def test_full_day_reaches_early_block_and_quarter_hour(qapp: QApplication) -> No
 
 
 def test_the_four_figures_say_what_is_planned_due_free_and_focused(qapp: QApplication) -> None:
-    """Thursday 13:40. Planned today is Thursday's homework, the essay at 18:45 and the chem report at
-    20:00. Due this week is homework still to do: the maths was finished. Free time runs to 22:00
-    around School, Dinner and both homework. No focus has been timed."""
-    view = shown(qapp)
-    assert figure(view, "missionPlanned") == ("2 h 30 min", "Essay-1 at 18:45")
+    """Thursday 13:40. Planned today is the day's homework: the essay at 18:45, the chem report at
+    20:00 and the finished maths at 21:30, which is still on the day. Due this week is homework still
+    to do: the maths was finished. Free time runs to 22:00 around School, Dinner and both homework
+    still to do, and counts the finished maths as free: 500 minutes, less School's 50 to 14:30,
+    Dinner's 30, the essay's 60 and the chem report's 90. No focus has been timed."""
+    finished = block(
+        "math-2", "flexible", [3], "21:30", 30, assignment_id="math", completed=True, completed_day=3
+    )
+    view = shown(qapp, blocks=[*BLOCKS, finished])
+    assert figure(view, "missionPlanned") == ("3 h", "Essay-1 at 18:45")
     assert figure(view, "missionDue") == ("3", "2 placed, 1 not placed yet")
     assert figure(view, "missionFree") == ("4 h 30 min", "Until 22:00")
     assert figure(view, "missionFocus") == ("0 min", "None yet this week")
