@@ -86,7 +86,7 @@
  {
   "file": "desktop/native/custom_look.py",
   "name": "a readability fix that does not move the text",
-  "old": "            fixed = fit_lightness(ink, surfaces, AA_TEXT)\n",
+  "old": "            fixed = text_fixed if field == \"text\" else fit_lightness(ink, surfaces, AA_TEXT)\n",
   "new": "            fixed = ink\n",
   "test": "desktop/tests/test_custom_look.py::test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_to_one"
  },

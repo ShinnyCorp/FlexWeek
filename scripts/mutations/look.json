@@ -240,7 +240,7 @@
  {
   "file": "desktop/native/look.py",
   "name": "a block's words in black on every fill",
-  "old": "        ink = text if contrast(text, category_color) >= AA_TEXT else readable_ink(category_color)\n",
+  "old": "        ink = text if own or contrast(text, category_color) >= AA_TEXT else readable_ink(category_color)\n",
   "new": "        ink = \"#000000\"\n",
   "test": "desktop/tests/test_tokens.py::test_text_reads_on_every_fill_card_and_page[Dark-layered-default]"
  },
