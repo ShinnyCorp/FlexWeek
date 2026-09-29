@@ -11,17 +11,38 @@ All notable changes to FlexWeek are documented here. Format follows
   font is JetBrains Mono throughout.
 - Ink, Paper's night counterpart: a charcoal page with warm ivory text and
   serif headings, whatever the account's look.
-- Looks of your own (the model behind Customise; its screen comes later): start
-  from any of the ten looks and change the accent (a swatch or any colour), the
-  page, card, text and line colours, each category's colour (a hue on the
-  family, or an exact colour), the corners, spacing, shadows, the body and
-  heading fonts, the text size, how blocks are drawn, the hour lines, today's
-  highlight, the now line and the motion. Unreadable pairs are found, each with
-  a fix that moves that colour's lightness until it reads at 4.5 to 1. Looks
-  are saved by name on this computer, and shared as a small file.
+- Looks of your own. Customise… under Look in Settings opens the look editor
+  over Settings. Start from any look, or from one you saved, and change the
+  accent (a swatch or any colour), the page, card, text and line colours, each
+  category's colour (a hue on the family, or an exact colour), the corners,
+  spacing, shadows, the body and heading fonts, the text size, how blocks are
+  drawn (the edge's width, and whether times and lengths show), the hour lines,
+  today's highlight, the now line and the motion. The window wears each change
+  at once, and the right of the editor shows the week as the look dresses it,
+  fitted or at its real size. Readability lists every pair of colours under 4.5
+  to 1, each with a Fix that moves that colour's lightness until it reads, and
+  Fix all. Each section says when it has changed and has its own Reset; Reset
+  all goes back to the look as you last saved it, or as it was when you
+  started. The editor itself stays in the look you started from, so a colour
+  that does not read never hides its controls.
+- Looks you keep. The editor's header says whether the look is saved. Done
+  saves it under its name, and a new look never replaces a saved one: it is
+  numbered, as "My look 2". Back or Esc with changes not saved asks once: Save,
+  Keep without saving, or Discard changes, which goes back to the look as
+  saved, or takes a look never saved off. A look kept without saving shows in
+  More looks as "My look (not saved)". Saved looks are listed under "Your
+  looks" at the end of More looks, can be renamed, duplicated and deleted, and
+  are kept on this computer. Export writes a look to a small file to share, and
+  Import reads one and says plainly what was wrong with a file that is not a
+  look.
+- Animations has a fourth level, Reduce, between More and Off: every fade
+  stays, and nothing slides, rises, drifts, zooms or lifts. Settings shows the
+  look's own level until you pick one, so Paper, or a look of your own, starts
+  where the look says. The look editor's Motion has the same four levels and
+  Play it on the preview.
 - The focus screen counts down in a ring: the time left as an arc in the
   accent, from the top clockwise, with the minutes large in the middle. One
-  thing's Countdown will draw the same ring.
+  thing's Countdown draws the same ring.
 - Ctrl+K groups what it offers under Add, Go to and Homework, with an icon on
   every row and the key on the right for Day, Week, Month, My day and the focus
   screen. The group with the best match comes first, so Enter runs it.
@@ -29,6 +50,11 @@ All notable changes to FlexWeek are documented here. Format follows
   Del beside what they do, and sets Delete and Delete homework apart, in red.
 
 ### Changed
+- Every screen is drawn in one system: one accent, neutral pages and cards, one
+  type scale, set spacing and corners, two shadows, Lucide's icons, one family
+  of category colours, and red only for a problem. Ten looks are drawn in it:
+  Light, Dark, High contrast, Slate, Nocturne, Paper, Ink, Terminal, Poster and
+  Pastel, with System following the computer between Light and Dark.
 - Slate, Nocturne, Paper, Terminal, Poster and Pastel are redrawn as the 0.17
   mock-up draws them, each in the one accent: Slate cool grey-blue, Nocturne
   midnight, Paper ink on off-white with serif headings and quieter category
@@ -51,8 +77,6 @@ All notable changes to FlexWeek are documented here. Format follows
 - Day lists the day beside its hours: each thing's times and length, the time
   now as a line, and a summary with a bar and a dot for each kind of thing. It
   no longer puts what is next in a band above the hours.
-
-### Changed
 - Blocks have a 3-pixel edge in their category's colour, with Edge the default
   block style. Titles are at 600 and times muted, blocks back to back are 3
   pixels apart, no line ends in a dot, homework carries a book, and 12-hour
@@ -106,7 +130,7 @@ All notable changes to FlexWeek are documented here. Format follows
   filled button: Add custom hours and Send a test reminder are plain. The line
   about no school days shows only when no school day is picked. Play is an
   icon. Its titles and headings are on the type scale. The style cards'
-  pictures are unchanged until the revised designs are built.
+  pictures are drawn by the designs themselves, so they show the new designs.
 - Help: the shortcuts are drawn as keys, the words fade out at a scroll edge
   with more past it, and the line saying a tutorial is coming is gone. About
   shows the FlexWeek logo beside the version.
@@ -130,18 +154,18 @@ All notable changes to FlexWeek are documented here. Format follows
   each section has its icon in the list and the open one a bar in the accent;
   Look is "Light | Dark | System" with every other look under More looks;
   Accent is a row of colour swatches; every number box and dropdown on a page
-  is one width; and a hairline ends the page above Done. A Customise row under
-  Look is waiting for its own settings. An alarm's time and sound are on lines
-  of their own, and the drag step's question is said above its choice.
+  is one width; and a hairline ends the page above Done. Customise… under Look
+  opens the look editor. An alarm's time and sound are on lines of their own,
+  and the drag step's question is said above its choice.
 - The focus screen wears the look. Pause, Start or Finished is the one filled
   button; Skip, Finish and Take a break are words beside it, and Back has a
   chevron.
 - Quick focus opens the focus screen ready, as F does: nothing starts until
   Start.
 - The toast is dark with light words, 16-pixel corners and a small shadow, and
-  Undo is in the accent's light shade with its arrow. It sits bottom right,
-  over the side panel, and goes when the student leaves the page it was said
-  on: "Planned 2 homework blocks." no longer stays over the focus screen.
+  Undo is in the accent's light shade with its arrow. It sits bottom right of
+  the page, and goes when the student leaves the page it was said on: "Planned
+  2 homework blocks." no longer stays over the focus screen.
 - Ctrl+K dims the window by 40 % and fades in, and its box is a sheet with the
   large shadow and a borderless search field.
 - Menus take the look's colours, with the large shadow where the look has
@@ -166,8 +190,121 @@ All notable changes to FlexWeek are documented here. Format follows
 - The week, Day, Month, Settings and the focus list scroll under a thin scroll
   bar laid over their edge, which widens under the pointer; the bar no longer
   takes a strip of its own. The zoom is a small "− +" pill.
+- One thing counts down to what is next on a ring, as the focus screen does:
+  the minutes to go are an arc in the accent from the top, with "Up next", the
+  name and its times inside and the minutes large. What comes after is listed
+  under Then with its times, category dots and lengths. Running late is the
+  one filled button unless homework is on, and the words are in sentence case
+  instead of capitals. A long title takes two lines and is shortened past
+  that, with the whole name when the pointer rests on it. The day bar stays,
+  for dragging blocks later.
+- Day dial draws the whole day as a 24-hour ring, midnight at the bottom and
+  noon at the top: each block is a segment in its category's colour, 2
+  degrees from the next, and paler once it is over. The hour marks sit outside
+  the ring, the hand stops at its inner edge, and the time sits under the hub
+  with the free time left before 22:00. Beside the dial are Up next, with what
+  follows it, and the day's list in columns (start, title and length), a past
+  row marked Done rather than struck through. The week's small dials run along
+  the bottom.
+- Timeline is a paper planner opened flat. Monday to Wednesday are on the left
+  page and Thursday to Sunday on the right, each day a column of the whole
+  day's hours, with blocks as cards outlined in ink with their category's tab
+  and homework filled in its colour with the book. At the foot of the left page
+  are the week in figures and what is next; at the foot of the right, sticky
+  notes of what is not placed yet and what is due this week. A day's name opens
+  it. Day opens the planner at that day: its hours on the left page, and on the
+  right its summary, what is next, what is due, the notes and a ruled space.
+- Mission control is an ops board. Four figures run across the top: homework
+  planned today, homework due this week, the free time left today until 22:00,
+  and the focus minutes on this week's homework. Under them the days are lanes
+  of hours from 08:00 to 22:00, today's edged in the accent, and beside them a
+  table of deadlines, the soonest first, with what each homework needs, the
+  time left ("Past due" in red), how much of it is placed and where. Homework
+  not placed yet is dragged from its row onto a lane. Blocks of 30 minutes or
+  less are ticks in their colour, named when the pointer rests on them. Day is
+  the day as one wide lane, with Up next and the free time left today under it.
+  Figures are in JetBrains Mono.
+- Bento has "Hero: Week | Today" in its settings, Week first. With Week, the
+  week's hours are the big tile, with Next, Due soon, the week's homework load
+  and Not placed yet around it. With Today, today's hours are the big tile,
+  beside what is next, the week at a glance and Not placed yet, and the other
+  six days are small tiles with their first item, their load and their
+  homework. A day tile lifts when the pointer is on it and offers "Show Friday
+  here"; a click shows that day in the big tile, or on Day opens it.
+- Clay deck is a row of cards, one day at a time. Today's card is in the middle
+  at full size with its hours, the days either side peek at 70 %, and the round
+  arrows beside the card, or the wheel over the days either side, slide it a
+  day. The wheel over the card in front scrolls its hours. Not placed yet rests
+  in a dish under the row. A block goes to the next day by a drop on its card,
+  and further by resting on an arrow while it is held. Day opens the card
+  wider, with the day's hours by kind and, today, what is left of it.
+- Retro desktop is Windows 98 as it was drawn: two-pixel bevels, square corners
+  and navy-to-blue title bars. Week.exe holds the hours, with a menu bar, day
+  names as buttons and a status bar; deadlines.txt is Notepad, with each
+  homework under its deadline and when it is placed; Up next is a dialog with
+  the clock and what is next; icons run down the left; and the taskbar has
+  Start, a button per window and the clock. Minimise, maximise and close work,
+  a taskbar button opens its window, brings it to the front, or puts it away
+  when it is already in front, the Week.exe and deadlines.txt icons open their
+  windows, and Start opens More's menu. Words are in Pixelify Sans and Notepad
+  in VT323, both shipped with the app. Day adds a pane beside the hours with
+  what is planned, what is still to come and the free time from now. Under High
+  contrast it is Windows 98's High Contrast Black.
+- Every design uses the top bar's Add, and the small zoom pill every design
+  has; Bento's red-orange zoom and the Add buttons some designs drew of their
+  own are gone.
+- Colourways: One thing's Black and orange is now Poster, the same black page
+  in your accent instead of orange. Day dial's Midnight is now Night, navy in
+  your accent. Clay deck's Pastel is now Clay, lavender in your accent, and
+  every card is one colour instead of a pastel per day. Timeline's Paper is now
+  Ruled paper, in FlexWeek's blue whatever your accent, and its Night is blue
+  on dark instead of white. Mission control adds Flight deck, blue on dark,
+  before Cyan, Amber and Green. On Poster's and Night's dark pages your accent
+  keeps its hue and is made only as much lighter as its words need to read at
+  4.5 to 1. A colourway chosen before is still chosen, under its new name.
+- Every page change fades through: the old page out in 90 ms, then the new one
+  in over 120 ms, so two pages are never read on top of each other. Day, Week
+  and Month also slide 12 pixels toward the view chosen, and the arrows keep
+  their drift. The new page is there at once, so a click never waits for an
+  animation.
+- A change of view, My day or design changes the top bar and the page in the
+  same frame. Parts that did not move, such as the rail between Week and Day,
+  neither blink nor drift.
+- Settings slides in from the right over the week, which dims by 20 %, in
+  200 ms, and slides away again. At Reduce it fades through instead.
+- Sheets, dialogs and Ctrl+K fade in and rise 8 pixels, on Wayland too, which
+  ignored a window's own fade.
+- The top bar's chosen view is a pill that slides to the new view in 160 ms,
+  or fades across at Reduce.
+- The slide after Plan is seen: scrolling to the first homework it placed cut
+  it short. At Reduce a block that moved fades in where it went.
+- Each design moves only as far as the level allows: Clay deck's row slides a
+  day, a Bento tile lifts, the dial's hand eases to the time in 240 ms, and
+  Retro desktop's windows open with Windows 98's zoom rectangle from their
+  taskbar button or icon. Nothing loops.
+- Animations' "More movement" is now More. Light and Dark start at Normal, as
+  every look but Paper does, where 0.16 started them at More, so Light moved
+  more than System. A level you chose stays.
+
+### Removed
+- Day dial's Hours shown: the ring is always the whole day.
+- Timeline's Week strip: the top bar's arrows and the week's day names reach
+  every day.
+- Mission control's Hours shown, which the design never read, and the deadline
+  radar's Show or Hide. The figures across the top can be hidden instead.
+- Bento's Supporting tiles: both heroes draw every tile.
+- Clay deck's Week cards (Fanned or Straight): the cards no longer fan. Days
+  either side (Show or Hide) is its option now.
+- A saved choice of any of these is dropped when read, and the rest of the
+  design's settings are kept.
 
 ### Fixed
+- While a look of your own is worn, Settings shows the accent and Fine-tune
+  choices it sets, and they cannot be changed there: a line under each says
+  the look sets them and to open Customise…. They looked live and changed
+  nothing. Choosing a built-in look gives them back as they were.
+- A switch whose words wrap, as at Large text, shows every line. The last line
+  fell below the switch's foot.
 - In the homework editor, Enter saves. It pressed More details, the first
   button after the title, because Save was made the default before it was in
   the dialog.

@@ -181,13 +181,40 @@ Contract for the finished app:
 - Appearance preferences persist per account beside `theme`: `theme_pack`
   (`system`, `light-frost`, `dark-frost`, `nocturne`, `slate`), `accent`
   (`default`, `sky`, `gold`, `sea`, `sand`), `accent_chips`, and `motion`
-  (`off`, `normal`, `extra`). Omitted pack leaves `theme` as today's
-  light/dark/system choice. A set pack must be stored with `theme` on the
-  matching axis (`slate` for `light-frost` and `slate`, `nocturne` for
-  `dark-frost` and `nocturne`). Omitted `motion` means the account has never
-  stored a level; an explicit `"normal"` stays on the wire so a second device
-  cannot treat it as unset. Details live in
-  `docs/stage8-appearance-contract.md`.
+  (`off`, `normal`, `extra`, `reduce`; `extra` is shown as More). Omitted pack
+  leaves `theme` as today's light/dark/system choice. A set pack must be stored
+  with `theme` on the matching axis (`slate` for `light-frost` and `slate`,
+  `nocturne` for `dark-frost` and `nocturne`). Omitted `motion` means the
+  account has never stored a level, and the app runs at the look's own: Reduce
+  for Paper, a custom look's own level, and Normal for every other look. An
+  explicit `"normal"` stays on the wire so a second device cannot treat it as
+  unset. Details live in `docs/stage8-appearance-contract.md`, which predates
+  `reduce`.
+- The rest of the look is kept on each computer, in the look file
+  (`flexweek-look.json` in the app's data folder), and never sent to the
+  account: a preset (`high-contrast`, `paper`, `ink`, `terminal`, `poster`,
+  `pastel`) or none, the knobs moved by hand, a look of the student's own, the
+  saved looks, and the designs with their options. The knobs are `surface`
+  (`flat`, `layered`), `corners` (`soft`, `sharp`, `rounded`), `depth`
+  (`none`, `soft`, `bold`), `font` (`sans`, `serif`, `mono`), `blocks`
+  (`edge`, `filled`, `outline`), `density` (`comfortable`, `compact`) and
+  `text` (`small`, `normal`, `large`). 0.16's names (`frost`, `round`, `pill`,
+  `flat` for depth, `hard`, `outlined`) load as today's.
+- A custom look (`custom`) is a `base`, one of `light`, `dark`, `system`,
+  `high-contrast`, `slate`, `nocturne`, `paper`, `ink`, `terminal`, `poster`
+  or `pastel`, and what was changed on it: `accent` (a swatch or a `#rrggbb`
+  colour), `colours` (`page`, `card`, `text`, `line`, `muted`), `categories`
+  (each a `hue` on the category family or an exact `colour`), `corners` (0 to
+  16 pixels), `spacing`, `shadows`, `body_font` and `heading_font` (`sans`,
+  `serif`, `mono`), `text_scale` (0.9 to 1.3), `blocks`, `edge_width` (2 to 6
+  pixels), `show_times`, `show_lengths`, `hour_lines` (`none`, `faint`,
+  `clear`), `today_highlight`, `now_line` (`accent`, `text`) and `motion`.
+  While one is worn it sets the accent and every knob. `saved_looks` holds
+  custom looks by `name`: at most 40 letters, unique without regard to case,
+  and never the name of a built-in look. A look is shared as a JSON file of
+  kind `"FlexWeek look"`, version 1, at most 64 KiB; a setting the file does
+  not know is left out and named, and a file from a newer FlexWeek is refused.
+  `desktop/native/custom_look.py` and `look.py` are the reference.
 - Month view shows one calendar month of deadlines, projects, overdue homework
   and study time, planned and completed, and any date opens Day view. A session
   pins to a date only when that date is certain: the day it was completed, or
@@ -203,20 +230,22 @@ Contract for the finished app:
 
 ## User Experience
 Native desktop app, one window, designed at 1280px and usable down to 800px.
-Under 1150px the layouts switch to a narrow arrangement: Week's side folds into
-one line above the hours, and blocks show their names without their times. PySide6 Qt widgets over a
+Under 1150px the layouts switch to a narrow arrangement: Today's app's rail
+folds into one line above the hours, and blocks show their names without their
+times. PySide6 Qt widgets over a
 FastAPI backend started in-process on a loopback port. **No HTML, CSS or
 JavaScript, no npm, no build step, no framework.** There is no browser client:
 the web app was retired in September 2026 and `frontend/` deleted.
 
 First paint with no session is Sign in, with creating an account offered as a
-line of small print that switches the same card over. It says "Welcome." until
-someone has signed in on this computer, and "Welcome back." after. The card offers "Keep me
+line of small print that switches the same card over. It says "Welcome to
+FlexWeek" until someone has signed in on this computer, and "Welcome back"
+after. The card offers "Keep me
 signed in on this computer", on by default. A kept session opens the week at
 the next launch until the server ends it (seven days after sign-in) or the
 student logs out.
-A new account must acknowledge its eight recovery codes, shown in a fixed-width
-face with Copy and Save…, then goes to first-run setup, one page at a time: a
+A new account must acknowledge its eight recovery codes, shown in Inter with
+figures of one width, with Copy and Save…, then goes to first-run setup, one page at a time: a
 starting style or its own look (the standard styles first, the rest under
 "Experimental styles"), the week (school
 days and hours, activities on their own days, and No homework after), how
@@ -228,20 +257,21 @@ again in Settings. School hours stays for later under Add, in a dialog of its
 own that asks the days and the times, as setup does; no day ticked takes School
 off the calendar.
 
-The top bar is the title and the week's arrows on the left; on the right, Day,
+The top bar is the week's arrows, Today and the title on the left; on the right, Day,
 Week, Month and My day as one segmented control, then Add, the one filled
 button (a click adds homework; its arrow offers a fixed time, School hours and
 the type the next drag makes), Plan my homework, More and the gear. Ctrl+K opens
 a command bar that adds, goes to any view or opens any homework by typing a few
-letters of it. Today's app's Week has a side, as Day does: the Next line, the
-homework a focus timer can start on, and Not placed yet. Everything FlexWeek
-says after an action (a move, a plan, a deletion, a reminder) is one toast over
-the foot of the hours, with Undo when the step can be undone; it goes after a
+letters of it. Today's app has a rail left of Day and Week: a small month that
+folds away, what is next, Not placed yet, and the homework a focus timer can
+start on. Day lists the day beside its hours. Everything FlexWeek
+says after an action (a move, a plan, a deletion, a reminder) is one toast at
+the bottom right of the page, with Undo when the step can be undone; it goes after a
 few seconds or on a switch to another view. There is no status line. Month opens
 with the student's week as its first row. A new account with no homework sees
 "Nothing here yet." and one "Add your first homework" button in place of empty
 hours. A focus timer has a screen of its own (Start focus, Quick focus or F):
-the countdown large, the homework, Pause, Skip and Finish; Esc goes back and
+the countdown in a ring, the homework, Pause, Skip and Finish; Esc goes back and
 the timer keeps running.
 
 The week calendar is a painted timeline, as in Daily Scheduler: dragging a
@@ -253,8 +283,9 @@ homework Delete homework. Homework is deleted from its editor, from its row
 under Unfinished or from that menu, after a question: the server removes it and
 its sessions from every week (`DELETE` in `/api/changes`) and says which it
 removed, so one Undo writes the homework and each of those sessions back. Hours have
-no half-hour rules; the now line carries the time, and today's column is washed
-and underlined in the accent. After a plan, blocks slide to their new places. Blocks may overlap; they sit side by
+no half-hour rules; the now line and its time are in the accent, today's date
+is an accent chip, and Week washes today's column with 3 % of the text colour.
+After a plan, blocks slide to their new places. Blocks may overlap; they sit side by
 side, each marked. A drop
 is refused only outside the day's hours or when homework would end after it is
 due. Dragging one day of a repeating block moves that day only. Dragging works
@@ -362,16 +393,32 @@ full English weekday plus HH:MM, or HH:MM. An account holds at most 1000
 assignments. API write bodies are capped at 256 KiB.
 
 Preferences store `theme` as `system`, `slate` or `nocturne` for the light/dark
-axis. The Look menu offers System, Light, Dark and High contrast, with an
-accent; Nocturne, Slate, Poster, Terminal, Paper, Ink and Pastel are under
-"Experimental styles". Today's app is the default main view and Day dial the
+axis. Every screen is drawn in one system (`desktop/native/tokens.py`): one
+accent, FlexWeek's blue (`#3d6fc4` on light looks, `#7fa8ff` on dark ones),
+which Sky, Gold, Sea or Sand replace and which marks controls only, never a
+large area; neutral pages and cards; one type scale (caption 11, body 13,
+heading 15, title 20 and display 28 points at Normal text, which Small and
+Large scale); weights 400 and 600, and 700 for display numbers; spacing in
+steps from 4 to 32 pixels; corners of 6 on controls, 10 on cards and 16 on
+sheets; two shadows; Lucide's icons; and red only for a problem. The ten looks
+are Light, Dark, High contrast, Slate, Nocturne, Paper, Ink, Terminal, Poster
+and Pastel, and System follows the device between Light and Dark. High
+contrast keeps its yellow accent (`#ffd400`) whatever swatch is picked, with
+text at 7 to 1 or more. Settings offers Look as Light, Dark and System, with
+the other looks under More looks and the student's saved looks after them
+under Your looks. Today's app is the default main view and Day dial the
 default day screen, with Timeline the one standard alternative; Mission
 control, Bento, Retro desktop, Clay deck and One thing are experimental. Every
-saved choice still loads. The app draws in Inter, shipped with it (Regular,
-Medium, SemiBold, Bold), with figures of one width in times; a look with its
-own face keeps it. Cards pad 16 pixels, 8 at Compact, and dialogs 24. Activity
-blocks are teal, never near homework's coral; on a dark look blocks are deep
-fills with light ink. `clock_24h` (default true) chooses 16:00 or 4:00 PM for
+saved choice still loads. The app ships Inter, Newsreader and JetBrains Mono
+(Regular, Medium, SemiBold, Bold each), with figures of one width in times:
+the Font knob is Sans (Inter), Serif (Newsreader headings over Inter) or Mono
+(JetBrains Mono). Retro desktop also ships Pixelify Sans and VT323. Cards pad
+16 pixels, 8 at Compact, and dialogs 24. The categories are one family worked
+out in OKLCH, every fill at one lightness and every mark at another, so no
+category outweighs the rest. Homework's mark is darker, so it stays apart from
+Exercise for a student who cannot tell red from green, and homework carries a
+book. On a dark look a block is its category sunk into the card, written in
+the look's text colour. `clock_24h` (default true) chooses 16:00 or 4:00 PM for
 every time written on screen; times are still sent and saved as HH:MM.
 Settings is a page of the window, not a dialog: its sections on the left and
 cards on the right, a switch for each on or off, side-by-side segments for two
@@ -392,6 +439,57 @@ its start, as an alarm plays its song, with the same Dismiss and Snooze. On desk
 tags the Notification `flexweek-stay` so the tray presenter skips the 10-second
 auto-close. Unchecked alerts still close at 10 seconds. Qt has no
 `requireInteraction`.
+
+Each design draws its own Day and Week. The top bar, the window's frame,
+dialogs and Today's app always wear the student's look and accent. Every design
+but Today's app has Colours, with Match my look first and the default; a
+colourway of the design's own paints only the design's page. One thing's
+Poster, Day dial's Night and Clay deck's Clay wear the student's accent, fitted
+to read at 4.5 to 1 on their page; the other colourways name their own. The
+options are the ones `desktop/native/layouts/registry.py` declares, and a show
+or hide option starts at Show:
+
+| Design | Role | What it shows | Options |
+|---|---|---|---|
+| Today's app | main view, default | The week grid with the rail | None; its colours are the look |
+| Timeline | main view | The week as a paper planner opened flat, and a day as its page of hours beside its notes | Colours (Ruled paper, Night), Spacing (Comfortable, Compact), Finished and past items |
+| Mission control | main view, experimental | Four figures across the top, the days as lanes of hours, and deadlines by time left | Colours (Flight deck, Cyan, Amber, Green), Figures across the top |
+| Bento | main view, experimental | A big tile of the week's hours, or of today's with the other days as small tiles, and homework around it | Colours (Indigo, Sunset, Mono, Midnight), Hero (Week, Today), Tile corners (Soft, Square) |
+| Retro desktop | main view, experimental | Windows 98: Week.exe, deadlines.txt in Notepad, Up next and a taskbar | Colours (Teal, Plum and Slate desktop), Windows open at start (All three, Main window only) |
+| Clay deck | main view, experimental | One day at a time on a large card, the days either side peeking | Colours (Clay, Mint, Sunset, Dusk), Days either side |
+| Day dial | day screen, default | The day as a 24-hour ring, read out hour by hour beside it | Colours (Night, Daylight), Hour by hour list, Small dials for the week |
+| One thing | day screen, experimental | What is on or next, counted down on a ring, and what comes after | Colours (Poster, Paper and ink), Lead with (What is on now, What is next), Buttons, Day bar |
+
+A saved option this build does not have, such as 0.16's Week strip, Hours
+shown, deadline radar, Supporting tiles or Week cards, is dropped when read,
+and the rest of the design's settings are kept.
+
+Customise… under Look opens the look editor over Settings. Its header has Back,
+Start from, the look's name, Duplicate and Delete for a saved look, and whether
+the look is saved. On the left are folding cards (Readability, Colours,
+Categories, Shape, Type, Blocks, Grid and Motion), each with its own Reset; on
+the right is the window's own week page as the look dresses it, fitted or at
+its real size; the foot has Reset all, Export, Import, Save as new and Done.
+The window wears every change at once. Readability lists each pair of colours
+under 4.5 to 1 with a Fix that moves the chosen colour's OKLCH lightness the
+least it takes. Back or Esc with changes not saved asks Save, Keep without
+saving or Discard changes. While a custom look is worn, Settings shows the
+accent and Fine-tune knobs it sets, does not let them change, and says to open
+Customise….
+
+Motion (`desktop/native/motion.py`) never makes the student wait: the new page
+is live at once while a picture of the old one fades over it. A page change
+fades through, the old page out in 90 ms and the new one in over 120 ms; Day,
+Week and Month also slide 12 pixels toward the segment chosen, and the arrows
+drift the old page 16 pixels the way the student went. A change of view, My day
+or design changes the top bar and the page in one frame. Settings slides in
+from the right over the week, dimmed 20 %, in 200 ms. Notices, sheets, dialogs
+and Ctrl+K fade in and rise 8 pixels, and the top bar's selection slides to the
+view chosen in 160 ms. Animations has four levels: Normal; More (`extra`), 1.45
+times as long and a third further; Reduce, the same fades with nothing
+travelling (no slide, rise, drift, zoom, lift or sliding blocks); and Off,
+where nothing animates. Each design's own motion asks the same module, and
+nothing loops.
 
 ## Architecture
 - Language/runtime: **Python 3.14**. PINNED. Verified against the local
@@ -429,8 +527,11 @@ auto-close. Unchecked alerts still close at 10 seconds. Qt has no
   - `desktop/native/`. The client: `window.py` (chrome, pages and dialogs),
     `controller.py` (session, saves, solve, focus and alarms), `widgets.py`
     (week grid, day agenda, month and editors), `layouts/` (the eight designs
-    and the registry they are built from), `look.py` (packs, presets and
-    palettes), `weekmodel.py`, `pomodoro.py`, `tones.py` and `sound.py`. The
+    and the registry they are built from), `tokens.py` (the system's measures
+    and colour maths), `look.py` (packs, presets, knobs and palettes),
+    `custom_look.py` and `look_editor.py` (a look of the student's own),
+    `motion.py` (every fade and slide), `weekmodel.py`, `pomodoro.py`,
+    `tones.py` and `sound.py`. The
     client owns interaction and explanation display and **never reimplements
     placement**.
   - `desktop/`. PySide6 window, bundled uvicorn, packaging scripts and assets.
