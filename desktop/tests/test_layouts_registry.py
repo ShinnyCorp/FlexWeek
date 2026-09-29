@@ -11,6 +11,7 @@ import pytest
 
 from desktop.native.layouts.registry import (
     LAYOUTS,
+    LEVELS,
     MATCH,
     contrast_failures,
     layouts_for,
@@ -58,10 +59,12 @@ def test_two_main_views_and_one_day_screen_are_standard_and_the_rest_experimenta
         assert sanitize_layout({slot: spec.id})[slot] == spec.id, "a saved experimental choice still loads"
 
 
-def test_every_design_offers_all_three_levels() -> None:
-    for layout_id in DESIGNS:
-        levels = {option.level for option in LAYOUTS[layout_id].options}
-        assert levels == {"style", "detail"}, layout_id
+def test_every_option_sits_at_a_level_the_dialog_draws() -> None:
+    """Fine-tune is only for a design with something to fine-tune: since 0.17 both of Bento's heroes
+    draw every tile, so it only styles. An option at a level the dialog does not draw is never shown."""
+    drawn = {level for level, _ in LEVELS}
+    for spec in LAYOUTS.values():
+        assert {option.level for option in spec.options} <= drawn, spec.id
 
 
 def test_every_design_follows_the_students_look_until_one_of_its_own_colourways_is_picked() -> None:

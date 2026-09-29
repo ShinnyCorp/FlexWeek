@@ -944,7 +944,8 @@ def test_the_dialog_fits_a_laptop_with_every_level_open(qapp: QApplication) -> N
     assert dialog.sizeHint().width() <= 1366
 
 
-def test_a_design_with_nothing_to_change_offers_no_fine_tune_or_reset(qapp: QApplication) -> None:
+def test_fine_tune_and_reset_show_only_when_a_design_has_something_for_them(qapp: QApplication) -> None:
+    """Today's app has nothing to change, Bento only styles, and Timeline also fine-tunes."""
     dialog = prefs_layout()
     dialog.show()
     qapp.processEvents()
@@ -958,6 +959,8 @@ def test_a_design_with_nothing_to_change_offers_no_fine_tune_or_reset(qapp: QApp
     assert offered() == (False, False)
     pick = combo(dialog, "layoutMain")
     pick.setCurrentIndex(pick.findData("bento"))
+    assert offered() == (False, True)
+    pick.setCurrentIndex(pick.findData("timeline"))
     assert offered() == (True, True)
     pick.setCurrentIndex(pick.findData("classic"))
     assert offered() == (False, False)
