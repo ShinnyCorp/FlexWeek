@@ -7,7 +7,6 @@ import json
 
 import pytest
 
-from desktop.native import custom_look
 from desktop.native.calendar import CATEGORIES
 from desktop.native.custom_look import (
     FILE_VERSION,
@@ -237,21 +236,17 @@ def test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_t
     assert readability(ended) == []
 
 
-def test_a_block_colour_that_does_not_read_is_moved_until_its_words_do(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A filled block writes in black or white where the text would not read on its colour, so no
-    category fails as blocks are drawn now. Were a block's words the text colour on its fill, the fix
-    moves the colour the student chose until they read."""
+def test_a_block_colour_that_does_not_read_is_moved_until_its_words_do() -> None:
+    """A look of the student's own writes its text on every block, as the mock-up does, so a colour
+    the text does not read on is drawn as it is and named with a Fix, not hidden under black or white
+    ink. The Fix moves the colour the student chose until the words read."""
     custom = {"base": "dark", "colours": {"text": "#d0d4da"}, "categories": {"study": {"colour": "#8a6fd0"}}}
-    assert [p for p in readability(custom, True) if p.field[0] == "categories"] == []
-
-    def in_the_text(look: dict, palette: dict, fill: str | None, *_rest: object) -> dict:
-        return {"fill": fill or palette["panel"], "ink": palette["text"]}
-
-    monkeypatch.setattr(custom_look, "block_paint", in_the_text)
+    palette = resolved_palette("system", True, worn(custom))
+    fill, mark = category_paint("study", palette)
+    assert block_paint(worn(custom), palette, fill, CATEGORIES["study"]["kind"], mark)["ink"] == "#d0d4da"
     problem = next(p for p in readability(custom, True) if p.field == ("categories", "study"))
     assert problem.ratio < AA_TEXT and problem.words == "Text on Study blocks"
+    assert (problem.ink, problem.ground) == ("#d0d4da", "#8a6fd0")
     mended = apply_fix(custom, problem)
     assert mended["categories"]["study"] == {"colour": problem.fixed}
     palette = resolved_palette("system", True, worn(mended))
@@ -262,6 +257,26 @@ def test_a_block_colour_that_does_not_read_is_moved_until_its_words_do(
         for base in LOOK_BASES:
             problems = readability({"base": base, "categories": {"class": {"hue": hue}}})
             assert [p for p in problems if p.field[0] == "categories"] == [], (base, hue)
+
+
+def test_grey_text_names_every_block_colour_and_its_fix_reads_on_the_blocks_too() -> None:
+    """The mock-up's bad colours: grey text on Light is 2.2 to 1 on the palest block colour. The Text
+    Fix moves the text until it reads on the page, the cards, the calendar and those blocks at once, so
+    the categories keep their colours; moved against the surfaces alone, it left every block to fix."""
+    grey = {"base": "light", "colours": {"text": "#999999"}}
+    blocks = [p for p in readability(grey) if p.field[0] == "categories"]
+    assert [p.field[1] for p in blocks] == list(CATEGORIES)
+    assert {p.ink for p in blocks} == {"#999999"}
+    assert min(p.ratio for p in blocks) == pytest.approx(2.20, abs=0.005)
+    text = next(p for p in readability(grey) if p.field == ("colours", "text"))
+    mended = apply_fix(grey, text)
+    assert readability(mended) == [] and "categories" not in mended
+    # A block on the other side of mid-grey from the page cannot share one text with it: that block
+    # keeps its own Fix, and the text still reads on the page and the cards.
+    dark_study = {**grey, "categories": {"study": {"colour": "#2a1f5c"}}}
+    text = next(p for p in readability(dark_study) if p.field == ("colours", "text"))
+    left = readability(apply_fix(dark_study, text))
+    assert [p.field for p in left] == [("categories", "study")]
 
 
 def test_saved_looks_are_named_saved_renamed_duplicated_deleted_and_reset() -> None:

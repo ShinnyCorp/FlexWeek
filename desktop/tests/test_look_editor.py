@@ -16,8 +16,9 @@ from PySide6.QtGui import QColor, QKeyEvent, QPalette
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
 from desktop.native import look_editor
+from desktop.native.calendar import CATEGORIES
 from desktop.native.custom_look import Problem, readability, save_look
-from desktop.native.look import MOTION_LEVELS, category_paint, resolved_palette
+from desktop.native.look import FONT_FAMILIES, MOTION_LEVELS, category_paint, resolved_palette
 from desktop.native.look_editor import (
     Draft,
     LookEditor,
@@ -28,9 +29,9 @@ from desktop.native.look_editor import (
     with_setting,
 )
 from desktop.native.settings import SettingsPage
-from desktop.native.tokens import MARK, oklch
+from desktop.native.tokens import MARK, WEIGHT_REGULAR, WEIGHT_STRONG, oklch, type_pt
 from desktop.native.window import NativeWindow
-from desktop.tests.window_support import look_file, qapp, server, signed_out, window  # noqa: F401
+from desktop.tests.window_support import look_file, qapp, server, signed_out, wait_until, window  # noqa: F401
 
 
 def pump(qapp: QApplication, times: int = 12) -> None:  # noqa: F811
@@ -281,6 +282,86 @@ def test_every_pair_under_four_and_a_half_to_one_has_a_fix_and_fix_all_makes_the
     assert readability(editor._draft.look) == []
     assert shown(editor, QLabel, "lookEverythingReads") and not shown(editor, QPushButton, "lookFix")
     assert window._look["custom"]["colours"]["text"] != "#bbbbbb", "the fixed colour is worn"
+    page.close_page()
+
+
+def test_grey_text_is_written_on_the_blocks_and_their_colours_are_one_line_with_a_fix(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """The mock-up's bad colours: grey text on Light. The week writes the grey on its blocks as the
+    student chose it, so the picture shows what Readability says, and the block colours are one line
+    whose Fix moves them, not the text, until the grey reads."""
+    school = {"id": "school", "title": "School", "kind": "locked", "category": "class",
+              "start": "08:00", "duration_min": 405, "days": [0]}
+    window.session.add_block(school)
+    window.session.save()
+    wait_until(qapp, lambda: not window.session.busy and not window.session.dirty)
+    page, editor = open_editor(qapp, window)
+    editor._start_from(editor.start_from.findData("base:light"))
+    pump(qapp)
+    type_colour(qapp, editor, "text", "#999999")
+    said = [label.text() for label in shown(editor, QLabel, "lookWarnText")]
+    assert said[-1] == "Text on 8 block colours is 2.2:1 at worst", said
+
+    hours = window.week_table.hours
+    if not hours.tracks:
+        hours.resize(980, 640)
+        hours.relayout()
+    rect = next(
+        rect for track in hours.tracks for drawn, rect in hours.drawn(track) if drawn.block_id == "school"
+    )
+    image = hours.grab().toImage()
+    inside = [
+        image.pixelColor(x, y)
+        for x in range(int(rect.left()) + 8, int(rect.right()) - 2)
+        for y in range(int(rect.top()) + 2, int(rect.bottom()) - 2)
+    ]
+    assert not [c for c in inside if max(c.red(), c.green(), c.blue()) < 0x50], "no black ink stands in"
+    assert [c for c in inside if max(abs(c.red() - 0x99), abs(c.green() - 0x99), abs(c.blue() - 0x99)) < 8]
+
+    fix = next(b for b in shown(editor, QPushButton, "lookFix") if b.accessibleName().endswith("at worst"))
+    fix.click()
+    pump(qapp)
+    assert not [label for label in shown(editor, QLabel, "lookWarnText") if "block" in label.text()]
+    custom = window._look["custom"]
+    assert custom["colours"]["text"] == "#999999" and set(custom["categories"]) == set(CATEGORIES)
+    page.close_page()
+
+
+def test_the_editors_words_take_the_type_scale_of_the_look_it_starts_from(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """Decision 4: the editor's type is the window stylesheet's roles, as every screen's is, so it
+    grows with the look's text. Its title and group names are headings in the heading face, its notes
+    and small buttons captions, and a setting's name body text in the strong weight."""
+    page, editor = open_editor(qapp, window)
+    looks = (("light", 1.0, "sans"), ("high-contrast", 1.2, "sans"), ("paper", 1.0, "serif"))
+    for base, scale, face in looks:
+        editor._start_from(editor.start_from.findData(f"base:{base}"))
+        pump(qapp)
+        for kind, name, role, weight in (
+            (QLabel, "lookEditorTitle", "heading", WEIGHT_STRONG),
+            (QLabel, "lookGroupName", "heading", WEIGHT_STRONG),
+            (QLabel, "lookFieldLabel", "body", WEIGHT_STRONG),
+            (QLabel, "lookCategoryName", "body", WEIGHT_STRONG),
+            (QLabel, "lookNote", "caption", WEIGHT_REGULAR),
+            (QLabel, "lookOut", "caption", WEIGHT_REGULAR),
+            (QLabel, "lookTag", "caption", WEIGHT_STRONG),
+            (QLabel, "lookEverythingReads", "body", WEIGHT_REGULAR),
+            (QLabel, "lookChip", "body", WEIGHT_STRONG),
+            (QPushButton, "lookReset-colours", "caption", None),
+        ):
+            widget = editor.findChild(kind, name)
+            widget.ensurePolished()
+            font = widget.font()
+            where = (base, name)
+            assert font.pointSizeF() == type_pt(role, scale), where
+            if weight is not None:
+                assert font.weight().value == weight, where
+        title = editor.findChild(QLabel, "lookEditorTitle")
+        assert title.font().family() == FONT_FAMILIES[face].split(",")[0], base
     page.close_page()
 
 

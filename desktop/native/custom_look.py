@@ -18,6 +18,7 @@ from desktop.native.look import (
     BASE_LABELS,
     LOOK_BASES,
     LOOK_PRESET_LABELS,
+    MID_GREY,
     NAME_MAX,
     PACK_LABELS,
     block_paint,
@@ -29,7 +30,7 @@ from desktop.native.look import (
     sanitize_custom,
     sanitize_look,
 )
-from desktop.native.tokens import fit_lightness
+from desktop.native.tokens import fit_lightness, luminance
 
 # Shown when a student has not named the look yet.
 UNNAMED = "My look"
@@ -240,11 +241,25 @@ def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
     """Every pair that reads under 4.5 to 1, named as the Customise mock-up names them: text and muted
     text on the page, cards and the calendar, accent text on cards, text on accent buttons, and each
     block's words on its category's fill. Text and muted text are moved to read on every surface at
-    once; a block drawn on the card (Edge, Outline) is the text on the card or the calendar."""
+    once, and the text on the blocks too, but for a block on the other side of mid-grey from the page:
+    no one text reads on both, so that block keeps its own Fix. An outlined block is the text on the
+    calendar."""
     look = {"preset": "default", "knobs": {}, "custom": custom}
     palette = resolved_palette("system", system_dark, look)
     surfaces = (palette["window"], palette["panel"], palette["grid"])
     text, muted, accent = palette["text"], palette["muted"], palette["accent"]
+    blocks = []
+    for key, info in CATEGORIES.items():
+        fill, mark = category_paint(key, palette)
+        drawn = block_paint(look, palette, fill, info["kind"], mark)
+        if drawn["fill"] == fill:
+            blocks.append((key, info["label"], fill, drawn["ink"]))
+    dark_page = luminance(palette["window"]) < MID_GREY
+    alike = tuple(fill for _key, _label, fill, _ink in blocks if (luminance(fill) < MID_GREY) == dark_page)
+    under = surfaces + alike
+    text_fixed = fit_lightness(text, under, AA_TEXT)
+    if min(contrast(text_fixed, ground) for ground in under) < AA_TEXT:
+        text_fixed = fit_lightness(text, surfaces, AA_TEXT)
     found: list[Problem] = []
     for words, ink, ground, field in (
         ("Text on the page", text, palette["window"], "text"),
@@ -262,16 +277,13 @@ def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
                 fixed = fit_lightness(accent, surfaces[:2], AA_TEXT)
                 found.append(Problem(words, ink, ground, ratio, ("accent",), fixed))
                 continue
-            fixed = fit_lightness(ink, surfaces, AA_TEXT)
+            fixed = text_fixed if field == "text" else fit_lightness(ink, surfaces, AA_TEXT)
             found.append(Problem(words, ink, ground, ratio, ("colours", field), fixed))
-    for key, info in CATEGORIES.items():
-        fill, mark = category_paint(key, palette)
-        drawn = block_paint(look, palette, fill, info["kind"], mark)
-        ratio = contrast(drawn["ink"], drawn["fill"])
-        if drawn["fill"] == fill and ratio < AA_TEXT:
-            fixed = fit_lightness(fill, (drawn["ink"],), AA_TEXT)
-            words = f"Text on {info['label']} blocks"
-            found.append(Problem(words, drawn["ink"], fill, ratio, ("categories", key), fixed))
+    for key, label, fill, ink in blocks:
+        ratio = contrast(ink, fill)
+        if ratio < AA_TEXT:
+            fixed = fit_lightness(fill, (ink,), AA_TEXT)
+            found.append(Problem(f"Text on {label} blocks", ink, fill, ratio, ("categories", key), fixed))
     return found
 
 

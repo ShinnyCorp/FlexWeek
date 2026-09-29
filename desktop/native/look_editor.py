@@ -76,12 +76,11 @@ from desktop.native.look import (
     resolved_palette,
     sanitize_custom,
     sanitize_look,
-    type_sizes,
 )
 from desktop.native.motion import switch_page
 from desktop.native.previews import CANVAS, system_dark
 from desktop.native.previews import render as render_preview
-from desktop.native.tokens import MARK, SPACING, WEIGHT_STRONG, mix, oklch, oklch_of
+from desktop.native.tokens import MARK, SPACING, mix, oklch, oklch_of
 from desktop.native.widgets import (
     Segmented,
     Swatches,
@@ -295,10 +294,10 @@ def file_stem(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "look"
 
 
-def editor_rules(palette: dict, scale: float, radius: int, heading: str) -> str:
+def editor_rules(palette: dict, radius: int) -> str:
     """What the editor draws beyond Settings' own controls: its bars, the cards' heads, the sliders
-    (a hue slider shows the family's marks), the colour fields and the Changed tag."""
-    pt = type_sizes(scale)
+    (a hue slider shows the family's marks), the colour fields and the Changed tag. Its type is the
+    window stylesheet's (look.py's `settings_rules`), as every screen's is."""
     line, strong = palette["hairline"], palette["hairline_strong"]
     text, muted, accent, panel = palette["text"], palette["muted"], palette["accent"], palette["panel"]
     contrast_look = palette.get("family") == "contrast"
@@ -315,24 +314,15 @@ def editor_rules(palette: dict, scale: float, radius: int, heading: str) -> str:
         f"QScrollArea#lookEditorColumn {{ background: {palette['window']}; border: none; "
         f"border-right: 1px solid {line}; border-radius: 0; padding: 0; }}"
         "QScrollArea#lookPicture { background: transparent; border: none; border-radius: 0; padding: 0; }"
-        f"QLabel#lookEditorTitle {{ font-family: {heading}; font-size: {pt['heading']}; "
-        f"font-weight: {WEIGHT_STRONG}; }}"
-        f"QLabel#lookGroupName {{ font-family: {heading}; font-size: {pt['heading']}; "
-        f"font-weight: {WEIGHT_STRONG}; }}"
-        f"QLabel#lookFieldLabel, QLabel#lookCategoryName {{ font-weight: {WEIGHT_STRONG}; }}"
-        f"QLabel#lookInlineLabel {{ color: {muted}; }}"
-        f"QLabel#lookNote, QLabel#lookOut, QLabel#lookEditorState, QLabel#lookEverythingReads "
-        f"{{ color: {muted}; font-size: {pt['caption']}; }}"
-        f"QLabel#lookEverythingReads {{ font-size: {pt['body']}; }}"
-        f'QCheckBox[exact="true"] {{ color: {muted}; font-size: {pt["caption"]}; }}'
-        f"QLabel#lookMessageText {{ font-size: {pt['caption']}; }}"
+        "QLabel#lookInlineLabel, QLabel#lookNote, QLabel#lookOut, QLabel#lookEditorState, "
+        f'QLabel#lookEverythingReads, QCheckBox[exact="true"] {{ color: {muted}; }}'
         f"QLabel#lookTag {{ background: {tint}; color: {accent}; border: {tag_edge}; border-radius: 10px; "
-        f"padding: 2px 6px; font-size: {pt['caption']}; font-weight: {WEIGHT_STRONG}; }}"
+        "padding: 2px 6px; }"
         f"QWidget#lookGroupLine {{ background: {line}; }}"
         f"QPushButton#lookGroupToggle {{ background: transparent; border: 2px solid transparent; "
         f"border-radius: {radius}px; padding: 0; min-height: 44px; text-align: left; }}"
         f"QPushButton#lookGroupToggle:hover {{ background: {hover}; }}"
-        f'QPushButton[small="true"] {{ padding: 2px 4px; font-size: {pt["caption"]}; min-height: 0; }}'
+        'QPushButton[small="true"] { padding: 2px 4px; min-height: 0; }'
         'QPushButton[iconOnly="true"] { padding: 0; min-height: 0; }'
         # The column's segments share its width, as the mock-up's do, so four fit in 360 pixels.
         f'QScrollArea#lookEditorColumn QPushButton[segment="true"] {{ padding: 4px {SPACING[1]}px; }}'
@@ -557,8 +547,7 @@ class CategoryRow(QWidget):
         else:
             paint = f"background: {drawn['fill']}; border: none;"
         sheet = (
-            f"QLabel#lookChip {{ {paint} color: {drawn['ink']}; border-radius: {radius}px; "
-            f"font-weight: {WEIGHT_STRONG}; }}"
+            f"QLabel#lookChip {{ {paint} color: {drawn['ink']}; border-radius: {radius}px; }}"
         )
         if sheet != self._chip_sheet:
             self._chip_sheet = sheet
@@ -1072,7 +1061,7 @@ class LookEditor(QWidget):
         measures = look_measures(plain)
         art = control_art(self._chrome)
         sheet = pack_stylesheet(self._pack, self._dark, plain, self._accent, self._chrome, art)
-        rules = editor_rules(self._chrome, measures["scale"], measures["radius"], measures["heading"])
+        rules = editor_rules(self._chrome, measures["radius"])
         self.setStyleSheet(sheet + rules)
         # Wider with larger text, as High contrast's, so no card is cut at the column's edge.
         self.column.setFixedWidth(round(COLUMN_WIDTH * max(1.0, float(measures["scale"]))))
@@ -1242,7 +1231,6 @@ class LookEditor(QWidget):
             pair.setAlignment(Qt.AlignmentFlag.AlignCenter)
             pair.setStyleSheet(
                 f"QLabel#lookPair {{ background: {row.ground}; color: {row.ink}; "
-                f"font-weight: {WEIGHT_STRONG}; "
                 f"border: 1px solid {self._chrome['hairline_strong']}; border-radius: 4px; }}"
             )
             words = _label(row.words, "lookWarnText", wrap=True)
