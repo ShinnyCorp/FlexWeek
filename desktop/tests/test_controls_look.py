@@ -35,7 +35,7 @@ if importlib.util.find_spec("PySide6") is not None:
 
     from desktop.native.layouts.registry import tokens_for
     from desktop.native.look import mix, pack_stylesheet, palette_from_tokens, resolved_palette
-    from desktop.native.widgets import add_heading, control_art
+    from desktop.native.widgets import Switch, add_heading, control_art
 
 
 @pytest.fixture(scope="module")
@@ -258,3 +258,48 @@ def test_high_contrasts_view_control_reads_every_choice_and_fills_the_chosen_one
 
     assert max(inks(day)) == palette["text"], max(inks(day))
     assert palette["accent_ink"] in inks(week)
+
+
+@pytest.mark.parametrize("text", ["normal", "large"])
+def test_a_switch_as_tall_as_it_asks_shows_every_line_of_its_words(qapp: QApplication, text: str) -> None:
+    """The style centred the toggle in the whole switch and the words were drawn from the toggle, so
+    words that wrapped began halfway down and lost their last line below the switch's foot."""
+    look = {"preset": "default", "knobs": {"text": text}}
+    palette = resolved_palette("light-frost", False, look)
+    sheet = pack_stylesheet("light-frost", False, look, "default", palette, control_art(palette))
+    words = "Remind before starting"
+
+    def drawn(width: int, height: int) -> QImage:
+        page = QWidget()
+        page.setStyleSheet(sheet)
+        Switch(words, page).setGeometry(0, 0, width, height)
+        page.resize(width, height)
+        page.show()
+        qapp.processEvents()
+        image = page.grab().toImage()
+        page.close()
+        return image
+
+    def ink(image: QImage) -> int:
+        return marks(image, palette["window"], range(image.width()))
+
+    page = QWidget()
+    page.setStyleSheet(sheet)
+    switch = Switch(words, page)
+    switch.ensurePolished()
+    least, most = switch.minimumSizeHint(), switch.sizeHint()
+    # Room for the longest word only, so no two of the three words share a line.
+    narrow = least.width()
+    tall = switch.heightForWidth(narrow)
+    roomy = drawn(narrow, 4 * tall)
+    background = QColor(palette["window"]).lightness()
+    inked = [
+        y
+        for y in range(roomy.height())
+        if any(abs(roomy.pixelColor(x, y).lightness() - background) > 40 for x in range(roomy.width()))
+    ]
+    assert inked[-1] - inked[0] > 2 * switch.fontMetrics().lineSpacing(), (text, "the words take three lines")
+    assert ink(drawn(narrow, tall)) == ink(roomy), (text, "every line shows at heightForWidth", tall)
+    one_line = drawn(most.width(), most.height())
+    assert ink(one_line) == ink(drawn(most.width(), 4 * most.height())), (text, "sizeHint shows them", most)
+    assert least.height() == most.height(), (text, "the least it asks for is one whole line", least, most)
