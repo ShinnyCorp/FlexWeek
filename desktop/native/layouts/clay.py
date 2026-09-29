@@ -66,7 +66,7 @@ from desktop.native.hours.canvas import (
 )
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.classic import open_hours
-from desktop.native.hours.geometry import FIRST, LAST, Axis, LinearTrack
+from desktop.native.hours.geometry import BETWEEN, FIRST, LAST, Axis, LinearTrack
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import HoursScroll, Scale
 from desktop.native.layouts.base import (
@@ -134,7 +134,7 @@ SLIDE_MS = 240
 DWELL_S = 0.5
 # The stretch of the day Day's summary counts, as the mock-up does.
 DAY_FROM, DAY_TO = 8 * 60, 22 * 60
-# A block this short says nothing; the mock-up's one line starts here.
+# A block this short on the card in front says nothing; the mock-up's one line starts here.
 LINE_LEAST = 15
 TOP_LEFT = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
 
@@ -279,7 +279,9 @@ class ClayPainter(BlockPainter):
     the category's bar just inside their start edge, and the time now as an accent line from a dot,
     its time on a pill. The card in front says each block's times and length; a neighbour its times."""
 
-    def __init__(self, tokens: dict[str, str], *, full: bool = False, wide: bool = False) -> None:
+    def __init__(
+        self, tokens: dict[str, str], *, full: bool = False, wide: bool = False, share: float = 1.0
+    ) -> None:
         soft = mix_oklab(tokens["line"], tokens["surface"], 0.5)
         super().__init__(
             {
@@ -296,6 +298,9 @@ class ClayPainter(BlockPainter):
         )
         self.tokens = tokens
         self.full = full
+        # The height of these hours against the card in front's, whose blocks the least a line needs is
+        # measured on: a block that reads there reads here at the same length.
+        self.share = share
         self.dark = family(tokens) == "dark"
 
     def background(self, painter: QPainter, rect: QRectF) -> None:
@@ -393,7 +398,7 @@ class ClayPainter(BlockPainter):
         homework = drawn.category in HOMEWORK_CATEGORIES
         book = round(tm.ascent())
         indent = book + 4 if homework else 0
-        too_short = rect.height() < LINE_LEAST * scale
+        too_short = rect.height() + BETWEEN < (LINE_LEAST * scale + BETWEEN) * self.share
         if too_short or width < indent + tm.horizontalAdvance(drawn.title.strip()[:3]):
             return
         paper = fill if fill is not None else self.c("window")
@@ -763,7 +768,7 @@ class Row(QWidget):
             arrow.setFixedSize(round(ARROW * self.scale), round(ARROW * self.scale))
         for card in self._cards.values():
             card.dress(self.scale)
-            card.hours.set_painter(ClayPainter(self.tokens))
+            card.hours.set_painter(ClayPainter(self.tokens, share=PEEK))
         scroll = self.hours
         assert scroll is not None
         scroll.canvas.set_painter(ClayPainter(self.tokens, full=True, wide=opened))
@@ -796,7 +801,7 @@ class Row(QWidget):
         if self._cards:
             return
         for day in range(7):
-            self._cards[day] = Card(day, self, ClayPainter(scene.tokens))
+            self._cards[day] = Card(day, self, ClayPainter(scene.tokens, share=PEEK))
         for key, scale in (("week", WEEK_SCALE), ("day", DAY_SCALE)):
             canvas = ClayCanvas(
                 self.hand, ClayPainter(scene.tokens, full=True, wide=key == "day"), self.front_track, self,
