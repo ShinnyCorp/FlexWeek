@@ -36,6 +36,7 @@ from desktop.tests.window_support import (  # noqa: F401
     server,
     settled,
     signed_out,
+    still,
     wait_until,
     window,
 )
@@ -340,6 +341,7 @@ def test_help_shows_every_line_whole_at_large_text_and_fits_the_screen(
     dialog = settings.HelpDialog(window)
     dialog.show()
     qapp.processEvents()
+    still(dialog)
     labels = dialog.findChildren(QLabel)
     assert dialog.columns == 1
     assert len(dialog.findChildren(QWidget, "helpKey")) == len(settings.HELP_KEYS)

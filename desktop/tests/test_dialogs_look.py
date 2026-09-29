@@ -37,7 +37,7 @@ from desktop.native.widgets import (
     control_art,
 )
 from desktop.native.window import NativeWindow
-from desktop.tests.window_support import free, qapp, server, signed_out, window  # noqa: F401
+from desktop.tests.window_support import free, qapp, server, signed_out, still, window  # noqa: F401
 
 WEEK = "2026-09-21"
 
@@ -70,6 +70,8 @@ def shown(qapp: QApplication, dialog: QDialog) -> QDialog:  # noqa: F811
     dialog.show()
     for _ in range(4):
         qapp.processEvents()
+    parent = dialog.parentWidget()
+    still(dialog, *([parent.window()] if parent is not None else []))
     return dialog
 
 

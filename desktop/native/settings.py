@@ -73,14 +73,14 @@ from desktop.native.look import (
     look_menu_items,
     look_menu_token,
     look_menu_value,
+    look_motion,
     look_overrides,
-    pack_motion,
     parse_look_menu_token,
     resolved_palette,
     sanitize_look,
 )
 from desktop.native.look_editor import LookEditor
-from desktop.native.motion import slide_page
+from desktop.native.motion import switch_page
 from desktop.native.remind import ALARM_SNOOZE_MIN
 from desktop.native.sound import Bell
 from desktop.native.spotify import SpotifyPlayer, open_in_app
@@ -129,7 +129,7 @@ CUSTOMISE_TIP = "Change any look, colours, corners and fonts included, and save 
 SAVED_LOOK = "saved:"
 YOUR_LOOKS = "Your looks"
 UNSAVED_LOOK = "{name} (not saved)"
-MOTION_CHOICES = (("Normal", "normal"), ("More movement", "extra"), ("Off", "off"))
+MOTION_CHOICES = (("Normal", "normal"), ("More", "extra"), ("Reduce", "reduce"), ("Off", "off"))
 PREFERRED_VIEWS = (("Whatever I had open", None), ("Week", "week"), ("Day", "day"))
 KNOB_LABELS = {
     "surface": "Surface",
@@ -565,10 +565,11 @@ class SettingsPage(QWidget):
         self.accent_chips = Switch("Use the accent on category chips")
         self.accent_chips.setObjectName("prefAccentChips")
         self.accent_chips.setChecked(bool(preferences.get("accent_chips")))
-        # How much the app moves: pages cross-fade, a new week slides in, notices rise into place.
+        # How much the app moves (decision 33 of 0.17). Until the student picks a level it shows the
+        # look's own and follows the look, so choosing Paper here starts it at Reduce.
         self.motion = Segmented(MOTION_CHOICES, "prefMotion")
-        chosen_motion = preferences.get("motion") or pack_motion(self._pack)
-        self.motion.setCurrentIndex(max(0, self.motion.findData(chosen_motion)))
+        self._motion_chosen = preferences.get("motion")
+        self._show_motion(self._look)
         self.knobs: dict[str, Segmented] = {}
         shown = effective_look(self._look)
         self.fine_host = QWidget()
@@ -589,6 +590,8 @@ class SettingsPage(QWidget):
         self.fine_host.setVisible(self.fine_tune.isChecked())
         self.fine_tune.toggled.connect(self.fine_host.setVisible)
         self.look.currentIndexChanged.connect(self._apply_look_menu)
+        self.look.currentIndexChanged.connect(lambda _index: self._show_motion(self.look_choice()))
+        self.motion.currentIndexChanged.connect(self._choose_motion)
         self.work = QSpinBox()
         self.work.setRange(1, 180)
         self.work.setSingleStep(1)
@@ -1029,7 +1032,7 @@ class SettingsPage(QWidget):
         page = self.stack.widget(row)
         if page is None:
             return
-        slide_page(self.stack, page, self.motion_level, 1 if row > self.stack.currentIndex() else -1)
+        switch_page(self.stack, page, self.motion_level, 1 if row > self.stack.currentIndex() else -1)
 
     def _announce(self, *_value: object) -> None:
         """Takes and drops the value a box sends. Wired straight to `changed.emit`, that value made
@@ -1182,11 +1185,20 @@ class SettingsPage(QWidget):
             "start_at_login": self.start_at_login.isChecked(),
             "preferred_view": self.preferred_view.currentData(),
             "clock_24h": bool(self.clock.currentData()),
-            "motion": self.motion.currentData(),
+            "motion": self._motion_chosen,
             "alarm_tone": self.alarm_tone.currentData(),
             "planning_style": self._planning_style(),
             "drag_step_min": drag_step(self.drag_step.currentData()),
         }
+
+    def _show_motion(self, look: dict) -> None:
+        shown = self._motion_chosen or look_motion(self._pack, look)
+        self.motion.blockSignals(True)
+        self.motion.setCurrentIndex(max(0, self.motion.findData(shown)))
+        self.motion.blockSignals(False)
+
+    def _choose_motion(self, _index: int) -> None:
+        self._motion_chosen = self.motion.currentData()
 
     def _planning_style(self) -> str:
         checked = self.planning_style.checkedButton()

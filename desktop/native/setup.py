@@ -67,7 +67,7 @@ from desktop.native.look import (
     resolved_palette,
     sanitize_look,
 )
-from desktop.native.motion import appear, fade_away, glide, hold_picture, slide_page
+from desktop.native.motion import appear, fade_away, glide, hold_picture, switch_page
 from desktop.native.previews import Previews
 from desktop.native.settings import (
     DRAG_STEP_CHOICES,
@@ -1163,7 +1163,7 @@ class SetupPage(QWidget):
         self._step = step
         self._furthest = max(self._furthest, step)
         self._prepare(step)
-        slide_page(self.stack, self.pages[step], self.motion, direction)
+        switch_page(self.stack, self.pages[step], self.motion, direction)
         self._sync_chrome()
         self._place_marker(animate=True)
         if step == DONE:

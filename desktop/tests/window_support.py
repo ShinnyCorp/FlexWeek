@@ -15,6 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QEvent, QStandardPaths
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
+from desktop.native.motion import settle
 from desktop.native.window import NativeWindow
 from desktop.server import LocalServer
 from desktop.tests.logic_support import past_setup
@@ -42,6 +43,14 @@ def wait_until(qapp: QApplication, predicate: Callable[[], bool], timeout: float
 
 def settled(qapp: QApplication, window: NativeWindow) -> None:
     wait_until(qapp, lambda: not window.session.busy and not window.session.dirty)
+
+
+def still(*roots: QWidget) -> None:
+    """End every fade and slide on `roots` and what they hold where it would have ended, so a picture
+    of them is of the screen as it stays: a dialog's content fades and rises as it opens."""
+    for root in roots:
+        for widget in (root, *root.findChildren(QWidget)):
+            settle(widget)
 
 
 def free(widget: QWidget) -> None:

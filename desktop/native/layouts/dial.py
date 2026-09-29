@@ -11,7 +11,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import (
     QColor,
     QContextMenuEvent,
@@ -58,6 +58,7 @@ from desktop.native.layouts.base import (
     scrolling,
 )
 from desktop.native.look import category_paint
+from desktop.native.motion import duration, moves
 from desktop.native.tokens import (
     RADIUS_CARD,
     RADIUS_CONTROL,
@@ -94,6 +95,8 @@ TIME_SHARE = 0.31
 # How far the time sits from the hub, and its note below it, at the full size.
 HUB_GAP, NOTE_GAP = 31, 34
 EVENING = 22 * 60
+# The hand easing to where the time has moved it (decision 35 of 0.17), as the mock-up's does.
+HAND_MS = 240
 ICON = 18
 
 
@@ -190,6 +193,11 @@ class DialFace(QWidget):
         self._blocks: tuple[Occurrence, ...] = ()
         self._over = 0
         self._now: int | None = None
+        # The minute the hand points at while it eases to `_now`.
+        self._hand_at: float | None = None
+        self._easing = QVariantAnimation(self)
+        self._easing.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._easing.valueChanged.connect(self._eased)
         self._tokens: dict[str, str] = {}
         self._scale = 1.0
         self.setObjectName(f"dialMini{day}" if mini else "dialFace")
@@ -214,6 +222,22 @@ class DialFace(QWidget):
         # The time and its note are painted, so they are said here too.
         time = clock_label(now) if now is not None else ""
         self.setAccessibleDescription(". ".join(part for part in (time, self._note()) if part))
+        self.update()
+
+    def ease_hand(self, since: int) -> None:
+        """Move the hand from `since` to now, easing, where things may travel; else it is simply there."""
+        length = duration(HAND_MS)
+        if self._now is None or since == self._now or not moves() or not length:
+            return
+        self._easing.stop()
+        self._easing.setStartValue(float(since))
+        self._easing.setEndValue(float(self._now))
+        self._easing.setDuration(length)
+        self._hand_at = float(since)
+        self._easing.start()
+
+    def _eased(self, minute: object) -> None:
+        self._hand_at = None if minute == self._easing.endValue() else float(minute)
         self.update()
 
     def _radii(self) -> tuple[QPointF, float, float]:
@@ -353,16 +377,17 @@ class DialFace(QWidget):
                 room = QRectF(spot.x() - 40, spot.y() - 12, 80, 24)
                 painter.drawText(room, Qt.AlignmentFlag.AlignCenter, words)
 
-    def _hand_tip(self, centre: QPointF, inner: float) -> QPointF:
-        """The hand reaches the ring's inner edge and no further."""
-        return at(centre, inner - (4 if self.mini else 8), turn(self._now or 0))
+    def _hand_tip(self, centre: QPointF, inner: float, minute: float | None = None) -> QPointF:
+        """The hand reaches the ring's inner edge and no further. It points at `minute`, or at now."""
+        pointing = minute if minute is not None else self._now or 0
+        return at(centre, inner - (4 if self.mini else 8), turn(pointing))
 
     def _paint_hand(self, painter: QPainter, centre: QPointF, inner: float) -> None:
         accent = QColor(self._tokens["accent"])
         pen = QPen(accent, 1.75 if self.mini else 3)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
-        painter.drawLine(centre, self._hand_tip(centre, inner))
+        painter.drawLine(centre, self._hand_tip(centre, inner, self._hand_at))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(accent)
         painter.drawEllipse(centre, 3 if self.mini else 8, 3 if self.mini else 8)
@@ -583,6 +608,8 @@ class DayDialView(LayoutView):
         super().__init__(parent, hand=hand)
         self._day: int | None = None
         self._face: DialFace | None = None
+        # The day and minute the hand last pointed at, for it to ease on from there.
+        self._hand_was: tuple[int, int] | None = None
         self._side: QWidget | None = None
         # A view's minimum height must not become the window's: three designs pushed it past a 768 pixel
         # laptop screen. Inside a scroll area, what does not fit scrolls and the window keeps its size.
@@ -624,13 +651,11 @@ class DayDialView(LayoutView):
         self._strip.setContentsMargins(px(SPACING[3]), px(SPACING[3]), px(SPACING[4]), px(SPACING[4]))
         empty(self._root)
         self._face = DialFace(day, False, self.hand)
-        self._face.set_day(
-            scene.week.on_day(day),
-            over_until(scene, day),
-            scene.tokens,
-            scene.minute if is_today else None,
-            scene.scale,
-        )
+        now = scene.minute if is_today else None
+        self._face.set_day(scene.week.on_day(day), over_until(scene, day), scene.tokens, now, scene.scale)
+        was, self._hand_was = self._hand_was, (day, now) if now is not None else None
+        if was is not None and was[0] == day and now is not None:
+            self._face.ease_hand(was[1])
         self._face.block_clicked.connect(self.block_activated.emit)
         self._root.addWidget(self._face, 0, Qt.AlignmentFlag.AlignTop)
         self._side = QWidget()

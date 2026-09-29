@@ -78,7 +78,7 @@ from desktop.native.look import (
     sanitize_look,
     type_sizes,
 )
-from desktop.native.motion import slide_page
+from desktop.native.motion import switch_page
 from desktop.native.previews import CANVAS, system_dark
 from desktop.native.previews import render as render_preview
 from desktop.native.tokens import MARK, SPACING, WEIGHT_STRONG, mix, oklch, oklch_of
@@ -1281,7 +1281,7 @@ class LookEditor(QWidget):
         other = self.pictures[1 - self.pictures.index(shown)]
         for bar in ("horizontalScrollBar", "verticalScrollBar"):
             getattr(other, bar)().setValue(getattr(shown, bar)().value())
-        slide_page(self.stage, other, str(self._shown()[("motion",)]), 1)
+        switch_page(self.stage, other, str(self._shown()[("motion",)]), 1)
 
     def _say(self, words: str, *, problem: bool = False, detail: str = "") -> None:
         icon = "triangle-alert" if problem else "circle-check"

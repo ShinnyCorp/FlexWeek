@@ -23,7 +23,6 @@ from PySide6.QtCore import (
     QEasingCurve,
     QPoint,
     QPointF,
-    QPropertyAnimation,
     QRectF,
     QSize,
     Qt,
@@ -45,7 +44,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QFrame,
-    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -85,7 +83,7 @@ from desktop.native.layouts.base import (
     scrolling,
 )
 from desktop.native.look import category_paint, contrast
-from desktop.native.motion import app_level
+from desktop.native.motion import app_level, between, duration, fade_away, hold_picture, moves
 from desktop.native.tokens import (
     RADIUS_CARD,
     RADIUS_CONTROL,
@@ -206,15 +204,6 @@ def slots(width: float, height: float, front: int, scale: float, *, wide: bool) 
             continue
         found[day] = QRectF(x, middle - short / 2, narrow, short)
     return found
-
-
-def _between(start: QRectF, end: QRectF, share: float) -> QRectF:
-    return QRectF(
-        start.x() + (end.x() - start.x()) * share,
-        start.y() + (end.y() - start.y()) * share,
-        start.width() + (end.width() - start.width()) * share,
-        start.height() + (end.height() - start.height()) * share,
-    )
 
 
 def _soft(
@@ -726,7 +715,6 @@ class Row(QWidget):
         self.back.clicked.connect(lambda _=False: self.turn(-1))
         self.ahead.clicked.connect(lambda _=False: self.turn(1))
         self._slide = QVariantAnimation(self)
-        self._slide.setDuration(SLIDE_MS)
         self._slide.setStartValue(0.0)
         self._slide.setEndValue(1.0)
         self._slide.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -891,47 +879,28 @@ class Row(QWidget):
                     self._put(self._targets())
             return
         level = app_level()
-        moving = how == "slide" and level != "off" and self.isVisible() and bool(self._rects)
+        moving = how == "slide" and duration(SLIDE_MS, level) > 0 and self.isVisible() and bool(self._rects)
         moving = moving and not self.hand.busy
-        picture = self._picture() if moving and level == "reduce" else None
+        slides = moving and moves(level)
+        # Under Reduce motion the row changes where it is, under a picture of it that fades.
+        picture = hold_picture(self, level) if moving and not slides else None
         before = dict(self._rects)
         self._slide.stop()
         self._front = day
         self._retarget()
         after = self._targets()
-        if moving and picture is None:
+        if slides:
             self._from, self._to = before, after
             self._put(before)
+            self._slide.setDuration(duration(SLIDE_MS, level))
             self._slide.start()
             return
         self._put(after)
-        if picture is not None:
-            self._fade_out(picture)
+        fade_away(picture, level, ms=SLIDE_MS)
 
     def _slid(self, value: object) -> None:
         share = float(value)
-        self._put({day: _between(self._from.get(day, rect), rect, share) for day, rect in self._to.items()})
-
-    def _picture(self) -> QLabel:
-        picture = QLabel(self)
-        picture.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        picture.setPixmap(self.grab())
-        picture.setGeometry(self.rect())
-        return picture
-
-    def _fade_out(self, picture: QLabel) -> None:
-        """Under Reduce motion the row changes where it is, under a picture of it that fades."""
-        picture.show()
-        picture.raise_()
-        effect = QGraphicsOpacityEffect(picture)
-        picture.setGraphicsEffect(effect)
-        fade = QPropertyAnimation(effect, b"opacity", picture)
-        fade.setDuration(SLIDE_MS)
-        fade.setStartValue(1.0)
-        fade.setEndValue(0.0)
-        fade.setEasingCurve(QEasingCurve.Type.OutCubic)
-        fade.finished.connect(picture.deleteLater)
-        fade.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
+        self._put({day: between(self._from.get(day, rect), rect, share) for day, rect in self._to.items()})
 
     def _targets(self) -> dict[int, QRectF]:
         return slots(self.width(), self.height(), self._front, self.scale, wide=self._open)

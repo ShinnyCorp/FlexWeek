@@ -245,6 +245,23 @@ def test_every_row_has_an_icon_and_the_views_their_keys(qapp: QApplication, wind
     assert bar.list.currentItem().text() == "Day", "and over the Go to label"
 
 
+def test_the_box_rises_8_pixels_into_place_as_the_window_dims(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Decision 31 of 0.17: Ctrl+K fades and rises; under Reduce it only fades."""
+    for level, rise in (("normal", 8), ("reduce", 0)):
+        window.session.preferences = {**(window.session.preferences or {}), "motion": level}
+        window._apply_appearance()
+        open_bar(window)
+        bar = window.command_bar
+        first = bar.box.y()
+        assert bar.graphicsEffect() is not None, "the dimmed window fades in"
+        wait_until(qapp, lambda bar=bar: bar.graphicsEffect() is None)
+        QTest.qWait(100)
+        assert first - bar.box.y() == rise, level
+        bar.close_bar()
+
+
 def test_the_window_is_dimmed_40_percent_and_the_box_is_lifted_with_the_large_shadow(
     qapp: QApplication, window: NativeWindow
 ) -> None:
