@@ -679,7 +679,7 @@ The commands it runs, each of which must exit 0:
       account and origin they are using, and previews a format-3 account file
       onto another signed-in account without exposing it to a third account.
 - [ ] A new student can see what is due tomorrow, add homework, plan it, start
-      it and mark it finished at 390px and 1280px, without a context menu or
+      it and mark it finished at 800px and 1280px, without a context menu or
       reading scheduling documentation.
 - [ ] A student who is running late previews a 30-minute delay, accepts it, and
       undoes it in one step; spreading a project adds sessions only after a
