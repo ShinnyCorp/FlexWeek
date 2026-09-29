@@ -1751,7 +1751,10 @@ class RetroView(LayoutView):
                 QSizePolicy.Policy.Fixed,
             )
             status.addWidget(cell, 1 if index else 0)
-        middle.setVisible(bool(ahead))
+        # Shown before it has a parent, a widget is a window of its own for a moment, which takes the
+        # keyboard from FlexWeek's. Hidden, it stays hidden; otherwise it shows with its parent.
+        if not ahead:
+            middle.hide()
         body.addLayout(status)
         self._status()
 
@@ -2001,12 +2004,15 @@ class RetroView(LayoutView):
         words.setSpacing(2)
         head = label(said.title, "retroNextTitle", wrap=True)
         head.setProperty("role", "heading")
-        head.setVisible(bool(said.title))
+        # Hidden, never shown, before they have a parent: see the status bar's middle cell.
+        if not said.title:
+            head.hide()
         words.addWidget(head)
         words.addWidget(label(said.line, "retroNextText", wrap=True))
         then = label(said.then, "retroNextThen", wrap=True)
         then.setContentsMargins(0, 6, 0, 0)
-        then.setVisible(bool(said.then))
+        if not said.then:
+            then.hide()
         words.addWidget(then)
         words.addStretch(1)
         row.addLayout(words, 1)

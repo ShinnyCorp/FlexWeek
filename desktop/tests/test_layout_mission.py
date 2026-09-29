@@ -409,7 +409,9 @@ def test_a_narrow_week_keeps_its_hours_and_their_zoom(qapp: QApplication) -> Non
     original.zoom_by(1)
     view.resize(800, 640)
     view.show_week(replace(view.scene, minute=view.scene.minute + 1))
-    qapp.processEvents()
+    # The board is laid out in one pass, and its scroll area grows the page to hold it in the next.
+    for _ in range(2):
+        qapp.processEvents()
     assert beside(view, "missionWeekScroll") is False
     assert view.findChild(TrayChip, "missionWaiting0") is not None
     assert view._scrolls["week"] is original
