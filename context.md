@@ -657,6 +657,16 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-29, `feat/0.17.1`: 0.17.1 prepared, the patch after 0.17.0 (Jonathan: "start the patch").
+  Units 1 to 4 of `~/.flexweek-ui-harness/scratch/017-patch-plan.md`: the intermittent test-suite
+  segfault (a test's instance patch left a HomeworkDialog in a cycle, collected on the server
+  thread; conftest now fails any test that leaves Qt objects to the GC), gate-load waits in the
+  account tests, one order for Not placed yet, the Mission and Clay mutation specs, rig runs kept
+  on disk with `--option`, the edge scroll by time (120 min/s), block words laid out in the part in
+  view, and the polish unit (Mission's "and N more", One thing's ring easing, Clay side-card
+  labels, the plan review opening down, block times at 4.5 to 1 in every look). Gate 2250 passed;
+  every mutation spec caught; rig 245/246 with Retro's day-dwell failing once under the full run
+  and passing twice alone. Unit 5 (audit items) and 0.17.2 (`0172-plan.md`) wait for his go.
 - 2026-09-29, `feat/0.17-look`: 0.17.0 prepared on Jonathan's word to release once the UI was done:
   version, dated changelog, `docs/release-notes-v0.17.0.md`, and README's usage text (ten looks,
   Customise…, four animation levels). 0.17 is the design system and ten looks, the six designs he

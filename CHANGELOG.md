@@ -3,6 +3,31 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.1] - 2026-09-29
+
+### Changed
+- Mission control's cards under the lanes (Up next, Free time left, and
+  another day's list) end with "and N more" when some rows have no room,
+  instead of leaving them out without a word.
+- One thing's countdown ring eases down each minute rather than jumping, as
+  the mock-up's does. Under Reduce and Off it moves at once, and a new
+  countdown fills the ring at once.
+- The plan review opens downward as it fades in, so the page below it moves
+  with it instead of jumping in one frame.
+
+### Fixed
+- Holding a block at the edge of the hours scrolls about two hours a second
+  at any zoom. In Clay deck it raced through the day at about 16 hours a
+  second.
+- A block partly scrolled out of view writes its name in the part that
+  shows, instead of having words cut by the edge of the view.
+- Short blocks on Clay deck's side cards keep their names, shortened at a
+  word where they must, instead of showing as bare colour.
+- A block's times and length read at 4.5 to 1 in every look. Terminal's were
+  3.95 to 1.
+- Homework not placed yet keeps one order (due, then title) from one plan to
+  the next.
+
 ## [0.17.0] - 2026-09-29
 
 ### Added
