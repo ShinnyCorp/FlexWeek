@@ -1128,7 +1128,7 @@ class LookEditor(QWidget):
             ("today_highlight",): measures["today_highlight"],
             ("hour_lines",): custom.get("hour_lines", "faint"),
             ("now_line",): custom.get("now_line", "accent"),
-            ("motion",): look_motion(self._pack, self._look),
+            ("motion",): look_motion(self._look),
         }
         return shown
 

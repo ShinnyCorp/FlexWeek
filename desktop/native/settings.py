@@ -1202,7 +1202,7 @@ class SettingsPage(QWidget):
         }
 
     def _show_motion(self, look: dict) -> None:
-        shown = self._motion_chosen or look_motion(self._pack, look)
+        shown = self._motion_chosen or look_motion(look)
         self.motion.blockSignals(True)
         self.motion.setCurrentIndex(max(0, self.motion.findData(shown)))
         self.motion.blockSignals(False)

@@ -748,7 +748,7 @@ def text_scale(choice: dict | None) -> float:
     return look_measures(choice)["scale"]
 
 
-def look_motion(pack: object, look: dict | None) -> str:
+def look_motion(look: dict | None) -> str:
     """The motion level a look starts at when the student never chose one: a custom look's own, Reduce
     for Paper ("distinct page turns, sharp transitions"), else Normal. Light and Dark once started at
     More, 0.16's leftover, so choosing Light moved more than System did."""

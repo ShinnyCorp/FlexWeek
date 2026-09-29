@@ -137,8 +137,8 @@ def test_every_measure_and_choice_reaches_what_is_drawn() -> None:
     palette = resolved_palette("system", False, look)
     assert palette["rule"] == palette["window"] and palette["now"] == palette["text"]
     assert block_paint(look, palette, "#dddddd")["outline"] == "#dddddd"
-    assert look_motion("light-frost", look) == "off"
-    assert look_motion("light-frost", worn({"base": "paper"})) == "reduce"
+    assert look_motion(look) == "off"
+    assert look_motion(worn({"base": "paper"})) == "reduce"
 
 
 def test_a_colour_of_the_students_own_as_the_accent() -> None:

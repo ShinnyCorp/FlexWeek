@@ -471,11 +471,10 @@ def test_paper_draws_the_family_quieter_and_poster_bolder() -> None:
 
 def test_paper_starts_at_reduce_motion() -> None:
     """E-Ink's "distinct page turns, sharp transitions": Paper's level when the student never chose
-    one. Every other look starts at Normal, Light and Dark included."""
-    assert look_motion("light-frost", look_of("paper")) == "reduce"
-    for pack in ("light-frost", "dark-frost", "system", "slate"):
-        assert look_motion(pack, look_of("default")) == "normal", pack
-    assert look_motion("slate", look_of("ink")) == "normal"
+    one. Every other look starts at Normal, whatever the pack."""
+    assert look_motion(look_of("paper")) == "reduce"
+    for preset in ("default", "ink"):
+        assert look_motion(look_of(preset)) == "normal", preset
 
 
 def _lab(colour: str) -> tuple[float, float, float]:

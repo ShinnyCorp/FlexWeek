@@ -3286,7 +3286,7 @@ class NativeWindow(QMainWindow):
             page_sheet = pack_stylesheet(pack, system_dark, self._look, accent, page, control_art(page))
         chips = bool((self.session.preferences or {}).get("accent_chips"))
         chosen_motion = (self.session.preferences or {}).get("motion")
-        self._motion = motion_level(chosen_motion, look_motion(pack, self._look))
+        self._motion = motion_level(chosen_motion, look_motion(self._look))
         dressed = (sheet, repr(self._look), repr(palette), chips, self._motion)
         # Every change to the week comes through here. Restyling the whole window each time, when the
         # look had not changed, cost about 26 ms a change and repainted everything on screen.
