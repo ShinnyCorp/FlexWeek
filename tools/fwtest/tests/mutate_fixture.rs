@@ -101,6 +101,53 @@ fn the_toy_spec_reports_caught_survived_and_missing() {
 }
 
 #[test]
+fn mutate_prints_one_line_per_case_and_keeps_pytest_output_in_the_job_log() {
+    let home = scratch();
+    let repo = home.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    git_init(&repo);
+    copy_fixture(&repo);
+    let output = fwtest(&home, &repo)
+        .args(["mutate", "mutations.json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    let line = |label: &str, name: &str, why: &str| {
+        format!("{label:5} {:10} {name:56} {why}", "mutations")
+    };
+    let expected = vec![
+        line("RED", "add subtracts", "E       assert -1 == 5"),
+        line("GREEN", "a comment changes nothing", ""),
+        line(
+            "PATTERN",
+            "the pattern is not there",
+            "pattern found 0 times in toy/calc.py",
+        ),
+        "2 mutation(s) SURVIVED".to_string(),
+    ];
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        expected,
+        "stderr:\n{stderr}"
+    );
+    let logs = home.join(".flexweek-ui-harness/fwtest/logs");
+    let text: String = fs::read_dir(&logs)
+        .unwrap()
+        .map(|entry| fs::read_to_string(entry.unwrap().path()).unwrap())
+        .collect();
+    assert!(text.contains("1 failed"), "log:\n{text}");
+    assert!(text.contains("1 passed"), "log:\n{text}");
+    assert!(text.contains("assert -1 == 5"), "log:\n{text}");
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
 fn one_caught_case_exits_clean() {
     let home = scratch();
     let repo = home.join("repo");

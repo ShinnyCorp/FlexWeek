@@ -7,7 +7,7 @@ use std::io::{self, Read, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -20,6 +20,7 @@ use crate::queue;
 use crate::state;
 
 static INTERRUPTED: AtomicI32 = AtomicI32::new(0);
+static JOBS_STARTED: AtomicU32 = AtomicU32::new(0);
 
 const POLL: Duration = Duration::from_millis(250);
 const PUMP_GRACE: Duration = Duration::from_millis(400);
@@ -61,13 +62,29 @@ pub struct Session {
     _lock: queue::MachineLock,
 }
 
+/// A finished job: its exit code and the log holding its combined output.
+pub struct Ran {
+    pub code: u8,
+    pub log: PathBuf,
+}
+
 impl Session {
     pub fn run(&self, argv: &[String], timeout_secs: Option<u64>) -> io::Result<u8> {
-        supervise(&self.root, argv, timeout_secs, None)
+        supervise(&self.root, argv, timeout_secs, None, true).map(|ran| ran.code)
     }
 
     pub fn run_in(&self, argv: &[String], timeout_secs: Option<u64>, cwd: &Path) -> io::Result<u8> {
-        supervise(&self.root, argv, timeout_secs, Some(cwd))
+        supervise(&self.root, argv, timeout_secs, Some(cwd), true).map(|ran| ran.code)
+    }
+
+    /// Like `run_in`, but the output goes only to the job's log file.
+    pub fn run_logged_in(
+        &self,
+        argv: &[String],
+        timeout_secs: Option<u64>,
+        cwd: &Path,
+    ) -> io::Result<Ran> {
+        supervise(&self.root, argv, timeout_secs, Some(cwd), false)
     }
 }
 
@@ -138,7 +155,8 @@ fn supervise(
     argv: &[String],
     timeout_secs: Option<u64>,
     cwd: Option<&Path>,
-) -> io::Result<u8> {
+    echo: bool,
+) -> io::Result<Ran> {
     INTERRUPTED.store(0, Ordering::SeqCst);
     install_stop_signals()?;
     become_subreaper()?;
@@ -171,19 +189,29 @@ fn supervise(
         },
         scope,
     };
-    let log = open_log(root, &id)?;
+    let (log, log_path) = open_log(root, &id)?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let log_out = log.try_clone()?;
     let log_err = log.try_clone()?;
+    let echo_out: Box<dyn Write + Send> = if echo {
+        Box::new(io::stdout())
+    } else {
+        Box::new(io::sink())
+    };
+    let echo_err: Box<dyn Write + Send> = if echo {
+        Box::new(io::stderr())
+    } else {
+        Box::new(io::sink())
+    };
     let pump_out = std::thread::spawn(move || {
         if let Some(pipe) = stdout {
-            let _ = pump(pipe, io::stdout(), log_out);
+            let _ = pump(pipe, echo_out, log_out);
         }
     });
     let pump_err = std::thread::spawn(move || {
         if let Some(pipe) = stderr {
-            let _ = pump(pipe, io::stderr(), log_err);
+            let _ = pump(pipe, echo_err, log_err);
         }
     });
     let started = Instant::now();
@@ -219,7 +247,10 @@ fn supervise(
     {
         let _ = fs::remove_file(path);
     }
-    Ok(exit_code)
+    Ok(Ran {
+        code: exit_code,
+        log: log_path,
+    })
 }
 
 fn refresh_processes(
@@ -678,12 +709,13 @@ fn finish_pumps(pump_out: std::thread::JoinHandle<()>, pump_err: std::thread::Jo
     }
 }
 
-fn open_log(root: &Path, id: &str) -> io::Result<File> {
+fn open_log(root: &Path, id: &str) -> io::Result<(File, PathBuf)> {
     let dir = root.join("logs");
     fs::create_dir_all(&dir)?;
-    let file = File::create(dir.join(format!("{id}.log")))?;
+    let path = dir.join(format!("{id}.log"));
+    let file = File::create(&path)?;
     prune_logs(&dir);
-    Ok(file)
+    Ok((file, path))
 }
 
 fn prune_logs(dir: &Path) {
@@ -739,6 +771,8 @@ fn half_ram_bytes() -> u64 {
 }
 
 fn job_id(pid: u32) -> String {
+    // Jobs in one process can start in the same second; each keeps its own log.
+    let nth = JOBS_STARTED.fetch_add(1, Ordering::SeqCst);
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
@@ -749,7 +783,7 @@ fn job_id(pid: u32) -> String {
         nix::libc::gmtime_r(&secs, &mut tm);
         tm
     };
-    format!(
+    let id = format!(
         "{:04}{:02}{:02}-{:02}{:02}{:02}-{pid}",
         tm.tm_year + 1900,
         tm.tm_mon + 1,
@@ -757,7 +791,8 @@ fn job_id(pid: u32) -> String {
         tm.tm_hour,
         tm.tm_min,
         tm.tm_sec
-    )
+    );
+    if nth == 0 { id } else { format!("{id}-{nth}") }
 }
 
 fn utc_now() -> String {

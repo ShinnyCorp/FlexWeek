@@ -77,7 +77,7 @@ pub fn run(specs: &[PathBuf], case_name: Option<&str>, python: Option<&Path>) ->
             saw_case = true;
             let outcome = run_case(&session, &checkout, &python, &stem, &case);
             println!(
-                "{:7} {:10} {:56} {}",
+                "{:5} {:10} {:56} {}",
                 outcome.label, stem, case.name, outcome.detail
             );
             if outcome.label != "RED" {
@@ -159,8 +159,8 @@ fn run_case(session: &Session, checkout: &Path, python: &Path, stem: &str, case:
         "-p".into(),
         "no:cacheprovider".into(),
     ];
-    let code = match session.run_in(&command, None, checkout) {
-        Ok(code) => code,
+    let ran = match session.run_logged_in(&command, None, checkout) {
+        Ok(ran) => ran,
         Err(error) => {
             drop(guard);
             return Outcome {
@@ -169,13 +169,13 @@ fn run_case(session: &Session, checkout: &Path, python: &Path, stem: &str, case:
             };
         }
     };
-    let detail = if code == 0 {
+    let detail = if ran.code == 0 {
         String::new()
     } else {
-        failing_line()
+        failing_line(&ran.log)
     };
     drop(guard);
-    if code == 0 {
+    if ran.code == 0 {
         Outcome {
             label: "GREEN",
             detail,
@@ -188,42 +188,13 @@ fn run_case(session: &Session, checkout: &Path, python: &Path, stem: &str, case:
     }
 }
 
-fn failing_line() -> String {
-    let Ok(root) = crate::state::harness_root() else {
-        return String::new();
-    };
-    let Ok(entries) = fs::read_dir(root.join("logs")) else {
-        return String::new();
-    };
-    let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
-    for entry in entries.flatten() {
-        let Ok(modified) = entry.metadata().and_then(|meta| meta.modified()) else {
-            continue;
-        };
-        let replace = match &newest {
-            None => true,
-            Some((time, _)) => modified >= *time,
-        };
-        if replace {
-            newest = Some((modified, entry.path()));
-        }
-    }
-    let Some((_, path)) = newest else {
-        return String::new();
-    };
-    let Ok(text) = fs::read_to_string(path) else {
+fn failing_line(log: &Path) -> String {
+    let Ok(text) = fs::read_to_string(log) else {
         return String::new();
     };
     text.lines()
         .find(|line| line.starts_with("E "))
-        .map(|line| {
-            let line = line.trim();
-            if line.len() > 110 {
-                line[..110].to_string()
-            } else {
-                line.to_string()
-            }
-        })
+        .map(|line| line.trim().chars().take(110).collect())
         .unwrap_or_default()
 }
 
