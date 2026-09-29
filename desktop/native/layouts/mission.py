@@ -613,10 +613,11 @@ class Wrapped(QLabel):
 
 
 class WholeRows(QWidget):
-    """Rows one under another, as many as have room to show whole, in order: those after are left
-    out, never cut at the card's foot, and the card's head says how many there are. Beside the lanes
-    they ask for no more room than the first row, so the lanes, not the rows, set the page's height.
-    Under the lanes, where the page scrolls, `every` row shows."""
+    """Rows one under another, as many as have room to show whole, in order. When some do not, the
+    last row's room says "and N more", counting the row it replaces, so nothing is cut at the card's
+    foot and the card says what it leaves out. Beside the lanes they ask for no more room than the
+    first row, so the lanes, not the rows, set the page's height. Under the lanes, where the page
+    scrolls, `every` row shows."""
 
     def __init__(self, rows: list[QWidget], name: str, every: bool) -> None:
         super().__init__()
@@ -624,11 +625,15 @@ class WholeRows(QWidget):
         self.setProperty("rows", True)
         self.rows = rows
         self.every = every
+        self.more = QLabel()
+        self.more.setObjectName("missionMore")
+        self.more.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
         for row in rows:
             column.addWidget(row)
+        column.addWidget(self.more)
         column.addStretch(1)
         if not every:
             self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
@@ -640,16 +645,26 @@ class WholeRows(QWidget):
         return min(max(tall, row.minimumHeight()), row.maximumHeight())
 
     def _show(self) -> None:
-        """The first row always, and each after it while it has room. The last shown has no rule
-        under it."""
-        room, shown = self.height(), 0
+        """Every row if all have room, else the first that fit less the last of them, whose room
+        goes to "and N more". The last row shown has no rule under it."""
+        tall = [self._tall(row) for row in self.rows]
+        fit = 0
+        room = self.height()
+        for height in tall:
+            room -= height
+            if room < 0:
+                break
+            fit += 1
+        whole = self.every or fit == len(self.rows) or len(self.rows) < 2
+        shown = len(self.rows) if whole else max(fit, 1) - 1
         for at, row in enumerate(self.rows):
-            room -= self._tall(row)
-            fits = self.every or at == 0 or room >= 0
-            row.setVisible(fits)
-            shown += fits
+            row.setVisible(at < shown)
+        self.more.setVisible(not whole)
+        if not whole:
+            self.more.setText(f"and {len(self.rows) - shown} more")
+            self.more.setFixedHeight(tall[shown])
         for at, row in enumerate(self.rows):
-            last = at == shown - 1
+            last = whole and at == shown - 1
             if row.property("last") != last:
                 row.setProperty("last", last)
                 row.style().unpolish(row)
@@ -1291,7 +1306,7 @@ class MissionView(LayoutView):
                 "QLabel#missionLabel, QLabel#missionColumn": css(
                     color=muted, font_size=size("caption"), font_weight=WEIGHT_STRONG
                 ),
-                "QLabel#missionMuted, QLabel#missionHint, QLabel#missionIn": caption,
+                "QLabel#missionMuted, QLabel#missionHint, QLabel#missionIn, QLabel#missionMore": caption,
                 "QLabel#missionFoot": caption,
                 "QLabel#missionPlannedLine, QLabel#missionDueLine, QLabel#missionFreeLine, "
                 "QLabel#missionFocusLine": caption,
