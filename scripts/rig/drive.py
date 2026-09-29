@@ -155,7 +155,9 @@ def child_main(args: argparse.Namespace) -> int:
         return int(hhmm[:2]) * 60 + int(hhmm[3:])
 
     def hhmm(minute: int) -> str:
-        return f"{minute // 60:02d}:{minute % 60:02d}"
+        # Before midnight as -00:26, not floor division's -1:34.
+        sign, minute = ("-" if minute < 0 else ""), abs(minute)
+        return f"{sign}{minute // 60:02d}:{minute % 60:02d}"
 
     class Recorder:
         """Frames of the window with the pointer drawn in, for the design's video."""
@@ -408,13 +410,12 @@ def child_main(args: argparse.Namespace) -> int:
             return (head + run - inside + across if end else head + inside + across).toPoint()
 
         def chip(self, block_id: str) -> QPoint:
-            """Something on screen that stands for this block and can be picked up."""
+            """This block's chip in a tray, on screen, to pick up. Not a row that only opens it, as
+            Bento's Due soon lists homework ahead of its tray."""
             for widget in window.findChildren(QWidget):
-                if not widget.isVisible():
-                    continue
-                if getattr(widget, "block_id", None) == block_id or widget.property("block_id") == block_id:
+                if widget.isVisible() and widget.property("tray") and widget.property("block_id") == block_id:
                     return widget.mapToGlobal(widget.rect().center())
-            raise NoSurface(f"nothing on screen stands for {block_id}")
+            raise NoSurface(f"no tray on screen has a chip for {block_id}")
 
         def settled(self) -> Step:
             """Wait for the save, then read the week back from the server and prove it is fresh.
@@ -886,7 +887,7 @@ def child_main(args: argparse.Namespace) -> int:
                 (
                     w
                     for w in window.findChildren(QPushButton)
-                    if w.property("block_id") == ids[key] and w.isVisible()
+                    if w.property("tray") and w.property("block_id") == ids[key] and w.isVisible()
                 ),
                 None,
             )

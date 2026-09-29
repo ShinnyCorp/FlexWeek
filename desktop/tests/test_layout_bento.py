@@ -407,12 +407,17 @@ def test_the_tiles_stay_beside_the_hero_in_a_small_window(qapp: QApplication) ->
     assert waiting.mapToGlobal(waiting.rect().center()).x() > hero.mapToGlobal(hero.rect().center()).x()
 
 
-def test_a_narrow_window_or_large_text_puts_the_tiles_under_the_hero(qapp: QApplication) -> None:
+def test_a_narrow_window_or_large_text_puts_the_tiles_under_the_hero_but_not_the_tray(
+    qapp: QApplication,
+) -> None:
     for size, scale in (((800, 700), 1.0), ((1150, 768), 1.2)):
         view = shown(qapp, size=size, scale=scale)
-        hero = view.findChild(QWidget, "bentoHero")
+        hero = view.findChild(QWidget, "bentoHero").geometry()
         due = view.findChild(QWidget, "bentoDue")
-        assert due.geometry().top() > hero.geometry().bottom(), (size, scale)
+        tray = view.findChild(QWidget, "bentoWaiting").geometry()
+        assert due.geometry().top() > hero.bottom(), (size, scale)
+        # Not placed yet stays beside the hours, where a drag onto them starts.
+        assert tray.left() > hero.right() and tray.top() == hero.top(), (size, scale)
         assert view.findChild(QWidget, "bentoScroll").horizontalScrollBar().maximum() == 0, (size, scale)
 
 
