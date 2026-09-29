@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QEventLoop, QSize, Qt
 from PySide6.QtGui import QGuiApplication, QPalette, QPixmap
 from PySide6.QtWidgets import QWidget
 
@@ -23,6 +23,7 @@ from desktop.native.weekmodel import build_week
 
 # Drawn at a laptop's window size and scaled down, so each design lays out as it does in use.
 CANVAS = QSize(1040, 650)
+SETTLE_MS = 100
 # Wednesday at ten past four: school is over, and there is homework to do and more due.
 SAMPLE_DAY, SAMPLE_MINUTE = 2, 16 * 60 + 10
 
@@ -84,13 +85,15 @@ def system_dark() -> bool:
 
 
 def _settle(widget: QWidget) -> None:
-    # Laid out and painted without ever reaching the screen.
+    # Laid out and painted without ever reaching the screen. A view finishes laying out on the event
+    # loop (a scroll area learns its page's size from a posted request; Retro arranges its windows on
+    # a timer), so the loop runs until it is idle, a few milliseconds. Taken sooner, the picture shows
+    # a half-laid-out page and a scroll bar the view then drops. Clicks wait; the cap is for a loop
+    # that is never idle.
     widget.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
     widget.resize(CANVAS)
     widget.show()
-    layout = widget.layout()
-    if layout is not None:
-        layout.activate()
+    QGuiApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents, SETTLE_MS)
 
 
 def render(main: str, colour: str | None, pack: str, look: dict | None, width: int) -> QPixmap:
