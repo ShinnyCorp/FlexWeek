@@ -196,9 +196,11 @@ def test_done_keeps_the_look_by_its_name_and_more_looks_offers_it_beside_the_ten
     listed = [more.itemText(index) for index in range(more.count())]
     assert listed[-2:] == ["Your looks", "Night study"] and "High contrast" in listed
     assert more.currentText() == "Night study", "Look shows the saved look worn"
+    assert not page.accent.isEnabled() and not page.knobs["density"].isEnabled(), "the look sets them"
     page.look.main.buttons()[0].click()
     pump(qapp)
     assert "custom" not in window._look, "another look takes it off"
+    assert page.accent.isEnabled() and page.knobs["density"].isEnabled()
     at = more.findData("saved:Night study")
     more.setCurrentIndex(at)
     more.activated.emit(at)

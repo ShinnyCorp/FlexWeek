@@ -55,7 +55,7 @@ from backend.models import valid_spotify_url
 from backend.slots import SLOT_MIN
 from desktop.native import autostart
 from desktop.native.calendar import DAY_FULL
-from desktop.native.custom_look import sanitize_saved, wear
+from desktop.native.custom_look import UNNAMED, sanitize_saved, wear
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
 from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import drag_step
@@ -123,6 +123,10 @@ MORE_LOOKS = "More looks"
 MORE_LOOKS_HINT = "Choose another look"
 ACCENT_LABELS = {"default": "Blue"}
 OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
+# A look of the student's own sets the accent and every knob (look.py's resolved_palette and
+# effective_look), so while one is worn they show its values and say where they change instead.
+OWN_LOOK_ACCENT_NOTE = "{name} sets the accent. To change it, open Customise…"
+OWN_LOOK_KNOBS_NOTE = "{name} sets these. To change them, open Customise… in Colours."
 CUSTOMISE = "Customise"
 CUSTOMISE_TIP = "Change any look, colours, corners and fonts included, and save it as your own."
 # A saved look's choice under More looks, after the ten, by its name.
@@ -558,7 +562,13 @@ class SettingsPage(QWidget):
         self.accent = Swatches(swatches, "prefAccent")
         index = self.accent.findData(preferences.get("accent") or "default")
         self.accent.setCurrentIndex(max(0, index))
+        # The account's accent, kept apart from the swatches, which show a custom look's own while it
+        # is worn.
+        self._accent_chosen = self.accent.currentData()
+        self.accent.currentIndexChanged.connect(self._choose_accent)
         self.accent_note = _note(OWN_ACCENT_NOTE, "settingsCardNote")
+        # The width of the swatches' column, so the line under them is one line.
+        self.accent_note.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.customise = _page_button(f"{CUSTOMISE}…", "prefCustomise")
         self.customise.setToolTip(CUSTOMISE_TIP)
         self.customise.clicked.connect(self._open_customise)
@@ -571,7 +581,6 @@ class SettingsPage(QWidget):
         self._motion_chosen = preferences.get("motion")
         self._show_motion(self._look)
         self.knobs: dict[str, Segmented] = {}
-        shown = effective_look(self._look)
         self.fine_host = QWidget()
         self.fine_host.setObjectName("prefFineHost")
         fine_form = Form(self.fine_host)
@@ -581,9 +590,10 @@ class SettingsPage(QWidget):
         for knob, values in LOOK_KNOBS.items():
             labelled = tuple((KNOB_VALUE_LABELS[value], value) for value in values)
             box = Segmented(labelled, "look" + knob.title())
-            box.setCurrentIndex(max(0, box.findData(shown[knob])))
             self.knobs[knob] = box
             fine_form.addRow(KNOB_LABELS.get(knob, knob.title()), box)
+        self.own_look_note = _note("", "settingsCardNote")
+        fine_form.addRow(self.own_look_note)
         self.fine_tune = Switch(FINE_TUNE_LOOK)
         self.fine_tune.setObjectName("prefFineTune")
         self.fine_tune.setChecked(bool(self._look.get("knobs")))
@@ -697,6 +707,7 @@ class SettingsPage(QWidget):
         appear.addRow("", self.accent_note)
         appear.addRow(self.accent_chips)
         self._colours_form = appear
+        self._show_look_settings()
         everywhere_card, everywhere = _card("Every screen")
         everywhere.addRow("Animations", self.motion)
         everywhere.addRow(self.fine_tune)
@@ -994,7 +1005,7 @@ class SettingsPage(QWidget):
     def shown_palette(self) -> dict:
         """The colours on screen, as the window works them out from what this page holds."""
         system_dark = QGuiApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
-        return resolved_palette(self._pack, system_dark, self.look_choice(), self.accent.currentData())
+        return resolved_palette(self._pack, system_dark, self.look_choice(), self._accent_chosen)
 
     def _dress(self) -> None:
         """What the style sheet cannot draw: the sections' icons and the accent swatches in the look's
@@ -1010,7 +1021,6 @@ class SettingsPage(QWidget):
             made.addPixmap(icon_pixmap(name, palette["muted"], size, ratio), QIcon.Mode.Normal)
             made.addPixmap(icon_pixmap(name, palette["text"], size, ratio), QIcon.Mode.Selected)
             self.nav.item(row).setIcon(made)
-        self._colours_form.setRowVisible(self.accent_note, self.look_choice()["preset"] in OWN_ACCENT)
         # Section by section: a dropdown on Alerts need not make Appearance's wider than its page.
         for index in range(self.stack.count()):
             even_fields(self.stack.widget(index))
@@ -1164,7 +1174,7 @@ class SettingsPage(QWidget):
         work, rest, long_rest = self._lengths()
         return {
             "theme_pack": self._pack,
-            "accent": self.accent.currentData(),
+            "accent": self._accent_chosen,
             "timer_work_min": work,
             "timer_break_min": rest,
             "timer_long_break_min": long_rest,
@@ -1200,20 +1210,22 @@ class SettingsPage(QWidget):
     def _choose_motion(self, _index: int) -> None:
         self._motion_chosen = self.motion.currentData()
 
+    def _choose_accent(self, _index: int) -> None:
+        self._accent_chosen = self.accent.currentData()
+
     def _planning_style(self) -> str:
         checked = self.planning_style.checkedButton()
         return str(checked.property("style")) if checked is not None else "suggest"
 
     def _apply_look_menu(self) -> None:
         """Keep knobs moved by hand; the chosen look fills in only the rest."""
-        previous = self._look.get("preset") or "default"
-        shown = {knob: box.currentData() for knob, box in self.knobs.items()}
-        kept = look_overrides(previous, shown)
+        before = self._built_in_look()
         parsed = parse_look_menu_token(self.look.currentData())
         if parsed is None:
             saved = self._saved_look(self.look.currentData())
             if saved is not None:
-                self._look = wear(self._look, saved)
+                self._look = wear(before, saved)
+                self._show_look_settings()
             return
         kind, name = parsed
         if kind == "pack":
@@ -1221,12 +1233,44 @@ class SettingsPage(QWidget):
             preset = "default"
         else:
             preset = name
-        self._look = sanitize_look({"preset": preset, "knobs": kept})
+        self._look = sanitize_look({"preset": preset, "knobs": before["knobs"]})
+        self._show_look_settings()
+
+    def _built_in_look(self) -> dict:
+        """The look chosen under Look and the knobs moved on it, which a custom look is worn over and
+        keeps for when it is taken off. While one is worn the knobs show its values, not these."""
+        if "custom" in self._look:
+            return {key: value for key, value in self._look.items() if key != "custom"}
+        preset = self._look["preset"]
+        shown = {knob: box.currentData() for knob, box in self.knobs.items()}
+        return {"preset": preset, "knobs": look_overrides(preset, shown)}
+
+    def _show_look_settings(self) -> None:
+        """The knobs and the accent as the look worn draws them. A look of the student's own sets
+        them all, so while one is worn they cannot be changed here and a line says where they can."""
+        custom = self._look.get("custom")
         bundle = effective_look(self._look)
         for knob, box in self.knobs.items():
             box.blockSignals(True)
             box.setCurrentIndex(max(0, box.findData(bundle[knob])))
             box.blockSignals(False)
+            box.setEnabled(custom is None)
+        accent = self._accent_chosen
+        if custom is not None:
+            accent = custom.get("accent", None if custom["base"] in OWN_ACCENT else accent)
+        self.accent.blockSignals(True)
+        self.accent.setCurrentIndex(self.accent.findData(accent))
+        self.accent.blockSignals(False)
+        self.accent.setEnabled(custom is None)
+        if custom is None:
+            self.accent_note.setText(OWN_ACCENT_NOTE)
+        else:
+            name = custom.get("name") or UNNAMED
+            self.accent_note.setText(OWN_LOOK_ACCENT_NOTE.format(name=name))
+            self.own_look_note.setText(OWN_LOOK_KNOBS_NOTE.format(name=name))
+        own_accent = custom is None and self._look["preset"] in OWN_ACCENT
+        self._colours_form.setRowVisible(self.accent_note, custom is not None or own_accent)
+        self._fine_form.setRowVisible(self.own_look_note, custom is not None)
 
     def _saved_look(self, token: object) -> dict | None:
         if not isinstance(token, str) or not token.startswith(SAVED_LOOK):
@@ -1254,7 +1298,7 @@ class SettingsPage(QWidget):
         every other setting here is."""
         if self.editor is not None:
             return
-        self.editor = LookEditor(self, self._look, self.saved_looks, self._pack, self.accent.currentData())
+        self.editor = LookEditor(self, self.look_choice(), self.saved_looks, self._pack, self._accent_chosen)
         self.editor.worn.connect(self._wear_look)
         self.editor.closed.connect(self._close_customise)
         self._screens.addWidget(self.editor)
@@ -1264,6 +1308,7 @@ class SettingsPage(QWidget):
     def _wear_look(self, look: dict, saved: list[dict]) -> None:
         self._look = sanitize_look(look)
         self.saved_looks = saved
+        self._show_look_settings()
         self.changed.emit()
 
     def _close_customise(self) -> None:
@@ -1276,12 +1321,9 @@ class SettingsPage(QWidget):
         self.customise.setFocus()
 
     def look_choice(self) -> dict:
-        parsed = parse_look_menu_token(self.look.currentData())
-        preset = parsed[1] if parsed and parsed[0] == "preset" else "default"
-        shown = {knob: box.currentData() for knob, box in self.knobs.items()}
         # A custom look stays until another look is chosen from the menu, which drops it.
         kept = {"custom": self._look["custom"]} if "custom" in self._look else {}
-        return sanitize_look({"preset": preset, "knobs": look_overrides(preset, shown), **kept})
+        return sanitize_look({**self._built_in_look(), **kept})
 
     def layout_choice(self) -> dict:
         picked: dict = {"options": {}}
