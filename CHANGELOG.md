@@ -12,6 +12,7 @@ All notable changes to FlexWeek are documented here. Format follows
   the hours instead of on the block.
 - Day keeps Now on the hours grid rather than between agenda rows. Week titles, time labels, recovery codes and category tick/action spacing are clearer at narrow widths.
 - Help and the other scrolling sheets use the app's thin scroll bar, as Ctrl+K and Settings do, instead of a thick one that took width from the words.
+- At a narrow window Week's day header shows a day's homework as "1 h 30" when "1 h 30 min" would be cut off.
 
 ## [0.17.1] - 2026-09-29
 
