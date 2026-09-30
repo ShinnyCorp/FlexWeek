@@ -546,7 +546,7 @@ def test_a_sheet_fades_its_card_and_shadow_as_one_and_keeps_the_shadow(qapp: QAp
     window.show()
     qapp.processEvents()
     sheet = Dialog(window, sheet=True)
-    sheet.card_body().addWidget(QLabel("Homework"))
+    sheet.card_body("Add homework").addWidget(QLabel("Homework"))
     sheet.show()
     qapp.processEvents()
     shadow = sheet.card.graphicsEffect()

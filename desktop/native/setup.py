@@ -41,12 +41,12 @@ from backend.models import valid_spotify_url
 from backend.slots import SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm
 from desktop.native import icons
 from desktop.native.calendar import (
-    DAY_FULL,
     SETUP_ACTIVITY_PREFIX,
     SETUP_SCHOOL_ID,
     is_setup_block,
     sunday_due,
 )
+from desktop.native.fields import DayPicker
 from desktop.native.fonts import numeral
 from desktop.native.hours.geometry import drag_step
 from desktop.native.layouts.registry import (
@@ -413,35 +413,6 @@ class Chips(QWidget):
         return [button for button in self._group.buttons() if isinstance(button, QPushButton)]
 
 
-class DayPicker(QWidget):
-    changed = Signal()
-
-    def __init__(self, days: list[int] | tuple[int, ...] = ()) -> None:
-        super().__init__()
-        self.setObjectName("setupRow")
-        line = QHBoxLayout(self)
-        line.setContentsMargins(0, 0, 0, 0)
-        line.setSpacing(4)
-        self.buttons: list[QPushButton] = []
-        for index, name in enumerate(DAYS):
-            button = QPushButton(name)
-            button.setObjectName("setupDay")
-            button.setCheckable(True)
-            button.setChecked(index in days)
-            button.setAccessibleName(DAY_FULL[index])
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.toggled.connect(self.changed)
-            line.addWidget(button)
-            self.buttons.append(button)
-
-    def days(self) -> list[int]:
-        return [index for index, button in enumerate(self.buttons) if button.isChecked()]
-
-    def set_days(self, days: list[int]) -> None:
-        for index, button in enumerate(self.buttons):
-            button.setChecked(index in days)
-
-
 class QuarterTime(QTimeEdit):
     """A time of day. The arrows and the wheel move the minutes a quarter hour at a time; a time typed
     between quarters keeps its minute, as the block editor does."""
@@ -523,7 +494,7 @@ class ActivityRow(QFrame):
         top.addWidget(self.name, 1)
         top.addWidget(remove)
         box.addLayout(top)
-        self.days = DayPicker(days or [])
+        self.days = DayPicker(days or [], "setupDay")
         self.times = TimeRange(start, minutes_to_hhmm(hhmm_to_minutes(start) + minutes), "Activity")
         bottom = FlowLayout(gap=12)
         bottom.addWidget(self.days)
@@ -821,7 +792,7 @@ class SetupPage(QWidget):
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
         box.addWidget(_label("School", "setupSection"))
-        self.school_days = DayPicker([0, 1, 2, 3, 4])
+        self.school_days = DayPicker([0, 1, 2, 3, 4], "setupDay")
         self.school_times = TimeRange("08:00", "14:30", "School")
         school = QWidget()
         school.setObjectName("setupRow")

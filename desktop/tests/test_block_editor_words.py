@@ -17,7 +17,6 @@ from PySide6.QtCore import QPoint
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QLabel,
@@ -105,7 +104,7 @@ def test_the_repeat_note_sits_whole_under_the_day_boxes(
     dialog.show()
     qapp.processEvents()
     note = dialog.findChild(QLabel, "blockRepeatNote")
-    thursday = dialog.findChild(QCheckBox, "blockDay3")
+    thursday = dialog.findChild(QPushButton, "blockDay3")
     below = note.mapTo(dialog, QPoint(0, 0)).y() - thursday.mapTo(dialog, QPoint(0, thursday.height())).y()
     needed = note.heightForWidth(note.width()) if note.wordWrap() else note.sizeHint().height()
     assert note.height() == needed, "taller than its words, so it floated, or shorter, so it was cut"
@@ -127,7 +126,8 @@ def test_no_button_in_the_editor_has_an_icon(
     dialog = BlockDialog(host, soccer(), occurrence_day=3)
     buttons = dialog.findChildren(QPushButton)
     assert {button.text() for button in buttons} >= {"Save", "Cancel", "Delete"}
-    assert [button.text() for button in buttons if not button.icon().isNull()] == []
+    # The close button in the corner is Lucide's x on purpose; a button with words carries none.
+    assert [button.text() for button in buttons if button.text() and not button.icon().isNull()] == []
 
 
 def test_save_is_the_one_filled_button_and_delete_is_quiet_at_the_bottom_left(

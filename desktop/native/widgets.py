@@ -102,6 +102,7 @@ from desktop.native.calendar import (
     span_problem,
 )
 from desktop.native.elevation import lift
+from desktop.native.fields import DayPicker
 from desktop.native.fonts import time_font, weighted
 from desktop.native.icons import pixmap as icon_pixmap
 from desktop.native.menus import Menu
@@ -121,9 +122,6 @@ from desktop.native.work_windows import WorkWindowsEditor
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 SWATCH_PX = 12
 DETAIL_BOX_HEIGHT = 84
-# A scroll area reports its own modest size hint rather than its content's, which is what keeps the
-# homework editor on a laptop screen. It does not claim the content's width either, so that is set.
-HOMEWORK_MIN_WIDTH = 520
 DIALOG_USABLE_HEIGHT = 480
 # Dates as a student reads them. "2026-09-27 23:59" made them work out which day that was.
 DUE_DATE_FORMAT = "ddd d MMM yyyy"
@@ -1731,20 +1729,57 @@ class FieldLabel(QLabel):
         return self._tall(super().minimumSizeHint())
 
 
+# Between a label and the field under it, and between one field and the next label.
+STACKED_GAP = SPACING[0] + 2
+
+
 class Form(QFormLayout):
     """A form whose labels sit on their fields' line of words. A text label given with its field is
-    made a FieldLabel for that field."""
+    made a FieldLabel for that field.
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    A stacked form, a sheet's, puts each label above its field instead (5.1 A of 0.17.2), so every
+    field starts at one edge; a row given no words then spans the column rather than leaving a gap."""
+
+    def __init__(self, parent: QWidget | None = None, *, stacked: bool = False) -> None:
         super().__init__(parent)
+        self.stacked = stacked
         self.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        if stacked:
+            self.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
+            self.setVerticalSpacing(STACKED_GAP)
 
     def addRow(self, *row: object) -> None:  # noqa: N802
         if len(row) == 2 and isinstance(row[0], str):
             words, field = row
-            super().addRow(FieldLabel(words, _first_line(field)), field)
+            if not self.stacked:
+                super().addRow(FieldLabel(words, _first_line(field)), field)
+            elif words:
+                label = QLabel(words)
+                label.setObjectName("fieldLabel")
+                super().addRow(label, field)
+            else:
+                super().addRow(field)
             return
         super().addRow(*row)
+
+    def add_pair(self, *fields: tuple[str, QWidget]) -> QWidget:
+        """Short fields side by side as one row, each under its label, such as Start and End: one
+        under the other, the block editor was taller than a laptop's window."""
+        row = bare(QWidget())
+        line = QHBoxLayout(row)
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(SPACING[3])
+        for words, field in fields:
+            column = QVBoxLayout()
+            column.setSpacing(STACKED_GAP)
+            label = QLabel(words)
+            label.setObjectName("fieldLabel")
+            column.addWidget(label)
+            column.addWidget(field)
+            line.addLayout(column)
+        line.addStretch(1)
+        super().addRow(row)
+        return row
 
 
 def field_kind(widget: QWidget) -> str | None:
@@ -1827,6 +1862,9 @@ SHEET_ROOM = SHADOW_LARGE.y + SHADOW_LARGE.blur
 SHEET_GAP = SPACING[4]
 SHEET_PAD = SPACING[4]
 SHEET_DIM = 0.4
+# One width scale for every sheet's card (5.1 A of 0.17.2): forms, and lists such as Routines and Help.
+SHEET_FORM = 440
+SHEET_LIST = 600
 
 
 class SheetShade(QWidget):
@@ -1859,6 +1897,7 @@ class Dialog(QDialog):
         super().__init__(parent)
         self.sheet = sheet and parent is not None
         self.card: QFrame | None = None
+        self.card_width = SHEET_FORM
         # The sheet's card and the room for its shadow, which fade in as one: the card's own effect
         # is its shadow, and a widget holds one effect.
         self._face: QWidget | None = None
@@ -1867,15 +1906,36 @@ class Dialog(QDialog):
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
             self.setProperty("sheet", True)
 
-    def card_body(self) -> QVBoxLayout:
+    def card_body(self, title: str, width: int = SHEET_FORM) -> QVBoxLayout:
         """The layout the dialog's content goes in, on its one card: the sheet itself, or the card on a
-        window's page. The body is the card, not a box drawn inside it."""
+        window's page. The body is the card, not a box drawn inside it. The card is `width` wide and
+        starts with `title` and a close button, since a sheet has no window frame to carry either."""
+        self.setWindowTitle(title)
+        self.card_width = width
         outer = QVBoxLayout(self)
         self.card = QFrame()
         self.card.setObjectName("sheetCard")
+        self.card.setMinimumWidth(width)
         inner = QVBoxLayout(self.card)
         inner.setContentsMargins(SHEET_PAD, SHEET_PAD, SHEET_PAD, SHEET_PAD)
         inner.setSpacing(SPACING[2])
+        head = QHBoxLayout()
+        head.setContentsMargins(0, 0, 0, 0)
+        self.heading = QLabel(title)
+        self.heading.setObjectName("sheetTitle")
+        close = QPushButton()
+        close.setObjectName("sheetClose")
+        close.setProperty("quiet", True)
+        close.setAccessibleName("Close")
+        close.setToolTip("Close (Esc)")
+        # Esc closes from the keyboard; taking focus, it would have been where typing starts.
+        close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        close.setAutoDefault(False)
+        icons.tint(close, "x")
+        close.clicked.connect(self.reject)
+        head.addWidget(self.heading, 1)
+        head.addWidget(close, 0, Qt.AlignmentFlag.AlignTop)
+        inner.addLayout(head)
         if self.sheet:
             self._face = bare(QWidget())
             self._face.setObjectName("sheetFace")
@@ -1964,8 +2024,10 @@ class Dialog(QDialog):
         # arrived.
         card = self.card
         shadow = 2 * SHEET_ROOM
+        # The card is its width on the scale, narrower only in a window without room for it.
+        inner = min(self.card_width, most_w - shadow)
+        card.setFixedWidth(inner)
         hint = card.sizeHint().expandedTo(card.minimumSizeHint()).expandedTo(card.minimumSize())
-        inner = min(hint.width(), most_w - shadow)
         # Words that wrap need the height they take at this width, not at the width they would like.
         tall = card.heightForWidth(inner) if card.hasHeightForWidth() else hint.height()
         width = inner + shadow
@@ -2028,31 +2090,25 @@ class BlockDialog(Dialog):
         self._series_days: list[bool] | None = None
         existing = block is not None
         series = existing and is_series(self._original)
-        self.setWindowTitle("Edit event" if existing else "New event")
         self.setObjectName("blockDialog")
-        layout = self.card_body()
+        layout = self.card_body("Edit event" if existing else "New event")
         body = QWidget()
-        form = Form(body)
+        form = Form(body, stacked=True)
         form.setContentsMargins(0, 0, 0, 0)
         self.title = _line("blockTitle", self._original["title"])
         form.addRow("Title", self.title)
-        self.days = []
-        choices = QHBoxLayout()
-        for index, name in enumerate(DAYS):
-            check = QCheckBox(name)
-            check.setObjectName(f"blockDay{index}")
-            check.setChecked(index in self._original["days"])
-            choices.addWidget(check)
-            self.days.append(check)
+        self.day_picker = DayPicker(self._original["days"], "blockDay")
+        self.days = self.day_picker.buttons
         # A week's blocks are its own, so ticking more days repeats a block within this week only.
         # One line, never wrapped, under the boxes it is about. Wrapped, the form gave it two lines'
         # height for one line of words, or one line's height for two.
         self.repeat_note = QLabel(REPEAT_NOTE)
         self.repeat_note.setObjectName("blockRepeatNote")
-        days_field = QVBoxLayout()
-        days_field.addLayout(choices)
-        days_field.addWidget(self.repeat_note)
-        # The label sits on the boxes' line, not halfway down to the note.
+        days_field = bare(QWidget())
+        days_column = QVBoxLayout(days_field)
+        days_column.setContentsMargins(0, 0, 0, 0)
+        days_column.addWidget(self.day_picker)
+        days_column.addWidget(self.repeat_note)
         form.addRow("Days", days_field)
         # Which days a change reaches matters only for a block that repeats, opened on one of its days:
         # a choice of two, under the days it is about (decision 23 of 0.17).
@@ -2076,14 +2132,13 @@ class BlockDialog(Dialog):
         self.start = QTimeEdit(QTime.fromString(self._original.get("start") or start, "HH:mm"))
         self.start.setDisplayFormat(time_format())
         self.start.setObjectName("blockStart")
-        form.addRow("Start", self.start)
         # Start and End are what a student knows ("08:00 to 14:30"); the length is worked out from
         # them. A Duration box beside End was a second way to say the same thing, and could disagree.
         self._length = int(self._original["duration_min"])
         self.end = QTimeEdit(self._minutes_clock(self._clock_minutes(self.start.time()) + self._length))
         self.end.setDisplayFormat(time_format())
         self.end.setObjectName("blockEnd")
-        form.addRow("End", self.end)
+        form.add_pair(("Start", self.start), ("End", self.end))
         self.duration_line = QLabel()
         self.duration_line.setObjectName("blockDurationLine")
         form.addRow("", self.duration_line)
@@ -2254,7 +2309,7 @@ class SchoolHoursDialog(Dialog):
     def __init__(self, parent: QWidget | None, school: dict | None = None) -> None:
         super().__init__(parent)
         # Setup's own controls, imported here: setup imports this module.
-        from desktop.native.setup import DayPicker, TimeRange
+        from desktop.native.setup import TimeRange
 
         self._original = deepcopy(school) if school is not None else None
         self._result: dict | None = None
@@ -2264,7 +2319,8 @@ class SchoolHoursDialog(Dialog):
         card, box = info_card("School hours", SCHOOL_HOURS_NOTE)
         start = (school or {}).get("start") or "08:00"
         minutes = int((school or {}).get("duration_min") or 390)
-        self.days = DayPicker(list((school or {}).get("days") or ([] if school else [0, 1, 2, 3, 4])))
+        days = (school or {}).get("days") or ([] if school else [0, 1, 2, 3, 4])
+        self.days = DayPicker(list(days), "schoolDay")
         self.times = TimeRange(start, minutes_to_hhmm(hhmm_to_minutes(start) + minutes), "School")
         box.addWidget(self.days)
         box.addWidget(self.times, 0, Qt.AlignmentFlag.AlignLeft)
@@ -2430,15 +2486,14 @@ class HomeworkDialog(Dialog):
         self._spread = False
         # "choose" to pick a time for a session that needs one, "unpin" to let FlexWeek move it again.
         self._request: str | None = None
-        self.setWindowTitle("Edit homework" if assignment else "Add homework")
         self.setObjectName("homeworkDialog")
-        layout = self.card_body()
+        layout = self.card_body("Edit homework" if assignment else "Add homework")
         # The body scrolls so the dialog cannot outgrow a laptop screen. It already carried notes,
         # links and a checklist; one more row took it to 815px, past the bottom of a 768px display.
         body = QWidget()
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
-        form = Form()
+        form = Form(stacked=True)
         body_layout.addLayout(form)
         self.title = _line("homeworkTitle", self._original["title"])
         # Homework saved with no category is still homework, so it gets the same hint.
@@ -2489,12 +2544,14 @@ class HomeworkDialog(Dialog):
         self.more_details.setObjectName("homeworkMoreDetails")
         self.more_details.setProperty("quiet", True)
         self.more_details.setCheckable(True)
+        # As wide as its words at the column's edge, not a bar across the sheet.
+        self.more_details.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         form.addRow("", self.more_details)
         details = bare(QWidget())
         details.setObjectName("homeworkDetails")
         details_layout = QVBoxLayout(details)
         details_layout.setContentsMargins(0, 0, 0, 0)
-        extra = Form()
+        extra = Form(stacked=True)
         details_layout.addLayout(extra)
         self.course = _line("homeworkCourse", self._original.get("course") or "", 40)
         extra.addRow("Course", self.course)
@@ -2585,8 +2642,6 @@ class HomeworkDialog(Dialog):
         self.more_details.toggled.connect(self.refit)
         area = FitScroll(body, "homeworkScroll")
         layout.addWidget(area, 1)
-        # A scroll area does not claim its content's width, so without this the dialog comes up narrow.
-        self.card.setMinimumWidth(HOMEWORK_MIN_WIDTH)
         self._scroll = area
         # Delete is not one of the dialog's answers: quiet words at the left, away from Save, as the
         # block editor has it. Only homework that exists can go.

@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QDialog,
-    QFormLayout,
     QFrame,
     QLabel,
     QPushButton,
@@ -29,6 +28,8 @@ from PySide6.QtWidgets import (
 from desktop.native.look import mix, pack_stylesheet, resolved_palette
 from desktop.native.settings import AccountDialog
 from desktop.native.widgets import (
+    SHEET_FORM,
+    SHEET_PAD,
     BlockDialog,
     HomeworkDialog,
     LateDialog,
@@ -153,21 +154,98 @@ def test_the_homework_body_is_the_card_not_a_box_inside_it(qapp: QApplication, p
     free(parent)
 
 
-def test_a_label_sits_on_its_fields_line_of_words(qapp: QApplication) -> None:  # noqa: F811
-    """Labels were level with their fields' top edge, 4 pixels above the words in them."""
+def left_x(widget: QWidget, within: QWidget) -> int:
+    return widget.mapTo(within, QPoint(0, 0)).x()
+
+
+def test_a_sheets_labels_sit_above_their_fields_at_one_edge(qapp: QApplication) -> None:  # noqa: F811
+    """5.1 A of 0.17.2: each label above its field, so every field starts at the card's one edge.
+    Beside them, the labels made a column of their own and each sheet's fields began somewhere else."""
     parent, _palette = styled(qapp)
     block = shown(qapp, BlockDialog(parent, soccer(), occurrence_day=3))
-    form = block.findChild(QFormLayout)
-    for field in (block.title, block.start, block.end, block.category, block.spotify, block.scope_choice):
-        label = form.labelForField(field)
-        assert abs(middle_y(label, block) - middle_y(field, block)) <= 1, label.text()
-    days = next(label for label in block.findChildren(QLabel) if label.text() == "Days")
-    assert abs(middle_y(days, block) - middle_y(block.days[0], block)) <= 1, "Days sits on the boxes' line"
+    edge = left_x(block.title, block)
+    fields = {
+        "Title": block.title,
+        "Days": block.day_picker,
+        "Apply to": block.scope_choice,
+        "Start": block.start,
+        "End": block.end,
+        "Category": block.category,
+        "Spotify link": block.spotify,
+    }
+    for words, field in fields.items():
+        label = next(label for label in block.findChildren(QLabel) if label.text() == words)
+        assert label.mapTo(block, QPoint(0, label.height())).y() <= field.mapTo(block, QPoint()).y(), words
+        assert left_x(label, block) == left_x(field, block), words
+        # End sits beside Start, under its own label; every other field starts at the one edge.
+        assert words == "End" or left_x(field, block) == edge, words
+    assert block.end.mapTo(block, QPoint()).y() == block.start.mapTo(block, QPoint()).y()
     homework = shown(qapp, HomeworkDialog(parent, today=WEEK))
     due = next(label for label in homework.findChildren(QLabel) if label.text() == "Due")
-    assert abs(middle_y(due, homework) - middle_y(homework.due.date, homework)) <= 1
+    assert due.mapTo(homework, QPoint(0, due.height())).y() <= homework.due.date.mapTo(homework, QPoint()).y()
+    assert left_x(due, homework) == left_x(homework.due.date, homework) == left_x(homework.title, homework)
     free(block)
     free(homework)
+    free(parent)
+
+
+@pytest.mark.parametrize(
+    ("make", "title"),
+    [
+        (lambda parent: HomeworkDialog(parent, today=WEEK), "Add homework"),
+        (lambda parent: HomeworkDialog(parent, {"id": "e", "title": "Essay", "due": WEEK, "estimate_min": 60,
+                                                "revision": 1}), "Edit homework"),
+        (lambda parent: BlockDialog(parent, day=3, start="17:00"), "New event"),
+        (lambda parent: BlockDialog(parent, soccer(), occurrence_day=3), "Edit event"),
+    ],
+)
+def test_a_sheet_says_what_it_is_and_closes_from_its_corner(
+    qapp: QApplication,  # noqa: F811
+    make: object,
+    title: str,
+) -> None:
+    """T18: no sheet had a title, and one without a window frame had nothing to close it but Cancel."""
+    parent, _palette = styled(qapp)
+    dialog = shown(qapp, make(parent))
+    heading = dialog.findChild(QLabel, "sheetTitle")
+    assert heading is not None and heading.text() == title and heading.isVisible()
+    close = dialog.findChild(QPushButton, "sheetClose")
+    assert close.isVisible() and close.accessibleName() == "Close"
+    card = dialog.card
+    corner = close.mapTo(card, QPoint(close.width(), 0))
+    assert corner.x() > card.width() - 2 * SHEET_PAD and corner.y() < 2 * SHEET_PAD, "top right of the card"
+    assert heading.mapTo(card, QPoint(0, heading.height())).y() <= dialog.title.mapTo(card, QPoint()).y()
+    close.click()
+    assert dialog.result() == QDialog.DialogCode.Rejected and not dialog.isVisible()
+    free(dialog)
+    free(parent)
+
+
+def test_a_sheet_short_of_room_scrolls_rather_than_squeezing_its_days(qapp: QApplication) -> None:  # noqa: F811
+    """In a short window the block editor scrolls. Its day pills were squeezed to a sliver instead."""
+    parent, _palette = styled(qapp)
+    parent.resize(1280, 520)
+    qapp.processEvents()
+    block = shown(qapp, BlockDialog(parent, soccer(), occurrence_day=3))
+    assert block.findChild(QWidget, "blockScroll").verticalScrollBar().maximum() > 0, "it does scroll"
+    for pill in block.days:
+        assert pill.height() >= pill.sizeHint().height(), pill.text()
+    free(block)
+    free(parent)
+
+
+def test_sheets_are_one_width_on_a_scale_of_two(qapp: QApplication) -> None:  # noqa: F811
+    """T18: every sheet was its own width. Forms are 440 pixels wide and lists 600, at any text size."""
+    parent, _palette = styled(qapp)
+    for make in (
+        lambda: HomeworkDialog(parent, today=WEEK),
+        lambda: BlockDialog(parent, soccer(), occurrence_day=3),
+        lambda: BlockDialog(parent, day=3, start="17:00"),
+    ):
+        dialog = shown(qapp, make())
+        assert dialog.card.width() == SHEET_FORM, dialog.windowTitle()
+        assert dialog.card.minimumSizeHint().width() <= SHEET_FORM, "nothing in it is cut to fit"
+        free(dialog)
     free(parent)
 
 

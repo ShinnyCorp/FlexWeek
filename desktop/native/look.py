@@ -1211,9 +1211,11 @@ def _rgba(colour: str, alpha: float) -> str:
 DISABLED = 0.4
 
 
-def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str) -> str:
+def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str, text: float | str) -> str:
     """Dialogs (decision 23 of 0.17): the body is the card, a sheet's card is rounded as a sheet, and a
-    button that cannot be pressed yet keeps its shape at 40 %, not a grey slab that looked broken."""
+    button that cannot be pressed yet keeps its shape at 40 %, not a grey slab that looked broken.
+    A sheet's title is a heading, and each label above its field is a small muted caption (5.1 A of
+    0.17.2)."""
     edges = _depth_rules(depth, palette)
     sheet = RADIUS_SHEET if card_radius else 0
     return (
@@ -1221,6 +1223,10 @@ def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str) -
         'QDialog[sheet="true"] { background: transparent; }'
         f"QFrame#sheetCard {{ background: {palette['panel']}; border-radius: {sheet}px; padding: 0; "
         f"{edges} }}"
+        f"QLabel#sheetTitle {{ font-size: {type_pt('heading', text)}pt; font-weight: {WEIGHT_STRONG}; }}"
+        f"QPushButton#sheetClose {{ padding: {SPACING[0]}px; min-height: 0; min-width: 0; }}"
+        f"QLabel#fieldLabel {{ color: {palette['muted']}; font-size: {type_pt('caption', text)}pt; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
         'QWidget[bare="true"], QScrollArea[bare="true"] { background: transparent; border: none; '
         "padding: 0; border-radius: 0; }"
         'QScrollArea[bare="true"] > QWidget#qt_scrollarea_viewport { background: transparent; }'
@@ -1253,8 +1259,9 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     )
     quiet_rule = ", ".join(f"QPushButton#{name}" for name in quiet)
     quiet_hover = ", ".join(f"QPushButton#{name}:hover" for name in quiet)
-    pills = "QPushButton#setupChip, QPushButton#setupDay, QPushButton#setupStudyChip"
-    pills_hover = "QPushButton#setupChip:hover, QPushButton#setupDay:hover, QPushButton#setupStudyChip:hover"
+    day = 'QPushButton[pill="true"]'
+    pills = f"QPushButton#setupChip, {day}, QPushButton#setupStudyChip"
+    pills_hover = f"QPushButton#setupChip:hover, {day}:hover, QPushButton#setupStudyChip:hover"
     return (
         f"QWidget#setupRail {{ background: {palette['panel']}; }}"
         f"QWidget#setupNav {{ background: {palette['window']}; }}"
@@ -1289,9 +1296,14 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         f"QFrame#setupGroup {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
         f"{pills} {{ background: {palette['field']}; color: {palette['text']}; {edges} "
         f"border-radius: 14px; padding: 4px 12px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"
-        f"QPushButton#setupDay {{ padding: 4px 9px; }}"
+        f"{day} {{ padding: 4px 9px; }}"
         f"{pills_hover} {{ background: {mix(palette['accent'], palette['field'], 0.14)}; }}"
-        f"QPushButton#setupChip:checked, QPushButton#setupDay:checked {{ background: {palette['accent']}; "
+        f"QPushButton#setupChip:checked, {day}:checked {{ background: {palette['accent']}; "
+        f"color: {palette['accent_ink']}; }}"
+        # Days that cannot change, as under "This day only": the picked one still reads as picked.
+        f"{day}:disabled {{ background: {palette['field']}; "
+        f"color: {mix(palette['text'], palette['field'], 0.5)}; }}"
+        f"{day}:checked:disabled {{ background: {mix(palette['accent'], palette['field'], 0.6)}; "
         f"color: {palette['accent_ink']}; }}"
         f"{quiet_rule} {{ background: transparent; color: {palette['accent']}; border: none; "
         f"padding: {pad}px 2px; font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
@@ -1610,7 +1622,7 @@ def pack_stylesheet(
         + setup_rules(palette, radius, scale, pad, knobs["depth"])
         + settings_rules(palette, radius, scale, pad, knobs["depth"])
         + auth_rules(palette, knobs, radius, card_radius)
-        + dialog_rules(palette, card_radius, knobs["depth"], quiet_edge)
+        + dialog_rules(palette, card_radius, knobs["depth"], quiet_edge, scale)
         + f"QPushButton#updateSkip {{ background: transparent; "
         f"color: {palette['accent']}; border: none; padding: {pad}px 0; "
         f"font-size: {pt['caption']}; text-align: left; min-height: 0; }}"

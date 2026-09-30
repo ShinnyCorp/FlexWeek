@@ -103,7 +103,7 @@ def filled(dialog: QDialog, accent: str) -> list[str]:
         if not button.isVisibleTo(dialog) or button.width() < 8:
             continue
         # A ticked day is a choice shown, like a segment, not a second thing to press.
-        if button.isCheckable() and button.objectName() in {"setupDay", "setupChip"}:
+        if button.isCheckable() and (button.property("pill") or button.objectName() == "setupChip"):
             continue
         colour = button.grab().toImage().pixelColor(4, button.height() // 2)
         if colour == QColor(accent):
