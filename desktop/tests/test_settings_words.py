@@ -262,7 +262,7 @@ def test_the_look_is_fine_tuned_in_the_colours_card_under_a_name_of_its_own(
     dialog.close_page()
 
 
-def test_reset_is_a_quiet_button_at_the_left_not_a_bar_across_the_page(
+def test_reset_is_an_outlined_button_at_the_left_not_a_bar_across_the_page(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
@@ -389,13 +389,14 @@ def test_every_main_view_is_a_picture_with_a_single_name_and_the_experimental_on
     ("row", "name"),
     [(1, "prefsAvailability"), (4, "prefsAccount"), (4, "prefsRunSetup"), (4, "prefsCheckUpdates")],
 )
-def test_a_button_that_opens_something_else_is_plain_and_as_wide_as_its_words(
+def test_a_button_that_opens_something_else_is_outlined_and_as_wide_as_its_words(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
     row: int,
     name: str,
 ) -> None:
-    """Stretched across the page and filled, each was louder than Done, the one answer Settings has."""
+    """Stretched across the page and filled, each was louder than Done, the one answer Settings has. Now
+    each is outlined, not filled, and no wider than its words."""
     dialog = prefs(window)
     dialog.nav.setCurrentRow(row)
     qapp.processEvents()

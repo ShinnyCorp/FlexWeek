@@ -146,7 +146,8 @@ def test_every_dialog_has_at_most_one_filled_button(qapp: QApplication, pack: st
 
 
 def test_the_filled_button_is_the_answer(qapp: QApplication) -> None:
-    """The ones that were loud before are plain now, and the answer beside them is still filled."""
+    """The ones that were loud before are outlined (More details) or quiet (Apply, Delete, Close), and the
+    answer beside them is still filled."""
     homework = widgets.HomeworkDialog(None, HOMEWORK, "2026-09-21")
     assert homework.more_details.property("outline") is True, "outlined: as words alone it was not seen"
     routines = widgets.RoutineDialog(None, ROUTINE, [school()], "2026-09-21")
