@@ -103,7 +103,7 @@ def filled(dialog: QDialog, accent: str) -> list[str]:
         if not button.isVisibleTo(dialog) or button.width() < 8:
             continue
         # A ticked day is a choice shown, like a segment, not a second thing to press.
-        if button.isCheckable() and button.objectName() in {"setupDay", "setupChip"}:
+        if button.isCheckable() and (button.property("pill") or button.objectName() == "setupChip"):
             continue
         # Most of it in the accent. One pixel near the left edge could land on a link's accent words,
         # "Skip this version", depending on the font, and called it filled.
@@ -152,31 +152,32 @@ def test_the_filled_button_is_the_answer(qapp: QApplication) -> None:
     routines = widgets.RoutineDialog(None, ROUTINE, [school()], "2026-09-21")
     names = {button.objectName(): button for button in routines.findChildren(QPushButton)}
     assert not names["saveRoutine"].property("quiet")
-    for name in ("applyRoutine", "deleteRoutine"):
+    # Close is the sheet's own x in its corner now, quiet like the rest.
+    for name in ("applyRoutine", "deleteRoutine", "sheetClose"):
         assert names[name].property("quiet") is True, name
-    assert names["closeRoutines"].property("outline") is True
     late = widgets.LateDialog(None, "School")
     assert late.findChild(QPushButton, "latePreview").property("quiet") is True
     assert not late.accept_button.property("quiet")
 
 
-def test_routines_and_running_late_are_cards_with_a_heading_and_a_sentence(qapp: QApplication) -> None:
+def test_routines_and_running_late_say_what_each_part_is_for(qapp: QApplication) -> None:
     """R18: Routines was a list box, an empty box, a date and four filled buttons, and Running late
-    an empty box, with nothing saying what either was for."""
+    an empty box, with nothing saying what either was for. As sheets (0.17.2) each part is a heading
+    and a sentence on the one card, not a card inside it."""
     from PySide6.QtWidgets import QFrame, QLabel
 
     routines = widgets.RoutineDialog(None, {}, [school()], "2026-09-21")
-    cards = routines.findChildren(QFrame, "dialogCard")
-    titles = [card.findChild(QLabel, "cardTitle").text() for card in cards]
+    assert routines.findChildren(QFrame, "dialogCard") == [], "no card inside the card"
+    titles = [label.text() for label in routines.findChildren(QLabel, "cardTitle")]
     assert titles == ["Save this week as a routine", "Use a saved routine"]
-    assert all(card.findChild(QLabel, "cardNote").text() for card in cards)
+    notes = routines.findChildren(QLabel, "cardNote")
+    assert len(notes) == 2 and all(note.text() for note in notes)
     empty = routines.findChild(QLabel, "routineEmpty")
     assert empty.text() == "No routines saved yet." and not empty.isHidden()
     assert routines.list.isHidden(), "no empty box where the routines would be"
     late = widgets.LateDialog(None, "School")
-    card = late.findChild(QFrame, "dialogCard")
-    assert card.findChild(QLabel, "cardTitle").text() == "Running late"
-    assert card.findChild(QLabel, "cardNote").text()
+    assert late.findChild(QLabel, "sheetTitle").text() == "Running late"
+    assert late.findChild(QLabel, "cardNote").text()
     assert late.changes.isHidden(), "the list of moves shows once there is a preview"
     late.show_trace({"moves": [], "unplaced": []}, {})
     assert not late.changes.isHidden()

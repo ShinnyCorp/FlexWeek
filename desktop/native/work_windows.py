@@ -6,7 +6,6 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -16,9 +15,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from desktop.native.fields import DayPicker
 from desktop.native.weekmodel import hhmm_text
 
-DAYS =("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 START_TIMES = tuple(f"{minute // 60:02d}:{minute % 60:02d}" for minute in range(0, 1440, 15))
 END_TIMES = tuple(f"{minute // 60:02d}:{minute % 60:02d}" for minute in range(15, 1441, 15))
 MAX_WORK_WINDOWS = 21
@@ -45,15 +44,12 @@ class _WorkWindowRow(QFrame):
         layout = QVBoxLayout(self)
         days_line = QHBoxLayout()
         days_line.addWidget(QLabel("Days"))
-        self.days = []
-        for day, name in enumerate(DAYS):
-            check = QCheckBox(name)
-            check.setObjectName(f"workWindowDay{day}")
-            check.setChecked(day in window["days"])
+        # Pills, as setup's school and activity days are (X7 of the 0.17.0 audit).
+        self.day_picker = DayPicker(window["days"], "workWindowDay")
+        self.days = self.day_picker.buttons
+        for check in self.days:
             check.toggled.connect(lambda checked, field=check: self._day_toggled(field, checked))
-            self.days.append(check)
-            days_line.addWidget(check)
-        days_line.addStretch()
+        days_line.addWidget(self.day_picker, 1)
         layout.addLayout(days_line)
 
         fields = QHBoxLayout()
@@ -105,7 +101,7 @@ class _WorkWindowRow(QFrame):
         fields.addWidget(remove)
         layout.addLayout(fields)
 
-    def _day_toggled(self, field: QCheckBox, checked: bool) -> None:
+    def _day_toggled(self, field: QPushButton, checked: bool) -> None:
         if not checked and not any(day.isChecked() for day in self.days):
             field.setChecked(True)
 

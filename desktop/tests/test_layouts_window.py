@@ -821,7 +821,8 @@ def test_plan_and_more_stay_on_the_bar_in_every_layout(qapp: QApplication, windo
     qapp.processEvents()
     assert window.planner.height() > window.height() * 0.8
     offered = more_actions(window)
-    assert more_sections(window) == ["Planning"]
+    # Every group under a heading (T23 of the 0.17.0 audit).
+    assert more_sections(window) == ["Planning", "Edit", "Help and info", "Account"]
     assert not {"Add homework", "Add fixed time", "School hours"} & set(offered), "adding is under Add"
     wanted = {"Running late", "Routines", "Reload", "Undo", "Redo", "Undo, copy and save", "Log out"}
     assert wanted <= set(offered)
@@ -1435,7 +1436,7 @@ def test_the_week_toolbar_keeps_only_what_is_reached_for(qapp: QApplication, win
     menu.aboutToShow.emit()
     sections = more_sections(window)
     items = more_actions(window)
-    assert sections == ["Planning"]
+    assert sections == ["Planning", "Edit", "Help and info", "Account"]
     wanted = {"Undo", "Redo", "Duplicate", "Running late", "Routines", "Undo, copy and save", "Log out"}
     assert wanted <= set(items)
     assert "Settings" not in items

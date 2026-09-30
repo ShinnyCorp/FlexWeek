@@ -114,8 +114,8 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "the block editor is titled as a student says it",
-  "old": "self.setWindowTitle(\"Edit event\" if existing else \"New event\")",
-  "new": "self.setWindowTitle(\"Edit fixed commitment\" if existing else \"Add fixed commitment\")",
+  "old": "self.card_body(\"Edit event\" if existing else \"New event\")",
+  "new": "self.card_body(\"Edit fixed commitment\" if existing else \"Add fixed commitment\")",
   "test": "desktop/tests/test_block_editor_words.py::test_the_editor_is_titled_as_a_student_says_it"
  },
  {
@@ -141,9 +141,9 @@
  },
  {
   "file": "desktop/native/widgets.py",
-  "name": "the repeat note sits in the Days field, not a row of its own",
-  "old": "        days_field = QVBoxLayout()\n        days_field.addLayout(choices)\n        days_field.addWidget(self.repeat_note)\n        # The label sits on the boxes' line, not halfway down to the note.\n        form.addRow(\"Days\", days_field)\n",
-  "new": "        self.repeat_note.setWordWrap(True)\n        form.addRow(\"Days\", choices)\n        form.addRow(\"\", self.repeat_note)\n",
+  "name": "the repeat note sits under the day pills, in their field",
+  "old": "        days_column.addWidget(self.day_picker)\n        days_column.addWidget(self.repeat_note)\n",
+  "new": "        days_column.addWidget(self.repeat_note)\n        days_column.addWidget(self.day_picker)\n",
   "test": "desktop/tests/test_block_editor_words.py::test_the_repeat_note_sits_whole_under_the_day_boxes"
  },
  {
@@ -187,13 +187,6 @@
   "old": "            self.session._say(NOTHING_UNFINISHED)\n        self.unfinished_panel.set_items(items)\n",
   "new": "            self.session._say(NOTHING_UNFINISHED)\n",
   "test": "desktop/tests/test_more_menu_words.py::test_unfinished_opens_its_list_in_any_design"
- },
- {
-  "file": "desktop/native/look.py",
-  "name": "Help has no box around its words",
-  "old": "QScrollArea#weekScroll, QScrollArea#dayScroll, QScrollArea#helpScroll {{",
-  "new": "QScrollArea#weekScroll, QScrollArea#dayScroll {{",
-  "test": "desktop/tests/test_more_menu_words.py::test_help_shows_every_line_whole_at_large_text_and_fits_the_screen"
  },
  {
   "file": "desktop/native/look.py",

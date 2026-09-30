@@ -32,7 +32,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QStackedWidget,
-    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -41,12 +40,12 @@ from backend.models import valid_spotify_url
 from backend.slots import SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm
 from desktop.native import icons
 from desktop.native.calendar import (
-    DAY_FULL,
     SETUP_ACTIVITY_PREFIX,
     SETUP_SCHOOL_ID,
     is_setup_block,
     sunday_due,
 )
+from desktop.native.fields import QUICK_LENGTHS, ClockField, DayPicker, Stepper
 from desktop.native.fonts import numeral
 from desktop.native.hours.geometry import drag_step
 from desktop.native.layouts.registry import (
@@ -79,7 +78,7 @@ from desktop.native.settings import (
 from desktop.native.sound import Bell
 from desktop.native.tokens import WEIGHT_STRONG
 from desktop.native.tones import FALLBACK, RECIPES
-from desktop.native.weekmodel import clock_text, hhmm_text, time_format
+from desktop.native.weekmodel import clock_text, hhmm_text
 from desktop.native.widgets import DAYS, ChoiceCard, DueField, FlowLayout, rounded_picture
 from desktop.native.work_windows import WorkWindowsEditor
 
@@ -413,43 +412,13 @@ class Chips(QWidget):
         return [button for button in self._group.buttons() if isinstance(button, QPushButton)]
 
 
-class DayPicker(QWidget):
-    changed = Signal()
-
-    def __init__(self, days: list[int] | tuple[int, ...] = ()) -> None:
-        super().__init__()
-        self.setObjectName("setupRow")
-        line = QHBoxLayout(self)
-        line.setContentsMargins(0, 0, 0, 0)
-        line.setSpacing(4)
-        self.buttons: list[QPushButton] = []
-        for index, name in enumerate(DAYS):
-            button = QPushButton(name)
-            button.setObjectName("setupDay")
-            button.setCheckable(True)
-            button.setChecked(index in days)
-            button.setAccessibleName(DAY_FULL[index])
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.toggled.connect(self.changed)
-            line.addWidget(button)
-            self.buttons.append(button)
-
-    def days(self) -> list[int]:
-        return [index for index, button in enumerate(self.buttons) if button.isChecked()]
-
-    def set_days(self, days: list[int]) -> None:
-        for index, button in enumerate(self.buttons):
-            button.setChecked(index in days)
-
-
-class QuarterTime(QTimeEdit):
-    """A time of day. The arrows and the wheel move the minutes a quarter hour at a time; a time typed
-    between quarters keeps its minute, as the block editor does."""
+class QuarterTime(ClockField):
+    """A time of day, typed. The arrow keys and the wheel move the minutes a quarter hour at a time; a
+    time typed between quarters keeps its minute, as the block editor does."""
 
     def __init__(self, hhmm: str) -> None:
         super().__init__(QTime.fromString(hhmm, "HH:mm"))
         self.setObjectName("setupTime")
-        self.setDisplayFormat(time_format())
         self.setCorrectionMode(QAbstractSpinBox.CorrectionMode.CorrectToNearestValue)
 
     def minutes(self) -> int:
@@ -523,7 +492,7 @@ class ActivityRow(QFrame):
         top.addWidget(self.name, 1)
         top.addWidget(remove)
         box.addLayout(top)
-        self.days = DayPicker(days or [])
+        self.days = DayPicker(days or [], "setupDay")
         self.times = TimeRange(start, minutes_to_hhmm(hhmm_to_minutes(start) + minutes), "Activity")
         bottom = FlowLayout(gap=12)
         bottom.addWidget(self.days)
@@ -561,7 +530,7 @@ class HomeworkRow(QFrame):
         grid.addWidget(self.name, 0, 1, 1, 3)
         grid.addWidget(remove, 0, 4)
         grid.addWidget(_label("Takes", "setupFieldLabel", wrap=False), 1, 0)
-        grid.addWidget(self.minutes, 1, 1)
+        grid.addWidget(Stepper(self.minutes, QUICK_LENGTHS), 1, 1)
         grid.addWidget(_label("Due", "setupFieldLabel", wrap=False), 1, 2)
         grid.addWidget(self.due, 1, 3, 1, 2)
         grid.setColumnStretch(3, 1)
@@ -821,7 +790,7 @@ class SetupPage(QWidget):
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
         box.addWidget(_label("School", "setupSection"))
-        self.school_days = DayPicker([0, 1, 2, 3, 4])
+        self.school_days = DayPicker([0, 1, 2, 3, 4], "setupDay")
         self.school_times = TimeRange("08:00", "14:30", "School")
         school = QWidget()
         school.setObjectName("setupRow")
@@ -900,7 +869,7 @@ class SetupPage(QWidget):
         self.lead.setSingleStep(5)
         self.lead.setSuffix(" min before")
         self.lead.setAccessibleName("How long before")
-        box.addWidget(_row(self.lead))
+        box.addWidget(_row(Stepper(self.lead)))
         self.reminders.toggled.connect(self.lead.setEnabled)
         self._section(box, "Alarm sound")
         self.tones = QButtonGroup(content)

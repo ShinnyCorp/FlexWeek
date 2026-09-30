@@ -13,7 +13,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, QStandardPaths, QUrl
-from PySide6.QtGui import QAction, QDesktopServices, QImage, QRegion
+from PySide6.QtGui import QAction, QDesktopServices, QFontMetrics, QImage, QRegion
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -23,12 +23,14 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QToolTip,
     QWidget,
+    QWidgetAction,
 )
 
 from desktop.native import settings
 from desktop.native.layouts.registry import sanitize_layout
 from desktop.native.look import sanitize_look
 from desktop.native.tokens import type_pt
+from desktop.native.widgets import SHEET_LIST
 from desktop.native.window import NativeWindow
 from desktop.tests.window_support import (  # noqa: F401
     host,
@@ -128,7 +130,9 @@ def test_the_add_menu_says_what_each_way_to_add_does(
 
 
 def named(text: str) -> str:
-    """Copy day and Paste name the selected day, which is today."""
+    """Copy day and Paste name the selected day, which is today. What follows a tab is a note on the
+    row, as Unfinished's reason, not its name."""
+    text = text.partition("\t")[0]
     for verb in ("Copy ", "Paste into "):
         if text.startswith(verb):
             return verb + "(the selected day)"
@@ -149,7 +153,7 @@ def test_the_plan_button_and_the_plan_review_say_what_they_do(
 
 
 def unfinished_action(window: NativeWindow) -> QAction:  # noqa: F811
-    return next(action for action in actions(opened_more(window)) if action.text() == "Unfinished")
+    return next(action for action in actions(opened_more(window)) if named(action.text()) == "Unfinished")
 
 
 def test_unfinished_with_nothing_unfinished_is_greyed_and_says_why(
@@ -161,6 +165,8 @@ def test_unfinished_with_nothing_unfinished_is_greyed_and_says_why(
     action = unfinished_action(window)
     assert action.isEnabled() is False
     assert action.toolTip() == NOTHING_UNFINISHED
+    # On the row itself too, for anyone who does not wait for a tooltip (T23 of the 0.17.0 audit).
+    assert action.text() == "Unfinished\tNone left"
     window._show_unfinished()
     assert window.toast.text() == NOTHING_UNFINISHED
     assert not window.unfinished_panel.isVisibleTo(window)
@@ -212,6 +218,7 @@ def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_
     dialog = settings.AboutDialog(window, window.session.storage_info, folder)
     said = [label.text() for label in dialog.findChildren(QLabel) if label.text()]
     assert said == [
+        "About FlexWeek",
         "FlexWeek 0.17.1",
         "FlexWeek plans your homework around school, sports and everything else in your week.",
         "Your plans are saved on this computer.",
@@ -296,9 +303,10 @@ def test_help_fades_its_words_at_an_edge_with_more_past_it(
     knobs = {**window._look.get("knobs", {}), "text": "large"}
     window._look = sanitize_look({**window._look, "knobs": knobs})
     window._apply_appearance()
+    # A sheet is as tall as its window lets it be; in a short one, Help scrolls.
+    window.resize(1280, 560)
     dialog = settings.HelpDialog(window)
     dialog.show()
-    dialog.resize(dialog.width(), 420)
     qapp.processEvents()
     area = dialog.findChild(QScrollArea, "helpScroll")
     bar = area.verticalScrollBar()
@@ -307,7 +315,8 @@ def test_help_fades_its_words_at_an_edge_with_more_past_it(
     assert (top.isVisible(), bottom.isVisible()) == (False, True)
     view = area.viewport()
     assert bottom.geometry().bottom() == view.height() - 1 and bottom.width() == view.width()
-    page = dialog.palette().color(dialog.backgroundRole())
+    # The card's colour: the words fade into the sheet they sit on.
+    page = dialog.card.palette().color(dialog.card.backgroundRole())
     # Drawn alone on nothing: over the page itself its last row would be the page with no fade at all.
     fade = QImage(bottom.size(), QImage.Format.Format_ARGB32_Premultiplied)
     fade.fill(0)
@@ -343,59 +352,68 @@ def test_help_shows_every_line_whole_at_large_text_and_fits_the_screen(
     qapp.processEvents()
     still(dialog)
     labels = dialog.findChildren(QLabel)
-    assert dialog.columns == 1
     assert len(dialog.findChildren(QWidget, "helpKey")) == len(settings.HELP_KEYS)
     assert [label.text() for label in labels if not shows_all_of_itself(label)] == []
     view = dialog.findChild(QScrollArea, "helpScroll").viewport()
-    cut = [label.text() for label in labels if label.mapTo(view, label.rect().topRight()).x() > view.width()]
+    inside = [label for label in labels if view.isAncestorOf(label)]
+    cut = [label.text() for label in inside if label.mapTo(view, label.rect().topRight()).x() > view.width()]
     assert cut == []
-    assert dialog.height() <= dialog.screen().availableGeometry().height() - 48
+    card = dialog.card
+    assert window.rect().contains(card.rect().translated(card.mapTo(window, QPoint()))), "inside its window"
     picture = dialog.grab().toImage()
-    # Inside a box's edge and below its corner, which a 10-pixel radius rounds away from (2, 2).
+    # Inside a box's edge and below its corner, which a 10-pixel radius rounds away from, against the
+    # card's own margin beside it.
     inside = view.parentWidget().mapTo(dialog, QPoint(4, 30))
-    assert picture.pixelColor(inside.x(), inside.y()) == picture.pixelColor(2, 2), "a box around the words"
+    margin = dialog.card.mapTo(dialog, QPoint(4, dialog.card.height() // 2))
+    assert picture.pixelColor(inside) == picture.pixelColor(margin), "a box around the words"
     dialog.close()
 
 
-def test_help_puts_the_screens_beside_the_shortcuts_over_a_wide_window(
+@pytest.mark.parametrize("text", ["normal", "large"])
+def test_help_is_a_list_sheet_with_the_screens_two_by_two_above_one_line_per_shortcut(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
+    text: str,
 ) -> None:
+    """T22 of the 0.17.0 audit: Ctrl+Y or Ctrl+Shift+Z wrapped onto two lines, and the words beside
+    the keys wrapped a word or two to a line ("Day, Week," then "Month"). Help is a list's sheet, 600
+    wide (5.1 A of 0.17.2): the screens two by two, then each shortcut's keys on one line."""
+    knobs = {**window._look.get("knobs", {}), "text": text}
+    window._look = sanitize_look({**window._look, "knobs": knobs})
+    window._apply_appearance()
     window.resize(1280, 800)
     dialog = settings.HelpDialog(window)
     dialog.show()
     qapp.processEvents()
-    assert dialog.columns == 2
-    assert dialog.width() >= settings.HELP_TWO_COLUMN_WIDTH
+    still(dialog)
+    # 600 at Normal text, growing with Large as every sheet's width does.
+    assert dialog.card.width() == round(SHEET_LIST * type_pt("body", text) / type_pt("body"))
     cards = dialog.findChildren(QFrame, "helpCard")
-    keys = dialog.findChild(QWidget, "helpKeys")
     assert [card.findChild(QLabel, "helpScreenName").text() for card in cards] == [
         name for name, _words in settings.HELP_SCREENS
     ]
+    keys = dialog.findChild(QWidget, "helpKeys")
     body = keys.parentWidget()
-    card_right = max(card.mapTo(body, card.rect().topRight()).x() for card in cards)
-    assert card_right < keys.mapTo(body, keys.rect().topLeft()).x(), "shortcuts beside the screens"
-    first_top = cards[0].mapTo(body, cards[0].rect().topLeft()).y()
-    assert first_top < keys.mapTo(body, keys.rect().bottomLeft()).y(), "side by side, not one under the other"
+    tops = sorted({card.mapTo(body, QPoint()).y() for card in cards})
+    lefts = sorted({card.mapTo(body, QPoint()).x() for card in cards})
+    assert len(tops) == 2 and len(lefts) == 2, "two by two"
+    last_bottom = max(card.mapTo(body, card.rect().bottomLeft()).y() for card in cards)
+    assert last_bottom < keys.mapTo(body, QPoint()).y(), "the shortcuts under the screens"
+    for row in dialog.findChildren(QWidget, "helpKey"):
+        caps = row.findChildren(QLabel)
+        assert len({cap.mapTo(row, QPoint()).y() for cap in caps}) == 1, f"{row.accessibleName()}: one line"
+        assert row.width() >= row.sizeHint().width(), f"{row.accessibleName()}: not squeezed"
+    line = QFontMetrics(dialog.findChild(QLabel, "helpKeyDoes").font()).lineSpacing()
+    # Badly is a word or two to a line ("Day, Week," then "Month"): each line holds 12 characters or more.
+    for words in dialog.findChildren(QLabel, "helpKeyDoes"):
+        lines = round(words.height() / line)
+        assert lines <= max(1, len(words.text()) // 12), f"{words.text()!r} took {lines} lines"
     labels = dialog.findChildren(QLabel)
     assert [label.text() for label in labels if not shows_all_of_itself(label)] == []
-    dialog.close()
-
-
-def test_help_is_one_column_over_a_narrow_window(
-    qapp: QApplication,  # noqa: F811
-    host: QWidget,  # noqa: F811
-) -> None:
-    host.resize(settings.HELP_TWO_COLUMN_WIDTH - 1, 700)
-    dialog = settings.HelpDialog(host)
-    assert dialog.columns == 1
-    cards = dialog.findChildren(QFrame, "helpCard")
-    keys = dialog.findChild(QWidget, "helpKeys")
-    dialog.show()
-    qapp.processEvents()
-    body = keys.parentWidget()
-    last_bottom = cards[-1].mapTo(body, cards[-1].rect().bottomLeft()).y()
-    assert last_bottom < keys.mapTo(body, keys.rect().topLeft()).y(), "the shortcuts under the screens"
+    picture = dialog.grab().toImage()
+    between = keys.mapTo(dialog, QPoint(keys.width() - 2, 2))
+    margin = dialog.card.mapTo(dialog, QPoint(4, dialog.card.height() // 2))
+    assert picture.pixelColor(between) == picture.pixelColor(margin), "the shortcuts sit on the card itself"
     dialog.close()
 
 
@@ -447,6 +465,10 @@ def test_every_row_under_more_has_an_icon_and_log_out_stands_apart(
     assert edits.text() == "Undo, copy and save"
     assert [action.text() for action in edits.menu().actions()][:2] == ["Undo", "Redo"]
     assert all(action.property(ICON) for action in edits.menu().actions())
-    rows = [action.text() or "---" for action in menu.actions() if action.isVisible() and not action.menu()]
+    rows = [
+        action.text() or "---"
+        for action in menu.actions()
+        if action.isVisible() and not action.menu() and not isinstance(action, QWidgetAction)
+    ]
     assert rows[-5:] == ["---", "Help", "About FlexWeek", "---", "Log out"]
     assert all(action.property(ICON) for action in window.add_menu.actions()[:3]), "the Add menu's three"

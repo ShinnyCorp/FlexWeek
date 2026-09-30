@@ -7,7 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from uuid import uuid4
 
-from PySide6.QtCore import QEvent, QMargins, QObject, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QMargins, QObject, QSize, Qt, QTime, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -24,7 +24,6 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QBoxLayout,
     QButtonGroup,
-    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -45,7 +44,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QStackedLayout,
     QStackedWidget,
-    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -57,6 +55,7 @@ from desktop.native import autostart
 from desktop.native.calendar import DAY_FULL
 from desktop.native.controller import ROUTINE_STATUS
 from desktop.native.custom_look import UNNAMED, sanitize_saved, wear
+from desktop.native.fields import ClockField, DayPicker, Stepper
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
 from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import drag_step
@@ -86,17 +85,19 @@ from desktop.native.motion import switch_page
 from desktop.native.remind import ALARM_SNOOZE_MIN
 from desktop.native.sound import Bell
 from desktop.native.spotify import SpotifyPlayer, open_in_app
-from desktop.native.tokens import SPACING, type_pt
+from desktop.native.tokens import SPACING
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
-from desktop.native.weekmodel import hhmm_text, length_label, time_format
+from desktop.native.weekmodel import hhmm_text, length_label
 from desktop.native.widgets import (
     CARD_GAP,
     CARD_WIDTH_PAD,
+    SHEET_LIST,
     CardGrid,
     ChoiceCard,
     Choices,
     Dialog,
+    FitScroll,
     FlowLayout,
     Form,
     Segmented,
@@ -105,7 +106,6 @@ from desktop.native.widgets import (
     bare,
     even_fields,
     even_labels,
-    fit_scroll_dialog,
     info_card,
     overlay_scroll_bars,
 )
@@ -188,10 +188,6 @@ TODAYS_APP_KNOBS = ("surface", "corners", "blocks")
 # audit, T33: "Fine-tune this design" and "Fine-tune this look" read as one toggle).
 FINE_TUNE_LOOK = "Show shape, spacing and type"
 OWN_LOOK = "Your own look"
-ABOUT_MIN_WIDTH = 420
-HELP_MIN_WIDTH = 600
-# Screens on the left and shortcuts on the right, over a window at least this wide.
-HELP_TWO_COLUMN_WIDTH = 900
 SECTION_GAP = 14
 ABOUT_LINE = "FlexWeek plans your homework around school, sports and everything else in your week."
 ABOUT_HERE = "Your plans are saved on this computer."
@@ -700,7 +696,7 @@ class SettingsPage(QWidget):
         self.volume = QSpinBox()
         self.volume.setObjectName("prefAlertVolume")
         self.volume.setRange(0, 100)
-        self.volume.setSuffix(" %")
+        self.volume.setSuffix("%")
         self.volume.setValue(int(preferences.get("alert_volume", 80)))
         self.end_chime = Switch("Chime when a session ends")
         self.end_chime.setObjectName("prefEndChime")
@@ -792,11 +788,14 @@ class SettingsPage(QWidget):
         drag_form.addRow("Steps", self.drag_step)
         planning = _section_page("Planning", (planning_card, where_card, drag_card))
         focus_card, focus_form = _card("Focus timer")
-        focus_form.addRow("Focus minutes", self.work)
-        focus_form.addRow("Break minutes", self.break_min)
-        focus_form.addRow("Long break minutes", self.long_break)
+        boxes = (self.work, self.break_min, self.long_break, self.long_every)
+        self.focus_steppers = [Stepper(box) for box in boxes]
+        work, rest, long_rest, every = self.focus_steppers
+        focus_form.addRow("Focus minutes", work)
+        focus_form.addRow("Break minutes", rest)
+        focus_form.addRow("Long break minutes", long_rest)
         focus_form.addRow("Timer preset", self.preset_timer)
-        focus_form.addRow("Long break after", self.long_every)
+        focus_form.addRow("Long break after", every)
         focus_form.addRow(self.auto_split)
         focus = _section_page("Focus", (focus_card,))
         reminders_card, alerts_form = _card("Reminders")
@@ -808,7 +807,7 @@ class SettingsPage(QWidget):
         reminder_form = Form(self.reminder_controls)
         reminder_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         reminder_form.setContentsMargins(0, 0, 0, 0)
-        reminder_form.addRow("How long before", self.lead)
+        reminder_form.addRow("How long before", Stepper(self.lead))
         reminder_form.addRow(self.reminder_sound)
         tone_row = QHBoxLayout()
         tone_row.addWidget(self.alarm_tone)
@@ -843,8 +842,9 @@ class SettingsPage(QWidget):
         self.alarm_name = QLineEdit()
         self.alarm_name.setObjectName("alarmName")
         self.alarm_name.setPlaceholderText("Alarm name")
-        self.alarm_time = QTimeEdit()
-        self.alarm_time.setDisplayFormat(time_format())
+        # A usual time to wake, not midnight (T21 of the 0.17.0 audit).
+        self.alarm_time = ClockField(QTime(7, 0))
+        self.alarm_time.setObjectName("alarmTime")
         self.alarm_sound = QComboBox()
         self.alarm_sound.setObjectName("alarmSound")
         self.alarm_name.setMinimumWidth(120)
@@ -858,32 +858,25 @@ class SettingsPage(QWidget):
         alarms_form.addRow("Sound", self.alarm_sound)
         self.alarm_spotify = QLineEdit()
         self.alarm_spotify.setObjectName("alarmSpotify")
-        self.alarm_spotify.setPlaceholderText("Spotify link (optional)")
-        alarms_form.addRow(self.alarm_spotify)
-        # Two rows, Monday to Thursday and Friday to Sunday. Seven in a line were wider than the page.
-        day_row = QGridLayout()
-        day_row.setHorizontalSpacing(14)
-        self.alarm_days: list[QCheckBox] = []
-        for index, name in enumerate(DAY_FULL):
-            day_box = QCheckBox(name[:3])
-            day_box.setObjectName(f"alarmDay{index}")
-            day_box.setChecked(index < 5)
-            self.alarm_days.append(day_box)
-            day_row.addWidget(day_box, index // 4, index % 4)
+        self.alarm_spotify.setPlaceholderText("Optional")
+        alarms_form.addRow("Spotify link", self.alarm_spotify)
+        # The days as pills on one line, as everywhere else. As check boxes they took two rows, Monday
+        # to Thursday and then Friday to Sunday (T21 of the 0.17.0 audit).
+        self.alarm_day_picker = DayPicker(range(5), "alarmDay")
+        self.alarm_days = self.alarm_day_picker.buttons
         add_alarm = _page_button("Add alarm", "addAlarm")
         add_alarm.clicked.connect(self._add_alarm)
-        remove_alarm = _page_button("Remove alarm", "removeAlarm")
-        remove_alarm.clicked.connect(self._remove_alarm)
-        day_row.setColumnStretch(4, 1)
-        alarms_form.addRow(day_row)
+        self.remove_alarm = _page_button("Remove alarm", "removeAlarm")
+        self.remove_alarm.clicked.connect(self._remove_alarm)
+        alarms_form.addRow("Days", self.alarm_day_picker)
         button_row = QHBoxLayout()
         button_row.setSpacing(8)
         button_row.addWidget(add_alarm)
-        button_row.addWidget(remove_alarm)
+        button_row.addWidget(self.remove_alarm)
         button_row.addStretch(1)
         alarms_form.addRow(button_row)
         all_card, all_form = _card("All alerts")
-        all_form.addRow("Volume", self.volume)
+        all_form.addRow("Volume", Stepper(self.volume))
         all_form.addRow(self.end_chime)
         all_form.addRow(self.tray)
         all_form.addRow(_note(TRAY_NOTE, "prefTrayNote"))
@@ -1075,11 +1068,22 @@ class SettingsPage(QWidget):
         for index in range(self.stack.count()):
             even_fields(self.stack.widget(index))
             even_labels(self.stack.widget(index))
+        # Once the steppers have their look: before it, their − and + had no width yet.
+        QTimer.singleShot(0, self, self._even_focus)
         margins = self.nav.contentsMargins()
         self.nav.setFixedWidth(
             self.nav.sizeHintForColumn(0) + margins.left() + margins.right() + 2 * self.nav.frameWidth()
             + PREFS_NAV_PAD
         )
+
+    def _even_focus(self) -> None:
+        """Timer preset as wide as the − value + fields above and below it (T20 of the 0.17.0 audit);
+        when its longest name is wider, every box widens with it instead."""
+        stepped = self.focus_steppers[0].sizeHint().width()
+        width = max(self.preset_timer.sizeHint().width(), stepped)
+        for stepper in self.focus_steppers:
+            stepper.box.setFixedWidth(stepper.box.width() + width - stepped)
+        self.preset_timer.setFixedWidth(width)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         if event.key() == Qt.Key.Key_Escape:
@@ -1179,6 +1183,8 @@ class SettingsPage(QWidget):
             self.alarm_list.addItem(f"{alarm.get('name')} · {label}{off}\n{when}")
         self._alarms_form.setRowVisible(self.alarm_list, bool(self._alarms))
         self._alarms_form.setRowVisible(self.alarm_empty, not self._alarms)
+        # Nothing to remove until there is an alarm.
+        self.remove_alarm.setVisible(bool(self._alarms))
 
     def _add_alarm(self) -> None:
         if len(self._alarms) >= 20:
@@ -1654,14 +1660,6 @@ class TransferPreviewDialog(QDialog):
         layout.addWidget(buttons)
 
 
-def _close_row(dialog: QDialog) -> QDialogButtonBox:
-    # A Close of its own words, not the standard button, which carries an icon on KDE.
-    buttons = QDialogButtonBox()
-    buttons.addButton("Close", QDialogButtonBox.ButtonRole.RejectRole)
-    buttons.rejected.connect(dialog.reject)
-    return buttons
-
-
 def _line(words: str, name: str) -> QLabel:
     made = QLabel(words)
     made.setObjectName(name)
@@ -1724,7 +1722,8 @@ class ScrollFade(QWidget):
         self.raise_()
 
     def paintEvent(self, _event: QPaintEvent) -> None:  # noqa: N802
-        page = self._area.window().palette().color(QPalette.ColorRole.Window)
+        # The card the words sit on, not the window: a sheet's window is only room for its shadow.
+        page = self._area.parentWidget().palette().color(QPalette.ColorRole.Window)
         clear = QColor(page)
         clear.setAlpha(0)
         ramp = QLinearGradient(0, 0, 0, self.height())
@@ -1755,10 +1754,8 @@ def _logo(side: int) -> QLabel:
 
 class AboutDialog(Dialog):
     def __init__(self, parent: QWidget | None, storage: dict | None, folder: str) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("About FlexWeek")
-        self.setMinimumWidth(ABOUT_MIN_WIDTH)
-        layout = QVBoxLayout(self)
+        super().__init__(parent, sheet=True)
+        layout = self.card_body("About FlexWeek")
         brand = QHBoxLayout()
         brand.setSpacing(SECTION_GAP)
         brand.addWidget(_logo(ABOUT_LOGO_PX))
@@ -1781,32 +1778,23 @@ class AboutDialog(Dialog):
             open_folder.setToolTip(folder)
             open_folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(folder)))
             layout.addWidget(open_folder)
-        layout.addWidget(_close_row(self))
 
 
 class HelpDialog(Dialog):
-    """Enough to find your way: the screens on the left, the keys on the right, drawn as keycaps.
-    One column at large text or over a narrow window, where two would each be too narrow to read."""
+    """Enough to find your way: the screens two by two, then the keys, drawn as keycaps. A list's sheet,
+    600 wide (5.1 A of 0.17.2), so the shortcuts are one column: beside the screens, their words wrapped
+    a word or two to a line."""
 
     def __init__(self, parent: QWidget | None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Help")
-        self.ensurePolished()
-        large = self.font().pointSizeF() >= type_pt("body", "large")
-        wide = parent is not None and parent.window().width() >= HELP_TWO_COLUMN_WIDTH
-        self.columns = 2 if wide and not large else 1
-        self.setMinimumWidth(HELP_TWO_COLUMN_WIDTH if self.columns == 2 else HELP_MIN_WIDTH)
+        super().__init__(parent, sheet=True)
+        layout = self.card_body("Help", SHEET_LIST)
         body = QWidget()
         column = QVBoxLayout(body)
         column.setContentsMargins(0, 0, 0, 0)
-        sides = QBoxLayout(
-            QBoxLayout.Direction.LeftToRight if self.columns == 2 else QBoxLayout.Direction.TopToBottom
-        )
-        sides.setSpacing(SECTION_GAP * 2)
-        column.addLayout(sides)
-        screens = QVBoxLayout()
+        column.setSpacing(SECTION_GAP // 2)
+        column.addWidget(_heading("The screens"))
+        screens = QGridLayout()
         screens.setSpacing(SECTION_GAP // 2)
-        screens.addWidget(_heading("The screens"))
         for index, (name, words) in enumerate(HELP_SCREENS):
             card = QFrame()
             card.setObjectName("helpCard")
@@ -1818,13 +1806,13 @@ class HelpDialog(Dialog):
             title.setObjectName("helpScreenName")
             inside.addWidget(title)
             inside.addWidget(_line(words, f"helpScreen{index}"))
-            screens.addWidget(card)
-        screens.addStretch(1)
-        sides.addLayout(screens, 1)
-        keys_side = QVBoxLayout()
-        keys_side.addWidget(_heading("Keyboard shortcuts"))
+            inside.addStretch(1)
+            screens.addWidget(card, index // 2, index % 2)
+        column.addLayout(screens)
+        column.addSpacing(SECTION_GAP // 2)
+        column.addWidget(_heading("Keyboard shortcuts"))
         # A form, not a grid: a grid gave a two-line description one line and a bit, and cut it.
-        key_list = QWidget()
+        key_list = bare(QWidget())
         key_list.setObjectName("helpKeys")
         keys = QFormLayout(key_list)
         keys.setContentsMargins(0, 0, 0, 0)
@@ -1832,27 +1820,14 @@ class HelpDialog(Dialog):
         keys.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
         for key, what in HELP_KEYS:
             keys.addRow(keycaps(key), _line(what, "helpKeyDoes"))
-        keys_side.addWidget(key_list)
-        keys_side.addStretch(1)
-        sides.addLayout(keys_side, 1)
+        column.addWidget(key_list)
         column.addStretch(1)
         # A dialog's minimum counts a wrapped line as one line, so at large text on a laptop, Help at
         # its minimum squeezed the shortcuts to half their height. A scroll area gives the words the
-        # height they need at the width they get, and the dialog fits the screen.
-        area = QScrollArea()
-        area.setObjectName("helpScroll")
-        area.setWidgetResizable(True)
-        area.setFrameShape(QFrame.Shape.NoFrame)
-        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        area.setWidget(body)
+        # height they need at the width they get, and the sheet fits its window.
+        area = FitScroll(body, "helpScroll")
         self.fades = (ScrollFade(area, top=True), ScrollFade(area, top=False))
-        layout = QVBoxLayout(self)
-        layout.addWidget(area)
-        layout.addWidget(_close_row(self))
-
-    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
-        super().showEvent(event)
-        fit_scroll_dialog(self)
+        layout.addWidget(area, 1)
 
 
 class UpdateDialog(QDialog):

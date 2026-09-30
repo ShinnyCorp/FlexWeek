@@ -17,11 +17,12 @@ from PySide6.QtCore import (
     QPersistentModelIndex,
     QPoint,
     QRect,
+    QRectF,
     QSize,
     Qt,
     Signal,
 )
-from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QKeyEvent, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import (
     QFrame,
     QLabel,
@@ -39,11 +40,12 @@ from desktop.native.elevation import lift
 from desktop.native.fonts import caption, weighted
 from desktop.native.motion import EASE_MS, RISE_PX, appear, distance, glide, settle
 from desktop.native.tokens import WEIGHT_STRONG, Shadow
+from desktop.native.widgets import overlay_scroll_bars
 
 BAR_WIDTH = 560
 BAR_RISE_PX, BAR_RISE_MS = 2 * RISE_PX, EASE_MS + 80
-# Rows shown before the list scrolls, group labels counted.
-VISIBLE_ROWS = 10
+# Room kept under the box when a long list reaches the bottom of the window.
+BOTTOM_GAP = 24
 ROW_PX = 36
 LABEL_PX = 28
 PLACEHOLDER = "Type a command or the name of your homework"
@@ -107,13 +109,18 @@ def grouped(query: str, commands: list[Command]) -> list[tuple[str, list[Command
     return [(group, rows[group]) for group in order]
 
 
+# A key hint's cap: its padding beside the letters and above them, and its corners.
+CAP_PAD, CAP_RISE, CAP_CORNER = 6, 2, 4
+
+
 class CommandRow(QStyledItemDelegate):
-    """A command drawn as the style draws a row, with its key on the right in the muted colour; a group
-    label drawn small and muted."""
+    """A command drawn as the style draws a row, with its keys on the right as keycaps, as Help draws
+    them; a group label drawn small and muted."""
 
     def __init__(self, parent: QObject) -> None:
         super().__init__(parent)
         self.muted = "#5b6474"
+        self.edge = "#d0d5dd"
 
     def sizeHint(  # noqa: N802
         self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
@@ -136,13 +143,33 @@ class CommandRow(QStyledItemDelegate):
         super().paint(painter, option, index)
         keys = index.data(KEYS_ROLE)
         if keys:
-            painter.save()
-            font = caption(option.font)
-            painter.setFont(font)
+            self._paint_keys(painter, option.rect, caption(option.font), keys)
+
+    def _paint_keys(self, painter: QPainter, row: QRect, font: QFont, keys: str) -> None:
+        """Each key a cap with an edge, right to left from the row's end, "+" plain between them
+        (T22 of the 0.17.0 audit: they were plain letters)."""
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setFont(font)
+        metrics = QFontMetrics(font)
+        height = metrics.height() + 2 * CAP_RISE
+        top = row.center().y() - height // 2
+        right = row.right() - 12
+        for position, key in enumerate(reversed(keys.split("+"))):
+            if position:
+                join = metrics.horizontalAdvance("+") + 6
+                painter.setPen(QColor(self.muted))
+                painter.drawText(QRect(right - join, top, join, height), Qt.AlignmentFlag.AlignCenter, "+")
+                right -= join
+            width = max(metrics.horizontalAdvance(key) + 2 * CAP_PAD, height)
+            cap = QRectF(right - width + 0.5, top + 0.5, width - 1, height - 1)
+            painter.setPen(QPen(QColor(self.edge), 1))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(cap, CAP_CORNER, CAP_CORNER)
             painter.setPen(QColor(self.muted))
-            right = QRect(option.rect.adjusted(8, 0, -12, 0))
-            painter.drawText(right, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, keys)
-            painter.restore()
+            painter.drawText(cap, Qt.AlignmentFlag.AlignCenter, key)
+            right -= width
+        painter.restore()
 
 
 class CommandBar(QWidget):
@@ -185,6 +212,7 @@ class CommandBar(QWidget):
         self.list.setObjectName("commandList")
         self.list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.list.setIconSize(QSize(16, 16))
+        overlay_scroll_bars(self.list)
         self.rows = CommandRow(self.list)
         self.list.setItemDelegate(self.rows)
         self.list.itemClicked.connect(self._run_item)
@@ -199,6 +227,7 @@ class CommandBar(QWidget):
         """The icons and labels in the look's muted colour, and the box's shadow, or none."""
         self._icon_colour = palette["muted"]
         self.rows.muted = palette["muted"]
+        self.rows.edge = palette["hairline_strong"]
         self._search.setIcon(icons.icon("search", self._icon_colour))
         if shadow is None:
             self.box.setGraphicsEffect(None)
@@ -260,10 +289,23 @@ class CommandBar(QWidget):
         self.nothing.setVisible(found == 0)
         if found:
             self._step_to(0, 1)
-            shown = self._items()[:VISIBLE_ROWS]
-            height = sum(ROW_PX if item.data(KEY_ROLE) else LABEL_PX for item in shown)
-            self.list.setFixedHeight(height + 2 * self.list.frameWidth())
+            # Every row while the window has room for them, so a list that fits never scrolls; past
+            # that, the list scrolls under the thin bar the rest of the app uses.
+            height = sum(ROW_PX if item.data(KEY_ROLE) else LABEL_PX for item in self._items())
+            self.list.setFixedHeight(min(height, self._room()) + 2 * self.list.frameWidth())
         self.box.adjustSize()
+
+    def _room(self) -> int:
+        """How tall the list may be: the window below the box's top, less the field and a gap."""
+        host = self.parentWidget()
+        if host is None:
+            return 10 * ROW_PX
+        above = self.input.sizeHint().height() + 2 * self.box.layout().spacing() + 2 * 8 + 1
+        return max(4 * ROW_PX, host.height() - self._top() - above - BOTTOM_GAP)
+
+    def _top(self) -> int:
+        host = self.parentWidget()
+        return max(24, round(host.height() / 6)) if host is not None else 24
 
     def _place(self) -> None:
         settle(self.box)
@@ -275,7 +317,7 @@ class CommandBar(QWidget):
         self.box.setFixedWidth(width)
         self.box.adjustSize()
         # A fixed top, so the box grows and shrinks downwards as typing filters the list.
-        self.box.move((host.width() - width) // 2, max(24, round(host.height() / 6)))
+        self.box.move((host.width() - width) // 2, self._top())
 
     def _run_item(self, item: QListWidgetItem) -> None:
         key = item.data(KEY_ROLE)

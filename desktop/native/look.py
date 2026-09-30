@@ -1075,6 +1075,18 @@ def control_rules(palette: dict, radius: int, text: float | str, art: dict[str, 
         "width: 24px; border: none; background: transparent; }"
         f"QAbstractSpinBox::up-arrow {{ image: url({up}); width: 12px; height: 12px; }}"
         f"QAbstractSpinBox::down-arrow {{ image: url({down}); width: 12px; height: 12px; }}"
+        # A stepped number: − and + joined to its box, on the page's colour (5.2 A of 0.17.2).
+        'QAbstractSpinBox[stepped="true"] { border-radius: 0; }'
+        f'QPushButton[step="true"] {{ background: {palette["window"]}; color: {palette["muted"]}; '
+        f'border: 1px solid {palette["hairline_strong"]}; padding: 0; min-width: 34px; max-width: 34px; '
+        "min-height: 0; }"
+        f'QPushButton[step="true"]:hover {{ background: {palette["hairline"]}; color: {palette["text"]}; }}'
+        f'QPushButton[step="true"]:disabled {{ background: {palette["window"]}; '
+        f'color: {mix(palette["muted"], palette["window"], 0.5)}; }}'
+        f"QPushButton#stepLess {{ border-right: none; border-radius: 0; border-top-left-radius: {corner}px; "
+        f"border-bottom-left-radius: {corner}px; }}"
+        f"QPushButton#stepMore {{ border-left: none; border-radius: 0; border-top-right-radius: {corner}px; "
+        f"border-bottom-right-radius: {corner}px; }}"
         "QDateTimeEdit::drop-down { subcontrol-origin: padding; subcontrol-position: center right; "
         "width: 26px; border: none; background: transparent; }"
         f"QDateTimeEdit::down-arrow {{ image: url({down}); width: 14px; height: 14px; }}"
@@ -1088,6 +1100,8 @@ def control_rules(palette: dict, radius: int, text: float | str, art: dict[str, 
         f"selection-color: {palette['accent_ink']}; outline: 0; padding: 0; border: none; "
         "border-radius: 0; }"
         f"QCalendarWidget QAbstractItemView:disabled {{ color: {palette['muted']}; }}"
+        # The month button needs no arrow of its own: the month is a menu to pick from as it was.
+        "QCalendarWidget QToolButton::menu-indicator { image: none; width: 0; }"
         "QCheckBox, QRadioButton { background: transparent; spacing: 8px; }"
         f"QCheckBox::indicator, QRadioButton::indicator {{ width: 16px; height: 16px; "
         f"border: 1px solid {palette['muted']}; background: {palette['field']}; }}"
@@ -1210,9 +1224,11 @@ def _rgba(colour: str, alpha: float) -> str:
 DISABLED = 0.4
 
 
-def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str) -> str:
+def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str, text: float | str) -> str:
     """Dialogs (decision 23 of 0.17): the body is the card, a sheet's card is rounded as a sheet, and a
-    button that cannot be pressed yet keeps its shape at 40 %, not a grey slab that looked broken."""
+    button that cannot be pressed yet keeps its shape at 40 %, not a grey slab that looked broken.
+    A sheet's title is a heading, and each label above its field is a small muted caption (5.1 A of
+    0.17.2)."""
     edges = _depth_rules(depth, palette)
     sheet = RADIUS_SHEET if card_radius else 0
     return (
@@ -1220,11 +1236,17 @@ def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str) -
         'QDialog[sheet="true"] { background: transparent; }'
         f"QFrame#sheetCard {{ background: {palette['panel']}; border-radius: {sheet}px; padding: 0; "
         f"{edges} }}"
+        f"QLabel#sheetTitle {{ font-size: {type_pt('heading', text)}pt; font-weight: {WEIGHT_STRONG}; }}"
+        f"QPushButton#sheetClose {{ padding: {SPACING[0]}px; min-height: 0; min-width: 0; }}"
+        f"QLabel#fieldLabel {{ color: {palette['muted']}; font-size: {type_pt('caption', text)}pt; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
         'QWidget[bare="true"], QScrollArea[bare="true"] { background: transparent; border: none; '
         "padding: 0; border-radius: 0; }"
         'QScrollArea[bare="true"] > QWidget#qt_scrollarea_viewport { background: transparent; }'
+        # Its words in the text colour: the accent's own ink at 40 % on that fill could not be read
+        # (Running late's Accept, T6 of the 0.17.0 audit).
         f"QDialog QPushButton:disabled {{ background: {_rgba(palette['accent'], DISABLED)}; "
-        f"color: {_rgba(palette['accent_ink'], DISABLED)}; }}"
+        f"color: {palette['text']}; }}"
         'QDialog QPushButton[quiet="true"]:disabled, '
         'QWidget#settingsPage QPushButton[quiet="true"]:disabled '
         f"{{ {quiet_edge} color: {_rgba(palette['text'], DISABLED)}; }}"
@@ -1252,8 +1274,9 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     )
     quiet_rule = ", ".join(f"QPushButton#{name}" for name in quiet)
     quiet_hover = ", ".join(f"QPushButton#{name}:hover" for name in quiet)
-    pills = "QPushButton#setupChip, QPushButton#setupDay, QPushButton#setupStudyChip"
-    pills_hover = "QPushButton#setupChip:hover, QPushButton#setupDay:hover, QPushButton#setupStudyChip:hover"
+    day = 'QPushButton[pill="true"]'
+    pills = f"QPushButton#setupChip, {day}, QPushButton#setupStudyChip"
+    pills_hover = f"QPushButton#setupChip:hover, {day}:hover, QPushButton#setupStudyChip:hover"
     return (
         f"QWidget#setupRail {{ background: {palette['panel']}; }}"
         f"QWidget#setupNav {{ background: {palette['window']}; }}"
@@ -1289,9 +1312,14 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         f"QFrame#setupGroup {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
         f"{pills} {{ background: {palette['field']}; color: {palette['text']}; {edges} "
         f"border-radius: 14px; padding: 4px 12px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"
-        f"QPushButton#setupDay {{ padding: 4px 9px; }}"
+        f"{day} {{ padding: 4px 6px; }}"
         f"{pills_hover} {{ background: {mix(palette['accent'], palette['field'], 0.14)}; }}"
-        f"QPushButton#setupChip:checked, QPushButton#setupDay:checked {{ background: {palette['accent']}; "
+        f"QPushButton#setupChip:checked, {day}:checked {{ background: {palette['accent']}; "
+        f"color: {palette['accent_ink']}; }}"
+        # Days that cannot change, as under "This day only": the picked one still reads as picked.
+        f"{day}:disabled {{ background: {palette['field']}; "
+        f"color: {mix(palette['text'], palette['field'], 0.5)}; }}"
+        f"{day}:checked:disabled {{ background: {mix(palette['accent'], palette['field'], 0.6)}; "
         f"color: {palette['accent_ink']}; }}"
         f"{quiet_rule} {{ background: transparent; color: {palette['accent']}; border: none; "
         f"padding: {pad}px 2px; font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
@@ -1555,6 +1583,8 @@ def pack_stylesheet(
         f"QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {{ background: {palette['field']}; "
         f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; "
         f"min-height: {field_min}px; {edges} }}"
+        # A typed time and a stepped number have no arrows inside, so no room kept for them.
+        f'QAbstractSpinBox[typed="true"], QAbstractSpinBox[stepped="true"] {{ padding-right: {pad}px; }}'
         f"QPlainTextEdit {{ background: {palette['field']}; color: {palette['text']}; "
         f"padding: {pad}px; border-radius: {radius}px; {edges} }}"
         f"QTableWidget {{ gridline-color: {palette['hairline']}; "
@@ -1564,7 +1594,7 @@ def pack_stylesheet(
         f"QHeaderView, QStackedWidget {{ background: transparent; border: none; "
         f"padding: 0; border-radius: 0; }}"
         # The week's hours paint their own background; as a frame the scroll area boxed them twice.
-        f"QScrollArea#weekScroll, QScrollArea#dayScroll, QScrollArea#helpScroll {{ background: transparent; "
+        f"QScrollArea#weekScroll, QScrollArea#dayScroll {{ background: transparent; "
         f"border: none; padding: 0; border-radius: 0; }}"
         # What follows the pointer while something is carried: a pill, readable over any calendar.
         f"QLabel#heldChip {{ background: {palette['accent']}; color: {palette['accent_ink']}; "
@@ -1622,7 +1652,7 @@ def pack_stylesheet(
         + setup_rules(palette, radius, scale, pad, knobs["depth"])
         + settings_rules(palette, radius, scale, pad, knobs["depth"])
         + auth_rules(palette, knobs, radius, card_radius)
-        + dialog_rules(palette, card_radius, knobs["depth"], quiet_edge)
+        + dialog_rules(palette, card_radius, knobs["depth"], quiet_edge, scale)
         + f"QPushButton#updateSkip {{ background: transparent; "
         f"color: {palette['accent']}; border: none; padding: {pad}px 0; "
         f"font-size: {pt['caption']}; text-align: left; min-height: 0; }}"
@@ -1729,8 +1759,10 @@ def overlay_rules(palette: dict, knobs: dict, pad: int, card_radius: int) -> str
         "QListWidget#commandList { background: transparent; border: none; padding: 0; }"
         f"QListWidget#commandList::item {{ color: {palette['text']}; padding: 0 8px; "
         f"border-radius: {RADIUS_CONTROL if card_radius else 0}px; }}"
-        f"QListWidget#commandList::item:hover, QListWidget#commandList::item:selected {{ "
-        f"background: {hover}; color: {palette['text']}; }}"
+        f"QListWidget#commandList::item:hover {{ background: {hover}; color: {palette['text']}; }}"
+        # The row Enter runs, tinted with the accent, not the grey of a row under the pointer (T22).
+        f"QListWidget#commandList::item:selected {{ "
+        f"background: {mix(palette['accent'], palette['panel'], 0.14)}; color: {palette['text']}; }}"
         f"QLabel#commandNothing {{ color: {palette['muted']}; padding: 8px; }}"
         # A drawn menu: transparent round its panel, which it paints itself, with the shadow's room.
         f'QMenu[drawn="true"] {{ background: transparent; border: none; padding: {MENU_EDGE + 4}px; }}'

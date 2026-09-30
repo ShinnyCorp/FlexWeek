@@ -61,6 +61,9 @@ def page(dialog: SettingsPage, row: int) -> QWidget:
 
 
 def label_for(widget: QWidget) -> str:
+    # A number is stepped by − and + around it, and the three are the form's field together.
+    if widget.parentWidget().objectName() == "stepper":
+        widget = widget.parentWidget()
     form = widget.parentWidget().layout()
     assert isinstance(form, QFormLayout)
     label = form.labelForField(widget)
