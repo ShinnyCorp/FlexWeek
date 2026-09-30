@@ -44,7 +44,8 @@ def test_the_column_of_cards_is_centred_up_to_960(qapp: QApplication, window: Na
     page = open_settings(qapp, window, (1600, 900))
     area = page.stack.currentWidget()
     body = area.widget()
-    column = body.layout().itemAt(1).widget()
+    items = [body.layout().itemAt(index) for index in range(body.layout().count())]
+    column = next(item.widget() for item in items if item.widget() is not None)
     assert column.width() == SETTINGS_COLUMN == 960
     left = column.mapTo(area.viewport(), QPoint(0, 0)).x()
     right = area.viewport().width() - left - column.width()

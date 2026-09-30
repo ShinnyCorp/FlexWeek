@@ -200,7 +200,7 @@
   "name": "Settings opens on Main view with one sentence on designs",
   "old": "lines = (DESIGN_LINE, blurb) if slot == \"main\" else (blurb,)",
   "new": "lines = (blurb,)",
-  "test": "desktop/tests/test_settings_words.py::test_appearance_opens_on_main_view_and_ends_with_animations_and_fine_tune"
+  "test": "desktop/tests/test_settings_words.py::test_appearance_opens_on_colours_then_the_designs_and_ends_with_animations"
  },
  {
   "file": "desktop/native/settings.py",
@@ -410,7 +410,7 @@
   "name": "the rail never folds",
   "old": "        narrow = self.width() < NARROW_WIDTH\n        if narrow != self.rail.folded:\n",
   "new": "        narrow = False\n        if narrow != self.rail.folded:\n",
-  "test": "desktop/tests/test_week_side.py::test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_say_their_names"
+  "test": "desktop/tests/test_week_side.py::test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_keep_their_times"
  },
  {
   "file": "desktop/native/hours/canvas.py",

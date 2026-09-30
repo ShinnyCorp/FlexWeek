@@ -581,7 +581,8 @@ def test_a_custom_look_dresses_the_window_and_is_kept_with_the_saved_looks(
     assert "#262d3b" in colours
     window._save_look()
     stored = json.loads(look_file().read_text())
-    assert stored["custom"] == custom and stored["saved_looks"] == [custom]
+    assert stored["custom"] == custom
+    assert stored.get("saved_looks") == [custom], "the saved looks are not in the look file"
     window._look, window._saved_looks = {}, []
     window._load_look()
     assert window._look["custom"] == custom and window._saved_looks == [custom]
@@ -2215,6 +2216,7 @@ def test_a_new_view_is_live_at_once_while_the_old_one_fades(qapp: QApplication, 
     assert title.full_text() != week_title
     over_title = [picture for picture in _fades(window) if picture.geometry().topLeft() == title.pos()]
     assert len(_fades(window)) == 2 and len(over_title) == 1, "the page and, over the new title, the old one"
+    assert title.graphicsEffect() is not None, "the new title comes in through a fade of its own"
     assert title.graphicsEffect().opacity == 0, "and the new title comes in with the page, not a frame early"
     effect = month.graphicsEffect()
     assert effect.opacity == 0, "Month starts under the week, which is still there"

@@ -142,6 +142,7 @@ def test_customise_fills_the_window_and_a_change_is_worn_at_once_while_the_contr
     assert editor.state.text() == ""
     type_colour(qapp, editor, "page", "#1e2430")
     type_colour(qapp, editor, "text", "#999999")
+    assert "custom" in window._look, "the change is not worn"
     worn = window._look["custom"]
     assert worn["colours"]["page"] == "#1e2430" and worn["colours"]["text"] == "#999999"
     assert window.week_table.hours.painter.colours["window"] == "#1e2430"
@@ -206,6 +207,7 @@ def test_done_keeps_the_look_by_its_name_and_more_looks_offers_it_beside_the_ten
     assert page.accent.isEnabled() and page.knobs["density"].isEnabled()
     page.look.yours.cards[0].chosen.emit()
     pump(qapp)
+    assert "custom" in window._look, "the saved look chosen is not worn"
     assert window._look["custom"]["name"] == "Night study"
     assert window.week_table.hours.painter.colours["panel"] == "#262d3b"
     page.close_page()

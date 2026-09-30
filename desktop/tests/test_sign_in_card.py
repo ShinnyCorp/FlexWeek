@@ -59,10 +59,12 @@ def whole(widget: QWidget) -> bool:
 
 def test_the_wordmark_sits_on_the_page_centred_above_the_card(signed_out: NativeWindow) -> None:  # noqa: F811
     held = card(signed_out)
-    brand = signed_out._stack.currentWidget().findChild(QLabel, "authBrand")
-    assert not held.isAncestorOf(brand), "the wordmark is on the page, not in the card"
     page = signed_out._stack.currentWidget()
-    brand_box = brand.geometry().united(page.findChild(QLabel, "authLogo").geometry())
+    brand = page.findChild(QLabel, "authBrand")
+    logo = page.findChild(QLabel, "authLogo")
+    assert brand is not None and logo is not None, "the sign-in page has no wordmark and logo"
+    assert not held.isAncestorOf(brand), "the wordmark is on the page, not in the card"
+    brand_box = brand.geometry().united(logo.geometry())
     card_box = held.geometry()
     assert brand.mapTo(page, QPoint(0, brand.height())).y() < card_box.top()
     assert abs(brand_box.center().x() - card_box.center().x()) <= 2, "centred over the card"
