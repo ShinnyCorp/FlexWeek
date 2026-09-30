@@ -41,6 +41,7 @@ from desktop.native.motion import EASE_MS, RISE_PX, appear, distance, glide, set
 from desktop.native.tokens import WEIGHT_STRONG, Shadow
 
 BAR_WIDTH = 560
+BAR_RISE_PX, BAR_RISE_MS = 2 * RISE_PX, EASE_MS + 80
 # Rows shown before the list scrolls, group labels counted.
 VISIBLE_ROWS = 10
 ROW_PX = 36
@@ -153,6 +154,8 @@ class CommandBar(QWidget):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setObjectName("commandBar")
+        # Over the whole window: a notice said while it is open goes under it (widgets.Toast).
+        self.setProperty("covers", True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._commands: list[Command] = []
         self._icon_colour = "#5b6474"
@@ -213,10 +216,11 @@ class CommandBar(QWidget):
         self.raise_()
         self.input.setFocus()
         appear(self, self.motion)
-        # The box's own effect is its shadow, so it rises by moving (decision 31 of 0.17).
+        # The box's own effect is its shadow, so it rises by moving (decision 31 of 0.17). At a
+        # notice's 8 pixels, over the same time the window dims, the rise was done before it was seen.
         home = self.box.geometry()
-        self.box.move(home.topLeft() + QPoint(0, distance(RISE_PX, self.motion)))
-        glide(self.box, home, self.motion, ms=EASE_MS)
+        self.box.move(home.topLeft() + QPoint(0, distance(BAR_RISE_PX, self.motion)))
+        glide(self.box, home, self.motion, ms=BAR_RISE_MS)
 
     def close_bar(self) -> None:
         self.hide()

@@ -100,7 +100,7 @@
  {
   "file": "desktop/native/window.py",
   "name": "Plan leaves its blocks off screen",
-  "old": "        shown.scroll.scroll_to(minute, 60)\n",
+  "old": "        shown.scroll.reveal(minute, 60, self._motion)\n",
   "new": "        pass\n",
   "test": "desktop/tests/test_hours_open.py::test_after_plan_the_week_scrolls_to_the_first_homework_it_placed"
  },

@@ -1526,7 +1526,11 @@ class NativeSession(QObject):
                     else:
                         push_step(self._undo, self._pending_step)
                     self._redo.clear()
-                self._say(held if held is not None else "Saved.")
+                if planned:
+                    # `planned` says it, with Undo.
+                    self.message = held or "Saved."
+                else:
+                    self._say(held if held is not None else "Saved.")
             self._traveling = None
             self._travel_step = None
             self._pending_step = None
@@ -1664,10 +1668,14 @@ class NativeSession(QObject):
             if changed and not split_note:
                 self._history_label = "planning the week"
             placed_note = plan_sentence(placed, waiting) + split_note
-            self._say(placed_note)
-            self.week_changed.emit()
             if not changed and not self.dirty and not self.dirty_assignments:
+                self._say(placed_note)
+                self.week_changed.emit()
                 return
+            # Said once its save lands, by `planned`, with Undo. Said now as well, the toast showed it
+            # without Undo and then rewrapped it (Grok Bot's 0.17.0 audit, T7).
+            self.message = placed_note
+            self.week_changed.emit()
             self.dirty = self.dirty or changed
             self.save(status=placed_note, join=join)
             self._plan_step = None if join or not changed else self._pending_step

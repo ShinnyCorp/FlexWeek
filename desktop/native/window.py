@@ -177,6 +177,46 @@ WINDOW_SIZE = (1280, 800)
 WINDOW_MIN_WIDTH = 800
 # The longest the old week's picture waits for the next one before it fades anyway.
 TRAVEL_WAIT_MS = 900
+# Greyed while the session is busy, but only once it has been busy this long: a plan takes a few
+# milliseconds, and greying for them flashed the whole top bar (Grok Bot's 0.17.0 audit, T7). They
+# take no clicks, keys or shortcuts from the moment it is busy (BusyGuard).
+BUSY_LOOK_MS = 250
+BUSY_BUTTONS = (
+    "createAccount",
+    "signIn",
+    "recoveryContinue",
+    "addFixed",
+    "addHomework",
+    "addButton",
+    "addArrow",
+    "solveButton",
+    "saveButton",
+    "signOut",
+    "prevWeek",
+    "nextWeek",
+    "reloadWeek",
+    "viewDay",
+    "viewWeek",
+    "viewMonth",
+    "undoButton",
+    "redoButton",
+    "copyBlock",
+    "pasteBlock",
+    "duplicateBlock",
+    "copyDay",
+    "routinesButton",
+    "unfinishedOpen",
+    "runningLate",
+    "availabilityButton",
+    "settingsButton",
+    "restoreButton",
+    "accountButton",
+    "openSpotify",
+    "checkUpdates",
+    "forgotPassword",
+    "recoverAccount",
+    "moreButton",
+)
 # The views in the order the top bar's segments show them, which a change of view slides along.
 VIEW_ORDER = ("day", "week", "month")
 PLAN_LABEL = "Plan my homework"
@@ -321,6 +361,26 @@ def brand_row() -> QHBoxLayout:
     return row
 
 
+class BusyGuard(QObject):
+    """Takes no clicks, keys or shortcuts on the buttons it watches while the session is busy, from
+    the first moment: they are greyed only after BUSY_LOOK_MS."""
+
+    SWALLOWED = (
+        QEvent.Type.MouseButtonPress,
+        QEvent.Type.MouseButtonRelease,
+        QEvent.Type.MouseButtonDblClick,
+        QEvent.Type.KeyPress,
+        QEvent.Type.Shortcut,
+    )
+
+    def __init__(self, parent: QObject, busy: Callable[[], bool]) -> None:
+        super().__init__(parent)
+        self._busy = busy
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        return event.type() in self.SWALLOWED and self._busy()
+
+
 class PasswordField(QLineEdit):
     """A password box with an eye inside its right edge that shows what is typed and hides it again.
     A Show button beside the box made it 76 pixels narrower than the username box above it."""
@@ -458,6 +518,11 @@ class NativeWindow(QMainWindow):
         self.session.recovery_codes.connect(self._show_recovery)
         self.session.week_changed.connect(self._on_week)
         self.session.status.connect(self._on_status)
+        self._busy_guard = BusyGuard(self, lambda: self.session.busy)
+        self._busy_look = QTimer(self)
+        self._busy_look.setSingleShot(True)
+        self._busy_look.setInterval(BUSY_LOOK_MS)
+        self._busy_look.timeout.connect(self._grey_while_busy)
         self.session.busy_changed.connect(self._on_busy)
         self.session.save_finished.connect(self._on_save_finished)
         self.session.plan_conflicts.connect(self._on_plan_conflicts)
@@ -1758,46 +1823,16 @@ class NativeWindow(QMainWindow):
         return GREYED_TIPS.get(name, "")
 
     def _on_busy(self, busy: bool) -> None:
-        names = (
-            "createAccount",
-            "signIn",
-            "recoveryContinue",
-            "addFixed",
-            "addHomework",
-            "addButton",
-            "addArrow",
-            "solveButton",
-            "saveButton",
-            "signOut",
-            "prevWeek",
-            "nextWeek",
-            "reloadWeek",
-            "viewDay",
-            "viewWeek",
-            "viewMonth",
-            "undoButton",
-            "redoButton",
-            "copyBlock",
-            "pasteBlock",
-            "duplicateBlock",
-            "copyDay",
-            "routinesButton",
-            "unfinishedOpen",
-            "runningLate",
-            "availabilityButton",
-            "settingsButton",
-            "restoreButton",
-            "accountButton",
-            "openSpotify",
-            "checkUpdates",
-            "forgotPassword",
-            "recoverAccount",
-            "moreButton",
-        )
-        for name in names:
+        for name in BUSY_BUTTONS:
             button = self.findChild(QPushButton, name)
-            if button is not None:
-                button.setEnabled(not busy)
+            if button is not None and button.property("busyGuard") is None:
+                button.setProperty("busyGuard", True)
+                button.installEventFilter(self._busy_guard)
+        if busy:
+            self._busy_look.start()
+        else:
+            self._busy_look.stop()
+            self._grey_while_busy()
         retry = self.findChild(QPushButton, "retrySave")
         can_retry = not busy and self.session.pending_save is not None and not self.session.conflict
         if retry is not None:
@@ -1820,6 +1855,13 @@ class NativeWindow(QMainWindow):
         if not busy and (self._setup_prefs or self._setup_work_windows is not None or self._setup_week):
             # A moment later, so a plan that finished just now saves its week before setup writes.
             QTimer.singleShot(0, self._flush_setup)
+
+    def _grey_while_busy(self) -> None:
+        busy = self.session.busy
+        for name in BUSY_BUTTONS:
+            button = self.findChild(QPushButton, name)
+            if button is not None:
+                button.setEnabled(not busy)
 
     def _on_recovery_ack(self, checked: bool) -> None:
         self.recovery_continue.setEnabled(checked and not self.session.busy)
@@ -1865,7 +1907,7 @@ class NativeWindow(QMainWindow):
             for piece in self._turn_pieces()
         }
 
-    def _begin_turn(self) -> tuple[QLabel, dict, int] | None:
+    def _begin_turn(self) -> tuple[QLabel, dict, int, QLabel | None, str] | None:
         """Before another view, My day or another design is shown: a picture of everything under the
         top bar, where each part of it was, and which way the segments go, so the new page, with its
         chrome and colours, fades through in one frame once it is built (decisions 28 and 29)."""
@@ -1878,19 +1920,27 @@ class NativeWindow(QMainWindow):
         picture = hold_picture(page, self._motion, QRect(0, top, page.width(), page.height() - top))
         if picture is None:
             return None
+        # The title is in the top bar, outside the picture: it changes with the page, not a frame early.
+        title = self.week_title
+        title_picture = hold_picture(title.parentWidget(), self._motion, title.geometry(), beside=True)
         direction = 0
         # Day, Week and Month slide toward the segment chosen; My day and a new design only fade.
         if not was[0] and not now[0] and was[2:] == now[2:] and {was[1], now[1]} <= set(VIEW_ORDER):
             step = VIEW_ORDER.index(now[1]) - VIEW_ORDER.index(was[1])
             direction = (step > 0) - (step < 0)
-        return picture, self._places(), direction
+        return picture, self._places(), direction, title_picture, title.full_text()
 
-    def _finish_turn(self, turn: tuple[QLabel, dict, int] | None) -> None:
-        """The new page is built and dressed: what changed fades through to it. The parts that stayed
-        where they were are left out of the picture, so they neither blink nor drift."""
+    def _finish_turn(self, turn: tuple[QLabel, dict, int, QLabel | None, str] | None) -> None:
+        """The new page is built and dressed: what changed fades through to it, the title with it. The
+        parts that stayed where they were are left out of the picture, so they neither blink nor
+        drift."""
         if turn is None:
             return
-        picture, before, direction = turn
+        picture, before, direction, title_picture, title_was = turn
+        if title_picture is not None and self.week_title.full_text() != title_was:
+            fade_through(title_picture, [self.week_title], self._motion)
+        elif title_picture is not None:
+            title_picture.deleteLater()
         self._week_page.layout().activate()
         after = self._places()
         changed = [piece for piece in self._turn_pieces() if before[piece] != after[piece]]
@@ -2146,7 +2196,7 @@ class NativeWindow(QMainWindow):
         day, minute = first
         if shown is self.day_view and day != shown.day:
             return
-        shown.scroll.scroll_to(minute, 60)
+        shown.scroll.reveal(minute, 60, self._motion)
 
     def _keep_rail(self, _shown: bool) -> None:
         """The month folded or shown in the rail is kept on this computer, as the zoom is."""
@@ -2263,6 +2313,8 @@ class NativeWindow(QMainWindow):
             self._telling = False
 
     def _on_planned(self, said: str) -> None:
+        # The answer to Plan my homework, so no later status is taken for it.
+        self._telling = False
         self._set_notice(said, "Undo", self._undo_from_notice)
         self._notice_step = self.session.last_step()
 

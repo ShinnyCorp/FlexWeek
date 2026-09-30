@@ -766,6 +766,14 @@ class Toast(QWidget):
         self.raise_()
         self.button.setVisible(bool(button))
         self.button.raise_()
+        # Something laid over the whole window, such as Ctrl+K, stays over a notice said under it:
+        # raised above it, the notice stayed bright over the dimmed window.
+        host = self.parentWidget()
+        if host is not None:
+            direct = Qt.FindChildOption.FindDirectChildrenOnly
+            for cover in host.findChildren(QWidget, options=direct):
+                if cover.property("covers") and cover.isVisible():
+                    cover.raise_()
         if not was_shown:
             # The button is the window's own child, so it rises beside the card rather than with it.
             appear(self, self.motion, rise=True)

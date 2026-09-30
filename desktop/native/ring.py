@@ -26,6 +26,9 @@ SCALE_ROOM = 50 / 440
 NUMBER_TIMES = 3.2
 # How far the track sits from the page towards the text, by the look's family.
 TRACK_SHARE = {"light": 0.09, "dark": 0.15, "contrast": 0.32}
+# A timer set but not started: its arc this share of the way from the track to the accent. Solid accent
+# before Start read as a timer already finished.
+WAITING_SHARE = 0.45
 # How long the arc eases to a new minute at Normal, as the mock-up's does (designs/one.css).
 ARC_MS = 300
 
@@ -61,6 +64,7 @@ class CountdownRing(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._colours = RingColours("#3d6fc4", "#e6e8ec", "#111827", "#5b6474")
         self._left = 1.0
+        self._waiting = False
         self._number = ""
         self._unit = ""
         self._scale = 1.0
@@ -86,6 +90,11 @@ class CountdownRing(QWidget):
 
     def set_colours(self, colours: RingColours) -> None:
         self._colours = colours
+        self.update()
+
+    def set_waiting(self, waiting: bool) -> None:
+        """Set but not started: the arc is drawn softer, so the track still shows."""
+        self._waiting = waiting
         self.update()
 
     def set_left(self, share: float) -> None:
@@ -233,7 +242,8 @@ class CountdownRing(QWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(box)
         if self._left > 0:
-            pen.setColor(QColor(colours.arc))
+            arc = mix_oklab(colours.arc, colours.track, WAITING_SHARE) if self._waiting else colours.arc
+            pen.setColor(QColor(arc))
             pen.setCapStyle(Qt.PenCapStyle.RoundCap if self._left < 1 else Qt.PenCapStyle.FlatCap)
             painter.setPen(pen)
             start, span = arc_angles(self._left)

@@ -111,8 +111,10 @@ def quick_focus(window: NativeWindow) -> None:
     assert window.session.focus is None, "Quick focus waits for Start"
     assert on_screen(window) == "focusPage"
     assert visible_buttons(window.focus_screen) == ["Back", "Start"]
+    assert window.focus_screen.ring._waiting, "set but not started: drawn softer"
     QTest.mouseClick(window.focus_screen.start, LEFT)
     assert window.session.focus is not None
+    assert not window.focus_screen.ring._waiting
 
 
 def test_quick_focus_fills_the_window_and_esc_comes_back(qapp: QApplication, window: NativeWindow) -> None:

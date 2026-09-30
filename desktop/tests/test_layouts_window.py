@@ -2175,14 +2175,20 @@ def at_level(window: NativeWindow, level: str) -> None:
 
 def test_a_new_view_is_live_at_once_while_the_old_one_fades(qapp: QApplication, window: NativeWindow) -> None:
     at_level(window, "normal")
+    title = window.week_title
+    week_title = title.full_text()
     click(window, "viewMonth")
     month = window._planner_widget("month")
     assert window.planner.currentWidget() is month
-    assert len(_fades(window)) == 1
+    assert title.full_text() != week_title
+    over_title = [picture for picture in _fades(window) if picture.geometry().topLeft() == title.pos()]
+    assert len(_fades(window)) == 2 and len(over_title) == 1, "the page and, over the new title, the old one"
+    assert title.graphicsEffect().opacity == 0, "and the new title comes in with the page, not a frame early"
     effect = month.graphicsEffect()
-    assert effect.opacity == 0, "Month waits for the week to go (decision 28 of 0.17)"
+    assert effect.opacity == 0, "Month starts under the week, which is still there"
     assert effect.offset.x() > 0, "and comes in from the right, where its segment is"
     faded_in()
+    assert title.graphicsEffect() is None
     assert _fades(window) == [] and month.graphicsEffect() is None
     click(window, "viewDay")
     assert window.planner.currentWidget().graphicsEffect().offset.x() < 0, "Day comes in from the left"
@@ -2681,3 +2687,33 @@ def test_a_change_to_the_week_does_not_restyle_the_window_when_the_look_is_the_s
     window.session.preferences = {**window.session.preferences, "theme_pack": "dark-frost"}
     window._on_week()
     assert len(dressed) == 1, "a new look is still put on at once"
+
+
+def test_a_short_busy_spell_takes_no_clicks_but_does_not_grey_the_top_bar(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Grok Bot's 0.17.0 audit (T7): Plan my homework greyed the whole top bar for one frame. A plan
+    takes a few milliseconds; the bar greys only once the session has been busy BUSY_LOOK_MS, and takes
+    no click from the first moment."""
+    from desktop.native.window import BUSY_LOOK_MS
+
+    session = window.session
+    plan = window.findChild(QPushButton, "solveButton")
+    pressed: list[bool] = []
+    plan.clicked.connect(lambda: pressed.append(True))
+    session.busy = True
+    session.busy_changed.emit(True)
+    assert plan.isEnabled(), "not greyed at once"
+    QTest.mouseClick(plan, Qt.MouseButton.LeftButton)
+    assert pressed == [], "but it takes no click while busy"
+    session.busy = False
+    session.busy_changed.emit(False)
+    QTest.qWait(BUSY_LOOK_MS + 100)
+    assert plan.isEnabled(), "a short spell never greys it"
+    session.busy = True
+    session.busy_changed.emit(True)
+    QTest.qWait(BUSY_LOOK_MS + 100)
+    assert not plan.isEnabled(), "a long one does"
+    session.busy = False
+    session.busy_changed.emit(False)
+    assert plan.isEnabled(), "and it comes back at once"

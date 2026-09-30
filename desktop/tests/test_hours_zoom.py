@@ -700,3 +700,30 @@ def test_resting_at_the_edge_of_the_page_around_the_lanes_scrolls_the_page(qapp:
     assert across.value() > was, "rested at the lanes' right edge: the lanes scroll on"
     send(QEvent.Type.MouseButtonRelease, start)
     canvas.hand.cancel()
+
+
+def test_after_a_plan_the_hours_ease_to_homework_off_screen_and_stay_for_homework_on_it(
+    qapp: QApplication,
+) -> None:
+    """Grok Bot's 0.17.0 audit (T7): after Plan the grid jumped, even to homework already in sight."""
+    from PySide6.QtTest import QTest
+
+    scroll = a_lane_week(qapp)
+    # About seven hours show, so 17:00 is off screen from 09:00.
+    scroll.resize(400, 420)
+    settle(qapp)
+    bar = scroll.horizontalScrollBar()
+    scroll.scroll_to(9 * 60, above=0)
+    settle(qapp)
+    at_nine = bar.value()
+    scroll.reveal(11 * 60, 60, "normal")
+    QTest.qWait(400)
+    assert bar.value() == at_nine, "11:00 already shows: nothing moves"
+    scroll.reveal(17 * 60, 60, "normal")
+    assert bar.value() == at_nine, "it starts from where it was"
+    QTest.qWait(400)
+    assert abs(minute_across(scroll, 0) - 16 * 60) <= 1, "and eases to an hour before 17:00"
+    scroll.scroll_to(9 * 60, above=0)
+    settle(qapp)
+    scroll.reveal(17 * 60, 60, "reduce")
+    assert abs(minute_across(scroll, 0) - 16 * 60) <= 1, "under Reduce it goes at once"
