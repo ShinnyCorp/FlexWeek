@@ -1,149 +1,149 @@
 [
-  {
-    "file": "desktop/native/look.py",
-    "name": "0.16's round read as Round",
-    "old": "    \"corners\": {\"round\": \"soft\", \"pill\": \"rounded\"},\n",
-    "new": "    \"corners\": {\"pill\": \"rounded\"},\n",
-    "test": "desktop/tests/test_look.py::test_a_look_saved_by_016_opens_with_its_knobs_named_as_017_names_them"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "the accent's words left unreadable on a tinted page",
-    "old": "    if readable != palette[\"accent\"] and not own:\n",
-    "new": "    if False:\n",
-    "test": "desktop/tests/test_tokens.py::test_text_reads_on_every_fill_card_and_page[Slate-layered-default]"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "Poster on 0.16's yellow",
-    "old": "        window=\"#fff8e7\",\n",
-    "new": "        window=\"#ffd60a\",\n",
-    "test": "desktop/tests/test_look.py::test_the_seven_looks_wear_looks_css_colours"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "Ink follows the pack again",
-    "old": "        window=\"#1c1b19\",\n",
-    "new": "        window=\"#f4f1ea\",\n",
-    "test": "desktop/tests/test_look.py::test_ink_is_papers_night_on_any_pack"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "Paper's fills at the family's chroma",
-    "old": "        fill=(0.92, 0.035),\n",
-    "new": "",
-    "test": "desktop/tests/test_look.py::test_paper_draws_the_family_quieter_and_poster_bolder"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "Paper at the pack's motion",
-    "old": "    return \"reduce\" if selected[\"preset\"] == \"paper\" else \"normal\"",
-    "new": "    return \"normal\"",
-    "test": "desktop/tests/test_look.py::test_paper_starts_at_reduce_motion"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "headings in the body face",
-    "old": "        + f\" {{ font-family: {measures['heading']}; }}\"",
-    "new": "        + f\" {{ font-family: {measures['body']}; }}\"",
-    "test": "desktop/tests/test_look.py::test_serif_is_newsreader_headings_over_inter_and_mono_is_jetbrains_mono_throughout"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "Mono in the system's mono",
-    "old": "    \"mono\": \"JetBrains Mono, Noto Sans Mono, DejaVu Sans Mono, monospace\",",
-    "new": "    \"mono\": \"Noto Sans Mono, DejaVu Sans Mono, monospace\",",
-    "test": "desktop/tests/test_look.py::test_serif_is_newsreader_headings_over_inter_and_mono_is_jetbrains_mono_throughout"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "muted text derived without a floor",
-    "old": "        if min(contrast(muted, card), contrast(muted, page)) >= AA_TEXT + 0.1:\n",
-    "new": "        if True:\n",
-    "test": "desktop/tests/test_custom_look.py::test_the_students_colours_replace_the_bases_and_the_rest_follows_from_them"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "a list as a base crashes",
-    "old": "    if not isinstance(raw.get(\"base\"), str) or raw[\"base\"] not in LOOK_BASES:",
-    "new": "    if raw.get(\"base\") not in LOOK_BASES:",
-    "test": "desktop/tests/test_custom_look.py::test_unknown_settings_and_bad_values_are_dropped_and_said_never_a_crash"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "an exact category colour ignored",
-    "old": "        colour = str(spec[1])\n",
-    "new": "        colour = \"#dddddd\"\n",
-    "test": "desktop/tests/test_custom_look.py::test_a_category_takes_a_hue_on_the_family_or_an_exact_colour"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "the custom page ignored",
-    "old": "        table.update(window=page, panel=card, field=sunk, grid=sunk, text=text, hairline=line)\n",
-    "new": "        table.update(panel=card, field=sunk, grid=sunk, text=text, hairline=line)\n",
-    "test": "desktop/tests/test_custom_look.py::test_the_students_colours_replace_the_bases_and_the_rest_follows_from_them"
-  },
-  {
-    "file": "desktop/native/custom_look.py",
-    "name": "a readability fix that does not move the text",
-    "old": "            fixed = text_fixed if field == \"text\" else fit_lightness(ink, surfaces, AA_TEXT)\n",
-    "new": "            fixed = ink\n",
-    "test": "desktop/tests/test_custom_look.py::test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_to_one"
-  },
-  {
-    "file": "desktop/native/custom_look.py",
-    "name": "a pale accent's fix that does not move it",
-    "old": "                fixed = fit_lightness(accent, surfaces + (tint,), AA_TEXT)\n",
-    "new": "                fixed = accent\n",
-    "test": "desktop/tests/test_custom_look.py::test_a_colour_of_the_students_own_as_the_accent"
-  },
-  {
-    "file": "desktop/native/look.py",
-    "name": "a set muted colour ignored",
-    "old": "            table[\"muted\"] = colours[\"muted\"]\n",
-    "new": "            pass\n",
-    "test": "desktop/tests/test_custom_look.py::test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_to_one"
-  },
-  {
-    "file": "desktop/native/custom_look.py",
-    "name": "a saved look named Paper",
-    "old": "    if clean.casefold() in built_in:\n",
-    "new": "    if False:\n",
-    "test": "desktop/tests/test_custom_look.py::test_saved_looks_are_named_saved_renamed_duplicated_deleted_and_reset"
-  },
-  {
-    "file": "desktop/native/custom_look.py",
-    "name": "a newer file's look opened anyway",
-    "old": "    if version > FILE_VERSION:\n",
-    "new": "    if False:\n",
-    "test": "desktop/tests/test_custom_look.py::test_an_import_says_plainly_what_was_wrong"
-  },
-  {
-    "file": "desktop/native/hours/canvas.py",
-    "name": "today washed though the look turned it off",
-    "old": "        if today and self.measures[\"today_highlight\"]:\n",
-    "new": "        if today:\n",
-    "test": "desktop/tests/test_hours_painter.py::test_a_custom_look_sets_todays_wash_the_now_line_and_the_edge"
-  },
-  {
-    "file": "desktop/native/hours/canvas.py",
-    "name": "the edge at 3 pixels whatever the look says",
-    "old": "            width = self.measures[\"edge_width\"] or EDGE_WIDTH\n",
-    "new": "            width = EDGE_WIDTH\n",
-    "test": "desktop/tests/test_hours_painter.py::test_a_custom_look_sets_todays_wash_the_now_line_and_the_edge"
-  },
-  {
-    "file": "desktop/native/hours/canvas.py",
-    "name": "a block's times shown though the look hides them",
-    "old": "        times = drawn.times if shown[0] else \"\"\n",
-    "new": "        times = drawn.times\n",
-    "test": "desktop/tests/test_hours_painter.py::test_a_custom_look_can_leave_out_a_blocks_times_or_its_length"
-  },
-  {
-    "file": "desktop/native/window.py",
-    "name": "the saved looks not written to the look file",
-    "old": "                \"saved_looks\": self._saved_looks,\n",
-    "new": "",
-    "test": "desktop/tests/test_layouts_window.py::test_a_custom_look_dresses_the_window_and_is_kept_with_the_saved_looks"
-  }
+ {
+  "file": "desktop/native/look.py",
+  "name": "0.16's round read as Round",
+  "old": "    \"corners\": {\"round\": \"soft\", \"pill\": \"rounded\"},\n",
+  "new": "    \"corners\": {\"pill\": \"rounded\"},\n",
+  "test": "desktop/tests/test_look.py::test_a_look_saved_by_016_opens_with_its_knobs_named_as_017_names_them"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "the accent's words left unreadable on a tinted page",
+  "old": "    if readable != palette[\"accent\"] and not own:\n",
+  "new": "    if False:\n",
+  "test": "desktop/tests/test_tokens.py::test_text_reads_on_every_fill_card_and_page[Slate-layered-default]"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "Poster on 0.16's yellow",
+  "old": "        window=\"#fff8e7\",\n",
+  "new": "        window=\"#ffd60a\",\n",
+  "test": "desktop/tests/test_look.py::test_the_seven_looks_wear_looks_css_colours"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "Ink follows the pack again",
+  "old": "        window=\"#1c1b19\",\n",
+  "new": "        window=\"#f4f1ea\",\n",
+  "test": "desktop/tests/test_look.py::test_ink_is_papers_night_on_any_pack"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "Paper's fills at the family's chroma",
+  "old": "        fill=(0.92, 0.035),\n",
+  "new": "",
+  "test": "desktop/tests/test_look.py::test_paper_draws_the_family_quieter_and_poster_bolder"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "Paper at the pack's motion",
+  "old": "    return \"reduce\" if selected[\"preset\"] == \"paper\" else \"normal\"",
+  "new": "    return \"normal\"",
+  "test": "desktop/tests/test_look.py::test_paper_starts_at_reduce_motion"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "headings in the body face",
+  "old": "        + f\" {{ font-family: {measures['heading']}; }}\"",
+  "new": "        + f\" {{ font-family: {measures['body']}; }}\"",
+  "test": "desktop/tests/test_look.py::test_serif_is_newsreader_headings_over_inter_and_mono_is_jetbrains_mono_throughout"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "Mono in the system's mono",
+  "old": "    \"mono\": \"JetBrains Mono, Noto Sans Mono, DejaVu Sans Mono, monospace\",",
+  "new": "    \"mono\": \"Noto Sans Mono, DejaVu Sans Mono, monospace\",",
+  "test": "desktop/tests/test_look.py::test_serif_is_newsreader_headings_over_inter_and_mono_is_jetbrains_mono_throughout"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "muted text derived without a floor",
+  "old": "        if min(contrast(muted, card), contrast(muted, page)) >= AA_TEXT + 0.1:\n",
+  "new": "        if True:\n",
+  "test": "desktop/tests/test_custom_look.py::test_the_students_colours_replace_the_bases_and_the_rest_follows_from_them"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "a list as a base crashes",
+  "old": "    if not isinstance(raw.get(\"base\"), str) or raw[\"base\"] not in LOOK_BASES:",
+  "new": "    if raw.get(\"base\") not in LOOK_BASES:",
+  "test": "desktop/tests/test_custom_look.py::test_unknown_settings_and_bad_values_are_dropped_and_said_never_a_crash"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "an exact category colour ignored",
+  "old": "        colour = str(spec[1])\n",
+  "new": "        colour = \"#dddddd\"\n",
+  "test": "desktop/tests/test_custom_look.py::test_a_category_takes_a_hue_on_the_family_or_an_exact_colour"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "the custom page ignored",
+  "old": "        table.update(window=page, panel=card, field=sunk, grid=sunk, text=text, hairline=line)\n",
+  "new": "        table.update(panel=card, field=sunk, grid=sunk, text=text, hairline=line)\n",
+  "test": "desktop/tests/test_custom_look.py::test_the_students_colours_replace_the_bases_and_the_rest_follows_from_them"
+ },
+ {
+  "file": "desktop/native/custom_look.py",
+  "name": "a readability fix that does not move the text",
+  "old": "            fixed = text_fixed if field == \"text\" else fit_lightness(ink, surfaces, AA_TEXT)\n",
+  "new": "            fixed = ink\n",
+  "test": "desktop/tests/test_custom_look.py::test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_to_one"
+ },
+ {
+  "file": "desktop/native/custom_look.py",
+  "name": "a pale accent's fix that does not move it",
+  "old": "                fixed = fit_lightness(accent, surfaces + (tint,), AA_TEXT)\n",
+  "new": "                fixed = accent\n",
+  "test": "desktop/tests/test_custom_look.py::test_a_colour_of_the_students_own_as_the_accent"
+ },
+ {
+  "file": "desktop/native/look.py",
+  "name": "a set muted colour ignored",
+  "old": "            table[\"muted\"] = colours[\"muted\"]\n",
+  "new": "            pass\n",
+  "test": "desktop/tests/test_custom_look.py::test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_to_one"
+ },
+ {
+  "file": "desktop/native/custom_look.py",
+  "name": "a saved look named Paper",
+  "old": "    if clean.casefold() in built_in:\n",
+  "new": "    if False:\n",
+  "test": "desktop/tests/test_custom_look.py::test_saved_looks_are_named_saved_renamed_duplicated_deleted_and_reset"
+ },
+ {
+  "file": "desktop/native/custom_look.py",
+  "name": "a newer file's look opened anyway",
+  "old": "    if version > FILE_VERSION:\n",
+  "new": "    if False:\n",
+  "test": "desktop/tests/test_custom_look.py::test_an_import_says_plainly_what_was_wrong"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "today washed though the look turned it off",
+  "old": "        if today and self.measures[\"today_highlight\"]:\n",
+  "new": "        if today:\n",
+  "test": "desktop/tests/test_hours_painter.py::test_a_custom_look_sets_todays_wash_the_now_line_and_the_edge"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "the edge at 3 pixels whatever the look says",
+  "old": "            width = self.measures[\"edge_width\"] or EDGE_WIDTH\n",
+  "new": "            width = EDGE_WIDTH\n",
+  "test": "desktop/tests/test_hours_painter.py::test_a_custom_look_sets_todays_wash_the_now_line_and_the_edge"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "a block's times shown though the look hides them",
+  "old": "        times = drawn.times if shown[0] else \"\"\n",
+  "new": "        times = drawn.times\n",
+  "test": "desktop/tests/test_hours_painter.py::test_a_custom_look_can_leave_out_a_blocks_times_or_its_length"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "the saved looks not written to the look file",
+  "old": "                \"saved_looks\": self._saved_looks,\n",
+  "new": "",
+  "test": "desktop/tests/test_layouts_window.py::test_a_custom_look_dresses_the_window_and_is_kept_with_the_saved_looks"
+ }
 ]
