@@ -1747,8 +1747,10 @@ def overlay_rules(palette: dict, knobs: dict, pad: int, card_radius: int) -> str
         "QListWidget#commandList { background: transparent; border: none; padding: 0; }"
         f"QListWidget#commandList::item {{ color: {palette['text']}; padding: 0 8px; "
         f"border-radius: {RADIUS_CONTROL if card_radius else 0}px; }}"
-        f"QListWidget#commandList::item:hover, QListWidget#commandList::item:selected {{ "
-        f"background: {hover}; color: {palette['text']}; }}"
+        f"QListWidget#commandList::item:hover {{ background: {hover}; color: {palette['text']}; }}"
+        # The row Enter runs, tinted with the accent, not the grey of a row under the pointer (T22).
+        f"QListWidget#commandList::item:selected {{ "
+        f"background: {mix(palette['accent'], palette['panel'], 0.14)}; color: {palette['text']}; }}"
         f"QLabel#commandNothing {{ color: {palette['muted']}; padding: 8px; }}"
         # A drawn menu: transparent round its panel, which it paints itself, with the shadow's room.
         f'QMenu[drawn="true"] {{ background: transparent; border: none; padding: {MENU_EDGE + 4}px; }}'

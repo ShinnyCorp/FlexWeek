@@ -13,6 +13,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, QStandardPaths, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
@@ -279,3 +280,43 @@ def test_the_window_is_dimmed_40_percent_and_the_box_is_lifted_with_the_large_sh
     assert bar.graphicsEffect() is not None
     wait_until(qapp, lambda: bar.graphicsEffect() is None)
     assert bar.box.graphicsEffect() is shadow, "the fade leaves the box's shadow alone"
+
+
+def test_the_chosen_row_is_accent_tinted_a_list_that_fits_never_scrolls_and_keys_are_caps(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """T22 of the 0.17.0 audit: the chosen row was the grey of a row under the pointer, a scroll bar
+    showed beside a list with room to spare, and the keys were plain letters."""
+    from desktop.native.look import mix, resolved_palette
+
+    palette = resolved_palette(*window._look_inputs()[:2], window._look, window._look_inputs()[2])
+    open_bar(window)
+    bar = window.command_bar
+    qapp.processEvents()
+    assert bar.list.verticalScrollBar().maximum() == 0, "every row shows at once"
+    picture = bar.list.viewport().grab().toImage()
+    chosen = bar.list.visualItemRect(bar.list.currentItem())
+    tint = picture.pixelColor(chosen.right() - 20, chosen.center().y())
+    wanted = QColor(mix(palette["accent"], palette["panel"], 0.14))
+    pairs = zip(tint.getRgb()[:3], wanted.getRgb()[:3], strict=True)
+    assert max(abs(one - two) for one, two in pairs) <= 3, "the accent's tint, not grey"
+    items = [bar.list.item(index) for index in range(bar.list.count())]
+    row = bar.list.visualItemRect(next(item for item in items if item.text() == "Week"))
+    edge = QColor(palette["hairline_strong"])
+    # A cap's edge runs down each side of the key, so a column of the edge colour stands at the right.
+    columns = [
+        sum(picture.pixelColor(x, y) == edge for y in range(row.top(), row.bottom()))
+        for x in range(row.right() - 40, row.right())
+    ]
+    assert max(columns) >= 10, "the key drawn in a cap with an edge"
+    bar.close_bar()
+    window.resize(1280, 460)
+    qapp.processEvents()
+    open_bar(window)
+    qapp.processEvents()
+    bar_scroll = bar.list.verticalScrollBar()
+    assert bar_scroll.maximum() > 0, "a list longer than the window scrolls"
+    assert bar_scroll.property("overlay") is True, "under the app's thin bar"
+    box = bar.box.geometry()
+    assert box.bottom() <= window.height(), "the box stays in the window"
+    bar.close_bar()
