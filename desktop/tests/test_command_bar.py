@@ -245,11 +245,12 @@ def test_every_row_has_an_icon_and_the_views_their_keys(qapp: QApplication, wind
     assert bar.list.currentItem().text() == "Day", "and over the Go to label"
 
 
-def test_the_box_rises_8_pixels_into_place_as_the_window_dims(
+def test_the_box_rises_16_pixels_into_place_as_the_window_dims(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """Decision 31 of 0.17: Ctrl+K fades and rises; under Reduce it only fades."""
-    for level, rise in (("normal", 8), ("reduce", 0)):
+    """Decision 31 of 0.17: Ctrl+K fades and rises; under Reduce it only fades. Grok Bot's 0.17.0 audit
+    (A6) saw no rise at 8 pixels, over the same time the window dims."""
+    for level, rise in (("normal", 16), ("extra", 21), ("reduce", 0)):
         window.session.preferences = {**(window.session.preferences or {}), "motion": level}
         window._apply_appearance()
         open_bar(window)
@@ -257,7 +258,7 @@ def test_the_box_rises_8_pixels_into_place_as_the_window_dims(
         first = bar.box.y()
         assert bar.graphicsEffect() is not None, "the dimmed window fades in"
         wait_until(qapp, lambda bar=bar: bar.graphicsEffect() is None)
-        QTest.qWait(100)
+        wait_until(qapp, lambda bar=bar: getattr(bar.box, "_motion_running", None) is None)
         assert first - bar.box.y() == rise, level
         bar.close_bar()
 
@@ -279,3 +280,20 @@ def test_the_window_is_dimmed_40_percent_and_the_box_is_lifted_with_the_large_sh
     assert bar.graphicsEffect() is not None
     wait_until(qapp, lambda: bar.graphicsEffect() is None)
     assert bar.box.graphicsEffect() is shadow, "the fade leaves the box's shadow alone"
+
+
+def test_a_notice_said_while_ctrl_k_is_open_goes_under_its_dimming(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Grok Bot's 0.17.0 audit (A6): "Moved… Undo" stayed bright over Ctrl+K's dimmed window. The notice
+    is said when its save comes back, after the bar has opened, and a notice raises itself."""
+    open_bar(window)
+    bar = window.command_bar
+    window.toast.show_message("Moved Essay-1.", "Undo", lambda: None)
+    order = window.children()
+    assert order.index(bar) > order.index(window.toast), "the notice is under the dimming"
+    assert order.index(bar) > order.index(window.toast.button), "and so is its button"
+    bar.close_bar()
+    window.toast.show_message("Moved Essay-1.", "Undo", lambda: None)
+    order = window.children()
+    assert order.index(window.toast) > order.index(bar), "with nothing over the window, it is on top"

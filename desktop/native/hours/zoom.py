@@ -19,7 +19,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QSize, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -36,6 +36,7 @@ from desktop.native import icons
 from desktop.native.hours.canvas import HoursCanvas
 from desktop.native.hours.geometry import Axis
 from desktop.native.look import ZOOM_PILL_PX
+from desktop.native.motion import EASE_MS, OUT, duration, moves
 from desktop.native.weekmodel import WeekModel
 from desktop.native.widgets import overlay_scroll_bars
 
@@ -296,6 +297,31 @@ class HoursScroll(QScrollArea):
             self._kept = minute - (half if above is None else above)
             self._put_back()
             self._placed = self._bar().value()
+
+    def reveal(self, minute: int, above: int, level: str) -> None:
+        """Bring `minute` into sight as `scroll_to` puts it, easing there where things may travel, and
+        not at all when it already shows with `above` minutes before it: after a plan the grid jumped
+        to homework that was already on screen (Grok Bot's 0.17.0 audit, T7)."""
+        bar = self._bar()
+        start = bar.value()
+        top = self._minute_at(start)
+        if top is not None and self.canvas.tracks:
+            shown = self._port_length() / self.canvas.tracks[0].per_minute()
+            if top + min(above, shown / 4) <= minute <= top + shown - 60:
+                return
+        self.scroll_to(minute, above)
+        end = bar.value()
+        length = duration(EASE_MS + 60, level)
+        if end == start or length == 0 or not moves(level):
+            return
+        glide = QVariantAnimation(self)
+        glide.setStartValue(start)
+        glide.setEndValue(end)
+        glide.setDuration(length)
+        glide.setEasingCurve(OUT)
+        glide.valueChanged.connect(lambda value: bar.setValue(round(value)))
+        bar.setValue(start)
+        glide.start(QVariantAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def open_at(self, key: object, minute: int, above: int | None = 90) -> None:
         """Scroll to `minute` the first time these hours show `key`, a week or one of its days. The

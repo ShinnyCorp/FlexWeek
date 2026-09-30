@@ -107,6 +107,7 @@ class FocusScreen(QWidget):
         phase = None if state is None else state.get("phase")
         ended = phase == "ended"
         running = state is not None and not ended
+        self.ring.set_waiting(state is None)
         if state is None:
             self.phase.setText(READY)
             self.ring.set_number(format_countdown(phase_duration_ms("work", prefs)))
