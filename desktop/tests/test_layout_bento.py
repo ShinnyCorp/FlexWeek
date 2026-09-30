@@ -22,6 +22,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
+    from desktop.native.fonts import load_fonts
     from desktop.native.hours import canvas as canvas_module
     from desktop.native.hours.canvas import Drawn, HoursCanvas
     from desktop.native.hours.chips import TrayChip
@@ -182,6 +183,30 @@ def test_waiting_homework_is_a_hand_chip_and_due_soon_says_where_each_is(qapp: Q
     day = shown(qapp, "day")
     assert day.findChild(QPushButton, "bentoDue0") is not None
     assert text(day, "bentoWaitingHint") == "Drag one onto your day."
+
+
+@pytest.mark.parametrize("size", [(1280, 764), (1150, 768)])
+def test_a_due_rows_placed_time_is_never_cut_by_the_tile(
+    qapp: QApplication, size: tuple[int, int]
+) -> None:
+    """In the window's face and body size a Due soon row had no room for "1 h 30 · placed Thu 20:00", and the
+    tile cut it inside the time. Short of room it says where the homework is placed, whole."""
+    load_fonts()
+    usual = QFont(qapp.font())
+    font = QFont("Inter")
+    font.setPointSize(13)
+    qapp.setFont(font)
+    try:
+        view = shown(qapp, size=size)
+        metas = [item for item in view.findChildren(QLabel, "bentoDueMeta") if item.isVisible()]
+        ends = ("placed Thu 20:00", "placed Thu 18:45", "Not placed")
+        assert len(metas) == 3
+        assert all(meta.text().endswith(end) for meta, end in zip(metas, ends, strict=True))
+        for meta in metas:
+            room = meta.contentsRect().width()
+            assert meta.fontMetrics().horizontalAdvance(meta.text()) <= room, meta.text()
+    finally:
+        qapp.setFont(usual)
 
 
 def test_due_soon_counts_down_to_the_first_homework_due(qapp: QApplication) -> None:

@@ -90,7 +90,7 @@ from desktop.native.weekmodel import (
     length_label,
     range_label,
 )
-from desktop.native.widgets import overlay_scroll_bars
+from desktop.native.widgets import FittedLabel, overlay_scroll_bars
 
 WEEK_SCALE = Scale("bento.week", (32, 44, 64, 96, 128), 44)
 # One day's hours: Day's, and the Today hero's. At 44 pixels an hour a half-hour block still says its
@@ -1653,6 +1653,11 @@ class BentoView(LayoutView):
         px = scene.px
         where = f"placed {DAYS[due.at[0]]} {clock_label(due.at[1])}" if due.at is not None else "Not placed"
         meta = f"{short_length(due.minutes)} · {where}"
+        # Short of room it says where the homework is, whole, rather than cutting the time.
+        said = FittedLabel(minimum=px(40))
+        said.setObjectName("bentoDueMeta")
+        said.setProperty("role", "muted")
+        said.set_full_text(meta, where)
         row = Row()
         row.setObjectName(f"bentoDue{index}")
         row.setProperty("kind", "due")
@@ -1673,7 +1678,7 @@ class BentoView(LayoutView):
         title.setToolTip(due.title)
         grid.addWidget(book, 0, 0, Qt.AlignmentFlag.AlignVCenter)
         grid.addWidget(title, 0, 1)
-        grid.addWidget(_say(meta, "bentoDueMeta", "muted"), 1, 0, 1, 2)
+        grid.addWidget(said, 1, 0, 1, 2)
         grid.setColumnStretch(1, 1)
         for part in row.findChildren(QLabel):
             part.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
