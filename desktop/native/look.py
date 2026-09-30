@@ -1088,6 +1088,8 @@ def control_rules(palette: dict, radius: int, text: float | str, art: dict[str, 
         f"selection-color: {palette['accent_ink']}; outline: 0; padding: 0; border: none; "
         "border-radius: 0; }"
         f"QCalendarWidget QAbstractItemView:disabled {{ color: {palette['muted']}; }}"
+        # The month button needs no arrow of its own: the month is a menu to pick from as it was.
+        "QCalendarWidget QToolButton::menu-indicator { image: none; width: 0; }"
         "QCheckBox, QRadioButton { background: transparent; spacing: 8px; }"
         f"QCheckBox::indicator, QRadioButton::indicator {{ width: 16px; height: 16px; "
         f"border: 1px solid {palette['muted']}; background: {palette['field']}; }}"

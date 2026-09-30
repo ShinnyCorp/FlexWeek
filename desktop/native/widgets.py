@@ -102,7 +102,7 @@ from desktop.native.calendar import (
     span_problem,
 )
 from desktop.native.elevation import lift
-from desktop.native.fields import DayPicker
+from desktop.native.fields import DateField, DayPicker
 from desktop.native.fonts import time_font, weighted
 from desktop.native.icons import pixmap as icon_pixmap
 from desktop.native.menus import Menu
@@ -2409,10 +2409,9 @@ class DueField(QWidget):
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         outer.addLayout(row)
-        self.date = QDateEdit()
+        self.date = DateField()
         self.date.setObjectName(name)
         self.date.setDisplayFormat(DUE_DATE_FORMAT)
-        self.date.setCalendarPopup(True)
         self.date.setMinimumDate(QDate(2000, 1, 1))
         self.date.setMaximumDate(QDate(2099, 12, 31))
         self.date.setAccessibleName("Due date")
@@ -3389,10 +3388,9 @@ class RoutineDialog(Dialog):
             self.list.addItem(item)
         self.empty.setVisible(not routines)
         self.list.setVisible(bool(routines))
-        dest = QDateEdit(QDate.fromString(week_start, "yyyy-MM-dd"))
+        dest = DateField(QDate.fromString(week_start, "yyyy-MM-dd"))
         dest.setObjectName("routineDestination")
         dest.setDisplayFormat(DATE_FORMAT)
-        dest.setCalendarPopup(True)
         dest.setMinimumDate(QDate(2000, 1, 1))
         dest.setMaximumDate(QDate(2099, 12, 31))
         dest.dateChanged.connect(self._snap_destination)
@@ -3572,10 +3570,9 @@ class SpreadDialog(Dialog):
             self.session.addItem(f"{minutes} minutes", minutes)
         self.session.setCurrentIndex(max(0, self.session.findData(chosen)))
         form.addRow("Sessions of", self.session)
-        self.from_date = QDateEdit(QDate.fromString(from_date, "yyyy-MM-dd"))
+        self.from_date = DateField(QDate.fromString(from_date, "yyyy-MM-dd"))
         self.from_date.setObjectName("spreadFrom")
         self.from_date.setDisplayFormat(DATE_FORMAT)
-        self.from_date.setCalendarPopup(True)
         self.from_date.setMaximumDate(QDate.fromString(assignment["due"][:10], "yyyy-MM-dd"))
         form.addRow("Starting", self.from_date)
         self.error = _error_label()
