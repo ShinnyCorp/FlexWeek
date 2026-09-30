@@ -16,6 +16,7 @@ All notable changes to FlexWeek are documented here. Format follows
   with it instead of jumping in one frame.
 
 ### Fixed
+- Day keeps Now on the hours grid rather than between agenda rows. Week titles, time labels, recovery codes and category tick/action spacing are clearer at narrow widths.
 - Holding a block at the edge of the hours scrolls about two hours a second
   at any zoom. In Clay deck it raced through the day at about 16 hours a
   second.

@@ -97,7 +97,7 @@ from desktop.native.layouts.base import (
 from desktop.native.layouts.colourways import RETRO
 from desktop.native.look import AA_TEXT, category_paint, look_measures, type_sizes
 from desktop.native.motion import app_level, appear, between, duration, moves
-from desktop.native.reuse import MONTHS
+from desktop.native.reuse import MONTHS, planner_title
 from desktop.native.tokens import (
     WEIGHT_REGULAR,
     WEIGHT_STRONG,
@@ -1709,9 +1709,7 @@ class RetroView(LayoutView):
         if day is not None:
             shown = week.date_of(day)
             return f"Week.exe - {DAY_FULL[day]} {shown.day} {MONTHS[shown.month - 1]}"
-        first, last = week.date_of(0), week.date_of(6)
-        start = f"{first.day}" if first.month == last.month else f"{first.day} {MONTHS[first.month - 1]}"
-        return f"Week.exe - {start} to {last.day} {MONTHS[last.month - 1]}"
+        return f"Week.exe - {planner_title(week, 'week')}"
 
     def _menu(self, key: str) -> QHBoxLayout:
         """A window's menu bar, as drawn. Its menus are pictures: FlexWeek's own are in More and Start."""

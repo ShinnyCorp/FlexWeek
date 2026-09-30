@@ -132,12 +132,12 @@ def evenly_spaced(font: QFont) -> bool:
     return metrics.horizontalAdvance("iiii1111") == metrics.horizontalAdvance("WWWW0000")
 
 
-def test_the_codes_are_in_inter_with_figures_of_one_width(recovering: NativeWindow) -> None:
-    """DejaVu Sans Mono was a second face, heavier and wider than Inter around it (decision 25)."""
+def test_the_codes_are_in_jetbrains_mono_with_every_character_of_one_width(recovering: NativeWindow) -> None:
+    """Lane 2 uses the bundled mono face so ambiguous letters and digits line up."""
     assert len(codes(recovering)) == 8
     font = recovering.recovery_list.font()
-    assert font.family() == "Inter"
-    assert not evenly_spaced(font), "not a fixed-width face"
+    assert font.family() == "JetBrains Mono"
+    assert evenly_spaced(font), "letters and figures have one width"
     metrics = QFontMetrics(font)
     assert metrics.horizontalAdvance("1111") == metrics.horizontalAdvance("0000"), "figures of one width"
 

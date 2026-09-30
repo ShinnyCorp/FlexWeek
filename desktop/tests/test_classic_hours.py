@@ -208,11 +208,11 @@ def test_a_tray_chip_in_a_row_says_it_all_again_once_the_row_has_room(qapp: QApp
     assert chip.text() == whole
 
 
-def test_day_is_its_agenda_in_order_with_now_between_what_has_been_and_what_is_next(
+def test_day_lists_its_agenda_in_order_and_keeps_now_on_the_grid(
     qapp: QApplication,
 ) -> None:
     """Decision 16 of 0.17: Day drops its Next band; beside the rail it lists the day, times and
-    lengths, with the time now as a line, and a summary with a dot for each kind of thing. A click on
+    lengths, and a summary with a dot for each kind of thing. A click on
     a line opens it."""
     from desktop.native.hours.classic import ClassicDay
 
@@ -234,12 +234,12 @@ def test_day_is_its_agenda_in_order_with_now_between_what_has_been_and_what_is_n
     view.show()
     qapp.processEvents()
     agenda = view.agenda
-    assert agenda.heading.text() == "Thursday"
+    assert agenda.heading.text() == "Agenda"
     assert agenda.sub.text() == "3 things · 8 h 45 min"
     rows = [row.item.title if row.item is not None else "now" for row in agenda.list.rows]
-    assert rows == ["School", "now", "Soccer practice", "Dinner"]
+    assert rows == ["School", "Soccer practice", "Dinner"]
     assert view.summary.text() == "School: 6 h 45 min\nActivity: 1 h 30 min\nMeals: 30 min"
-    soccer = agenda.list.rows[2].box.center().toPoint()
+    soccer = agenda.list.rows[1].box.center().toPoint()
     QTest.mouseClick(agenda.list, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, soccer)
     assert opened == ["soccer"]
     view.set_day(build_week("2026-09-21", blocks, {}, None), 3, None, None)

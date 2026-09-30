@@ -640,6 +640,8 @@ def block_layout(
             lambda cut: stack(2, tuple(part for part in (times, length) if part), cut),
             lambda cut: stack(2, tuple(part for part in (times,) if part), cut),
             lambda cut: stack(1, tuple(part for part in (times,) if part), cut),
+            lambda cut: stack(2, (clock_label(drawn.span.start), clock_label(drawn.span.end))
+                              if shown[0] else (), cut),
             lambda cut: one_line(short_clock(drawn.span.start) if shown[0] else "", cut),
             lambda cut: stack(2, (), cut),
             lambda cut: stack(1, (), cut),
@@ -650,7 +652,7 @@ def block_layout(
             return found
     # Nothing says the title whole: it gives way, and the name comes before its start on one line,
     # "Math works…" rather than "Mat… 19:00".
-    for way in ways[:3] + ways[4:] + ways[3:4]:
+    for way in ways[:4] + ways[5:] + ways[4:5]:
         found = way(True)
         if found is not None:
             return found
@@ -1054,6 +1056,13 @@ class HoursCanvas(QWidget):
                 with _fresh(painter):
                     self.painter.hour_labels(painter, track, self.header, every=120, visible=upright_visible)
             self._paint_hint(painter, track)
+            if (
+                self.today == track.day
+                and self.now_min is not None
+                and track.first <= self.now_min <= track.last
+            ):
+                with _fresh(painter):
+                    self.painter.now(painter, track, self.now_min)
             for drawn, rect in self.drawn(track):
                 with _fresh(painter):
                     key = (drawn.block_id, drawn.span.day)
@@ -1072,13 +1081,6 @@ class HoursCanvas(QWidget):
                 rect = track.rect_for(preview.span.start, preview.span.end)
                 with _fresh(painter):
                     self.painter.ghost(painter, rect, span_words(preview.span), True)
-            if (
-                self.today == track.day
-                and self.now_min is not None
-                and track.first <= self.now_min <= track.last
-            ):
-                with _fresh(painter):
-                    self.painter.now(painter, track, self.now_min)
             painter.restore()
         for track in self.tracks:
             box = self._name_box(track)

@@ -1,6 +1,6 @@
 """Today's app's rail (0.17's pick B): the mini month, what is next, Not placed yet and the focus list
 left of Day and Week, the running timer as its first card, the month folded away and remembered;
-folded into one line on a narrow window, where blocks say their names only; and the window's floor."""
+folded into one line on a narrow window, where blocks keep their times; and the window's floor."""
 
 from __future__ import annotations
 
@@ -200,7 +200,7 @@ def test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way(
     assert tasks.viewport().height() >= tasks.count() * tasks.sizeHintForRow(0)
 
 
-def test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_say_their_names(
+def test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_keep_their_times(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
@@ -209,7 +209,7 @@ def test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_say_their_names
     window.resize(1100, 860)
     for _ in range(5):
         qapp.processEvents()
-    assert rail.folded and hours.hours.short_words
+    assert rail.folded and not hours.hours.short_words
     line_foot = rail.mapTo(window, rail.rect().bottomLeft()).y()
     assert line_foot < hours.mapTo(window, hours.rect().topLeft()).y(), "the line sits above the hours"
     assert rail.height() < 80, "one slim line"

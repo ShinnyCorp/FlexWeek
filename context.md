@@ -1,6 +1,7 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `sol/0172-lane2`: Lane 2 focused painter/layout tests passed 176/176; `time_numbers.json` caught all 14 mutations by assertion, including the 810 px split start/end fallback. Fresh throwaway-database 810 px Week capture inspected. All 18 affected lane 2 specs completed: 408 reported catches across the first 12 and corrected final six; error-style outputs are excluded from assertion proof. The rail ordering mutation now targets the current source expression and fails by assertion. Ruff passed; restored narrow regression passed. Full gate was not rerun; the prior gate has unrelated failures. Changes remain uncommitted; Unit 04 is held.
 - Date: 2026-09-25 (0.15 Lane C), branch `claude/0-15-homework-planning`.
   Five inherited fixes cover the DueField signal, due-today default, homework
   length bounds, full-month date picker and planning after now (`7b9d19b`,
@@ -657,6 +658,7 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-30, `sol/0172-lane2`: Lane 2 focused painter/layout tests passed 176/176; `time_numbers.json` caught all 14 mutations by assertion, including the 810 px split start/end fallback. Fresh throwaway-database 810 px Week capture inspected. All 18 affected lane 2 specs completed: 408 reported catches across the first 12 and corrected final six; error-style outputs are excluded from assertion proof. The rail ordering mutation now targets the current source expression and fails by assertion. Ruff passed; restored narrow regression passed. Full gate was not rerun; the prior gate has unrelated failures. Changes remain uncommitted; Unit 04 is held.
 - 2026-09-29, `feat/0.17.1`: 0.17.1 prepared, the patch after 0.17.0 (Jonathan: "start the patch").
   Units 1 to 4 of `~/.flexweek-ui-harness/scratch/017-patch-plan.md`: the intermittent test-suite
   segfault (a test's instance patch left a HomeworkDialog in a cycle, collected on the server

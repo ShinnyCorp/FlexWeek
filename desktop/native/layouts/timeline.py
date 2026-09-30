@@ -320,7 +320,7 @@ class TimelinePainter(BlockPainter):
         at = area.top() + track.offset(minute)
         painter.setPen(QPen(colour, 2))
         painter.drawLine(QPointF(area.left(), at), QPointF(area.right(), at))
-        pill = QRectF(area.left() + self.now_at, at - height / 2, width, height)
+        pill = QRectF(max(0, area.left() - width - 3), at - height / 2, width, height)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(colour)
         painter.drawRoundedRect(pill, height / 2, height / 2)
