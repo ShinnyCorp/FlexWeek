@@ -121,6 +121,15 @@ class Drawn:
         return words + " · Pinned" if self.pinned and not self.done else words
 
 
+class Started(Drawn):
+    """A block on a week whose time is its start alone: "School 08:00", as Retro's mock-up writes it,
+    and as Bento's narrow columns say it."""
+
+    @property
+    def times(self) -> str:
+        return clock_label(self.span.start)
+
+
 class BlockPainter:
     """How hours and blocks look. This default is Daily Scheduler's: pale category fills, a strong
     edge, a rule at each hour, a now line in the accent carrying the time. Designs subclass it."""

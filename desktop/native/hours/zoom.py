@@ -200,6 +200,9 @@ class HoursScroll(QScrollArea):
         (self.setHorizontalScrollBarPolicy if self._down else self.setVerticalScrollBarPolicy)(across)
         self.setWidget(canvas)
         self._fix_length(length_for(self.px))
+        # Connected before any design's own listener, such as Retro's drawn bar, so it sees the value
+        # the range is about to cut.
+        self._bar().rangeChanged.connect(self._cut)
         canvas.zoom_asked.connect(self._asked)
         self._show_limits()
 
@@ -381,6 +384,15 @@ class HoursScroll(QScrollArea):
         else:
             self._short_at = bar.value()
 
+    def _cut(self, _low: int, high: int) -> None:
+        """A page still laying itself out, as Retro's is after a drop, can give the hours a little less
+        to scroll for a moment, and the bar is cut back to that shorter end. Where they were is kept,
+        and put back when the room returns, unless the student scrolls first. Qt says the range
+        changed before it cuts the value, so the value here is still the one on screen."""
+        bar = self._bar()
+        if self._kept is None and self.isVisible() and self.canvas.tracks and bar.value() > high:
+            self._kept, self._short_at = self._minute_at(bar.value()), high
+
     def _minute_at(self, along: float) -> float | None:
         """The minute at a distance along the hours, down or across."""
         track = self.canvas.tracks[0] if self.canvas.tracks else None
@@ -439,6 +451,10 @@ class HoursScroll(QScrollArea):
     def resizeEvent(self, event: object) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._place_header()
+        if self._pending is not None and self.isVisible():
+            # Asked for a time while they had no room, as Clay's open card sliding in from a narrow
+            # neighbour: they go there once they have some.
+            self.scroll_to(*self._pending)
         if self._short_at is not None and self.isVisible():
             # Hours that grew pull the bar back with them; that is not the student scrolling.
             if self._bar().value() == min(self._short_at, self._bar().maximum()):

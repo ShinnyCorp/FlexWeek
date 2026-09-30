@@ -223,6 +223,31 @@ def test_a_drop_while_a_save_is_under_way_lands_once_it_is_done(
     assert any(block["id"] == "band" for block in window.session.blocks)
 
 
+def test_retro_keeps_the_hours_where_they_were_scrolled_through_a_drop(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Retro lays its windows out again after a drop, and for a moment the hours had a little less to
+    scroll. The bar was pulled back to that shorter end and left there, so the hours jumped by a few
+    pixels, or 22 at another size, under the student's pointer."""
+    window.resize(1280, 800)
+    view = use(qapp, window, "retro")
+    scroll = view.findChild(HoursScroll, "retroWeekScroll")
+    assert scroll is not None
+    wait_until(qapp, lambda: scroll.verticalScrollBar().maximum() > 0)
+    for _ in range(10):
+        qapp.processEvents()
+    bar = scroll.verticalScrollBar()
+    bar.setValue(bar.maximum())
+    qapp.processEvents()
+    scrolled = bar.value()
+    window.hand.commit(Place(session_of(window, "math")["id"], Span(4, 17 * 60, 18 * 60)))
+    settled(qapp, window)
+    wait_until(qapp, lambda: placed(window, "math")[1] == "17:00")
+    for _ in range(20):
+        qapp.processEvents()
+    assert (bar.value(), bar.maximum()) == (scrolled, scrolled)
+
+
 def test_how_close_the_hours_are_is_kept_for_this_device(qapp: QApplication, window: NativeWindow) -> None:
     """A zoom chosen on Week is in the look file, and the next window opens the Week at it."""
     window.findChild(QPushButton, "viewWeek").click()
