@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QPoint, QPointF, QStandardPaths
+    from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, QStandardPaths
     from PySide6.QtWidgets import QApplication, QPushButton
 
     from desktop.native.calendar import monday_of, sunday_due
@@ -117,7 +117,13 @@ def span_shown(scroll: HoursScroll) -> tuple[float, float]:
 
 def opens_at(qapp: QApplication, window: NativeWindow, minute: int, where: str) -> None:
     """`minute` is on screen, with at most half of what shows before it, or the hours go no further:
-    now opens in the middle (decision 12 of 0.17), a first block a little below the top."""
+    now opens in the middle (decision 12 of 0.17), a first block a little below the top. Clay deck
+    slides its row to the day asked for, so the day is measured where it lands: part way, the card
+    coming in from beside the open one can have hours with no width yet, and whether it was still
+    sliding depended on how soon the server answered."""
+    view = window.planner.currentWidget()
+    running = QAbstractAnimation.State.Running
+    wait_until(qapp, lambda: all(item.state() != running for item in view.findChildren(QAbstractAnimation)))
     for _ in range(4):
         qapp.processEvents()
     scroll = hours(window)

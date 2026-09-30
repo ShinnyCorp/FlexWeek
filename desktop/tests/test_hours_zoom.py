@@ -320,15 +320,22 @@ def test_hours_cut_short_for_a_moment_go_back_to_where_they_were(qapp: QApplicat
 def test_a_time_asked_for_while_the_hours_have_no_room_is_shown_once_they_do(qapp: QApplication) -> None:
     """Clay deck's open card slides in from a narrow neighbour, and for a moment its hours have no width
     at all. A time asked for then waited for the hours to be shown again, which never came, and the
-    day opened at the wrong hour."""
+    day opened at the wrong hour.
+
+    The hours are placed by hand, as Clay's row places its card's, not by the week's layout: the
+    layout keeps them at least as wide as their gutter and a scroll bar, and whether that bar takes
+    room depends on the app's style, which a window made by an earlier test leaves installed."""
     view = a_week(qapp)
-    view.scroll.scroll_to(8 * 60, above=0)
+    scroll = view.scroll
+    view.layout().removeWidget(scroll)
+    scroll.setGeometry(0, 0, 760, 520)
+    scroll.scroll_to(8 * 60, above=0)
     settle(qapp)
-    view.resize(40, 520)
+    scroll.setGeometry(0, 0, 40, 520)
     settle(qapp)
     assert not view.hours.tracks, "no room for the hours"
-    view.scroll.scroll_to(11 * 60, above=0)
-    view.resize(760, 520)
+    scroll.scroll_to(11 * 60, above=0)
+    scroll.setGeometry(0, 0, 760, 520)
     settle(qapp)
     assert abs(minute_at(view, 0) - 11 * 60) <= 1
 
