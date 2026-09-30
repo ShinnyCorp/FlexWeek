@@ -67,6 +67,8 @@ EDGE_PX = 7
 EDGE_WIDTH = 3
 RADIUS_BLOCK = RADIUS_CONTROL
 TEXT_LEFT, TEXT_RIGHT, TEXT_TOP = 8, 5, 3
+# The most a now line's dot or pill reaches either side of the line.
+NOW_REACH = 12
 # Homework: a block of it carries a book as well as its colour, for a student who cannot tell the colours.
 HOMEWORK_CATEGORIES = ("assignments", "homework")
 BOOK = "book-open"
@@ -148,6 +150,8 @@ class BlockPainter:
         self.wide = wide
         # The minute now on these hours, set by the canvas before it paints, or None.
         self.now_minute: int | None = None
+        # The day being painted, while it is the one the time now lies on; set by the canvas.
+        self.now_track: LinearTrack | None = None
 
     @cached_property
     def measures(self) -> dict:
@@ -233,6 +237,32 @@ class BlockPainter:
         )
 
     def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:
+        """A block in three layers: its colour, the time now where it crosses the block, its words.
+        Under the colour the line was hidden for as long as the block ran, and a student could not
+        see how far into it they were; over the words it ran through them."""
+        self.body(painter, rect, drawn)
+        self.crossing(painter, rect)
+        fill, ink, _outline, edge = self.fills(drawn)
+        self.words(painter, rect, drawn, ink, visible, fill, edge)
+
+    def crossing(self, painter: QPainter, rect: QRectF) -> None:
+        """The time now drawn again inside `rect`, over what a block has painted there so far, when
+        the line or the dot or pill on it reaches the block."""
+        track, minute = self.now_track, self.now_minute
+        if track is None or minute is None:
+            return
+        down = track.axis is Axis.DOWN
+        at = (track.area.top() if down else track.area.left()) + track.offset(minute)
+        first, last = (rect.top(), rect.bottom()) if down else (rect.left(), rect.right())
+        if not first - NOW_REACH <= at <= last + NOW_REACH:
+            return
+        painter.save()
+        painter.setClipRect(rect, Qt.ClipOperation.IntersectClip)
+        self.now(painter, track, minute)
+        painter.restore()
+
+    def body(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> None:
+        """A block's colour, outline, edge and marks: all of it but its words."""
         fill, ink, outline, edge = self.fills(drawn)
         shape = QPainterPath()
         shape.addRoundedRect(rect, RADIUS_BLOCK, RADIUS_BLOCK)
@@ -260,7 +290,6 @@ class BlockPainter:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(ink)
             painter.drawEllipse(QPointF(rect.right() - 7, rect.top() + 7), 3.5, 3.5)
-        self.words(painter, rect, drawn, ink, visible, fill, edge)
 
     def scale(self, font: QFont) -> float:
         """The Text knob as a factor: the look's when the painter has one, else what the window's
@@ -1056,11 +1085,13 @@ class HoursCanvas(QWidget):
                 with _fresh(painter):
                     self.painter.hour_labels(painter, track, self.header, every=120, visible=upright_visible)
             self._paint_hint(painter, track)
-            if (
+            crossed = (
                 self.today == track.day
                 and self.now_min is not None
                 and track.first <= self.now_min <= track.last
-            ):
+            )
+            self.painter.now_track = track if crossed else None
+            if crossed:
                 with _fresh(painter):
                     self.painter.now(painter, track, self.now_min)
             for drawn, rect in self.drawn(track):
@@ -1082,6 +1113,7 @@ class HoursCanvas(QWidget):
                 with _fresh(painter):
                     self.painter.ghost(painter, rect, span_words(preview.span), True)
             painter.restore()
+        self.painter.now_track = None
         for track in self.tracks:
             box = self._name_box(track)
             if box is not None:

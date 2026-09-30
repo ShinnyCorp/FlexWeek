@@ -366,6 +366,7 @@ class MissionPainter(BlockPainter):
         shape = QPainterPath()
         shape.addRoundedRect(bar, 3, 3)
         painter.fillPath(shape, mark)
+        self.crossing(painter, rect)
 
     def words(
         self,

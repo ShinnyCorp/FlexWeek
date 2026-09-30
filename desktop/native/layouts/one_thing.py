@@ -100,8 +100,10 @@ class BarPainter(BlockPainter):
             painter.setPen(QPen(colour, 2, Qt.PenStyle.DashLine))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(QRectF(segment.left(), segment.top() - 4, max(segment.width(), 4), tall + 8))
-            return
-        painter.fillRect(segment, self.c("accent" if drawn.block_id == self.chosen else "other"))
+        else:
+            painter.fillRect(segment, self.c("accent" if drawn.block_id == self.chosen else "other"))
+        # A segment has no words: the tick for now goes over its colour, or the thing on now hid it.
+        self.crossing(painter, rect)
 
     def hint(self, painter: QPainter, rect: QRectF, big: bool) -> None:
         pass

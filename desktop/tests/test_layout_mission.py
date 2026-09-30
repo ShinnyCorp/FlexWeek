@@ -372,6 +372,18 @@ def test_half_an_hour_or_less_is_a_tick_and_longer_a_filled_block(qapp: QApplica
     assert image.pixelColor(QPoint(round(quiz.left()) + 6, round(quiz.bottom()) - 4)).name() == class_fill
 
 
+def test_the_line_for_now_crosses_a_tick_it_lies_on(qapp: QApplication) -> None:
+    """At 18:15 now is the middle of Dinner's half hour, where its tick is drawn. The line goes over
+    the tick, as it goes over a filled block's colour: under it, now had a gap at Dinner."""
+    view = shown(qapp, minute="18:15")
+    hours = view.findChild(MissionCanvas, "missionHours")
+    image = hours.grab().toImage()
+    dinner = next(rect for item, rect in hours.drawn(hours.track_for(3)) if item.block_id == "dinner")
+    middle = dinner.center().toPoint()
+    across = {image.pixelColor(x, middle.y()).name() for x in range(middle.x() - 2, middle.x() + 3)}
+    assert view.scene.tokens["accent"] in across
+
+
 def test_a_name_that_cannot_fit_is_written_beside_its_block_where_the_lane_is_free(
     qapp: QApplication,
 ) -> None:

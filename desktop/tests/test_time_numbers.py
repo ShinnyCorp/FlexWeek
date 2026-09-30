@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib.util
-from datetime import datetime
 
 import pytest
 
@@ -94,37 +93,76 @@ def test_narrow_week_blocks_still_include_their_times(
         assert any(words.startswith(clock_label(480)) for words in written), (width, written)
 
 
-@pytest.mark.parametrize("design", ["classic", "timeline", "clay"])
-def test_now_is_painted_before_the_block_words(
-    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch, design: str,
+def crossed_by_now(canvas, block_id: str, day: int) -> tuple[int, list[bool]]:
+    """A block painted without the time now, then with it on the line of pixels through the most of
+    the block's words: how many pixels of the block's plain colour the line changed, and, along the
+    line where it is at full strength, whether each pixel of a word still differs from the line.
+    The hours are painted whole and the canvas holds the clock, so the line is all that differs."""
+    from collections import Counter
+
+    from PySide6.QtCore import QPointF
+    from PySide6.QtGui import QColor
+
+    from desktop.native.hours.geometry import Axis
+
+    track = canvas.track_for(day)
+    drawn, rect = next((item, rect) for item, rect in canvas.drawn(track) if item.block_id == block_id)
+    # Inside the block's edge and its category's bar, where there is only its colour and its words.
+    box = track.transform.mapRect(rect).toRect().adjusted(10, 4, -4, -4)
+    down = track.axis is Axis.DOWN
+    lines = range(box.top(), box.bottom() + 1) if down else range(box.left(), box.right() + 1)
+    along = range(box.left(), box.right() + 1) if down else range(box.top(), box.bottom() + 1)
+
+    def row(image, line: int) -> list[int]:
+        return [image.pixel(*((at, line) if down else (line, at))) for at in along]
+
+    canvas.set_week(canvas.occurrences, day, None)
+    bare = canvas.grab().toImage()
+    plain = Counter(pixel for line in lines for pixel in row(bare, line)).most_common(1)[0][0]
+    through = max(lines, key=lambda line: sum(pixel != plain for pixel in row(bare, line)))
+    middle = box.center()
+    point = QPointF(middle.x(), through) if down else QPointF(through, middle.y())
+    minute = round(track.minute_at(point))
+    assert drawn.span.start < minute < drawn.span.end
+    canvas.set_week(canvas.occurrences, day, minute)
+    lit = canvas.grab().toImage()
+
+    def pairs(line: int) -> list[tuple[int, int]]:
+        """Each pixel along this line of them, without the time now and with it."""
+        return list(zip(row(bare, line), row(lit, line), strict=True))
+
+    def strength(line: int) -> int:
+        """How far the now line's own colour on this line of pixels is from the block's."""
+        changed = [new for old, new in pairs(line) if old == plain and new != old]
+        if not changed:
+            return 0
+        colour, fill = QColor(Counter(changed).most_common(1)[0][0]), QColor(plain)
+        return sum(abs(a - b) for a, b in zip(colour.getRgb()[:3], fill.getRgb()[:3], strict=True))
+
+    shown = sum(old == plain and new != old for line in lines for old, new in pairs(line))
+    strongest = pairs(max(lines, key=strength))
+    line_colour = Counter(new for old, new in strongest if old == plain).most_common(1)[0][0]
+    return shown, [new != line_colour for old, new in strongest if old != plain]
+
+
+@pytest.mark.parametrize("design", DESIGNS)
+def test_now_crosses_a_block_over_its_colour_and_under_its_words(
+    qapp: QApplication, window: NativeWindow, design: str,
 ) -> None:
-    session = window.session
-    held = datetime.fromisoformat(session.week_start).replace(hour=10, minute=20)
-    session.now_ms = lambda: int(held.timestamp() * 1000)
+    """During School the line for now shows on School, so a student sees how far into it they are,
+    and School's words are written over the line. Painted before the block the line was hidden from
+    08:00 to 14:30; painted after it, it ran through "School"."""
     window._layout = sanitize_layout({"main": design})
     window._apply_appearance()
     window._on_week()
     for _ in range(4):
         qapp.processEvents()
-    scroll = hours(window)
-    wrote: list[str] = []
-    painter = scroll.canvas.painter
-    block, now = painter.block, painter.now
-
-    def draw_block(*args: object) -> None:
-        if args[2].span.day == 0 and args[2].block_id == "school":
-            wrote.append("school")
-        block(*args)
-
-    def draw_now(*args: object) -> None:
-        wrote.append("now")
-        now(*args)
-
-    monkeypatch.setattr(painter, "block", draw_block)
-    monkeypatch.setattr(painter, "now", draw_now)
-    assert not scroll.canvas.grab().isNull()
-    assert "school" in wrote and "now" in wrote
-    assert wrote.index("now") < wrote.index("school")
+    shown, words = crossed_by_now(hours(window).canvas, "school", 3)
+    assert shown >= 10, "the line for now is hidden by the block"
+    assert len(words) >= 3, "the line does not cross the block's words"
+    assert sum(words) >= len(words) / 2, (
+        f"the line for now is drawn over the block's words: {sum(words)} of {len(words)} pixels of them show"
+    )
 
 
 def test_day_names_its_date_once(qapp: QApplication, window: NativeWindow) -> None:

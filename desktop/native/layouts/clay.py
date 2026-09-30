@@ -357,7 +357,7 @@ class ClayPainter(BlockPainter):
                 made.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 97)
         return title, small
 
-    def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:
+    def body(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> None:
         fill, ink, _outline, edge = self.fills(drawn)
         assert edge is not None
         radius = min(RADIUS_BLOCK, rect.height() / 2, rect.width() / 2)
@@ -389,7 +389,6 @@ class ClayPainter(BlockPainter):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(ink)
             painter.drawEllipse(QPointF(rect.right() - 7, rect.top() + 7), 3.5, 3.5)
-        self.words(painter, rect, drawn, ink, visible, fill, edge)
 
     def words(
         self,

@@ -20,7 +20,7 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import QPointF, Qt
     from PySide6.QtGui import QKeyEvent
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
@@ -269,6 +269,18 @@ def test_option_buttons_hidden_leaves_only_the_way_back(qapp: QApplication) -> N
 def test_option_day_bar_hidden_removes_it(qapp: QApplication) -> None:
     assert shown(qapp, "19:00").findChild(DayBar) is not None
     assert shown(qapp, "19:00", daybar="hide").findChild(DayBar) is None
+
+
+def test_the_bars_tick_for_now_shows_on_the_thing_it_is_in(qapp: QApplication) -> None:
+    """At 10:20 now is inside School, and the bar's tick is drawn over School's segment. Under the
+    segment it was hidden for as long as School ran."""
+    view = shown(qapp, "10:20")
+    bar = view.findChild(DayBar)
+    track = bar.tracks[0]
+    school = next(rect for item, rect in bar.drawn(track) if item.block_id == "school")
+    now = QPointF(track.area.left() + track.offset(minute_of("10:20")), school.center().y())
+    assert school.contains(now)
+    assert bar.grab().toImage().pixelColor(now.toPoint()).name() == bar.painter.c("tick").name()
 
 
 def test_option_colours_repaint_the_screen(qapp: QApplication) -> None:

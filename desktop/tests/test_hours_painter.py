@@ -516,6 +516,20 @@ def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
     assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == accent
 
 
+def test_a_now_pill_that_reaches_into_a_block_is_whole_over_its_colour(qapp: QApplication) -> None:
+    """At 15:55 the line is four pixels above the Essay that starts at 16:00, and the pill on it
+    reaches a few pixels into the Essay. That part is drawn over the Essay's colour, as the line is
+    where it crosses a block: under the colour, the pill lost its foot."""
+    canvas = three_days(now_min=15 * 60 + 55)
+    image = canvas.grab().toImage()
+    track = canvas.tracks[0]
+    line_y = round(track.area.top() + track.offset(15 * 60 + 55))
+    essay = canvas.mapFromGlobal(canvas.block_rect("essay", 0).topLeft())
+    assert line_y < essay.y() <= line_y + 5
+    accent = resolved_palette("system", False, None)["accent"]
+    assert QColor(image.pixel(int(track.area.left()) + 20, line_y + 6)).name() == accent
+
+
 def custom_hours(custom: dict) -> tuple[HoursCanvas, dict]:
     """Three days at 15:40 in a custom look on Light, with its painter."""
     look = {"preset": "default", "knobs": {}, "custom": {"base": "light", **custom}}

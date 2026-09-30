@@ -35,11 +35,46 @@
     "test": "desktop/tests/test_time_numbers.py::test_narrow_week_blocks_still_include_their_times"
   },
   {
-    "name": "Now draws over block words again",
+    "name": "Now is drawn after the blocks, over their words",
     "file": "desktop/native/hours/canvas.py",
-    "old": "            if (\n                self.today == track.day\n                and self.now_min is not None\n                and track.first <= self.now_min <= track.last\n            ):\n                with _fresh(painter):\n                    self.painter.now(painter, track, self.now_min)\n            for drawn, rect in self.drawn(track):\n                with _fresh(painter):\n                    key = (drawn.block_id, drawn.span.day)\n                    if not drawn.held and key in self._slides:\n                        start = track.transform.inverted()[0].mapRect(self._slides[key])\n                        rect = between(start, rect, self._progress)\n                    elif not drawn.held and key in self._fresh:\n                        painter.setOpacity(self._progress)\n                    self.painter.block(painter, rect, drawn, upright_visible)\n",
-    "new": "            for drawn, rect in self.drawn(track):\n                with _fresh(painter):\n                    key = (drawn.block_id, drawn.span.day)\n                    if not drawn.held and key in self._slides:\n                        start = track.transform.inverted()[0].mapRect(self._slides[key])\n                        rect = between(start, rect, self._progress)\n                    elif not drawn.held and key in self._fresh:\n                        painter.setOpacity(self._progress)\n                    self.painter.block(painter, rect, drawn, upright_visible)\n            if (\n                self.today == track.day\n                and self.now_min is not None\n                and track.first <= self.now_min <= track.last\n            ):\n                with _fresh(painter):\n                    self.painter.now(painter, track, self.now_min)\n",
-    "test": "desktop/tests/test_time_numbers.py::test_now_is_painted_before_the_block_words[classic]"
+    "old": "            if crossed:\n                with _fresh(painter):\n                    self.painter.now(painter, track, self.now_min)\n            for drawn, rect in self.drawn(track):\n                with _fresh(painter):\n                    key = (drawn.block_id, drawn.span.day)\n                    if not drawn.held and key in self._slides:\n                        start = track.transform.inverted()[0].mapRect(self._slides[key])\n                        rect = between(start, rect, self._progress)\n                    elif not drawn.held and key in self._fresh:\n                        painter.setOpacity(self._progress)\n                    self.painter.block(painter, rect, drawn, upright_visible)\n",
+    "new": "            for drawn, rect in self.drawn(track):\n                with _fresh(painter):\n                    key = (drawn.block_id, drawn.span.day)\n                    if not drawn.held and key in self._slides:\n                        start = track.transform.inverted()[0].mapRect(self._slides[key])\n                        rect = between(start, rect, self._progress)\n                    elif not drawn.held and key in self._fresh:\n                        painter.setOpacity(self._progress)\n                    self.painter.block(painter, rect, drawn, upright_visible)\n            if crossed:\n                with _fresh(painter):\n                    self.painter.now(painter, track, self.now_min)\n",
+    "test": "desktop/tests/test_time_numbers.py::test_now_crosses_a_block_over_its_colour_and_under_its_words[classic]"
+  },
+  {
+    "name": "Now is hidden under a block's colour",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "        self.body(painter, rect, drawn)\n        self.crossing(painter, rect)\n",
+    "new": "        self.body(painter, rect, drawn)\n",
+    "test": "desktop/tests/test_time_numbers.py::test_now_crosses_a_block_over_its_colour_and_under_its_words[clay]"
+  },
+  {
+    "name": "Now is drawn again on blocks it does not reach",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "        if not first - NOW_REACH <= at <= last + NOW_REACH:\n            return\n",
+    "new": "",
+    "test": "desktop/tests/test_hours_painter.py::test_the_now_line_carries_the_time_on_a_pill_at_its_start"
+  },
+  {
+    "name": "A now pill reaching into a block loses its foot",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "NOW_REACH = 12\n",
+    "new": "NOW_REACH = 0\n",
+    "test": "desktop/tests/test_hours_painter.py::test_a_now_pill_that_reaches_into_a_block_is_whole_over_its_colour"
+  },
+  {
+    "name": "One thing's tick for now is hidden under a segment",
+    "file": "desktop/native/layouts/one_thing.py",
+    "old": "or the thing on now hid it.\n        self.crossing(painter, rect)\n",
+    "new": "or the thing on now hid it.\n",
+    "test": "desktop/tests/test_layout_one_thing.py::test_the_bars_tick_for_now_shows_on_the_thing_it_is_in"
+  },
+  {
+    "name": "Mission's line for now is hidden under a tick",
+    "file": "desktop/native/layouts/mission.py",
+    "old": "        painter.fillPath(shape, mark)\n        self.crossing(painter, rect)\n",
+    "new": "        painter.fillPath(shape, mark)\n",
+    "test": "desktop/tests/test_layout_mission.py::test_the_line_for_now_crosses_a_tick_it_lies_on"
   },
   {
     "name": "Day repeats the date in its agenda heading",

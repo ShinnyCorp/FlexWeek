@@ -606,7 +606,7 @@ class RetroPainter(BlockPainter):
             time_font(base), "caption", scale, WEIGHT_REGULAR
         )
 
-    def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:
+    def body(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> None:
         colours = self.scheme
         self.wide = self.day and rect.width() >= DAY_WIDE_LEAST
         fill, ink, _outline, edge = self.fills(drawn)
@@ -626,7 +626,6 @@ class RetroPainter(BlockPainter):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(ink)
             painter.drawEllipse(QPointF(box.right() - 6, box.top() + 6), 3, 3)
-        self.words(painter, rect, drawn, ink, visible, fill, edge)
 
     def words(
         self,
