@@ -317,6 +317,22 @@ def test_hours_cut_short_for_a_moment_go_back_to_where_they_were(qapp: QApplicat
     assert bar.value() == end
 
 
+def test_a_time_asked_for_while_the_hours_have_no_room_is_shown_once_they_do(qapp: QApplication) -> None:
+    """Clay deck's open card slides in from a narrow neighbour, and for a moment its hours have no width
+    at all. A time asked for then waited for the hours to be shown again, which never came, and the
+    day opened at the wrong hour."""
+    view = a_week(qapp)
+    view.scroll.scroll_to(8 * 60, above=0)
+    settle(qapp)
+    view.resize(40, 520)
+    settle(qapp)
+    assert not view.hours.tracks, "no room for the hours"
+    view.scroll.scroll_to(11 * 60, above=0)
+    view.resize(760, 520)
+    settle(qapp)
+    assert abs(minute_at(view, 0) - 11 * 60) <= 1
+
+
 def test_a_week_opened_while_hidden_scrolls_to_now_when_it_is_shown(qapp: QApplication) -> None:
     view = a_week(qapp)
     view.hide()

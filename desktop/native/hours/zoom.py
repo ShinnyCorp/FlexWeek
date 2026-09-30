@@ -425,6 +425,10 @@ class HoursScroll(QScrollArea):
     def resizeEvent(self, event: object) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._place_header()
+        if self._pending is not None and self.isVisible():
+            # Asked for a time while they had no room, as Clay's open card sliding in from a narrow
+            # neighbour: they go there once they have some.
+            self.scroll_to(*self._pending)
         if self._short_at is not None and self.isVisible():
             # Hours that grew pull the bar back with them; that is not the student scrolling.
             if self._bar().value() == min(self._short_at, self._bar().maximum()):
