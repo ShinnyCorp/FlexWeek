@@ -11,6 +11,8 @@ All notable changes to FlexWeek are documented here. Format follows
   through its name. Timeline's and Clay deck's pills with the time sit beside
   the hours instead of on the block.
 - Day keeps Now on the hours grid rather than between agenda rows. Week titles, time labels, recovery codes and category tick/action spacing are clearer at narrow widths.
+- Setup entries have a Sports or Activity choice that survives reopening. Category hues, Sleep contrast, Paper and Pastel surfaces, Sand, category icons and Dark control edges were adjusted. The chosen blue stays exact while Now and selection use a readable shade.
+- Look cards have more room for large labels. Readability keeps stock accents quiet while naming unsafe uses of a custom accent.
 
 ## [0.17.1] - 2026-09-29
 

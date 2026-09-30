@@ -33,7 +33,7 @@ from desktop.native.hours.geometry import FIRST, LAST, Axis, LinearTrack
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.rail import Colours
 from desktop.native.hours.zoom import HoursScroll, Scale, opening_minute
-from desktop.native.look import category_paint, mix, text_scale
+from desktop.native.look import category_paint, mix, readable_ink, text_scale
 from desktop.native.tokens import SPACING, WEIGHT_STRONG
 from desktop.native.weekmodel import (
     HOMEWORK,
@@ -97,7 +97,7 @@ class ClassicPainter(BlockPainter):
     def track(self, painter: QPainter, track: LinearTrack, today: bool) -> None:
         super().track(painter, track, today)
         if not today and self.now_minute is not None and not self.wide:
-            faint = self.c("accent")
+            faint = self.c("now")
             faint.setAlphaF(NOW_ACROSS)
             at = track.area.top() + track.offset(self.now_minute)
             painter.setPen(QPen(faint, 1))
@@ -112,11 +112,11 @@ class ClassicPainter(BlockPainter):
         start, end = QPointF(area.left() - 1, at), QPointF(area.right(), at)
         painter.setPen(QPen(halo, 5))
         painter.drawLine(start, end)
-        painter.setPen(QPen(self.c("accent"), 2))
+        painter.setPen(QPen(self.c("now"), 2))
         painter.drawLine(start, end)
         if not self.wide:
             painter.setPen(QPen(halo, 2))
-            painter.setBrush(self.c("accent"))
+            painter.setBrush(self.c("now"))
             painter.drawEllipse(QPointF(area.left() + 1, at), 5, 5)
 
     def hour_labels(
@@ -138,9 +138,9 @@ class ClassicPainter(BlockPainter):
         at = track.area.top() + track.offset(self.now_minute)
         pill = QRectF(track.area.left() - 3 - width, at - height / 2, width, height)
         painter.setPen(QPen(self.c("panel") if "panel" in self.colours else self.c("window"), 2))
-        painter.setBrush(self.c("accent"))
+        painter.setBrush(self.c("now"))
         painter.drawRoundedRect(pill, height / 2, height / 2)
-        painter.setPen(self.c("accent_ink"))
+        painter.setPen(QColor(readable_ink(self.colours.get("now", self.colours["accent"]))))
         painter.setFont(font)
         painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
 
@@ -202,7 +202,7 @@ class DayName(QLabel):
         x = float(SPACING[2])
         name_font = strong if today else body
         painter.setFont(name_font)
-        painter.setPen(QColor(colours.accent if today else colours.muted))
+        painter.setPen(QColor(colours.accent_text if today else colours.muted))
         name_width = QFontMetricsF(name_font).horizontalAdvance(self.name)
         painter.drawText(QRectF(x, y, name_width + 1, top), Qt.AlignmentFlag.AlignVCenter, self.name)
         x += name_width + SPACING[0]

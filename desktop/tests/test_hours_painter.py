@@ -512,8 +512,8 @@ def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
     assert len(written) == 1
     assert abs(written[0].center().y() - line_y) <= 2
     assert track.area.left() <= written[0].left() < track.area.left() + 12
-    accent = resolved_palette("system", False, None)["accent"]
-    assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == accent
+    shade = resolved_palette("system", False, None)["now"]
+    assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == shade
 
 
 def test_a_now_pill_that_reaches_into_a_block_is_whole_over_its_colour(qapp: QApplication) -> None:
@@ -553,7 +553,7 @@ def test_a_custom_look_sets_todays_wash_the_now_line_and_the_edge(qapp: QApplica
     track = changed.tracks[0]
     line_y = round(track.area.top() + track.offset(15 * 60 + 40))
     x = int(track.area.right()) - 3
-    assert before.pixelColor(x, line_y).name() == plain_palette["accent"]
+    assert before.pixelColor(x, line_y).name() == plain_palette["now"]
     assert after.pixelColor(x, line_y).name() == palette["text"]
     block = changed.block_rect("essay", 1)
     middle = block.center().y()

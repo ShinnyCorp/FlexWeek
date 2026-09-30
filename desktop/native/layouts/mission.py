@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from backend.models import due_sort_key
 from desktop.native import icons
-from desktop.native.calendar import DAY_FULL, DAYS
+from desktop.native.calendar import DAY_FULL, DAYS, category_icon
 from desktop.native.fonts import at_scale
 from desktop.native.hours.canvas import (
     BOOK,
@@ -249,6 +249,9 @@ class MissionPainter(BlockPainter):
                 "rule": mix_oklab(tokens["text"], tokens["surface"], 0.07),
                 "accent": tokens["accent"],
                 "accent_ink": tokens["accent_ink"],
+                "accent_text": tokens.get("accent_text", tokens["accent"]),
+                "now": tokens.get("now", tokens["accent"]),
+                "selection": tokens.get("selection", tokens["accent"]),
                 "error": tokens["danger"],
                 "text": tokens["text"],
                 "muted": tokens["muted"],
@@ -335,7 +338,7 @@ class MissionPainter(BlockPainter):
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
         lane = self.lane(track)
         at = track.area.left() + track.offset(minute)
-        painter.setPen(QPen(self.c("accent"), 2))
+        painter.setPen(QPen(self.c("now"), 2))
         painter.drawLine(QPointF(at, lane.top() - 1), QPointF(at, lane.bottom() + 1))
 
     def fills(self, drawn: Drawn) -> tuple[QColor, QColor, QColor | None, QColor | None]:
@@ -353,14 +356,16 @@ class MissionPainter(BlockPainter):
         if drawn.done or drawn.missed:
             mark = QColor(mix_oklab(mark.name(), self.tokens["surface"], 0.45))
         top = rect.top() + 8
-        if drawn.category in HOMEWORK_CATEGORIES:
-            # Never its colour alone: homework keeps its book.
+        if category_icon(drawn.category) is not None:
             size = round(QFontMetricsF(self.fonts(painter.font())[0]).ascent())
-            self._book(painter, QPointF(rect.center().x() - size / 2, top), size, mark)
+            fill, ink, _outline, edge = self.fills(drawn)
+            colour = self._book_colour(drawn, ink, fill, edge) or ink
+            self._book(painter, QPointF(rect.center().x() - size / 2, top), size, colour,
+                       category_icon(drawn.category) or BOOK)
             top += size + 3
         bar = QRectF(rect.center().x() - 3, top, 6, max(rect.bottom() - 8 - top, 6))
         if drawn.chosen:
-            painter.setPen(QPen(self.c("accent"), 2))
+            painter.setPen(QPen(self.c("selection"), 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(bar.adjusted(-4, -4, 4, 4), RADIUS_CONTROL, RADIUS_CONTROL)
         shape = QPainterPath()
@@ -401,7 +406,7 @@ class MissionPainter(BlockPainter):
         )
         tight = QRectF(room.left(), rect.top(), room.width(), rect.height())
         shown = (self.measures["show_times"], self.measures["show_lengths"])
-        book = drawn.category in HOMEWORK_CATEGORIES
+        book = category_icon(drawn.category) is not None
         lay = block_layout(drawn, title, small, room, tight=tight, book=book, shown=shown)
         return bool(lay) and not any(line.text.endswith("…") for line in lay)
 
@@ -414,18 +419,19 @@ class MissionPainter(BlockPainter):
         fill: QColor | None,
         edge: QColor | None,
     ) -> None:
-        """No words: homework keeps its book, at the top of the block."""
-        if drawn.category not in HOMEWORK_CATEGORIES:
+        """No words: the category keeps its icon at the top of the block."""
+        if category_icon(drawn.category) is None:
             return
         size = round(QFontMetricsF(self.fonts(painter.font())[0]).ascent())
         if rect.width() >= size + 4:
             colour = self._book_colour(drawn, ink, fill or self.c("window"), edge)
             at = QPointF(rect.center().x() - size / 2 + 1, rect.top() + 7)
-            self._book(painter, at, size, colour or ink)
+            self._book(painter, at, size, colour or ink, category_icon(drawn.category) or BOOK)
 
-    def _book(self, painter: QPainter, at: QPointF, size: int, colour: QColor) -> None:
+    def _book(self, painter: QPainter, at: QPointF, size: int, colour: QColor,
+              icon_name: str = BOOK) -> None:
         ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
-        painter.drawPixmap(at, icons.pixmap(BOOK, colour.name(), size, ratio))
+        painter.drawPixmap(at, icons.pixmap(icon_name, colour.name(), size, ratio))
 
     def _beside(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> bool:
         """The name, and its start if there is room, written beside the block where its row of the

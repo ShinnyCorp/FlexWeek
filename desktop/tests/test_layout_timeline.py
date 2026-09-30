@@ -297,7 +297,7 @@ def test_now_is_a_line_across_todays_column_with_its_time_and_on_day_says_now(
     view = shown(qapp, clock="15:40")
     assert "15:40" in drawn_words(qapp, monkeypatch, view)
     hours = canvas(view)
-    accent = view.scene.tokens["accent"]
+    accent = view.scene.tokens["now"]
     at = hours.mapFromGlobal(hours.point_for(THURSDAY, 15 * 60 + 40))
     friday = hours.mapFromGlobal(hours.point_for(4, 15 * 60 + 40))
     seen = Seen(view)
