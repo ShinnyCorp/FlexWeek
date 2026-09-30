@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QLabel,
+    QLineEdit,
     QPushButton,
     QWidget,
 )
@@ -72,6 +73,48 @@ def label_for(widget: QWidget) -> str:
 
 def top(widget: QWidget, within: QWidget) -> int:
     return widget.mapTo(within, widget.rect().topLeft()).y()
+
+
+def test_every_field_in_a_forms_column_starts_at_the_same_left_edge(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """A segmented control's track starts where the text fields, steppers, dropdowns and buttons in its
+    column do: at the widget's box, and as painted, since a track can be drawn inset from its box."""
+    dialog = prefs(window)
+    seen: list[str] = []
+    for row in range(5):
+        dialog.nav.setCurrentRow(row)
+        for _ in range(5):
+            qapp.processEvents()
+        on = page(dialog, row)
+        picture = on.grab().toImage()
+        for form in on.findChildren(QFormLayout):
+            fields = [
+                item.widget()
+                for at in range(form.rowCount())
+                if (item := form.itemAt(at, QFormLayout.ItemRole.FieldRole)) is not None
+                and item.widget() is not None
+                and item.widget().isVisibleTo(dialog)
+                and form.itemAt(at, QFormLayout.ItemRole.LabelRole) is not None
+            ]
+            if not fields:
+                continue
+            edges = {field.mapTo(on, QPoint(0, 0)).x() for field in fields}
+            assert len(edges) == 1, (row, [(f.objectName(), f.mapTo(on, QPoint(0, 0)).x()) for f in fields])
+            column = edges.pop()
+            for field in fields:
+                if not isinstance(field, (Segmented, QLineEdit, QComboBox, QPushButton)) and (
+                    field.objectName() != "stepper"
+                ):
+                    continue
+                middle = field.mapTo(on, QPoint(0, field.height() // 2)).y()
+                card = picture.pixelColor(column - 3, middle)
+                ink = next(x for x in range(column - 2, column + 12) if picture.pixelColor(x, middle) != card)
+                assert ink == column, f"{field.objectName()} is drawn from {ink}, column {column}"
+                seen.append(type(field).__name__)
+    assert "Segmented" in seen and "QLineEdit" in seen and "QComboBox" in seen, seen
+    dialog.close_page()
 
 
 def test_this_build_says_0_17_1_and_is_not_offered_0_17_0(
