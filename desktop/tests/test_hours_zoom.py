@@ -310,6 +310,19 @@ def test_a_week_keeps_where_it_was_scrolled_when_it_is_shown_again(qapp: QApplic
     assert abs((top + bottom) / 2 - 12 * 60) <= 2, "a hidden refresh lost the opening time"
 
 
+def test_the_same_week_rendered_again_keeps_now_in_the_middle_while_the_page_settles(
+    qapp: QApplication,
+) -> None:
+    """A save or a tick of the clock renders the week again. Opened with now in the middle, it keeps now
+    there as the page settles, as a new look's taller header makes it, until the student scrolls."""
+    view = a_week(qapp)
+    view.set_week(build_week(MONDAY, [], {}, None), 3, 15 * 60 + 41)
+    view.resize(760, 640)
+    settle(qapp)
+    top, bottom = minute_at(view, 0), minute_at(view, view.scroll.viewport().height())
+    assert abs((top + bottom) / 2 - (15 * 60 + 40)) <= 2
+
+
 def test_hours_cut_short_for_a_moment_go_back_to_where_they_were(qapp: QApplication) -> None:
     """A page laying itself out can give the hours a little less to scroll for a moment. The bar is
     cut back to that end, and once the room returns the hours are where the student left them."""
