@@ -401,7 +401,7 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "the toast runs off the bottom of a short window",
-  "old": "        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT + TOAST_SHADOW\n",
+  "old": "        bottom = min(area.top() + area.height(), host.height()) - inset - TOAST_FOOT + TOAST_SHADOW\n",
   "new": "        bottom = area.top() + area.height() + TOAST_FOOT * 4\n",
   "test": "desktop/tests/test_drag_results.py::test_the_toast_sits_bottom_right_of_the_page_and_lets_the_pointer_through"
  },

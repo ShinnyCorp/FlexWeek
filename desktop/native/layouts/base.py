@@ -265,6 +265,11 @@ class LayoutView(QWidget):
             if held is not None:
                 self.show_week(held)
 
+    def bottom_inset(self) -> int:
+        """Pixels of this design's own bottom edge taken by chrome, such as Retro's taskbar. A notice
+        placed over the design keeps clear of them."""
+        return 0
+
     @property
     def cramped(self) -> bool:
         """Too narrow for this design's full arrangement. Measured on the view, not the window."""

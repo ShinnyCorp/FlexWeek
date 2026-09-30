@@ -73,6 +73,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSpacerItem,
     QSpinBox,
+    QStackedWidget,
     QStyle,
     QStyleOptionButton,
     QStyleOptionSlider,
@@ -801,8 +802,11 @@ class Toast(QWidget):
         width = min(max(natural, TOAST_MIN_WIDTH), room)
         height = max(self.heightForWidth(width), self.minimumSizeHint().height())
         # Bottom right of the page, 16 pixels in from its corner, and never past the window's foot.
+        # A design with a bar of its own along the foot (Retro's taskbar) is kept clear of.
+        page = over.currentWidget() if isinstance(over, QStackedWidget) else over
+        inset = page.bottom_inset() if hasattr(page, "bottom_inset") else 0
         right = area.left() + area.width() - TOAST_FOOT + TOAST_SHADOW
-        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT + TOAST_SHADOW
+        bottom = min(area.top() + area.height(), host.height()) - inset - TOAST_FOOT + TOAST_SHADOW
         self.setGeometry(max(0, right - width), max(0, bottom - height), width, height)
 
     def moveEvent(self, event: QMoveEvent) -> None:  # noqa: N802
