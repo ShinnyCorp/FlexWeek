@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QApplication, QFrame, QLabel, QLayout, QPushButton, QScrollArea, QWidget
+from shiboken6 import isValid
 
 from desktop.native.calendar import CATEGORIES
 from desktop.native.hours.hand import Hand, is_date_surface, is_surface
@@ -207,6 +208,9 @@ class LayoutView(QWidget):
         # The levels this device chose, by scale. The window hands over its own and keeps it current, so
         # hours made on a later render open where the student left them. A picture has none.
         self.remembered_zoom: Mapping[str, int] = {}
+        # The hours made last for each scale. Timeline and Bento make theirs again for a new text size,
+        # and the new ones take over where the student left each week and day.
+        self._made_hours: dict[str, HoursScroll] = {}
 
     @property
     def scene(self) -> Scene | None:
@@ -246,6 +250,10 @@ class LayoutView(QWidget):
         design passes every `HoursScroll` it makes through this, where it makes it."""
         scroll.restore(self.remembered_zoom)
         scroll.zoomed.connect(self.zoomed)
+        before = self._made_hours.get(scroll.scale.key)
+        if before is not None and before is not scroll and isValid(before):
+            scroll.take_places(before)
+        self._made_hours[scroll.scale.key] = scroll
         return scroll
 
     def hours_surfaces(self) -> list[QWidget]:

@@ -429,6 +429,37 @@ def test_today_opens_this_week_at_now_and_leaves_the_week_it_was_pressed_from_wh
     assert bar().value() == left, f"{design}: Today lost where next week was scrolled to"
 
 
+@pytest.mark.parametrize("design", DESIGNS)
+def test_each_design_keeps_the_week_where_it_was_through_a_new_text_size(
+    qapp: QApplication, window: NativeWindow, design: str
+) -> None:
+    """Timeline and Bento make their hours again for a new text size. Those are where the student left
+    the week, not at now, like every other look change."""
+    from desktop.native.look import sanitize_look
+
+    session = window.session
+    window._layout = sanitize_layout({"main": design, "day": "one"})
+    window._apply_appearance()
+    window._on_week()
+    window.findChild(QPushButton, "viewWeek").click()
+    wait_until(qapp, lambda: not session.busy)
+    for _ in range(4):
+        qapp.processEvents()
+    scroll = hours(window)
+    bar = scroll.verticalScrollBar() if scroll.axis is Axis.DOWN else scroll.horizontalScrollBar()
+    opened = bar.value()
+    bar.setValue(opened + 40 if opened + 40 <= bar.maximum() else opened - 40)
+    assert bar.value() != opened
+    left = span_shown(scroll)[0]
+    window._look = sanitize_look({"knobs": {"text": "large"}})
+    window._apply_appearance()
+    window._on_week()
+    for _ in range(4):
+        qapp.processEvents()
+    top = span_shown(hours(window))[0]
+    assert abs(top - left) <= 2, f"{design}: a new text size moved the week from {left:.0f} to {top:.0f}"
+
+
 def test_my_day_title_names_the_day_chosen_on_its_strip(
     qapp: QApplication, window: NativeWindow
 ) -> None:

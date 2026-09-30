@@ -351,6 +351,13 @@ class HoursScroll(QScrollArea):
             else:
                 self.scroll_to(minute, above)
 
+    def take_places(self, before: HoursScroll) -> None:
+        """Go back where the student left each week and day on `before`, the hours these replace."""
+        self._positions = dict(before._positions)
+        left = before._left_at() if before._opened is not None else None
+        if left is not None:
+            self._positions[before._opened] = left
+
     def forget(self, week_start: str | None = None) -> None:
         """Reopen a week's hours, or forget the whole session when no week is given."""
         if week_start is None:

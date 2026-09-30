@@ -103,5 +103,12 @@
   "old": "            self._short_at is None or bar.value() == min(self._short_at, bar.maximum())\n        ):\n            return self._kept\n",
   "new": "            True\n        ):\n            return self._kept\n",
   "test": "desktop/tests/test_hours_zoom.py::test_a_week_scrolled_while_its_hours_waited_for_room_is_left_where_it_was_scrolled_to"
+ },
+ {
+  "name": "hours made again for a new text size open at now",
+  "file": "desktop/native/layouts/base.py",
+  "old": "            scroll.take_places(before)\n",
+  "new": "            pass\n",
+  "test": "desktop/tests/test_hours_open.py::test_each_design_keeps_the_week_where_it_was_through_a_new_text_size"
  }
 ]
