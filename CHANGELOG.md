@@ -11,6 +11,7 @@ All notable changes to FlexWeek are documented here. Format follows
   through its name. Timeline's and Clay deck's pills with the time sit beside
   the hours instead of on the block.
 - Day keeps Now on the hours grid rather than between agenda rows. Week titles, time labels, recovery codes and category tick/action spacing are clearer at narrow widths.
+- Help and the other scrolling sheets use the app's thin scroll bar, as Ctrl+K and Settings do, instead of a thick one that took width from the words.
 
 ## [0.17.1] - 2026-09-29
 

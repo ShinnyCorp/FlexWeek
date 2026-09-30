@@ -1935,6 +1935,7 @@ class FitScroll(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # The keyboard starts on the first field in it, not on the box around them.
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        overlay_scroll_bars(self)
         self.setWidget(bare(body))
 
     def _extra(self) -> QSize:
