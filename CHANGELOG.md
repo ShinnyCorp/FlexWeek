@@ -24,6 +24,8 @@ All notable changes to FlexWeek are documented here. Format follows
   switch views, open the focus screen or Settings, or change the look. They
   open at now when FlexWeek starts, when you press Today, and when you come
   back to this week; the week you pressed Today from stays where you left it.
+- Help and the other scrolling sheets use the app's thin scroll bar, as Ctrl+K and Settings do, instead of a thick one that took width from the words.
+- At a narrow window Week's day header shows a day's homework as "1 h 30" when "1 h 30 min" would be cut off.
 
 ## [0.17.1] - 2026-09-29
 

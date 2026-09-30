@@ -33,6 +33,7 @@ from desktop.native.hours.geometry import FIRST, LAST, Axis, LinearTrack
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.rail import Colours
 from desktop.native.hours.zoom import HoursScroll, Scale, opening_minute
+from desktop.native.layouts.base import short_length
 from desktop.native.look import category_paint, mix, text_scale
 from desktop.native.tokens import SPACING, WEIGHT_STRONG
 from desktop.native.weekmodel import (
@@ -191,6 +192,21 @@ class DayName(QLabel):
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         return QSize(0, self.sizeHint().height())
 
+    def _homework_left(self, icon: int) -> float:
+        return SPACING[2] + icon + SPACING[0]
+
+    def _homework_room(self, icon: int) -> float:
+        return self.width() - self._homework_left(icon) - SPACING[1]
+
+    def homework_words(self) -> str:
+        """The day's homework length whole, or in the shorter form where the column is too narrow for it."""
+        small = self._fonts()[2]
+        metrics = QFontMetricsF(small)
+        whole = length_label(self.homework)
+        if metrics.horizontalAdvance(whole) <= self._homework_room(round(metrics.ascent())):
+            return whole
+        return short_length(self.homework)
+
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -230,9 +246,9 @@ class DayName(QLabel):
             painter.setFont(small)
             painter.setPen(QColor(colours.muted))
             painter.drawText(
-                QRectF(SPACING[2] + size + SPACING[0], below, self.width(), line),
+                QRectF(self._homework_left(size), below, self._homework_room(size), line),
                 Qt.AlignmentFlag.AlignVCenter,
-                length_label(self.homework),
+                self.homework_words(),
             )
         painter.end()
 

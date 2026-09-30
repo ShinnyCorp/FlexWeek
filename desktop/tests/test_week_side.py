@@ -11,7 +11,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, QRectF, Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QFontMetricsF
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
@@ -108,6 +108,25 @@ def test_each_days_header_carries_its_homework_hours(
     assert [name.homework for name in names] == [60, 0, 0, 60, 0, 0, 0]
     assert names[3].property("today") is True and names[0].property("today") is False
     assert names[0].accessibleName().endswith("1 h of homework")
+
+
+def test_a_days_homework_length_is_never_cut_at_any_window_width(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    seeded(qapp, window)
+    label = window.week_table.findChild(QLabel, "weekDayName0")
+    for width in range(810, 1281, 47):
+        window.resize(width, 860)
+        for _ in range(5):
+            qapp.processEvents()
+        label.show_day("Mon", "28", 90, False)
+        words = label.homework_words()
+        assert words in ("1 h 30 min", "1 h 30", "1:30"), (width, words)
+        icon = round(QFontMetricsF(label._fonts()[2]).ascent())
+        room = label.width() - label._homework_left(icon)
+        fits = QFontMetricsF(label._fonts()[2]).horizontalAdvance(words) <= room
+        assert fits, f"{words!r} is cut at {width} px: {label.width()} wide"
 
 
 def test_the_month_folds_away_from_its_header_and_stays_folded_after_a_restart(

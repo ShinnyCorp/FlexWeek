@@ -30,7 +30,7 @@ from desktop.native import settings
 from desktop.native.layouts.registry import sanitize_layout
 from desktop.native.look import sanitize_look
 from desktop.native.tokens import type_pt
-from desktop.native.widgets import SHEET_LIST
+from desktop.native.widgets import SHEET_LIST, FitScroll
 from desktop.native.window import NativeWindow
 from desktop.tests.window_support import (  # noqa: F401
     host,
@@ -296,6 +296,27 @@ def test_help_draws_each_shortcut_as_keycaps(
     assert parts(rows[-1]) == [("helpKeycap", "Esc"), ("helpKeyJoin", "while dragging")]
 
 
+def test_a_sheet_that_scrolls_uses_the_thin_bar_and_gives_its_content_the_full_width(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    assert FitScroll(QWidget(), "probeScroll").verticalScrollBar().property("overlay") is True
+    window.resize(1280, 500)
+    dialog = settings.HelpDialog(window)
+    dialog.show()
+    qapp.processEvents()
+    area = dialog.findChild(QScrollArea, "helpScroll")
+    bar = area.verticalScrollBar()
+    assert bar.maximum() > 0, "Help is taller than its room at this height"
+    assert bar.property("overlay") is True, "under the app's thin bar"
+    assert area.widget().width() == area.viewport().width(), "no thick bar taking width from the words"
+    cards = dialog.findChildren(QFrame, "helpCard")
+    cards_right = max(card.mapTo(area, card.rect().topRight()).x() for card in cards)
+    bar_left = bar.mapTo(area, QPoint(0, 0)).x()
+    assert cards_right < bar_left, "the thin bar lies beside the cards, not over them"
+    dialog.close()
+
+
 def test_help_fades_its_words_at_an_edge_with_more_past_it(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
@@ -411,7 +432,7 @@ def test_help_is_a_list_sheet_with_the_screens_two_by_two_above_one_line_per_sho
     labels = dialog.findChildren(QLabel)
     assert [label.text() for label in labels if not shows_all_of_itself(label)] == []
     picture = dialog.grab().toImage()
-    between = keys.mapTo(dialog, QPoint(keys.width() - 2, 2))
+    between = keys.mapTo(dialog, QPoint(keys.width() - 24, 2))
     margin = dialog.card.mapTo(dialog, QPoint(4, dialog.card.height() // 2))
     assert picture.pixelColor(between) == picture.pixelColor(margin), "the shortcuts sit on the card itself"
     dialog.close()
