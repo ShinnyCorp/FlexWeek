@@ -3361,14 +3361,13 @@ class ChooseTimeDialog(Dialog):
         due: tuple[int, int] | None,
         today: int | None = None,
     ) -> None:
-        super().__init__(parent)
-        self.setWindowTitle(f"Choose a time for {block.get('title') or 'homework'}")
+        super().__init__(parent, sheet=True)
         self.setObjectName("chooseTimeDialog")
         self._block, self._blocks, self._due = block, blocks, due
         self._duration = int(block.get("duration_min") or SLOT_MIN)
-        layout = QVBoxLayout(self)
-        card, box = plain_card()
-        form = Form()
+        layout = self.card_body("Choose a time")
+        layout.addWidget(sheet_note(f"For {block.get('title') or 'homework'}."))
+        form = Form(stacked=True)
         self.day = QComboBox()
         self.day.setObjectName("chooseTimeDay")
         monday = date.fromisoformat(week_start)
@@ -3385,17 +3384,16 @@ class ChooseTimeDialog(Dialog):
         self.start.setMaximumTime(QTime(latest // 60, latest % 60))
         form.addRow("Start", self.start)
         form.addRow("Length", QLabel(length_label(self._duration)))
-        box.addLayout(form)
+        layout.addLayout(form)
         self.problem = QLabel()
         self.problem.setObjectName("validationError")
         self.problem.setWordWrap(True)
-        box.addWidget(self.problem)
+        layout.addWidget(self.problem)
         # Another block at that time is allowed, as on the calendar; this says which, so it is a choice.
         self.beside = QLabel()
         self.beside.setObjectName("chooseTimeBeside")
         self.beside.setWordWrap(True)
-        box.addWidget(self.beside)
-        layout.addWidget(card)
+        layout.addWidget(self.beside)
         choices = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         self.buttons = QDialogButtonBox(choices)
         self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setProperty("quiet", True)
@@ -3653,16 +3651,15 @@ def _late_move(move: dict) -> str:
 
 class SpreadDialog(Dialog):
     def __init__(self, parent: QWidget | None, assignment: dict, from_date: str) -> None:
-        super().__init__(parent)
+        super().__init__(parent, sheet=True)
         self.setObjectName("spreadDialog")
-        self.setWindowTitle("Spread " + assignment["title"])
-        layout = QVBoxLayout(self)
+        layout = self.card_body("Spread homework")
         # The same vocabulary as every other surface: "1 h 30 min total · due Thu 17 Sep".
         due = due_label(assignment.get("due"), monday_of(from_date))
         total = length_label(int(assignment.get("estimate_min") or 0))
-        card, box = info_card(assignment["title"], f"{total} total · due {due}")
-        form = Form()
-        box.addLayout(form)
+        layout.addWidget(sheet_note(f"{assignment['title']} · {total} total · due {due}"))
+        form = Form(stacked=True)
+        layout.addLayout(form)
         self.session = QComboBox()
         self.session.setObjectName("spreadSession")
         remaining = max(SLOT_MIN, int(assignment.get("unplanned_min") or SLOT_MIN))
@@ -3677,8 +3674,7 @@ class SpreadDialog(Dialog):
         self.from_date.setMaximumDate(QDate.fromString(assignment["due"][:10], "yyyy-MM-dd"))
         form.addRow("Starting", self.from_date)
         self.error = _error_label()
-        box.addWidget(self.error)
-        layout.addWidget(card)
+        layout.addWidget(self.error)
         buttons = _buttons(self)
         buttons.button(QDialogButtonBox.StandardButton.Save).setText("Preview sessions")
         buttons.accepted.connect(self.accept)
