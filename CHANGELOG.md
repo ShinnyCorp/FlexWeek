@@ -5,6 +5,12 @@ All notable changes to FlexWeek are documented here. Format follows
 
 ## [0.17.2] - Unreleased
 
+### Changed
+- Choose a time and Spread, which open from the homework editor, are sheets
+  inside the window like the editors: centred over the dimmed week, with their
+  title and a close button at the top and each label above its field. They
+  were windows of their own with title bars.
+
 ### Fixed
 - The line for now crosses a block over its colour and under its words, in
   every design, so it shows how far into the block you are without running

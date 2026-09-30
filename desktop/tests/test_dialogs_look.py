@@ -1,10 +1,11 @@
 """Dialogs in the 0.17 system (decision 23 of docs/0.17/plan.md, look-review.md section 7).
 
-Add homework and Edit event are sheets inside the window: a card over the dimmed week. Every other
-dialog stays a window. In each, the body is the card, not a pale box inside it; a label sits on its
-field's line of words; every field of a kind has one width; the repeat scope is a choice of two shown
-only for a repeating block; a primary that cannot be pressed yet keeps its colour at 40 %; a list's
-ticks are the app's check boxes; and Account is three cards.
+Add homework, Edit event, Routines, Help, About, Running late, School hours, Choose a time and Spread
+are sheets inside the window: a card over the dimmed week. Every other dialog stays a window. In each,
+the body is the card, not a pale box inside it; a label sits on its field's line of words; every field
+of a kind has one width; the repeat scope is a choice of two shown only for a repeating block; a
+primary that cannot be pressed yet keeps its colour at 40 %; a list's ticks are the app's check boxes;
+and Account is three cards.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QColor, QImage
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -33,6 +35,7 @@ from desktop.native.widgets import (
     SHEET_LIST,
     SHEET_PAD,
     BlockDialog,
+    ChooseTimeDialog,
     HomeworkDialog,
     LateDialog,
     RoutineDialog,
@@ -90,13 +93,22 @@ def near(first: QColor, second: QColor, slack: int = 3) -> bool:
     return all(abs(one - two) <= slack for one, two in pairs)
 
 
-def test_the_editors_and_the_five_from_more_are_sheets_over_the_dimmed_week(
+ESSAY = {"id": "e", "title": "Essay", "due": WEEK, "estimate_min": 60}
+WAITING = {"id": "w", "title": "Essay", "duration_min": 60, "days": [1, 2]}
+
+
+def choose_time(parent: QWidget) -> ChooseTimeDialog:
+    return ChooseTimeDialog(parent, WAITING, WEEK, [1, 2], [], None, 1)
+
+
+def test_the_editors_and_the_seven_others_are_sheets_over_the_dimmed_week(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
     """Add and Edit were sheets; Routines, Help, About, Running late and School hours were windows of
     their own with title bars, and Running late opened off to one side (T6 and X7 of the 0.17.0
-    audit). Every other dialog stays a window."""
+    audit); Choose a time and Spread, opened from the editors, were windows too. Every other dialog
+    stays a window."""
     window.resize(1280, 800)
     qapp.processEvents()
     spot = QPoint(20, window.height() - 20)
@@ -111,6 +123,8 @@ def test_the_editors_and_the_five_from_more_are_sheets_over_the_dimmed_week(
         lambda: AboutDialog(window, {"mode": "local"}, "/nowhere"),
         lambda: LateDialog(window, "Soccer practice"),
         lambda: SchoolHoursDialog(window, None),
+        lambda: choose_time(window),
+        lambda: SpreadDialog(window, ESSAY, WEEK),
     )
     for make in (*editors, *others):
         dialog = shown(qapp, make())
@@ -144,11 +158,7 @@ def test_the_editors_and_the_five_from_more_are_sheets_over_the_dimmed_week(
         assert not any(item.isVisible() for item in window.findChildren(QWidget, "sheetShade"))
         assert window.grab().toImage().pixelColor(spot) == before, f"{name}: the dimming goes with the sheet"
         free(dialog)
-    essay = {"id": "e", "title": "Essay", "due": WEEK, "estimate_min": 60}
-    spread = shown(qapp, SpreadDialog(window, essay, WEEK))
-    assert not spread.windowFlags() & Qt.WindowType.FramelessWindowHint, "Spread stays a window"
     assert window.findChild(QWidget, "sheetShade") is None
-    free(spread)
 
 
 @pytest.mark.parametrize("pack", ["light-frost", "dark-frost"])
@@ -262,6 +272,85 @@ def test_a_sheet_says_what_it_is_and_closes_from_its_corner(
     free(parent)
 
 
+@pytest.mark.parametrize(
+    ("make", "title", "fields"),
+    [
+        (choose_time, "Choose a time", {"Day": "day", "Start": "start", "Length": None}),
+        (
+            lambda parent: SpreadDialog(parent, ESSAY, WEEK),
+            "Spread homework",
+            {"Sessions of": "session", "Starting": "from_date"},
+        ),
+    ],
+)
+def test_choose_a_time_and_spread_are_titled_sheets_with_their_labels_above_their_fields(
+    qapp: QApplication,  # noqa: F811
+    make: object,
+    title: str,
+    fields: dict[str, str | None],
+) -> None:
+    """Both opened from the editors as windows of their own, their labels beside their fields and
+    nothing at the top to say what they were or to close them."""
+    parent, _palette = styled(qapp)
+    dialog = shown(qapp, make(parent))
+    heading = dialog.findChild(QLabel, "sheetTitle")
+    assert heading is not None and heading.text() == title and heading.isVisible()
+    close = dialog.findChild(QPushButton, "sheetClose")
+    assert close.isVisible() and close.accessibleName() == "Close"
+    card = dialog.card
+    corner = close.mapTo(card, QPoint(close.width(), 0))
+    assert corner.x() > card.width() - 2 * SHEET_PAD and corner.y() < 2 * SHEET_PAD, "top right of the card"
+    edge = left_x(heading, dialog)
+    for words, name in fields.items():
+        label = next(label for label in dialog.findChildren(QLabel) if label.text() == words)
+        field = getattr(dialog, name) if name else next(
+            item for item in dialog.findChildren(QLabel) if item is not label and item.text() == "1 h"
+        )
+        assert label.mapTo(dialog, QPoint(0, label.height())).y() <= field.mapTo(dialog, QPoint()).y(), words
+        assert left_x(label, dialog) == left_x(field, dialog) == edge, words
+    close.click()
+    assert dialog.result() == QDialog.DialogCode.Rejected and not dialog.isVisible()
+    free(dialog)
+    free(parent)
+
+
+def test_choose_a_time_and_spread_give_back_what_was_picked_and_esc_cancels(
+    qapp: QApplication,  # noqa: F811
+) -> None:
+    """What the window reads after Choose a time and Spread is the day and minute, and the session
+    length and first day, as before they were sheets. Esc is Cancel."""
+    from PySide6.QtCore import QDate, QTime
+
+    parent, _palette = styled(qapp)
+    chosen = shown(qapp, choose_time(parent))
+    assert chosen.choice() == (1, 16 * 60), "opens on today, Tuesday, at 16:00"
+    chosen.day.setCurrentIndex(chosen.day.findData(2))
+    chosen.start.setTime(QTime(17, 30))
+    assert chosen.choice() == (2, 17 * 60 + 30)
+    ok = chosen.buttons.button(chosen.buttons.StandardButton.Ok)
+    ok.click()
+    assert chosen.result() == QDialog.DialogCode.Accepted
+    assert chosen.choice() == (2, 17 * 60 + 30)
+    free(chosen)
+    again = shown(qapp, choose_time(parent))
+    QTest.keyClick(again, Qt.Key.Key_Escape)
+    assert again.result() == QDialog.DialogCode.Rejected and not again.isVisible()
+    free(again)
+    spread = shown(qapp, SpreadDialog(parent, {**ESSAY, "unplanned_min": 120}, WEEK))
+    assert spread.session_min() == 60 and spread.from_iso() == WEEK
+    spread.session.setCurrentIndex(spread.session.findData(90))
+    spread.from_date.setDate(QDate(2026, 9, 21))
+    assert (spread.session_min(), spread.from_iso()) == (90, "2026-09-21")
+    next(item for item in spread.findChildren(QPushButton) if item.text() == "Preview sessions").click()
+    assert spread.result() == QDialog.DialogCode.Accepted
+    free(spread)
+    escaped = shown(qapp, SpreadDialog(parent, ESSAY, WEEK))
+    QTest.keyClick(escaped, Qt.Key.Key_Escape)
+    assert escaped.result() == QDialog.DialogCode.Rejected and not escaped.isVisible()
+    free(escaped)
+    free(parent)
+
+
 def test_a_sheet_short_of_room_scrolls_rather_than_squeezing_its_days(qapp: QApplication) -> None:  # noqa: F811
     """In a short window the block editor scrolls. Its day pills were squeezed to a sliver instead."""
     parent, _palette = styled(qapp)
@@ -304,6 +393,8 @@ def test_sheets_are_one_width_on_a_scale_of_two(qapp: QApplication, text: str) -
         (lambda: BlockDialog(parent, day=3, start="17:00"), SHEET_FORM),
         (lambda: SchoolHoursDialog(parent, None), SHEET_FORM),
         (lambda: LateDialog(parent, "Starting from 15:40 today (Thursday)."), SHEET_FORM),
+        (lambda: choose_time(parent), SHEET_FORM),
+        (lambda: SpreadDialog(parent, ESSAY, WEEK), SHEET_FORM),
         (lambda: AboutDialog(parent, {"mode": "local"}, "/nowhere"), SHEET_FORM),
         (lambda: RoutineDialog(parent, {}, [soccer()], WEEK), SHEET_LIST),
         (lambda: HelpDialog(parent), SHEET_LIST),
