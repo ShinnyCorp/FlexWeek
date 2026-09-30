@@ -1181,11 +1181,10 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f'QCheckBox[exact="true"], QPushButton[small="true"] {{ font-size: {pt["caption"]}; }}'
         "QLabel#lookFieldLabel, QLabel#lookCategoryName, QLabel#lookTag, QLabel#lookChip, QLabel#lookPair { "
         f"font-weight: {WEIGHT_STRONG}; }}"
-        "QLabel#settingsCardNote, QLabel#cardNote, QLabel#settingsExperimental, QLabel#prefPlanningNote, "
+        "QLabel#settingsCardNote, QLabel#cardNote, QLabel#prefPlanningNote, "
         "QLabel#prefDndNote, "
         "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits { "
         f"color: {palette['muted']}; }}"
-        f"QLabel#settingsExperimental {{ font-weight: {WEIGHT_STRONG}; margin-top: 6px; }}"
         f'QFrame[segmented="true"] {{ background: {track}; border: none; '
         f"border-radius: {max(radius, 6) + 2}px; padding: 0; }}"
         f'QPushButton[segment="true"] {{ background: transparent; color: {palette["muted"]}; border: none; '
@@ -1286,6 +1285,7 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         f"QFrame#setupChoice[selected=\"true\"] {{ border-color: {palette['accent']}; background: {lift}; }}"
         f"QLabel#setupChoiceName {{ {heading} }}"
         f"QLabel#setupChoiceNote {{ color: {palette['muted']}; }}"
+        f"QLabel#setupChoiceTag {{ color: {palette['muted']}; {strong} }}"
         f"QFrame#setupGroup {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
         f"{pills} {{ background: {palette['field']}; color: {palette['text']}; {edges} "
         f"border-radius: 14px; padding: 4px 12px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"
@@ -1374,7 +1374,8 @@ def _veil(colour: str, amount: float) -> str:
 
 def button_rules(palette: dict, pad: int, radius: int, depth: str, button_min: str) -> str:
     """Decision 11: one set of states dresses every button in the app. Primary is filled in the accent,
-    secondary is accent words on a tenth of the accent, quiet is words in the text colour. Each takes
+    secondary is accent words on a tenth of the accent, outline is words in the text colour on the card
+    inside a hairline, quiet is words in the text colour. Each takes
     6 % of the text colour on hover and 10 % when pressed; a disabled one shows at 40 %; the key that
     reached it draws a 2-pixel ring at 40 % of the accent (the whole accent in High contrast), which
     a click does not (see `widgets.KeyFocus`).
@@ -1407,6 +1408,17 @@ def button_rules(palette: dict, pad: int, radius: int, depth: str, button_min: s
     if contrast_look:
         # A tint of yellow on black is mud, so High contrast outlines a secondary button instead.
         rules.append(f'QPushButton[secondary="true"] {{ border-color: {accent}; }}')
+    # Outline: an action that is not the page's answer, such as Availability… or Check for updates.
+    # Drawn as words alone it was not seen as a button (Grok Bot's 0.17.0 audit, T5).
+    card, edge = palette["panel"], text if contrast_look else palette["hairline_strong"]
+    rules += [
+        f'QPushButton[outline="true"] {{ background: {card}; color: {text}; font-weight: {WEIGHT_REGULAR}; '
+        f"border: 1px solid {edge}; padding: {pad + 1}px {pad * 2 + 1}px; }}",
+        f'QPushButton[outline="true"]:hover {{ background: {mix(text, card, 0.06)}; }}',
+        f'QPushButton[outline="true"]:pressed {{ background: {mix(text, card, 0.10)}; }}',
+        f'QPushButton[outline="true"]:disabled {{ background: {card}; color: {mix(text, page, 0.4)}; '
+        f"border-color: {mix(edge, page, 0.4)}; }}",
+    ]
     rules += [
         f'QPushButton[quiet="true"] {{ background: transparent; color: {text}; '
         f"font-weight: {WEIGHT_REGULAR}; }}",

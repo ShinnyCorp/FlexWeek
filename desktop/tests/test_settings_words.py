@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 
 from desktop.native.layouts.registry import sanitize_layout
 from desktop.native.look import look_menu_token
-from desktop.native.settings import SettingsPage
+from desktop.native.settings import FINE_TUNE_LOOK, SettingsPage
 from desktop.native.update import WINDOWS_SETUP, available
 from desktop.native.version import VERSION
 from desktop.native.widgets import Segmented, Switch
@@ -90,10 +90,12 @@ def test_this_build_says_0_17_1_and_is_not_offered_0_17_0(
     dialog.close_page()
 
 
-def test_appearance_opens_on_main_view_and_ends_with_animations_and_fine_tune(
+def test_appearance_opens_on_colours_then_the_designs_and_ends_with_animations(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
+    """Grok Bot's 0.17.0 audit (X1, A11): Colours sat under every design card and its fine-tuning
+    under Every screen. Colours now comes first, with its fine-tuning in it."""
     dialog = prefs(window, {"main": "timeline", "day": "one", "options": {}})
     appearance = page(dialog, 0)
     assert appearance.findChildren(QGroupBox) == [], "no box inside the page's box"
@@ -101,18 +103,15 @@ def test_appearance_opens_on_main_view_and_ends_with_animations_and_fine_tune(
         (label for label in appearance.findChildren(QLabel) if label.isVisibleTo(dialog) and label.text()),
         key=lambda label: top(label, appearance),
     )
-    assert [label.text() for label in shown[:3]] == [
-        "Appearance & layout",
-        "Main view",
-        "A design is how FlexWeek lays out your week. Your blocks and homework are the same in every one.",
-    ]
+    assert [label.text() for label in shown[:3]] == ["Appearance & layout", "Colours", "Look"]
     assert not any("has its own colours" in label.text() for label in shown)
     order = [
+        dialog.look,
+        dialog.fine_tune,
         appearance.findChild(QWidget, "layoutMain"),
         appearance.findChild(QComboBox, "layoutMain-colour"),
         appearance.findChild(QWidget, "layoutDay"),
         dialog.motion,
-        dialog.fine_tune,
     ]
     tops = [top(widget, appearance) for widget in order]
     assert tops == sorted(tops), tops
@@ -202,14 +201,18 @@ def test_play_that_hears_nothing_says_what_to_do(
     dialog.close_page()
 
 
-def test_fine_tune_is_the_last_thing_on_appearance(
+def test_the_look_is_fine_tuned_in_the_colours_card_under_a_name_of_its_own(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
+    """Grok Bot's 0.17.0 audit (A11, T33): the look's fine-tuning sat under Every screen, and "Fine-tune
+    this look" and "Fine-tune this design" read as one toggle."""
     dialog = prefs(window)
-    appearance = page(dialog, 0)
-    boxes = [box for box in appearance.findChildren(QCheckBox) if box.isVisibleTo(dialog)]
-    assert max(boxes, key=lambda box: top(box, appearance)) is dialog.fine_tune
+    colours = dialog.colours_card
+    assert dialog.fine_tune.parentWidget() is not None and colours.isAncestorOf(dialog.fine_tune)
+    names = {box.text() for box in page(dialog, 0).findChildren(QCheckBox) if box.isVisibleTo(dialog)}
+    assert FINE_TUNE_LOOK in names and "Fine-tune this design" not in names
+    assert "Show more options for this design" in names
     dialog.close_page()
 
 
@@ -247,7 +250,7 @@ def test_every_heading_on_appearance_stands_out_from_the_rows_under_it(
         ),
         key=lambda label: top(label, appearance),
     )
-    assert [label.text() for label in headings] == ["Main view", "Colours", "Day screen", "Every screen"]
+    assert [label.text() for label in headings] == ["Colours", "Main view", "Day screen", "Every screen"]
     plain = appearance.findChild(QLabel, "settingsCardNote")
     for heading in headings:
         assert heading.font().bold() and not plain.font().bold(), heading.text()
@@ -307,7 +310,7 @@ def test_animations_has_four_levels_and_follows_the_look_until_one_is_chosen(
     dialog.close_page()
 
 
-def test_every_main_view_is_a_picture_and_the_experimental_ones_come_under_their_heading(
+def test_every_main_view_is_a_picture_with_a_single_name_and_the_experimental_ones_say_so(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
@@ -317,17 +320,16 @@ def test_every_main_view_is_a_picture_and_the_experimental_ones_come_under_their
     appearance = page(dialog, 0)
     picker = appearance.findChild(QWidget, "layoutMain")
     cards = picker.findChildren(ChoiceCard)
-    heading = picker.findChild(QLabel, "settingsExperimental")
-    assert heading.text() == "Experimental styles"
-    above = [card.accessibleName() for card in cards if top(card, picker) < top(heading, picker)]
-    below = [card.accessibleName() for card in cards if top(card, picker) > top(heading, picker)]
-    assert above == ["Calendar · Today's app", "Agenda · Timeline"]
-    assert below == [
-        "Dashboard · Mission control",
-        "Dashboard · Bento",
-        "Dashboard · Retro desktop",
-        "Agenda · Clay deck",
+    assert [card.accessibleName() for card in cards] == [
+        "Today's app",
+        "Timeline",
+        "Mission control",
+        "Bento",
+        "Retro desktop",
+        "Clay deck",
     ]
+    tagged = [card.accessibleName() for card in cards if card.findChild(QLabel, "setupChoiceTag")]
+    assert tagged == ["Mission control", "Bento", "Retro desktop", "Clay deck"]
     for _ in range(40):
         qapp.processEvents()
     assert all(not card.picture.pixmap().isNull() for card in cards), "each card shows its design"

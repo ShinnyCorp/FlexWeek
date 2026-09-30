@@ -303,3 +303,27 @@ def test_a_switch_as_tall_as_it_asks_shows_every_line_of_its_words(qapp: QApplic
     one_line = drawn(most.width(), most.height())
     assert ink(one_line) == ink(drawn(most.width(), 4 * most.height())), (text, "sizeHint shows them", most)
     assert least.height() == most.height(), (text, "the least it asks for is one whole line", least, most)
+
+
+@pytest.mark.parametrize("name", ["light-frost", "dark-frost", "high-contrast", "bento-midnight"])
+def test_an_action_button_is_drawn_as_a_button(qapp: QApplication, name: str) -> None:
+    """Grok Bot's 0.17.0 audit (T5): Availability…, Check for updates and the like were words alone,
+    not seen as buttons. Outlined, an edge runs round them, quieter than the filled answer."""
+    from PySide6.QtWidgets import QPushButton
+
+    page, palette = styled(qapp, name)
+    action, answer = QPushButton("Check for updates"), QPushButton("Done")
+    action.setProperty("outline", True)
+    page.layout().addWidget(action)
+    page.layout().addWidget(answer)
+    page.show()
+    qapp.processEvents()
+    image = action.grab().toImage()
+    middle = image.height() // 2
+    edge = [image.pixelColor(x, middle) for x in range(0, 4)]
+    inside = image.pixelColor(image.width() // 2, 2)
+    assert any(abs(pixel.lightness() - inside.lightness()) > 12 for pixel in edge), (name, "an edge shows")
+    filled = answer.grab().toImage().pixelColor(answer.width() // 2, 3)
+    assert filled.name() == QColor(palette["accent"]).name(), (name, "the answer stays the filled one")
+    assert inside.name() != filled.name(), (name, "the action is not filled")
+    page.close()

@@ -55,6 +55,7 @@ from backend.models import valid_spotify_url
 from backend.slots import SLOT_MIN
 from desktop.native import autostart
 from desktop.native.calendar import DAY_FULL
+from desktop.native.controller import ROUTINE_STATUS
 from desktop.native.custom_look import UNNAMED, sanitize_saved, wear
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
 from desktop.native.fonts import time_font
@@ -80,6 +81,7 @@ from desktop.native.look import (
     sanitize_look,
 )
 from desktop.native.look_editor import LookEditor
+from desktop.native.look_preview import look_choice, look_preview
 from desktop.native.motion import switch_page
 from desktop.native.remind import ALARM_SNOOZE_MIN
 from desktop.native.sound import Bell
@@ -89,6 +91,10 @@ from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
 from desktop.native.weekmodel import hhmm_text, length_label, time_format
 from desktop.native.widgets import (
+    CARD_GAP,
+    CARD_WIDTH_PAD,
+    CardGrid,
+    ChoiceCard,
     Choices,
     Dialog,
     FlowLayout,
@@ -98,6 +104,7 @@ from desktop.native.widgets import (
     Switch,
     bare,
     even_fields,
+    even_labels,
     fit_scroll_dialog,
     info_card,
     overlay_scroll_bars,
@@ -120,7 +127,8 @@ SECTION_ICONS = ("palette", "calendar", "timer", "bell", "laptop")
 # The three looks most people choose between; every other look is under More looks.
 MAIN_LOOKS = ("light-frost", "dark-frost", "system")
 MORE_LOOKS = "More looks"
-MORE_LOOKS_HINT = "Choose another look"
+# A More looks card's picture is this wide; its card a little more (ChoiceCard).
+LOOK_TILE = 150
 ACCENT_LABELS = {"default": "Blue"}
 OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
 # A look of the student's own sets the accent and every knob (look.py's resolved_palette and
@@ -133,6 +141,10 @@ CUSTOMISE_TIP = "Change any look, colours, corners and fonts included, and save 
 SAVED_LOOK = "saved:"
 YOUR_LOOKS = "Your looks"
 UNSAVED_LOOK = "{name} (not saved)"
+WEARING = "Wearing {name}"
+# The footer says this one thing; the status line's routine "Saving…" and "Saved preferences." would
+# have it swap between two sentences for the same fact (Grok Bot's 0.17.0 audit, T33).
+SAVE_STATE = "Changes are saved as you make them."
 MOTION_CHOICES = (("Normal", "normal"), ("More", "extra"), ("Reduce", "reduce"), ("Off", "off"))
 PREFERRED_VIEWS = (("Whatever I had open", None), ("Week", "week"), ("Day", "day"))
 KNOB_LABELS = {
@@ -172,7 +184,10 @@ SPOTIFY_TONE_NOTE = (
 # What only Today's app reads. Every other design has its own colours and shapes, so these changed
 # nothing there (measured 2026-09-21: not the view, not the top bar, apart from Corners on the bar).
 TODAYS_APP_KNOBS = ("surface", "corners", "blocks")
-FINE_TUNE_LOOK = "Fine-tune this look"
+# What the switch shows, so it does not read as the design's own "more options" (Grok Bot's 0.17.0
+# audit, T33: "Fine-tune this design" and "Fine-tune this look" read as one toggle).
+FINE_TUNE_LOOK = "Show shape, spacing and type"
+OWN_LOOK = "Your own look"
 ABOUT_MIN_WIDTH = 420
 HELP_MIN_WIDTH = 600
 # Screens on the left and shortcuts on the right, over a window at least this wide.
@@ -247,11 +262,12 @@ def _note(words: str, name: str) -> QLabel:
 
 
 def _page_button(words: str, name: str) -> QPushButton:
-    """A button that opens something else. Plain and as wide as its words, since Done is the one
-    filled button in Settings; stretched and filled, each was the loudest thing on its page."""
+    """A button that opens something else or acts on the side. Outlined and as wide as its words, since
+    Done is the one filled button in Settings; stretched and filled, each was the loudest thing on its
+    page, and as words alone none looked like a button."""
     made = QPushButton(words)
     made.setObjectName(name)
-    made.setProperty("quiet", True)
+    made.setProperty("outline", True)
     made.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     return made
 
@@ -309,8 +325,9 @@ def _section_page(title: str, cards: tuple[QWidget, ...]) -> QWidget:
 
 
 class LookPicker(Choices):
-    """Look as "Light | Dark | System", with every other look in a list under them (decision 24 of 0.17).
-    To the code that reads it, one control whose choices are every look, as the dropdown it replaces."""
+    """Look as "Light | Dark | System", with every other look as a small picture of a week in its own
+    colours under them, and the student's own looks after those (decision 24 of 0.17; Grok Bot's
+    0.17.0 audit, A10 and T15). To the code that reads it, one control whose choices are every look."""
 
     def __init__(self, name: str) -> None:
         super().__init__()
@@ -324,50 +341,63 @@ class LookPicker(Choices):
             self._remember(label, token)
         self.main = Segmented(tuple(item for item in ordered if item[1] in main), f"{name}Main")
         self.main.setAccessibleName("Look")
-        self.more = QComboBox()
+        self.more = CardGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP)
         self.more.setObjectName(f"{name}More")
         self.more.setAccessibleName(MORE_LOOKS)
-        self.more.setPlaceholderText(MORE_LOOKS_HINT)
-        for label, token in ordered:
-            if token not in main:
-                self.more.addItem(label, token)
+        self.more.set_cards([self._tile(label, token, []) for label, token in ordered if token not in main])
+        self.yours = CardGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP)
+        self.yours.setObjectName(f"{name}Yours")
+        self.yours.setAccessibleName(YOUR_LOOKS)
+        self.worn = QLabel()
+        self.worn.setObjectName("prefLookWorn")
+        self.worn.setVisible(False)
+        self.yours_heading = QLabel(YOUR_LOOKS)
+        self.yours_heading.setObjectName("settingsCardNote")
+        self.yours_heading.setVisible(False)
+        self.yours.setVisible(False)
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
         box.addWidget(self.main, 0, Qt.AlignmentFlag.AlignLeft)
-        line = QHBoxLayout()
-        line.setSpacing(8)
-        more = QLabel(MORE_LOOKS)
-        more.setObjectName("settingsCardNote")
-        line.addWidget(more)
-        line.addWidget(self.more)
-        line.addStretch(1)
-        box.addLayout(line)
+        caption = QLabel(MORE_LOOKS)
+        caption.setObjectName("settingsCardNote")
+        box.addWidget(caption)
+        box.addWidget(self.more)
+        box.addWidget(self.yours_heading)
+        box.addWidget(self.yours)
+        box.addWidget(self.worn)
         self.main.currentIndexChanged.connect(self._picked_main)
-        self.more.activated.connect(self._picked_more)
-        self._built_in = (self.count(), self.more.count())
+        self._built_in = self.count()
+        self._unsaved: str | None = None
+        self._saved: list[dict] = []
 
-    def set_saved(self, names: list[str]) -> None:
-        """The student's saved looks, under the others in More looks (decision 24 and plan, "Saved
-        looks"), each chosen by its name."""
-        choices, listed = self._built_in
-        del self._texts[choices:], self._data[choices:]
-        while self.more.count() > listed:
-            self.more.removeItem(self.more.count() - 1)
-        if names:
-            self.more.insertSeparator(listed)
-            self.more.addItem(YOUR_LOOKS)
-            # A heading, not a look to choose.
-            self.more.model().item(self.more.count() - 1).setEnabled(False)
-        for name in names:
-            self._remember(name, SAVED_LOOK + name)
-            self.more.addItem(name, SAVED_LOOK + name)
-        self.more.setMaxVisibleItems(max(10, self.more.count()))
+    def _tile(self, label: str, token: str, saved: list[dict]) -> ChoiceCard:
+        """A look as a picture of a week in its colours over its name; one click, or Space or Enter,
+        wears it."""
+        card = ChoiceCard(label, "", LOOK_TILE)
+        card.setProperty("token", token)
+        pack, look = look_choice(token, saved)
+        card.set_picture(look_preview(pack, look, LOOK_TILE))
+        card.chosen.connect(self._picked_tile)
+        return card
+
+    def set_saved(self, looks: list[dict]) -> None:
+        """The student's saved looks, after the others, each chosen by its name."""
+        del self._texts[self._built_in :], self._data[self._built_in :]
+        self._saved = looks
+        tiles = []
+        for look in looks:
+            self._remember(look["name"], SAVED_LOOK + look["name"])
+            tiles.append(self._tile(look["name"], SAVED_LOOK + look["name"], looks))
+        self.yours.set_cards(tiles)
+        self.yours_heading.setVisible(bool(tiles))
+        self.yours.setVisible(bool(tiles))
 
     def show_unsaved(self, name: str | None) -> None:
-        """With a look of the student's own worn and not saved, More looks names it where it would
-        otherwise ask for a look."""
-        self.more.setPlaceholderText(UNSAVED_LOOK.format(name=name) if name else MORE_LOOKS_HINT)
+        """A look of the student's own that is worn and not saved has no picture, so it is named
+        under the pictures."""
+        self._unsaved = name
+        self._say_worn()
 
     def first_line(self) -> QWidget:
         """What the Look label sits beside: the three looks, not the middle of both lines."""
@@ -377,19 +407,25 @@ class LookPicker(Choices):
         if index >= 0:
             self.setCurrentIndex(self.findData(self.main.itemData(index)))
 
-    def _picked_more(self, index: int) -> None:
-        if index >= 0:
-            self.setCurrentIndex(self.findData(self.more.itemData(index)))
+    def _picked_tile(self) -> None:
+        self.setCurrentIndex(self.findData(self.sender().property("token")))
+
+    def _say_worn(self) -> None:
+        """Light, Dark and System show no choice while another look is worn, so the look is named
+        where the pictures are, as well as marked on its own."""
+        name = self.currentText() or (UNSAVED_LOOK.format(name=self._unsaved) if self._unsaved else "")
+        elsewhere = bool(name) and self.main.currentIndex() < 0
+        self.worn.setText(WEARING.format(name=name) if elsewhere else "")
+        self.worn.setVisible(elsewhere)
 
     def _show(self, index: int) -> None:
         token = self.itemData(index) if index >= 0 else None
-        for box in (self.main, self.more):
-            box.blockSignals(True)
+        self.main.blockSignals(True)
         self.main.setCurrentIndex(self.main.findData(token))
-        # The heading and the line above the saved looks carry no value, as nothing chosen does.
-        self.more.setCurrentIndex(self.more.findData(token) if token is not None else -1)
-        for box in (self.main, self.more):
-            box.blockSignals(False)
+        self.main.blockSignals(False)
+        for card in (*self.more.cards, *self.yours.cards):
+            card.select(card.property("token") == token)
+        self._say_worn()
 
 
 class FocusPanel(QWidget):
@@ -433,6 +469,9 @@ class FocusPanel(QWidget):
         # timer is one line and a way to that screen.
         self.screen = QPushButton("Focus screen")
         self.screen.setObjectName("focusScreenOpen")
+        # Outlined: filled, and full width in the rail, it was louder than Add (Grok Bot's 0.17.0
+        # audit, X8).
+        self.screen.setProperty("outline", True)
         self.screen.setToolTip("Show the timer on its own, large. F")
         self.screen.clicked.connect(self.screen_requested.emit)
         status.insertWidget(status.count() - 1, self.screen)
@@ -489,7 +528,6 @@ class FocusPanel(QWidget):
                 row.setDirection(direction)
         self.layout().setContentsMargins(QMargins() if compact else self._margins)
         self._compact = compact
-        self.note.setVisible(not compact or self.finished.isVisibleTo(self))
 
     def show_now_next(self, text: str) -> None:
         self.now_next.setText(text)
@@ -516,9 +554,15 @@ class FocusPanel(QWidget):
             widget.setVisible(ended)
         self.card.setVisible(state is not None)
         self.note.setText(FOCUS_ENDED_NOTE if ended else FOCUS_RUNNING_NOTE)
-        # In the rail a running timer is its name, time and way to the focus screen; what to do next
-        # is said once it ends.
-        self.note.setVisible(ended or not self._compact)
+        # A running timer is one line: its name, time and way to the focus screen. Now and Next, Quick
+        # focus and the sentence on what to do made three strips over the week (Grok Bot's 0.17.0
+        # audit, X3); the sentence is the time's tooltip, and what to do next is said once it ends.
+        running = state is not None and not ended
+        self.note.setVisible(ended)
+        self.time.setToolTip(FOCUS_RUNNING_NOTE if running else "")
+        self.quick.setVisible(not running)
+        if running:
+            self.now_next.setVisible(False)
         self.more.setEnabled(bool(choices))
         for label in (self.task, self.phase, self.time):
             label.setVisible(bool(label.text()))
@@ -702,18 +746,20 @@ class SettingsPage(QWidget):
         main_section, day_section = self.layout_sections
         self.colours_card, appear = _card("Colours")
         appear.addRow("Look", self.look)
-        appear.addRow(CUSTOMISE, self.customise)
+        appear.addRow(OWN_LOOK, self.customise)
         appear.addRow("Accent", self.accent)
         appear.addRow("", self.accent_note)
         appear.addRow(self.accent_chips)
+        appear.addRow(self.fine_tune)
+        appear.addRow(self.fine_host)
         self._colours_form = appear
         self._show_look_settings()
         everywhere_card, everywhere = _card("Every screen")
         everywhere.addRow("Animations", self.motion)
-        everywhere.addRow(self.fine_tune)
-        everywhere.addRow(self.fine_host)
+        # Colours first: it is what most students change, and below every design card it was not found
+        # (Grok Bot's 0.17.0 audit, X1 and A11).
         appearance = _section_page(
-            "Appearance & layout", (main_section, self.colours_card, day_section, everywhere_card)
+            "Appearance & layout", (self.colours_card, main_section, day_section, everywhere_card)
         )
         planning_card, planning_form = _card("How homework gets a time")
         self.planning_style = QButtonGroup(planning_card)
@@ -905,7 +951,7 @@ class SettingsPage(QWidget):
         footer.setObjectName("settingsFooter")
         footer_line = QHBoxLayout(footer)
         footer_line.setContentsMargins(32, 12, 32, 16)
-        self.save_state = QLabel("Changes are saved as you make them.")
+        self.save_state = QLabel(SAVE_STATE)
         self.save_state.setObjectName("prefsSaveState")
         self.save_state.setWordWrap(True)
         footer_line.addWidget(self.save_state, 1)
@@ -964,6 +1010,10 @@ class SettingsPage(QWidget):
         self._show_what_applies()
         self.alarm_tone.currentIndexChanged.connect(self._follow_tone)
         self._follow_tone()
+
+    def say(self, text: str) -> None:
+        """What the footer says: anything that needs reading, and otherwise the one standing sentence."""
+        self.save_state.setText(SAVE_STATE if text in ROUTINE_STATUS else text)
 
     def _follow_tone(self, *_index: object) -> None:
         """New alarms start with the chosen sound, and the note says what Spotify means for the rest."""
@@ -1024,6 +1074,7 @@ class SettingsPage(QWidget):
         # Section by section: a dropdown on Alerts need not make Appearance's wider than its page.
         for index in range(self.stack.count()):
             even_fields(self.stack.widget(index))
+            even_labels(self.stack.widget(index))
         margins = self.nav.contentsMargins()
         self.nav.setFixedWidth(
             self.nav.sizeHintForColumn(0) + margins.left() + margins.right() + 2 * self.nav.frameWidth()
@@ -1281,7 +1332,7 @@ class SettingsPage(QWidget):
     def _show_look(self) -> None:
         """Look as worn: one of the looks, a saved look by its name, or nothing for a look of the
         student's own that is not saved."""
-        self.look.set_saved([look["name"] for look in self.saved_looks])
+        self.look.set_saved(self.saved_looks)
         custom = self._look.get("custom")
         unsaved = custom is not None and custom not in self.saved_looks
         if custom is None:

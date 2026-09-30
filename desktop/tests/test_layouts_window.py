@@ -417,18 +417,18 @@ def prefs_layout(choice: dict | None = None) -> SettingsPage:
     return SettingsPage(None, {}, {}, {}, choice)
 
 
-def test_every_view_says_what_it_is_for_before_its_style_name(qapp: QApplication) -> None:
-    """ "Today's app" turned out to be the plain calendar; nothing in the menu said so. A student picks
-    by what the view does, so that comes first and the style name after it."""
+def test_every_view_has_one_name(qapp: QApplication) -> None:
+    """ "Calendar · Today's app" was two names for one design (Grok Bot's 0.17.0 audit, T34); the card's
+    words under the name say what it is for."""
     dialog = prefs_layout()
     main = combo(dialog, "layoutMain")
     assert [main.itemText(index) for index in range(main.count())] == [
-        "Calendar · Today's app",
-        "Agenda · Timeline",
-        "Dashboard · Mission control",
-        "Dashboard · Bento",
-        "Dashboard · Retro desktop",
-        "Agenda · Clay deck",
+        "Today's app",
+        "Timeline",
+        "Mission control",
+        "Bento",
+        "Retro desktop",
+        "Clay deck",
     ]
 
 
@@ -557,8 +557,8 @@ def test_a_custom_look_dresses_the_window_and_is_kept_with_the_saved_looks(
 def test_the_dialog_shows_style_first_and_fine_tune_on_request(qapp: QApplication) -> None:
     dialog = prefs_layout()
     assert [combo(dialog, "layoutDay").itemText(index) for index in range(2)] == [
-        "Clock · Day dial",
-        "Focus · One thing",
+        "Day dial",
+        "One thing",
     ]
     pick = combo(dialog, "layoutDay")
     pick.setCurrentIndex(pick.findData("one"))
