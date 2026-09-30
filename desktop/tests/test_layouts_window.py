@@ -252,6 +252,39 @@ def test_the_notice_sits_under_the_bar_on_one_line(qapp: QApplication, window: N
         assert window.toast.y() > bar_bottom, text
 
 
+def test_the_notice_keeps_above_retros_taskbar_and_stays_put_in_todays_app(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Retro's tray (bell and clock) is on its taskbar, so the notice sits wholly above it. Today's app
+    has no bar of its own, so its notice stays 16 pixels in from the page's corner.
+    Mutation that turns this red: RetroView.bottom_inset returns 0."""
+    from desktop.native.widgets import TOAST_FOOT
+
+    window.resize(1280, 800)
+    settled(qapp, window)
+    window.toast.show_message("Moved History essay to Fri 18:00.", "Undo", lambda: None)
+    qapp.processEvents()
+    page = window.planner.currentWidget()
+    card = window.toast.card
+    assert page is window.week_table
+    page_foot = page.mapTo(window, page.rect().bottomLeft()).y() + 1
+    assert window.toast.y() + card.geometry().bottom() + 1 == page_foot - TOAST_FOOT
+
+    window._layout = sanitize_layout({"main": "retro", "day": "one"})
+    window._day_mode = False
+    window.session.set_view("week")
+    window._on_week()
+    settled(qapp, window)
+    window.toast.show_message("Moved History essay to Fri 18:00.", "Undo", lambda: None)
+    qapp.processEvents()
+    retro = window.planner.currentWidget()
+    bar = retro.findChild(QWidget, "retroTaskbar")
+    assert bar is not None and bar.isVisible()
+    bar_top = bar.mapTo(window, QPoint(0, 0)).y()
+    card_bottom = window.toast.y() + card.geometry().bottom() + 1
+    assert card_bottom <= bar_top, (card_bottom, bar_top)
+
+
 def accept_late(qapp: QApplication, window: NativeWindow) -> tuple[dict, str]:
     from desktop.native.reuse import late_locked_line
 

@@ -2087,6 +2087,9 @@ class RetroView(LayoutView):
         width = self._desk.width() or self.width()
         return min(SIDE, max(SIDE_LEAST, round(width * SIDE / STAGE)))
 
+    def bottom_inset(self) -> int:
+        return self._bar.height()
+
     def _arrange(self) -> None:
         if self._scene is None:
             return
