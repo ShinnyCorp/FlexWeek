@@ -1,6 +1,15 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `claude/0172-lookcalls` (from 5256662): Jonathan's three calls on the looks work. A short
+  block says its name, then its start time, then its icon (a half-hour Dinner is "Dinner 18:30");
+  the now line and selection ring start from the accent and fit to 3 to 1 (`AA_GRAPHIC`), so
+  Light's blue is #3d6ec3, while the pill's time and accent words keep 4.5; category icons are the
+  category's mark fitted to 3 to 1 on the block in every look and block style, and Free has none.
+  Gate: 2531 passed, 2 failed (`test_drag_results`, the known order-dependent pair, not touched);
+  lint and mypy clean; 405 mutation cases over the 17 specs naming changed files all caught.
+  Known: `BlockPainter._book_colour` keeps an unused `ink` argument so Mission's callers are
+  untouched; custom_look's Readability still lists "Now line" at 4.5 for a custom accent.
 - 2026-09-30, `claude/0172-dates-int`: Sol's dates-and-scroll unit (`sol-snap/0172-dates`) merged
   onto `feat/0.17.2` at 132ee90. Month and the mini month follow today at a month boundary, My day's
   title names the day, and every design keeps its scroll within a session (open at now only at
@@ -676,6 +685,9 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-30, `claude/0172-lookcalls`: three commits on 5256662 (time before icon, now line at 3 to 1,
+  icons in their mark), not pushed, for Claude to review and merge. Pictures and report:
+  `~/.flexweek-ui-harness/scratch/0172-lookcalls/`.
 - 2026-09-30, `integrate/0172-sol`: Sol's lanes 2 and 4 and its dates-and-scroll unit are integrated
   (see Current State); not pushed. Open: two test_drag_results tests fail when a worker runs them
   after test_layout_mission or test_layout_timeline (predates 0.17.2's Sol units; being root-caused);
