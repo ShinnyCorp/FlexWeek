@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+from math import dist
+
 import pytest
 
 from desktop.native.calendar import CATEGORIES
 from desktop.native.custom_look import apply_fix, readability
-from desktop.native.look import ACCENT_COLORS, look_measures, resolved_palette
+from desktop.native.look import AA_GRAPHIC, ACCENT_COLORS, look_measures, resolved_palette
 from desktop.native.tokens import contrast, oklab, oklch_of
 from desktop.tests.test_hours_painter import qapp as qapp
+
+# The most an icon's colour may sit from its mark in OKLab. Ink's red mark on a dark block has to be
+# lightened by 0.19 to reach 3 to 1; the text ink is further from every mark.
+NEAR_ITS_MARK = 0.2
 
 
 @pytest.mark.parametrize(("category", "hue"), [
@@ -262,10 +268,12 @@ def test_a_line_with_room_for_the_name_the_time_and_the_icon_has_all_three(qapp)
 @pytest.mark.parametrize(("category", "wanted"), [
     ("class", "house"), ("assignments", "book-open"), ("study", "pencil"),
     ("exercise", "target"), ("extra", "sparkles"), ("meals", "clock"), ("sleep", "moon"),
+    # Free time has none: the mock-up draws no icon on it.
+    ("free", None),
 ])
 @pytest.mark.parametrize("design", ["classic", "mission", "clay"])
-def test_each_category_paints_its_approved_icon_with_readable_ink(
-    qapp, monkeypatch: pytest.MonkeyPatch, category: str, wanted: str, design: str,
+def test_each_category_paints_its_approved_icon_in_its_mark(
+    qapp, monkeypatch: pytest.MonkeyPatch, category: str, wanted: str | None, design: str,
 ) -> None:
     from PySide6.QtCore import QRectF
     from PySide6.QtGui import QFont, QImage, QPainter
@@ -276,6 +284,7 @@ def test_each_category_paints_its_approved_icon_with_readable_ink(
     from desktop.native.layouts.clay import ClayPainter
     from desktop.native.layouts.mission import MissionPainter
     from desktop.native.layouts.registry import MATCH, tokens_for
+    from desktop.native.look import category_paint
 
     palette = resolved_palette("light-frost", False, None)
     painter = BlockPainter(palette) if design == "classic" else (
@@ -300,15 +309,26 @@ def test_each_category_paints_its_approved_icon_with_readable_ink(
         painter.words(paint, QRectF(0, 0, 480, 280), drawn, ink, QRectF(0, 0, 500, 300), fill, edge)
     finally:
         paint.end()
+    if wanted is None:
+        assert used == []
+        return
     assert any(name == wanted for name, _colour in used), used
-    assert all(contrast(colour, fill.name()) >= 4.5 for name, colour in used if name == wanted)
+    mark = edge.name() if edge is not None else category_paint(category, palette)[1]
+    for name, colour in used:
+        if name == wanted:
+            assert contrast(colour, fill.name()) >= AA_GRAPHIC
+            assert dist(oklab(colour), oklab(mark)) < NEAR_ITS_MARK, (colour, mark)
 
 
 @pytest.mark.parametrize("look_name", [
     "light", "dark", "high-contrast", "slate", "nocturne", "paper", "ink", "terminal", "poster", "pastel",
 ])
 @pytest.mark.parametrize("style", ["edge", "filled", "outline", "none"])
-def test_category_icons_read_on_each_block_style(qapp, look_name: str, style: str) -> None:
+def test_category_icons_are_their_marks_at_3_to_1_on_each_block_style(
+    qapp, look_name: str, style: str,
+) -> None:
+    """An icon is a graphic: its category's mark, darkened or lightened only as far as 3 to 1 on its
+    block takes, in every block style and never the text ink. Free time has no icon."""
     from desktop.native.hours.canvas import BlockPainter, Drawn
     from desktop.native.hours.geometry import Span
     from desktop.native.look import LOOK_BASES, category_paint, sanitize_look
@@ -321,11 +341,17 @@ def test_category_icons_read_on_each_block_style(qapp, look_name: str, style: st
         drawn = Drawn("test", "School", category, False, Span(0, 480, 660), 0, 1)
         fill, ink, _outline, edge = painter.fills(drawn)
         colour = painter._book_colour(drawn, ink, fill, edge)
+        if category == "free":
+            assert colour is None
+            continue
         assert colour is not None
-        assert contrast(colour.name(), fill.name()) >= 4.5, (look_name, style, category)
+        where = (look_name, style, category)
+        ratio = contrast(colour.name(), fill.name())
+        assert ratio >= AA_GRAPHIC, where
         _fill, mark = category_paint(category, palette)
-        if edge is not None and contrast(mark, fill.name()) >= 4.5:
-            assert colour.name() == mark
+        assert dist(oklab(colour.name()), oklab(mark)) < NEAR_ITS_MARK, where
+        if colour.name() != mark:
+            assert ratio < AA_GRAPHIC + 0.05, (where, "moved past the 3 it needs")
 
 
 def test_terminal_next_card_shows_its_whole_time_sentence(qapp) -> None:

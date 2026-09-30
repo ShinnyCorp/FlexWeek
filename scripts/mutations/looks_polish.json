@@ -74,7 +74,7 @@
     "file": "desktop/native/calendar.py",
     "old": "    return \"book-open\" if category == \"homework\" else CATEGORIES.get(category or \"\", {}).get(\"icon\")",
     "new": "    return \"book-open\" if category == \"homework\" else None",
-    "test": "desktop/tests/test_looks_polish.py::test_each_category_paints_its_approved_icon_with_readable_ink"
+    "test": "desktop/tests/test_looks_polish.py::test_each_category_paints_its_approved_icon_in_its_mark"
   },
   {
     "name": "Plan pale accent drops out of Readability",
@@ -138,6 +138,27 @@
     "old": "            return name_kept(lines, drawn.title), not under and bool(after_name(indent))\n",
     "new": "            return name_kept(lines, drawn.title), False\n",
     "test": "desktop/tests/test_layout_clay.py::test_a_half_hour_on_a_card_says_its_start_time_rather_than_its_icon"
+  },
+  {
+    "name": "Icons are drawn in the text ink again",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_GRAPHIC))\n",
+    "new": "        return ink\n",
+    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_3_to_1_on_each_block_style"
+  },
+  {
+    "name": "Icons are fitted to 4.5 to 1 again",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_GRAPHIC))\n",
+    "new": "        return QColor(fit_lightness(edge.name(), (paper.name(),), 4.5))\n",
+    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_3_to_1_on_each_block_style"
+  },
+  {
+    "name": "Free time gets its icon back",
+    "file": "desktop/native/calendar.py",
+    "old": "    \"free\": {\n        \"label\": \"Free\",",
+    "new": "    \"free\": {\n        \"icon\": \"wind\",\n        \"label\": \"Free\",",
+    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_3_to_1_on_each_block_style"
   },
   {
     "name": "Look preview puts Soccer back in Activity",

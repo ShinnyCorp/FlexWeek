@@ -8,8 +8,10 @@ All notable changes to FlexWeek are documented here. Format follows
 ### Changed
 - Every block carries a small picture of its category, as homework carries
   its book: a house for School, a pencil for Study, a target for Sports,
-  sparkles for an Activity, a clock for Meals, a moon for Sleep, wind for Free
-  time. Where a block is too small for all three, it keeps its name, then its
+  sparkles for an Activity, a clock for Meals, a moon for Sleep. Free time
+  has none. The picture is drawn in its category's own colour, darkened or
+  lightened only as far as it takes to show at 3 to 1 on the block, in every
+  look and block style. Where a block is too small for all three, it keeps its name, then its
   start time, and leaves the picture out: a half-hour Dinner says "Dinner
   18:30".
 - The category colours are spread further apart, so School, Study and Sleep

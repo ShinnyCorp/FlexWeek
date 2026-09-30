@@ -84,7 +84,7 @@ from desktop.native.layouts.base import (
     rules,
     scrolling,
 )
-from desktop.native.look import category_paint, contrast, readable_ink
+from desktop.native.look import category_paint, readable_ink
 from desktop.native.motion import app_level, between, duration, fade_away, hold_picture, moves
 from desktop.native.tokens import (
     RADIUS_CARD,
@@ -506,7 +506,10 @@ class ClayPainter(BlockPainter):
                 written.append(beside)
         if homework:
             at_book = QPointF(rect.left() + left, first + (tm.height() - book) / 2)
-            self._book(painter, at_book, book, ink, paper, edge, category_icon(drawn.category) or BOOK)
+            colour = self._book_colour(drawn, ink, paper, edge)
+            ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
+            picture = icons.pixmap(category_icon(drawn.category) or BOOK, colour.name(), book, ratio)
+            painter.drawPixmap(at_book, picture)
             written.append(QRectF(at_book.x(), at_book.y(), book, book))
         return written
 
@@ -521,13 +524,6 @@ class ClayPainter(BlockPainter):
             if metrics.horizontalAdvance(" ".join(words[:count])) <= width - indent:
                 return [" ".join(words[:count]), word_elide(" ".join(words[count:]), metrics, width)]
         return [word_elide(title, metrics, width - indent)]
-
-    def _book(self, painter: QPainter, at: QPointF, size: int, ink: QColor, paper: QColor,
-              edge: QColor | None, icon_name: str = BOOK) -> None:
-        """Keep the category icon readable against its block."""
-        colour = edge if edge is not None and contrast(edge.name(), paper.name()) >= 4.5 else ink
-        ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
-        painter.drawPixmap(at, icons.pixmap(icon_name, colour.name(), size, ratio))
 
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
         """An accent line across the day from a dot at its start, the time on a pill near the dot."""
