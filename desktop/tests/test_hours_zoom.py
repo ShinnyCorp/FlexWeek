@@ -300,6 +300,14 @@ def test_a_week_keeps_where_it_was_scrolled_when_it_is_shown_again(qapp: QApplic
     settle(qapp)
     assert opened_at != bar.maximum()
     assert bar.value() == bar.maximum(), "the same week jumped back to the morning"
+    view.hide()
+    other = build_week("2026-10-05", [], {}, None)
+    view.set_week(other, 2, 12 * 60)
+    view.set_week(other, 2, 12 * 60)
+    view.show()
+    settle(qapp)
+    top, bottom = minute_at(view, 0), minute_at(view, view.scroll.viewport().height())
+    assert abs((top + bottom) / 2 - 12 * 60) <= 2, "a hidden refresh lost the opening time"
 
 
 def test_a_week_opened_while_hidden_scrolls_to_now_when_it_is_shown(qapp: QApplication) -> None:

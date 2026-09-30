@@ -182,6 +182,7 @@ class HoursScroll(QScrollArea):
         self._placed: int | None = None
         # The week, or day, these hours last opened on.
         self._opened: object = None
+        self._positions: dict[object, float] = {}
         # The header first: the scroll area starts filtering events as soon as it holds the hours.
         self.buttons = ZoomButtons(name)
         self.buttons.out.clicked.connect(lambda: self.zoom_by(-1))
@@ -324,15 +325,33 @@ class HoursScroll(QScrollArea):
         glide.start(QVariantAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def open_at(self, key: object, minute: int, above: int | None = 90) -> None:
-        """Scroll to `minute` the first time these hours show `key`, a week or one of its days. The
-        same one shown again stays wherever the student scrolled it, through saves and refreshes."""
+        """Open a new week or day once, and restore its position when it is visited again."""
         if key != self._opened:
+            if self._opened is not None:
+                kept = self._kept if self._kept is not None else self._minute_at(self._bar().value())
+                if kept is not None:
+                    self._positions[self._opened] = kept
             self._opened = key
-            self.scroll_to(minute, above)
+            if key in self._positions:
+                self._pending = self._centre = None
+                self._kept = self._positions[key]
+                self._short_at = None
+                if self.isVisible():
+                    self._put_back()
+            else:
+                self.scroll_to(minute, above)
 
-    def forget(self) -> None:
-        """The next `open_at` opens, whatever these hours showed last."""
-        self._opened = None
+    def forget(self, week_start: str | None = None) -> None:
+        """Reopen a week's hours, or forget the whole session when no week is given."""
+        if week_start is None:
+            self._opened = None
+            self._positions.clear()
+            return
+        self._positions = {key: position for key, position in self._positions.items()
+                           if (key[0] if isinstance(key, tuple) else key) != week_start}
+        opened_week = self._opened[0] if isinstance(self._opened, tuple) else self._opened
+        if opened_week == week_start:
+            self._opened = None
 
     def focusNextPrevChild(self, next: bool) -> bool:  # noqa: N802
         # QScrollArea's own then scrolls to show the child that had the focus: for hours longer than
@@ -393,7 +412,7 @@ class HoursScroll(QScrollArea):
         """How far along the hours, down or across, a minute lies."""
         track = self.canvas.tracks[0]
         start = track.area.top() if self._down else track.area.left()
-        return start + track.offset(min(max(minute, track.first), track.last))
+        return start + track.offset(minute)
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
         # Lanes have nothing to scroll up and down, so the wheel moves them through the day.

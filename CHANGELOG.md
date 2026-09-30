@@ -3,6 +3,15 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- The month view and mini calendar use today's month when the open week crosses
+  a month boundary. Returning to Day keeps the selected date, and My day names
+  today rather than the planner's underlying week or month.
+- Day and Week retain scroll positions across view changes, Focus, Settings,
+  and look changes. Today and returning to the current week reopen at now.
+
 ## [0.17.1] - 2026-09-29
 
 ### Changed

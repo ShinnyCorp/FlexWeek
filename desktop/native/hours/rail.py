@@ -267,7 +267,7 @@ class MonthCard(QWidget):
         self.on.clicked.connect(lambda: self._page(1))
         self.fold.clicked.connect(self.hide_requested.emit)
         self.dates.date_chosen.connect(self.date_chosen.emit)
-        self._anchor = ""
+        self._anchor: tuple[str, str | None] | None = None
 
     def _page(self, by: int) -> None:
         month = self.dates.month
@@ -284,10 +284,13 @@ class MonthCard(QWidget):
     def show_week(self, week_start: str, today: date, due: frozenset[str]) -> None:
         """The month of the week on screen, unless the student has paged it and the week is the same."""
         dates = self.dates
-        if week_start != self._anchor:
-            self._anchor = week_start
-            # The month most of the week is in: its Thursday's.
-            dates.month = (date.fromisoformat(week_start) + timedelta(days=3)).replace(day=1)
+        first = date.fromisoformat(week_start)
+        in_week = first <= today <= first + timedelta(days=6)
+        key = (week_start, today.isoformat()[:7] if in_week else None)
+        if key != self._anchor:
+            self._anchor = key
+            anchor = today if in_week else first + timedelta(days=3)
+            dates.month = anchor.replace(day=1)
         dates.week_start, dates.today, dates.due = week_start, today, due
         self._say()
 

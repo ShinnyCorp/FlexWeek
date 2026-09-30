@@ -1,6 +1,7 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `sol/0172-dates`: Date and saved-scroll repairs pass 48 focused checks. Final dates/zoom mutation run caught 36 cases; exception-based inherited failures are excluded from assertion proof. Full gate had two Claude-owned updater failures. Jonathan left the future-week Today scroll corner to Claude. Changes uncommitted; pointer blocked; no build, merge or push.
 - Date: 2026-09-25 (0.15 Lane C), branch `claude/0-15-homework-planning`.
   Five inherited fixes cover the DueField signal, due-today default, homework
   length bounds, full-month date picker and planning after now (`7b9d19b`,
@@ -657,6 +658,7 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-30, `sol/0172-dates`: Date/scroll work and before/after pictures are recorded in UI harness scratch `0172-sol-dates`. Claude owns the future-week Today corner and updater failures. Changes uncommitted; unit 04 held; no executable or pointer retry.
 - 2026-09-29, `feat/0.17.1`: 0.17.1 prepared, the patch after 0.17.0 (Jonathan: "start the patch").
   Units 1 to 4 of `~/.flexweek-ui-harness/scratch/017-patch-plan.md`: the intermittent test-suite
   segfault (a test's instance patch left a HomeworkDialog in a cycle, collected on the server
