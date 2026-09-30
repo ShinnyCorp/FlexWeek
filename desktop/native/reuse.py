@@ -701,7 +701,9 @@ MONTHS = (
 )
 
 
-def planner_title(session: object, view: str, *, short: bool = False) -> str:
+def planner_title(
+    session: object, view: str, *, short: bool = False, selected_day: str | None = None
+) -> str:
     """Where you are, in words: "15 – 21 September", "Thursday 18 September", "September 2026".
 
     Week always uses short month names. `short` also abbreviates Day and Month for a narrow bar.
@@ -709,7 +711,7 @@ def planner_title(session: object, view: str, *, short: bool = False) -> str:
     The top bar used to say none of this. It had two buttons reading "Previous week" and "Next week"
     and no statement of which week you were on at all.
     """
-    from datetime import date, timedelta
+    from datetime import date, datetime, timedelta
 
     def name(names: tuple[str, ...], index: int) -> str:
         return names[index][:3] if short else names[index]
@@ -717,7 +719,7 @@ def planner_title(session: object, view: str, *, short: bool = False) -> str:
     start = date.fromisoformat(session.week_start)
     # selected_day is an ISO date, not an index into the week. Reading it as one raised on a real
     # run and left the title blank.
-    chosen_iso = getattr(session, "selected_day", None) or session.week_start
+    chosen_iso = selected_day or getattr(session, "selected_day", None) or session.week_start
     try:
         chosen = date.fromisoformat(str(chosen_iso))
     except ValueError:
@@ -732,7 +734,9 @@ def planner_title(session: object, view: str, *, short: bool = False) -> str:
         except ValueError:
             anchor = chosen
         return f"{name(MONTHS, anchor.month - 1)} {anchor.year}"
-    if view == "day":
+    if view == "myday" and selected_day is None:
+        chosen = datetime.fromtimestamp(session.now_ms() / 1000).date()
+    if view in {"day", "myday"}:
         return f"{name(DAYS_LONG, chosen.weekday())} {chosen.day} {name(MONTHS, chosen.month - 1)}"
     short = True
     end = start + timedelta(days=6)

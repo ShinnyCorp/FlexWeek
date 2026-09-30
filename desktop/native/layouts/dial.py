@@ -633,12 +633,17 @@ class DayDialView(LayoutView):
     def shown_day(self, scene: Scene) -> int:
         return self._day if self._day is not None else (scene.today if scene.today is not None else 0)
 
+    def watched_date(self) -> str | None:
+        scene = self._scene
+        return scene.week.date_of(self.shown_day(scene)).isoformat() if scene is not None else None
+
     def _show_day(self, day: int) -> None:
         scene = self._scene
         if scene is None:
             return
         self._day = None if day == scene.today else day
         self.render(scene, False)
+        self.watched_day_changed.emit(scene.week.date_of(day).isoformat())
 
     def render(self, scene: Scene, week_changed: bool) -> None:
         if week_changed:

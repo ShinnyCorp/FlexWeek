@@ -11,6 +11,11 @@ All notable changes to FlexWeek are documented here. Format follows
   through its name. Timeline's and Clay deck's pills with the time sit beside
   the hours instead of on the block.
 - Day keeps Now on the hours grid rather than between agenda rows. Week titles, time labels, recovery codes and category tick/action spacing are clearer at narrow widths.
+- The month view and mini calendar use today's month when the open week crosses
+  a month boundary. Returning to Day keeps the selected date, and My day names
+  today rather than the planner's underlying week or month.
+- Day and Week retain scroll positions across view changes, Focus, Settings,
+  and look changes. Today and returning to the current week reopen at now.
 
 ## [0.17.1] - 2026-09-29
 

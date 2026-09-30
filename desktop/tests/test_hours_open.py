@@ -1,6 +1,7 @@
-"""Where every design's Day and Week open: at now on today and this week, otherwise at the first block
-of the day or the week, otherwise at 08:00. On first show, and again each time the student goes to
-another day or week; the same day or week keeps wherever the student scrolled it."""
+"""Opening hours and keeping the student's scroll across views and designs.
+
+Today and returning to this week reopen at now; other returns keep the chosen position.
+"""
 
 from __future__ import annotations
 
@@ -196,11 +197,10 @@ def test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_o
         opens_at(qapp, window, NOW, f"{design} Thursday again")
 
 
-def test_todays_app_opens_at_now_every_time_it_is_shown_and_not_on_a_save(
+def test_todays_app_keeps_its_scroll_after_a_page_or_look_change(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """Decision 12 of 0.17. Scrolled away, Week opened on the night again after Month, a new look or
-    Settings. Each of those opens it at now; a save while it shows leaves it where it is."""
+    """The 0.17.2 scroll decision replaces reopening at now after a page or look change."""
     from desktop.native.look import sanitize_look
 
     session = window.session
@@ -239,7 +239,7 @@ def test_todays_app_opens_at_now_every_time_it_is_shown_and_not_on_a_save(
     ):
         away()
         act()
-        opens_at(qapp, window, NOW, f"Week {how}")
+        assert hours(window).verticalScrollBar().value() == 0, how
 
 
 def test_after_plan_the_week_scrolls_to_the_first_homework_it_placed(
@@ -270,3 +270,139 @@ def test_after_plan_the_week_scrolls_to_the_first_homework_it_placed(
     start = int(placed["start"][:2]) * 60 + int(placed["start"][3:])
     first, last = span_shown(hours(window))
     assert first <= start <= last, f"{placed['start']} is not on screen ({first:.0f} to {last:.0f})"
+
+
+@pytest.mark.parametrize("today, month", [
+    ("2026-09-29", "2026-09"), ("2026-10-01", "2026-10"), ("2026-10-04", "2026-10"),
+])
+def test_month_and_mini_month_use_today_at_a_week_boundary(
+    qapp: QApplication, window: NativeWindow, today: str, month: str
+) -> None:
+    session = window.session
+    held = datetime.fromisoformat(today + "T10:20")
+    session.now_ms = lambda: int(held.timestamp() * 1000)
+    session.load_week("2026-09-28")
+    wait_until(qapp, lambda: not session.busy)
+    window._on_week()
+    assert window.rail.month.title.text() == ("September 2026" if month.endswith("09") else "October 2026")
+    window.findChild(QPushButton, "viewMonth").click()
+    wait_until(qapp, lambda: session.month_data is not None)
+    assert session.selected_month == month
+    assert [cell.iso for cell in window.month_grid.canvas.cells if cell.today] == [today]
+    window.findChild(QPushButton, "viewDay").click()
+    wait_until(qapp, lambda: not session.busy)
+    assert session.selected_day == today
+    window.findChild(QPushButton, "viewWeek").click()
+    wait_until(qapp, lambda: not session.busy)
+    window.findChild(QPushButton, "viewMyDay").click()
+    qapp.processEvents()
+    expected = {"2026-09-29": "Tuesday 29 September", "2026-10-01": "Thursday 1 October",
+                "2026-10-04": "Sunday 4 October"}
+    assert window.week_title.full_text() == expected[today]
+
+
+def test_month_keeps_a_picked_day_and_uses_thursday_for_a_week_without_today(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    session = window.session
+    held = datetime.fromisoformat("2026-09-29T10:20")
+    session.now_ms = lambda: int(held.timestamp() * 1000)
+    session.open_day("2026-09-30")
+    wait_until(qapp, lambda: not session.busy)
+    session.set_view("month")
+    wait_until(qapp, lambda: session.month_data is not None)
+    session.set_view("day")
+    wait_until(qapp, lambda: not session.busy)
+    assert session.selected_day == "2026-09-30"
+    session.set_view("week")
+    session.load_week("2026-10-26")
+    wait_until(qapp, lambda: not session.busy)
+    session.set_view("month")
+    wait_until(qapp, lambda: session.month_data is not None)
+    assert session.selected_month == "2026-10"
+
+
+@pytest.mark.parametrize("design", DESIGNS)
+def test_each_design_keeps_day_and_week_scroll_until_today_is_pressed(
+    qapp: QApplication, window: NativeWindow, design: str
+) -> None:
+    session = window.session
+    today = datetime.fromtimestamp(session.now_ms() / 1000).date().isoformat()
+    window._layout = sanitize_layout({"main": design, "day": "one"})
+    window._apply_appearance()
+    window._on_week()
+
+    def press(name: str) -> None:
+        window.findChild(QPushButton, name).click()
+        wait_until(qapp, lambda: not session.busy)
+        for _ in range(4):
+            qapp.processEvents()
+
+    def away() -> None:
+        scroll = hours(window)
+        bar = scroll.verticalScrollBar() if scroll.axis is Axis.DOWN else scroll.horizontalScrollBar()
+        bar.setValue(0)
+        qapp.processEvents()
+
+    def stays(where: str) -> None:
+        scroll = hours(window)
+        bar = scroll.verticalScrollBar() if scroll.axis is Axis.DOWN else scroll.horizontalScrollBar()
+        assert bar.value() == 0, f"{design} {where} moved the hours away from midnight"
+
+    press("viewWeek")
+    away()
+    session.open_day(today)
+    wait_until(qapp, lambda: not session.busy)
+    away()
+    press("viewWeek")
+    stays("Week after Day")
+    press("viewDay")
+    stays("Day after Week")
+    session.open_day((date.fromisoformat(today) + timedelta(days=1)).isoformat())
+    wait_until(qapp, lambda: not session.busy)
+    session.open_day(today)
+    wait_until(qapp, lambda: not session.busy)
+    stays("Day after another day")
+    press("viewWeek")
+    press("viewMonth")
+    press("viewWeek")
+    stays("Week after Month")
+    window._open_focus_screen()
+    window._close_focus_screen()
+    qapp.processEvents()
+    stays("Week after Focus")
+    press("todayWeek")
+    opens_at(qapp, window, NOW, f"{design} Today")
+    away()
+    press("nextWeek")
+    press("prevWeek")
+    opens_at(qapp, window, NOW, f"{design} returning to this week")
+    press("nextWeek")
+    session.add_block({"id": "future-dinner", "title": "Dinner", "kind": "locked", "category": "meals",
+                       "start": "18:00", "duration_min": 30, "days": [0]})
+    wait_until(qapp, lambda: not session.busy)
+    away()
+    press("prevWeek")
+    opens_at(qapp, window, NOW, f"{design} returning to this week after scrolling next week")
+    press("nextWeek")
+    stays("next week after Today reopened this week")
+
+
+def test_my_day_title_names_the_day_chosen_on_its_strip(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from desktop.native.layouts.dial import DialFace
+
+    window._layout = sanitize_layout({"main": "classic", "day": "dial"})
+    window._enter_day()
+    for _ in range(4):
+        qapp.processEvents()
+    face = next(face for face in window.planner.currentWidget().findChildren(DialFace)
+                if face.mini and face.day == 4)
+    QTest.mouseClick(face, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, face.rect().center())
+    qapp.processEvents()
+    chosen = date.fromisoformat(window.session.week_start) + timedelta(days=4)
+    assert window.week_title.full_text() == f"Friday {chosen.day} {chosen.strftime('%B')}"
