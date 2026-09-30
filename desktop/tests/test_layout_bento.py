@@ -190,7 +190,8 @@ def test_a_due_rows_placed_time_is_never_cut_by_the_tile(
     qapp: QApplication, size: tuple[int, int]
 ) -> None:
     """In the window's face and body size a Due soon row had no room for "1 h 30 · placed Thu 20:00", and the
-    tile cut it inside the time. Short of room it says where the homework is placed, whole."""
+    tile cut it inside the time. Short of room the rows say where the homework is placed, whole, and
+    say it the same way."""
     load_fonts()
     usual = QFont(qapp.font())
     font = QFont("Inter")
@@ -205,6 +206,9 @@ def test_a_due_rows_placed_time_is_never_cut_by_the_tile(
         for meta in metas:
             room = meta.contentsRect().width()
             assert meta.fontMetrics().horizontalAdvance(meta.text()) <= room, meta.text()
+        # All the long way, with each length, or all the short way: one row without its length read as
+        # another kind of row.
+        assert len({" · " in meta.text() for meta in metas}) == 1, [meta.text() for meta in metas]
     finally:
         qapp.setFont(usual)
 

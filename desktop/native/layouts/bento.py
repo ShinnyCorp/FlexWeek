@@ -18,7 +18,17 @@ from dataclasses import dataclass
 from datetime import date
 from functools import cached_property
 
-from PySide6.QtCore import QEasingCurve, QEvent, QPoint, QPointF, QRectF, QSize, Qt, QVariantAnimation
+from PySide6.QtCore import (
+    QEasingCurve,
+    QEvent,
+    QObject,
+    QPoint,
+    QPointF,
+    QRectF,
+    QSize,
+    Qt,
+    QVariantAnimation,
+)
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QFontMetricsF, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -90,7 +100,7 @@ from desktop.native.weekmodel import (
     length_label,
     range_label,
 )
-from desktop.native.widgets import FittedLabel, overlay_scroll_bars
+from desktop.native.widgets import overlay_scroll_bars
 
 WEEK_SCALE = Scale("bento.week", (32, 44, 64, 96, 128), 44)
 # One day's hours: Day's, and the Today hero's. At 44 pixels an hour a half-hour block still says its
@@ -1200,6 +1210,30 @@ class BentoHours(HoursScroll):
         super().open_at(key, minute, above)
 
 
+class Metas(QObject):
+    """Due soon's second lines, which say the long way or the short way together: the length and where
+    the homework is placed, or where it is placed alone, never cut. One row that dropped its length
+    read as another kind of row."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self._said: list[tuple[QLabel, str, str]] = []
+
+    def add(self, label: QLabel, whole: str, short: str) -> None:
+        self._said.append((label, whole, short))
+        label.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            roomy = all(
+                label.fontMetrics().horizontalAdvance(whole) <= label.contentsRect().width()
+                for label, whole, _short in self._said
+            )
+            for label, whole, short in self._said:
+                label.setText(whole if roomy else short)
+        return False
+
+
 class Row(QPushButton):
     """A button laid out as lines of words, as tall as its words: a QPushButton sizes itself to its
     own text and left the lines inside it no room."""
@@ -1632,8 +1666,9 @@ class BentoView(LayoutView):
             )
         rows = QVBoxLayout()
         rows.setSpacing(0)
+        metas = Metas(tile)
         for index, due in enumerate(listed[:DUE_ROWS]):
-            rows.addWidget(self._due_row(scene, index, due))
+            rows.addWidget(self._due_row(scene, index, due, metas))
         box.addLayout(rows)
         if len(listed) > DUE_ROWS:
             box.addWidget(_say(f"{len(listed) - DUE_ROWS} more", "bentoDueMore", "muted"))
@@ -1649,15 +1684,14 @@ class BentoView(LayoutView):
             box.addWidget(_say(f"{placed} of {len(listed)} placed", "bentoDuePlaced", "muted"))
         return tile
 
-    def _due_row(self, scene: Scene, index: int, due: Due) -> Row:
+    def _due_row(self, scene: Scene, index: int, due: Due, metas: Metas) -> Row:
         px = scene.px
         where = f"placed {DAYS[due.at[0]]} {clock_label(due.at[1])}" if due.at is not None else "Not placed"
         meta = f"{short_length(due.minutes)} · {where}"
-        # Short of room it says where the homework is, whole, rather than cutting the time.
-        said = FittedLabel(minimum=px(40))
-        said.setObjectName("bentoDueMeta")
-        said.setProperty("role", "muted")
-        said.set_full_text(meta, where)
+        said = _say(meta, "bentoDueMeta", "muted")
+        said.setMinimumWidth(1)
+        said.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        metas.add(said, meta, where)
         row = Row()
         row.setObjectName(f"bentoDue{index}")
         row.setProperty("kind", "due")
