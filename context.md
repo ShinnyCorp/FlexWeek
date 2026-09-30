@@ -1,6 +1,7 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `sol/0172-looks`: Restored polish suite: 88 passed; setup: 32 passed; isolated Bento/Timeline/Dial/Clay/Look Editor/Top Bar: 26/32/31/23/18/11 passed. Ruff and backend mypy pass. Stock accents stay quiet in Readability; unsafe custom choices remain checked. Wider look cards preserve Large labels; small shared/Clay blocks keep names ahead of icons. Latest affected-code mutations: 357 reported catches, no survivors; inherited exception failures excluded from assertion proof. Final styled captures complete and inspected. Earlier combined gate: 23 failures, 2344 passes, 2 errors; combined Qt diagnosis is Claude-owned. Changes uncommitted; no build, merge or push. Unit 04 held; pointer blocked.
 - Date: 2026-09-25 (0.15 Lane C), branch `claude/0-15-homework-planning`.
   Five inherited fixes cover the DueField signal, due-today default, homework
   length bounds, full-month date picker and planning after now (`7b9d19b`,
@@ -657,6 +658,7 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-30, `sol/0172-looks`: 88 restored polish checks, 32 setup checks and all six isolated design/editor files passed; ruff/backend mypy pass. Latest affected-code sweep has no survivors; inherited exception-based catches are recorded separately. Final pictures: UI harness scratch `0172-sol-looks/after-final`; report in that scratch root. More look Light/Dark/System, updater, Spotify and combined Qt diagnosis remain Claude-owned. Changes uncommitted for review; pointer blocked; unit 04 held. Nothing built, merged or pushed.
 - 2026-09-29, `feat/0.17.1`: 0.17.1 prepared, the patch after 0.17.0 (Jonathan: "start the patch").
   Units 1 to 4 of `~/.flexweek-ui-harness/scratch/017-patch-plan.md`: the intermittent test-suite
   segfault (a test's instance patch left a HomeworkDialog in a cycle, collected on the server

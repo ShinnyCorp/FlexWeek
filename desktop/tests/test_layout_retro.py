@@ -711,7 +711,8 @@ def test_a_block_with_no_room_for_its_first_word_says_nothing_rather_than_cut_it
         return dark_pixels(image, 4)
 
     assert painted(160) > 0
-    assert painted(56) == 0
+    # Room for a shortened word after the category icon, but not the full first word.
+    assert painted(80) == 0
 
 
 def test_a_title_cut_inside_a_word_is_found() -> None:

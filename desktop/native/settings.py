@@ -128,7 +128,7 @@ SECTION_ICONS = ("palette", "calendar", "timer", "bell", "laptop")
 MAIN_LOOKS = ("light-frost", "dark-frost", "system")
 MORE_LOOKS = "More looks"
 # A More looks card's picture is this wide; its card a little more (ChoiceCard).
-LOOK_TILE = 150
+LOOK_TILE = 180
 ACCENT_LABELS = {"default": "Blue"}
 OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
 # A look of the student's own sets the accent and every knob (look.py's resolved_palette and

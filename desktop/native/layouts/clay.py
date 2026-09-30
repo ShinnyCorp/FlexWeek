@@ -53,7 +53,7 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.native import icons
-from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS
+from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS, category_icon
 from desktop.native.fonts import at_scale, caption, time_font, weighted
 from desktop.native.hours.canvas import (
     BOOK,
@@ -82,7 +82,7 @@ from desktop.native.layouts.base import (
     rules,
     scrolling,
 )
-from desktop.native.look import category_paint, contrast
+from desktop.native.look import category_paint, contrast, readable_ink
 from desktop.native.motion import app_level, between, duration, fade_away, hold_picture, moves
 from desktop.native.tokens import (
     RADIUS_CARD,
@@ -290,6 +290,9 @@ class ClayPainter(BlockPainter):
                 "rule": soft,
                 "accent": tokens["accent"],
                 "accent_ink": tokens["accent_ink"],
+                "accent_text": tokens.get("accent_text", tokens["accent"]),
+                "now": tokens.get("now", tokens["accent"]),
+                "selection": tokens.get("selection", tokens["accent"]),
                 "error": tokens["danger"],
                 "text": tokens["text"],
                 "muted": tokens["muted"],
@@ -357,7 +360,7 @@ class ClayPainter(BlockPainter):
         painter.drawRoundedRect(bar, 1.5, 1.5)
         if drawn.held or drawn.chosen:
             refused = drawn.verdict is not None and not drawn.verdict.ok
-            painter.setPen(QPen(self.c("error" if refused else "accent"), 2))
+            painter.setPen(QPen(self.c("error" if refused else "selection"), 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), max(radius - 1, 0), max(radius - 1, 0))
         if drawn.columns > 1 and not drawn.held:
@@ -395,9 +398,13 @@ class ClayPainter(BlockPainter):
         left, top, right = (18, 6, 12) if self.wide else (14, 4, 8)
         width = rect.width() - left - right
         tall = rect.height() - top - 3
-        homework = drawn.category in HOMEWORK_CATEGORIES
+        homework = category_icon(drawn.category) is not None
         book = round(tm.ascent())
         indent = book + 4 if homework else 0
+        first_word = drawn.title.strip().split(" ", 1)[0]
+        name_room = tm.horizontalAdvance(first_word + ("…" if first_word != drawn.title.strip() else ""))
+        if homework and width - indent < name_room <= width:
+            homework, indent = False, 0
         too_short = rect.height() + BETWEEN < (LINE_LEAST * scale + BETWEEN) * self.share
         if too_short or width < indent + tm.horizontalAdvance(drawn.title.strip()[:3]):
             return
@@ -459,7 +466,7 @@ class ClayPainter(BlockPainter):
                 painter.drawText(beside, TOP_LEFT, after)
         if homework:
             at_book = QPointF(rect.left() + left, first + (tm.height() - book) / 2)
-            self._book(painter, at_book, book, ink, paper, edge)
+            self._book(painter, at_book, book, ink, paper, edge, category_icon(drawn.category) or BOOK)
 
     @staticmethod
     def _title_lines(title: str, metrics: QFontMetricsF, width: float, indent: float, most: int) -> list[str]:
@@ -474,15 +481,15 @@ class ClayPainter(BlockPainter):
         return [word_elide(title, metrics, width - indent)]
 
     def _book(self, painter: QPainter, at: QPointF, size: int, ink: QColor, paper: QColor,
-              edge: QColor | None) -> None:
-        """Homework carries a book as well as its colour: in its mark where the mark reads on the block."""
-        colour = edge if edge is not None and contrast(edge.name(), paper.name()) >= 3.0 else ink
+              edge: QColor | None, icon_name: str = BOOK) -> None:
+        """Keep the category icon readable against its block."""
+        colour = edge if edge is not None and contrast(edge.name(), paper.name()) >= 4.5 else ink
         ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
-        painter.drawPixmap(at, icons.pixmap(BOOK, colour.name(), size, ratio))
+        painter.drawPixmap(at, icons.pixmap(icon_name, colour.name(), size, ratio))
 
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
         """An accent line across the day from a dot at its start, the time on a pill near the dot."""
-        colour = QColor(self.colours["accent"])
+        colour = self.c("now")
         area = track.area
         at = area.top() + track.offset(minute)
         painter.setPen(QPen(colour, 2))
@@ -496,7 +503,7 @@ class ClayPainter(BlockPainter):
         pill = QRectF(area.left() + 8, at - (metrics.height() + 2) / 2, metrics.horizontalAdvance(words) + 12,
                       metrics.height() + 2)
         painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2)
-        painter.setPen(QColor(self.colours["accent_ink"]))
+        painter.setPen(QColor(readable_ink(colour.name())))
         painter.setFont(font)
         painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
 

@@ -114,6 +114,7 @@ class Colours:
     window: str = "#f7f8fa"
     hairline: str = "#e4e7ec"
     accent: str = "#3d6fc4"
+    accent_text: str = "#3d6fc4"
     accent_ink: str = "#ffffff"
     homework: str = "#831a1d"
     contrast: bool = False
@@ -127,6 +128,7 @@ class Colours:
             window=palette["window"],
             hairline=palette["hairline"],
             accent=palette["accent"],
+            accent_text=palette.get("accent_text", palette["accent"]),
             accent_ink=palette["accent_ink"],
             homework=category_paint(HOMEWORK, palette)[1] or palette["text"],
             contrast=palette.get("family") == "contrast",
@@ -336,6 +338,7 @@ class NextCard(QWidget):
         self.title.setWordWrap(True)
         self.when = QLabel()
         self.when.setObjectName("railNextWhen")
+        self.when.setWordWrap(True)
         self.when.setFont(time_font(self.when.font()))
         self.then = QLabel()
         self.then.setObjectName("railNextThen")

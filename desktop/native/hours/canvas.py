@@ -37,7 +37,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QScrollArea, QWidget
 
 from desktop.native import icons
-from desktop.native.calendar import DAYS, create_click_range
+from desktop.native.calendar import DAYS, category_icon, create_click_range
 from desktop.native.fonts import at_scale, caption, time_font, weighted
 from desktop.native.hours.geometry import (
     BETWEEN,
@@ -147,6 +147,8 @@ class BlockPainter:
         return look_measures(self.look)
 
     def c(self, name: str) -> QColor:
+        if name in ("now", "selection"):
+            return QColor(self.colours.get(name, self.colours["accent"]))
         return QColor(self.colours[name])
 
     def background(self, painter: QPainter, rect: QRectF) -> None:
@@ -242,7 +244,7 @@ class BlockPainter:
             painter.restore()
         if drawn.held or drawn.chosen:
             refused = drawn.verdict is not None and not drawn.verdict.ok
-            painter.setPen(QPen(self.c("error" if refused else "accent"), 2))
+            painter.setPen(QPen(self.c("error" if refused else "selection"), 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), RADIUS_BLOCK - 1, RADIUS_BLOCK - 1)
         if drawn.columns > 1 and not drawn.held:
@@ -296,7 +298,10 @@ class BlockPainter:
             fits = QFontMetricsF(small).horizontalAdvance(drawn.detail) <= room.width()
             words = drawn.detail if fits else ""
             lay = held_layout(drawn.title, words, title_font, small, room, book is not None)
-            _paint_layout(painter, lay, title_font, small, ink, self.c("error") if refused else muted, book)
+            _paint_layout(
+                painter, lay, title_font, small, ink, self.c("error") if refused else muted, book,
+                icon_name=category_icon(drawn.category) or BOOK,
+            )
             return
         # One line may take the block's whole height: at Large text a half-hour on the week is one
         # caption line exactly, and High contrast's outlined Dinner said nothing, an empty box.
@@ -308,14 +313,14 @@ class BlockPainter:
         )
         if self.whole_words and cuts_a_word(lay, drawn.title):
             return
-        _paint_layout(painter, lay, title_font, small, ink, muted, book, muted)
+        _paint_layout(painter, lay, title_font, small, ink, muted, book, muted,
+                      icon_name=category_icon(drawn.category) or BOOK)
 
     def _book_colour(self, drawn: Drawn, ink: QColor, paper: QColor, edge: QColor | None) -> QColor | None:
-        """Homework carries a book as well as its colour. In its mark where the mark reads on the
-        block, else in the block's ink."""
-        if drawn.category not in HOMEWORK_CATEGORIES:
+        """A category icon uses its mark when readable on the block, otherwise its text ink."""
+        if category_icon(drawn.category) is None:
             return None
-        if edge is not None and contrast(edge.name(), paper.name()) >= 3.0:
+        if edge is not None and contrast(edge.name(), paper.name()) >= 4.5:
             return edge
         return ink
 
@@ -393,7 +398,8 @@ class BlockPainter:
     def day_name(self, painter: QPainter, box: QRectF, words: str, today: bool) -> None:
         font = weighted(painter.font(), WEIGHT_STRONG if today else WEIGHT_REGULAR)
         painter.setFont(font)
-        painter.setPen(self.c("accent" if today else "muted"))
+        colour = self.colours.get("accent_text", self.colours["accent"]) if today else self.colours["muted"]
+        painter.setPen(QColor(colour))
         painter.drawText(box, Qt.AlignmentFlag.AlignCenter, words)
         if today:
             ink = QFontMetricsF(font).boundingRect(box, int(Qt.AlignmentFlag.AlignCenter), words)
@@ -571,6 +577,10 @@ def block_layout(
     tm, sm = QFontMetricsF(title_font), QFontMetricsF(small)
     indent = _book_room(tm) if book else 0.0
     width, height = room.width(), room.height()
+    first_word = drawn.title.strip().split(" ", 1)[0]
+    name_room = tm.horizontalAdvance(first_word + ("…" if first_word != drawn.title.strip() else ""))
+    if book and width - indent < name_room <= width:
+        book, indent = False, 0.0
     tl, sl = tm.lineSpacing(), sm.lineSpacing()
     if width < indent + tm.horizontalAdvance(drawn.title.strip()[:3]) or tight.height() + 0.5 < tl:
         return []
@@ -740,6 +750,7 @@ def _paint_layout(
     muted: QColor,
     book: QColor | None,
     pin: QColor | None = None,
+    *, icon_name: str = BOOK,
 ) -> None:
     ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
     for line in lay:
@@ -753,7 +764,7 @@ def _paint_layout(
         top = line.box.top() + (metrics.height() - size) / 2
         if line.book and book is not None:
             left = line.box.left() - _book_room(metrics)
-            painter.drawPixmap(QPointF(left, top), icons.pixmap(BOOK, book.name(), size, ratio))
+            painter.drawPixmap(QPointF(left, top), icons.pixmap(icon_name, book.name(), size, ratio))
         if line.pin and pin is not None:
             left = line.box.right() - metrics.horizontalAdvance(line.text) - _book_room(metrics)
             painter.drawPixmap(QPointF(left, top), icons.pixmap("pin", pin.name(), size, ratio))

@@ -830,3 +830,24 @@ def test_the_alarm_sounds_are_a_form_with_play_in_its_own_column(qapp: QApplicat
         middle = radio.mapTo(body, QPoint(0, radio.height() // 2)).y()
         assert abs(play.mapTo(body, QPoint(0, play.height() // 2)).y() - middle) <= 2, tone
     setup.close()
+
+
+def test_setup_saves_the_chosen_sports_category_and_restores_it(qapp: QApplication) -> None:
+    setup = opened(qapp)
+    setup._show(WEEK)
+    row = setup.activities[0]
+    row.name.setText("Band")
+    row.days.set_days([1])
+    choice = row.findChild(QComboBox, "setupActivityCategory")
+    assert choice is not None, "Each entry needs a Sports or Activity choice"
+    assert choice.currentData() == "extra"
+    choice.setCurrentIndex(choice.findData("exercise"))
+    blocks = setup.week_blocks()
+    assert next(block for block in blocks if block["title"] == "Band")["category"] == "exercise"
+    setup._state.blocks = blocks
+    setup._fill_week()
+    assert setup.activities[0].findChild(QComboBox, "setupActivityCategory").currentData() == "exercise"
+    choice = setup.activities[0].findChild(QComboBox, "setupActivityCategory")
+    choice.setCurrentIndex(choice.findData("extra"))
+    assert next(block for block in setup.week_blocks() if block["title"] == "Band")["category"] == "extra"
+    setup.close()

@@ -312,6 +312,7 @@ class SegmentTrack(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._shade = 0
+        self._ring = QColor("transparent")
         # Where the chosen pill was last drawn, and where it leaves from for the segment just chosen.
         self._drawn: QRectF | None = None
         self._from = QRectF()
@@ -328,6 +329,15 @@ class SegmentTrack(QFrame):
         self.update()
 
     shade = Property(int, _get_shade, _set_shade)
+
+    def _get_ring(self) -> QColor:
+        return self._ring
+
+    def _set_ring(self, value: QColor) -> None:
+        self._ring = QColor(value)
+        self.update()
+
+    ring = Property(QColor, _get_ring, _set_ring)
 
     def add(self, button: QAbstractButton) -> None:
         self.layout().addWidget(button)
@@ -374,12 +384,14 @@ class SegmentTrack(QFrame):
                 self._drawn = pill
                 radius = pill.height() / 2
                 painter.setOpacity(opacity)
+                painter.setPen(Qt.PenStyle.NoPen)
                 # The small shadow (decision 6), 0 1 3: three widening rings, each a third of its opacity.
                 for spread in (1.5, 1.0, 0.5) if shade else ():
                     painter.setBrush(QColor(0, 0, 0, round(shade / 3)))
                     painter.drawRoundedRect(
                         pill.adjusted(-spread, 1 - spread, spread, 1 + spread), radius, radius
                     )
+                painter.setPen(QPen(self._ring, 1) if self._ring.alpha() else Qt.PenStyle.NoPen)
                 painter.setBrush(colours.color(QPalette.ColorRole.Highlight))
                 painter.drawRoundedRect(pill, radius, radius)
         painter.end()

@@ -259,9 +259,9 @@ def test_a_half_hour_block_says_its_name_at_the_level_the_hours_open_at(
     written: list[str] = []
     real = canvas_module._paint_layout
 
-    def spy(painter, lay, *rest) -> None:
+    def spy(painter, lay, *rest, **kwargs) -> None:
         written.extend(line.text for line in lay)
-        real(painter, lay, *rest)
+        real(painter, lay, *rest, **kwargs)
 
     monkeypatch.setattr(canvas_module, "_paint_layout", spy)
     for surface, name in (("week", "bentoWeekHours"), ("day", "bentoDayHours")):

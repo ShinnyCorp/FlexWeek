@@ -16,6 +16,8 @@ All notable changes to FlexWeek are documented here. Format follows
   with it instead of jumping in one frame.
 
 ### Fixed
+- Setup entries have a Sports or Activity choice that survives reopening. Category hues, Sleep contrast, Paper and Pastel surfaces, Sand, category icons and Dark control edges were adjusted. The chosen blue stays exact while Now and selection use a readable shade.
+- Look cards have more room for large labels. Readability keeps stock accents quiet while naming unsafe uses of a custom accent.
 - Holding a block at the edge of the hours scrolls about two hours a second
   at any zoom. In Clay deck it raced through the day at about 16 hours a
   second.

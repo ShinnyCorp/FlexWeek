@@ -30,7 +30,7 @@ from desktop.native.look import (
     sanitize_custom,
     sanitize_look,
 )
-from desktop.native.tokens import fit_lightness, luminance
+from desktop.native.tokens import fit_lightness, luminance, mix
 
 # Shown when a student has not named the look yet.
 UNNAMED = "My look"
@@ -248,6 +248,8 @@ def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
     palette = resolved_palette("system", system_dark, look)
     surfaces = (palette["window"], palette["panel"], palette["grid"])
     text, muted, accent = palette["text"], palette["muted"], palette["accent"]
+    own_accent = str(custom.get("accent", "")).startswith("#")
+    tint = mix(accent, palette["window"], 0.10)
     blocks = []
     for key, info in CATEGORIES.items():
         fill, mark = category_paint(key, palette)
@@ -268,13 +270,19 @@ def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
         ("Muted text on the page", muted, palette["window"], "muted"),
         ("Muted text on cards", muted, palette["panel"], "muted"),
         ("Accent text on cards", accent, palette["panel"], "accent"),
+        ("Plan button words", accent, tint, "accent"),
+        ("Today's day name", accent, palette["grid"], "accent"),
+        ("Now line", palette["text"] if custom.get("now_line") == "text" else accent,
+         palette["grid"], "accent"),
         ("Text on accent buttons", palette["accent_ink"], accent, "accent"),
     ):
+        if field == "accent" and not own_accent:
+            continue
         ratio = contrast(ink, ground)
         if ratio < AA_TEXT:
             if field == "accent":
                 # Its words on the page and cards, and white or black on it, which any colour reads.
-                fixed = fit_lightness(accent, surfaces[:2], AA_TEXT)
+                fixed = fit_lightness(accent, surfaces + (tint,), AA_TEXT)
                 found.append(Problem(words, ink, ground, ratio, ("accent",), fixed))
                 continue
             fixed = text_fixed if field == "text" else fit_lightness(ink, surfaces, AA_TEXT)

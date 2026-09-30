@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from desktop.native.tokens import family_colours
+
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="Desktop dependencies absent"
 )
@@ -64,8 +66,9 @@ SCHOOL = {
 }
 CLUB = {"id": "club", "title": "Club", "kind": "locked", "start": "10:00", "duration_min": 30, "days": [1]}
 # School's colours: the pale fill and strong mark of a light look, and the tone and mark of a dark one.
-PALE, STRONG = "#d1e7ff", "#4687d8"
-TONE, DEEP_MARK = "#65a7fa", "#65a7fa"
+SCHOOL_FAMILY = family_colours(250)
+PALE, STRONG = SCHOOL_FAMILY["light"]
+TONE, DEEP_MARK = SCHOOL_FAMILY["dark"]
 # The hosts of the hands these tests make: a hand is its host's Qt child and keeps no reference to it.
 HOSTS: list = []
 
