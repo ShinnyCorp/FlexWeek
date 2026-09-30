@@ -3,6 +3,15 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.2] - Unreleased
+
+### Fixed
+- The line for now crosses a block over its colour and under its words, in
+  every design, so it shows how far into the block you are without running
+  through its name. Timeline's and Clay deck's pills with the time sit beside
+  the hours instead of on the block.
+- Day keeps Now on the hours grid rather than between agenda rows. Week titles, time labels, recovery codes and category tick/action spacing are clearer at narrow widths.
+
 ## [0.17.1] - 2026-09-29
 
 ### Changed
@@ -16,7 +25,6 @@ All notable changes to FlexWeek are documented here. Format follows
   with it instead of jumping in one frame.
 
 ### Fixed
-- Day keeps Now on the hours grid rather than between agenda rows. Week titles, time labels, recovery codes and category tick/action spacing are clearer at narrow widths.
 - Holding a block at the edge of the hours scrolls about two hours a second
   at any zoom. In Clay deck it raced through the day at about 16 hours a
   second.
