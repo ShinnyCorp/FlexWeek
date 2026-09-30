@@ -22,9 +22,11 @@ All notable changes to FlexWeek are documented here. Format follows
 - Setup's sports, clubs and jobs each say whether they are Sports or an
   Activity, and keep it when setup is opened again. The example week's
   Soccer is Sports.
-- The line for now and the ring round a chosen block use a shade of the
-  accent that shows on every category's colour. The accent itself stays as
-  picked.
+- The line for now and the ring round a chosen block use the accent itself,
+  darkened or lightened only as far as it takes to show on every category's
+  colour (3 to 1, the bar for lines rather than text), so in Light the blue
+  stays close to the one picked. The accent stays as picked, and the time on
+  the pill keeps its own 4.5 to 1.
 
 ### Fixed
 - The line for now crosses a block over its colour and stops a few pixels

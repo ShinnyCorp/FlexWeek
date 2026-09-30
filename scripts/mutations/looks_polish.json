@@ -14,6 +14,13 @@
     "test": "desktop/tests/test_looks_polish.py::test_chosen_blue_stays_exact_with_readable_now_and_selection"
   },
   {
+    "name": "The now line is fitted to 4.5 to 1 again",
+    "file": "desktop/native/look.py",
+    "old": "    palette[\"now\"] = fit_lightness(palette[\"accent\"], fills + (palette[\"grid\"],), AA_GRAPHIC)\n",
+    "new": "    palette[\"now\"] = fit_lightness(palette[\"accent_text\"], fills + (palette[\"grid\"],), 4.5)\n",
+    "test": "desktop/tests/test_look.py::test_the_now_line_and_the_selection_ring_show_at_3_to_1_and_keep_the_accent"
+  },
+  {
     "name": "School returns to its crowded hue",
     "file": "desktop/native/calendar.py",
     "old": "\"label\": \"School\",\n        \"hue\": 250,",

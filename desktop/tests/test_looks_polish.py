@@ -70,7 +70,7 @@ def test_a_pale_custom_accent_stays_chosen_but_its_words_are_readable() -> None:
     assert palette["accent"] == "#dfff00"
     tint = mix(palette["accent"], palette["window"], 0.10)
     assert contrast(palette.get("accent_text", palette["accent"]), tint) >= 4.5
-    assert contrast(palette.get("now", palette["accent"]), palette["grid"]) >= 4.5
+    assert contrast(palette.get("now", palette["accent"]), palette["grid"]) >= 3
     assert f'color: {palette["accent_text"]};' in button_rules(palette, 8, 6, "flat", "")
 
 
