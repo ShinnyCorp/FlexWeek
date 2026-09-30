@@ -353,7 +353,7 @@ def day_buttons(view: LayoutView, scene: Scene, item: Occurrence | None, prefix:
     back.clicked.connect(view.back_requested.emit)
     made.append(back)
     for entry in made:
-        tint(entry, DAY_ICONS[entry.objectName().removeprefix(prefix)])
+        tint(entry, DAY_ICONS[entry.objectName().removeprefix(prefix)], gap=scene.px(4))
     return made
 
 

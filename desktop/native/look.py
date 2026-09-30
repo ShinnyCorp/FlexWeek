@@ -1331,8 +1331,8 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         f"QLabel#authNote {{ color: {palette['muted']}; }}"
         f"QLabel#passwordHint, QLabel#usernameHint {{ color: {palette['muted']}; "
         f"font-size: {type_pt('caption', text)}pt; }}"
-        # Inter with figures of one width and a little air between letters reads as code.
-        f"QLabel#recoveryList {{ background: {mix(palette['text'], palette['panel'], 0.05)}; "
+        f"QLabel#recoveryList {{ font-family: {FONT_FAMILIES['mono']}; "
+        f"background: {mix(palette['text'], palette['panel'], 0.05)}; "
         f"border-radius: {radius}px; padding: {SPACING[2]}px {SPACING[3]}px; letter-spacing: 0.5px; }}"
         f"QToolButton#passwordReveal {{ background: transparent; border: none; padding: 0; "
         f"border-radius: {radius}px; }}"

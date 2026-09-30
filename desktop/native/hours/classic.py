@@ -426,16 +426,15 @@ class DaySummary(QWidget):
 
 @dataclass(frozen=True)
 class Row:
-    """A line of the day's agenda as drawn: the block, or the time now, and where."""
+    """A block in the day's agenda and where it is drawn."""
 
     box: QRectF
-    item: Occurrence | None
+    item: Occurrence
 
 
 class AgendaList(QWidget):
     """The day in order: each thing's start and end, its name with its category's edge, how long, and
-    the time now as a line between what has been and what is next. A click opens a thing; a
-    right-click shows its menu."""
+    a click opens a thing and a right-click shows its menu."""
 
     def __init__(self, hand: Hand, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -462,20 +461,11 @@ class AgendaList(QWidget):
     def _lay_out(self) -> None:
         title, small, _strong = self._fonts()
         tall = QFontMetricsF(title).lineSpacing() + QFontMetricsF(small).lineSpacing() + 2 * SPACING[1]
-        now_tall = QFontMetricsF(small).height() + 6 + SPACING[1]
         rows: list[Row] = []
         top = 0.0
-        drawn_now = self.now is None
         for item in self.items:
-            if not drawn_now and item.start > (self.now or 0):
-                rows.append(Row(QRectF(0, top, self.width(), now_tall), None))
-                top += now_tall
-                drawn_now = True
             rows.append(Row(QRectF(0, top, self.width(), tall), item))
             top += tall
-        if not drawn_now:
-            rows.append(Row(QRectF(0, top, self.width(), now_tall), None))
-            top += now_tall
         self.rows = rows
         self.setMinimumHeight(round(top))
         self.updateGeometry()
@@ -494,31 +484,15 @@ class AgendaList(QWidget):
         palette = self.palette_
         colours = Colours.of(palette) if palette else Colours()
         title_font, small, strong = self._fonts()
-        column = 44.0
+        column = max(
+            [44.0, *(QFontMetricsF(font).horizontalAdvance(clock_label(minute)) + 2
+              for row in self.rows
+              for font, minute in ((strong, row.item.start), (small, row.item.end)))],
+        )
         body_left = column + SPACING[2]
         ratio = self.devicePixelRatioF()
         for row in self.rows:
             box = row.box
-            if row.item is None:
-                words = clock_label(self.now or 0)
-                width = QFontMetricsF(strong).horizontalAdvance(words) + 10
-                pill = QRectF(
-                    0,
-                    box.center().y() - QFontMetricsF(strong).height() / 2 - 2,
-                    width,
-                    QFontMetricsF(strong).height() + 4,
-                )
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QColor(colours.accent))
-                painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2)
-                painter.setFont(strong)
-                painter.setPen(QColor(colours.accent_ink))
-                painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
-                painter.fillRect(
-                    QRectF(body_left, box.center().y() - 1, box.width() - body_left, 2),
-                    QColor(colours.accent),
-                )
-                continue
             item = row.item
             past = self.now is not None and item.end <= self.now
             if item.block_id == self._hover:
@@ -594,7 +568,7 @@ class AgendaList(QWidget):
         painter.end()
 
     def _item_at(self, point: QPointF) -> Occurrence | None:
-        return next((row.item for row in self.rows if row.item is not None and row.box.contains(point)), None)
+        return next((row.item for row in self.rows if row.box.contains(point)), None)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         item = self._item_at(event.position())
@@ -672,7 +646,7 @@ class ClassicAgenda(QFrame):
 
     def set_day(self, week: WeekModel, day: int, today: int | None, now_min: int | None) -> None:
         items = week.on_day(day)
-        self.heading.setText(DAY_FULL[day])
+        self.heading.setText("Agenda")
         things = f"{len(items)} thing{'s' if len(items) != 1 else ''}"
         total = sum(item.minutes for item in items)
         self.sub.setText(f"{things} · {length_label(total)}" if items else "Nothing planned")
@@ -725,7 +699,9 @@ class ClassicDay(QFrame):
             self.hours.relayout()
         self.hours.set_week(week.on_day(day), today, now_min)
         self.agenda.set_day(week, day, today, now_min)
-        self.name.show_day(DAYS[day], str(week.date_of(day).day), homework_minutes(week, day), day == today)
+        self.name.show_day("Hours", "", homework_minutes(week, day), day == today)
+        self.name.setAccessibleName("Hours")
+        self.name.setToolTip("")
         self._shown = (week, today, now_min)
         open_hours(self.scroll, (week.week_start, day), week, today, now_min, day)
 

@@ -43,10 +43,10 @@
   },
   {
     "name": "recovery codes in proportional figures",
-    "file": "desktop/native/window.py",
-    "old": "        self.recovery_list.setFont(time_font(self.recovery_list.font()))\n",
-    "new": "        self.recovery_list.setFont(self.recovery_list.font())\n",
-    "test": "desktop/tests/test_auth_words.py::test_the_codes_are_in_inter_with_figures_of_one_width"
+    "file": "desktop/native/look.py",
+    "old": "QLabel#recoveryList {{ font-family: {FONT_FAMILIES['mono']};",
+    "new": "QLabel#recoveryList {{ font-family: {FONT_FAMILIES['sans']};",
+    "test": "desktop/tests/test_time_numbers.py::test_recovery_codes_use_the_bundled_mono_face"
   },
   {
     "name": "the sign-in card rounded as a card, not a sheet",

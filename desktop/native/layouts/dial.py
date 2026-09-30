@@ -354,7 +354,7 @@ class DialFace(QWidget):
         painter.drawPixmap(QPointF(spot.x() - size / 2, spot.y() - size / 2), icon)
 
     def _paint_ticks(self, painter: QPainter, centre: QPointF, outer: float) -> None:
-        """An hour tick outside the ring every hour, longer every six, and a label every two."""
+        """Labels every two hours, with ticks only between them so no tick reads as a minus sign."""
         scale, tokens = self._scale, self._tokens
         font = at_scale(self.font(), "caption", scale)
         painter.setFont(font)
@@ -366,10 +366,11 @@ class DialFace(QWidget):
             pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             painter.setPen(pen)
             reach = (17 if long else 12) * scale
-            painter.drawLine(at(centre, outer + 7 * scale, degrees), at(centre, outer + reach, degrees))
+            if hour % 2:
+                painter.drawLine(at(centre, outer + 7 * scale, degrees), at(centre, outer + reach, degrees))
             if hour % 2 == 0:
                 words = hour_label(hour)
-                # A label wider than "06", as "6 PM" is, moves out by the difference so it clears its tick.
+                # A wider label needs more space from the ring.
                 wider = metrics.horizontalAdvance(words) - metrics.horizontalAdvance("06")
                 across = abs(math.sin(math.radians(degrees))) * wider / 2
                 spot = at(centre, outer + 32 * scale + across, degrees)

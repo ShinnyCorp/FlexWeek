@@ -1479,9 +1479,7 @@ def test_the_week_title_sits_beside_its_arrows_and_is_whole_when_there_is_room(
 def test_a_week_across_two_months_shortens_to_month_abbreviations_not_an_ellipsis(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """Beside 0.17's top bar at 1280 px "28 September – 4 October" does not fit, and cut short it read
-    "28 Septemb…": no end date at all. The short form keeps the whole range. Wider, the whole words
-    come back; narrower, the controls go under the title, which then has room again."""
+    """The short date stays the same when the controls wrap beneath it."""
     window.session.load_week("2026-09-28")
     wait_until(qapp, lambda: not window.session.busy and window.session.week_start == "2026-09-28")
     seen = {}
@@ -1489,10 +1487,10 @@ def test_a_week_across_two_months_shortens_to_month_abbreviations_not_an_ellipsi
         window.resize(width, 768)
         qapp.processEvents()
         seen[width] = window.week_title.text()
-        assert window.week_title.accessibleName() == "28 September – 4 October", width
-    assert seen[1440] == "28 September – 4 October"
+        assert window.week_title.accessibleName() == "28 Sep – 4 Oct", width
+    assert seen[1440] == "28 Sep – 4 Oct"
     assert seen[1280] == "28 Sep – 4 Oct"
-    assert set(seen.values()) <= {"28 September – 4 October", "28 Sep – 4 Oct"}, seen
+    assert set(seen.values()) == {"28 Sep – 4 Oct"}, seen
 
 
 def test_the_top_bar_keeps_the_gear_on_a_1024_window(qapp: QApplication, window: NativeWindow) -> None:

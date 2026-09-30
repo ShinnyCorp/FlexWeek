@@ -704,8 +704,7 @@ MONTHS = (
 def planner_title(session: object, view: str, *, short: bool = False) -> str:
     """Where you are, in words: "15 – 21 September", "Thursday 18 September", "September 2026".
 
-    `short` abbreviates the names ("28 Sep – 4 Oct") for a bar with no room for them, so the whole
-    range still reads rather than being cut after the first month.
+    Week always uses short month names. `short` also abbreviates Day and Month for a narrow bar.
 
     The top bar used to say none of this. It had two buttons reading "Previous week" and "Next week"
     and no statement of which week you were on at all.
@@ -735,6 +734,7 @@ def planner_title(session: object, view: str, *, short: bool = False) -> str:
         return f"{name(MONTHS, anchor.month - 1)} {anchor.year}"
     if view == "day":
         return f"{name(DAYS_LONG, chosen.weekday())} {chosen.day} {name(MONTHS, chosen.month - 1)}"
+    short = True
     end = start + timedelta(days=6)
     if start.month == end.month:
         return f"{start.day} – {end.day} {name(MONTHS, start.month - 1)}"

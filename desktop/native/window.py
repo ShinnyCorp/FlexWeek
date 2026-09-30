@@ -66,7 +66,7 @@ from desktop.native.elevation import lift
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import FocusScreen
-from desktop.native.fonts import load_fonts, time_font
+from desktop.native.fonts import load_fonts
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
 from desktop.native.hours.geometry import Span, drag_step
 from desktop.native.hours.hand import Create, Hand, Move, MoveDate, Place, span_words
@@ -812,9 +812,6 @@ class NativeWindow(QMainWindow):
         self.recovery_list = QLabel()
         self.recovery_list.setObjectName("recoveryList")
         self.recovery_list.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        # The app's own face with figures of one width, so the codes line up as code without a second
-        # typeface heavier and wider than everything around them.
-        self.recovery_list.setFont(time_font(self.recovery_list.font()))
         layout.addWidget(self.recovery_list)
         # Selecting eight lines by mouse was the only way to keep them.
         keep_row = QHBoxLayout()
@@ -1416,8 +1413,7 @@ class NativeWindow(QMainWindow):
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
-        # Under 1150 pixels the rail folds into a line above the hours and blocks say their names only.
-        self.week_table.set_narrow(self.width() < NARROW_WIDTH)
+        self.week_table.set_narrow(False)
         self._place_rail(self._rail_shown())
         if self.toast.isVisible():
             self.toast.reposition()
@@ -1684,7 +1680,8 @@ class NativeWindow(QMainWindow):
         self.prev_nav.setAccessibleName(f"Previous {period}")
         self.next_nav.setAccessibleName(f"Next {period}")
         self.week_title.set_full_text(
-            planner_title(self.session, view), planner_title(self.session, view, short=True)
+            planner_title(self.session, view),
+            planner_title(self.session, view, short=True),
         )
         self._maybe_open_setup()
         if self._setup_prefs or self._setup_work_windows is not None or self._setup_week:

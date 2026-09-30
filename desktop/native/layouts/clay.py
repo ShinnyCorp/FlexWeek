@@ -493,7 +493,8 @@ class ClayPainter(BlockPainter):
         font = weighted(time_font(caption(painter.font())), WEIGHT_STRONG)
         words = clock_label(minute)
         metrics = QFontMetricsF(font)
-        pill = QRectF(area.left() + 8, at - (metrics.height() + 2) / 2, metrics.horizontalAdvance(words) + 12,
+        pill = QRectF(max(0, area.left() - metrics.horizontalAdvance(words) - 15),
+                      at - (metrics.height() + 2) / 2, metrics.horizontalAdvance(words) + 12,
                       metrics.height() + 2)
         painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2)
         painter.setPen(QColor(self.colours["accent_ink"]))
