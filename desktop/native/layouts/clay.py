@@ -2,7 +2,8 @@
 
 The day in front is a large card of its hours, which scroll and zoom. The days either side peek at 70 %,
 laid out smaller rather than shrunk, so their words stay on the type scale, and they show the stretch
-of the day the card in front shows. The round arrows beside the card, or the wheel over the row, slide
+of the day the card in front shows, with its hours labelled. A card is whole or out of sight, never
+cut by the window's edge. The round arrows beside the card, or the wheel over the row, slide
 it a day at a time. Every card is live hours on the window's hand: a block goes to a neighbour by a
 drop on it, and further by resting on an arrow while it is held, which slides the row. Homework not
 placed yet rests in a pressed-in dish under the row.
@@ -114,6 +115,8 @@ FRONT_PAD = (12, 16, 16)
 PEEK_PAD = (8, 8, 12)
 # The hour labels beside the hours in front, and room above and below them for the first and last.
 LABELS = 56
+# Beside a neighbour's labels: the 8 pixels hour labels keep from the hours, and 4 before them.
+PEEK_LABEL_GAP = 12
 END_ROOM = 20
 # Day's hours by kind beside its hours, and the room between them.
 SUMMARY, SUMMARY_GAP = 280, 24
@@ -122,10 +125,13 @@ AROUND = (20, 16)
 DISH = 64
 FADE = 80
 # With less room than a card in front this wide and both neighbours whole, the one in front takes the
-# row and its neighbours show this much at its sides.
+# row, keeping this much at its sides for the arrows.
 LEAST = 340
 SLIVER = 40
-# At either end of the row, room left for the days two away to show.
+# A neighbour narrows to the room beside the card in front, but not below this; with less room it waits
+# past the row's edge with the days further off.
+PEEK_LEAST = 140
+# At either end of the row, room kept clear of the cards, where the days further off slide in.
 RESERVE = 24
 RADIUS = 2 * RADIUS_CARD
 RADIUS_BLOCK = round(1.2 * RADIUS_CARD)
@@ -180,9 +186,11 @@ def left_today(week: WeekModel, day: int, minute: int) -> tuple[int, int, Occurr
 
 def slots(width: float, height: float, front: int, scale: float, *, wide: bool) -> dict[int, QRectF]:
     """Where each day's card lies in a row `width` by `height`: the day in front in the middle at full
-    size, and each other day a step further out at 70 %, the room between them kept. The card in front
-    narrows so both its neighbours show whole; with too little room even for that, it takes the row
-    and they show at its sides. Open on Day, it keeps the mock-up's width while the row has it."""
+    size, and each other day a step further out at 70 % of its height, the room between them kept. The
+    card in front narrows so both its neighbours show whole; with too little room even for that, it
+    takes the row. Open on Day, it keeps the mock-up's width while the row has it, and its neighbours
+    narrow to the room beside it. A card is whole in the row or wholly past its ends, where the days
+    further off wait to slide in: one cut by the window's edge read as clipped."""
     gap, sliver = GAP * scale, SLIVER * scale
     wanted = (OPEN if wide else FRONT) * scale
     whole = (width - 2 * gap - 2 * RESERVE * scale) / (1 + 2 * PEEK)
@@ -193,6 +201,9 @@ def slots(width: float, height: float, front: int, scale: float, *, wide: bool) 
     across, tall = max(across, 1.0), max(height - (INSET + FOOT) * scale, 1.0)
     narrow, short = across * PEEK, tall * PEEK
     left, middle = (width - across) / 2, INSET * scale + tall / 2
+    beside = left - gap - RESERVE * scale
+    if beside >= PEEK_LEAST * scale:
+        narrow = min(narrow, beside)
     found = {front: QRectF(left, middle - tall / 2, across, tall)}
     for day in range(7):
         step = day - front
@@ -203,6 +214,17 @@ def slots(width: float, height: float, front: int, scale: float, *, wide: bool) 
         else:
             continue
         found[day] = QRectF(x, middle - short / 2, narrow, short)
+    # The first card each way that the edge would cut, and every card past it, move out past the edge.
+    after = [day for day in range(front + 1, 7) if found[day].right() > width]
+    if after:
+        shift = max(width - found[after[0]].left(), 0.0)
+        for day in after:
+            found[day].translate(shift, 0)
+    before = [day for day in range(front - 1, -1, -1) if found[day].left() < 0]
+    if before:
+        shift = min(-found[before[0]].right(), 0.0)
+        for day in before:
+            found[day].translate(shift, 0)
     return found
 
 
@@ -614,8 +636,17 @@ class Card(QWidget):
         box.addWidget(self.hours, 1)
 
     def dress(self, scale: float) -> None:
+        """Its padding at this text size, and room left of its hours for their labels, as wide as the
+        widest in the face and size they are written in and on the clock the student chose."""
         side, _right, foot = PEEK_PAD
         self.layout().setContentsMargins(round(side * scale), 0, round(side * scale), round(foot * scale))
+        hours = self.hours
+        hours.ensurePolished()
+        base = hours.font()
+        metrics = QFontMetricsF(at_scale(time_font(base), "caption", hours.painter.scale(base)))
+        widest = max(metrics.horizontalAdvance(clock_label(hour * 60)) for hour in range(24))
+        hours.gutter = math.ceil(widest) + PEEK_LABEL_GAP
+        hours.relayout()
 
 
 class Arrow(QPushButton):
@@ -944,7 +975,7 @@ class Row(QWidget):
 
     def _place_arrows(self) -> None:
         """The arrows in the gaps either side of the card in front, halfway down; and the fade at the
-        row's ends over what lies past the front's neighbours, on Week."""
+        row's ends, over the room outside the cards in view, where the days further off slide in."""
         targets = self._targets()
         front = targets.get(self._front)
         if front is None:
@@ -953,9 +984,13 @@ class Row(QWidget):
         middle = round(front.center().y() - side / 2)
         self.back.move(round(front.left() - gap / 2 - side / 2), middle)
         self.ahead.move(round(front.right() + gap / 2 - side / 2), middle)
-        reach = FADE * self.scale
-        if not self._open:
-            reach = front.left() - (front.width() * PEEK + gap)
+        width = self.width()
+        seen = [
+            min(rect.left(), width - rect.right())
+            for day, rect in targets.items()
+            if day != self._front and self._peeks and rect.left() >= 0 and rect.right() <= width
+        ]
+        reach = min(seen) if seen else FADE * self.scale
         self._fade.reach = min(max(reach, RESERVE * self.scale), FADE * self.scale)
 
     def _arrows(self) -> None:
