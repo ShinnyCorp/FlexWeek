@@ -49,16 +49,16 @@ from desktop.native.hours.geometry import (
 )
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
 from desktop.native.look import (
+    AA_GRAPHIC,
     block_paint,
     block_time_colour,
     category_paint,
-    contrast,
     look_measures,
     readable_ink,
     text_scale,
 )
 from desktop.native.motion import EASE_MS, between, duration, moves
-from desktop.native.tokens import RADIUS_CONTROL, TYPE_PT, WEIGHT_REGULAR, WEIGHT_STRONG
+from desktop.native.tokens import RADIUS_CONTROL, TYPE_PT, WEIGHT_REGULAR, WEIGHT_STRONG, fit_lightness
 from desktop.native.weekmodel import Occurrence, clock_label, length_label, range_label, short_clock
 
 # A press this close to a block's start or end edge resizes it, on a block long enough to have edges.
@@ -368,12 +368,14 @@ class BlockPainter:
                              icon_name=category_icon(drawn.category) or BOOK)
 
     def _book_colour(self, drawn: Drawn, ink: QColor, paper: QColor, edge: QColor | None) -> QColor | None:
-        """A category icon uses its mark when readable on the block, otherwise its text ink."""
+        """A category icon is a graphic, not text: the category's mark, moved only as far as 3 to 1 on
+        the block takes, in every block style and never in the text ink."""
         if category_icon(drawn.category) is None:
             return None
-        if edge is not None and contrast(edge.name(), paper.name()) >= 4.5:
-            return edge
-        return ink
+        if edge is None:
+            mark = category_paint(drawn.category, self.colours)[1] or self.colours["block_edge"]
+            edge = QColor(mark)
+        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_GRAPHIC))
 
     def ghost(self, painter: QPainter, rect: QRectF, words: str, ok: bool) -> None:
         """Something about to be made: a tinted block where it would go, with its times."""
@@ -622,17 +624,20 @@ def block_layout(
     shown: tuple[bool, bool] = (True, True),
 ) -> list[Written]:
     """What a block says in `room`, and where: `_block_words`, with the category's icon before the
-    name (`book`) unless the name says more without it. A small block keeps its name: "Piano lesson"
-    rather than the icon and "Piano…". Its colour still says the category."""
+    name (`book`) unless that costs the name or its start time: the name, then the time, then the
+    icon. A small block keeps "Piano lesson", and a half hour keeps "Dinner 18:30", rather than the
+    icon and less. Its colour still says the category."""
+    start = {drawn.times, clock_label(drawn.span.start), short_clock(drawn.span.start)}
 
-    def kept(lay: list[Written]) -> int:
-        return name_kept([line.text for line in lay if line.title], drawn.title)
+    def said(lay: list[Written]) -> tuple[int, bool]:
+        name = name_kept([line.text for line in lay if line.title], drawn.title)
+        return name, any(line.text in start for line in lay if not line.title)
 
     lay = _block_words(drawn, title_font, small, room, tight=tight, wide=wide, book=book, shown=shown)
-    if not book or kept(lay) == 3:
+    if not book:
         return lay
     bare = _block_words(drawn, title_font, small, room, tight=tight, wide=wide, book=False, shown=shown)
-    return bare if kept(bare) > kept(lay) else lay
+    return bare if said(bare) > said(lay) else lay
 
 
 def _block_words(

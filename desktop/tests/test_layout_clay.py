@@ -561,5 +561,45 @@ def test_the_icon_gives_way_on_a_card_where_it_would_cost_the_name(
     name = QFontMetricsF(painter.fonts(qapp.font())[0]).horizontalAdvance("Piano lesson")
     # The name's own width and the 14 and 8 pixels a side card keeps clear at a block's ends.
     assert written(name + 23) == (["Piano lesson"], [])
-    words, pictures = written(name + 60)
+    # Room for its time as well: the icon comes after the name and the time.
+    words, pictures = written(name + 110)
     assert words[0] == "Piano lesson" and pictures == ["sparkles"]
+
+
+def test_a_half_hour_on_a_card_says_its_start_time_rather_than_its_icon(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The name, then the time, then the icon, as on the shared hours: room for "Dinner 18:30" or
+    for the icon and "Dinner" says the time, and with room for all three the card has all three."""
+    from desktop.native import icons
+
+    monkeypatch.setattr(canvas_module, "QPainter", Wrote)
+    drew: list[str] = []
+    real = icons.pixmap
+
+    def pixmap(name: str, *rest: object):
+        drew.append(name)
+        return real(name, *rest)
+
+    monkeypatch.setattr(icons, "pixmap", pixmap)
+    view = shown(qapp)
+    painter = view.findChild(HoursCanvas, "clayPeek2").painter
+    drawn = Drawn("dinner", "Dinner", "meals", False, Span(2, 18 * 60 + 30, 19 * 60), 0, 1)
+    image = QImage(400, 40, QImage.Format.Format_ARGB32)
+    page = QRectF(0, 0, 400, 40)
+
+    def written(width: float) -> tuple[list[str], list[str]]:
+        Wrote.words = []
+        drew.clear()
+        paint = Wrote(image)
+        painter.block(paint, QRectF(10, 10, width, 10), drawn, page)
+        paint.end()
+        return Wrote.words, list(drew)
+
+    title, small = painter.fonts(qapp.font())
+    both = QFontMetricsF(title).horizontalAdvance("Dinner") + 6
+    both += QFontMetricsF(small).horizontalAdvance("18:30")
+    icon = round(QFontMetricsF(title).ascent()) + 4
+    # The 14 and 8 pixels a side card keeps clear at a block's ends.
+    assert written(both + 23) == (["Dinner", "18:30"], [])
+    assert written(both + 23 + icon) == (["Dinner", "18:30"], ["clock"])

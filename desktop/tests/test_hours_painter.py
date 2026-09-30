@@ -359,6 +359,7 @@ def three_days(
     hour_px: int = HOUR_PX,
     palette: dict | None = None,
     days: int = 3,
+    column: int = 140,
 ) -> HoursCanvas:
     """Three days from 08:00 to 20:00, at Today's app's default 48 pixels an hour unless told, in
     Inter at the normal text size, with today on the first when there is a now."""
@@ -366,7 +367,7 @@ def three_days(
 
     def columns(area: QRectF) -> list[LinearTrack]:
         return [
-            LinearTrack(day, QRectF(60 + 150 * day, 10, 140, 12 * hour_px), first=8 * 60, last=20 * 60)
+            LinearTrack(day, QRectF(60 + 150 * day, 10, column, 12 * hour_px), first=8 * 60, last=20 * 60)
             for day in range(days)
         ]
 

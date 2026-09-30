@@ -10,9 +10,11 @@ appearance contract.
 from __future__ import annotations
 
 from itertools import product
+from math import dist
 
 from desktop.native.calendar import CATEGORIES
 from desktop.native.look import (
+    AA_GRAPHIC,
     AA_TEXT,
     ACCENTS,
     FONT_FAMILIES,
@@ -42,7 +44,7 @@ from desktop.native.look import (
     resolved_palette,
     sanitize_look,
 )
-from desktop.native.tokens import SINK, mix_oklab, oklch_of
+from desktop.native.tokens import SINK, mix_oklab, oklab, oklch_of
 
 # Every look a student can reach: pack, the device's light or dark setting, preset, accent, surface.
 EVERY_LOOK = list(product(PACKS, (False, True), LOOK_PRESETS, ACCENTS, LOOK_KNOBS["surface"]))
@@ -299,6 +301,26 @@ def test_every_look_keeps_its_text_readable() -> None:
             ratio = contrast(palette[ink], palette[fill])
             where = f"{pack}/{'dark' if system_dark else 'light'}/{preset}/{accent}/{surface}"
             assert ratio >= AA_TEXT, f"{where}: {ink} on {fill} is {ratio:.2f} to 1"
+
+
+def test_the_now_line_and_the_selection_ring_show_at_3_to_1_and_keep_the_accent() -> None:
+    """They are lines, not text: the bar for a graphic is 3 to 1, not 4.5. In every look the shade is
+    at least 3 to 1 on every category's fill and on the grid, and is the accent or only as far from
+    it as that takes; in Light, where the blue asked for 4.5 and went to #2153a4, it stays the blue.
+    The time on the pill at its start is text and keeps 4.5."""
+    for pack, system_dark, preset, accent, surface in EVERY_LOOK:
+        palette = resolved_palette(pack, system_dark, look_of(preset, surface=surface), accent)
+        where = f"{pack}/{'dark' if system_dark else 'light'}/{preset}/{accent}/{surface}"
+        grounds = [category_paint(key, palette)[0] for key in CATEGORIES] + [palette["grid"]]
+        lowest = min(contrast(palette["now"], ground) for ground in grounds)
+        assert lowest >= AA_GRAPHIC, f"{where}: {lowest:.2f} to 1"
+        assert palette["selection"] == palette["now"], where
+        if palette["now"] != palette["accent"]:
+            assert lowest < AA_GRAPHIC + 0.05, f"{where}: moved to {lowest:.2f} to 1, past the 3 it needs"
+        pill = contrast(readable_ink(palette["now"]), palette["now"])
+        assert pill >= AA_TEXT, f"{where}: the time on the pill is {pill:.2f} to 1"
+    blue = resolved_palette("light-frost", False, look_of("default"))
+    assert dist(oklab(blue["accent"]), oklab(blue["now"])) < 0.02
 
 
 def test_button_text_comes_from_the_palette_not_a_fixed_white() -> None:

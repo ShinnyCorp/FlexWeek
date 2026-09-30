@@ -84,7 +84,7 @@ from desktop.native.layouts.base import (
     rules,
     scrolling,
 )
-from desktop.native.look import category_paint, contrast, readable_ink
+from desktop.native.look import category_paint, readable_ink
 from desktop.native.motion import app_level, between, duration, fade_away, hold_picture, moves
 from desktop.native.tokens import (
     RADIUS_CARD,
@@ -442,13 +442,22 @@ class ClayPainter(BlockPainter):
             joined = f"{times} · {extra}"
             under = [joined if self.full and sm.horizontalAdvance(joined) <= width else times]
         most = 2 if under and tall + 0.5 >= 2 * tl + sl * len(under) else 1
+        start = short_clock(drawn.span.start)
+        ways = [f"{times} · {extra}", times, start] if self.full else [start]
 
-        def kept(indent: float) -> int:
+        def after_name(indent: float) -> str:
+            """What follows the name on one line: the most that fits beside it."""
+            whole = tm.horizontalAdvance(drawn.title) + INLINE_GAP
+            return next((way for way in ways if whole + sm.horizontalAdvance(way) <= width - indent), "")
+
+        def said(indent: float) -> tuple[int, bool]:
+            if width < indent + least:
+                return 0, False
             lines = self._title_lines(drawn.title, tm, width, indent, most)
-            return name_kept(lines, drawn.title) if width >= indent + least else 0
+            return name_kept(lines, drawn.title), not under and bool(after_name(indent))
 
-        if homework and kept(0) > kept(indent):
-            # The icon gives way where the name says more without it, as on the shared hours.
+        if homework and said(0) > said(indent):
+            # The icon gives way where it costs the name or its time, as on the shared hours.
             homework, indent = False, 0
         if under:
             names = self._title_lines(drawn.title, tm, width, indent, most)
@@ -475,11 +484,8 @@ class ClayPainter(BlockPainter):
                 written.append(QRectF(rect.left() + left, y, sm.horizontalAdvance(shown), sl))
                 y += sl
         else:
-            start = short_clock(drawn.span.start)
-            ways = [f"{times} · {extra}", times, start] if self.full else [start]
             room = width - indent
-            whole = tm.horizontalAdvance(drawn.title) + INLINE_GAP
-            after = next((way for way in ways if whole + sm.horizontalAdvance(way) <= room), "")
+            after = after_name(indent)
             name = drawn.title if after else word_elide(drawn.title, tm, room)
             first = rect.top() + (rect.height() - tm.height()) / 2
             at = rect.left() + left + indent
@@ -500,7 +506,10 @@ class ClayPainter(BlockPainter):
                 written.append(beside)
         if homework:
             at_book = QPointF(rect.left() + left, first + (tm.height() - book) / 2)
-            self._book(painter, at_book, book, ink, paper, edge, category_icon(drawn.category) or BOOK)
+            colour = self._book_colour(drawn, ink, paper, edge)
+            ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
+            picture = icons.pixmap(category_icon(drawn.category) or BOOK, colour.name(), book, ratio)
+            painter.drawPixmap(at_book, picture)
             written.append(QRectF(at_book.x(), at_book.y(), book, book))
         return written
 
@@ -515,13 +524,6 @@ class ClayPainter(BlockPainter):
             if metrics.horizontalAdvance(" ".join(words[:count])) <= width - indent:
                 return [" ".join(words[:count]), word_elide(" ".join(words[count:]), metrics, width)]
         return [word_elide(title, metrics, width - indent)]
-
-    def _book(self, painter: QPainter, at: QPointF, size: int, ink: QColor, paper: QColor,
-              edge: QColor | None, icon_name: str = BOOK) -> None:
-        """Keep the category icon readable against its block."""
-        colour = edge if edge is not None and contrast(edge.name(), paper.name()) >= 4.5 else ink
-        ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
-        painter.drawPixmap(at, icons.pixmap(icon_name, colour.name(), size, ratio))
 
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
         """An accent line across the day from a dot at its start, the time on a pill near the dot."""

@@ -102,7 +102,6 @@ CATEGORIES = {
         "preset": {"start": "22:00", "end": "23:00"},
     },
     "free": {
-        "icon": "wind",
         "label": "Free",
         "hue": 250,
         "color": "#e0e5eb",

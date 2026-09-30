@@ -193,6 +193,8 @@ HEADING_NAMES = (
     "bentoFigure",
 )
 AA_TEXT = 4.5
+# The bar for a graphic that is not text: the now line, a selection ring, a category's icon.
+AA_GRAPHIC = 3.0
 # A block's times and length, in its ink laid this much over its fill where that still reads.
 MUTED_INK = 0.72
 # The luminance under which a colour is dark: a custom page under it makes a dark look.
@@ -895,9 +897,8 @@ def resolved_palette(pack: object, system_dark: bool, look: dict | None, accent:
         palette["accent"], (palette["window"], palette["panel"], palette["grid"], tint), AA_TEXT,
     )
     fills = tuple(category_paint(key, palette)[0] for key in CATEGORIES)
-    palette["now"] = fit_lightness(
-        palette["accent_text"], fills + (palette["grid"],), 4.5,
-    )
+    # A line, not text, so it keeps as much of the accent as 3 to 1 allows.
+    palette["now"] = fit_lightness(palette["accent"], fills + (palette["grid"],), AA_GRAPHIC)
     palette["selection"] = palette["now"]
     if custom is not None and custom.get("now_line") == "text":
         palette["now"] = palette["text"]

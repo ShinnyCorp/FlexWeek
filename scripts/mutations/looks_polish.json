@@ -14,6 +14,13 @@
     "test": "desktop/tests/test_looks_polish.py::test_chosen_blue_stays_exact_with_readable_now_and_selection"
   },
   {
+    "name": "The now line is fitted to 4.5 to 1 again",
+    "file": "desktop/native/look.py",
+    "old": "    palette[\"now\"] = fit_lightness(palette[\"accent\"], fills + (palette[\"grid\"],), AA_GRAPHIC)\n",
+    "new": "    palette[\"now\"] = fit_lightness(palette[\"accent_text\"], fills + (palette[\"grid\"],), 4.5)\n",
+    "test": "desktop/tests/test_look.py::test_the_now_line_and_the_selection_ring_show_at_3_to_1_and_keep_the_accent"
+  },
+  {
     "name": "School returns to its crowded hue",
     "file": "desktop/native/calendar.py",
     "old": "\"label\": \"School\",\n        \"hue\": 250,",
@@ -67,7 +74,7 @@
     "file": "desktop/native/calendar.py",
     "old": "    return \"book-open\" if category == \"homework\" else CATEGORIES.get(category or \"\", {}).get(\"icon\")",
     "new": "    return \"book-open\" if category == \"homework\" else None",
-    "test": "desktop/tests/test_looks_polish.py::test_each_category_paints_its_approved_icon_with_readable_ink"
+    "test": "desktop/tests/test_looks_polish.py::test_each_category_paints_its_approved_icon_in_its_mark"
   },
   {
     "name": "Plan pale accent drops out of Readability",
@@ -100,23 +107,58 @@
   {
     "name": "Small blocks keep icons at their name's expense",
     "file": "desktop/native/hours/canvas.py",
-    "old": "    return bare if kept(bare) > kept(lay) else lay\n",
+    "old": "    return bare if said(bare) > said(lay) else lay\n",
     "new": "    return lay\n",
     "test": "desktop/tests/test_looks_polish.py::test_the_icon_gives_way_where_it_would_cost_the_name"
   },
   {
     "name": "Small Clay blocks keep icons at their name's expense",
     "file": "desktop/native/layouts/clay.py",
-    "old": "        if homework and kept(0) > kept(indent):\n",
+    "old": "        if homework and said(0) > said(indent):\n",
     "new": "        if False:\n",
     "test": "desktop/tests/test_layout_clay.py::test_the_icon_gives_way_on_a_card_where_it_would_cost_the_name"
   },
   {
     "name": "The icon gives way though it costs the name nothing",
     "file": "desktop/native/hours/canvas.py",
-    "old": "    return bare if kept(bare) > kept(lay) else lay\n",
-    "new": "    return bare if kept(bare) >= kept(lay) else lay\n",
+    "old": "    return bare if said(bare) > said(lay) else lay\n",
+    "new": "    return bare if said(bare) >= said(lay) else lay\n",
     "test": "desktop/tests/test_looks_polish.py::test_the_icon_stays_where_it_costs_the_name_nothing"
+  },
+  {
+    "name": "A half hour's time loses to its icon",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "    return bare if said(bare) > said(lay) else lay\n",
+    "new": "    return bare if said(bare)[0] > said(lay)[0] else lay\n",
+    "test": "desktop/tests/test_looks_polish.py::test_a_line_with_room_for_the_name_and_its_time_but_not_the_icon_too_says_the_time"
+  },
+  {
+    "name": "A half hour's time loses to its icon on a Clay card",
+    "file": "desktop/native/layouts/clay.py",
+    "old": "            return name_kept(lines, drawn.title), not under and bool(after_name(indent))\n",
+    "new": "            return name_kept(lines, drawn.title), False\n",
+    "test": "desktop/tests/test_layout_clay.py::test_a_half_hour_on_a_card_says_its_start_time_rather_than_its_icon"
+  },
+  {
+    "name": "Icons are drawn in the text ink again",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_GRAPHIC))\n",
+    "new": "        return ink\n",
+    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_3_to_1_on_each_block_style"
+  },
+  {
+    "name": "Icons are fitted to 4.5 to 1 again",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_GRAPHIC))\n",
+    "new": "        return QColor(fit_lightness(edge.name(), (paper.name(),), 4.5))\n",
+    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_3_to_1_on_each_block_style"
+  },
+  {
+    "name": "Free time gets its icon back",
+    "file": "desktop/native/calendar.py",
+    "old": "    \"free\": {\n        \"label\": \"Free\",",
+    "new": "    \"free\": {\n        \"icon\": \"wind\",\n        \"label\": \"Free\",",
+    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_3_to_1_on_each_block_style"
   },
   {
     "name": "Look preview puts Soccer back in Activity",

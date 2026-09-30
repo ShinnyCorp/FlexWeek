@@ -6,10 +6,16 @@
   signal lambdas keep them alive), and conftest's widgetAt fallback past the 800 px offscreen
   screen could pick one of them over the window under the drop. A conftest fixture now hides
   what each test left showing (test-only; product views are parented to the planner stack).
-  Known, separate: `test_my_day_actions_leave_room_after_their_icons` fails when an earlier test
-  in the worker left `flexweek-look.json` (under ~/.qttest, named by the process's first
-  QApplication) with another day design; test_hours_open's window fixture does not clear it.
-  Reproduced by planting `{"day": "one"}`; which earlier test writes it is not found yet.
+  The My day test's failure had a separate cause, a look file an earlier test saved; the
+  test_hours_open window fixture now clears it (ab78f93).
+- 2026-09-30, `claude/0172-lookcalls` (from 5256662): Jonathan's three calls on the looks work. A short
+  block says its name, then its start time, then its icon (a half-hour Dinner is "Dinner 18:30");
+  the now line and selection ring start from the accent and fit to 3 to 1 (`AA_GRAPHIC`), so
+  Light's blue is #3d6ec3, while the pill's time and accent words keep 4.5; category icons are the
+  category's mark fitted to 3 to 1 on the block in every look and block style, and Free has none.
+  Lint and mypy clean; 405 mutation cases over the 17 specs naming changed files all caught.
+  Known: `BlockPainter._book_colour` keeps an unused `ink` argument so Mission's callers are
+  untouched; custom_look's Readability still lists "Now line" at 4.5 for a custom accent.
 - 2026-09-30, `claude/0172-dates-int`: Sol's dates-and-scroll unit (`sol-snap/0172-dates`) merged
   onto `feat/0.17.2` at 132ee90. Month and the mini month follow today at a month boundary, My day's
   title names the day, and every design keeps its scroll within a session (open at now only at
@@ -685,9 +691,9 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
-- 2026-09-30, `claude/0172-dragleak`: window-leak fix committed (see Current State); not pushed or
-  merged. Next: fix the look-file leak behind the My day test (clear the look file in
-  test_hours_open's window fixture, or per test in conftest), then gate again.
+- 2026-09-30, `integrate/0172-sol`: the drag and look-file test leaks fixed and Jonathan's three looks
+  calls merged on top of Sol's looks and dates units; next into feat/0.17.2. Pictures:
+  `~/.flexweek-ui-harness/scratch/0172-lookcalls/`, `0172-sol-int-looks/`, `0172-dates-int/`.
 - 2026-09-30, `integrate/0172-sol`: Sol's lanes 2 and 4 and its dates-and-scroll unit are integrated
   (see Current State); not pushed. Open: decision 12's "opening at now every time" in
   docs/0.17/plan.md is superseded by T1 and not reworded.

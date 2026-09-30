@@ -8,9 +8,12 @@ All notable changes to FlexWeek are documented here. Format follows
 ### Changed
 - Every block carries a small picture of its category, as homework carries
   its book: a house for School, a pencil for Study, a target for Sports,
-  sparkles for an Activity, a clock for Meals, a moon for Sleep, wind for Free
-  time. Where a block is too small for both, it keeps its name and leaves the
-  picture out.
+  sparkles for an Activity, a clock for Meals, a moon for Sleep. Free time
+  has none. The picture is drawn in its category's own colour, darkened or
+  lightened only as far as it takes to show at 3 to 1 on the block, in every
+  look and block style. Where a block is too small for all three, it keeps its name, then its
+  start time, and leaves the picture out: a half-hour Dinner says "Dinner
+  18:30".
 - The category colours are spread further apart, so School, Study and Sleep
   no longer look alike, and Sleep is darker than the rest.
 - Paper is a cream planner page with an ink-blue accent, serif words and
@@ -21,9 +24,11 @@ All notable changes to FlexWeek are documented here. Format follows
 - Setup's sports, clubs and jobs each say whether they are Sports or an
   Activity, and keep it when setup is opened again. The example week's
   Soccer is Sports.
-- The line for now and the ring round a chosen block use a shade of the
-  accent that shows on every category's colour. The accent itself stays as
-  picked.
+- The line for now and the ring round a chosen block use the accent itself,
+  darkened or lightened only as far as it takes to show on every category's
+  colour (3 to 1, the bar for lines rather than text), so in Light the blue
+  stays close to the one picked. The accent stays as picked, and the time on
+  the pill keeps its own 4.5 to 1.
 
 ### Fixed
 - The line for now crosses a block over its colour and stops a few pixels
