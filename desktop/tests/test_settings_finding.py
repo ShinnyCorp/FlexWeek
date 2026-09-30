@@ -12,7 +12,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from desktop.native.layouts.dialog import DesignPicker
 from desktop.native.look_preview import look_choice, look_preview
@@ -34,6 +34,28 @@ def test_more_looks_is_a_grid_of_named_pictures(qapp: QApplication, window: Nati
     assert [card.accessibleName() for card in dialog.look.more.cards] == MORE
     assert all(not card.picture.pixmap().isNull() for card in dialog.look.more.cards)
     assert dialog.look.more.columns() > 1, "a grid, not one long column"
+    dialog.close_page()
+
+
+def test_the_looks_stand_four_in_a_row_and_widen_with_large_text(
+    qapp: QApplication, window: NativeWindow  # noqa: F811
+) -> None:
+    """At 1280 wide the eight looks are two rows of four, which leaves the accent in sight under
+    them. High contrast's text is Large, and a card as wide as at normal text wrapped its name onto
+    a second line: the cards widen with the text, as far as the name needs."""
+    window.resize(1280, 800)
+    dialog = prefs(window)
+    assert dialog.look.more.columns() == 4
+    tile(dialog, "High contrast").chosen.emit()
+    for _ in range(5):
+        qapp.processEvents()
+    label = tile(dialog, "High contrast").findChild(QLabel, "setupChoiceName")
+    assert label.fontMetrics().horizontalAdvance(label.text()) <= label.contentsRect().width()
+    assert label.heightForWidth(label.width()) <= label.fontMetrics().lineSpacing() + 2
+    dialog.look.main.buttons()[0].click()
+    for _ in range(5):
+        qapp.processEvents()
+    assert dialog.look.more.columns() == 4, "back at normal text, four in a row again"
     dialog.close_page()
 
 

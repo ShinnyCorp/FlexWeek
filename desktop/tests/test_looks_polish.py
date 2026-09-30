@@ -88,10 +88,12 @@ def test_high_contrast_look_card_keeps_its_large_title_on_one_line(qapp, large: 
 
     from desktop.native.look import pack_stylesheet
     from desktop.native.settings import LookPicker
+    from desktop.native.tokens import TEXT_SCALE
 
     picker = LookPicker("testLook")
     knobs = {"text": "large"} if large else {"text": "normal"}
     picker.setStyleSheet(pack_stylesheet("high-contrast", False, {"knobs": knobs}))
+    picker.set_text_scale(TEXT_SCALE[knobs["text"]])
     picker.resize(700, 800)
     picker.show()
     qapp.processEvents()

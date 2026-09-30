@@ -86,9 +86,16 @@
   {
     "name": "Look cards lose room for their large titles",
     "file": "desktop/native/settings.py",
-    "old": "LOOK_TILE = 180",
-    "new": "LOOK_TILE = 150",
-    "test": "desktop/tests/test_looks_polish.py::test_high_contrast_look_card_keeps_its_large_title_on_one_line[True]"
+    "old": "        width = round(LOOK_TILE * scale)\n",
+    "new": "        width = LOOK_TILE\n",
+    "test": "desktop/tests/test_settings_finding.py::test_the_looks_stand_four_in_a_row_and_widen_with_large_text"
+  },
+  {
+    "name": "Look cards are wide at every text size, two in a row at 1280",
+    "file": "desktop/native/settings.py",
+    "old": "LOOK_TILE = 150\n",
+    "new": "LOOK_TILE = 180\n",
+    "test": "desktop/tests/test_settings_finding.py::test_the_looks_stand_four_in_a_row_and_widen_with_large_text"
   },
   {
     "name": "Small blocks keep icons at their name's expense",

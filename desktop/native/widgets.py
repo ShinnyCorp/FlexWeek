@@ -1095,13 +1095,11 @@ class ChoiceCard(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAccessibleName(name)
         self.setAccessibleDescription(note)
-        self._width = width
         box = QVBoxLayout(self)
         box.setContentsMargins(10, 10, 10, 12)
         box.setSpacing(6)
         self.picture = QLabel()
         self.picture.setObjectName("setupChoicePicture")
-        self.picture.setFixedSize(width, round(width * 0.625))
         box.addWidget(self.picture)
         name_label = QLabel(name)
         name_label.setObjectName("setupChoiceName")
@@ -1118,9 +1116,15 @@ class ChoiceCard(QFrame):
             self.tag = QLabel(tag)
             self.tag.setObjectName("setupChoiceTag")
             box.addWidget(self.tag)
-        self.setFixedWidth(width + CARD_WIDTH_PAD)
+        self.set_width(width)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         self.select(False)
+
+    def set_width(self, width: int) -> None:
+        """The picture this wide, and the card a little more."""
+        self._width = width
+        self.picture.setFixedSize(width, round(width * 0.625))
+        self.setFixedWidth(width + CARD_WIDTH_PAD)
 
     def set_picture(self, picture: QPixmap) -> None:
         self.picture.setPixmap(rounded_picture(picture, 6))
@@ -1185,6 +1189,13 @@ class CardGrid(QWidget):
 
     def columns(self) -> int:
         return self._columns
+
+    def set_card_width(self, card_width: int) -> None:
+        """Cards of another width: as many to a row as the width holds now."""
+        self._card_width = card_width
+        self._columns = 0
+        self._place(self.width())
+        self.updateGeometry()
 
     def _place(self, room: int) -> None:
         columns = card_columns(len(self.cards), room, self._card_width, self._gap)

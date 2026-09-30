@@ -78,6 +78,7 @@ from desktop.native.look import (
     parse_look_menu_token,
     resolved_palette,
     sanitize_look,
+    text_scale,
 )
 from desktop.native.look_editor import LookEditor
 from desktop.native.look_preview import look_choice, look_preview
@@ -127,8 +128,9 @@ SECTION_ICONS = ("palette", "calendar", "timer", "bell", "laptop")
 # The three looks most people choose between; every other look is under More looks.
 MAIN_LOOKS = ("light-frost", "dark-frost", "system")
 MORE_LOOKS = "More looks"
-# A More looks card's picture is this wide; its card a little more (ChoiceCard).
-LOOK_TILE = 180
+# A More looks card's picture is this wide at normal text, and wider as the text is larger; its
+# card a little more (ChoiceCard).
+LOOK_TILE = 150
 ACCENT_LABELS = {"default": "Blue"}
 OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
 # A look of the student's own sets the accent and every knob (look.py's resolved_palette and
@@ -335,6 +337,7 @@ class LookPicker(Choices):
         ordered = sorted(looks, key=lambda item: main.index(item[1]) if item[1] in main else len(main))
         for label, token in ordered:
             self._remember(label, token)
+        self._tile_width = LOOK_TILE
         self.main = Segmented(tuple(item for item in ordered if item[1] in main), f"{name}Main")
         self.main.setAccessibleName("Look")
         self.more = CardGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP)
@@ -370,12 +373,26 @@ class LookPicker(Choices):
     def _tile(self, label: str, token: str, saved: list[dict]) -> ChoiceCard:
         """A look as a picture of a week in its colours over its name; one click, or Space or Enter,
         wears it."""
-        card = ChoiceCard(label, "", LOOK_TILE)
+        card = ChoiceCard(label, "", self._tile_width)
         card.setProperty("token", token)
         pack, look = look_choice(token, saved)
-        card.set_picture(look_preview(pack, look, LOOK_TILE))
+        card.set_picture(look_preview(pack, look, self._tile_width))
         card.chosen.connect(self._picked_tile)
         return card
+
+    def set_text_scale(self, scale: float) -> None:
+        """The pictures as much wider as the text is larger, so a name keeps its one line under its
+        picture: at Large text "High contrast" wrapped under a picture of the normal width."""
+        width = round(LOOK_TILE * scale)
+        if width == self._tile_width:
+            return
+        self._tile_width = width
+        for grid in (self.more, self.yours):
+            for card in grid.cards:
+                card.set_width(width)
+                pack, look = look_choice(card.property("token"), self._saved)
+                card.set_picture(look_preview(pack, look, width))
+            grid.set_card_width(width + CARD_WIDTH_PAD)
 
     def set_saved(self, looks: list[dict]) -> None:
         """The student's saved looks, after the others, each chosen by its name."""
@@ -750,6 +767,8 @@ class SettingsPage(QWidget):
         appear.addRow(self.fine_host)
         self._colours_form = appear
         self._show_look_settings()
+        self._fit_look_cards()
+        self.changed.connect(self._fit_look_cards)
         everywhere_card, everywhere = _card("Every screen")
         everywhere.addRow("Animations", self.motion)
         # Colours first: it is what most students change, and below every design card it was not found
@@ -1328,6 +1347,9 @@ class SettingsPage(QWidget):
         own_accent = custom is None and self._look["preset"] in OWN_ACCENT
         self._colours_form.setRowVisible(self.accent_note, custom is not None or own_accent)
         self._fine_form.setRowVisible(self.own_look_note, custom is not None)
+
+    def _fit_look_cards(self) -> None:
+        self.look.set_text_scale(text_scale(self.look_choice()))
 
     def _saved_look(self, token: object) -> dict | None:
         if not isinstance(token, str) or not token.startswith(SAVED_LOOK):
