@@ -64,6 +64,7 @@ def shown(
     size: tuple[int, int] = (1366, 760),
     scale: float = 1.0,
     hand: Hand | None = None,
+    focus: str = "",
     **chosen: str,
 ) -> MissionView:
     """Mission on the test week, Thursday 13:40 unless told otherwise."""
@@ -82,6 +83,7 @@ def shown(
             scale=scale,
             surface=surface,
             iso_day=iso_day,
+            focus=focus,
         )
     )
     view.show()
@@ -284,6 +286,17 @@ def test_focus_minutes_are_what_the_timer_credited_to_this_weeks_homework(qapp: 
     homework = {**HOMEWORK, "chem": {**HOMEWORK["chem"], "focus_minutes": 35}}
     view = shown(qapp, homework=homework)
     assert figure(view, "missionFocus") == ("35 min", "On this week's homework")
+
+
+def test_the_focus_figure_says_a_timer_is_running_instead_of_none_yet(qapp: QApplication) -> None:
+    """Audit X5: a session was running and the figure said "None yet this week". The minutes stay
+    those already credited; the line says what the timer is doing."""
+    assert figure(shown(qapp, focus="focusing"), "missionFocus") == ("0 min", "Focusing now")
+    assert figure(shown(qapp, focus="paused"), "missionFocus") == ("0 min", "Focus paused")
+    assert figure(shown(qapp, focus="break"), "missionFocus") == ("0 min", "On a break")
+    homework = {**HOMEWORK, "chem": {**HOMEWORK["chem"], "focus_minutes": 35}}
+    credited = shown(qapp, homework=homework, focus="focusing")
+    assert figure(credited, "missionFocus") == ("35 min", "Focusing now")
 
 
 def test_another_week_has_no_today_to_count_from(qapp: QApplication) -> None:

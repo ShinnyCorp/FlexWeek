@@ -2268,9 +2268,12 @@ class SchoolHoursDialog(Dialog):
         self.times = TimeRange(start, minutes_to_hhmm(hhmm_to_minutes(start) + minutes), "School")
         box.addWidget(self.days)
         box.addWidget(self.times, 0, Qt.AlignmentFlag.AlignLeft)
-        hint = QLabel("No school days picked means no school on the calendar.")
-        hint.setObjectName("setupHint")
-        box.addWidget(hint)
+        # Said only when it is true, as setup does: under a week of school days it read as a warning.
+        self.hint = QLabel("No school days picked means no school on the calendar.")
+        self.hint.setObjectName("setupHint")
+        box.addWidget(self.hint)
+        self._follow_days()
+        self.days.changed.connect(self._follow_days)
         self.error = _error_label()
         box.addWidget(self.error)
         layout.addWidget(card)
@@ -2278,6 +2281,9 @@ class SchoolHoursDialog(Dialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _follow_days(self) -> None:
+        self.hint.setVisible(not self.days.days())
 
     def accept(self) -> None:
         days = self.days.days()

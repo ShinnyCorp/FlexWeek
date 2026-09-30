@@ -129,6 +129,7 @@ def test_quick_focus_fills_the_window_and_esc_comes_back(qapp: QApplication, win
     QTest.keyClick(screen, Qt.Key.Key_Escape)
     assert on_screen(window) == "weekPage"
     assert window.session.focus is not None, "going back leaves the timer running"
+    assert window._scene_for("mission").focus == "focusing", "a design is told the timer runs"
     panel = window.focus_panel
     assert panel.time.isVisible() and panel.task.text() == "Quick focus"
     assert visible_buttons(panel) == ["Focus screen"], "the strip keeps its line and one way back"

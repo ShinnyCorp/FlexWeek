@@ -109,6 +109,8 @@ LANE_UNDER = 52
 DAY_LANE, DAY_LEAST = 296, 140
 TABLE = 364
 AROUND = 16
+# The focus figure's line while a timer runs: the minutes it shows are only those already credited.
+FOCUS_NOW = {"focusing": "Focusing now", "paused": "Focus paused", "break": "On a break"}
 # A block this short is a tick in its category's colour, named on hover.
 TICK = 30
 # Hours of lanes the table leaves at the least before it goes under them.
@@ -912,10 +914,8 @@ class MissionView(LayoutView):
         else:
             line = f"{self._figure(finished)} finished" if finished else "Nothing is due this week."
         counted = (self._number(scene, len(due)), line)
-        focus = (
-            self._length(scene, week.focus_min),
-            "On this week's homework" if week.focus_min else "None yet this week",
-        )
+        credited = "On this week's homework" if week.focus_min else "None yet this week"
+        focus = (self._length(scene, week.focus_min), FOCUS_NOW.get(scene.focus, credited))
         cards = [
             self._card(scene, "missionPlanned", "Planned today", "calendar", *planned),
             self._card(scene, "missionDue", "Due this week", "book-open", *counted),
