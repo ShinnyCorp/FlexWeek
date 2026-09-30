@@ -19,7 +19,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, QRectF, Qt
-    from PySide6.QtGui import QCursor, QFont, QImage, QPainter
+    from PySide6.QtGui import QCursor, QFont, QFontMetricsF, QImage, QPainter
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
@@ -526,3 +526,40 @@ def test_a_short_block_on_a_side_card_keeps_its_name_where_a_shortened_one_fits(
         assert written(24) == []
     finally:
         qapp.setFont(usual)
+
+
+def test_the_icon_gives_way_on_a_card_where_it_would_cost_the_name(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A block with room for "Piano lesson" or for the icon and "Piano…" says its name, as the
+    shared hours do. With room for both it has both."""
+    from desktop.native import icons
+
+    monkeypatch.setattr(canvas_module, "QPainter", Wrote)
+    drew: list[str] = []
+    real = icons.pixmap
+
+    def pixmap(name: str, *rest: object):
+        drew.append(name)
+        return real(name, *rest)
+
+    monkeypatch.setattr(icons, "pixmap", pixmap)
+    view = shown(qapp)
+    painter = view.findChild(HoursCanvas, "clayPeek2").painter
+    drawn = Drawn("piano", "Piano lesson", "extra", False, Span(2, 17 * 60, 17 * 60 + 30), 0, 1)
+    image = QImage(400, 40, QImage.Format.Format_ARGB32)
+    page = QRectF(0, 0, 400, 40)
+
+    def written(width: float) -> tuple[list[str], list[str]]:
+        Wrote.words = []
+        drew.clear()
+        paint = Wrote(image)
+        painter.block(paint, QRectF(10, 10, width, 10), drawn, page)
+        paint.end()
+        return Wrote.words, list(drew)
+
+    name = QFontMetricsF(painter.fonts(qapp.font())[0]).horizontalAdvance("Piano lesson")
+    # The name's own width and the 14 and 8 pixels a side card keeps clear at a block's ends.
+    assert written(name + 23) == (["Piano lesson"], [])
+    words, pictures = written(name + 60)
+    assert words[0] == "Piano lesson" and pictures == ["sparkles"]

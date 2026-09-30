@@ -102,7 +102,7 @@ def test_high_contrast_look_card_keeps_its_large_title_on_one_line(qapp, large: 
     picker.close()
 
 
-def test_small_block_keeps_its_name_when_the_icon_would_displace_it(qapp) -> None:
+def _laid_out(qapp, title: str, room_for: str, lines: int):
     from PySide6.QtCore import QRectF
     from PySide6.QtGui import QFont, QFontMetricsF
 
@@ -111,11 +111,42 @@ def test_small_block_keeps_its_name_when_the_icon_would_displace_it(qapp) -> Non
 
     font = QFont(qapp.font())
     metrics = QFontMetricsF(font)
-    room = QRectF(0, 0, metrics.horizontalAdvance("School") + 1, 100)
-    drawn = Drawn("school", "School", "class", False, Span(0, 480, 540), 0, 1)
-    lines = block_layout(drawn, font, font, room, book=True)
-    assert [line.text for line in lines if line.title] == ["School"]
-    assert not any(line.book for line in lines)
+    room = QRectF(0, 0, metrics.horizontalAdvance(room_for) + 1, metrics.lineSpacing() * lines + 1)
+    drawn = Drawn("block", title, "class", False, Span(0, 480, 540), 0, 1)
+    return block_layout(drawn, font, font, room, book=True)
+
+
+@pytest.mark.parametrize(("title", "room_for", "lines", "wanted"), [
+    # One line with room for the name or for the icon and less of the name.
+    ("School", "School", 1, ["School"]),
+    ("Piano lesson", "Piano lesson", 1, ["Piano lesson"]),
+    # Two lines: nothing follows "Swimming" on its line, so its own width is room enough.
+    ("Swimming gala", "Swimming", 2, ["Swimming", "gala"]),
+    # Shortened either way: at a word without the icon, inside one with it.
+    ("Science poster", "Science…", 1, ["Science…"]),
+])
+def test_the_icon_gives_way_where_it_would_cost_the_name(
+    qapp, title: str, room_for: str, lines: int, wanted: list[str],
+) -> None:
+    """Jonathan's decision: a small block keeps its name, and its icon is left out only when it must
+    be. Beside the icon Piano lesson read "Piano…" in High contrast, and Soccer practice "Soc…" over
+    "practice" in Mission control."""
+    lay = _laid_out(qapp, title, room_for, lines)
+    assert [line.text for line in lay if line.title] == wanted
+    assert not any(line.book for line in lay)
+
+
+@pytest.mark.parametrize(("title", "room_for", "wanted"), [
+    ("School", "School and more", ["School"]),
+    # Shortened at a word with the icon and without it: the icon costs the name nothing.
+    ("Math worksheet", "Math works", ["Math…"]),
+])
+def test_the_icon_stays_where_it_costs_the_name_nothing(
+    qapp, title: str, room_for: str, wanted: list[str],
+) -> None:
+    lay = _laid_out(qapp, title, room_for, 1)
+    assert [line.text for line in lay if line.title] == wanted
+    assert [line.book for line in lay if line.title] == [True]
 
 
 @pytest.mark.parametrize(("category", "wanted"), [

@@ -63,6 +63,7 @@ from desktop.native.hours.canvas import (
     BlockPainter,
     Drawn,
     HoursCanvas,
+    name_kept,
     word_elide,
 )
 from desktop.native.hours.chips import TrayChip
@@ -425,12 +426,9 @@ class ClayPainter(BlockPainter):
         homework = category_icon(drawn.category) is not None
         book = round(tm.ascent())
         indent = book + 4 if homework else 0
-        first_word = drawn.title.strip().split(" ", 1)[0]
-        name_room = tm.horizontalAdvance(first_word + ("…" if first_word != drawn.title.strip() else ""))
-        if homework and width - indent < name_room <= width:
-            homework, indent = False, 0
         too_short = rect.height() + BETWEEN < (LINE_LEAST * scale + BETWEEN) * self.share
-        if too_short or width < indent + tm.horizontalAdvance(drawn.title.strip()[:3]):
+        least = tm.horizontalAdvance(drawn.title.strip()[:3])
+        if too_short or width < least:
             return
         paper = fill if fill is not None else self.c("window")
         muted = QColor(mix_oklab(ink.name(), paper.name(), 0.74))
@@ -443,8 +441,16 @@ class ClayPainter(BlockPainter):
         elif tall + 0.5 >= tl + sl:
             joined = f"{times} · {extra}"
             under = [joined if self.full and sm.horizontalAdvance(joined) <= width else times]
+        most = 2 if under and tall + 0.5 >= 2 * tl + sl * len(under) else 1
+
+        def kept(indent: float) -> int:
+            lines = self._title_lines(drawn.title, tm, width, indent, most)
+            return name_kept(lines, drawn.title) if width >= indent + least else 0
+
+        if homework and kept(0) > kept(indent):
+            # The icon gives way where the name says more without it, as on the shared hours.
+            homework, indent = False, 0
         if under:
-            most = 2 if tall + 0.5 >= 2 * tl + sl * len(under) else 1
             names = self._title_lines(drawn.title, tm, width, indent, most)
             y = rect.top() + top
             if rect.bottom() - visible.top() > 2 * tl:

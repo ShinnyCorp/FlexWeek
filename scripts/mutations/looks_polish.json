@@ -93,16 +93,23 @@
   {
     "name": "Small blocks keep icons at their name's expense",
     "file": "desktop/native/hours/canvas.py",
-    "old": "    if book and width - indent < name_room <= width:\n        book, indent = False, 0.0",
-    "new": "    if False:\n        book, indent = False, 0.0",
-    "test": "desktop/tests/test_looks_polish.py::test_small_block_keeps_its_name_when_the_icon_would_displace_it"
+    "old": "    return bare if kept(bare) > kept(lay) else lay\n",
+    "new": "    return lay\n",
+    "test": "desktop/tests/test_looks_polish.py::test_the_icon_gives_way_where_it_would_cost_the_name"
   },
   {
     "name": "Small Clay blocks keep icons at their name's expense",
     "file": "desktop/native/layouts/clay.py",
-    "old": "        if homework and width - indent < name_room <= width:\n            homework, indent = False, 0",
-    "new": "        if False:\n            homework, indent = False, 0",
-    "test": "desktop/tests/test_layout_clay.py::test_a_short_block_on_a_side_card_keeps_its_name_where_a_shortened_one_fits[13]"
+    "old": "        if homework and kept(0) > kept(indent):\n",
+    "new": "        if False:\n",
+    "test": "desktop/tests/test_layout_clay.py::test_the_icon_gives_way_on_a_card_where_it_would_cost_the_name"
+  },
+  {
+    "name": "The icon gives way though it costs the name nothing",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "    return bare if kept(bare) > kept(lay) else lay\n",
+    "new": "    return bare if kept(bare) >= kept(lay) else lay\n",
+    "test": "desktop/tests/test_looks_polish.py::test_the_icon_stays_where_it_costs_the_name_nothing"
   },
   {
     "name": "Look preview puts Soccer back in Activity",

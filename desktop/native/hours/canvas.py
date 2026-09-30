@@ -567,15 +567,21 @@ def word_elide(text: str, metrics: QFontMetricsF, width: float) -> str:
     return metrics.elidedText(text, Qt.TextElideMode.ElideRight, width)
 
 
-def cuts_a_word(lay: list[Written], title: str) -> bool:
-    """Whether a block's words cut its title inside a word: "Robot…" for "Robotics club"."""
+def name_kept(lines: list[str], title: str) -> int:
+    """How much of a block's name these lines of it keep: 3 the whole of it, 2 shortened at a word,
+    1 cut inside a word ("Robot…" for "Robotics club"), 0 nothing."""
     whole = set(_words(title))
-    for line in lay:
-        if line.title and line.text.endswith("…"):
-            kept = line.text[:-1].split()
-            if not kept or kept[-1] not in whole:
-                return True
-    return False
+    short = [line[:-1].split() for line in lines if line.endswith("…")]
+    if not lines:
+        return 0
+    if any(not kept or kept[-1] not in whole for kept in short):
+        return 1
+    return 2 if short else 3
+
+
+def cuts_a_word(lay: list[Written], title: str) -> bool:
+    """Whether a block's words cut its title inside a word."""
+    return name_kept([line.text for line in lay if line.title], title) == 1
 
 
 def _clamp(lines: list[str], most: int, metrics: QFontMetricsF, width: float, indent: float) -> list[str]:
@@ -602,6 +608,31 @@ def block_layout(
     book: bool = False,
     shown: tuple[bool, bool] = (True, True),
 ) -> list[Written]:
+    """What a block says in `room`, and where: `_block_words`, with the category's icon before the
+    name (`book`) unless the name says more without it. A small block keeps its name: "Piano lesson"
+    rather than the icon and "Piano…". Its colour still says the category."""
+
+    def kept(lay: list[Written]) -> int:
+        return name_kept([line.text for line in lay if line.title], drawn.title)
+
+    lay = _block_words(drawn, title_font, small, room, tight=tight, wide=wide, book=book, shown=shown)
+    if not book or kept(lay) == 3:
+        return lay
+    bare = _block_words(drawn, title_font, small, room, tight=tight, wide=wide, book=False, shown=shown)
+    return bare if kept(bare) > kept(lay) else lay
+
+
+def _block_words(
+    drawn: Drawn,
+    title_font: QFont,
+    small: QFont,
+    room: QRectF,
+    *,
+    tight: QRectF | None,
+    wide: bool,
+    book: bool,
+    shown: tuple[bool, bool],
+) -> list[Written]:
     """What a block says in `room`, and where (decision 14 of 0.17). The first way that fits with no
     word cut: the title on up to two lines, its times, its length; then without the length; the
     title on one line and its times; "Dinner 18:30" on one line; the title alone. Only if none fits
@@ -615,10 +646,6 @@ def block_layout(
     tm, sm = QFontMetricsF(title_font), QFontMetricsF(small)
     indent = _book_room(tm) if book else 0.0
     width, height = room.width(), room.height()
-    first_word = drawn.title.strip().split(" ", 1)[0]
-    name_room = tm.horizontalAdvance(first_word + ("…" if first_word != drawn.title.strip() else ""))
-    if book and width - indent < name_room <= width:
-        book, indent = False, 0.0
     tl, sl = tm.lineSpacing(), sm.lineSpacing()
     if width < indent + tm.horizontalAdvance(drawn.title.strip()[:3]) or tight.height() + 0.5 < tl:
         return []
