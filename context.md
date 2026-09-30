@@ -1,6 +1,15 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `claude/0172-dragleak` from 5256662: the drag results tests' order dependence is
+  fixed. Mission and Timeline tests leave bare views showing as top-level windows (their own
+  signal lambdas keep them alive), and conftest's widgetAt fallback past the 800 px offscreen
+  screen could pick one of them over the window under the drop. A conftest fixture now hides
+  what each test left showing (test-only; product views are parented to the planner stack).
+  Known, separate: `test_my_day_actions_leave_room_after_their_icons` fails when an earlier test
+  in the worker left `flexweek-look.json` (under ~/.qttest, named by the process's first
+  QApplication) with another day design; test_hours_open's window fixture does not clear it.
+  Reproduced by planting `{"day": "one"}`; which earlier test writes it is not found yet.
 - 2026-09-30, `claude/0172-dates-int`: Sol's dates-and-scroll unit (`sol-snap/0172-dates`) merged
   onto `feat/0.17.2` at 132ee90. Month and the mini month follow today at a month boundary, My day's
   title names the day, and every design keeps its scroll within a session (open at now only at
@@ -676,10 +685,12 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-30, `claude/0172-dragleak`: window-leak fix committed (see Current State); not pushed or
+  merged. Next: fix the look-file leak behind the My day test (clear the look file in
+  test_hours_open's window fixture, or per test in conftest), then gate again.
 - 2026-09-30, `integrate/0172-sol`: Sol's lanes 2 and 4 and its dates-and-scroll unit are integrated
-  (see Current State); not pushed. Open: two test_drag_results tests fail when a worker runs them
-  after test_layout_mission or test_layout_timeline (predates 0.17.2's Sol units; being root-caused);
-  decision 12's "opening at now every time" in docs/0.17/plan.md is superseded by T1 and not reworded.
+  (see Current State); not pushed. Open: decision 12's "opening at now every time" in
+  docs/0.17/plan.md is superseded by T1 and not reworded.
   Pictures: `~/.flexweek-ui-harness/scratch/0172-sol-int-looks/` and `0172-dates-int/`.
 - 2026-09-29, `feat/0.17.1`: 0.17.1 prepared, the patch after 0.17.0 (Jonathan: "start the patch").
   Units 1 to 4 of `~/.flexweek-ui-harness/scratch/017-patch-plan.md`: the intermittent test-suite
