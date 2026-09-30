@@ -1,0 +1,23 @@
+[
+  {
+    "name": "add subtracts",
+    "file": "toy/calc.py",
+    "old": "a + b",
+    "new": "a - b",
+    "test": "toy/test_calc.py::test_add"
+  },
+  {
+    "name": "a comment changes nothing",
+    "file": "toy/calc.py",
+    "old": "def add(a, b):",
+    "new": "# add is intentionally trivial.\ndef add(a, b):",
+    "test": "toy/test_calc.py::test_add"
+  },
+  {
+    "name": "the pattern is not there",
+    "file": "toy/calc.py",
+    "old": "a * b",
+    "new": "a / b",
+    "test": "toy/test_calc.py::test_add"
+  }
+]

@@ -657,6 +657,15 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-29, `tooling/fwtest-adopt`: FlexWeek's checks now run through `fwtest`, on Jonathan's
+  approval after S3's parity evidence. `scripts/verify.py` and `scripts/mutate.py` are deleted;
+  README, spec.md's Validation, `docs/verification.md` and roadmap.md's open release item say
+  `fwtest gate`, `fwtest mutate [SPEC]`, `fwtest rig ...`, `fwtest run -- CMD` and `fwtest clean`,
+  built with `cargo build --release` in `tools/fwtest`. CI builds it with Rust stable, runs its
+  cargo checks, then `fwtest gate --backend-only` and `fwtest rig --server xvfb ...`; its Python is
+  linked in as `.venv/bin/python`. `chore/agents-md-kit` is merged, so the rules file is the kit's
+  `AGENTS.md`. Gate: 2222 passed, VERIFIED; look.json: 42 caught. CI's run is unverified until
+  pushed. Next: the coordinator pushes and deletes `~/.flexweek-ui-harness/run-alone.sh`.
 - 2026-09-29, `feat/0.17-look`: 0.17.0 prepared on Jonathan's word to release once the UI was done:
   version, dated changelog, `docs/release-notes-v0.17.0.md`, and README's usage text (ten looks,
   Customise…, four animation levels). 0.17 is the design system and ten looks, the six designs he
@@ -669,6 +678,13 @@ Recorded `operation_id` values make a retried write return the first result.
   design 40/40 or 3/3 on the rig. Deferred to a patch: `~/.flexweek-ui-harness/scratch/017-patch-list.md`,
   including the parked test-suite segfault with a lead from the Retro fix. The Rust engine contract
   waits on branch `engine/contract` for Jonathan to read; fwtest's S1b fixes are with Grok.
+- 2026-09-28, `tooling/fwtest`: the Rust test harness `fwtest` is set up for Grok to build. The
+  contract is `docs/tooling/fwtest.md`; `tools/fwtest` is an empty crate that builds; spec.md's
+  Validation lists its cargo checks. Grok builds it on `grok/fwtest-harness` in
+  `~/.worktrees/flexweek-fwtest-grok` from the sealed slices in that worktree's `.handoff/`
+  (S1 the harness, S2 GLM's fixture, S3 parity). Next: review Grok's branch against the
+  contract, then move README, AGENTS.md and CI to `fwtest` and delete `scripts/verify.py`,
+  `scripts/mutate.py` and `run-alone.sh`. The 0.17 redesign waits on `feat/0.17-look`.
 - 2026-09-26, `feat/0.16-polish`: 0.16.0 prepared on Jonathan's "let's finalize": version,
   dated changelog, `docs/release-notes-v0.16.0.md` and README's usage text. Since the review round:
   homework can be deleted with Undo across weeks (eaa326a), and the gate runs pytest on every core

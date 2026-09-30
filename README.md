@@ -129,12 +129,23 @@ backup API or with the app stopped; protect backups as private account data.
 
 ## Checks
 
+The checks run through `fwtest`, a small Rust program in `tools/fwtest`. Build
+it once, and again after it changes:
+
 ```bash
-.venv/bin/python scripts/verify.py
+(cd tools/fwtest && cargo build --release)
+tools/fwtest/target/release/fwtest gate
 ```
 
-This runs the backend and desktop source checks. Where PySide6 is absent, use
-`--backend-only`; desktop is then explicitly unverified. See the
+`fwtest gate` runs the backend and desktop source checks at low priority, one
+suite at a time on the machine, and stops everything it started when it ends.
+Where PySide6 is absent, use `fwtest gate --backend-only`; desktop is then
+explicitly unverified. `fwtest mutate [SPEC]` checks that the tests catch
+deliberate breaks, `fwtest rig ...` drives the app with a real pointer,
+`fwtest run -- CMD` runs any other command the same way, and `fwtest clean`
+stops what a killed run left behind. It uses `.venv/bin/python` unless you pass
+`--python` or set `FWTEST_PYTHON`. The contract is
+[docs/tooling/fwtest.md](docs/tooling/fwtest.md). See the
 [coverage map and feature verification guide](docs/verification.md) for focused
 checks and release limitations.
 

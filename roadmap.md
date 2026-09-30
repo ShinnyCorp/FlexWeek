@@ -391,7 +391,7 @@ Current scope mapping:
 - [ ] Compare completion rates, task time and wrong turns with the initial UI.
   Address observed clutter and confusion before adding more permanent controls.
 - [ ] Extend automated coverage with each implemented stage and run
-  `.venv/bin/python scripts/verify.py` for the resulting release. Keep real UI,
+  `fwtest gate` for the resulting release. Keep real UI,
   physical-device and notification evidence separate from automated test counts.
 - [ ] Complete PR review for each implementation slice before calling the slice
   ready to merge; record unresolved findings and verification limitations.
