@@ -1937,6 +1937,18 @@ class FitScroll(QScrollArea):
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         overlay_scroll_bars(self)
         self.setWidget(bare(body))
+        self._rim = body.layout().contentsMargins().right() if body.layout() else 0
+        self.verticalScrollBar().rangeChanged.connect(self._clear_of_bar)
+
+    def _clear_of_bar(self, _low: int, high: int) -> None:
+        # The thin bar lies over the content's right edge, so while it shows the content stops short of it.
+        layout = self.widget().layout()
+        if layout is None:
+            return
+        margins = layout.contentsMargins()
+        right = self._rim + (OverlayBar.WIDE + 2 * OverlayBar.EDGE if high > 0 else 0)
+        if margins.right() != right:
+            layout.setContentsMargins(margins.left(), margins.top(), right, margins.bottom())
 
     def _extra(self) -> QSize:
         margins = self.contentsMargins()

@@ -310,6 +310,10 @@ def test_a_sheet_that_scrolls_uses_the_thin_bar_and_gives_its_content_the_full_w
     assert bar.maximum() > 0, "Help is taller than its room at this height"
     assert bar.property("overlay") is True, "under the app's thin bar"
     assert area.widget().width() == area.viewport().width(), "no thick bar taking width from the words"
+    cards = dialog.findChildren(QFrame, "helpCard")
+    cards_right = max(card.mapTo(area, card.rect().topRight()).x() for card in cards)
+    bar_left = bar.mapTo(area, QPoint(0, 0)).x()
+    assert cards_right < bar_left, "the thin bar lies beside the cards, not over them"
     dialog.close()
 
 
