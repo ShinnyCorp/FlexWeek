@@ -330,6 +330,9 @@ def test_the_chosen_row_is_accent_tinted_a_list_that_fits_never_scrolls_and_keys
     from desktop.native.look import mix, resolved_palette
 
     palette = resolved_palette(*window._look_inputs()[:2], window._look, window._look_inputs()[2])
+    # Tall enough for every command, Settings' group included.
+    window.resize(1280, 1100)
+    qapp.processEvents()
     open_bar(window)
     bar = window.command_bar
     qapp.processEvents()
