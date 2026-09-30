@@ -112,7 +112,7 @@ class Waited(AssertionError):
 
 
 def child_main(args: argparse.Namespace) -> int:
-    from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QSize, QStandardPaths, QTimer
+    from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QSize, QStandardPaths, Qt, QTimer
     from PySide6.QtGui import QColor, QCursor, QPainter, QPen
     from PySide6.QtWidgets import QApplication, QDialog, QLabel, QLineEdit, QPushButton, QWidget
 
@@ -269,6 +269,13 @@ def child_main(args: argparse.Namespace) -> int:
             self.design = ""
             self.shots: Path = out
             self.scenario = ""
+            # The hidden KWin session lets go of a button held through xdotool about a second after
+            # the last input xdotool sent; a hand resting on a button never lets go by itself. So
+            # while a drag holds the button, the pointer is sent where it already is.
+            self._resting_at = QPoint()
+            self._still = QTimer()
+            self._still.setInterval(250)
+            self._still.timeout.connect(lambda: xdo("mousemove", self._resting_at.x(), self._resting_at.y()))
 
         # Pointer
 
@@ -293,18 +300,27 @@ def child_main(args: argparse.Namespace) -> int:
             and may itself be steps. `after` is how long to wait once it is let go."""
             yield from self.move(start)
             xdo("mousedown", 1)
-            yield ("wait", 120)
-            steps = 18
-            for index in range(1, steps + 1):
-                point = start + (end - start) * index / steps
-                xdo("mousemove", point.x(), point.y())
-                yield ("wait", 25)
-            yield ("wait", rest)
-            self.shot("held")
-            if held is not None:
-                more = held()
-                if isinstance(more, Generator):
-                    yield from more
+            self._resting_at = start
+            self._still.start()
+            try:
+                yield ("wait", 120)
+                steps = 18
+                for index in range(1, steps + 1):
+                    point = start + (end - start) * index / steps
+                    xdo("mousemove", point.x(), point.y())
+                    self._resting_at = point
+                    yield ("wait", 25)
+                yield ("wait", rest)
+                self.shot("held")
+                if held is not None:
+                    more = held()
+                    if isinstance(more, Generator):
+                        yield from more
+            finally:
+                self._still.stop()
+            # Anything the scenario reads while it holds is only true if it still held then.
+            if not QApplication.mouseButtons() & Qt.MouseButton.LeftButton:
+                raise AssertionError("the button was let go before the rig let go of it")
             xdo("mouseup", 1)
             yield ("wait", after)
 
