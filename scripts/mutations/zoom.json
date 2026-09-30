@@ -66,7 +66,7 @@
   "file": "desktop/native/hours/zoom.py",
   "name": "hidden hours never scroll on show",
   "old": "        if self._pending is not None:\n            self.scroll_to(*self._pending)\n",
-  "new": "",
+  "new": "        if self._pending is not None:\n            pass\n",
   "test": "desktop/tests/test_hours_zoom.py::test_a_week_opened_while_hidden_scrolls_to_now_when_it_is_shown"
  },
  {
@@ -164,7 +164,7 @@
   "file": "desktop/native/hours/canvas.py",
   "name": "an hour label cut by the edge of what shows",
   "old": "                    box.moveLeft(max(min(box.left(), visible.right() - wide), visible.left()))\n",
-  "new": "",
+  "new": "                    pass\n",
   "test": "desktop/tests/test_hours_painter.py::test_an_hour_label_at_the_edge_of_what_shows_is_moved_inside_it"
  },
  {

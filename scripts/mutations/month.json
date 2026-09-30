@@ -52,7 +52,7 @@
   "file": "desktop/native/hours/hand.py",
   "name": "the floating words run past the window",
   "old": "        self._chip.move(spot)\n",
-  "new": "        self._chip.move(self._host.mapFromGlobal(at) + QPoint(14, 10))\n",
+  "new": "        self._chip.move(host.mapFromGlobal(at) + QPoint(14, 10))\n",
   "test": "desktop/tests/test_hours_hand.py::test_the_words_that_follow_the_pointer_stay_inside_the_window"
  },
  {
