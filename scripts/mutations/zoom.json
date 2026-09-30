@@ -180,5 +180,19 @@
   "old": "        chosen = self.hand.selection\n        mine = ",
   "new": "        if event.modifiers() & Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_Equal:\n            self.zoom_asked.emit(1, None)\n        chosen = self.hand.selection\n        mine = ",
   "test": "desktop/tests/test_zoom_keys.py::test_with_the_hours_holding_the_keyboard_one_press_is_one_step"
+ },
+ {
+  "file": "desktop/native/hours/zoom.py",
+  "name": "hours cut short for a moment stay cut",
+  "old": "        if self._kept is None and self.isVisible() and self.canvas.tracks and bar.value() > high:\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_hours_zoom.py::test_hours_cut_short_for_a_moment_go_back_to_where_they_were"
+ },
+ {
+  "file": "desktop/native/hours/zoom.py",
+  "name": "a time asked for with no room waits for the next show",
+  "old": "        if self._pending is not None and self.isVisible():\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_hours_zoom.py::test_a_time_asked_for_while_the_hours_have_no_room_is_shown_once_they_do"
  }
 ]

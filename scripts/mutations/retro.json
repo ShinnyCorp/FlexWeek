@@ -79,7 +79,7 @@
  {
   "file": "desktop/native/layouts/retro.py",
   "name": "Windows 98's bar scrolls nothing",
-  "old": "        shown.valueChanged.connect(source.setValue)\n",
+  "old": "        shown.valueChanged.connect(self._moved)\n",
   "new": "",
   "test": "desktop/tests/test_layout_retro.py::test_the_week_scrolls_on_windows_98s_bar_in_step_with_the_hours"
  },
@@ -89,5 +89,12 @@
   "old": "    return max(min(title, chars - length - when - 4), 0), length\n",
   "new": "    return title, length\n",
   "test": "desktop/tests/test_layout_retro.py::test_notepads_columns_and_their_fallbacks"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "Windows 98's bar writes its cut value back to the hours",
+  "old": "        if not self._copying:\n",
+  "new": "        if True:\n",
+  "test": "desktop/tests/test_layout_retro.py::test_windows_98s_bar_leaves_a_cut_value_for_the_hours_to_keep"
  }
 ]
