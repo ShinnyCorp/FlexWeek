@@ -1,6 +1,21 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `claude/0172-dragleak` from 5256662: the drag results tests' order dependence is
+  fixed. Mission and Timeline tests leave bare views showing as top-level windows (their own
+  signal lambdas keep them alive), and conftest's widgetAt fallback past the 800 px offscreen
+  screen could pick one of them over the window under the drop. A conftest fixture now hides
+  what each test left showing (test-only; product views are parented to the planner stack).
+  The My day test's failure had a separate cause, a look file an earlier test saved; the
+  test_hours_open window fixture now clears it (ab78f93).
+- 2026-09-30, `claude/0172-lookcalls` (from 5256662): Jonathan's three calls on the looks work. A short
+  block says its name, then its start time, then its icon (a half-hour Dinner is "Dinner 18:30");
+  the now line and selection ring start from the accent and fit to 3 to 1 (`AA_GRAPHIC`), so
+  Light's blue is #3d6ec3, while the pill's time and accent words keep 4.5; category icons are the
+  category's mark fitted to 3 to 1 on the block in every look and block style, and Free has none.
+  Lint and mypy clean; 405 mutation cases over the 17 specs naming changed files all caught.
+  Known: `BlockPainter._book_colour` keeps an unused `ink` argument so Mission's callers are
+  untouched; custom_look's Readability still lists "Now line" at 4.5 for a custom accent.
 - 2026-09-30, `claude/0172-dates-int`: Sol's dates-and-scroll unit (`sol-snap/0172-dates`) merged
   onto `feat/0.17.2` at 132ee90. Month and the mini month follow today at a month boundary, My day's
   title names the day, and every design keeps its scroll within a session (open at now only at
@@ -10,14 +25,16 @@
   their hours for a new text size. Gate: 2395 passed, ruff and mypy clean. Rig 246/246.
   Known: `test_my_day_actions_leave_room_after_their_icons` failed once under the 4-worker gate and
   passed alone and in the next gate (order-dependent, cause not found).
-- 2026-09-30, `integrate/0172-sol`: Sol's lane 2 (time, dates and numbers) is merged onto
-  `feat/0.17.2` at 347f3a1 with no conflicts, plus two fixes on top: Clay leaves out the hour label
-  under its now pill, and the now line is drawn over a block's colour and under its words in every
-  design (`BlockPainter.block` paints body, crossing, words). Gate: ruff and mypy clean, 2367
-  passed. Mutations: 439 cases, every pattern matches once; the 12 specs naming files changed after
-  the merge caught all 301, and the 19 naming merge-touched files caught all 427 before that. Rig:
-  classic, retro and clay 40/40 each. Known gap: Timeline's now pill sits left of today's column,
-  which is the previous day's column on five days of the week; where it should go is undecided.
+- 2026-09-30, `integrate/0172-sol`: Sol's lane 2 (time, dates and numbers) and lane 4 (looks and
+  colour) are merged onto `feat/0.17.2`. Lane 4 brought category icons and re-spaced hues, Paper
+  and Pastel, Sand, Dark's chosen segment, Readability for a pale custom accent, and setup's
+  Sports or Activity. On top: the hours end their painter when a design's painter raises (the
+  "combined Qt painter cleanup crash"); a block's icon gives way wherever the name says more
+  without it; the look cards widen with the text (150 px at Normal, 180 at Large); the now line
+  stops 3 px short of a block's words and icon; Timeline's now pill sits beside the hour labels
+  or centred on the fold. Gate, mutation specs and rig: see Session Handoff. Known gaps: Bento's
+  now pill still sits inside today's column, and Mission's names written beside a block are
+  still crossed by the now line.
 - Date: 2026-09-25 (0.15 Lane C), branch `claude/0-15-homework-planning`.
   Five inherited fixes cover the DueField signal, due-today default, homework
   length bounds, full-month date picker and planning after now (`7b9d19b`,
@@ -674,13 +691,13 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
-- 2026-09-30, `claude/0172-dates-int`: dates-and-scroll unit integrated and verified as in Current
-  State; not pushed, `feat/0.17.2` untouched. Pictures and the scroll log are in
-  `~/.flexweek-ui-harness/scratch/0172-dates-int/`. Open for Jonathan: the 0.17 plan's "opening at
-  now every time" (docs/0.17/plan.md, decision 12) is superseded and not yet reworded.
-- 2026-09-30, `integrate/0172-sol`: lane 2 integrated and verified as in Current State; not pushed.
-  `feat/0.17.2` itself is untouched and waits for Jonathan's review to fast-forward. Open: where
-  Timeline's now pill goes; lane 2's CHANGELOG line was under 0.17.1 and now sits under `[0.17.2] - Unreleased`.
+- 2026-09-30, `integrate/0172-sol`: the drag and look-file test leaks fixed and Jonathan's three looks
+  calls merged on top of Sol's looks and dates units; next into feat/0.17.2. Pictures:
+  `~/.flexweek-ui-harness/scratch/0172-lookcalls/`, `0172-sol-int-looks/`, `0172-dates-int/`.
+- 2026-09-30, `integrate/0172-sol`: Sol's lanes 2 and 4 and its dates-and-scroll unit are integrated
+  (see Current State); not pushed. Open: decision 12's "opening at now every time" in
+  docs/0.17/plan.md is superseded by T1 and not reworded.
+  Pictures: `~/.flexweek-ui-harness/scratch/0172-sol-int-looks/` and `0172-dates-int/`.
 - 2026-09-29, `feat/0.17.1`: 0.17.1 prepared, the patch after 0.17.0 (Jonathan: "start the patch").
   Units 1 to 4 of `~/.flexweek-ui-harness/scratch/017-patch-plan.md`: the intermittent test-suite
   segfault (a test's instance patch left a HomeworkDialog in a cycle, collected on the server

@@ -311,6 +311,7 @@ class SegmentTrack(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._shade = 0
+        self._ring = QColor("transparent")
         # Where the chosen pill was last drawn, and where it leaves from for the segment just chosen.
         self._drawn: QRectF | None = None
         self._from = QRectF()
@@ -327,6 +328,15 @@ class SegmentTrack(QFrame):
         self.update()
 
     shade = Property(int, _get_shade, _set_shade)
+
+    def _get_ring(self) -> QColor:
+        return self._ring
+
+    def _set_ring(self, value: QColor) -> None:
+        self._ring = QColor(value)
+        self.update()
+
+    ring = Property(QColor, _get_ring, _set_ring)
 
     def add(self, button: QAbstractButton) -> None:
         self.layout().addWidget(button)
@@ -373,12 +383,14 @@ class SegmentTrack(QFrame):
                 self._drawn = pill
                 radius = pill.height() / 2
                 painter.setOpacity(opacity)
+                painter.setPen(Qt.PenStyle.NoPen)
                 # The small shadow (decision 6), 0 1 3: three widening rings, each a third of its opacity.
                 for spread in (1.5, 1.0, 0.5) if shade else ():
                     painter.setBrush(QColor(0, 0, 0, round(shade / 3)))
                     painter.drawRoundedRect(
                         pill.adjusted(-spread, 1 - spread, spread, 1 + spread), radius, radius
                     )
+                painter.setPen(QPen(self._ring, 1) if self._ring.alpha() else Qt.PenStyle.NoPen)
                 painter.setBrush(colours.color(QPalette.ColorRole.Highlight))
                 painter.drawRoundedRect(pill, radius, radius)
         painter.end()
@@ -1083,13 +1095,11 @@ class ChoiceCard(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setAccessibleName(name)
         self.setAccessibleDescription(note)
-        self._width = width
         box = QVBoxLayout(self)
         box.setContentsMargins(10, 10, 10, 12)
         box.setSpacing(6)
         self.picture = QLabel()
         self.picture.setObjectName("setupChoicePicture")
-        self.picture.setFixedSize(width, round(width * 0.625))
         box.addWidget(self.picture)
         name_label = QLabel(name)
         name_label.setObjectName("setupChoiceName")
@@ -1106,9 +1116,15 @@ class ChoiceCard(QFrame):
             self.tag = QLabel(tag)
             self.tag.setObjectName("setupChoiceTag")
             box.addWidget(self.tag)
-        self.setFixedWidth(width + CARD_WIDTH_PAD)
+        self.set_width(width)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         self.select(False)
+
+    def set_width(self, width: int) -> None:
+        """The picture this wide, and the card a little more."""
+        self._width = width
+        self.picture.setFixedSize(width, round(width * 0.625))
+        self.setFixedWidth(width + CARD_WIDTH_PAD)
 
     def set_picture(self, picture: QPixmap) -> None:
         self.picture.setPixmap(rounded_picture(picture, 6))
@@ -1173,6 +1189,13 @@ class CardGrid(QWidget):
 
     def columns(self) -> int:
         return self._columns
+
+    def set_card_width(self, card_width: int) -> None:
+        """Cards of another width: as many to a row as the width holds now."""
+        self._card_width = card_width
+        self._columns = 0
+        self._place(self.width())
+        self.updateGeometry()
 
     def _place(self, room: int) -> None:
         columns = card_columns(len(self.cards), room, self._card_width, self._gap)

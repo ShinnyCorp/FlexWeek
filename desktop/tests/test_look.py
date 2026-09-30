@@ -10,9 +10,11 @@ appearance contract.
 from __future__ import annotations
 
 from itertools import product
+from math import dist
 
 from desktop.native.calendar import CATEGORIES
 from desktop.native.look import (
+    AA_GRAPHIC,
     AA_TEXT,
     ACCENTS,
     FONT_FAMILIES,
@@ -42,7 +44,7 @@ from desktop.native.look import (
     resolved_palette,
     sanitize_look,
 )
-from desktop.native.tokens import SINK, mix_oklab, oklch_of
+from desktop.native.tokens import SINK, mix_oklab, oklab, oklch_of
 
 # Every look a student can reach: pack, the device's light or dark setting, preset, accent, surface.
 EVERY_LOOK = list(product(PACKS, (False, True), LOOK_PRESETS, ACCENTS, LOOK_KNOBS["surface"]))
@@ -128,6 +130,9 @@ def test_every_look_but_high_contrast_wears_flexweeks_blue_by_default() -> None:
         if preset == "high-contrast":
             assert (palette["accent"], palette["accent_ink"]) == ("#ffd400", "#000000")
             continue
+        if preset == "paper":
+            assert palette["accent"] == "#1f3a68"
+            continue
         wanted = "#7fa8ff" if palette["axis"] == "dark" else "#3d6fc4"
         where = (pack, system_dark, preset)
         if palette["accent"] != wanted:
@@ -168,7 +173,7 @@ def test_choosing_a_preset_means_every_one_of_its_knobs() -> None:
         "terminal": {**common, "surface": "layered", "corners": "sharp", "depth": "soft", "font": "mono"},
         "poster": {**common, "surface": "layered", "corners": "sharp", "depth": "bold", "font": "sans"},
         "ink": {**common, "surface": "layered", "corners": "soft", "depth": "soft", "font": "serif"},
-        "paper": {**common, "surface": "layered", "corners": "soft", "depth": "soft", "font": "serif"},
+        "paper": {**common, "surface": "layered", "corners": "soft", "depth": "none", "font": "serif"},
         "pastel": {**common, "surface": "layered", "corners": "rounded", "depth": "soft", "font": "sans"},
         "high-contrast": {
             "surface": "flat",
@@ -245,13 +250,14 @@ def faces(look: dict) -> tuple[str, str]:
 
 def test_serif_is_newsreader_headings_over_inter_and_mono_is_jetbrains_mono_throughout() -> None:
     """The Font knob (0.17): Sans is Inter; Serif keeps Inter for the words and sets headings in
-    Newsreader; Mono is JetBrains Mono for both. Paper and Ink are serif looks, Terminal a mono one."""
+    Newsreader; Mono is JetBrains Mono for both. Paper uses serif words and figures;
+    Ink keeps serif headings. Terminal uses mono."""
     assert {"weekTitle", "settingsTitle", "authHeading"} <= set(HEADING_NAMES)
     for look, wanted in (
         (look_of("default"), ("Inter", "Inter")),
         (look_of("default", font="serif"), ("Inter", "Newsreader")),
         (look_of("default", font="mono"), ("JetBrains Mono", "JetBrains Mono")),
-        (look_of("paper"), ("Inter", "Newsreader")),
+        (look_of("paper"), ("Newsreader", "Newsreader")),
         (look_of("ink"), ("Inter", "Newsreader")),
         (look_of("terminal"), ("JetBrains Mono", "JetBrains Mono")),
     ):
@@ -297,6 +303,26 @@ def test_every_look_keeps_its_text_readable() -> None:
             assert ratio >= AA_TEXT, f"{where}: {ink} on {fill} is {ratio:.2f} to 1"
 
 
+def test_the_now_line_and_the_selection_ring_show_at_3_to_1_and_keep_the_accent() -> None:
+    """They are lines, not text: the bar for a graphic is 3 to 1, not 4.5. In every look the shade is
+    at least 3 to 1 on every category's fill and on the grid, and is the accent or only as far from
+    it as that takes; in Light, where the blue asked for 4.5 and went to #2153a4, it stays the blue.
+    The time on the pill at its start is text and keeps 4.5."""
+    for pack, system_dark, preset, accent, surface in EVERY_LOOK:
+        palette = resolved_palette(pack, system_dark, look_of(preset, surface=surface), accent)
+        where = f"{pack}/{'dark' if system_dark else 'light'}/{preset}/{accent}/{surface}"
+        grounds = [category_paint(key, palette)[0] for key in CATEGORIES] + [palette["grid"]]
+        lowest = min(contrast(palette["now"], ground) for ground in grounds)
+        assert lowest >= AA_GRAPHIC, f"{where}: {lowest:.2f} to 1"
+        assert palette["selection"] == palette["now"], where
+        if palette["now"] != palette["accent"]:
+            assert lowest < AA_GRAPHIC + 0.05, f"{where}: moved to {lowest:.2f} to 1, past the 3 it needs"
+        pill = contrast(readable_ink(palette["now"]), palette["now"])
+        assert pill >= AA_TEXT, f"{where}: the time on the pill is {pill:.2f} to 1"
+    blue = resolved_palette("light-frost", False, look_of("default"))
+    assert dist(oklab(blue["accent"]), oklab(blue["now"])) < 0.02
+
+
 def test_button_text_comes_from_the_palette_not_a_fixed_white() -> None:
     # White on Terminal's amber was 1.8 to 1. The ink has to be the one paired with the accent.
     sheet = pack_stylesheet("slate", False, look_of("terminal"))
@@ -332,7 +358,7 @@ def test_ink_is_papers_night_on_any_pack() -> None:
         ink = resolved_palette(pack, system_dark, look_of("ink"))
         paper = resolved_palette(pack, system_dark, look_of("paper"))
         assert (ink["axis"], ink["window"], ink["text"]) == ("dark", "#1c1b19", "#f3eee3"), pack
-        assert (paper["axis"], paper["window"], paper["text"]) == ("light", "#fdfbf7", "#1a1a1a"), pack
+        assert (paper["axis"], paper["window"], paper["text"]) == ("light", "#f7f0e1", "#1a1a1a"), pack
 
 
 def test_a_students_accent_wins_over_the_presets_own() -> None:
@@ -459,16 +485,16 @@ def test_paper_and_pastel_are_light_looks_on_any_pack_and_close_the_menu() -> No
 
 def test_the_seven_looks_wear_looks_css_colours() -> None:
     """Each look's page, card, raised card, text, muted text and hairlines as the mock-up draws them
-    (docs/mockups/look-017/looks.css)."""
+    (look-017, with the approved polish-0172 Paper and Pastel changes)."""
     drawn = {
         ("slate", "default"): ("#eef1f5", "#ffffff", "#e7ebf1", "#0f172a", "#475569", "#dbe1ea", "#c3ccd9"),
         ("nocturne", "default"): ("#0a0e27", "#121633", "#1a1f42", "#e0e4f0", "#9aa3c0", "#262b4d",
                                   "#343a63"),
-        ("system", "paper"): ("#fdfbf7", "#fffdf9", "#f6f1e8", "#1a1a1a", "#5c5750", "#e6e0d6", "#cfc7b9"),
+        ("system", "paper"): ("#f7f0e1", "#fbf6ea", "#f6f1e8", "#1a1a1a", "#5c5750", "#e6e0d6", "#cfc7b9"),
         ("system", "ink"): ("#1c1b19", "#242320", "#2c2a26", "#f3eee3", "#b3ab9c", "#3a3833", "#4a4740"),
         ("system", "terminal"): ("#0d1117", "#161b22", "#1c2129", "#c9d1d9", "#8b949e", "#30363d", "#484f58"),
         ("system", "poster"): ("#fff8e7", "#ffffff", "#fff1cc", "#111111", "#3d3d3d", "#111111", "#111111"),
-        ("system", "pastel"): ("#f3f0ff", "#ffffff", "#ece7ff", "#1e1b2e", "#4b4763", "#e4ddfb", "#cfc5f5"),
+        ("system", "pastel"): ("#f3ecff", "#fbf8ff", "#ece7ff", "#1e1b2e", "#4b4763", "#e4ddfb", "#cfc5f5"),
     }
     keys = ("window", "panel", "card_2", "text", "muted", "hairline", "hairline_strong")
     for (pack, preset), colours in drawn.items():

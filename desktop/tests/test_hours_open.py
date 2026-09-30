@@ -54,10 +54,18 @@ def wait_until(qapp: QApplication, predicate: Callable[[], bool], timeout: float
     raise AssertionError("condition was still false")
 
 
+def look_file() -> Path:
+    root = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
+    return Path(root) / "flexweek-look.json"
+
+
 @pytest.fixture()
 def window(qapp: QApplication, tmp_path: Path) -> Iterator[NativeWindow]:
     """Signed in with the clock held at Thursday 15:40 from before the week is first shown: school
     on weekdays from 08:00, dinner every day at 18:00, and nothing next week."""
+    # A look saved by an earlier test on this worker would choose another day screen (One thing has no
+    # Running late), and the window reads it at start.
+    look_file().unlink(missing_ok=True)
     server = LocalServer(tmp_path / "flexweek.db")
     server.start()
     made = NativeWindow(server.origin)
@@ -92,6 +100,7 @@ def window(qapp: QApplication, tmp_path: Path) -> Iterator[NativeWindow]:
         made.hide()
         qapp.processEvents()
         server.stop()
+        look_file().unlink(missing_ok=True)
 
 
 def hours(window: NativeWindow) -> HoursScroll:

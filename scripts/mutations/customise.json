@@ -93,7 +93,7 @@
  {
   "file": "desktop/native/custom_look.py",
   "name": "a pale accent's fix that does not move it",
-  "old": "                fixed = fit_lightness(accent, surfaces[:2], AA_TEXT)\n",
+  "old": "                fixed = fit_lightness(accent, surfaces + (tint,), AA_TEXT)\n",
   "new": "                fixed = accent\n",
   "test": "desktop/tests/test_custom_look.py::test_a_colour_of_the_students_own_as_the_accent"
  },

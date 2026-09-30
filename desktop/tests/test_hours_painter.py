@@ -359,6 +359,7 @@ def three_days(
     hour_px: int = HOUR_PX,
     palette: dict | None = None,
     days: int = 3,
+    column: int = 140,
 ) -> HoursCanvas:
     """Three days from 08:00 to 20:00, at Today's app's default 48 pixels an hour unless told, in
     Inter at the normal text size, with today on the first when there is a now."""
@@ -366,7 +367,7 @@ def three_days(
 
     def columns(area: QRectF) -> list[LinearTrack]:
         return [
-            LinearTrack(day, QRectF(60 + 150 * day, 10, 140, 12 * hour_px), first=8 * 60, last=20 * 60)
+            LinearTrack(day, QRectF(60 + 150 * day, 10, column, 12 * hour_px), first=8 * 60, last=20 * 60)
             for day in range(days)
         ]
 
@@ -512,22 +513,23 @@ def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
     assert len(written) == 1
     assert abs(written[0].center().y() - line_y) <= 2
     assert track.area.left() <= written[0].left() < track.area.left() + 12
-    accent = resolved_palette("system", False, None)["accent"]
-    assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == accent
+    shade = resolved_palette("system", False, None)["now"]
+    assert QColor(image.pixel(int(track.area.left()) + 3, round(line_y))).name() == shade
 
 
 def test_a_now_pill_that_reaches_into_a_block_is_whole_over_its_colour(qapp: QApplication) -> None:
-    """At 15:55 the line is four pixels above the Essay that starts at 16:00, and the pill on it
+    """At 15:55 the line is four pixels above an Essay that starts at 16:00, and the pill on it
     reaches a few pixels into the Essay. That part is drawn over the Essay's colour, as the line is
-    where it crosses a block: under the colour, the pill lost its foot."""
-    canvas = three_days(now_min=15 * 60 + 55)
+    where it crosses a block: under the colour, the pill lost its foot. The Essay is a quarter of an
+    hour, too short to say its name: on a block's words the pill is left out, as the line is."""
+    canvas = three_days(now_min=15 * 60 + 55, blocks=({**ESSAY, "duration_min": 15},))
     image = canvas.grab().toImage()
     track = canvas.tracks[0]
     line_y = round(track.area.top() + track.offset(15 * 60 + 55))
     essay = canvas.mapFromGlobal(canvas.block_rect("essay", 0).topLeft())
     assert line_y < essay.y() <= line_y + 5
-    accent = resolved_palette("system", False, None)["accent"]
-    assert QColor(image.pixel(int(track.area.left()) + 20, line_y + 6)).name() == accent
+    shade = resolved_palette("system", False, None)["now"]
+    assert QColor(image.pixel(int(track.area.left()) + 20, line_y + 6)).name() == shade
 
 
 def custom_hours(custom: dict) -> tuple[HoursCanvas, dict]:
@@ -553,7 +555,7 @@ def test_a_custom_look_sets_todays_wash_the_now_line_and_the_edge(qapp: QApplica
     track = changed.tracks[0]
     line_y = round(track.area.top() + track.offset(15 * 60 + 40))
     x = int(track.area.right()) - 3
-    assert before.pixelColor(x, line_y).name() == plain_palette["accent"]
+    assert before.pixelColor(x, line_y).name() == plain_palette["now"]
     assert after.pixelColor(x, line_y).name() == palette["text"]
     block = changed.block_rect("essay", 1)
     middle = block.center().y()
@@ -623,3 +625,29 @@ def test_a_half_hour_in_high_contrast_says_its_name_on_the_week(
     Said.words = []
     canvas.grab()
     assert "Dinner" in [text for text, _where in Said.words]
+
+
+def test_a_paint_that_raises_still_ends_its_painter(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A design's painter that raises leaves the hours' painter to the traceback. Still active, it
+    outlived the picture a grab painted on, and the collector crashed the worker when it ended the
+    painter later, in some other test."""
+    seen: list[QPainter] = []
+
+    def raises(painter: QPainter, *_rest: object, **_named: object) -> None:
+        seen.append(painter)
+        raise RuntimeError("no words")
+
+    monkeypatch.setattr(canvas_module, "_paint_layout", raises)
+    canvas = three_days()
+    # The test's own picture, so a painter left active can still be ended safely below.
+    picture = QImage(canvas.size(), QImage.Format.Format_ARGB32)
+    try:
+        with pytest.raises(RuntimeError, match="no words"):
+            canvas.render(picture)
+        assert seen and not seen[0].isActive()
+    finally:
+        for painter in seen:
+            if painter.isActive():
+                painter.end()

@@ -29,7 +29,7 @@ from desktop.native.look_editor import (
     with_setting,
 )
 from desktop.native.settings import SettingsPage
-from desktop.native.tokens import MARK, WEIGHT_REGULAR, WEIGHT_STRONG, oklch, type_pt
+from desktop.native.tokens import MARK, WEIGHT_REGULAR, WEIGHT_STRONG, contrast, oklch, type_pt
 from desktop.native.window import NativeWindow
 from desktop.tests.window_support import look_file, qapp, server, signed_out, wait_until, window  # noqa: F401
 
@@ -304,7 +304,8 @@ def test_grey_text_is_written_on_the_blocks_and_their_colours_are_one_line_with_
     pump(qapp)
     type_colour(qapp, editor, "text", "#999999")
     said = [label.text() for label in shown(editor, QLabel, "lookWarnText")]
-    assert said[-1] == "Text on 8 block colours is 2.2:1 at worst", said
+    worst = min(contrast("#999999", info["color"]) for info in CATEGORIES.values())
+    assert said[-1] == f"Text on 8 block colours is {worst:.1f}:1 at worst", said
 
     hours = window.week_table.hours
     if not hours.tracks:

@@ -636,12 +636,12 @@ class RetroPainter(BlockPainter):
         visible: QRectF,
         fill: QColor | None = None,
         edge: QColor | None = None,
-    ) -> None:
+    ) -> list[QRectF]:
         shown = drawn if self.wide or drawn.held else Started(**vars(drawn))
         # Words from the block's top edge to its foot, where the shared ones keep 3 pixels and 1 clear:
         # the pixel face's own line height keeps them off the bevel, and at the mock-up's 40 pixels an
         # hour it is what lets a half hour say its name and an hour two lines of it.
-        super().words(painter, rect.adjusted(0, -TEXT_TOP, 0, 1), shown, ink, visible, fill, edge)
+        return super().words(painter, rect.adjusted(0, -TEXT_TOP, 0, 1), shown, ink, visible, fill, edge)
 
 
 class RetroCanvas(HoursCanvas):

@@ -10,12 +10,44 @@ All notable changes to FlexWeek are documented here. Format follows
   inside the window like the editors: centred over the dimmed week, with their
   title and a close button at the top and each label above its field. They
   were windows of their own with title bars.
+- Every block carries a small picture of its category, as homework carries
+  its book: a house for School, a pencil for Study, a target for Sports,
+  sparkles for an Activity, a clock for Meals, a moon for Sleep. Free time
+  has none. The picture is drawn in its category's own colour, darkened or
+  lightened only as far as it takes to show at 3 to 1 on the block, in every
+  look and block style. Where a block is too small for all three, it keeps its name, then its
+  start time, and leaves the picture out: a half-hour Dinner says "Dinner
+  18:30".
+- The category colours are spread further apart, so School, Study and Sleep
+  no longer look alike, and Sleep is darker than the rest.
+- Paper is a cream planner page with an ink-blue accent, serif words and
+  figures, and no shadows. Pastel has tinted cards and fuller block colours.
+- The Sand accent is a clay brown, so it no longer looks like Gold.
+- In Dark, the chosen view (Day, Week, Month, My day) is a lighter chip with
+  a ring round it.
+- Setup's sports, clubs and jobs each say whether they are Sports or an
+  Activity, and keep it when setup is opened again. The example week's
+  Soccer is Sports.
+- The line for now and the ring round a chosen block use the accent itself,
+  darkened or lightened only as far as it takes to show on every category's
+  colour (3 to 1, the bar for lines rather than text), so in Light the blue
+  stays close to the one picked. The accent stays as picked, and the time on
+  the pill keeps its own 4.5 to 1.
 
 ### Fixed
-- The line for now crosses a block over its colour and under its words, in
-  every design, so it shows how far into the block you are without running
-  through its name. Timeline's and Clay deck's pills with the time sit beside
-  the hours instead of on the block.
+- The line for now crosses a block over its colour and stops a few pixels
+  short of the block's words and picture, in every design, so it shows how far
+  into the block you are without crossing its name out. Timeline's and Clay
+  deck's pills with the time sit beside the hours instead of on the block.
+- Timeline's pill with the time is beside the hour labels, in place of the
+  one it is nearest, or for a day on the right page in that page's margin at
+  the fold. It lay on the day before and covered its blocks.
+- In the Look editor, Readability lists each place a pale accent of your own
+  is used as words (Plan, today's name, the line for now) with a Fix, and the
+  app draws those words darker until then. The stock accents are not listed.
+- Terminal's Next card wraps the time left instead of cutting it off.
+- The look pictures in Settings widen with the text, so at Large text, as in
+  High contrast, each name stays on one line.
 - Day keeps Now on the hours grid rather than between agenda rows. Week titles, time labels, recovery codes and category tick/action spacing are clearer at narrow widths.
 - On a week that runs into a new month, Month and the mini month show the month
   that holds today, so today is no longer faded like last month's days. Month

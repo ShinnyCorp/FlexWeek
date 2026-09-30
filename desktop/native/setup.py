@@ -473,7 +473,8 @@ class ActivityRow(QFrame):
     removed = Signal(object)
 
     def __init__(
-        self, title: str = "", days: list[int] | None = None, start: str = "15:30", minutes: int = 90
+        self, title: str = "", days: list[int] | None = None, start: str = "15:30", minutes: int = 90,
+        category: str = "extra",
     ) -> None:
         super().__init__()
         self.setObjectName("setupGroup")
@@ -492,9 +493,16 @@ class ActivityRow(QFrame):
         top.addWidget(self.name, 1)
         top.addWidget(remove)
         box.addLayout(top)
+        self.category = QComboBox()
+        self.category.setObjectName("setupActivityCategory")
+        self.category.setAccessibleName("Sports or Activity")
+        self.category.addItem("Activity", "extra")
+        self.category.addItem("Sports", "exercise")
+        self.category.setCurrentIndex(max(0, self.category.findData(category)))
         self.days = DayPicker(days or [], "setupDay")
         self.times = TimeRange(start, minutes_to_hhmm(hhmm_to_minutes(start) + minutes), "Activity")
         bottom = FlowLayout(gap=12)
+        bottom.addWidget(self.category)
         bottom.addWidget(self.days)
         bottom.addWidget(self.times)
         box.addLayout(bottom)
@@ -1030,6 +1038,7 @@ class SetupPage(QWidget):
                     days=list(block.get("days") or []),
                     start=str(block["start"]),
                     minutes=int(block["duration_min"]),
+                    category=str(block.get("category") or "extra"),
                 )
         if not self.activities:
             self._add_activity()
@@ -1307,10 +1316,11 @@ class SetupPage(QWidget):
         start: str = "15:30",
         minutes: int = 90,
         focus: bool = False,
+        category: str = "extra",
     ) -> None:
         if len(self.activities) >= MAX_ACTIVITIES:
             return
-        row = ActivityRow(title, days, start, minutes)
+        row = ActivityRow(title, days, start, minutes, category)
         row.removed.connect(self._remove_activity)
         self.activity_box.addWidget(row)
         self.activities.append(row)
@@ -1354,7 +1364,7 @@ class SetupPage(QWidget):
                     "id": f"{SETUP_ACTIVITY_PREFIX}{index + 1}",
                     "title": row.name.text().strip() or SPORT_FALLBACK,
                     "kind": "locked",
-                    "category": "extra",
+                    "category": row.category.currentData(),
                     "start": start,
                     "duration_min": minutes,
                     "days": days,

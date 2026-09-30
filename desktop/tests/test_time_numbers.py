@@ -165,6 +165,99 @@ def test_now_crosses_a_block_over_its_colour_and_under_its_words(
     )
 
 
+@pytest.mark.parametrize("design", DESIGNS)
+def test_the_now_line_stops_short_of_a_blocks_words_and_resumes_after_them(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch, design: str,
+) -> None:
+    """With now on the row of School's name, nothing of the line is drawn on the name, the icon
+    before it or the few pixels round them, and the line still shows across the rest of School:
+    drawn through the name, over it or under it, the line read as crossing it out. On a row of
+    School with no words the line is whole from one side of the block to the other."""
+    from PySide6.QtCore import QPointF, QRectF
+    from PySide6.QtGui import QFontMetricsF, QPainter
+
+    from desktop.native.hours import canvas as canvas_module
+    from desktop.native.hours.geometry import Axis
+
+    laid: list[tuple[str, QRectF]] = []
+
+    class Laid(QPainter):
+        """Where the hours write words and draw icons, in the canvas's own pixels."""
+
+        def drawText(self, *args):  # noqa: N802
+            if isinstance(args[0], QRectF) and isinstance(args[-1], str):
+                flags = getattr(args[1], "value", args[1])
+                ink = QFontMetricsF(self.font()).boundingRect(args[0], int(flags), args[-1])
+                laid.append((args[-1], self.transform().mapRect(ink)))
+            return super().drawText(*args)
+
+        def drawPixmap(self, *args):  # noqa: N802
+            if isinstance(args[0], QPointF):
+                size = args[1].deviceIndependentSize()
+                laid.append(("", self.transform().mapRect(QRectF(args[0], size))))
+            return super().drawPixmap(*args)
+
+    monkeypatch.setattr(canvas_module, "QPainter", Laid)
+    window._layout = sanitize_layout({"main": design})
+    window._apply_appearance()
+    window._on_week()
+    for _ in range(4):
+        qapp.processEvents()
+    canvas, day = hours(window).canvas, 3
+    track = canvas.track_for(day)
+    rect = next(rect for item, rect in canvas.drawn(track) if item.block_id == "school")
+    block = track.transform.mapRect(rect)
+    # Inside the block's own edge and rounded corners.
+    inside = block.adjusted(6, 4, -4, -4).toRect()
+    canvas.set_week(canvas.occurrences, day, None)
+    laid.clear()
+    bare = canvas.grab().toImage()
+    words = [(text, box) for text, box in laid if block.contains(box.center())]
+    name = next(box for text, box in words if text == "School")
+    assert any(text == "" for text, _box in words), "School has no icon to stop short of"
+
+    def lit_at(point: QPointF):
+        minute = round(track.minute_at(point))
+        canvas.set_week(canvas.occurrences, day, minute)
+        return canvas.grab().toImage()
+
+    def changed(image, box) -> int:
+        return sum(
+            image.pixel(x, y) != bare.pixel(x, y)
+            for x in range(box.left(), box.right() + 1)
+            for y in range(box.top(), box.bottom() + 1)
+        )
+
+    lit = lit_at(name.center())
+    # "A few pixels of clearance": two at the least, on every side of each word and of the icon.
+    for text, box in words:
+        near = box.adjusted(-2, -2, 2, 2).toAlignedRect() & inside
+        assert changed(lit, near) == 0, f"the line for now is drawn on {text or 'the icon'!r}"
+    assert changed(lit, inside) >= 10, "the line for now does not show beside the block's words"
+
+    # A row, or in a lane that runs across a column, of School that no word or icon comes near.
+    down = track.axis is Axis.DOWN
+    taken = [box.adjusted(-8, -8, 8, 8) for _text, box in words]
+    first, last = (inside.top(), inside.bottom()) if down else (inside.left(), inside.right())
+    clear = next(
+        at for at in range(last - 4, first, -1)
+        if not any((box.top() <= at <= box.bottom()) if down else (box.left() <= at <= box.right())
+                   for box in taken)
+    )
+    middle = inside.center()
+    lit = lit_at(QPointF(middle.x(), clear) if down else QPointF(clear, middle.y()))
+    across = range(inside.left(), inside.right() + 1) if down else range(inside.top(), inside.bottom() + 1)
+    gaps = [
+        at for at in across
+        if not any(
+            lit.pixel(*((at, clear + d) if down else (clear + d, at)))
+            != bare.pixel(*((at, clear + d) if down else (clear + d, at)))
+            for d in range(-3, 4)
+        )
+    ]
+    assert gaps == [], "the line for now is broken where the block has no words"
+
+
 def test_day_names_its_date_once(qapp: QApplication, window: NativeWindow) -> None:
     window.findChild(QPushButton, "viewDay").click()
     wait_until(qapp, lambda: not window.session.busy)
@@ -253,20 +346,18 @@ def test_day_agenda_times_fit_in_twelve_hour_format(
         set_clock_24h(True)
 
 
-@pytest.mark.parametrize("design", ["timeline", "clay"])
-def test_the_now_pill_stays_outside_the_blocks(qapp: QApplication, design: str) -> None:
+def test_clays_now_pill_stays_outside_the_blocks(qapp: QApplication) -> None:
+    """Timeline's pill has its own test over every day (test_layout_timeline.py)."""
     from PySide6.QtCore import QRectF
     from PySide6.QtGui import QFont, QImage, QPainter
 
     from desktop.native.hours.geometry import LinearTrack
     from desktop.native.layouts.clay import ClayPainter
     from desktop.native.layouts.registry import MATCH, tokens_for
-    from desktop.native.layouts.timeline import TimelinePainter
     from desktop.native.look import resolved_palette
     from desktop.native.weekmodel import set_clock_24h
 
-    tokens = tokens_for(design, MATCH, resolved_palette("light-frost", False, None))
-    painting = TimelinePainter(tokens) if design == "timeline" else ClayPainter(tokens, full=True)
+    painting = ClayPainter(tokens_for("clay", MATCH, resolved_palette("light-frost", False, None)), full=True)
     boxes: list[QRectF] = []
 
     class Pills(QPainter):

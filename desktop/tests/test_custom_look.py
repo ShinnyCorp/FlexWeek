@@ -56,7 +56,8 @@ def test_a_custom_look_with_nothing_changed_draws_as_its_base() -> None:
             custom = resolved_palette("slate", system_dark, worn({"base": base, "accent": "sea"}))
             if preset == "high-contrast":
                 # High contrast keeps its yellow unless the student picks an accent of their own.
-                as_built = {**as_built, "accent": "#2dd4bf", "accent_ink": "#0b1224"}
+                as_built = {**as_built, "accent": "#2dd4bf", "accent_ink": "#0b1224",
+                            "accent_text": "#2dd4bf", "now": "#2dd4bf", "selection": "#2dd4bf"}
             assert custom == as_built, (base, system_dark)
             sheet = pack_stylesheet(pack, system_dark, {"preset": preset, "knobs": {}}, "sea")
             if preset != "high-contrast":
@@ -264,23 +265,25 @@ def test_a_block_colour_that_does_not_read_is_moved_until_its_words_do() -> None
 
 
 def test_grey_text_names_every_block_colour_and_its_fix_reads_on_the_blocks_too() -> None:
-    """The mock-up's bad colours: grey text on Light is 2.2 to 1 on the palest block colour. The Text
+    """The mock-up's bad colours: grey text on Light fails 4.5 to 1 on every category colour. The Text
     Fix moves the text until it reads on the page, the cards, the calendar and those blocks at once, so
     the categories keep their colours; moved against the surfaces alone, it left every block to fix."""
     grey = {"base": "light", "colours": {"text": "#999999"}}
     blocks = [p for p in readability(grey) if p.field[0] == "categories"]
     assert [p.field[1] for p in blocks] == list(CATEGORIES)
     assert {p.ink for p in blocks} == {"#999999"}
-    assert min(p.ratio for p in blocks) == pytest.approx(2.20, abs=0.005)
+    assert all(p.ratio < AA_TEXT for p in blocks)
     text = next(p for p in readability(grey) if p.field == ("colours", "text"))
     mended = apply_fix(grey, text)
-    assert readability(mended) == [] and "categories" not in mended
+    remaining = readability(mended)
+    assert all(problem.field == ("accent",) for problem in remaining)
+    assert "categories" not in mended
     # A block on the other side of mid-grey from the page cannot share one text with it: that block
     # keeps its own Fix, and the text still reads on the page and the cards.
     dark_study = {**grey, "categories": {"study": {"colour": "#2a1f5c"}}}
     text = next(p for p in readability(dark_study) if p.field == ("colours", "text"))
     left = readability(apply_fix(dark_study, text))
-    assert [p.field for p in left] == [("categories", "study")]
+    assert [p.field for p in left if p.field != ("accent",)] == [("categories", "study")]
 
 
 def test_saved_looks_are_named_saved_renamed_duplicated_deleted_and_reset() -> None:

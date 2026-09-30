@@ -29,6 +29,8 @@ from desktop.native.tokens import (
     RADIUS_SHEET,
     SHADOW_SMALL,
     SINK,
+    SLEEP_FILL_DARKER,
+    SLEEP_MARK_DARKER,
     SPACING,
     TEXT_SCALE,
     TYPE_PT,
@@ -118,7 +120,7 @@ LOOK_PRESETS = {
     },
     # E-Ink / Paper: serif headings and hairline rules. Its depth draws those hairlines; Qt draws no
     # shadow under them.
-    "paper": {"surface": "layered", "corners": "soft", "depth": "soft", "font": "serif"},
+    "paper": {"surface": "layered", "corners": "soft", "depth": "none", "font": "serif"},
     "ink": {"surface": "layered", "corners": "soft", "depth": "soft", "font": "serif"},
     "terminal": {"surface": "layered", "corners": "sharp", "depth": "soft", "font": "mono"},
     # Neubrutalism: square corners and heavy black edges.
@@ -191,6 +193,8 @@ HEADING_NAMES = (
     "bentoFigure",
 )
 AA_TEXT = 4.5
+# The bar for a graphic that is not text: the now line, a selection ring, a category's icon.
+AA_GRAPHIC = 3.0
 # A block's times and length, in its ink laid this much over its fill where that still reads.
 MUTED_INK = 0.72
 # The luminance under which a colour is dark: a custom page under it makes a dark look.
@@ -209,7 +213,7 @@ ACCENT_COLORS = {
     "sky": {"dark": ("#38bdf8", DARK_INK), "light": ("#0369a1", LIGHT_INK)},
     "gold": {"dark": ("#eab308", DARK_INK), "light": ("#a16207", LIGHT_INK)},
     "sea": {"dark": ("#2dd4bf", DARK_INK), "light": ("#0f766e", LIGHT_INK)},
-    "sand": {"dark": ("#e7d5a3", DARK_INK), "light": ("#926a2a", LIGHT_INK)},
+    "sand": {"dark": ("#e4a88e", DARK_INK), "light": ("#805441", LIGHT_INK)},
 }
 # Looks whose accent no swatch replaces: High contrast's yellow is part of its contrast.
 OWN_ACCENT = ("high-contrast",)
@@ -397,11 +401,13 @@ PRESET_PALETTES = {
     # E-Ink / Paper: ink on off-white, matte, the category fills a little quieter.
     "paper": _palette(
         "light",
-        window="#fdfbf7",
-        panel="#fffdf9",
+        window="#f7f0e1",
+        panel="#fbf6ea",
         card_2="#f6f1e8",
-        field="#fffdf9",
-        grid="#fffdf9",
+        field="#fbf6ea",
+        grid="#fbf6ea",
+        accent="#1f3a68",
+        accent_ink=LIGHT_INK,
         text="#1a1a1a",
         muted="#5c5750",
         hairline="#e6e0d6",
@@ -437,8 +443,8 @@ PRESET_PALETTES = {
     # Soft UI Evolution: improved-contrast pastels on lavender, text at slate-900's depth.
     "pastel": _palette(
         "light",
-        window="#f3f0ff",
-        panel="#ffffff",
+        window="#f3ecff",
+        panel="#fbf8ff",
         card_2="#ece7ff",
         field="#ffffff",
         grid="#ffffff",
@@ -452,6 +458,7 @@ PRESET_PALETTES = {
         block_flex="#ffe4ef",
         block_flex_ink="#4a1230",
         block_edge="#a78bda",
+        fill=(0.90, 0.05),
     ),
 }
 
@@ -706,6 +713,8 @@ def effective_look(choice: dict | None) -> dict:
     for field, knob in (("spacing", "density"), ("shadows", "depth"), ("blocks", "blocks")):
         knobs[knob] = custom.get(field, knobs[knob])
     body, heading = FONT_PAIRS[knobs["font"]]
+    if selected["preset"] == "paper" and knobs["font"] == "serif":
+        body = "serif"
     body, heading = custom.get("body_font", body), custom.get("heading_font", heading)
     if (body, heading) != FONT_PAIRS[knobs["font"]]:
         knobs["font"] = "mono" if body == "mono" else "serif" if "serif" in (body, heading) else "sans"
@@ -730,9 +739,13 @@ def look_measures(choice: dict | None) -> dict:
         card_radius = custom["corners"]
         radius = round(card_radius * RADIUS_CONTROL / RADIUS_CARD)
     body, heading = FONT_PAIRS[knobs["font"]]
+    if selected["preset"] == "paper" and knobs["font"] == "serif":
+        body = "serif"
     if custom:
         base_font = {**LOOK_DEFAULTS, **LOOK_PRESETS[LOOK_BASES[custom["base"]][1]]}["font"]
         body, heading = FONT_PAIRS[base_font]
+        if custom["base"] == "paper":
+            body = "serif"
         body, heading = custom.get("body_font", body), custom.get("heading_font", heading)
     scale = custom.get("text_scale", TEXT_SCALE[knobs["text"]])
     return {
@@ -866,7 +879,8 @@ def resolved_palette(pack: object, system_dark: bool, look: dict | None, accent:
     if custom is not None:
         palette = _customised(palette, custom)
         accent = custom.get("accent", accent)
-    if preset not in OWN_ACCENT or (custom is not None and "accent" in custom):
+    paper_default = preset == "paper" and accent == "default"
+    if (preset not in OWN_ACCENT and not paper_default) or (custom is not None and "accent" in custom):
         palette["accent"], palette["accent_ink"] = _accent(palette, accent)
     if effective_look(choice)["surface"] == "flat":
         # Flat has no raised surfaces: panels and inputs sit in the page and only hairlines divide them.
@@ -878,6 +892,14 @@ def resolved_palette(pack: object, system_dark: bool, look: dict | None, accent:
     if readable != palette["accent"] and not own:
         palette["accent"] = readable
         palette["accent_ink"] = readable_ink(readable)
+    tint = mix(palette["accent"], palette["window"], 0.10)
+    palette["accent_text"] = fit_lightness(
+        palette["accent"], (palette["window"], palette["panel"], palette["grid"], tint), AA_TEXT,
+    )
+    fills = tuple(category_paint(key, palette)[0] for key in CATEGORIES)
+    # A line, not text, so it keeps as much of the accent as 3 to 1 allows.
+    palette["now"] = fit_lightness(palette["accent"], fills + (palette["grid"],), AA_GRAPHIC)
+    palette["selection"] = palette["now"]
     if custom is not None and custom.get("now_line") == "text":
         palette["now"] = palette["text"]
     return palette
@@ -916,6 +938,8 @@ def _own_paint(
     info = CATEGORIES[category]
     homework = HOMEWORK_DARKER if category == "assignments" else 0.0
     mark_light, mark_chroma = MARK[family]
+    sleep = category == "sleep"
+    mark_light -= SLEEP_MARK_DARKER if sleep else 0
     if spec is not None and spec[0] == "colour":
         colour = str(spec[1])
         _light, chroma, hue = oklch_of(colour)
@@ -927,6 +951,7 @@ def _own_paint(
     if family != "light":
         return _sunk(oklch(mark_light, chroma, hue), panel), mark
     light, fill_chroma = fill or FILL
+    light -= SLEEP_FILL_DARKER if sleep else 0
     return oklch(light, GREY_CHROMA if grey else fill_chroma, hue), mark
 
 
@@ -1421,7 +1446,7 @@ def button_rules(palette: dict, pad: int, radius: int, depth: str, button_min: s
     rest = _depth_rules(depth, palette) if hard else "border: 2px solid transparent;"
     kinds = (
         ("QPushButton", accent, ink, WEIGHT_STRONG),
-        ('QPushButton[secondary="true"]', tint, accent, WEIGHT_STRONG),
+        ('QPushButton[secondary="true"]', tint, palette.get("accent_text", accent), WEIGHT_STRONG),
         ('QPushButton[danger="true"]', danger, readable_ink(danger), WEIGHT_STRONG),
     )
     rules = [f"QPushButton {{ padding: {pad}px {pad * 2}px; border-radius: {radius}px; {rest}{button_min} }}"]
@@ -1480,11 +1505,12 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
     contrast_look = palette.get("family") == "contrast"
     ring = palette["accent"] if contrast_look else mix(palette["accent"], page, 0.4)
     track = page if contrast_look else mix(text, page, 0.06)
-    chosen = palette["accent"] if contrast_look else palette["panel"]
+    dark = palette.get("axis") == "dark"
+    chosen = palette["accent"] if contrast_look else palette["hairline_strong"] if dark else palette["panel"]
+    selected_ring = palette["accent"] if dark and not contrast_look else "transparent"
     chosen_words = palette["accent_ink"] if contrast_look else text
     outline = text if contrast_look else track
     lifted = depth == "soft" and not contrast_look
-    dark = palette.get("axis") == "dark"
     shade = round(255 * (SHADOW_SMALL.dark_opacity if dark else SHADOW_SMALL.opacity)) if lifted else 0
     divider = mix(palette["accent_ink"], palette["accent"], 0.3)
     more = art.get("more") if art else None
@@ -1506,7 +1532,7 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
     return (
         f"QFrame#segments {{ background: transparent; border: none; border-radius: 0; padding: 3px; "
         f"alternate-background-color: {track}; selection-background-color: {chosen}; color: {outline}; "
-        f"qproperty-shade: {shade}; }}"
+        f"qproperty-shade: {shade}; qproperty-ring: {selected_ring}; }}"
         f"{views()} {{ background: transparent; color: {quiet_ink}; font-weight: {WEIGHT_REGULAR}; "
         # Inside a track 3 pixels in from the bar's other controls: a view's own padding is that much
         # less, or the track squeezed it and cut the tails off "Day" and "My day".

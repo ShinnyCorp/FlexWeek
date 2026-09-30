@@ -52,6 +52,31 @@ def the_pointer_finds_windows_past_the_screens_edge(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.fixture(autouse=True)
+def no_window_is_left_showing() -> Iterator[None]:
+    """A view a test shows on its own is a window of its own, and one whose signals hold it lives on
+    after the test. Every one left showing lay over the next tests' windows at the top left, and where
+    the pointer found one of them first, a later test's drag dropped on it and not on its own hours.
+    Windows the test showed are hidden when it ends; a module's fixtures open theirs before this."""
+    if importlib.util.find_spec("PySide6") is None:
+        yield
+        return
+    from PySide6.QtWidgets import QApplication, QWidget
+    from shiboken6 import getCppPointer
+
+    def showing() -> dict[int, QWidget]:
+        if QApplication.instance() is None:
+            return {}
+        windows = QApplication.topLevelWidgets()
+        return {getCppPointer(window)[0]: window for window in windows if window.isVisible()}
+
+    before = showing()
+    yield
+    for pointer, window in showing().items():
+        if pointer not in before:
+            window.hide()
+
+
+@pytest.fixture(autouse=True)
 def nothing_leaves_the_test(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """No test reaches this computer's own apps. A Spotify alarm tells the Spotify app to play, over
     the session bus or by opening its address, and the developer's Spotify was running: a test would

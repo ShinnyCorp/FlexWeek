@@ -54,7 +54,7 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.native import icons
-from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS
+from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS, category_icon
 from desktop.native.fonts import at_scale, caption, time_font, weighted
 from desktop.native.hours.canvas import (
     BOOK,
@@ -63,6 +63,7 @@ from desktop.native.hours.canvas import (
     BlockPainter,
     Drawn,
     HoursCanvas,
+    name_kept,
     word_elide,
 )
 from desktop.native.hours.chips import TrayChip
@@ -83,7 +84,7 @@ from desktop.native.layouts.base import (
     rules,
     scrolling,
 )
-from desktop.native.look import category_paint, contrast
+from desktop.native.look import category_paint, readable_ink
 from desktop.native.motion import app_level, between, duration, fade_away, hold_picture, moves
 from desktop.native.tokens import (
     RADIUS_CARD,
@@ -315,6 +316,9 @@ class ClayPainter(BlockPainter):
                 "rule": soft,
                 "accent": tokens["accent"],
                 "accent_ink": tokens["accent_ink"],
+                "accent_text": tokens.get("accent_text", tokens["accent"]),
+                "now": tokens.get("now", tokens["accent"]),
+                "selection": tokens.get("selection", tokens["accent"]),
                 "error": tokens["danger"],
                 "text": tokens["text"],
                 "muted": tokens["muted"],
@@ -382,7 +386,7 @@ class ClayPainter(BlockPainter):
         painter.drawRoundedRect(bar, 1.5, 1.5)
         if drawn.held or drawn.chosen:
             refused = drawn.verdict is not None and not drawn.verdict.ok
-            painter.setPen(QPen(self.c("error" if refused else "accent"), 2))
+            painter.setPen(QPen(self.c("error" if refused else "selection"), 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), max(radius - 1, 0), max(radius - 1, 0))
         if drawn.columns > 1 and not drawn.held:
@@ -399,15 +403,14 @@ class ClayPainter(BlockPainter):
         visible: QRectF,
         fill: QColor | None = None,
         edge: QColor | None = None,
-    ) -> None:
+    ) -> list[QRectF]:
         """As the mock-up writes a block: its title, then its times and on the card in front its length,
         each on its own line while the block is tall enough; "16:00–17:30 · 1 h 30 min" under the title
         on a shorter one; on one line the title and the most that fits after it; on a block shorter
         than a line, nothing, and its colour says it is there. A long title takes two lines where the
         block has room for them."""
         if drawn.held:
-            super().words(painter, rect, drawn, ink, visible, fill, edge)
-            return
+            return super().words(painter, rect, drawn, ink, visible, fill, edge)
         scale = self.scale(painter.font())
         title_font, small = self.fonts(painter.font())
         if self.wide and rect.height() + 0.5 < QFontMetricsF(title_font).height():
@@ -419,12 +422,14 @@ class ClayPainter(BlockPainter):
         left, top, right = (18, 6, 12) if self.wide else (14, 4, 8)
         width = rect.width() - left - right
         tall = rect.height() - top - 3
-        homework = drawn.category in HOMEWORK_CATEGORIES
+        homework = category_icon(drawn.category) is not None
         book = round(tm.ascent())
         indent = book + 4 if homework else 0
         too_short = rect.height() + BETWEEN < (LINE_LEAST * scale + BETWEEN) * self.share
-        if too_short or width < indent + tm.horizontalAdvance(drawn.title.strip()[:3]):
-            return
+        least = tm.horizontalAdvance(drawn.title.strip()[:3])
+        if too_short or width < least:
+            return []
+        written = []
         paper = fill if fill is not None else self.c("window")
         muted = QColor(mix_oklab(ink.name(), paper.name(), 0.74))
         said = [word for flag, word in ((drawn.done, "Finished"), (drawn.missed, "Missed")) if flag]
@@ -436,8 +441,25 @@ class ClayPainter(BlockPainter):
         elif tall + 0.5 >= tl + sl:
             joined = f"{times} · {extra}"
             under = [joined if self.full and sm.horizontalAdvance(joined) <= width else times]
+        most = 2 if under and tall + 0.5 >= 2 * tl + sl * len(under) else 1
+        start = short_clock(drawn.span.start)
+        ways = [f"{times} · {extra}", times, start] if self.full else [start]
+
+        def after_name(indent: float) -> str:
+            """What follows the name on one line: the most that fits beside it."""
+            whole = tm.horizontalAdvance(drawn.title) + INLINE_GAP
+            return next((way for way in ways if whole + sm.horizontalAdvance(way) <= width - indent), "")
+
+        def said(indent: float) -> tuple[int, bool]:
+            if width < indent + least:
+                return 0, False
+            lines = self._title_lines(drawn.title, tm, width, indent, most)
+            return name_kept(lines, drawn.title), not under and bool(after_name(indent))
+
+        if homework and said(0) > said(indent):
+            # The icon gives way where it costs the name or its time, as on the shared hours.
+            homework, indent = False, 0
         if under:
-            most = 2 if tall + 0.5 >= 2 * tl + sl * len(under) else 1
             names = self._title_lines(drawn.title, tm, width, indent, most)
             y = rect.top() + top
             if rect.bottom() - visible.top() > 2 * tl:
@@ -450,6 +472,7 @@ class ClayPainter(BlockPainter):
                 shift = indent if at == 0 else 0
                 box = QRectF(rect.left() + left + shift, y, width - shift, tl)
                 painter.drawText(box, TOP_LEFT, name)
+                written.append(QRectF(box.left(), y, tm.horizontalAdvance(name), tl))
                 y += tl
             painter.setFont(small)
             painter.setPen(muted)
@@ -458,19 +481,18 @@ class ClayPainter(BlockPainter):
                     break
                 shown = sm.elidedText(words, Qt.TextElideMode.ElideRight, width)
                 painter.drawText(QRectF(rect.left() + left, y, width, sl), TOP_LEFT, shown)
+                written.append(QRectF(rect.left() + left, y, sm.horizontalAdvance(shown), sl))
                 y += sl
         else:
-            start = short_clock(drawn.span.start)
-            ways = [f"{times} · {extra}", times, start] if self.full else [start]
             room = width - indent
-            whole = tm.horizontalAdvance(drawn.title) + INLINE_GAP
-            after = next((way for way in ways if whole + sm.horizontalAdvance(way) <= room), "")
+            after = after_name(indent)
             name = drawn.title if after else word_elide(drawn.title, tm, room)
             first = rect.top() + (rect.height() - tm.height()) / 2
             at = rect.left() + left + indent
             painter.setFont(title_font)
             painter.setPen(ink)
             painter.drawText(QRectF(at, first, room, tm.height()), TOP_LEFT, name)
+            written.append(QRectF(at, first, tm.horizontalAdvance(name), tm.height()))
             if after:
                 beside = QRectF(
                     at + tm.horizontalAdvance(name) + INLINE_GAP,
@@ -481,9 +503,15 @@ class ClayPainter(BlockPainter):
                 painter.setFont(small)
                 painter.setPen(muted)
                 painter.drawText(beside, TOP_LEFT, after)
+                written.append(beside)
         if homework:
             at_book = QPointF(rect.left() + left, first + (tm.height() - book) / 2)
-            self._book(painter, at_book, book, ink, paper, edge)
+            colour = self._book_colour(drawn, ink, paper, edge)
+            ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
+            picture = icons.pixmap(category_icon(drawn.category) or BOOK, colour.name(), book, ratio)
+            painter.drawPixmap(at_book, picture)
+            written.append(QRectF(at_book.x(), at_book.y(), book, book))
+        return written
 
     @staticmethod
     def _title_lines(title: str, metrics: QFontMetricsF, width: float, indent: float, most: int) -> list[str]:
@@ -497,16 +525,9 @@ class ClayPainter(BlockPainter):
                 return [" ".join(words[:count]), word_elide(" ".join(words[count:]), metrics, width)]
         return [word_elide(title, metrics, width - indent)]
 
-    def _book(self, painter: QPainter, at: QPointF, size: int, ink: QColor, paper: QColor,
-              edge: QColor | None) -> None:
-        """Homework carries a book as well as its colour: in its mark where the mark reads on the block."""
-        colour = edge if edge is not None and contrast(edge.name(), paper.name()) >= 3.0 else ink
-        ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
-        painter.drawPixmap(at, icons.pixmap(BOOK, colour.name(), size, ratio))
-
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
         """An accent line across the day from a dot at its start, the time on a pill near the dot."""
-        colour = QColor(self.colours["accent"])
+        colour = self.c("now")
         area = track.area
         at = area.top() + track.offset(minute)
         painter.setPen(QPen(colour, 2))
@@ -521,7 +542,7 @@ class ClayPainter(BlockPainter):
                       at - (metrics.height() + 2) / 2, metrics.horizontalAdvance(words) + 12,
                       metrics.height() + 2)
         painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2)
-        painter.setPen(QColor(self.colours["accent_ink"]))
+        painter.setPen(QColor(readable_ink(colour.name())))
         painter.setFont(font)
         painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
 

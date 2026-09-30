@@ -188,7 +188,7 @@ def test_plan_is_second_to_add_and_more_is_in_the_text_colour(
     assert near(
         picture.pixelColor(plan.left() + 4, plan.center().y()), mix(palette["accent"], palette["window"], 0.1)
     )
-    assert window.solve_button.palette().buttonText().color().name() == palette["accent"]
+    assert window.solve_button.palette().buttonText().color().name() == palette["accent_text"]
     more = bar(window, "moreButton")
     assert more.palette().buttonText().color().name() == palette["text"]
     spot = box(window, more)
@@ -296,13 +296,17 @@ def test_the_chosen_view_is_raised_on_its_track(qapp: QApplication, window: Nati
         picture = window.grab().toImage()
         week, day = box(window, bar(window, "viewWeek")), box(window, bar(window, "viewDay"))
         contrast_look = preset == "high-contrast"
-        chosen = palette["accent"] if contrast_look else palette["panel"]
+        chosen = palette["accent"] if contrast_look else (
+            palette["hairline_strong"] if pack == "dark-frost" else palette["panel"]
+        )
         track = palette["window"] if contrast_look else mix(palette["text"], palette["window"], 0.06)
         assert near(picture.pixelColor(week.left() + 6, week.center().y()), chosen), (pack, preset)
         assert near(picture.pixelColor(day.left() + 4, day.center().y()), track), (pack, preset)
         under = picture.pixelColor(week.center().x(), week.bottom() + 1)
         if contrast_look:
             assert near(under, track), "High contrast has no shadows"
+        elif pack == "dark-frost":
+            assert under.lightness() > QColor(track).lightness(), "Dark's chosen edge stays visible"
         else:
             assert under.lightness() < QColor(track).lightness(), f"{pack}: the chosen view casts no shadow"
 
