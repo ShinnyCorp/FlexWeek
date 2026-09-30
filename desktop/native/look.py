@@ -1582,7 +1582,7 @@ def pack_stylesheet(
         f"QHeaderView, QStackedWidget {{ background: transparent; border: none; "
         f"padding: 0; border-radius: 0; }}"
         # The week's hours paint their own background; as a frame the scroll area boxed them twice.
-        f"QScrollArea#weekScroll, QScrollArea#dayScroll, QScrollArea#helpScroll {{ background: transparent; "
+        f"QScrollArea#weekScroll, QScrollArea#dayScroll {{ background: transparent; "
         f"border: none; padding: 0; border-radius: 0; }}"
         # What follows the pointer while something is carried: a pill, readable over any calendar.
         f"QLabel#heldChip {{ background: {palette['accent']}; color: {palette['accent_ink']}; "

@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.native.look import mix, pack_stylesheet, resolved_palette, sanitize_look
-from desktop.native.settings import AboutDialog, AccountDialog, HelpDialog
+from desktop.native.settings import AboutDialog, AccountDialog, HelpDialog, SettingsPage
 from desktop.native.tokens import contrast, type_pt
 from desktop.native.widgets import (
     SHEET_FORM,
@@ -205,6 +205,28 @@ def test_a_sheets_labels_sit_above_their_fields_at_one_edge(qapp: QApplication) 
     assert left_x(due, homework) == left_x(homework.due.date, homework) == left_x(homework.title, homework)
     free(block)
     free(homework)
+    free(parent)
+
+
+def test_a_settings_label_sits_beside_its_field_on_its_line_of_words(qapp: QApplication) -> None:  # noqa: F811
+    """Settings keeps its labels beside their fields (decision 23 of 0.17), each level with the words in
+    its field, not with the field's top edge, 4 pixels above them. A stepped number's label sits on its
+    box, between the - and the +."""
+    from desktop.native.fields import Stepper
+
+    parent, _palette = styled(qapp)
+    page = SettingsPage(parent, {"alarms": []}, {}, {})
+    page.resize(1280, 800)
+    page.show()
+    page.nav.setCurrentRow(2)
+    for _ in range(4):
+        qapp.processEvents()
+    body = page.stack.widget(2).widget()
+    for box in (page.work, page.preset_timer, page.long_every):
+        field = box.parentWidget() if isinstance(box.parentWidget(), Stepper) else box
+        label = field.parentWidget().layout().labelForField(field)
+        assert abs(middle_y(label, body) - middle_y(box, body)) <= 1, label.text()
+    free(page)
     free(parent)
 
 
