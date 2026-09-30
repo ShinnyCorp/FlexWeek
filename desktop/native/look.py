@@ -1181,11 +1181,10 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f'QCheckBox[exact="true"], QPushButton[small="true"] {{ font-size: {pt["caption"]}; }}'
         "QLabel#lookFieldLabel, QLabel#lookCategoryName, QLabel#lookTag, QLabel#lookChip, QLabel#lookPair { "
         f"font-weight: {WEIGHT_STRONG}; }}"
-        "QLabel#settingsCardNote, QLabel#cardNote, QLabel#settingsExperimental, QLabel#prefPlanningNote, "
+        "QLabel#settingsCardNote, QLabel#cardNote, QLabel#prefPlanningNote, "
         "QLabel#prefDndNote, "
         "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits { "
         f"color: {palette['muted']}; }}"
-        f"QLabel#settingsExperimental {{ font-weight: {WEIGHT_STRONG}; margin-top: 6px; }}"
         f'QFrame[segmented="true"] {{ background: {track}; border: none; '
         f"border-radius: {max(radius, 6) + 2}px; padding: 0; }}"
         f'QPushButton[segment="true"] {{ background: transparent; color: {palette["muted"]}; border: none; '
@@ -1286,6 +1285,7 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         f"QFrame#setupChoice[selected=\"true\"] {{ border-color: {palette['accent']}; background: {lift}; }}"
         f"QLabel#setupChoiceName {{ {heading} }}"
         f"QLabel#setupChoiceNote {{ color: {palette['muted']}; }}"
+        f"QLabel#setupChoiceTag {{ color: {palette['muted']}; {strong} }}"
         f"QFrame#setupGroup {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
         f"{pills} {{ background: {palette['field']}; color: {palette['text']}; {edges} "
         f"border-radius: 14px; padding: 4px 12px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"

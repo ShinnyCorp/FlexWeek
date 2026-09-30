@@ -310,7 +310,7 @@ def test_animations_has_four_levels_and_follows_the_look_until_one_is_chosen(
     dialog.close_page()
 
 
-def test_every_main_view_is_a_picture_and_the_experimental_ones_come_under_their_heading(
+def test_every_main_view_is_a_picture_with_a_single_name_and_the_experimental_ones_say_so(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
@@ -320,17 +320,16 @@ def test_every_main_view_is_a_picture_and_the_experimental_ones_come_under_their
     appearance = page(dialog, 0)
     picker = appearance.findChild(QWidget, "layoutMain")
     cards = picker.findChildren(ChoiceCard)
-    heading = picker.findChild(QLabel, "settingsExperimental")
-    assert heading.text() == "Experimental styles"
-    above = [card.accessibleName() for card in cards if top(card, picker) < top(heading, picker)]
-    below = [card.accessibleName() for card in cards if top(card, picker) > top(heading, picker)]
-    assert above == ["Calendar · Today's app", "Agenda · Timeline"]
-    assert below == [
-        "Dashboard · Mission control",
-        "Dashboard · Bento",
-        "Dashboard · Retro desktop",
-        "Agenda · Clay deck",
+    assert [card.accessibleName() for card in cards] == [
+        "Today's app",
+        "Timeline",
+        "Mission control",
+        "Bento",
+        "Retro desktop",
+        "Clay deck",
     ]
+    tagged = [card.accessibleName() for card in cards if card.findChild(QLabel, "setupChoiceTag")]
+    assert tagged == ["Mission control", "Bento", "Retro desktop", "Clay deck"]
     for _ in range(40):
         qapp.processEvents()
     assert all(not card.picture.pixmap().isNull() for card in cards), "each card shows its design"

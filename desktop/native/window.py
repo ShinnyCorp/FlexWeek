@@ -3077,7 +3077,7 @@ class NativeWindow(QMainWindow):
         def finish(keep: bool) -> None:
             saver.stop()
             with contextlib.suppress(RuntimeError, TypeError):
-                self.session.status.disconnect(page.save_state.setText)
+                self.session.status.disconnect(page.say)
             if keep:
                 save()
 
@@ -3086,7 +3086,7 @@ class NativeWindow(QMainWindow):
         saver.setInterval(SETTINGS_SAVE_MS)
         saver.timeout.connect(save)
         page.changed.connect(apply)
-        self.session.status.connect(page.save_state.setText)
+        self.session.status.connect(page.say)
         self._settings = page
         self._settings_finish = finish
         self._stack.addWidget(page)

@@ -55,6 +55,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLayout,
@@ -1055,12 +1056,17 @@ def rounded_picture(picture: QPixmap, radius: int) -> QPixmap:
     return out
 
 
+# A card is its picture and this much around it, with this much between cards.
+CARD_WIDTH_PAD = 22
+CARD_GAP = 12
+
+
 class ChoiceCard(QFrame):
     """A picture and a name the student picks by clicking, or by Space or Enter."""
 
     chosen = Signal()
 
-    def __init__(self, name: str, note: str, width: int) -> None:
+    def __init__(self, name: str, note: str, width: int, tag: str = "") -> None:
         super().__init__()
         self.setObjectName("setupChoice")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -1082,9 +1088,15 @@ class ChoiceCard(QFrame):
         self.note = QLabel(note)
         self.note.setObjectName("setupChoiceNote")
         self.note.setWordWrap(True)
+        self.note.setVisible(bool(note))
         box.addWidget(self.note)
         box.addStretch(1)
-        self.setFixedWidth(width + 22)
+        # Under the note, so names line up across a row whether or not a card carries one.
+        if tag:
+            self.tag = QLabel(tag)
+            self.tag.setObjectName("setupChoiceTag")
+            box.addWidget(self.tag)
+        self.setFixedWidth(width + CARD_WIDTH_PAD)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
         self.select(False)
 
@@ -1111,6 +1123,64 @@ class ChoiceCard(QFrame):
             self.chosen.emit()
             return
         super().keyPressEvent(event)
+
+
+def card_columns(count: int, room: int, card_width: int, gap: int) -> int:
+    """How many cards stand in a row in `room` pixels so that every row is full: the most that fit and
+    divide the count evenly (six cards in three, or in two when three do not fit); when only one
+    would, the fewest rows the room allows, sharing the cards out evenly."""
+    fit = min(max(1, (room + gap) // (card_width + gap)), max(count, 1))
+    even = max((columns for columns in range(1, fit + 1) if count % columns == 0), default=1)
+    if even > 1 or fit == 1:
+        return even
+    rows = -(-count // fit)
+    return -(-count // rows)
+
+
+class CardGrid(QWidget):
+    """ChoiceCards in rows that are full, as many to a row as the width holds, every card in a row as
+    tall as the tallest. A flow left the last card alone on a row of its own."""
+
+    def __init__(self, card_width: int, gap: int = CARD_GAP) -> None:
+        super().__init__()
+        self.setObjectName("settingsRow")
+        self.cards: list[ChoiceCard] = []
+        self._card_width = card_width
+        self._gap = gap
+        self._columns = 0
+        self._grid = QGridLayout(self)
+        self._grid.setContentsMargins(0, 0, 0, 0)
+        self._grid.setSpacing(gap)
+
+    def set_cards(self, cards: list[ChoiceCard]) -> None:
+        for card in self.cards:
+            self._grid.removeWidget(card)
+            card.hide()
+            card.deleteLater()
+        self.cards = list(cards)
+        self._columns = 0
+        self._place(self.width())
+
+    def columns(self) -> int:
+        return self._columns
+
+    def _place(self, room: int) -> None:
+        columns = card_columns(len(self.cards), room, self._card_width, self._gap)
+        if columns == self._columns:
+            return
+        self._columns = columns
+        for at, card in enumerate(self.cards):
+            self._grid.addWidget(card, at // columns, at % columns)
+            card.show()
+        self._grid.setColumnStretch(columns, 1)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        # One card wide whatever the columns are now, or a grid set out wide could never be given less.
+        return QSize(self._card_width, super().minimumSizeHint().height())
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._place(event.size().width())
 
 
 def plain_card() -> tuple[QFrame, QVBoxLayout]:
@@ -1745,6 +1815,18 @@ class Form(QFormLayout):
             super().addRow(FieldLabel(words, _first_line(field)), field)
             return
         super().addRow(*row)
+
+
+def even_labels(root: QWidget) -> None:
+    """One label column for every form under `root`, as wide as its longest label. Each card's form
+    sized its own, so its fields began at a different x from the next card's (Grok Bot's 0.17.0
+    audit, T33: Updates against Account and Setup)."""
+    labels = root.findChildren(FieldLabel)
+    for label in labels:
+        label.setMinimumWidth(0)
+    widest = max((label.sizeHint().width() for label in labels), default=0)
+    for label in labels:
+        label.setMinimumWidth(widest)
 
 
 def field_kind(widget: QWidget) -> str | None:

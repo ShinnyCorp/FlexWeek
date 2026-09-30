@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
 
 from desktop.native.layouts.base import empty
 from desktop.native.layouts.registry import (
-    EXPERIMENTAL,
     LAYOUTS,
     LEVELS,
     MATCH,
@@ -29,7 +28,16 @@ from desktop.native.layouts.registry import (
     options_for,
 )
 from desktop.native.previews import Previews
-from desktop.native.widgets import ChoiceCard, Choices, FlowLayout, Form, Segmented, Switch
+from desktop.native.widgets import (
+    CARD_GAP,
+    CARD_WIDTH_PAD,
+    CardGrid,
+    ChoiceCard,
+    Choices,
+    Form,
+    Segmented,
+    Switch,
+)
 
 SLOTS = (
     ("main", "plan", "Main view", "Where you plan your week."),
@@ -43,6 +51,7 @@ DESIGN_LINE = (
 COLOUR_NOTE = "Only the design's page takes these colours. The rest of FlexWeek keeps your Look and Accent."
 # The width setup's design cards are drawn at, so a picture drawn for one is ready for the other.
 PICTURE_WIDTH = 206
+EXPERIMENTAL_TAG = "Experimental"
 # A choice of more than this many is a dropdown; up to it, the choices sit side by side.
 SEGMENTED_MOST = 3
 
@@ -60,28 +69,19 @@ class DesignPicker(Choices):
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
-        for experimental in (False, True):
-            specs = layouts_for(role, experimental)
-            if not specs:
-                continue
-            if experimental:
-                heading = QLabel(EXPERIMENTAL)
-                heading.setObjectName("settingsExperimental")
-                box.addWidget(heading)
-            holder = QWidget()
-            holder.setObjectName("settingsRow")
-            # A flow, so the cards stand two or three to a row and one at the narrowest window.
-            flow = FlowLayout(holder, gap=12)
-            flow.setContentsMargins(0, 0, 0, 0)
-            for spec in specs:
-                text = f"{spec.purpose} · {spec.label}" if spec.purpose else spec.label
-                index = self._remember(text, spec.id)
-                card = ChoiceCard(text, spec.summary, PICTURE_WIDTH)
-                card.setProperty("index", index)
-                card.chosen.connect(self._card_chosen)
-                flow.addWidget(card)
-                self.cards.append(card)
-            box.addWidget(holder)
+        # One grid for every design, the standard ones first, so its rows are full: with the
+        # experimental ones under a heading of their own, Clay deck and Day screen's last card each
+        # stood alone (Grok Bot's 0.17.0 audit, T34).
+        self._grid = CardGrid(PICTURE_WIDTH + CARD_WIDTH_PAD, CARD_GAP)
+        for spec in sorted(layouts_for(role), key=lambda spec: spec.experimental):
+            index = self._remember(spec.label, spec.id)
+            tag = EXPERIMENTAL_TAG if spec.experimental else ""
+            card = ChoiceCard(spec.label, spec.summary, PICTURE_WIDTH, tag)
+            card.setProperty("index", index)
+            card.chosen.connect(self._card_chosen)
+            self.cards.append(card)
+        self._grid.set_cards(self.cards)
+        box.addWidget(self._grid)
         # Drawn one at a time once the page is up, as setup does, so Settings opens at once.
         self._waiting = list(range(len(self.cards)))
         QTimer.singleShot(0, self._draw_next)

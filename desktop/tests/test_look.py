@@ -355,7 +355,9 @@ def test_depth_is_drawn_with_edges_because_qt_has_no_shadows() -> None:
     flat = pack_stylesheet("nocturne", True, look_of("default", depth="none"))
     hard = pack_stylesheet("nocturne", True, look_of("default", depth="bold"))
     assert "border: 1px solid" in soft and "border: none;" not in soft.split("QHeaderView")[0]
-    assert "border: none;" in flat and "1px solid" not in flat
+    # An outlined button is its hairline (button_rules), so it keeps that edge in a flat look too.
+    flat_rest = "}".join(rule for rule in flat.split("}") if 'outline="true"' not in rule)
+    assert "border: none;" in flat and "1px solid" not in flat_rest
     assert "border-bottom: 4px solid" in hard and "border-right: 4px solid" in hard
 
 

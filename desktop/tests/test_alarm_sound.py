@@ -211,7 +211,7 @@ def test_settings_has_one_done_button_and_no_ok_or_cancel(qapp: Any) -> None:
     filled = [
         button.text()
         for button in dialog.findChildren(QPushButton)
-        if not button.property("quiet") and not button.property("segment")
+        if not button.property("quiet") and not button.property("segment") and not button.property("outline")
     ]
     assert filled == ["Done"]
     closed: list[bool] = []
