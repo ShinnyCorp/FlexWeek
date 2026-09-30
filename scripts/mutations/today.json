@@ -226,7 +226,7 @@
  {
   "file": "desktop/native/layouts/dialog.py",
   "name": "Reset is a quiet button",
-  "old": "        self.reset.setProperty(\"quiet\", True)\n",
+  "old": "        self.reset.setProperty(\"outline\", True)\n",
   "new": "",
   "test": "desktop/tests/test_settings_words.py::test_reset_is_a_quiet_button_at_the_left_not_a_bar_across_the_page"
  },
@@ -240,7 +240,7 @@
  {
   "file": "desktop/native/settings.py",
   "name": "a button that opens something else is plain",
-  "old": "    made.setProperty(\"quiet\", True)\n    made.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)\n",
+  "old": "    made.setProperty(\"outline\", True)\n    made.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)\n",
   "new": "",
   "test": "desktop/tests/test_settings_words.py::test_a_button_that_opens_something_else_is_plain_and_as_wide_as_its_words"
  },
