@@ -167,3 +167,24 @@ def test_the_spotify_hints_fit_their_boxes_at_large_text(qapp: QApplication, tmp
         window.hide()
         qapp.processEvents()
         server.stop()
+
+
+def test_a_new_alarm_starts_at_seven_names_its_spotify_field_and_offers_remove_only_with_alarms(
+    qapp: QApplication,
+) -> None:
+    """T21 of the 0.17.0 audit: a new alarm started at 00:00, its Spotify field had no label, and
+    Remove alarm showed with no alarm to remove."""
+    dialog = settings(qapp)
+    assert dialog.alarm_time.time().toString("HH:mm") == "07:00"
+    form = dialog.alarm_spotify.parentWidget().layout()
+    label = form.labelForField(dialog.alarm_spotify)
+    assert isinstance(label, QLabel) and label.text() == "Spotify link" and label.isVisible()
+    assert dialog.remove_alarm.isHidden(), "nothing to remove yet"
+    dialog.alarm_name.setText("Wake up")
+    dialog.findChild(QWidget, "addAlarm").click()
+    assert [alarm["time"] for alarm in dialog.updates()["alarms"]] == ["07:00"]
+    assert not dialog.remove_alarm.isHidden()
+    dialog.alarm_list.setCurrentRow(0)
+    dialog.remove_alarm.click()
+    assert dialog.remove_alarm.isHidden()
+    dialog.close()

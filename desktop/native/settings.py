@@ -7,7 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from uuid import uuid4
 
-from PySide6.QtCore import QEvent, QMargins, QObject, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QMargins, QObject, QSize, Qt, QTime, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -796,7 +796,9 @@ class SettingsPage(QWidget):
         self.alarm_name = QLineEdit()
         self.alarm_name.setObjectName("alarmName")
         self.alarm_name.setPlaceholderText("Alarm name")
-        self.alarm_time = ClockField()
+        # A usual time to wake, not midnight (T21 of the 0.17.0 audit).
+        self.alarm_time = ClockField(QTime(7, 0))
+        self.alarm_time.setObjectName("alarmTime")
         self.alarm_sound = QComboBox()
         self.alarm_sound.setObjectName("alarmSound")
         self.alarm_name.setMinimumWidth(120)
@@ -810,21 +812,21 @@ class SettingsPage(QWidget):
         alarms_form.addRow("Sound", self.alarm_sound)
         self.alarm_spotify = QLineEdit()
         self.alarm_spotify.setObjectName("alarmSpotify")
-        self.alarm_spotify.setPlaceholderText("Spotify link (optional)")
-        alarms_form.addRow(self.alarm_spotify)
+        self.alarm_spotify.setPlaceholderText("Optional")
+        alarms_form.addRow("Spotify link", self.alarm_spotify)
         # The days as pills on one line, as everywhere else. As check boxes they took two rows, Monday
         # to Thursday and then Friday to Sunday (T21 of the 0.17.0 audit).
         self.alarm_day_picker = DayPicker(range(5), "alarmDay")
         self.alarm_days = self.alarm_day_picker.buttons
         add_alarm = _page_button("Add alarm", "addAlarm")
         add_alarm.clicked.connect(self._add_alarm)
-        remove_alarm = _page_button("Remove alarm", "removeAlarm")
-        remove_alarm.clicked.connect(self._remove_alarm)
+        self.remove_alarm = _page_button("Remove alarm", "removeAlarm")
+        self.remove_alarm.clicked.connect(self._remove_alarm)
         alarms_form.addRow("Days", self.alarm_day_picker)
         button_row = QHBoxLayout()
         button_row.setSpacing(8)
         button_row.addWidget(add_alarm)
-        button_row.addWidget(remove_alarm)
+        button_row.addWidget(self.remove_alarm)
         button_row.addStretch(1)
         alarms_form.addRow(button_row)
         all_card, all_form = _card("All alerts")
@@ -1130,6 +1132,8 @@ class SettingsPage(QWidget):
             self.alarm_list.addItem(f"{alarm.get('name')} · {label}{off}\n{when}")
         self._alarms_form.setRowVisible(self.alarm_list, bool(self._alarms))
         self._alarms_form.setRowVisible(self.alarm_empty, not self._alarms)
+        # Nothing to remove until there is an alarm.
+        self.remove_alarm.setVisible(bool(self._alarms))
 
     def _add_alarm(self) -> None:
         if len(self._alarms) >= 20:
