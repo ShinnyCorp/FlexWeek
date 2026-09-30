@@ -302,6 +302,21 @@ def test_a_week_keeps_where_it_was_scrolled_when_it_is_shown_again(qapp: QApplic
     assert bar.value() == bar.maximum(), "the same week jumped back to the morning"
 
 
+def test_hours_cut_short_for_a_moment_go_back_to_where_they_were(qapp: QApplication) -> None:
+    """A page laying itself out can give the hours a little less to scroll for a moment. The bar is
+    cut back to that end, and once the room returns the hours are where the student left them."""
+    view = a_week(qapp)
+    bar = view.scroll.verticalScrollBar()
+    bar.setValue(bar.maximum())
+    end = bar.value()
+    view.resize(760, 560)
+    settle(qapp)
+    assert bar.value() < end, "taller for a moment, the hours had less to scroll"
+    view.resize(760, 520)
+    settle(qapp)
+    assert bar.value() == end
+
+
 def test_a_week_opened_while_hidden_scrolls_to_now_when_it_is_shown(qapp: QApplication) -> None:
     view = a_week(qapp)
     view.hide()

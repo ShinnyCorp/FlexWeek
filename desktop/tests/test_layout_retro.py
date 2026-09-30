@@ -22,7 +22,16 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, QSize, Qt
     from PySide6.QtGui import QColor, QFont, QImage, QPainter
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QLayout, QLayoutItem, QPushButton, QWidget
+    from PySide6.QtWidgets import (
+        QApplication,
+        QFrame,
+        QLabel,
+        QLayout,
+        QLayoutItem,
+        QPushButton,
+        QScrollBar,
+        QWidget,
+    )
     from shiboken6 import isValid
 
     from desktop.native.fonts import load_fonts
@@ -37,6 +46,7 @@ if importlib.util.find_spec("PySide6") is not None:
         NOT_PLACED,
         ZOOM_MS,
         Deadline,
+        Mirror,
         RetroPainter,
         RetroView,
         Started,
@@ -238,6 +248,24 @@ def test_the_week_scrolls_on_windows_98s_bar_in_step_with_the_hours(qapp: QAppli
     assert bar.value() == 120
     bar.setValue(200)
     assert scroll.verticalScrollBar().value() == 200
+
+
+def test_windows_98s_bar_leaves_a_cut_value_for_the_hours_to_keep(qapp: QApplication) -> None:
+    """The drawn bar copies the hours' range whenever it changes. Qt says a range changed before it
+    cuts the value to it, which is when the hours keep where they were; the drawn bar wrote its own cut
+    value back first, and so whoever heard of the range after it saw the hours already moved."""
+    host = QWidget()
+    source, shown = QScrollBar(host), QScrollBar(host)
+    source.setRange(0, 400)
+    source.setValue(400)
+    Mirror(source, shown, host)
+    seen: list[int] = []
+    source.rangeChanged.connect(lambda _low, _high: seen.append(source.value()))
+    source.setRange(0, 380)
+    assert seen == [400]
+    assert (source.value(), shown.value(), shown.maximum()) == (380, 380, 380)
+    shown.setValue(120)
+    assert source.value() == 120, "the student's own scrolling on the drawn bar still moves the hours"
 
 
 def test_a_window_closes_and_the_taskbar_brings_it_back(qapp: QApplication) -> None:

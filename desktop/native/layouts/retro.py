@@ -1059,17 +1059,28 @@ class Mirror(QObject):
     def __init__(self, source: QScrollBar, shown: QScrollBar, port: QWidget) -> None:
         super().__init__(shown)
         self.source, self.shown = source, shown
+        self._copying = False
         source.rangeChanged.connect(self.sync)
         source.valueChanged.connect(shown.setValue)
-        shown.valueChanged.connect(source.setValue)
+        shown.valueChanged.connect(self._moved)
         port.installEventFilter(self)
         self.sync()
 
     def sync(self, *_: object) -> None:
-        self.shown.setRange(self.source.minimum(), self.source.maximum())
-        self.shown.setPageStep(self.source.pageStep())
-        self.shown.setSingleStep(self.source.singleStep())
-        self.shown.setValue(self.source.value())
+        """The hours' range, copied. A smaller range cuts the drawn bar's value, and that cut is not
+        the student scrolling: written back, it moved the hours before they could keep their place."""
+        self._copying = True
+        try:
+            self.shown.setRange(self.source.minimum(), self.source.maximum())
+            self.shown.setPageStep(self.source.pageStep())
+            self.shown.setSingleStep(self.source.singleStep())
+            self.shown.setValue(self.source.value())
+        finally:
+            self._copying = False
+
+    def _moved(self, value: int) -> None:
+        if not self._copying:
+            self.source.setValue(value)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize:
