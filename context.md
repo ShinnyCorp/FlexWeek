@@ -1,6 +1,15 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `claude/0172-dates-int`: Sol's dates-and-scroll unit (`sol-snap/0172-dates`) merged
+  onto `feat/0.17.2` at 132ee90. Month and the mini month follow today at a month boundary, My day's
+  title names the day, and every design keeps its scroll within a session (open at now only at
+  start-up, on Today, and on coming back to this week). Fixes on top: hours with no room still
+  remember and restore a place (Clay's sliding card), hours never shown remember nothing, Today from
+  another week leaves that week's scroll, and Timeline and Bento keep places when they rebuild
+  their hours for a new text size. Gate: 2395 passed, ruff and mypy clean. Rig 246/246.
+  Known: `test_my_day_actions_leave_room_after_their_icons` failed once under the 4-worker gate and
+  passed alone and in the next gate (order-dependent, cause not found).
 - 2026-09-30, `integrate/0172-sol`: Sol's lane 2 (time, dates and numbers) is merged onto
   `feat/0.17.2` at 347f3a1 with no conflicts, plus two fixes on top: Clay leaves out the hour label
   under its now pill, and the now line is drawn over a block's colour and under its words in every
@@ -665,6 +674,10 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-30, `claude/0172-dates-int`: dates-and-scroll unit integrated and verified as in Current
+  State; not pushed, `feat/0.17.2` untouched. Pictures and the scroll log are in
+  `~/.flexweek-ui-harness/scratch/0172-dates-int/`. Open for Jonathan: the 0.17 plan's "opening at
+  now every time" (docs/0.17/plan.md, decision 12) is superseded and not yet reworded.
 - 2026-09-30, `integrate/0172-sol`: lane 2 integrated and verified as in Current State; not pushed.
   `feat/0.17.2` itself is untouched and waits for Jonathan's review to fast-forward. Open: where
   Timeline's now pill goes; lane 2's CHANGELOG line was under 0.17.1 and now sits under `[0.17.2] - Unreleased`.
