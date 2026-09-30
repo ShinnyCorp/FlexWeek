@@ -356,7 +356,19 @@ def child_main(args: argparse.Namespace) -> int:
         def tab(self, name: str) -> Step:
             button = window.findChild(QPushButton, f"view{name.title()}")
             yield from self.click(button.mapToGlobal(button.rect().center()))
-            yield ("wait", 500)
+            yield ("wait", 150)
+            # A fixed wait was short on a slow CI runner: the week was not drawn yet when the next step
+            # looked for its day names.
+
+            def shown() -> bool:
+                return button.isChecked() and not self.moving()
+
+            yield ("until", shown, 5000, f"the {name} view to show")
+
+        def moving(self) -> bool:
+            """A fade or slide is still running somewhere in the window (motion.py marks each one on
+            the widget it moves)."""
+            return any(getattr(widget, "_motion_running", None) for widget in window.findChildren(QWidget))
 
         def day_name(self, day: int) -> QPoint:
             """A day's name as it is drawn: Today's app's week keeps them in a row of their own;
