@@ -40,6 +40,13 @@ All notable changes to FlexWeek are documented here. Format follows
 - The look pictures in Settings widen with the text, so at Large text, as in
   High contrast, each name stays on one line.
 - Day keeps Now on the hours grid rather than between agenda rows. Week titles, time labels, recovery codes and category tick/action spacing are clearer at narrow widths.
+- On a week that runs into a new month, Month and the mini month show the month
+  that holds today, so today is no longer faded like last month's days. Month
+  to Day opens the day you picked, and My day's title names the day.
+- Day, Week and every design keep the hours where you scrolled them when you
+  switch views, open the focus screen or Settings, or change the look. They
+  open at now when FlexWeek starts, when you press Today, and when you come
+  back to this week; the week you pressed Today from stays where you left it.
 
 ## [0.17.1] - 2026-09-29
 

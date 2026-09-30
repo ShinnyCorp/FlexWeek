@@ -1,6 +1,15 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `claude/0172-dates-int`: Sol's dates-and-scroll unit (`sol-snap/0172-dates`) merged
+  onto `feat/0.17.2` at 132ee90. Month and the mini month follow today at a month boundary, My day's
+  title names the day, and every design keeps its scroll within a session (open at now only at
+  start-up, on Today, and on coming back to this week). Fixes on top: hours with no room still
+  remember and restore a place (Clay's sliding card), hours never shown remember nothing, Today from
+  another week leaves that week's scroll, and Timeline and Bento keep places when they rebuild
+  their hours for a new text size. Gate: 2395 passed, ruff and mypy clean. Rig 246/246.
+  Known: `test_my_day_actions_leave_room_after_their_icons` failed once under the 4-worker gate and
+  passed alone and in the next gate (order-dependent, cause not found).
 - 2026-09-30, `integrate/0172-sol`: Sol's lane 2 (time, dates and numbers) and lane 4 (looks and
   colour) are merged onto `feat/0.17.2`. Lane 4 brought category icons and re-spaced hues, Paper
   and Pastel, Sand, Dark's chosen segment, Readability for a pale custom accent, and setup's
@@ -667,16 +676,11 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
-- 2026-09-30, `integrate/0172-sol`: lanes 2 and 4 integrated as in Current State; not pushed.
-  `feat/0.17.2` itself is untouched and waits for Jonathan's review to fast-forward. The lane 4
-  report (decisions left open, what was verified) is in the integrator's final message; its
-  pictures are in `~/.flexweek-ui-harness/scratch/0172-sol-int-looks/`. Gate at 51b53ee: 2465
-  passed. At the head, two test_drag_results tests fail when a worker runs them after
-  test_layout_mission or test_layout_timeline; the same pair fails at 132ee90, so it predates
-  this unit, and they pass alone. Mutations: every spec naming a changed file caught all cases.
-  Rig 40/40: classic, clay, mission, bento at 51b53ee; classic, mission and timeline at the head
-  (timeline's first run lost month-save-refused waiting for Month; 40/40 on the rerun). The branch is based on 132ee90; `feat/0.17.2` has
-  since moved to a3b1a8f (Sol's dates unit), so it needs a merge rather than a fast-forward.
+- 2026-09-30, `integrate/0172-sol`: Sol's lanes 2 and 4 and its dates-and-scroll unit are integrated
+  (see Current State); not pushed. Open: two test_drag_results tests fail when a worker runs them
+  after test_layout_mission or test_layout_timeline (predates 0.17.2's Sol units; being root-caused);
+  decision 12's "opening at now every time" in docs/0.17/plan.md is superseded by T1 and not reworded.
+  Pictures: `~/.flexweek-ui-harness/scratch/0172-sol-int-looks/` and `0172-dates-int/`.
 - 2026-09-29, `feat/0.17.1`: 0.17.1 prepared, the patch after 0.17.0 (Jonathan: "start the patch").
   Units 1 to 4 of `~/.flexweek-ui-harness/scratch/017-patch-plan.md`: the intermittent test-suite
   segfault (a test's instance patch left a HomeworkDialog in a cycle, collected on the server

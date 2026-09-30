@@ -37,7 +37,7 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "a short block cuts its title inside a word",
-  "old": "        return kept + \"…\"\n",
+  "old": "        return kept + \"\u2026\"\n",
   "new": "        return metrics.elidedText(text, Qt.TextElideMode.ElideRight, width)\n",
   "test": "desktop/tests/test_hours_painter.py::test_a_short_block_at_large_text_keeps_its_title_first_and_whole_words"
  },
@@ -78,17 +78,17 @@
  },
  {
   "file": "desktop/native/window.py",
-  "name": "a new look leaves the week on the night",
-  "old": "            # A new look is another first sight of the week: it opens at now again.\n            self._opened_hours = None\n",
-  "new": "",
-  "test": "desktop/tests/test_hours_open.py::test_todays_app_opens_at_now_every_time_it_is_shown_and_not_on_a_save"
+  "name": "a new look resets the scroll again",
+  "old": "        if dressed != self._dressed:\n            self._dressed = dressed\n",
+  "new": "        if dressed != self._dressed:\n            self._dressed = dressed\n            self.week_table.open_again()\n",
+  "test": "desktop/tests/test_hours_open.py::test_todays_app_keeps_its_scroll_after_a_page_or_look_change"
  },
  {
   "file": "desktop/native/window.py",
-  "name": "Week shown again stays where it was",
-  "old": "            shown.open_again()\n",
-  "new": "            pass\n",
-  "test": "desktop/tests/test_hours_open.py::test_todays_app_opens_at_now_every_time_it_is_shown_and_not_on_a_save"
+  "name": "returning from another page resets the scroll again",
+  "old": "    def _show_page(self, name: str) -> None:\n",
+  "new": "    def _show_page(self, name: str) -> None:\n        if name == \"weekPage\":\n            self.week_table.open_again()\n",
+  "test": "desktop/tests/test_hours_open.py::test_todays_app_keeps_its_scroll_after_a_page_or_look_change"
  },
  {
   "file": "desktop/native/hours/classic.py",

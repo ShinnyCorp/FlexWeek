@@ -300,6 +300,27 @@ def test_a_week_keeps_where_it_was_scrolled_when_it_is_shown_again(qapp: QApplic
     settle(qapp)
     assert opened_at != bar.maximum()
     assert bar.value() == bar.maximum(), "the same week jumped back to the morning"
+    view.hide()
+    other = build_week("2026-10-05", [], {}, None)
+    view.set_week(other, 2, 12 * 60)
+    view.set_week(other, 2, 12 * 60)
+    view.show()
+    settle(qapp)
+    top, bottom = minute_at(view, 0), minute_at(view, view.scroll.viewport().height())
+    assert abs((top + bottom) / 2 - 12 * 60) <= 2, "a hidden refresh lost the opening time"
+
+
+def test_the_same_week_rendered_again_keeps_now_in_the_middle_while_the_page_settles(
+    qapp: QApplication,
+) -> None:
+    """A save or a tick of the clock renders the week again. Opened with now in the middle, it keeps now
+    there as the page settles, as a new look's taller header makes it, until the student scrolls."""
+    view = a_week(qapp)
+    view.set_week(build_week(MONDAY, [], {}, None), 3, 15 * 60 + 41)
+    view.resize(760, 640)
+    settle(qapp)
+    top, bottom = minute_at(view, 0), minute_at(view, view.scroll.viewport().height())
+    assert abs((top + bottom) / 2 - (15 * 60 + 40)) <= 2
 
 
 def test_hours_cut_short_for_a_moment_go_back_to_where_they_were(qapp: QApplication) -> None:
@@ -338,6 +359,90 @@ def test_a_time_asked_for_while_the_hours_have_no_room_is_shown_once_they_do(qap
     scroll.setGeometry(0, 0, 760, 520)
     settle(qapp)
     assert abs(minute_at(view, 0) - 11 * 60) <= 1
+
+
+def hours_placed_by_hand(qapp: QApplication) -> ClassicWeek:
+    """A week whose hours are placed by hand, as Clay's row places its card's, so they can be given no
+    width at all (see the test above for why the week's own layout cannot)."""
+    view = a_week(qapp)
+    view.layout().removeWidget(view.scroll)
+    view.scroll.setGeometry(0, 0, 760, 520)
+    settle(qapp)
+    return view
+
+
+def test_a_week_left_while_its_hours_have_no_room_is_where_it_was_when_it_is_shown_again(
+    qapp: QApplication,
+) -> None:
+    """Clay deck's card for another day slides in with no width for its hours, and the day being left
+    is only then told apart from the new one. Where it was scrolled to is still remembered."""
+    view = hours_placed_by_hand(qapp)
+    scroll = view.scroll
+    scroll.scroll_to(5 * 60, above=0)
+    assert abs(minute_at(view, 0) - 5 * 60) <= 1
+    scroll.setGeometry(0, 0, 40, 520)
+    settle(qapp)
+    assert not view.hours.tracks, "no room for the hours"
+    view.set_week(build_week("2026-09-28", [], {}, None), None, None)
+    scroll.setGeometry(0, 0, 760, 520)
+    settle(qapp)
+    assert abs(minute_at(view, 0) - (8 * 60 - 90)) <= 1, "an empty week opens an hour and a half above 08:00"
+    view.set_week(build_week(MONDAY, [], {}, None), 3, 15 * 60 + 40)
+    settle(qapp)
+    assert abs(minute_at(view, 0) - 5 * 60) <= 1
+
+
+def test_a_week_gone_back_to_while_its_hours_have_no_room_is_put_where_it_was_once_they_do(
+    qapp: QApplication,
+) -> None:
+    view = hours_placed_by_hand(qapp)
+    scroll = view.scroll
+    scroll.scroll_to(5 * 60, above=0)
+    view.set_week(build_week("2026-09-28", [], {}, None), None, None)
+    settle(qapp)
+    assert abs(minute_at(view, 0) - (8 * 60 - 90)) <= 1
+    scroll.setGeometry(0, 0, 40, 520)
+    settle(qapp)
+    assert not view.hours.tracks, "no room for the hours"
+    view.set_week(build_week(MONDAY, [], {}, None), 3, 15 * 60 + 40)
+    scroll.setGeometry(0, 0, 760, 520)
+    settle(qapp)
+    assert abs(minute_at(view, 0) - 5 * 60) <= 1
+
+
+def test_a_week_scrolled_while_its_hours_waited_for_room_is_left_where_it_was_scrolled_to(
+    qapp: QApplication,
+) -> None:
+    """Hours cut short keep where they were until the room returns. Scrolled meanwhile, that is where
+    the student left them, not the place they were waiting to go back to."""
+    view = a_week(qapp)
+    bar = view.scroll.verticalScrollBar()
+    bar.setValue(bar.maximum())
+    view.resize(760, 560)
+    settle(qapp)
+    bar.setValue(bar.value() - 40)
+    left = minute_at(view, 0)
+    view.set_week(build_week("2026-09-28", [], {}, None), None, None)
+    settle(qapp)
+    assert abs(minute_at(view, 0) - (8 * 60 - 90)) <= 1
+    view.set_week(build_week(MONDAY, [], {}, None), 3, 15 * 60 + 40)
+    settle(qapp)
+    assert abs(minute_at(view, 0) - left) <= 1
+
+
+def test_a_week_asked_for_and_never_shown_has_no_place_to_go_back_to(qapp: QApplication) -> None:
+    """Day's hours are given every day the student picks while Week is on screen. A day they never saw
+    opens as a first sight of it does, not wherever the hidden hours happened to lie."""
+    view = a_week(qapp)
+    view.hide()
+    unseen = build_week("2026-09-28", [], {}, None)
+    view.set_week(unseen, 2, 12 * 60)
+    view.set_week(build_week("2026-10-05", [], {}, None), None, None)
+    view.set_week(unseen, 2, 12 * 60)
+    view.show()
+    settle(qapp)
+    top, bottom = minute_at(view, 0), minute_at(view, view.scroll.viewport().height())
+    assert abs((top + bottom) / 2 - 12 * 60) <= 2
 
 
 def test_a_week_opened_while_hidden_scrolls_to_now_when_it_is_shown(qapp: QApplication) -> None:

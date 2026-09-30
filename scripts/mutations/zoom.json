@@ -88,7 +88,7 @@
   "name": "the same week scrolled back every render",
   "old": "        if key != self._opened:\n",
   "new": "        if True:\n",
-  "test": "desktop/tests/test_hours_zoom.py::test_a_week_keeps_where_it_was_scrolled_when_it_is_shown_again"
+  "test": "desktop/tests/test_hours_zoom.py::test_the_same_week_rendered_again_keeps_now_in_the_middle_while_the_page_settles"
  },
  {
   "file": "desktop/native/hours/zoom.py",

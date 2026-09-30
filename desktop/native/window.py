@@ -467,8 +467,7 @@ class NativeWindow(QMainWindow):
         # The student's own looks, kept by name (custom_look.py); Settings will list them.
         self._saved_looks: list[dict] = []
         self._shown: tuple | None = None
-        # Which of Day and Week, on which week and day, last opened at now.
-        self._opened_hours: tuple | None = None
+        self._hours_week: tuple | None = None
         self._update_asked = False
         self._update_dialog: UpdateDialog | None = None
         self._updater = Updater(self)
@@ -663,9 +662,6 @@ class NativeWindow(QMainWindow):
         self.activateWindow()
 
     def _show_page(self, name: str) -> None:
-        if name != "weekPage":
-            # Back from Settings or the focus screen, Day and Week open at now again.
-            self._opened_hours = None
         for index in range(self._stack.count()):
             page = self._stack.widget(index)
             if page.objectName() == name:
@@ -679,8 +675,6 @@ class NativeWindow(QMainWindow):
                     slide_over(self._stack, page, self._motion, back=True)
                 else:
                     switch_page(self._stack, page, self._motion)
-                if name == "weekPage":
-                    self._open_at_now()
                 return
 
     def _entry_card(self, name: str) -> QVBoxLayout:
@@ -1245,6 +1239,7 @@ class NativeWindow(QMainWindow):
             view.back_requested.connect(self._leave_day)
             view.menu_requested.connect(self._menu_from)
             view.day_activated.connect(self.session.open_day)
+            view.watched_day_changed.connect(self._watched_day_title)
             view.remembered_zoom = self._zoom
             view.zoomed.connect(self._remember_zoom)
             self.planner.addWidget(view)
@@ -1287,6 +1282,7 @@ class NativeWindow(QMainWindow):
             dirty=session.dirty,
             unsaved_weeks=session.unsaved_weeks(),
             focus=focus_now(session.focus),
+            today_iso=clock["iso"],
         )
 
     def _refresh_layout(self) -> None:
@@ -1389,6 +1385,13 @@ class NativeWindow(QMainWindow):
         self._day_mode = True
         self._on_week()
         self._views[self._layout["day"]].setFocus()
+
+    def _watched_day_title(self, iso: str) -> None:
+        if self._day_mode:
+            self.week_title.set_full_text(
+                planner_title(self.session, "day", selected_day=iso),
+                planner_title(self.session, "day", short=True, selected_day=iso),
+            )
 
     def _leave_day(self) -> None:
         self._day_mode = False
@@ -1653,12 +1656,22 @@ class NativeWindow(QMainWindow):
             self._changed_ms = self.session.now_ms()
         if self._on_recovery() and not self._allow_week_page:
             return
+        current = (self.session.account["id"], self.session.week_start)
+        if current != self._hours_week:
+            if self._hours_week is not None and (
+                current[0] != self._hours_week[0] or self._clock_in_week()[0] is not None
+            ):
+                self._reset_hours(clear_all=current[0] != self._hours_week[0])
+            self._hours_week = current
         turn = self._begin_turn()
         self._honour_preferred_view()
         self._set_clock()
         self._check_updates(asked=False)
         self._fill_classic()
-        self.month_grid.set_month(self.session.month_data, self.session.dirty)
+        self.month_grid.set_month(
+            self.session.month_data, self.session.dirty,
+            datetime.fromtimestamp(self.session.now_ms() / 1000).date().isoformat(),
+        )
         opened = (self.session.planner_view, self.session.selected_month, self.session.month_data is not None)
         if opened[0] == "month" and opened[2] and opened != self._month_revealed:
             # Once, when a month opens: after that it stays wherever the student scrolled it, through
@@ -1689,9 +1702,11 @@ class NativeWindow(QMainWindow):
         self.next_nav.setToolTip(f"Next {period}")
         self.prev_nav.setAccessibleName(f"Previous {period}")
         self.next_nav.setAccessibleName(f"Next {period}")
+        title_view = "myday" if self._day_mode else view
+        watched = shown.watched_date() if self._day_mode and isinstance(shown, LayoutView) else None
         self.week_title.set_full_text(
-            planner_title(self.session, view),
-            planner_title(self.session, view, short=True),
+            planner_title(self.session, title_view, selected_day=watched),
+            planner_title(self.session, title_view, short=True, selected_day=watched),
         )
         self._maybe_open_setup()
         if self._setup_prefs or self._setup_work_windows is not None or self._setup_week:
@@ -1754,7 +1769,6 @@ class NativeWindow(QMainWindow):
                 appear(self.plan_review, self._motion, grow=True)
         self._sync_chrome()
         self._apply_appearance()
-        self._open_at_now()
         self._finish_turn(turn)
         if self._pending_spread_ui and self.session.spread_preview:
             self._pending_spread_ui = False
@@ -2003,7 +2017,11 @@ class NativeWindow(QMainWindow):
 
     def _go_today(self) -> None:
         self._travel(0)
-        today = date.today()
+        today = datetime.fromtimestamp(self.session.now_ms() / 1000).date()
+        if self._clock_in_week()[0] is not None:
+            # From another week, the week changing to this one opens it at now (_on_week), and that
+            # other week stays where it was left.
+            self._reset_hours()
         self.session.load_week(monday_of(today.isoformat()))
         if self.session.planner_view == "day" or self._day_mode:
             self.session.open_day(today.isoformat())
@@ -2184,19 +2202,17 @@ class NativeWindow(QMainWindow):
             self._column.insertWidget(0, self.focus_panel)
         self.focus_panel.set_compact(in_rail)
 
-    def _open_at_now(self) -> None:
-        """Day and Week open at now each time they are shown: switched to, back from another page, or
-        in a new look. A save or a tick of the clock while they show leaves them where they are."""
-        shown = self.planner.currentWidget()
-        if shown not in (self.week_table, self.day_view):
-            self._opened_hours = None
-            return
-        # Week is the same week whichever day is chosen in it, as picking up a block chooses its day.
-        day = self.session.selected_day if shown is self.day_view else None
-        key = (shown.objectName(), self.session.week_start, day)
-        if key != self._opened_hours:
-            self._opened_hours = key
-            shown.open_again()
+    def _reset_hours(self, *, clear_all: bool = False) -> None:
+        # Designs park cached grids outside the window and may reuse an unchanged scene.
+        today, minute = self._clock_in_week()
+        for scroll in QApplication.allWidgets():
+            if isinstance(scroll, HoursScroll) and scroll.canvas.hand is self.hand:
+                key = scroll._opened
+                scroll.forget(None if clear_all else self.session.week_start)
+                if scroll._opened is None and minute is not None and (
+                    not isinstance(key, tuple) or key[1] == today
+                ):
+                    scroll.scroll_to(minute, None)
 
     def _reveal_placed(self) -> None:
         """After Plan, the hours on screen scroll to the first homework it placed, so what it did is
@@ -3373,8 +3389,6 @@ class NativeWindow(QMainWindow):
         # look had not changed, cost about 26 ms a change and repainted everything on screen.
         if dressed != self._dressed:
             self._dressed = dressed
-            # A new look is another first sight of the week: it opens at now again.
-            self._opened_hours = None
             self.setStyleSheet(sheet)
             self._keep_bar_whole()
             apply_ui_effects(self._motion)
