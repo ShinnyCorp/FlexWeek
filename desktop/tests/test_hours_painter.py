@@ -623,3 +623,29 @@ def test_a_half_hour_in_high_contrast_says_its_name_on_the_week(
     Said.words = []
     canvas.grab()
     assert "Dinner" in [text for text, _where in Said.words]
+
+
+def test_a_paint_that_raises_still_ends_its_painter(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A design's painter that raises leaves the hours' painter to the traceback. Still active, it
+    outlived the picture a grab painted on, and the collector crashed the worker when it ended the
+    painter later, in some other test."""
+    seen: list[QPainter] = []
+
+    def raises(painter: QPainter, *_rest: object, **_named: object) -> None:
+        seen.append(painter)
+        raise RuntimeError("no words")
+
+    monkeypatch.setattr(canvas_module, "_paint_layout", raises)
+    canvas = three_days()
+    # The test's own picture, so a painter left active can still be ended safely below.
+    picture = QImage(canvas.size(), QImage.Format.Format_ARGB32)
+    try:
+        with pytest.raises(RuntimeError, match="no words"):
+            canvas.render(picture)
+        assert seen and not seen[0].isActive()
+    finally:
+        for painter in seen:
+            if painter.isActive():
+                painter.end()

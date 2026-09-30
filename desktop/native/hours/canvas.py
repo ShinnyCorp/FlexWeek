@@ -1073,6 +1073,14 @@ class HoursCanvas(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         painter = QPainter(self)
+        try:
+            self._paint_hours(painter)
+        finally:
+            # A painter left active when a design's painter raises is kept by the traceback, outlives
+            # what it paints on, and crashes when the collector ends it later.
+            painter.end()
+
+    def _paint_hours(self, painter: QPainter) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         visible = self._visible()
         shown_today = self.today is not None and any(track.day == self.today for track in self.tracks)
@@ -1131,7 +1139,6 @@ class HoursCanvas(QWidget):
                 with _fresh(painter):
                     self.painter.day_name(painter, box, self._names(track.day), track.day == self.today)
         self._paint_label(painter)
-        painter.end()
 
     def _visible(self) -> QRectF:
         """The part of the hours on screen. Not the part being repainted: a long block's name is kept
