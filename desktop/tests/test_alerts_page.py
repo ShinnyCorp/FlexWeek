@@ -128,7 +128,8 @@ def test_no_alarms_says_so(qapp: QApplication) -> None:
 
 def test_the_words_say_what_each_setting_does(qapp: QApplication) -> None:
     dialog = settings(qapp)
-    assert dialog.volume.suffix() == " %"
+    # "80%", as it is written, not "80 %" (T20 of the 0.17.0 audit).
+    assert dialog.volume.suffix() == "%"
     assert dialog.tray.text() == "Keep running when I close the window"
     assert dialog.findChild(QLabel, "prefTrayNote").text() == (
         "FlexWeek waits in the tray, so reminders and alarms still come."

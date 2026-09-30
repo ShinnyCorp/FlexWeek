@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 
 from desktop.native.look import mix, pack_stylesheet, resolved_palette, sanitize_look
 from desktop.native.settings import AboutDialog, AccountDialog, HelpDialog
-from desktop.native.tokens import contrast
+from desktop.native.tokens import contrast, type_pt
 from desktop.native.widgets import (
     SHEET_FORM,
     SHEET_LIST,
@@ -272,7 +272,7 @@ def test_routines_and_running_late_fit_a_laptop_window_without_scrolling(
     free(parent)
 
 
-@pytest.mark.parametrize("text", ["normal"])
+@pytest.mark.parametrize("text", ["normal", "large"])
 def test_sheets_are_one_width_on_a_scale_of_two(qapp: QApplication, text: str) -> None:  # noqa: F811
     """T18: every sheet was its own width. Forms are 440 pixels wide and lists 600, at any text size."""
     parent, _palette = styled(qapp, text=text)
@@ -287,8 +287,10 @@ def test_sheets_are_one_width_on_a_scale_of_two(qapp: QApplication, text: str) -
         (lambda: HelpDialog(parent), SHEET_LIST),
     ):
         dialog = shown(qapp, make())
-        assert dialog.card.width() == width, dialog.windowTitle()
-        assert dialog.card.minimumSizeHint().width() <= width, f"{dialog.windowTitle()}: nothing cut to fit"
+        # At Large the scale grows with the text, 13 points to 15.
+        scaled = round(width * type_pt("body", text) / type_pt("body"))
+        assert dialog.card.width() == scaled, dialog.windowTitle()
+        assert dialog.card.minimumSizeHint().width() <= scaled, f"{dialog.windowTitle()}: nothing cut to fit"
         free(dialog)
     free(parent)
 

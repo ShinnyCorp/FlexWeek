@@ -1,26 +1,32 @@
 """The fields every sheet, setup page and Settings page shares (5.2 A of 0.17.2): days picked as a row of
-pills, and dates picked on a month drawn in the look. One module, so the block editor, Routines, alarms,
-work hours and setup draw a day the same way; it imports nothing of the app's own widgets, so each of
-those can use it."""
+pills, dates picked on a month drawn in the look, numbers stepped with a − and a + big enough to hit,
+and clock times typed with no arrows. One module, so the block editor, Routines, alarms, work hours and
+setup draw each the same way; it imports nothing of the app's own widgets, so each of those can use
+it."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QDate, QEvent, QObject, QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QDate, QEvent, QObject, QRect, QRectF, Qt, QTime, Signal
 from PySide6.QtGui import QColor, QPainter, QPalette, QPen, QTextCharFormat
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QAbstractSpinBox,
     QCalendarWidget,
     QDateEdit,
     QHBoxLayout,
     QPushButton,
     QSizePolicy,
+    QSpinBox,
+    QTimeEdit,
     QToolButton,
+    QVBoxLayout,
     QWidget,
 )
 
 from desktop.native import icons
 from desktop.native.calendar import DAY_FULL, DAYS
 from desktop.native.tokens import WEIGHT_STRONG
+from desktop.native.weekmodel import time_format
 
 # A day of another month, and the letters over the days, as shares of the text colour on the card.
 FAINT = 0.45
@@ -30,6 +36,8 @@ POPUP_PAD = 8
 # The popup's corners, and its edge as a share of the text colour on the card.
 CORNER = 10
 EDGE = 0.22
+# The quick lengths under a homework's time, in minutes (5.2 A of 0.17.2).
+QUICK_LENGTHS = (15, 30, 45, 60, 90)
 ARROWS = (("qt_calendar_prevmonth", "chevron-left"), ("qt_calendar_nextmonth", "chevron-right"))
 
 
@@ -185,3 +193,108 @@ class DateField(QDateEdit):
         popup.installEventFilter(PopupCard(self))
         if day is not None:
             self.setDate(day)
+
+
+class ClockField(QTimeEdit):
+    """A clock time typed as it is written, "16:00", in the student's clock. Qt's arrows inside the box
+    were too small to hit and took a quarter of it (T20 of the 0.17.0 audit); the arrow keys and the
+    wheel still step it."""
+
+    def __init__(self, time: QTime | None = None, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.setProperty("typed", True)
+        self.setDisplayFormat(time_format())
+        if time is not None:
+            self.setTime(time)
+
+
+class Stepper(QWidget):
+    """A number as − value +. The box keeps its typing, its range and its steps; the two buttons step
+    it and stop at its ends. `quick` adds a row of pills under it that set a length in one click, the
+    one matching the value lit. Qt's arrows inside the box were too small to hit (T20)."""
+
+    def __init__(self, box: QSpinBox, quick: tuple[int, ...] = ()) -> None:
+        super().__init__()
+        self.setObjectName("stepper")
+        # As wide as its parts: stretched across a form, its + stood apart from where a box ends.
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.box = box
+        box.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box.setProperty("stepped", True)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(4)
+        line = QHBoxLayout()
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(0)
+        self.less = self._button("stepLess", "minus", "One step less", -1)
+        self.more = self._button("stepMore", "plus", "One step more", 1)
+        line.addWidget(self.less)
+        line.addWidget(box)
+        line.addWidget(self.more)
+        line.addStretch(1)
+        column.addLayout(line)
+        self.chips: list[QPushButton] = []
+        if quick:
+            chips = QHBoxLayout()
+            chips.setContentsMargins(0, 0, 0, 0)
+            chips.setSpacing(4)
+            for minutes in quick:
+                chip = QPushButton(str(minutes))
+                chip.setObjectName("quickLength")
+                chip.setProperty("pill", True)
+                chip.setProperty("minutes", minutes)
+                chip.setCheckable(True)
+                chip.setAutoDefault(False)
+                chip.setAccessibleName(f"{minutes} minutes")
+                chip.setCursor(Qt.CursorShape.PointingHandCursor)
+                chip.clicked.connect(self._pick)
+                chips.addWidget(chip)
+                self.chips.append(chip)
+            chips.addStretch(1)
+            column.addLayout(chips)
+        box.installEventFilter(self)
+        box.valueChanged.connect(self._follow)
+        self._follow()
+
+    def first_line(self) -> QWidget:
+        """What a label beside it lines up with: the box, not the pills under it."""
+        return self.box
+
+    def _button(self, name: str, icon: str, words: str, by: int) -> QPushButton:
+        button = QPushButton()
+        button.setObjectName(name)
+        button.setProperty("step", True)
+        button.setProperty("by", by)
+        button.setAccessibleName(words)
+        # The box is where the keys go; its arrow keys step it as these do.
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setAutoDefault(False)
+        button.setAutoRepeat(True)
+        button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        icons.tint(button, icon)
+        button.clicked.connect(self._step)
+        return button
+
+    def _step(self) -> None:
+        self.box.stepBy(int(self.sender().property("by")))
+
+    def _pick(self) -> None:
+        self.box.setValue(int(self.sender().property("minutes")))
+        self._follow()
+
+    def _follow(self, *_value: object) -> None:
+        steps = self.box.stepEnabled()
+        live = self.box.isEnabled()
+        self.less.setEnabled(live and bool(steps & QAbstractSpinBox.StepEnabledFlag.StepDownEnabled))
+        self.more.setEnabled(live and bool(steps & QAbstractSpinBox.StepEnabledFlag.StepUpEnabled))
+        for chip in self.chips:
+            chip.setChecked(chip.property("minutes") == self.box.value())
+            chip.setEnabled(live)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self.box and event.type() == QEvent.Type.EnabledChange:
+            self._follow()
+        return False

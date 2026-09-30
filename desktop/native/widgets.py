@@ -102,7 +102,7 @@ from desktop.native.calendar import (
     span_problem,
 )
 from desktop.native.elevation import lift
-from desktop.native.fields import DateField, DayPicker
+from desktop.native.fields import QUICK_LENGTHS, ClockField, DateField, DayPicker, Stepper
 from desktop.native.fonts import time_font, weighted
 from desktop.native.icons import pixmap as icon_pixmap
 from desktop.native.menus import Menu
@@ -115,8 +115,8 @@ from desktop.native.reuse import (
     routine_source_blocks,
     row_conflict,
 )
-from desktop.native.tokens import SHADOW_LARGE, SPACING, WEIGHT_REGULAR, WEIGHT_STRONG, Shadow
-from desktop.native.weekmodel import due_label, hhmm_text, length_label, time_format
+from desktop.native.tokens import SHADOW_LARGE, SPACING, WEIGHT_REGULAR, WEIGHT_STRONG, Shadow, type_pt
+from desktop.native.weekmodel import due_label, hhmm_text, length_label
 from desktop.native.work_windows import WorkWindowsEditor
 
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -2041,7 +2041,7 @@ class Dialog(QDialog):
         card = self.card
         shadow = 2 * SHEET_ROOM
         # The card is its width on the scale, narrower only in a window without room for it.
-        inner = min(self.card_width, most_w - shadow)
+        inner = min(self.scaled_width(), most_w - shadow)
         card.setFixedWidth(inner)
         hint = card.sizeHint().expandedTo(card.minimumSizeHint()).expandedTo(card.minimumSize())
         # Words that wrap need the height they take at this width, not at the width they would like.
@@ -2061,6 +2061,11 @@ class Dialog(QDialog):
         self._shade.setGeometry(host.rect())
         self._shade.show()
         self._shade.raise_()
+
+    def scaled_width(self) -> int:
+        """The card's width on the scale at the student's text size: 440 and 600 are at Normal, and
+        grow with Large, which set Edit event's two scope choices wider than a 440 card."""
+        return round(self.card_width * max(1.0, self.font().pointSizeF() / type_pt("body")))
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if (
@@ -2145,14 +2150,12 @@ class BlockDialog(Dialog):
         repeating = existing and len(self._original.get("days") or []) > 1
         form.setRowVisible(note, repeating and scope_box.isHidden())
         self.scope_choice.currentIndexChanged.connect(self._sync_scope)
-        self.start = QTimeEdit(QTime.fromString(self._original.get("start") or start, "HH:mm"))
-        self.start.setDisplayFormat(time_format())
+        self.start = ClockField(QTime.fromString(self._original.get("start") or start, "HH:mm"))
         self.start.setObjectName("blockStart")
         # Start and End are what a student knows ("08:00 to 14:30"); the length is worked out from
         # them. A Duration box beside End was a second way to say the same thing, and could disagree.
         self._length = int(self._original["duration_min"])
-        self.end = QTimeEdit(self._minutes_clock(self._clock_minutes(self.start.time()) + self._length))
-        self.end.setDisplayFormat(time_format())
+        self.end = ClockField(self._minutes_clock(self._clock_minutes(self.start.time()) + self._length))
         self.end.setObjectName("blockEnd")
         form.add_pair(("Start", self.start), ("End", self.end))
         self.duration_line = QLabel()
@@ -2419,9 +2422,8 @@ class DueField(QWidget):
         self.timed = QCheckBox("At a set time")
         self.timed.setObjectName(f"{name}Timed")
         self.timed.setAccessibleName("Due at a set time")
-        self.time = QTimeEdit()
+        self.time = ClockField()
         self.time.setObjectName(f"{name}Time")
-        self.time.setDisplayFormat(time_format())
         self.time.setAccessibleName("Due time")
         row.addWidget(self.date)
         if stacked:
@@ -2519,7 +2521,7 @@ class HomeworkDialog(Dialog):
         self.due = DueField(self._original["due"], "homeworkDue", stacked=True)
         form.addRow("Due", self.due)
         self.estimate = LengthBox("homeworkEstimate", self._original["estimate_min"])
-        form.addRow("Estimated time", self.estimate)
+        form.addRow("Estimated time", Stepper(self.estimate, QUICK_LENGTHS))
         self.estimate_hint = QLabel(SLOT_HINT)
         self.estimate_hint.setObjectName("homeworkEstimateHint")
         self.estimate_hint.setWordWrap(True)
@@ -3276,9 +3278,8 @@ class ChooseTimeDialog(Dialog):
         if today in days:
             self.day.setCurrentIndex(days.index(today))
         form.addRow("Day", self.day)
-        self.start = QTimeEdit(QTime(16, 0))
+        self.start = ClockField(QTime(16, 0))
         self.start.setObjectName("chooseTimeStart")
-        self.start.setDisplayFormat(time_format())
         self.start.setMinimumTime(QTime(6, 0))
         latest = DAY_END_MIN - self._duration
         self.start.setMaximumTime(QTime(latest // 60, latest % 60))
@@ -3625,12 +3626,10 @@ class AvailabilityDialog(Dialog):
         form.addWidget(self.study_list)
         # A new window's hours, and optionally the one subject it is kept for.
         study_row = QHBoxLayout()
-        self.study_start = QTimeEdit(QTime(19, 0))
+        self.study_start = ClockField(QTime(19, 0))
         self.study_start.setObjectName("studyStart")
-        self.study_start.setDisplayFormat(time_format())
-        self.study_end = QTimeEdit(QTime(21, 0))
+        self.study_end = ClockField(QTime(21, 0))
         self.study_end.setObjectName("studyEnd")
-        self.study_end.setDisplayFormat(time_format())
         self.study_subject = QComboBox()
         self.study_subject.setObjectName("studySubject")
         self.study_subject.setEditable(True)

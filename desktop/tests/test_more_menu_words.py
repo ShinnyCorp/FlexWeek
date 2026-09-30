@@ -381,7 +381,8 @@ def test_help_is_a_list_sheet_with_the_screens_two_by_two_above_one_line_per_sho
     dialog.show()
     qapp.processEvents()
     still(dialog)
-    assert dialog.card.width() == SHEET_LIST
+    # 600 at Normal text, growing with Large as every sheet's width does.
+    assert dialog.card.width() == round(SHEET_LIST * type_pt("body", text) / type_pt("body"))
     cards = dialog.findChildren(QFrame, "helpCard")
     assert [card.findChild(QLabel, "helpScreenName").text() for card in cards] == [
         name for name, _words in settings.HELP_SCREENS

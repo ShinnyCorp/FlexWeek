@@ -44,7 +44,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QStackedLayout,
     QStackedWidget,
-    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -55,7 +54,7 @@ from backend.slots import SLOT_MIN
 from desktop.native import autostart
 from desktop.native.calendar import DAY_FULL
 from desktop.native.custom_look import UNNAMED, sanitize_saved, wear
-from desktop.native.fields import DayPicker
+from desktop.native.fields import ClockField, DayPicker, Stepper
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
 from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import drag_step
@@ -87,7 +86,7 @@ from desktop.native.spotify import SpotifyPlayer, open_in_app
 from desktop.native.tokens import SPACING
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
-from desktop.native.weekmodel import hhmm_text, length_label, time_format
+from desktop.native.weekmodel import hhmm_text, length_label
 from desktop.native.widgets import (
     SHEET_LIST,
     Choices,
@@ -653,7 +652,7 @@ class SettingsPage(QWidget):
         self.volume = QSpinBox()
         self.volume.setObjectName("prefAlertVolume")
         self.volume.setRange(0, 100)
-        self.volume.setSuffix(" %")
+        self.volume.setSuffix("%")
         self.volume.setValue(int(preferences.get("alert_volume", 80)))
         self.end_chime = Switch("Chime when a session ends")
         self.end_chime.setObjectName("prefEndChime")
@@ -743,11 +742,14 @@ class SettingsPage(QWidget):
         drag_form.addRow("Steps", self.drag_step)
         planning = _section_page("Planning", (planning_card, where_card, drag_card))
         focus_card, focus_form = _card("Focus timer")
-        focus_form.addRow("Focus minutes", self.work)
-        focus_form.addRow("Break minutes", self.break_min)
-        focus_form.addRow("Long break minutes", self.long_break)
+        boxes = (self.work, self.break_min, self.long_break, self.long_every)
+        self.focus_steppers = [Stepper(box) for box in boxes]
+        work, rest, long_rest, every = self.focus_steppers
+        focus_form.addRow("Focus minutes", work)
+        focus_form.addRow("Break minutes", rest)
+        focus_form.addRow("Long break minutes", long_rest)
         focus_form.addRow("Timer preset", self.preset_timer)
-        focus_form.addRow("Long break after", self.long_every)
+        focus_form.addRow("Long break after", every)
         focus_form.addRow(self.auto_split)
         focus = _section_page("Focus", (focus_card,))
         reminders_card, alerts_form = _card("Reminders")
@@ -759,7 +761,7 @@ class SettingsPage(QWidget):
         reminder_form = Form(self.reminder_controls)
         reminder_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         reminder_form.setContentsMargins(0, 0, 0, 0)
-        reminder_form.addRow("How long before", self.lead)
+        reminder_form.addRow("How long before", Stepper(self.lead))
         reminder_form.addRow(self.reminder_sound)
         tone_row = QHBoxLayout()
         tone_row.addWidget(self.alarm_tone)
@@ -794,8 +796,7 @@ class SettingsPage(QWidget):
         self.alarm_name = QLineEdit()
         self.alarm_name.setObjectName("alarmName")
         self.alarm_name.setPlaceholderText("Alarm name")
-        self.alarm_time = QTimeEdit()
-        self.alarm_time.setDisplayFormat(time_format())
+        self.alarm_time = ClockField()
         self.alarm_sound = QComboBox()
         self.alarm_sound.setObjectName("alarmSound")
         self.alarm_name.setMinimumWidth(120)
@@ -827,7 +828,7 @@ class SettingsPage(QWidget):
         button_row.addStretch(1)
         alarms_form.addRow(button_row)
         all_card, all_form = _card("All alerts")
-        all_form.addRow("Volume", self.volume)
+        all_form.addRow("Volume", Stepper(self.volume))
         all_form.addRow(self.end_chime)
         all_form.addRow(self.tray)
         all_form.addRow(_note(TRAY_NOTE, "prefTrayNote"))
@@ -1014,11 +1015,22 @@ class SettingsPage(QWidget):
         # Section by section: a dropdown on Alerts need not make Appearance's wider than its page.
         for index in range(self.stack.count()):
             even_fields(self.stack.widget(index))
+        # Once the steppers have their look: before it, their − and + had no width yet.
+        QTimer.singleShot(0, self, self._even_focus)
         margins = self.nav.contentsMargins()
         self.nav.setFixedWidth(
             self.nav.sizeHintForColumn(0) + margins.left() + margins.right() + 2 * self.nav.frameWidth()
             + PREFS_NAV_PAD
         )
+
+    def _even_focus(self) -> None:
+        """Timer preset as wide as the − value + fields above and below it (T20 of the 0.17.0 audit);
+        when its longest name is wider, every box widens with it instead."""
+        stepped = self.focus_steppers[0].sizeHint().width()
+        width = max(self.preset_timer.sizeHint().width(), stepped)
+        for stepper in self.focus_steppers:
+            stepper.box.setFixedWidth(stepper.box.width() + width - stepped)
+        self.preset_timer.setFixedWidth(width)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         if event.key() == Qt.Key.Key_Escape:

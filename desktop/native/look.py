@@ -1075,6 +1075,18 @@ def control_rules(palette: dict, radius: int, text: float | str, art: dict[str, 
         "width: 24px; border: none; background: transparent; }"
         f"QAbstractSpinBox::up-arrow {{ image: url({up}); width: 12px; height: 12px; }}"
         f"QAbstractSpinBox::down-arrow {{ image: url({down}); width: 12px; height: 12px; }}"
+        # A stepped number: − and + joined to its box, on the page's colour (5.2 A of 0.17.2).
+        'QAbstractSpinBox[stepped="true"] { border-radius: 0; }'
+        f'QPushButton[step="true"] {{ background: {palette["window"]}; color: {palette["muted"]}; '
+        f'border: 1px solid {palette["hairline_strong"]}; padding: 0; min-width: 34px; max-width: 34px; '
+        "min-height: 0; }"
+        f'QPushButton[step="true"]:hover {{ background: {palette["hairline"]}; color: {palette["text"]}; }}'
+        f'QPushButton[step="true"]:disabled {{ background: {palette["window"]}; '
+        f'color: {mix(palette["muted"], palette["window"], 0.5)}; }}'
+        f"QPushButton#stepLess {{ border-right: none; border-radius: 0; border-top-left-radius: {corner}px; "
+        f"border-bottom-left-radius: {corner}px; }}"
+        f"QPushButton#stepMore {{ border-left: none; border-radius: 0; border-top-right-radius: {corner}px; "
+        f"border-bottom-right-radius: {corner}px; }}"
         "QDateTimeEdit::drop-down { subcontrol-origin: padding; subcontrol-position: center right; "
         "width: 26px; border: none; background: transparent; }"
         f"QDateTimeEdit::down-arrow {{ image: url({down}); width: 14px; height: 14px; }}"
@@ -1559,6 +1571,8 @@ def pack_stylesheet(
         f"QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {{ background: {palette['field']}; "
         f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; "
         f"min-height: {field_min}px; {edges} }}"
+        # A typed time and a stepped number have no arrows inside, so no room kept for them.
+        f'QAbstractSpinBox[typed="true"], QAbstractSpinBox[stepped="true"] {{ padding-right: {pad}px; }}'
         f"QPlainTextEdit {{ background: {palette['field']}; color: {palette['text']}; "
         f"padding: {pad}px; border-radius: {radius}px; {edges} }}"
         f"QTableWidget {{ gridline-color: {palette['hairline']}; "
