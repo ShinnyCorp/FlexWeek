@@ -44,8 +44,8 @@
   {
     "name": "Now is hidden under a block's colour",
     "file": "desktop/native/hours/canvas.py",
-    "old": "        self.body(painter, rect, drawn)\n        self.crossing(painter, rect)\n",
-    "new": "        self.body(painter, rect, drawn)\n",
+    "old": "        self.crossing(painter, rect, written)\n",
+    "new": "",
     "test": "desktop/tests/test_time_numbers.py::test_now_crosses_a_block_over_its_colour_and_under_its_words[clay]"
   },
   {
@@ -72,9 +72,44 @@
   {
     "name": "Mission's line for now is hidden under a tick",
     "file": "desktop/native/layouts/mission.py",
-    "old": "        painter.fillPath(shape, mark)\n        self.crossing(painter, rect)\n",
-    "new": "        painter.fillPath(shape, mark)\n",
+    "old": "        self.crossing(painter, rect, icon)\n",
+    "new": "",
     "test": "desktop/tests/test_layout_mission.py::test_the_line_for_now_crosses_a_tick_it_lies_on"
+  },
+  {
+    "name": "The now line runs through a block's words",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "        for box in around or ():\n",
+    "new": "        for box in ():\n",
+    "test": "desktop/tests/test_time_numbers.py::test_the_now_line_stops_short_of_a_blocks_words_and_resumes_after_them[classic]"
+  },
+  {
+    "name": "The now line stops right at a block's words",
+    "file": "desktop/native/hours/canvas.py",
+    "old": "NOW_CLEAR = 3\n",
+    "new": "NOW_CLEAR = 0\n",
+    "test": "desktop/tests/test_time_numbers.py::test_the_now_line_stops_short_of_a_blocks_words_and_resumes_after_them[classic]"
+  },
+  {
+    "name": "Clay's now line runs through its words",
+    "file": "desktop/native/layouts/clay.py",
+    "old": "        return written\n",
+    "new": "        return []\n",
+    "test": "desktop/tests/test_time_numbers.py::test_the_now_line_stops_short_of_a_blocks_words_and_resumes_after_them[clay]"
+  },
+  {
+    "name": "Mission's now line runs over a tick's icon",
+    "file": "desktop/native/layouts/mission.py",
+    "old": "        self.crossing(painter, rect, icon)\n",
+    "new": "        self.crossing(painter, rect)\n",
+    "test": "desktop/tests/test_layout_mission.py::test_the_line_for_now_stops_short_of_a_ticks_icon"
+  },
+  {
+    "name": "Mission's lane is not laid again round a tick's icon",
+    "file": "desktop/native/layouts/mission.py",
+    "old": "            painter.fillRect(room, QColor(mix_oklab(",
+    "new": "            painter.fillRect(QRectF(), QColor(mix_oklab(",
+    "test": "desktop/tests/test_layout_mission.py::test_the_line_for_now_stops_short_of_a_ticks_icon"
   },
   {
     "name": "Day repeats the date in its agenda heading",

@@ -517,10 +517,11 @@ def test_the_now_line_carries_the_time_on_a_pill_at_its_start(
 
 
 def test_a_now_pill_that_reaches_into_a_block_is_whole_over_its_colour(qapp: QApplication) -> None:
-    """At 15:55 the line is four pixels above the Essay that starts at 16:00, and the pill on it
+    """At 15:55 the line is four pixels above an Essay that starts at 16:00, and the pill on it
     reaches a few pixels into the Essay. That part is drawn over the Essay's colour, as the line is
-    where it crosses a block: under the colour, the pill lost its foot."""
-    canvas = three_days(now_min=15 * 60 + 55)
+    where it crosses a block: under the colour, the pill lost its foot. The Essay is a quarter of an
+    hour, too short to say its name: on a block's words the pill is left out, as the line is."""
+    canvas = three_days(now_min=15 * 60 + 55, blocks=({**ESSAY, "duration_min": 15},))
     image = canvas.grab().toImage()
     track = canvas.tracks[0]
     line_y = round(track.area.top() + track.offset(15 * 60 + 55))

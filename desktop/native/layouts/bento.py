@@ -1157,14 +1157,14 @@ class BentoPainter(ClassicPainter):
         visible: QRectF,
         fill: QColor | None = None,
         edge: QColor | None = None,
-    ) -> None:
+    ) -> list[QRectF]:
         """A week's column too narrow for a block's times says when it starts, as Retro's week does,
         rather than its name alone: "School" and "08:00", not "School"."""
         if not self.wide and not drawn.held:
             small = QFontMetricsF(self.fonts(painter.font())[1])
             if small.horizontalAdvance(drawn.times) > rect.width() - TEXT_LEFT - TEXT_RIGHT:
                 drawn = Started(**vars(drawn))
-        super().words(painter, rect, drawn, ink, visible, fill, edge)
+        return super().words(painter, rect, drawn, ink, visible, fill, edge)
 
 
 class BentoCanvas(HoursCanvas):

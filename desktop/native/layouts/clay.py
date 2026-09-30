@@ -403,15 +403,14 @@ class ClayPainter(BlockPainter):
         visible: QRectF,
         fill: QColor | None = None,
         edge: QColor | None = None,
-    ) -> None:
+    ) -> list[QRectF]:
         """As the mock-up writes a block: its title, then its times and on the card in front its length,
         each on its own line while the block is tall enough; "16:00–17:30 · 1 h 30 min" under the title
         on a shorter one; on one line the title and the most that fits after it; on a block shorter
         than a line, nothing, and its colour says it is there. A long title takes two lines where the
         block has room for them."""
         if drawn.held:
-            super().words(painter, rect, drawn, ink, visible, fill, edge)
-            return
+            return super().words(painter, rect, drawn, ink, visible, fill, edge)
         scale = self.scale(painter.font())
         title_font, small = self.fonts(painter.font())
         if self.wide and rect.height() + 0.5 < QFontMetricsF(title_font).height():
@@ -429,7 +428,8 @@ class ClayPainter(BlockPainter):
         too_short = rect.height() + BETWEEN < (LINE_LEAST * scale + BETWEEN) * self.share
         least = tm.horizontalAdvance(drawn.title.strip()[:3])
         if too_short or width < least:
-            return
+            return []
+        written = []
         paper = fill if fill is not None else self.c("window")
         muted = QColor(mix_oklab(ink.name(), paper.name(), 0.74))
         said = [word for flag, word in ((drawn.done, "Finished"), (drawn.missed, "Missed")) if flag]
@@ -463,6 +463,7 @@ class ClayPainter(BlockPainter):
                 shift = indent if at == 0 else 0
                 box = QRectF(rect.left() + left + shift, y, width - shift, tl)
                 painter.drawText(box, TOP_LEFT, name)
+                written.append(QRectF(box.left(), y, tm.horizontalAdvance(name), tl))
                 y += tl
             painter.setFont(small)
             painter.setPen(muted)
@@ -471,6 +472,7 @@ class ClayPainter(BlockPainter):
                     break
                 shown = sm.elidedText(words, Qt.TextElideMode.ElideRight, width)
                 painter.drawText(QRectF(rect.left() + left, y, width, sl), TOP_LEFT, shown)
+                written.append(QRectF(rect.left() + left, y, sm.horizontalAdvance(shown), sl))
                 y += sl
         else:
             start = short_clock(drawn.span.start)
@@ -484,6 +486,7 @@ class ClayPainter(BlockPainter):
             painter.setFont(title_font)
             painter.setPen(ink)
             painter.drawText(QRectF(at, first, room, tm.height()), TOP_LEFT, name)
+            written.append(QRectF(at, first, tm.horizontalAdvance(name), tm.height()))
             if after:
                 beside = QRectF(
                     at + tm.horizontalAdvance(name) + INLINE_GAP,
@@ -494,9 +497,12 @@ class ClayPainter(BlockPainter):
                 painter.setFont(small)
                 painter.setPen(muted)
                 painter.drawText(beside, TOP_LEFT, after)
+                written.append(beside)
         if homework:
             at_book = QPointF(rect.left() + left, first + (tm.height() - book) / 2)
             self._book(painter, at_book, book, ink, paper, edge, category_icon(drawn.category) or BOOK)
+            written.append(QRectF(at_book.x(), at_book.y(), book, book))
+        return written
 
     @staticmethod
     def _title_lines(title: str, metrics: QFontMetricsF, width: float, indent: float, most: int) -> list[str]:

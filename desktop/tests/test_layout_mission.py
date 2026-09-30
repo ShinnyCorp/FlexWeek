@@ -384,6 +384,44 @@ def test_the_line_for_now_crosses_a_tick_it_lies_on(qapp: QApplication) -> None:
     assert view.scene.tokens["now"] in across
 
 
+def test_the_line_for_now_stops_short_of_a_ticks_icon(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Dinner's tick carries its clock above the mark. At 18:15 the line for now crosses the tick and
+    stops short of the clock, as it stops short of a block's words, and resumes on the mark."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QPainter
+
+    from desktop.native.hours import canvas as canvas_module
+
+    drawn: list[QRectF] = []
+
+    class Pictures(QPainter):
+        def drawPixmap(self, *args):  # noqa: N802
+            if isinstance(args[0], QPointF):
+                drawn.append(self.transform().mapRect(QRectF(args[0], args[1].deviceIndependentSize())))
+            return super().drawPixmap(*args)
+
+    monkeypatch.setattr(canvas_module, "QPainter", Pictures)
+    images = []
+    for minute in ("12:00", "18:15"):
+        hours = shown(qapp, minute=minute).findChild(MissionCanvas, "missionHours")
+        drawn.clear()
+        images.append(hours.grab().toImage())
+    dinner = next(rect for item, rect in hours.drawn(hours.track_for(3)) if item.block_id == "dinner")
+    (icon,) = [box for box in drawn if dinner.contains(box.center())]
+    near = icon.adjusted(-2, -2, 2, 2).toAlignedRect()
+    bare, lit = images
+    changed = [
+        (x, y) for x in range(near.left(), near.right() + 1) for y in range(near.top(), near.bottom() + 1)
+        if bare.pixel(x, y) != lit.pixel(x, y)
+    ]
+    assert changed == [], "the line for now is drawn on the tick's icon"
+    middle = dinner.center().toPoint()
+    across = {lit.pixelColor(x, middle.y()).name() for x in range(middle.x() - 2, middle.x() + 3)}
+    assert hours.painter.c("now").name() in across
+
+
 def test_a_name_that_cannot_fit_is_written_beside_its_block_where_the_lane_is_free(
     qapp: QApplication,
 ) -> None:

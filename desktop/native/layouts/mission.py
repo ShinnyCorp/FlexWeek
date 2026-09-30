@@ -42,6 +42,7 @@ from desktop.native.fonts import at_scale
 from desktop.native.hours.canvas import (
     BOOK,
     HOMEWORK_CATEGORIES,
+    NOW_CLEAR,
     TEXT_LEFT,
     TEXT_RIGHT,
     TEXT_TOP,
@@ -356,12 +357,14 @@ class MissionPainter(BlockPainter):
         if drawn.done or drawn.missed:
             mark = QColor(mix_oklab(mark.name(), self.tokens["surface"], 0.45))
         top = rect.top() + 8
+        icon = []
         if category_icon(drawn.category) is not None:
             size = round(QFontMetricsF(self.fonts(painter.font())[0]).ascent())
             fill, ink, _outline, edge = self.fills(drawn)
             colour = self._book_colour(drawn, ink, fill, edge) or ink
-            self._book(painter, QPointF(rect.center().x() - size / 2, top), size, colour,
-                       category_icon(drawn.category) or BOOK)
+            at = QPointF(rect.center().x() - size / 2, top)
+            self._clear_of_now(painter, QRectF(at.x(), at.y(), size, size))
+            icon = [self._book(painter, at, size, colour, category_icon(drawn.category) or BOOK)]
             top += size + 3
         bar = QRectF(rect.center().x() - 3, top, 6, max(rect.bottom() - 8 - top, 6))
         if drawn.chosen:
@@ -371,7 +374,19 @@ class MissionPainter(BlockPainter):
         shape = QPainterPath()
         shape.addRoundedRect(bar, 3, 3)
         painter.fillPath(shape, mark)
-        self.crossing(painter, rect)
+        self.crossing(painter, rect, icon)
+
+    def _clear_of_now(self, painter: QPainter, icon: QRectF) -> None:
+        """A tick leaves the lane showing round its icon, and the line for now, drawn across the lane
+        before the blocks, ran through the icon there. The lane is laid again round the icon where
+        the line reaches it, so the line stops short of it as it does of a block's words."""
+        track, minute = self.now_track, self.now_minute
+        if track is None or minute is None:
+            return
+        room = icon.adjusted(-NOW_CLEAR, -NOW_CLEAR, NOW_CLEAR, NOW_CLEAR)
+        if room.left() <= track.area.left() + track.offset(minute) <= room.right():
+            # Today's lane, the only one the line is drawn on, washed as `track` washes it.
+            painter.fillRect(room, QColor(mix_oklab(self.tokens["text"], self.tokens["surface"], TODAY_WASH)))
 
     def words(
         self,
@@ -382,18 +397,15 @@ class MissionPainter(BlockPainter):
         visible: QRectF,
         fill: QColor | None = None,
         edge: QColor | None = None,
-    ) -> None:
+    ) -> list[QRectF]:
         if drawn.held or self._whole(painter.font(), rect, drawn, visible):
-            super().words(painter, rect, drawn, ink, visible, fill, edge)
-            return
+            return super().words(painter, rect, drawn, ink, visible, fill, edge)
         if self._beside(painter, rect, drawn):
-            self._bare(painter, rect, drawn, ink, fill, edge)
-            return
+            return self._bare(painter, rect, drawn, ink, fill, edge)
         first = replace(drawn, title=drawn.title.split()[0] if drawn.title.split() else drawn.title)
         if self._whole(painter.font(), rect, first, visible):
-            super().words(painter, rect, first, ink, visible, fill, edge)
-            return
-        self._bare(painter, rect, drawn, ink, fill, edge)
+            return super().words(painter, rect, first, ink, visible, fill, edge)
+        return self._bare(painter, rect, drawn, ink, fill, edge)
 
     def _whole(self, font: QFont, rect: QRectF, drawn: Drawn, visible: QRectF) -> bool:
         """Whether the block says something with no word cut, as `words` would lay it out."""
@@ -418,20 +430,23 @@ class MissionPainter(BlockPainter):
         ink: QColor,
         fill: QColor | None,
         edge: QColor | None,
-    ) -> None:
+    ) -> list[QRectF]:
         """No words: the category keeps its icon at the top of the block."""
         if category_icon(drawn.category) is None:
-            return
+            return []
         size = round(QFontMetricsF(self.fonts(painter.font())[0]).ascent())
-        if rect.width() >= size + 4:
-            colour = self._book_colour(drawn, ink, fill or self.c("window"), edge)
-            at = QPointF(rect.center().x() - size / 2 + 1, rect.top() + 7)
-            self._book(painter, at, size, colour or ink, category_icon(drawn.category) or BOOK)
+        if rect.width() < size + 4:
+            return []
+        colour = self._book_colour(drawn, ink, fill or self.c("window"), edge)
+        at = QPointF(rect.center().x() - size / 2 + 1, rect.top() + 7)
+        return [self._book(painter, at, size, colour or ink, category_icon(drawn.category) or BOOK)]
 
     def _book(self, painter: QPainter, at: QPointF, size: int, colour: QColor,
-              icon_name: str = BOOK) -> None:
+              icon_name: str = BOOK) -> QRectF:
+        """Draws the icon and returns where."""
         ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
         painter.drawPixmap(at, icons.pixmap(icon_name, colour.name(), size, ratio))
+        return QRectF(at.x(), at.y(), size, size)
 
     def _beside(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> bool:
         """The name, and its start if there is room, written beside the block where its row of the
