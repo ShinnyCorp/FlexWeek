@@ -136,11 +136,8 @@ def test_every_look_but_high_contrast_wears_flexweeks_blue_by_default() -> None:
         if palette["accent"] != wanted:
             light, _chroma, hue = oklch_of(palette["accent"])
             wanted_light, _wanted_chroma, wanted_hue = oklch_of(wanted)
-            assert abs(hue - wanted_hue) < 1.5 and 0 < wanted_light - light < 0.08, where
-            fills = [category_paint(key, palette)[0] for key in CATEGORIES]
-            assert contrast(wanted, palette["window"]) < AA_TEXT or min(
-                contrast(wanted, fill) for fill in fills
-            ) < 3.0, where
+            assert abs(hue - wanted_hue) < 1.5 and 0 < wanted_light - light < 0.02, where
+            assert contrast(wanted, palette["window"]) < AA_TEXT, where
         assert contrast(palette["accent"], palette["window"]) >= AA_TEXT, where
     assert resolved_palette("light-frost", False, None)["accent"] == "#3d6fc4"
     assert resolved_palette("slate", False, None)["accent"] == "#3b6cc1"

@@ -526,8 +526,8 @@ def test_a_now_pill_that_reaches_into_a_block_is_whole_over_its_colour(qapp: QAp
     line_y = round(track.area.top() + track.offset(15 * 60 + 55))
     essay = canvas.mapFromGlobal(canvas.block_rect("essay", 0).topLeft())
     assert line_y < essay.y() <= line_y + 5
-    accent = resolved_palette("system", False, None)["accent"]
-    assert QColor(image.pixel(int(track.area.left()) + 20, line_y + 6)).name() == accent
+    shade = resolved_palette("system", False, None)["now"]
+    assert QColor(image.pixel(int(track.area.left()) + 20, line_y + 6)).name() == shade
 
 
 def custom_hours(custom: dict) -> tuple[HoursCanvas, dict]:

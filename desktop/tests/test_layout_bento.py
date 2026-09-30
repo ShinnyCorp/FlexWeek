@@ -314,9 +314,9 @@ def test_the_week_keeps_school_s_time_where_its_times_do_not_fit(
     blocks: list[list[str]] = []
     real = canvas_module._paint_layout
 
-    def spy(painter, lay, *rest) -> None:
+    def spy(painter, lay, *rest, **kwargs) -> None:
         blocks.append([line.text for line in lay])
-        real(painter, lay, *rest)
+        real(painter, lay, *rest, **kwargs)
 
     monkeypatch.setattr(canvas_module, "_paint_layout", spy)
     usual = QFont(qapp.font())

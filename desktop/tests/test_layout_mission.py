@@ -381,7 +381,7 @@ def test_the_line_for_now_crosses_a_tick_it_lies_on(qapp: QApplication) -> None:
     dinner = next(rect for item, rect in hours.drawn(hours.track_for(3)) if item.block_id == "dinner")
     middle = dinner.center().toPoint()
     across = {image.pixelColor(x, middle.y()).name() for x in range(middle.x() - 2, middle.x() + 3)}
-    assert view.scene.tokens["accent"] in across
+    assert view.scene.tokens["now"] in across
 
 
 def test_a_name_that_cannot_fit_is_written_beside_its_block_where_the_lane_is_free(
