@@ -622,17 +622,20 @@ def block_layout(
     shown: tuple[bool, bool] = (True, True),
 ) -> list[Written]:
     """What a block says in `room`, and where: `_block_words`, with the category's icon before the
-    name (`book`) unless the name says more without it. A small block keeps its name: "Piano lesson"
-    rather than the icon and "Piano…". Its colour still says the category."""
+    name (`book`) unless that costs the name or its start time: the name, then the time, then the
+    icon. A small block keeps "Piano lesson", and a half hour keeps "Dinner 18:30", rather than the
+    icon and less. Its colour still says the category."""
+    start = {drawn.times, clock_label(drawn.span.start), short_clock(drawn.span.start)}
 
-    def kept(lay: list[Written]) -> int:
-        return name_kept([line.text for line in lay if line.title], drawn.title)
+    def said(lay: list[Written]) -> tuple[int, bool]:
+        name = name_kept([line.text for line in lay if line.title], drawn.title)
+        return name, any(line.text in start for line in lay if not line.title)
 
     lay = _block_words(drawn, title_font, small, room, tight=tight, wide=wide, book=book, shown=shown)
-    if not book or kept(lay) == 3:
+    if not book:
         return lay
     bare = _block_words(drawn, title_font, small, room, tight=tight, wide=wide, book=False, shown=shown)
-    return bare if kept(bare) > kept(lay) else lay
+    return bare if said(bare) > said(lay) else lay
 
 
 def _block_words(

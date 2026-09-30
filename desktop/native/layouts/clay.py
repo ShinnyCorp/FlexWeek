@@ -442,13 +442,22 @@ class ClayPainter(BlockPainter):
             joined = f"{times} · {extra}"
             under = [joined if self.full and sm.horizontalAdvance(joined) <= width else times]
         most = 2 if under and tall + 0.5 >= 2 * tl + sl * len(under) else 1
+        start = short_clock(drawn.span.start)
+        ways = [f"{times} · {extra}", times, start] if self.full else [start]
 
-        def kept(indent: float) -> int:
+        def after_name(indent: float) -> str:
+            """What follows the name on one line: the most that fits beside it."""
+            whole = tm.horizontalAdvance(drawn.title) + INLINE_GAP
+            return next((way for way in ways if whole + sm.horizontalAdvance(way) <= width - indent), "")
+
+        def said(indent: float) -> tuple[int, bool]:
+            if width < indent + least:
+                return 0, False
             lines = self._title_lines(drawn.title, tm, width, indent, most)
-            return name_kept(lines, drawn.title) if width >= indent + least else 0
+            return name_kept(lines, drawn.title), not under and bool(after_name(indent))
 
-        if homework and kept(0) > kept(indent):
-            # The icon gives way where the name says more without it, as on the shared hours.
+        if homework and said(0) > said(indent):
+            # The icon gives way where it costs the name or its time, as on the shared hours.
             homework, indent = False, 0
         if under:
             names = self._title_lines(drawn.title, tm, width, indent, most)
@@ -475,11 +484,8 @@ class ClayPainter(BlockPainter):
                 written.append(QRectF(rect.left() + left, y, sm.horizontalAdvance(shown), sl))
                 y += sl
         else:
-            start = short_clock(drawn.span.start)
-            ways = [f"{times} · {extra}", times, start] if self.full else [start]
             room = width - indent
-            whole = tm.horizontalAdvance(drawn.title) + INLINE_GAP
-            after = next((way for way in ways if whole + sm.horizontalAdvance(way) <= room), "")
+            after = after_name(indent)
             name = drawn.title if after else word_elide(drawn.title, tm, room)
             first = rect.top() + (rect.height() - tm.height()) / 2
             at = rect.left() + left + indent

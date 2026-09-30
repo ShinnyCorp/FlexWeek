@@ -151,6 +151,114 @@ def test_the_icon_stays_where_it_costs_the_name_nothing(
     assert [line.book for line in lay if line.title] == [True]
 
 
+LIGHT_AND_HIGH_CONTRAST = [None, {"preset": "high-contrast", "knobs": {}}]
+
+
+def _dinner_on_the_week(monkeypatch: pytest.MonkeyPatch, look: dict | None, minutes: int, hour_px: int):
+    """What a meals block of `minutes` at 18:30 writes and draws on a week of `hour_px` pixels an hour."""
+    from PySide6.QtGui import QFont
+
+    from desktop.native import icons
+    from desktop.native.hours import canvas as canvas_module
+    from desktop.native.hours.canvas import BlockPainter
+    from desktop.tests.test_hours_painter import Said, three_days, words_on
+
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    drew: list[str] = []
+    real = icons.pixmap
+
+    def pixmap(name: str, *rest: object):
+        drew.append(name)
+        return real(name, *rest)
+
+    monkeypatch.setattr(icons, "pixmap", pixmap)
+    palette = resolved_palette("system", False, look)
+    dinner = {"id": "dinner", "title": "Dinner", "kind": "locked", "category": "meals", "days": [0],
+              "start": "18:30", "duration_min": minutes}
+    # 132 pixels, the width of a day on the week at 1280 pixels across.
+    canvas = three_days(blocks=(dinner,), palette=palette, hour_px=hour_px, column=132)
+    canvas.set_painter(BlockPainter(palette, look))
+    # The app's own text size at 1280 pixels across: Inter at 13 points, and High contrast's Large.
+    canvas.setFont(QFont("Inter", 15.5 if look else 13))
+    Said.words = []
+    canvas.grab()
+    return words_on(canvas, "dinner", 0), drew
+
+
+@pytest.mark.parametrize("look", LIGHT_AND_HIGH_CONTRAST, ids=["light", "high-contrast"])
+def test_a_half_hour_writes_its_start_time_rather_than_its_icon(
+    qapp, monkeypatch: pytest.MonkeyPatch, look: dict | None,
+) -> None:
+    """Jonathan's decision: the name, then the time, then the icon. A half-hour Dinner at the week's
+    48 pixels an hour has room for "Dinner 18:30" or for the icon and "Dinner", and says the time."""
+    words, icons_drawn = _dinner_on_the_week(monkeypatch, look, 30, 48)
+    assert words == ["Dinner", "18:30"]
+    assert icons_drawn == []
+
+
+@pytest.mark.parametrize("look", LIGHT_AND_HIGH_CONTRAST, ids=["light", "high-contrast"])
+def test_a_block_with_room_for_the_name_the_time_and_the_icon_has_all_three(
+    qapp, monkeypatch: pytest.MonkeyPatch, look: dict | None,
+) -> None:
+    words, icons_drawn = _dinner_on_the_week(monkeypatch, look, 60, 96)
+    assert words[0] == "Dinner" and "18:30–19:30" in words
+    assert icons_drawn == ["clock"]
+
+
+def _half_hour_layout(qapp, width: float):
+    """A one-line half-hour Dinner with the icon offered, in a room `width` wide."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QFont, QFontMetricsF
+
+    from desktop.native.hours.canvas import Drawn, block_layout
+    from desktop.native.hours.geometry import Span
+
+    font = QFont(qapp.font())
+    metrics = QFontMetricsF(font)
+    drawn = Drawn("dinner", "Dinner", "meals", False, Span(0, 18 * 60 + 30, 19 * 60), 0, 1)
+    room = QRectF(0, 0, width, metrics.lineSpacing() + 1)
+    return block_layout(drawn, font, font, room, book=True)
+
+
+def _half_hour_widths(qapp) -> tuple[float, float, float]:
+    """The room "Dinner 18:30" takes, "Dinner" alone, and the icon."""
+    from PySide6.QtGui import QFont, QFontMetricsF
+
+    from desktop.native.hours.canvas import INLINE_GAP, _book_room
+
+    metrics = QFontMetricsF(QFont(qapp.font()))
+    name = metrics.horizontalAdvance("Dinner")
+    return name + INLINE_GAP + metrics.horizontalAdvance("18:30"), name, _book_room(metrics)
+
+
+def test_a_line_with_room_for_the_name_and_its_time_but_not_the_icon_too_says_the_time(qapp) -> None:
+    both, _name, _icon = _half_hour_widths(qapp)
+    lay = _half_hour_layout(qapp, both + 1)
+    assert [line.text for line in lay] == ["Dinner", "18:30"]
+    assert not any(line.book for line in lay)
+
+
+def test_a_line_with_room_for_the_name_and_the_icon_but_no_time_keeps_the_icon(qapp) -> None:
+    _both, name, icon = _half_hour_widths(qapp)
+    lay = _half_hour_layout(qapp, name + icon + 1)
+    assert [line.text for line in lay] == ["Dinner"]
+    assert [line.book for line in lay] == [True]
+
+
+def test_a_line_with_room_for_the_name_alone_writes_the_name_alone(qapp) -> None:
+    _both, name, _icon = _half_hour_widths(qapp)
+    lay = _half_hour_layout(qapp, name + 1)
+    assert [line.text for line in lay] == ["Dinner"]
+    assert not any(line.book for line in lay)
+
+
+def test_a_line_with_room_for_the_name_the_time_and_the_icon_has_all_three(qapp) -> None:
+    both, _name, icon = _half_hour_widths(qapp)
+    lay = _half_hour_layout(qapp, both + icon + 1)
+    assert [line.text for line in lay] == ["Dinner", "18:30"]
+    assert lay[0].book
+
+
 @pytest.mark.parametrize(("category", "wanted"), [
     ("class", "house"), ("assignments", "book-open"), ("study", "pencil"),
     ("exercise", "target"), ("extra", "sparkles"), ("meals", "clock"), ("sleep", "moon"),
