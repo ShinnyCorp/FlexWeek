@@ -67,7 +67,15 @@ from backend.models import due_is_timed, due_sort_key
 from desktop.native import icons
 from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS, category_title
 from desktop.native.fonts import at_scale, load_fonts, time_font, weighted
-from desktop.native.hours.canvas import EDGE_WIDTH, TEXT_TOP, BlockPainter, Drawn, HoursCanvas, fit_lines
+from desktop.native.hours.canvas import (
+    EDGE_WIDTH,
+    TEXT_TOP,
+    BlockPainter,
+    Drawn,
+    HoursCanvas,
+    Started,
+    fit_lines,
+)
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.classic import open_hours
 from desktop.native.hours.geometry import FIRST, LAST, Axis, LinearTrack
@@ -402,10 +410,11 @@ def due_heading(due: str | None, week: WeekModel, today: int | None) -> str:
 
 def deadlines(week: WeekModel, today: int | None) -> list[DueGroup]:
     """Every homework still to do, placed or not, under its deadline, the soonest first. Placed work
-    says when; the rest says it is not placed yet."""
+    says when it is placed, in those words, so the time is not read as its deadline; the rest says it
+    is not placed yet."""
     groups: dict[str, list[tuple[tuple, Deadline]]] = {}
     for item in week.open_work():
-        when = f"{DAYS[item.day]} {clock_label(item.start)}"
+        when = f"placed {DAYS[item.day]} {clock_label(item.start)}"
         line = Deadline(item.title, short_length(item.minutes), when, item.block_id)
         groups.setdefault(item.due or "", []).append(((0, item.day, item.start), line))
     for index, waiting in enumerate(week.waiting):
@@ -498,14 +507,6 @@ def category_minutes(items: tuple[Occurrence, ...]) -> list[tuple[str, int]]:
 
 def free_from(items: tuple[Occurrence, ...], start: int) -> list[tuple[int, int]]:
     return [(a, b) for a, b in free_stretches(items, start, FREE_UNTIL) if b - a >= FREE_LEAST]
-
-
-class Started(Drawn):
-    """A block on the week, whose time is its start alone: "School 08:00", as the mock-up writes it."""
-
-    @property
-    def times(self) -> str:
-        return clock_label(self.span.start)
 
 
 class RetroPainter(BlockPainter):

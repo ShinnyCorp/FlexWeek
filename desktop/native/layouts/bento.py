@@ -38,7 +38,15 @@ from backend.models import due_sort_key, parse_due
 from desktop.native import icons
 from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS
 from desktop.native.fonts import at_scale, time_font
-from desktop.native.hours.canvas import HOMEWORK_CATEGORIES, Drawn, HoursCanvas, word_elide
+from desktop.native.hours.canvas import (
+    HOMEWORK_CATEGORIES,
+    TEXT_LEFT,
+    TEXT_RIGHT,
+    Drawn,
+    HoursCanvas,
+    Started,
+    word_elide,
+)
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.classic import ClassicPainter, Share, day_shares, open_hours
 from desktop.native.hours.geometry import FIRST, LAST, LinearTrack
@@ -207,16 +215,17 @@ def due_soon(week: WeekModel) -> list[Due]:
 
 
 def time_left(due: str, today: date, minute: int) -> tuple[str, str, bool]:
-    """Due soon's figure: how long is left, what it runs until, and whether it has run out."""
+    """Due soon's figure: how long is left, when it is due, and whether it has run out. The line says
+    "due", so it is never read as a time the homework is placed at, which its row says."""
     day, by = parse_due(due)
     days = (day - today).days
     name = f"{DAY_FULL[day.weekday()]} {day.day}"
     if days < 0 or (days == 0 and by <= minute):
         return "Past due", f"was due {name}" if days else f"was due at {clock_label(by)}", True
     if days == 0:
-        until = "until the end of today" if by == END_OF_DAY else f"until {clock_label(by)}"
+        until = "left · due by the end of today" if by == END_OF_DAY else f"left · due at {clock_label(by)}"
         return length_label(by - minute), until, False
-    return plural(days, "day"), f"until {name}", False
+    return plural(days, "day"), f"left · due {name}", False
 
 
 def due_here(week: WeekModel, day: int) -> int:
@@ -1129,6 +1138,24 @@ class BentoPainter(ClassicPainter):
         title = at_scale(base, "caption", scale, WEIGHT_STRONG)
         return title, time_font(at_scale(base, "caption", scale, WEIGHT_REGULAR))
 
+    def words(
+        self,
+        painter: QPainter,
+        rect: QRectF,
+        drawn: Drawn,
+        ink: QColor,
+        visible: QRectF,
+        fill: QColor | None = None,
+        edge: QColor | None = None,
+    ) -> None:
+        """A week's column too narrow for a block's times says when it starts, as Retro's week does,
+        rather than its name alone: "School" and "08:00", not "School"."""
+        if not self.wide and not drawn.held:
+            small = QFontMetricsF(self.fonts(painter.font())[1])
+            if small.horizontalAdvance(drawn.times) > rect.width() - TEXT_LEFT - TEXT_RIGHT:
+                drawn = Started(**vars(drawn))
+        super().words(painter, rect, drawn, ink, visible, fill, edge)
+
 
 class BentoCanvas(HoursCanvas):
     """Hours whose days are named by buttons above them, not on the canvas: the week's day names, or
@@ -1624,7 +1651,7 @@ class BentoView(LayoutView):
 
     def _due_row(self, scene: Scene, index: int, due: Due) -> Row:
         px = scene.px
-        where = f"{DAYS[due.at[0]]} {clock_label(due.at[1])}" if due.at is not None else "Not placed"
+        where = f"placed {DAYS[due.at[0]]} {clock_label(due.at[1])}" if due.at is not None else "Not placed"
         meta = f"{short_length(due.minutes)} · {where}"
         row = Row()
         row.setObjectName(f"bentoDue{index}")

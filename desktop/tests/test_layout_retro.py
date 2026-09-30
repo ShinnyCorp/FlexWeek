@@ -35,7 +35,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from shiboken6 import isValid
 
     from desktop.native.fonts import load_fonts
-    from desktop.native.hours.canvas import Drawn, Written, cuts_a_word
+    from desktop.native.hours.canvas import Drawn, Started, Written, cuts_a_word
     from desktop.native.hours.chips import TrayChip
     from desktop.native.hours.geometry import Span
     from desktop.native.hours.hand import Hand, Verdict
@@ -49,7 +49,6 @@ if importlib.util.find_spec("PySide6") is not None:
         Mirror,
         RetroPainter,
         RetroView,
-        Started,
         Zoom,
         arrange,
         deadlines,
@@ -440,7 +439,8 @@ def test_every_weekday_and_the_tray_are_reachable_when_the_desk_is_narrow(qapp: 
 def test_notepad_lists_the_homework_under_its_deadline_with_its_length_and_time(qapp: QApplication) -> None:
     """Chem lab report is due today and placed at 20:00 for 1 h 30; the history essay is due tomorrow at
     21:00 and placed at 18:45 for an hour; the poster, due Sunday at 20:00, has no time yet. Each line's
-    length and time sit in columns as wide as the widest."""
+    length and time sit in columns as wide as the widest. The time a homework is placed at says so, so
+    it is never read as when it is due, which the heading above it says."""
     view = shown(qapp)
     headings = [label.text() for label in view.findChildren(QLabel, "retroNoteDue")]
     assert headings == [
@@ -450,8 +450,8 @@ def test_notepad_lists_the_homework_under_its_deadline_with_its_length_and_time(
     ]
     rows = [view.findChild(QPushButton, name) for name in ("retroNote0", "retroNote1", "retroNoteWaiting0")]
     assert [row.lines for row in rows] == [
-        ["Chem-1    1 h 30  Thu 20:00"],
-        ["Essay-1   1 h     Thu 18:45"],
+        ["Chem-1    1 h 30  placed Thu 20:00"],
+        ["Essay-1   1 h     placed Thu 18:45"],
         [f"Poster-1  2 h     {NOT_PLACED}"],
     ]
     chip = view.findChild(TrayChip, "retroNoteWaiting0")
@@ -497,7 +497,8 @@ def test_a_notepad_line_short_of_room_puts_its_length_and_time_under_its_title(q
     essay = next(row for row in view.findChildren(QPushButton) if row.objectName() == "retroNote1")
     assert len(essay.lines) == 2, essay.lines
     assert "History essay on the causes of the war".startswith(essay.lines[0].removesuffix("…"))
-    assert essay.lines[1].split() == ["1", "h", "Thu", "18:45"] and essay.lines[1].startswith("   ")
+    # Under the title, in from the edge; "placed" leaves this narrow page no title column.
+    assert essay.lines[1].split() == ["1", "h", "placed", "Thu", "18:45"] and essay.lines[1].startswith("  ")
     for row in view.findChildren(QPushButton):
         if row.property("role") != "note":
             continue
