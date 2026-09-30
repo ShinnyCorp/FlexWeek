@@ -301,6 +301,9 @@ class ClayPainter(BlockPainter):
     the category's bar just inside their start edge, and the time now as an accent line from a dot,
     its time on a pill. The card in front says each block's times and length; a neighbour its times."""
 
+    # The pill sits left of the hours, where their labels are: an hour label under it is left out.
+    now_in_gutter = True
+
     def __init__(
         self, tokens: dict[str, str], *, full: bool = False, wide: bool = False, share: float = 1.0
     ) -> None:

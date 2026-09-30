@@ -249,6 +249,48 @@ def test_the_now_pill_stays_outside_the_blocks(qapp: QApplication, design: str) 
         paint.end()
 
 
+def test_clays_now_pill_takes_the_place_of_the_hour_label_under_it(qapp: QApplication) -> None:
+    """The pill left of the hours lies where their labels are. At 10:20 on hours 40 pixels each, the
+    10:00 label was written and the pill drawn over most of it; 11:00, clear of the pill, stays."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QFont, QImage, QPainter
+
+    from desktop.native.hours.geometry import LinearTrack
+    from desktop.native.layouts.clay import ClayPainter
+    from desktop.native.layouts.registry import MATCH, tokens_for
+    from desktop.native.look import resolved_palette
+    from desktop.native.weekmodel import set_clock_24h
+
+    painting = ClayPainter(tokens_for("clay", MATCH, resolved_palette("light-frost", False, None)), full=True)
+    painting.now_minute = 10 * 60 + 20
+    pills: list[QRectF] = []
+    labels: dict[str, QRectF] = {}
+
+    class Marks(QPainter):
+        def drawRoundedRect(self, box, *args):  # noqa: N802
+            pills.append(QRectF(box))
+            return super().drawRoundedRect(box, *args)
+
+        def drawText(self, box, flags, words):  # noqa: N802
+            labels[words] = QRectF(box)
+            return super().drawText(box, flags, words)
+
+    track = LinearTrack(0, QRectF(120, 20, 600, 480), first=8 * 60, last=20 * 60)
+    picture = QImage(800, 520, QImage.Format.Format_ARGB32)
+    paint = Marks(picture)
+    paint.setFont(QFont("Inter", 12))
+    set_clock_24h(True)
+    try:
+        painting.hour_labels(paint, track, 56)
+        hours = dict(labels)
+        painting.now(paint, track, painting.now_minute)
+    finally:
+        paint.end()
+    assert len(pills) == 1 and "11:00" in hours
+    under = [words for words, box in hours.items() if box.intersects(pills[0])]
+    assert not under, f"the pill at {pills[0]} is drawn over {under}"
+
+
 def test_running_school_has_no_agenda_now_row(qapp: QApplication, window: NativeWindow) -> None:
     from desktop.native.hours.classic import ClassicDay
 

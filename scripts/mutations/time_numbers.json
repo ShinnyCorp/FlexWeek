@@ -91,6 +91,13 @@
     "test": "desktop/tests/test_time_numbers.py::test_the_now_pill_stays_outside_the_blocks[clay]"
   },
   {
+    "name": "Clay writes an hour label under its Now pill",
+    "file": "desktop/native/layouts/clay.py",
+    "old": "an hour label under it is left out.\n    now_in_gutter = True\n",
+    "new": "an hour label under it is left out.\n    now_in_gutter = False\n",
+    "test": "desktop/tests/test_time_numbers.py::test_clays_now_pill_takes_the_place_of_the_hour_label_under_it"
+  },
+  {
     "name": "Agenda adds a misleading Now row inside School",
     "file": "desktop/native/hours/classic.py",
     "old": "        self.rows = rows\n",
