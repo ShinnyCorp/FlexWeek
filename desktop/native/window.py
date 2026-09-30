@@ -115,6 +115,7 @@ from desktop.native.reuse import (
     week_label,
 )
 from desktop.native.settings import (
+    SECTIONS,
     AboutDialog,
     AccountDialog,
     AlarmRingDialog,
@@ -754,12 +755,12 @@ class NativeWindow(QMainWindow):
         keep_row = QHBoxLayout()
         self.recovery_copy = QPushButton(RECOVERY_COPY)
         self.recovery_copy.setObjectName("recoveryCopy")
-        self.recovery_copy.setProperty("quiet", True)
+        self.recovery_copy.setProperty("outline", True)
         self.recovery_copy.clicked.connect(self._copy_recovery_codes)
         keep_row.addWidget(self.recovery_copy)
         self.recovery_save = QPushButton(RECOVERY_SAVE)
         self.recovery_save.setObjectName("recoverySave")
-        self.recovery_save.setProperty("quiet", True)
+        self.recovery_save.setProperty("outline", True)
         self.recovery_save.clicked.connect(self._save_recovery_codes)
         keep_row.addWidget(self.recovery_save)
         keep_row.addStretch(1)
@@ -2797,6 +2798,13 @@ class NativeWindow(QMainWindow):
             Command("settingsGear", "Settings", "", "Go to", "settings"),
             Command("helpButton", "Help", MORE_TIPS["helpButton"], "Go to", "circle-question-mark"),
             Command("solveButton", plan, SUGGEST_TIP if manual else PLAN_TIP, "Homework", "sparkles"),
+            # Settings' pages by what they hold: "look" found nothing (Grok Bot's 0.17.0 audit, X1).
+            Command("settings:0", "Look and colours", "Look, accent and design", "Settings", "palette"),
+            Command("customise", "Customise look…", "Make a look of your own", "Settings", "swatch-book"),
+            Command("settings:1", "Planning settings", "How homework gets a time", "Settings", "calendar"),
+            Command("settings:2", "Focus settings", "The focus timer's lengths", "Settings", "timer"),
+            Command("settings:3", "Alerts", "Reminders, alarms and sounds", "Settings", "bell"),
+            Command("settings:4", "This computer", "Account, setup and updates", "Settings", "laptop"),
         ]
         homework = sorted(
             self.session.assignments.values(),
@@ -2831,6 +2839,10 @@ class NativeWindow(QMainWindow):
             self._enter_day()
         elif key == "focus":
             self._open_focus_screen()
+        elif key.startswith("settings:") or key == "customise":
+            self._open_settings_at(0 if key == "customise" else int(key.removeprefix("settings:")))
+            if key == "customise" and self._settings is not None:
+                self._settings._open_customise()
         else:
             button = self.findChild(QPushButton, key)
             if button is not None:
@@ -2992,6 +3004,12 @@ class NativeWindow(QMainWindow):
             self.session._say("This item has no Spotify share link.")
             return
         open_in_app(url)
+
+    def _open_settings_at(self, section: int) -> None:
+        """Settings, open at one of its SECTIONS."""
+        self._open_settings()
+        if self._settings is not None and 0 <= section < len(SECTIONS):
+            self._settings.nav.setCurrentRow(section)
 
     def _open_settings(self) -> None:
         """Settings fill the window in place of the week. Every change shows the moment it is made;

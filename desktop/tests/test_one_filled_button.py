@@ -143,12 +143,13 @@ def test_every_dialog_has_at_most_one_filled_button(qapp: QApplication, pack: st
 def test_the_filled_button_is_the_answer(qapp: QApplication) -> None:
     """The ones that were loud before are plain now, and the answer beside them is still filled."""
     homework = widgets.HomeworkDialog(None, HOMEWORK, "2026-09-21")
-    assert homework.more_details.property("quiet") is True
+    assert homework.more_details.property("outline") is True, "outlined: as words alone it was not seen"
     routines = widgets.RoutineDialog(None, ROUTINE, [school()], "2026-09-21")
     names = {button.objectName(): button for button in routines.findChildren(QPushButton)}
     assert not names["saveRoutine"].property("quiet")
-    for name in ("applyRoutine", "deleteRoutine", "closeRoutines"):
+    for name in ("applyRoutine", "deleteRoutine"):
         assert names[name].property("quiet") is True, name
+    assert names["closeRoutines"].property("outline") is True
     late = widgets.LateDialog(None, "School")
     assert late.findChild(QPushButton, "latePreview").property("quiet") is True
     assert not late.accept_button.property("quiet")

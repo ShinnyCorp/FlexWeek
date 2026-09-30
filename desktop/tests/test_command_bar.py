@@ -122,10 +122,12 @@ def test_ctrl_k_opens_a_centred_box_listing_what_can_be_done(
     assert box.width() == BAR_WIDTH
     assert abs(box.center().x() - window.width() // 2) <= 1
     assert box.top() < window.height() / 3, "the box sits in the top third"
-    assert bar.shown_groups() == ["Add", "Go to", "Homework"]
+    assert bar.shown_groups() == ["Add", "Go to", "Settings", "Homework"]
     assert bar.shown_words() == [
         "Add homework", "Add fixed time", "School hours",
         "Day", "Week", "Month", "My day", "Focus screen", "Settings", "Help",
+        "Look and colours", "Customise look…", "Planning settings", "Focus settings", "Alerts",
+        "This computer",
         "Plan my homework", "History essay", "Math worksheet",
     ]
     QTest.keyClick(bar.input, Qt.Key.Key_Escape)
@@ -187,7 +189,7 @@ def test_a_click_outside_the_box_closes_it_and_nothing_matching_runs_nothing(
 def test_a_click_on_a_row_runs_it(qapp: QApplication, window: NativeWindow) -> None:
     open_bar(window)
     bar = window.command_bar
-    QTest.keyClicks(bar.input, "focus")
+    QTest.keyClicks(bar.input, "focus scr")
     assert bar.shown_words() == ["Focus screen"]
     rows = [bar.list.item(row) for row in range(bar.list.count())]
     focus = next(item for item in rows if item.text() == "Focus screen")
@@ -279,3 +281,23 @@ def test_the_window_is_dimmed_40_percent_and_the_box_is_lifted_with_the_large_sh
     assert bar.graphicsEffect() is not None
     wait_until(qapp, lambda: bar.graphicsEffect() is None)
     assert bar.box.graphicsEffect() is shadow, "the fade leaves the box's shadow alone"
+
+
+def test_look_finds_the_look_and_opens_settings_where_it_is(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Grok Bot's 0.17.0 audit (X1): "look" found nothing in Ctrl+K."""
+    open_bar(window)
+    bar = window.command_bar
+    QTest.keyClicks(bar.input, "look")
+    assert bar.shown_words()[:2] == ["Look and colours", "Customise look…"]
+    QTest.keyClick(bar.input, Qt.Key.Key_Return)
+    settings = window._settings
+    assert settings is not None and window._stack.currentWidget() is settings
+    assert settings.nav.currentRow() == 0, "Appearance, where Colours comes first"
+    settings.close_page()
+    open_bar(window)
+    QTest.keyClicks(bar.input, "alerts")
+    QTest.keyClick(bar.input, Qt.Key.Key_Return)
+    assert window._settings.nav.currentRow() == 3
+    window._settings.close_page()

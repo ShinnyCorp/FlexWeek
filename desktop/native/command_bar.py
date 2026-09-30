@@ -2,7 +2,7 @@
 
 The bar only lists what can be done and says which one was chosen; the window does it, the same way
 its buttons do. It is drawn as decision 21 of 0.17 has it: the window dimmed 40 % behind it, the box a
-sheet with the large shadow, and its rows grouped under muted labels (Add, Go to, Homework), each
+sheet with the large shadow, and its rows grouped under muted labels (Add, Go to, Settings, Homework), each
 with an icon and, where it has one, its key on the right.
 """
 
@@ -47,7 +47,7 @@ ROW_PX = 36
 LABEL_PX = 28
 PLACEHOLDER = "Type a command or the name of your homework"
 NOTHING_MATCHES = "Nothing matches. Try fewer letters."
-GROUPS = ("Add", "Go to", "Homework")
+GROUPS = ("Add", "Go to", "Settings", "Homework")
 KEY_ROLE = Qt.ItemDataRole.UserRole
 KEYS_ROLE = Qt.ItemDataRole.UserRole + 1
 

@@ -172,7 +172,10 @@ SPOTIFY_TONE_NOTE = (
 # What only Today's app reads. Every other design has its own colours and shapes, so these changed
 # nothing there (measured 2026-09-21: not the view, not the top bar, apart from Corners on the bar).
 TODAYS_APP_KNOBS = ("surface", "corners", "blocks")
-FINE_TUNE_LOOK = "Fine-tune this look"
+# What the switch shows, so it does not read as the design's own "more options" (Grok Bot's 0.17.0
+# audit, T33: "Fine-tune this design" and "Fine-tune this look" read as one toggle).
+FINE_TUNE_LOOK = "Show shape, spacing and type"
+OWN_LOOK = "Your own look"
 ABOUT_MIN_WIDTH = 420
 HELP_MIN_WIDTH = 600
 # Screens on the left and shortcuts on the right, over a window at least this wide.
@@ -247,11 +250,12 @@ def _note(words: str, name: str) -> QLabel:
 
 
 def _page_button(words: str, name: str) -> QPushButton:
-    """A button that opens something else. Plain and as wide as its words, since Done is the one
-    filled button in Settings; stretched and filled, each was the loudest thing on its page."""
+    """A button that opens something else or acts on the side. Outlined and as wide as its words, since
+    Done is the one filled button in Settings; stretched and filled, each was the loudest thing on its
+    page, and as words alone none looked like a button."""
     made = QPushButton(words)
     made.setObjectName(name)
-    made.setProperty("quiet", True)
+    made.setProperty("outline", True)
     made.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     return made
 
@@ -433,6 +437,9 @@ class FocusPanel(QWidget):
         # timer is one line and a way to that screen.
         self.screen = QPushButton("Focus screen")
         self.screen.setObjectName("focusScreenOpen")
+        # Outlined: filled, and full width in the rail, it was louder than Add (Grok Bot's 0.17.0
+        # audit, X8).
+        self.screen.setProperty("outline", True)
         self.screen.setToolTip("Show the timer on its own, large. F")
         self.screen.clicked.connect(self.screen_requested.emit)
         status.insertWidget(status.count() - 1, self.screen)
@@ -489,7 +496,6 @@ class FocusPanel(QWidget):
                 row.setDirection(direction)
         self.layout().setContentsMargins(QMargins() if compact else self._margins)
         self._compact = compact
-        self.note.setVisible(not compact or self.finished.isVisibleTo(self))
 
     def show_now_next(self, text: str) -> None:
         self.now_next.setText(text)
@@ -516,9 +522,15 @@ class FocusPanel(QWidget):
             widget.setVisible(ended)
         self.card.setVisible(state is not None)
         self.note.setText(FOCUS_ENDED_NOTE if ended else FOCUS_RUNNING_NOTE)
-        # In the rail a running timer is its name, time and way to the focus screen; what to do next
-        # is said once it ends.
-        self.note.setVisible(ended or not self._compact)
+        # A running timer is one line: its name, time and way to the focus screen. Now and Next, Quick
+        # focus and the sentence on what to do made three strips over the week (Grok Bot's 0.17.0
+        # audit, X3); the sentence is the time's tooltip, and what to do next is said once it ends.
+        running = state is not None and not ended
+        self.note.setVisible(ended)
+        self.time.setToolTip(FOCUS_RUNNING_NOTE if running else "")
+        self.quick.setVisible(not running)
+        if running:
+            self.now_next.setVisible(False)
         self.more.setEnabled(bool(choices))
         for label in (self.task, self.phase, self.time):
             label.setVisible(bool(label.text()))
@@ -702,18 +714,20 @@ class SettingsPage(QWidget):
         main_section, day_section = self.layout_sections
         self.colours_card, appear = _card("Colours")
         appear.addRow("Look", self.look)
-        appear.addRow(CUSTOMISE, self.customise)
+        appear.addRow(OWN_LOOK, self.customise)
         appear.addRow("Accent", self.accent)
         appear.addRow("", self.accent_note)
         appear.addRow(self.accent_chips)
+        appear.addRow(self.fine_tune)
+        appear.addRow(self.fine_host)
         self._colours_form = appear
         self._show_look_settings()
         everywhere_card, everywhere = _card("Every screen")
         everywhere.addRow("Animations", self.motion)
-        everywhere.addRow(self.fine_tune)
-        everywhere.addRow(self.fine_host)
+        # Colours first: it is what most students change, and below every design card it was not found
+        # (Grok Bot's 0.17.0 audit, X1 and A11).
         appearance = _section_page(
-            "Appearance & layout", (main_section, self.colours_card, day_section, everywhere_card)
+            "Appearance & layout", (self.colours_card, main_section, day_section, everywhere_card)
         )
         planning_card, planning_form = _card("How homework gets a time")
         self.planning_style = QButtonGroup(planning_card)
