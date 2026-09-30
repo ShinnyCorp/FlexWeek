@@ -242,7 +242,10 @@ def test_a_days_name_opens_it_whichever_way_its_time_runs(qapp: QApplication) ->
         (2, stage.view.across),
         (3, stage.view.across),
     ):
-        at = canvas.day_name(day)
+        try:
+            at = canvas.day_name(day)
+        except LookupError as error:
+            raise AssertionError(f"day {day} has no name to click: {error}") from None
         QTest.mouseClick(
             canvas, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, canvas.mapFromGlobal(at)
         )

@@ -225,7 +225,7 @@ def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_
     ]
     assert dialog.windowTitle() == "About FlexWeek"
     logo = dialog.findChild(QLabel, "aboutLogo")
-    assert not logo.pixmap().isNull(), "the logo beside the name"
+    assert logo is not None and not logo.pixmap().isNull(), "the logo beside the name"
     assert logo.pixmap().deviceIndependentSize().toSize().width() == settings.ABOUT_LOGO_PX
     opened: list[QUrl] = []
     monkeypatch.setattr(QDesktopServices, "openUrl", staticmethod(lambda url: opened.append(url) or True))

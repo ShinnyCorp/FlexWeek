@@ -191,10 +191,13 @@ def test_unknown_settings_and_bad_values_are_dropped_and_said_never_a_crash() ->
         {"base": "light", "categories": "all"},
         {"base": "light", "corners": float("nan")},
     ):
-        sanitize_custom(broken)
-        kept = sanitize_look({"preset": "default", "custom": broken}).get("custom")
+        try:
+            sanitize_custom(broken)
+            kept = sanitize_look({"preset": "default", "custom": broken}).get("custom")
+            resolved_palette("system", False, sanitize_look({"custom": broken}))
+        except Exception as error:
+            raise AssertionError(f"{broken!r} crashed with {error!r}") from None
         assert kept in (None, {"base": "light"})
-        resolved_palette("system", False, sanitize_look({"custom": broken}))
 
 
 def fixed_until_it_reads(custom: dict) -> dict:
@@ -229,7 +232,8 @@ def test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_t
             assert oklch_of(palette["text"])[0] < oklch_of("#9a9a9a")[0]
     # Muted text can be set too, and its fix moves it and not the text.
     quiet = {"base": "light", "colours": {"muted": "#c0c0c0"}}
-    problem = next(p for p in readability(quiet) if p.words == "Muted text on cards")
+    problem = next((p for p in readability(quiet) if p.words == "Muted text on cards"), None)
+    assert problem is not None, "a muted colour set on its own is not checked for reading"
     assert problem.field == ("colours", "muted")
     assert resolved_palette("system", False, worn(apply_fix(quiet, problem)))["text"] == "#111827"
     ended = fixed_until_it_reads(custom)

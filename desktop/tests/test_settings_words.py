@@ -108,6 +108,11 @@ def test_appearance_opens_on_colours_then_the_designs_and_ends_with_animations(
     )
     assert [label.text() for label in shown[:3]] == ["Appearance & layout", "Colours", "Look"]
     assert not any("has its own colours" in label.text() for label in shown)
+    notes = [label.text() for label in appearance.findChildren(QLabel, "settingsCardNote")]
+    design_line = (
+        "A design is how FlexWeek lays out your week. Your blocks and homework are the same in every one."
+    )
+    assert notes.count(design_line) == 1, "Main view says once what a design is"
     order = [
         dialog.look,
         dialog.fine_tune,
