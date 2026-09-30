@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QToolTip,
     QWidget,
+    QWidgetAction,
 )
 
 from desktop.native import settings
@@ -129,7 +130,9 @@ def test_the_add_menu_says_what_each_way_to_add_does(
 
 
 def named(text: str) -> str:
-    """Copy day and Paste name the selected day, which is today."""
+    """Copy day and Paste name the selected day, which is today. What follows a tab is a note on the
+    row, as Unfinished's reason, not its name."""
+    text = text.partition("\t")[0]
     for verb in ("Copy ", "Paste into "):
         if text.startswith(verb):
             return verb + "(the selected day)"
@@ -150,7 +153,7 @@ def test_the_plan_button_and_the_plan_review_say_what_they_do(
 
 
 def unfinished_action(window: NativeWindow) -> QAction:  # noqa: F811
-    return next(action for action in actions(opened_more(window)) if action.text() == "Unfinished")
+    return next(action for action in actions(opened_more(window)) if named(action.text()) == "Unfinished")
 
 
 def test_unfinished_with_nothing_unfinished_is_greyed_and_says_why(
@@ -162,6 +165,8 @@ def test_unfinished_with_nothing_unfinished_is_greyed_and_says_why(
     action = unfinished_action(window)
     assert action.isEnabled() is False
     assert action.toolTip() == NOTHING_UNFINISHED
+    # On the row itself too, for anyone who does not wait for a tooltip (T23 of the 0.17.0 audit).
+    assert action.text() == "Unfinished\tNone left"
     window._show_unfinished()
     assert window.toast.text() == NOTHING_UNFINISHED
     assert not window.unfinished_panel.isVisibleTo(window)
@@ -460,6 +465,10 @@ def test_every_row_under_more_has_an_icon_and_log_out_stands_apart(
     assert edits.text() == "Undo, copy and save"
     assert [action.text() for action in edits.menu().actions()][:2] == ["Undo", "Redo"]
     assert all(action.property(ICON) for action in edits.menu().actions())
-    rows = [action.text() or "---" for action in menu.actions() if action.isVisible() and not action.menu()]
+    rows = [
+        action.text() or "---"
+        for action in menu.actions()
+        if action.isVisible() and not action.menu() and not isinstance(action, QWidgetAction)
+    ]
     assert rows[-5:] == ["---", "Help", "About FlexWeek", "---", "Log out"]
     assert all(action.property(ICON) for action in window.add_menu.actions()[:3]), "the Add menu's three"

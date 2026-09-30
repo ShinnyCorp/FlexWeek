@@ -193,6 +193,11 @@ QUICK_FOCUS_TIP = (
 )
 # The More menu's submenu, named for what it holds (decision 22 of 0.17); it was "Advanced".
 EDIT_MENU = "Undo, copy and save"
+EDIT_HEADING = "Edit"
+HELP_HEADING = "Help and info"
+ACCOUNT_HEADING = "Account"
+# Unfinished's row while there is nothing under it, beside its greyed name.
+NONE_UNFINISHED = "None left"
 # The icon on each row of More, by the object name of the button the row presses.
 MORE_ICONS = {
     "runningLate": "clock",
@@ -1008,6 +1013,9 @@ class NativeWindow(QMainWindow):
                 self._more_pairs.append((action, button))
                 if button is spotify:
                     self._spotify_action = action
+        # Every group under a heading of its own; only Planning had one (T23 of the 0.17.0 audit).
+        more_menu.addSeparator()
+        add_heading(more_menu, EDIT_HEADING)
         advanced_menu = more_menu.add_menu(EDIT_MENU, "pencil")
         for button in self._advanced:
             if button.parent() is not overflow:
@@ -1022,6 +1030,7 @@ class NativeWindow(QMainWindow):
         about.setObjectName("aboutButton")
         about.clicked.connect(self._open_about)
         more_menu.addSeparator()
+        add_heading(more_menu, HELP_HEADING)
         for button in (help_button, about, sign_out):
             if button.parent() is not overflow:
                 button.setParent(overflow)
@@ -1029,6 +1038,7 @@ class NativeWindow(QMainWindow):
             if button is sign_out:
                 # Set apart from Help and About: leaving is not one of the things to look up.
                 more_menu.addSeparator()
+                add_heading(more_menu, ACCOUNT_HEADING)
             action = mark(more_menu.addAction(button.text()), MORE_ICONS[button.objectName()])
             action.triggered.connect(button.click)
             self._more_pairs.append((action, button))
@@ -1739,8 +1749,11 @@ class NativeWindow(QMainWindow):
             unfinished.setEnabled(not self.session.busy and bool(self.session.unfinished()))
         for action, button in self._more_pairs:
             action.setEnabled(button.isEnabled())
-            action.setText(button.text())
-            action.setToolTip(self._more_tip(button.objectName(), button.isEnabled()))
+            tip = self._more_tip(button.objectName(), button.isEnabled())
+            # Greyed with nothing to show, Unfinished says so on its row, not only in a tooltip (T23).
+            said = f"\t{NONE_UNFINISHED}" if tip == NOTHING_UNFINISHED else ""
+            action.setText(button.text() + said)
+            action.setToolTip(tip)
         if self._spotify_action is not None:
             self._spotify_action.setVisible(bool(self.session.spotify_url()))
 
