@@ -615,16 +615,26 @@ nothing loops.
   handwritten.
 
 ## Validation & Tooling
-The full source gate from the repo root, inside `.venv`, is:
+The full source gate runs from the repo root through the Rust test harness
+`fwtest` (contract in `docs/tooling/fwtest.md`), with `.venv/bin/python`
+unless `--python` or `FWTEST_PYTHON` names another interpreter. Build it with
+`cargo build --release` in `tools/fwtest`; the binary is
+`tools/fwtest/target/release/fwtest`. The gate is:
 
 ```
-.venv/bin/python scripts/verify.py
+tools/fwtest/target/release/fwtest gate
 ```
 
 `--backend-only` omits desktop tests and reports desktop as unverified.
-`.github/workflows/verify.yml` runs that variant on every push and pull
-request (Python 3.14, `contents: read`), and its `rig` job runs the
-real-pointer rig on Today's app under Xvfb. Neither builds a binary.
+`fwtest mutate [SPEC]` runs the mutation specs in `scripts/mutations/`,
+`fwtest rig ...` runs `scripts/rig/drive.py`, `fwtest run -- CMD` runs any
+other suite or script, and `fwtest clean` stops what a killed run left.
+Run every local suite, mutation run and rig through `fwtest` rather than
+bare Python, so runs queue behind each other and leave nothing running.
+`.github/workflows/verify.yml` runs `fwtest gate --backend-only` and the
+harness's cargo checks on every push and pull request (Python 3.14, Rust
+stable, `contents: read`), and its `rig` job runs the real-pointer rig on
+Today's app under Xvfb through `fwtest rig`. Neither builds an app binary.
 
 The commands it runs, each of which must exit 0:
 
@@ -643,6 +653,11 @@ The commands it runs, each of which must exit 0:
   CSRF, atomic saves, revision conflict and import/retry tests.
 - Solver tests are the source of truth: `solve()` stays synchronous and pure so
   pytest can exercise it without HTTP.
+- The Rust test harness in `tools/fwtest` (Rust approved for it on 2026-09-28;
+  contract in `docs/tooling/fwtest.md`) has its own checks, run from
+  `tools/fwtest`, each of which must exit 0: `cargo fmt --check`,
+  `cargo clippy -- -D warnings` and `cargo test`. The Rust version is the one
+  `rustup` installs as stable; the crate uses the 2024 edition.
 
 ## Acceptance Criteria
 - [ ] Only-locked week solves to an identity schedule with 0 moves (T1).
@@ -699,6 +714,6 @@ The commands it runs, each of which must exit 0:
       `FlexWeek-Windows-x64.msi` for schools) and
       `FlexWeek-Linux-x86_64.tar.gz`.
 - [ ] A judge can install the Windows or Linux download and follow the README.
-- [ ] `scripts/verify.py` exits 0 (`ruff check .`, `mypy backend`, and
+- [ ] `fwtest gate` exits 0 (`ruff check .`, `mypy backend`, and
       `pytest -q` included).
 - [ ] CHANGELOG.md updated for user-visible changes.

@@ -1,30 +1,48 @@
 # Verification
 
-Run the source checks from the repository root with the existing Python 3.14
-environment:
+Run the source checks from the repository root through `fwtest`, the Rust
+test harness in `tools/fwtest` (contract in [tooling/fwtest.md](tooling/fwtest.md)).
+Build it with `cargo build --release` in `tools/fwtest`, then:
 
 ```bash
-.venv/bin/python scripts/verify.py
+tools/fwtest/target/release/fwtest gate
 ```
 
-The command runs Ruff, mypy, all pytest cases, and working, staged and
-committed-range diff whitespace checks. A failed command, timeout, missing
-desktop dependency, empty test suite or skipped test makes it fail. It installs
-nothing and does not build or publish a binary. Qt cases use temporary databases
-and offscreen native widgets.
+It uses the existing Python 3.14 environment at `.venv/bin/python`, or the
+interpreter named by `--python` or `FWTEST_PYTHON`. The command runs Ruff, mypy,
+all pytest cases, and working, staged and committed-range diff whitespace
+checks, at low priority and one suite at a time on the machine. A failed
+command, timeout, missing desktop dependency, empty test suite or skipped test
+makes it fail. It installs nothing and does not build or publish a binary. Qt
+cases use temporary databases and offscreen native widgets.
 
 For environments without the desktop dependencies:
 
 ```bash
-.venv/bin/python scripts/verify.py --backend-only
+tools/fwtest/target/release/fwtest gate --backend-only
 ```
 
 This runs the backend checks and explicitly reports desktop as unverified.
 `.github/workflows/verify.yml` runs this variant on pushes and pull requests
-using Python 3.14. The workflow has read-only repository permissions. Its hosted
-execution is unverified until the branch is pushed.
+using Python 3.14, after building `fwtest` and running its `cargo fmt --check`,
+`cargo clippy -- -D warnings` and `cargo test`. The workflow has read-only
+repository permissions. Its hosted execution is unverified until the branch is
+pushed.
 `.github/workflows/codeql.yml` scans Python; it does not replace this gate. The
 generic kit CI that ran pyright is not used.
+
+The other `fwtest` commands:
+
+- `fwtest mutate [SPEC ...]` breaks one rule at a time from the specs in
+  `scripts/mutations/` (all of them when none is named) and prints `RED`,
+  `GREEN` or `PATTERN` per case. It exits 1 if any break survived or a pattern
+  was not found exactly once.
+- `fwtest rig ...` runs `scripts/rig/drive.py` with the same arguments, then
+  stops the hidden session.
+- `fwtest run -- CMD` runs any other suite, picture tour or script with the same
+  limits and cleanup.
+- `fwtest clean` stops processes and restores source files that a killed run
+  left behind. Every other command runs it first.
 
 ## Coverage map
 

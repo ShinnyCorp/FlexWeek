@@ -1,0 +1,5 @@
+# The toolchain fwtest is built and checked with, so a new stable's lints cannot turn CI red by themselves.
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
