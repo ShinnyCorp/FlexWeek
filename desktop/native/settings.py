@@ -24,7 +24,6 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QBoxLayout,
     QButtonGroup,
-    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -56,6 +55,7 @@ from backend.slots import SLOT_MIN
 from desktop.native import autostart
 from desktop.native.calendar import DAY_FULL
 from desktop.native.custom_look import UNNAMED, sanitize_saved, wear
+from desktop.native.fields import DayPicker
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
 from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import drag_step
@@ -811,22 +811,15 @@ class SettingsPage(QWidget):
         self.alarm_spotify.setObjectName("alarmSpotify")
         self.alarm_spotify.setPlaceholderText("Spotify link (optional)")
         alarms_form.addRow(self.alarm_spotify)
-        # Two rows, Monday to Thursday and Friday to Sunday. Seven in a line were wider than the page.
-        day_row = QGridLayout()
-        day_row.setHorizontalSpacing(14)
-        self.alarm_days: list[QCheckBox] = []
-        for index, name in enumerate(DAY_FULL):
-            day_box = QCheckBox(name[:3])
-            day_box.setObjectName(f"alarmDay{index}")
-            day_box.setChecked(index < 5)
-            self.alarm_days.append(day_box)
-            day_row.addWidget(day_box, index // 4, index % 4)
+        # The days as pills on one line, as everywhere else. As check boxes they took two rows, Monday
+        # to Thursday and then Friday to Sunday (T21 of the 0.17.0 audit).
+        self.alarm_day_picker = DayPicker(range(5), "alarmDay")
+        self.alarm_days = self.alarm_day_picker.buttons
         add_alarm = _page_button("Add alarm", "addAlarm")
         add_alarm.clicked.connect(self._add_alarm)
         remove_alarm = _page_button("Remove alarm", "removeAlarm")
         remove_alarm.clicked.connect(self._remove_alarm)
-        day_row.setColumnStretch(4, 1)
-        alarms_form.addRow(day_row)
+        alarms_form.addRow("Days", self.alarm_day_picker)
         button_row = QHBoxLayout()
         button_row.setSpacing(8)
         button_row.addWidget(add_alarm)
