@@ -247,7 +247,10 @@ class BlockPainter:
         read as crossing them out."""
         self.body(painter, rect, drawn)
         fill, ink, _outline, edge = self.fills(drawn)
+        font = QFont(painter.font())
         written = self.words(painter, rect, drawn, ink, visible, fill, edge)
+        # The marker is drawn again in the canvas's font, not the small one the words left set.
+        painter.setFont(font)
         self.crossing(painter, rect, written)
 
     def crossing(self, painter: QPainter, rect: QRectF, around: list[QRectF] | None = None) -> None:
