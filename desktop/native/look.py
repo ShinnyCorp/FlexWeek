@@ -1230,8 +1230,10 @@ def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str, t
         'QWidget[bare="true"], QScrollArea[bare="true"] { background: transparent; border: none; '
         "padding: 0; border-radius: 0; }"
         'QScrollArea[bare="true"] > QWidget#qt_scrollarea_viewport { background: transparent; }'
+        # Its words in the text colour: the accent's own ink at 40 % on that fill could not be read
+        # (Running late's Accept, T6 of the 0.17.0 audit).
         f"QDialog QPushButton:disabled {{ background: {_rgba(palette['accent'], DISABLED)}; "
-        f"color: {_rgba(palette['accent_ink'], DISABLED)}; }}"
+        f"color: {palette['text']}; }}"
         'QDialog QPushButton[quiet="true"]:disabled, '
         'QWidget#settingsPage QPushButton[quiet="true"]:disabled '
         f"{{ {quiet_edge} color: {_rgba(palette['text'], DISABLED)}; }}"
@@ -1296,7 +1298,7 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         f"QFrame#setupGroup {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
         f"{pills} {{ background: {palette['field']}; color: {palette['text']}; {edges} "
         f"border-radius: 14px; padding: 4px 12px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"
-        f"{day} {{ padding: 4px 9px; }}"
+        f"{day} {{ padding: 4px 6px; }}"
         f"{pills_hover} {{ background: {mix(palette['accent'], palette['field'], 0.14)}; }}"
         f"QPushButton#setupChip:checked, {day}:checked {{ background: {palette['accent']}; "
         f"color: {palette['accent_ink']}; }}"

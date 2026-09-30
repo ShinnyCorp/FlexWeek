@@ -373,10 +373,14 @@ def test_a_dialogs_content_sits_24_px_in_from_its_edges(qapp: QApplication) -> N
     use_app_style(qapp)
     host = QWidget()
     HOSTS.append(host)
-    about = AboutDialog(host, None, "/tmp/flexweek")
-    margins = about.layout().contentsMargins()
+    window_dialog = QDialog(host)
+    margins = QVBoxLayout(window_dialog).contentsMargins()
     assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (DIALOG_MARGIN,) * 4
     assert DIALOG_MARGIN == 24
+    # A sheet draws its own card, which is padded the same 24 inside the room for its shadow.
+    about = AboutDialog(host, None, "/tmp/flexweek")
+    margins = about.card.layout().contentsMargins()
+    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (DIALOG_MARGIN,) * 4
     plain = QDialog(host)
     outer = QVBoxLayout(plain)
     inner_host = QWidget()

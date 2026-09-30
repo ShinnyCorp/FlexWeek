@@ -84,13 +84,15 @@ from desktop.native.motion import switch_page
 from desktop.native.remind import ALARM_SNOOZE_MIN
 from desktop.native.sound import Bell
 from desktop.native.spotify import SpotifyPlayer, open_in_app
-from desktop.native.tokens import SPACING, type_pt
+from desktop.native.tokens import SPACING
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
 from desktop.native.weekmodel import hhmm_text, length_label, time_format
 from desktop.native.widgets import (
+    SHEET_LIST,
     Choices,
     Dialog,
+    FitScroll,
     FlowLayout,
     Form,
     Segmented,
@@ -98,7 +100,6 @@ from desktop.native.widgets import (
     Switch,
     bare,
     even_fields,
-    fit_scroll_dialog,
     info_card,
     overlay_scroll_bars,
 )
@@ -173,10 +174,6 @@ SPOTIFY_TONE_NOTE = (
 # nothing there (measured 2026-09-21: not the view, not the top bar, apart from Corners on the bar).
 TODAYS_APP_KNOBS = ("surface", "corners", "blocks")
 FINE_TUNE_LOOK = "Fine-tune this look"
-ABOUT_MIN_WIDTH = 420
-HELP_MIN_WIDTH = 600
-# Screens on the left and shortcuts on the right, over a window at least this wide.
-HELP_TWO_COLUMN_WIDTH = 900
 SECTION_GAP = 14
 ABOUT_LINE = "FlexWeek plans your homework around school, sports and everything else in your week."
 ABOUT_HERE = "Your plans are saved on this computer."
@@ -1603,14 +1600,6 @@ class TransferPreviewDialog(QDialog):
         layout.addWidget(buttons)
 
 
-def _close_row(dialog: QDialog) -> QDialogButtonBox:
-    # A Close of its own words, not the standard button, which carries an icon on KDE.
-    buttons = QDialogButtonBox()
-    buttons.addButton("Close", QDialogButtonBox.ButtonRole.RejectRole)
-    buttons.rejected.connect(dialog.reject)
-    return buttons
-
-
 def _line(words: str, name: str) -> QLabel:
     made = QLabel(words)
     made.setObjectName(name)
@@ -1673,7 +1662,8 @@ class ScrollFade(QWidget):
         self.raise_()
 
     def paintEvent(self, _event: QPaintEvent) -> None:  # noqa: N802
-        page = self._area.window().palette().color(QPalette.ColorRole.Window)
+        # The card the words sit on, not the window: a sheet's window is only room for its shadow.
+        page = self._area.parentWidget().palette().color(QPalette.ColorRole.Window)
         clear = QColor(page)
         clear.setAlpha(0)
         ramp = QLinearGradient(0, 0, 0, self.height())
@@ -1704,10 +1694,8 @@ def _logo(side: int) -> QLabel:
 
 class AboutDialog(Dialog):
     def __init__(self, parent: QWidget | None, storage: dict | None, folder: str) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("About FlexWeek")
-        self.setMinimumWidth(ABOUT_MIN_WIDTH)
-        layout = QVBoxLayout(self)
+        super().__init__(parent, sheet=True)
+        layout = self.card_body("About FlexWeek")
         brand = QHBoxLayout()
         brand.setSpacing(SECTION_GAP)
         brand.addWidget(_logo(ABOUT_LOGO_PX))
@@ -1730,32 +1718,23 @@ class AboutDialog(Dialog):
             open_folder.setToolTip(folder)
             open_folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(folder)))
             layout.addWidget(open_folder)
-        layout.addWidget(_close_row(self))
 
 
 class HelpDialog(Dialog):
-    """Enough to find your way: the screens on the left, the keys on the right, drawn as keycaps.
-    One column at large text or over a narrow window, where two would each be too narrow to read."""
+    """Enough to find your way: the screens two by two, then the keys, drawn as keycaps. A list's sheet,
+    600 wide (5.1 A of 0.17.2), so the shortcuts are one column: beside the screens, their words wrapped
+    a word or two to a line."""
 
     def __init__(self, parent: QWidget | None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Help")
-        self.ensurePolished()
-        large = self.font().pointSizeF() >= type_pt("body", "large")
-        wide = parent is not None and parent.window().width() >= HELP_TWO_COLUMN_WIDTH
-        self.columns = 2 if wide and not large else 1
-        self.setMinimumWidth(HELP_TWO_COLUMN_WIDTH if self.columns == 2 else HELP_MIN_WIDTH)
+        super().__init__(parent, sheet=True)
+        layout = self.card_body("Help", SHEET_LIST)
         body = QWidget()
         column = QVBoxLayout(body)
         column.setContentsMargins(0, 0, 0, 0)
-        sides = QBoxLayout(
-            QBoxLayout.Direction.LeftToRight if self.columns == 2 else QBoxLayout.Direction.TopToBottom
-        )
-        sides.setSpacing(SECTION_GAP * 2)
-        column.addLayout(sides)
-        screens = QVBoxLayout()
+        column.setSpacing(SECTION_GAP // 2)
+        column.addWidget(_heading("The screens"))
+        screens = QGridLayout()
         screens.setSpacing(SECTION_GAP // 2)
-        screens.addWidget(_heading("The screens"))
         for index, (name, words) in enumerate(HELP_SCREENS):
             card = QFrame()
             card.setObjectName("helpCard")
@@ -1767,13 +1746,13 @@ class HelpDialog(Dialog):
             title.setObjectName("helpScreenName")
             inside.addWidget(title)
             inside.addWidget(_line(words, f"helpScreen{index}"))
-            screens.addWidget(card)
-        screens.addStretch(1)
-        sides.addLayout(screens, 1)
-        keys_side = QVBoxLayout()
-        keys_side.addWidget(_heading("Keyboard shortcuts"))
+            inside.addStretch(1)
+            screens.addWidget(card, index // 2, index % 2)
+        column.addLayout(screens)
+        column.addSpacing(SECTION_GAP // 2)
+        column.addWidget(_heading("Keyboard shortcuts"))
         # A form, not a grid: a grid gave a two-line description one line and a bit, and cut it.
-        key_list = QWidget()
+        key_list = bare(QWidget())
         key_list.setObjectName("helpKeys")
         keys = QFormLayout(key_list)
         keys.setContentsMargins(0, 0, 0, 0)
@@ -1781,27 +1760,14 @@ class HelpDialog(Dialog):
         keys.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
         for key, what in HELP_KEYS:
             keys.addRow(keycaps(key), _line(what, "helpKeyDoes"))
-        keys_side.addWidget(key_list)
-        keys_side.addStretch(1)
-        sides.addLayout(keys_side, 1)
+        column.addWidget(key_list)
         column.addStretch(1)
         # A dialog's minimum counts a wrapped line as one line, so at large text on a laptop, Help at
         # its minimum squeezed the shortcuts to half their height. A scroll area gives the words the
-        # height they need at the width they get, and the dialog fits the screen.
-        area = QScrollArea()
-        area.setObjectName("helpScroll")
-        area.setWidgetResizable(True)
-        area.setFrameShape(QFrame.Shape.NoFrame)
-        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        area.setWidget(body)
+        # height they need at the width they get, and the sheet fits its window.
+        area = FitScroll(body, "helpScroll")
         self.fades = (ScrollFade(area, top=True), ScrollFade(area, top=False))
-        layout = QVBoxLayout(self)
-        layout.addWidget(area)
-        layout.addWidget(_close_row(self))
-
-    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
-        super().showEvent(event)
-        fit_scroll_dialog(self)
+        layout.addWidget(area, 1)
 
 
 class UpdateDialog(QDialog):

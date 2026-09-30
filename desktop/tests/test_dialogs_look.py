@@ -14,7 +14,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, Qt, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -25,16 +25,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from desktop.native.look import mix, pack_stylesheet, resolved_palette
-from desktop.native.settings import AccountDialog
+from desktop.native.look import mix, pack_stylesheet, resolved_palette, sanitize_look
+from desktop.native.settings import AboutDialog, AccountDialog, HelpDialog
+from desktop.native.tokens import contrast
 from desktop.native.widgets import (
     SHEET_FORM,
+    SHEET_LIST,
     SHEET_PAD,
     BlockDialog,
     HomeworkDialog,
     LateDialog,
     RoutineDialog,
+    SchoolHoursDialog,
     Segmented,
+    SpreadDialog,
     control_art,
 )
 from desktop.native.window import NativeWindow
@@ -56,11 +60,12 @@ def soccer(**fields: object) -> dict:
     }
 
 
-def styled(qapp: QApplication, pack: str = "light-frost") -> tuple[QWidget, dict]:  # noqa: F811
-    """A window-sized parent dressed in a look, as the app's window is."""
-    palette = resolved_palette(pack, False, None, "default")
+def styled(qapp: QApplication, pack: str = "light-frost", text: str = "normal") -> tuple[QWidget, dict]:  # noqa: F811
+    """A window-sized parent dressed in a look, at a text size, as the app's window is."""
+    look = sanitize_look({"knobs": {"text": text}})
+    palette = resolved_palette(pack, False, look, "default")
     made = QWidget()
-    made.setStyleSheet(pack_stylesheet(pack, False, None, "default", palette, control_art(palette)))
+    made.setStyleSheet(pack_stylesheet(pack, False, look, "default", palette, control_art(palette)))
     made.resize(1280, 800)
     made.show()
     qapp.processEvents()
@@ -85,32 +90,45 @@ def near(first: QColor, second: QColor, slack: int = 3) -> bool:
     return all(abs(one - two) <= slack for one, two in pairs)
 
 
-def test_the_two_editors_are_sheets_over_the_dimmed_week_and_the_rest_stay_windows(
+def test_the_editors_and_the_five_from_more_are_sheets_over_the_dimmed_week(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
+    """Add and Edit were sheets; Routines, Help, About, Running late and School hours were windows of
+    their own with title bars, and Running late opened off to one side (T6 and X7 of the 0.17.0
+    audit). Every other dialog stays a window."""
     window.resize(1280, 800)
     qapp.processEvents()
     spot = QPoint(20, window.height() - 20)
     before = window.grab().toImage().pixelColor(spot)
-    for make in (
+    editors = (
         lambda: HomeworkDialog(window, today=WEEK),
         lambda: BlockDialog(window, soccer(), occurrence_day=3),
-    ):
+    )
+    others = (
+        lambda: RoutineDialog(window, {}, [soccer()], WEEK),
+        lambda: HelpDialog(window),
+        lambda: AboutDialog(window, {"mode": "local"}, "/nowhere"),
+        lambda: LateDialog(window, "Soccer practice"),
+        lambda: SchoolHoursDialog(window, None),
+    )
+    for make in (*editors, *others):
         dialog = shown(qapp, make())
-        assert dialog.windowFlags() & Qt.WindowType.FramelessWindowHint, "no window frame of its own"
+        name = dialog.windowTitle()
+        assert dialog.windowFlags() & Qt.WindowType.FramelessWindowHint, f"{name}: no window frame of its own"
         shade = window.findChild(QWidget, "sheetShade")
-        assert shade is not None and shade.isVisible() and shade.geometry() == window.rect()
+        assert shade is not None and shade.isVisible() and shade.geometry() == window.rect(), name
         dimmed = window.grab().toImage().pixelColor(spot)
-        assert dimmed.lightness() < 0.75 * before.lightness(), "the week behind is dimmed"
+        assert dimmed.lightness() < 0.75 * before.lightness(), f"{name}: the week behind is dimmed"
         card = dialog.card
         centre = card.mapToGlobal(card.rect().center()) - window.mapToGlobal(window.rect().center())
-        assert abs(centre.x()) <= 2 and abs(centre.y()) <= 2, "the card is centred on the window"
+        assert abs(centre.x()) <= 2 and abs(centre.y()) <= 2, f"{name}: the card is centred on the window"
         on_window = card.rect().translated(card.mapTo(window, QPoint(0, 0)))
-        assert window.rect().contains(on_window), "the card is inside the window"
-        assert QApplication.focusWidget() is dialog.title, "typing starts in the title"
-        save = next(button for button in dialog.findChildren(QPushButton) if button.text() == "Save")
-        assert save.isDefault(), "Enter saves"
+        assert window.rect().contains(on_window), f"{name}: the card is inside the window"
+        if make in editors:
+            assert QApplication.focusWidget() is dialog.title, "typing starts in the title"
+            save = next(button for button in dialog.findChildren(QPushButton) if button.text() == "Save")
+            assert save.isDefault(), "Enter saves"
         # Still a modal dialog to Qt, so the week's keys wait for it and the rig can find it.
         seen: list[object] = []
         dialog.hide()
@@ -121,15 +139,16 @@ def test_the_two_editors_are_sheets_over_the_dimmed_week_and_the_rest_stay_windo
 
         QTimer.singleShot(50, look_then_close)
         dialog.exec()
-        assert seen == [dialog]
+        assert seen == [dialog], name
         qapp.processEvents()
         assert not any(item.isVisible() for item in window.findChildren(QWidget, "sheetShade"))
-        assert window.grab().toImage().pixelColor(spot) == before, "the dimming goes with the sheet"
+        assert window.grab().toImage().pixelColor(spot) == before, f"{name}: the dimming goes with the sheet"
         free(dialog)
-    late = shown(qapp, LateDialog(window, "Soccer practice"))
-    assert not late.windowFlags() & Qt.WindowType.FramelessWindowHint, "Running late stays a window"
+    essay = {"id": "e", "title": "Essay", "due": WEEK, "estimate_min": 60}
+    spread = shown(qapp, SpreadDialog(window, essay, WEEK))
+    assert not spread.windowFlags() & Qt.WindowType.FramelessWindowHint, "Spread stays a window"
     assert window.findChild(QWidget, "sheetShade") is None
-    free(late)
+    free(spread)
 
 
 @pytest.mark.parametrize("pack", ["light-frost", "dark-frost"])
@@ -234,17 +253,42 @@ def test_a_sheet_short_of_room_scrolls_rather_than_squeezing_its_days(qapp: QApp
     free(parent)
 
 
-def test_sheets_are_one_width_on_a_scale_of_two(qapp: QApplication) -> None:  # noqa: F811
-    """T18: every sheet was its own width. Forms are 440 pixels wide and lists 600, at any text size."""
+def test_routines_and_running_late_fit_a_laptop_window_without_scrolling(
+    qapp: QApplication,  # noqa: F811
+) -> None:
+    """Routines' lists took the height they liked, so Apply was below the sheet; Running late left an
+    empty line for its summary before there was one."""
     parent, _palette = styled(qapp)
-    for make in (
-        lambda: HomeworkDialog(parent, today=WEEK),
-        lambda: BlockDialog(parent, soccer(), occurrence_day=3),
-        lambda: BlockDialog(parent, day=3, start="17:00"),
+    saved = {"r": {"id": "r", "name": "School week", "blocks": [soccer()]}}
+    routines = shown(qapp, RoutineDialog(parent, saved, [soccer()], WEEK))
+    area = routines.findChild(QWidget, "routineScroll")
+    assert area.verticalScrollBar().maximum() == 0, "everything shows at once"
+    late = shown(qapp, LateDialog(parent, "School"))
+    assert late.summary.isHidden()
+    late.show_trace({"moves": [], "unplaced": []}, {})
+    assert not late.summary.isHidden()
+    free(routines)
+    free(late)
+    free(parent)
+
+
+@pytest.mark.parametrize("text", ["normal"])
+def test_sheets_are_one_width_on_a_scale_of_two(qapp: QApplication, text: str) -> None:  # noqa: F811
+    """T18: every sheet was its own width. Forms are 440 pixels wide and lists 600, at any text size."""
+    parent, _palette = styled(qapp, text=text)
+    for make, width in (
+        (lambda: HomeworkDialog(parent, today=WEEK), SHEET_FORM),
+        (lambda: BlockDialog(parent, soccer(), occurrence_day=3), SHEET_FORM),
+        (lambda: BlockDialog(parent, day=3, start="17:00"), SHEET_FORM),
+        (lambda: SchoolHoursDialog(parent, None), SHEET_FORM),
+        (lambda: LateDialog(parent, "Starting from 15:40 today (Thursday)."), SHEET_FORM),
+        (lambda: AboutDialog(parent, {"mode": "local"}, "/nowhere"), SHEET_FORM),
+        (lambda: RoutineDialog(parent, {}, [soccer()], WEEK), SHEET_LIST),
+        (lambda: HelpDialog(parent), SHEET_LIST),
     ):
         dialog = shown(qapp, make())
-        assert dialog.card.width() == SHEET_FORM, dialog.windowTitle()
-        assert dialog.card.minimumSizeHint().width() <= SHEET_FORM, "nothing in it is cut to fit"
+        assert dialog.card.width() == width, dialog.windowTitle()
+        assert dialog.card.minimumSizeHint().width() <= width, f"{dialog.windowTitle()}: nothing cut to fit"
         free(dialog)
     free(parent)
 
@@ -285,18 +329,36 @@ def test_the_repeat_scope_is_a_choice_of_two_under_the_days_only_for_a_repeating
     free(parent)
 
 
-def test_a_primary_that_cannot_be_pressed_yet_keeps_its_colour_at_40_percent(
+@pytest.mark.parametrize("pack", ["light-frost", "dark-frost"])
+def test_a_primary_that_cannot_be_pressed_yet_keeps_its_colour_at_40_percent_and_reads(
     qapp: QApplication,  # noqa: F811
+    pack: str,
 ) -> None:
-    """Running late's Accept was a grey slab until Preview, and looked broken."""
-    parent, palette = styled(qapp)
+    """Running late's Accept was a grey slab until Preview, and looked broken; then its words were the
+    accent's ink at 40 % on the 40 % fill, and could not be read (T6 of the 0.17.0 audit)."""
+    parent, palette = styled(qapp, pack)
     late = shown(qapp, LateDialog(parent, "School"))
     button = late.accept_button
 
-    def fill() -> QColor:
-        return late.grab().toImage().pixelColor(button.mapTo(late, QPoint(button.width() // 2, 4)))
+    def picture() -> QImage:
+        return late.grab().toImage()
 
-    assert near(fill(), QColor(mix(palette["accent"], palette["window"], 0.4)))
+    def fill() -> QColor:
+        return picture().pixelColor(button.mapTo(late, QPoint(button.width() // 2, 4)))
+
+    assert near(fill(), QColor(mix(palette["accent"], palette["panel"], 0.4)))
+    ground = fill().name()
+    image = picture()
+    corner = button.mapTo(late, QPoint(0, 0))
+    words = max(
+        (
+            image.pixelColor(corner.x() + x, corner.y() + y).name()
+            for x in range(button.width())
+            for y in range(button.height())
+        ),
+        key=lambda colour: contrast(colour, ground),
+    )
+    assert contrast(words, ground) >= 4.5, f"{words} on {ground}"
     late.show_trace({"moves": [], "unplaced": []}, {})
     qapp.processEvents()
     assert near(fill(), QColor(palette["accent"]))
