@@ -5,14 +5,41 @@ All notable changes to FlexWeek are documented here. Format follows
 
 ## [0.17.2] - Unreleased
 
+### Changed
+- Every block carries a small picture of its category, as homework carries
+  its book: a house for School, a pencil for Study, a target for Sports,
+  sparkles for an Activity, a clock for Meals, a moon for Sleep, wind for Free
+  time. Where a block is too small for both, it keeps its name and leaves the
+  picture out.
+- The category colours are spread further apart, so School, Study and Sleep
+  no longer look alike, and Sleep is darker than the rest.
+- Paper is a cream planner page with an ink-blue accent, serif words and
+  figures, and no shadows. Pastel has tinted cards and fuller block colours.
+- The Sand accent is a clay brown, so it no longer looks like Gold.
+- In Dark, the chosen view (Day, Week, Month, My day) is a lighter chip with
+  a ring round it.
+- Setup's sports, clubs and jobs each say whether they are Sports or an
+  Activity, and keep it when setup is opened again. The example week's
+  Soccer is Sports.
+- The line for now and the ring round a chosen block use a shade of the
+  accent that shows on every category's colour. The accent itself stays as
+  picked.
+
 ### Fixed
-- The line for now crosses a block over its colour and under its words, in
-  every design, so it shows how far into the block you are without running
-  through its name. Timeline's and Clay deck's pills with the time sit beside
-  the hours instead of on the block.
+- The line for now crosses a block over its colour and stops a few pixels
+  short of the block's words and picture, in every design, so it shows how far
+  into the block you are without crossing its name out. Timeline's and Clay
+  deck's pills with the time sit beside the hours instead of on the block.
+- Timeline's pill with the time is beside the hour labels, in place of the
+  one it is nearest, or for a day on the right page in that page's margin at
+  the fold. It lay on the day before and covered its blocks.
+- In the Look editor, Readability lists each place a pale accent of your own
+  is used as words (Plan, today's name, the line for now) with a Fix, and the
+  app draws those words darker until then. The stock accents are not listed.
+- Terminal's Next card wraps the time left instead of cutting it off.
+- The look pictures in Settings widen with the text, so at Large text, as in
+  High contrast, each name stays on one line.
 - Day keeps Now on the hours grid rather than between agenda rows. Week titles, time labels, recovery codes and category tick/action spacing are clearer at narrow widths.
-- Setup entries have a Sports or Activity choice that survives reopening. Category hues, Sleep contrast, Paper and Pastel surfaces, Sand, category icons and Dark control edges were adjusted. The chosen blue stays exact while Now and selection use a readable shade.
-- Look cards have more room for large labels. Readability keeps stock accents quiet while naming unsafe uses of a custom accent.
 
 ## [0.17.1] - 2026-09-29
 

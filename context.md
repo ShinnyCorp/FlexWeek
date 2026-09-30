@@ -1,14 +1,16 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-09-30, `integrate/0172-sol`: Sol's lane 2 (time, dates and numbers) is merged onto
-  `feat/0.17.2` at 347f3a1 with no conflicts, plus two fixes on top: Clay leaves out the hour label
-  under its now pill, and the now line is drawn over a block's colour and under its words in every
-  design (`BlockPainter.block` paints body, crossing, words). Gate: ruff and mypy clean, 2367
-  passed. Mutations: 439 cases, every pattern matches once; the 12 specs naming files changed after
-  the merge caught all 301, and the 19 naming merge-touched files caught all 427 before that. Rig:
-  classic, retro and clay 40/40 each. Known gap: Timeline's now pill sits left of today's column,
-  which is the previous day's column on five days of the week; where it should go is undecided.
+- 2026-09-30, `integrate/0172-sol`: Sol's lane 2 (time, dates and numbers) and lane 4 (looks and
+  colour) are merged onto `feat/0.17.2`. Lane 4 brought category icons and re-spaced hues, Paper
+  and Pastel, Sand, Dark's chosen segment, Readability for a pale custom accent, and setup's
+  Sports or Activity. On top: the hours end their painter when a design's painter raises (the
+  "combined Qt painter cleanup crash"); a block's icon gives way wherever the name says more
+  without it; the look cards widen with the text (150 px at Normal, 180 at Large); the now line
+  stops 3 px short of a block's words and icon; Timeline's now pill sits beside the hour labels
+  or centred on the fold. Gate, mutation specs and rig: see Session Handoff. Known gaps: Bento's
+  now pill still sits inside today's column, and Mission's names written beside a block are
+  still crossed by the now line.
 - Date: 2026-09-25 (0.15 Lane C), branch `claude/0-15-homework-planning`.
   Five inherited fixes cover the DueField signal, due-today default, homework
   length bounds, full-month date picker and planning after now (`7b9d19b`,
@@ -665,9 +667,16 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
-- 2026-09-30, `integrate/0172-sol`: lane 2 integrated and verified as in Current State; not pushed.
-  `feat/0.17.2` itself is untouched and waits for Jonathan's review to fast-forward. Open: where
-  Timeline's now pill goes; lane 2's CHANGELOG line was under 0.17.1 and now sits under `[0.17.2] - Unreleased`.
+- 2026-09-30, `integrate/0172-sol`: lanes 2 and 4 integrated as in Current State; not pushed.
+  `feat/0.17.2` itself is untouched and waits for Jonathan's review to fast-forward. The lane 4
+  report (decisions left open, what was verified) is in the integrator's final message; its
+  pictures are in `~/.flexweek-ui-harness/scratch/0172-sol-int-looks/`. Gate at 51b53ee: 2465
+  passed. At the head, two test_drag_results tests fail when a worker runs them after
+  test_layout_mission or test_layout_timeline; the same pair fails at 132ee90, so it predates
+  this unit, and they pass alone. Mutations: every spec naming a changed file caught all cases.
+  Rig 40/40: classic, clay, mission, bento at 51b53ee; classic, mission and timeline at the head
+  (timeline's first run lost month-save-refused waiting for Month; 40/40 on the rerun). The branch is based on 132ee90; `feat/0.17.2` has
+  since moved to a3b1a8f (Sol's dates unit), so it needs a merge rather than a fast-forward.
 - 2026-09-29, `feat/0.17.1`: 0.17.1 prepared, the patch after 0.17.0 (Jonathan: "start the patch").
   Units 1 to 4 of `~/.flexweek-ui-harness/scratch/017-patch-plan.md`: the intermittent test-suite
   segfault (a test's instance patch left a HomeworkDialog in a cycle, collected on the server
