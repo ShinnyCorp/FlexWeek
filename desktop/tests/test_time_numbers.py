@@ -346,20 +346,18 @@ def test_day_agenda_times_fit_in_twelve_hour_format(
         set_clock_24h(True)
 
 
-@pytest.mark.parametrize("design", ["timeline", "clay"])
-def test_the_now_pill_stays_outside_the_blocks(qapp: QApplication, design: str) -> None:
+def test_clays_now_pill_stays_outside_the_blocks(qapp: QApplication) -> None:
+    """Timeline's pill has its own test over every day (test_layout_timeline.py)."""
     from PySide6.QtCore import QRectF
     from PySide6.QtGui import QFont, QImage, QPainter
 
     from desktop.native.hours.geometry import LinearTrack
     from desktop.native.layouts.clay import ClayPainter
     from desktop.native.layouts.registry import MATCH, tokens_for
-    from desktop.native.layouts.timeline import TimelinePainter
     from desktop.native.look import resolved_palette
     from desktop.native.weekmodel import set_clock_24h
 
-    tokens = tokens_for(design, MATCH, resolved_palette("light-frost", False, None))
-    painting = TimelinePainter(tokens) if design == "timeline" else ClayPainter(tokens, full=True)
+    painting = ClayPainter(tokens_for("clay", MATCH, resolved_palette("light-frost", False, None)), full=True)
     boxes: list[QRectF] = []
 
     class Pills(QPainter):

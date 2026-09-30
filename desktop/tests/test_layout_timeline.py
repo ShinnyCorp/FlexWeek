@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import time
 from collections.abc import Iterator
 from dataclasses import replace
@@ -22,8 +23,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     import shiboken6
-    from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-    from PySide6.QtGui import QColor, QMouseEvent, QPainter, QTextDocument
+    from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
+    from PySide6.QtGui import QColor, QFontMetricsF, QMouseEvent, QPainter, QTextDocument
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import (
         QApplication,
@@ -70,6 +71,7 @@ def scene_of(
     blocks: list[dict] | None = None,
     homework: dict | None = None,
     palette: dict | None = None,
+    today: int = THURSDAY,
     **chosen: str,
 ) -> Scene:
     options = {**options_for(None, "timeline"), **chosen}
@@ -79,12 +81,12 @@ def scene_of(
     )
     return Scene(
         week,
-        THURSDAY,
+        today,
         minute_of(clock),
         options,
         tokens_for("timeline", options["colour"], palette),
         surface=tab,
-        iso_day=week.date_of(THURSDAY).isoformat(),
+        iso_day=week.date_of(today).isoformat(),
     )
 
 
@@ -291,7 +293,7 @@ def test_a_half_hour_on_day_says_its_name_and_times_in_the_caption_size(
     assert "Dinner" in said and "18:00–18:30" in said
 
 
-def test_now_is_a_line_across_todays_column_with_its_time_and_on_day_says_now(
+def test_now_is_a_line_across_todays_column_with_its_time(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     view = shown(qapp, clock="15:40")
@@ -303,7 +305,51 @@ def test_now_is_a_line_across_todays_column_with_its_time_and_on_day_says_now(
     seen = Seen(view)
     assert near(seen.at(hours, at + QPoint(30, 0)), accent, 24)
     assert not any(near(seen.at(hours, friday + QPoint(0, dy)), accent, 40) for dy in range(-2, 3))
-    assert "Now 15:40" in drawn_words(qapp, monkeypatch, shown(qapp, "day", clock="15:40"))
+    assert "15:40" in drawn_words(qapp, monkeypatch, shown(qapp, "day", clock="15:40"))
+
+
+class Placed(QPainter):
+    """Every text the hours draw, the box it was given and where its words lie, in the canvas's own
+    pixels."""
+
+    said: list[tuple[str, QRectF, QRectF]] = []
+
+    def drawText(self, *args) -> None:  # noqa: N802
+        if isinstance(args[0], QRectF):
+            flags = getattr(args[1], "value", args[1])
+            ink = QFontMetricsF(self.font()).boundingRect(args[0], int(flags), args[-1])
+            turned = self.transform()
+            Placed.said.append((args[-1], turned.mapRect(args[0]), turned.mapRect(ink)))
+        super().drawText(*args)
+
+
+@pytest.mark.parametrize("today", range(7))
+@pytest.mark.parametrize(("tab", "density"), [("week", "roomy"), ("week", "compact"), ("day", "roomy")])
+def test_the_time_now_is_on_a_pill_clear_of_every_block_and_hour_label(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, today: int, tab: str, density: str
+) -> None:
+    """At 10:05, with School on every day. Beside today's own column the pill lay on the day
+    before and covered its School, and on Day it lay over the 10:00 label and the start of School.
+    It is beside the hour labels, in place of the one it is nearest, or for a day on the right page
+    in that page's margin at the fold."""
+    school = block("school", "locked", list(range(7)), "08:00", 390, title="School", category="class")
+    options = {"density": "compact"} if density == "compact" else {}
+    view = shown(qapp, tab, clock="10:05", today=today, blocks=[school], **options)
+    hours = canvas(view)
+    monkeypatch.setattr(canvas_module, "QPainter", Placed)
+    Placed.said = []
+    hours.repaint()
+    # Drawn again wherever the line crosses a block, clipped to it: each time clear of both.
+    pills = [box for words, box, _ink in Placed.said if words.endswith("10:05")]
+    assert pills
+    blocks = [track.transform.mapRect(rect) for track in hours.tracks for _item, rect in hours.drawn(track)]
+    assert len(blocks) == (7 if tab == "week" else 1)
+    labels = [(words, ink) for words, _box, ink in Placed.said if re.fullmatch(r"\d\d:00", words)]
+    assert len(labels) >= 10
+    for pill in pills:
+        assert pill.left() >= 0 and pill.right() <= hours.width()
+        assert [box for box in blocks if box.intersects(pill)] == [], f"the pill at {pill} covers a block"
+        assert [words for words, ink in labels if ink.intersects(pill)] == [], "the pill covers an hour label"
 
 
 def test_two_blocks_at_one_time_go_half_width(qapp: QApplication) -> None:

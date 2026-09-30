@@ -149,16 +149,37 @@
   {
     "name": "timeline puts its Now pill over block words",
     "file": "desktop/native/layouts/timeline.py",
-    "old": "max(0, area.left() - width - 3)",
-    "new": "area.left() + self.now_at",
-    "test": "desktop/tests/test_time_numbers.py::test_the_now_pill_stays_outside_the_blocks[timeline]"
+    "old": "        pill = QRectF(max(0, left), at - height / 2, width, height)\n",
+    "new": "        pill = QRectF(max(0, left) + 40, at - height / 2, width, height)\n",
+    "test": "desktop/tests/test_layout_timeline.py::test_the_time_now_is_on_a_pill_clear_of_every_block_and_hour_label"
+  },
+  {
+    "name": "Timeline's pill for a day on the right page goes beside that day again",
+    "file": "desktop/native/layouts/timeline.py",
+    "old": "            fold = area.left() - page.index(track.day) * area.width() - self.spine / 2\n",
+    "new": "            fold = area.left() - self.spine / 2\n",
+    "test": "desktop/tests/test_layout_timeline.py::test_the_time_now_is_on_a_pill_clear_of_every_block_and_hour_label"
+  },
+  {
+    "name": "Timeline writes an hour label under its pill",
+    "file": "desktop/native/layouts/timeline.py",
+    "old": "        self.now_in_gutter = self._beside_labels(font)\n",
+    "new": "        self.now_in_gutter = False\n",
+    "test": "desktop/tests/test_layout_timeline.py::test_the_time_now_is_on_a_pill_clear_of_every_block_and_hour_label"
+  },
+  {
+    "name": "Timeline's pill goes to the fold where it does not fit",
+    "file": "desktop/native/layouts/timeline.py",
+    "old": "self._pill_width(base, self.now_minute) + 2 > self.spine",
+    "new": "self._pill_width(base, self.now_minute) > 2 * self.spine",
+    "test": "desktop/tests/test_layout_timeline.py::test_the_time_now_is_on_a_pill_clear_of_every_block_and_hour_label"
   },
   {
     "name": "clay puts its Now pill over block words",
     "file": "desktop/native/layouts/clay.py",
     "old": "max(0, area.left() - metrics.horizontalAdvance(words) - 15)",
     "new": "area.left() + 7",
-    "test": "desktop/tests/test_time_numbers.py::test_the_now_pill_stays_outside_the_blocks[clay]"
+    "test": "desktop/tests/test_time_numbers.py::test_clays_now_pill_stays_outside_the_blocks"
   },
   {
     "name": "Clay writes an hour label under its Now pill",
