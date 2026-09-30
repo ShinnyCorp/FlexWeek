@@ -105,8 +105,13 @@ def filled(dialog: QDialog, accent: str) -> list[str]:
         # A ticked day is a choice shown, like a segment, not a second thing to press.
         if button.isCheckable() and button.objectName() in {"setupDay", "setupChip"}:
             continue
-        colour = button.grab().toImage().pixelColor(4, button.height() // 2)
-        if colour == QColor(accent):
+        # Most of it in the accent. One pixel near the left edge could land on a link's accent words,
+        # "Skip this version", depending on the font, and called it filled.
+        image = button.grab().toImage()
+        wanted = QColor(accent)
+        points = [(x, y) for x in range(0, image.width(), 3) for y in range(0, image.height(), 3)]
+        inked = sum(1 for x, y in points if image.pixelColor(x, y) == wanted)
+        if inked > len(points) / 2:
             shown.append(button.text() or button.objectName())
     return shown
 
