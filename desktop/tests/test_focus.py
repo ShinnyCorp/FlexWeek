@@ -6,6 +6,7 @@ from desktop.native.focus import (
     begin_state,
     break_phase,
     credit_target,
+    focus_now,
     format_countdown,
     more_time_choices,
     now_and_next,
@@ -150,3 +151,12 @@ def test_set_phase_restarts_the_wall_clock() -> None:
     nxt = set_phase(state, "break", {"timer_break_min": 15}, 9_000)
     assert nxt["phase"] == "break"
     assert nxt["endsAt"] == 9_000 + 15 * 60_000
+
+
+def test_focus_now_says_what_the_timer_is_doing() -> None:
+    assert focus_now(None) == ""
+    assert focus_now({"phase": "ended", "running": False}) == "", "a finished session is not running"
+    assert focus_now({"phase": "work", "running": True}) == "focusing"
+    assert focus_now({"phase": "work", "running": False}) == "paused"
+    assert focus_now({"phase": "break", "running": True}) == "break"
+    assert focus_now({"phase": "long_break", "running": False}) == "break"

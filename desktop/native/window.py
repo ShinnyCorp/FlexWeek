@@ -64,7 +64,7 @@ from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.custom_look import sanitize_saved
 from desktop.native.elevation import lift
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
-from desktop.native.focus import phase_duration_ms
+from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import FocusScreen
 from desktop.native.fonts import load_fonts, time_font
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
@@ -1213,6 +1213,7 @@ class NativeWindow(QMainWindow):
             iso_day=session.selected_day,
             dirty=session.dirty,
             unsaved_weeks=session.unsaved_weeks(),
+            focus=focus_now(session.focus),
         )
 
     def _refresh_layout(self) -> None:

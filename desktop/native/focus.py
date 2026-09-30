@@ -51,6 +51,16 @@ def remaining_ms(state: dict, now_ms: int) -> int:
     return max(0, int(state.get("remainingMs") or 0))
 
 
+def focus_now(state: dict | None) -> str:
+    """What the timer is doing, for a page that only says so: "" when none runs or its session has
+    ended, else "focusing", "paused" or "break"."""
+    if state is None or state.get("phase") in (None, "ended"):
+        return ""
+    if state.get("phase") != "work":
+        return "break"
+    return "focusing" if state.get("running") else "paused"
+
+
 def more_time_choices(estimate_min: int) -> list[int]:
     return [minutes for minutes in MORE_TIME_CHOICES if estimate_min + minutes <= MAX_ESTIMATE_MIN]
 

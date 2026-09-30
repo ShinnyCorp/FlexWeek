@@ -39,6 +39,8 @@ class Scene:
     dirty: bool = False
     # Weeks other than this one that the student changed and left unsaved, by their Monday.
     unsaved_weeks: Mapping[str, WeekModel] = field(default_factory=dict)
+    # The focus timer: "" when none runs, else "focusing", "paused" or "break".
+    focus: str = ""
 
     def px(self, size: float) -> int:
         """A size in pixels that follows the student's Text size knob."""
