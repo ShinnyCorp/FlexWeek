@@ -8,6 +8,7 @@ first one also loses the dialog.
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QBuffer, QByteArray, QObject, QTimer
@@ -16,6 +17,10 @@ from desktop.native.tones import RATE, REPEAT_MS, pcm
 
 if TYPE_CHECKING:  # QtMultimedia is imported where it is used, so a build without it still starts.
     from PySide6.QtMultimedia import QAudioSink
+
+
+# Set by the tests, the rig and fwtest, so what they ring is not heard.
+SILENT = "FLEXWEEK_SILENT"
 
 
 class Bell(QObject):
@@ -85,6 +90,9 @@ class Bell(QObject):
             self._buffer.setData(QByteArray(data))
             self._buffer.open(QBuffer.OpenModeFlag.ReadOnly)
             self._sink = QAudioSink(device, shape, self)
+            if os.environ.get(SILENT):
+                # Tests and the rig: everything as it would be, at no volume.
+                self._sink.setVolume(0.0)
             self._sink.start(self._buffer)
         except Exception:
             # No sound card, no multimedia plugin, no audio server. The alarm still shows.

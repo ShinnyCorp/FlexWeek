@@ -183,3 +183,17 @@ fn cpu_list(cpus: &[usize]) -> String {
             .join(",")
     }
 }
+
+#[test]
+fn a_job_runs_with_flexweeks_sounds_silenced() {
+    let home = scratch();
+    let output = fwtest(&home)
+        .env_remove("FLEXWEEK_SILENT")
+        .args(["run", "--", "sh", "-c", "echo \"silent=$FLEXWEEK_SILENT\""])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let said = String::from_utf8_lossy(&output.stdout);
+    assert!(said.contains("silent=1"), "{said}");
+    let _ = fs::remove_dir_all(home);
+}

@@ -16,6 +16,8 @@ import pytest
 # Qt's test mode keeps its files in ~/.qttest. Workers running side by side would share the look
 # file, the kept sessions and the rest, and hand one test's state to another's, so each worker gets a
 # home of its own. The cache stays the real one, so fonts are not indexed again for every worker.
+# Alarms and reminders the tests ring are played at no volume (sound.SILENT).
+os.environ["FLEXWEEK_SILENT"] = "1"
 if os.environ.get("PYTEST_XDIST_WORKER"):
     os.environ.setdefault("XDG_CACHE_HOME", str(Path.home() / ".cache"))
     os.environ["HOME"] = tempfile.mkdtemp(prefix=f"flexweek-{os.environ['PYTEST_XDIST_WORKER']}-")

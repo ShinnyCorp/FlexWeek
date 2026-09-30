@@ -71,6 +71,16 @@ def test_a_bell_says_whether_it_reached_the_sound_card_and_never_raises(qapp: An
     bell.stop()
 
 
+def test_tests_ring_at_no_volume(qapp: Any) -> None:
+    """What tests, the rig and fwtest ring came out of the speakers of whoever was at the machine."""
+    assert os.environ.get("FLEXWEEK_SILENT") == "1", "conftest silences every test"
+    bell = Bell()
+    if not bell.once("chime", 80):
+        pytest.skip("no sound card here, so nothing to hear")
+    assert bell._sink is not None and bell._sink.volume() == 0.0
+    bell.stop()
+
+
 def test_a_bell_asked_for_silence_does_not_go_looking_for_a_device(qapp: Any) -> None:
     assert Bell().once("chime", 0) is False
 
