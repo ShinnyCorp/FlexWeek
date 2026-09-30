@@ -2,6 +2,7 @@
 
     .venv/bin/python scripts/rig/drive.py                       # every design, every tab
     .venv/bin/python scripts/rig/drive.py --design bento --tab day
+    .venv/bin/python scripts/rig/drive.py --design bento --option hero=today   # a design's saved option
     .venv/bin/python scripts/rig/drive.py --design dial --tab myday   # My day's screens: one, dial
     .venv/bin/python scripts/rig/drive.py --list
 
@@ -9,7 +10,9 @@ Every scenario starts from the same seeded week with the clock held at Thursday 
 tab with the pointer, performs one gesture with xdotool on the hidden session's X display, waits for
 the save, reloads the week from the server and asserts on what came back. A screenshot is taken
 while the pointer is still held and another after the drop, and each design's run is recorded as a
-video with the pointer drawn in. Results land below this checkout's hidden-session directory.
+video with the pointer drawn in. Without --out, results land in
+~/.flexweek-ui-harness/scratch/rig-runs/<checkout id>/ (FLEXWEEK_RIG_RUNS names another folder),
+and the newest 3 runs of the checkout are kept.
 
 Surfaces are found through the hours interface below, which every hours surface provides. A surface
 that has no hours fails the scenarios that need them, which is what the 0.14.3 baseline records.
@@ -22,6 +25,8 @@ import contextlib
 import json
 import math
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -43,6 +48,49 @@ DESIGNS = ("classic", "timeline", "mission", "bento", "retro", "clay")
 MY_DAY = ("one", "dial")
 TABS = ("day", "week", "month", "myday")
 PASSWORD = "a-long-test-password"
+KEEP_RUNS = 3
+RUN_NAME = re.compile(r"\d{8}-\d{6}-\d+")
+
+
+def parse_options(design: str | None, pairs: list[str]) -> dict[str, str]:
+    """`--option key=value` pairs as the design's saved options, or a SystemExit naming what is valid."""
+    from desktop.native.layouts.registry import LAYOUTS
+
+    if not pairs:
+        return {}
+    if design not in LAYOUTS:
+        raise SystemExit("--option sets a design's option, so it needs --design (a design with options).")
+    spec = LAYOUTS[design]
+    valid = {option.key: option.values for option in spec.options}
+    listing = "; ".join(f"{key}: {', '.join(values)}" for key, values in valid.items()) or "none"
+    chosen: dict[str, str] = {}
+    for pair in pairs:
+        key, separator, value = pair.partition("=")
+        if not separator:
+            raise SystemExit(f"--option {pair!r} is not key=value. {design} options: {listing}")
+        if key not in valid:
+            raise SystemExit(f"{design} has no option {key!r}. {design} options: {listing}")
+        if value not in valid[key]:
+            raise SystemExit(
+                f"{design} option {key!r} has no value {value!r}. Valid: {', '.join(valid[key])}"
+            )
+        chosen[key] = value
+    return chosen
+
+
+def default_runs_folder(hidden_session: ModuleType) -> Path:
+    # Runs live on disk, not in /tmp: on Jonathan's machine /tmp is RAM (tmpfs with zram swap) and a
+    # day of rig runs held 767 MB of it. FLEXWEEK_RIG_RUNS moves them, since that harness folder
+    # exists only there. The hidden session's own state is small and stays in /tmp.
+    root = os.environ.get("FLEXWEEK_RIG_RUNS")
+    base = Path(root) if root else Path.home() / ".flexweek-ui-harness" / "scratch" / "rig-runs"
+    return base / hidden_session.STATE.parent.name
+
+
+def prune_runs(folder: Path) -> None:
+    runs = sorted(item for item in folder.iterdir() if item.is_dir() and RUN_NAME.fullmatch(item.name))
+    for old in runs[:-KEEP_RUNS]:
+        shutil.rmtree(old, ignore_errors=True)
 
 Step = Generator[tuple, object]
 
@@ -64,7 +112,7 @@ class Waited(AssertionError):
 
 
 def child_main(args: argparse.Namespace) -> int:
-    from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QSize, QStandardPaths, QTimer
+    from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QSize, QStandardPaths, Qt, QTimer
     from PySide6.QtGui import QColor, QCursor, QPainter, QPen
     from PySide6.QtWidgets import QApplication, QDialog, QLabel, QLineEdit, QPushButton, QWidget
 
@@ -221,6 +269,13 @@ def child_main(args: argparse.Namespace) -> int:
             self.design = ""
             self.shots: Path = out
             self.scenario = ""
+            # The hidden KWin session lets go of a button held through xdotool about a second after
+            # the last input xdotool sent; a hand resting on a button never lets go by itself. So
+            # while a drag holds the button, the pointer is sent where it already is.
+            self._resting_at = QPoint()
+            self._still = QTimer()
+            self._still.setInterval(250)
+            self._still.timeout.connect(lambda: xdo("mousemove", self._resting_at.x(), self._resting_at.y()))
 
         # Pointer
 
@@ -245,18 +300,27 @@ def child_main(args: argparse.Namespace) -> int:
             and may itself be steps. `after` is how long to wait once it is let go."""
             yield from self.move(start)
             xdo("mousedown", 1)
-            yield ("wait", 120)
-            steps = 18
-            for index in range(1, steps + 1):
-                point = start + (end - start) * index / steps
-                xdo("mousemove", point.x(), point.y())
-                yield ("wait", 25)
-            yield ("wait", rest)
-            self.shot("held")
-            if held is not None:
-                more = held()
-                if isinstance(more, Generator):
-                    yield from more
+            self._resting_at = start
+            self._still.start()
+            try:
+                yield ("wait", 120)
+                steps = 18
+                for index in range(1, steps + 1):
+                    point = start + (end - start) * index / steps
+                    xdo("mousemove", point.x(), point.y())
+                    self._resting_at = point
+                    yield ("wait", 25)
+                yield ("wait", rest)
+                self.shot("held")
+                if held is not None:
+                    more = held()
+                    if isinstance(more, Generator):
+                        yield from more
+            finally:
+                self._still.stop()
+            # Anything the scenario reads while it holds is only true if it still held then.
+            if not QApplication.mouseButtons() & Qt.MouseButton.LeftButton:
+                raise AssertionError("the button was let go before the rig let go of it")
             xdo("mouseup", 1)
             yield ("wait", after)
 
@@ -726,7 +790,7 @@ def child_main(args: argparse.Namespace) -> int:
         held_at = r.minute_under(grab) - 19 * 60
         reachable = r.minute_under(edge) - held_at
         under: list[float] = []
-        yield from r.drag(grab, edge, held=lambda: under.append(r.minute_under(edge)), rest=900)
+        yield from r.drag(grab, edge, held=lambda: under.append(r.minute_under(edge)), rest=1500)
         yield from r.settled()
         start = minutes(block(ids["essay"])["start"])
         expect(
@@ -1452,11 +1516,13 @@ def child_main(args: argparse.Namespace) -> int:
         for scroll in window.findChildren(HoursScroll):
             scroll.restore({scroll.scale.key: scroll.scale.default})
 
+    saved_options = {args.design: parse_options(args.design, args.option)} if args.option else {}
+
     def use_design(design: str) -> None:
         if design in MY_DAY:
-            window._layout = sanitize_layout({"main": "classic", "day": design})
+            window._layout = sanitize_layout({"main": "classic", "day": design, "options": saved_options})
         else:
-            window._layout = sanitize_layout({"main": design, "day": "one"})
+            window._layout = sanitize_layout({"main": design, "day": "one", "options": saved_options})
         window._apply_appearance()
         session.set_view("week")
         window._on_week()
@@ -1608,8 +1674,16 @@ def main() -> int:
     parser.add_argument("--server", choices=["auto", "kwin", "xvfb"], default="auto")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--out")
+    parser.add_argument(
+        "--option",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="set one of --design's saved options, e.g. hero=today; repeat for more",
+    )
     parser.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    parse_options(args.design, args.option)
     if args.list and not args.child:
         args.out = tempfile.mkdtemp()
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -1630,11 +1704,8 @@ def main() -> int:
 
 def drive(args: argparse.Namespace, display: str, hidden_session: ModuleType) -> int:
     """Run the scenarios in a child on the hidden display, and return its exit code."""
-    out = (
-        Path(args.out)
-        if args.out
-        else hidden_session.STATE.parent / "runs" / f"{datetime.now():%Y%m%d-%H%M%S}-{os.getpid()}"
-    )
+    runs = None if args.out else default_runs_folder(hidden_session)
+    out = Path(args.out) if args.out else runs / f"{datetime.now():%Y%m%d-%H%M%S}-{os.getpid()}"
     out.mkdir(parents=True, exist_ok=True)
     env = {
         key: value
@@ -1655,7 +1726,13 @@ def drive(args: argparse.Namespace, display: str, hidden_session: ModuleType) ->
     for flag in ("design", "tab", "scenario"):
         if getattr(args, flag):
             command += [f"--{flag}", getattr(args, flag)]
-    return subprocess.run(command, env=env, cwd=ROOT).returncode
+    for pair in args.option:
+        command += ["--option", pair]
+    try:
+        return subprocess.run(command, env=env, cwd=ROOT).returncode
+    finally:
+        if runs is not None:
+            prune_runs(runs)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import itertools
 import os
+import re
 from collections.abc import Iterator
 from dataclasses import replace
 
@@ -261,11 +262,16 @@ def test_full_day_reaches_early_block_and_quarter_hour(qapp: QApplication) -> No
 
 
 def test_the_four_figures_say_what_is_planned_due_free_and_focused(qapp: QApplication) -> None:
-    """Thursday 13:40. Planned today is Thursday's homework, the essay at 18:45 and the chem report at
-    20:00. Due this week is homework still to do: the maths was finished. Free time runs to 22:00
-    around School, Dinner and both homework. No focus has been timed."""
-    view = shown(qapp)
-    assert figure(view, "missionPlanned") == ("2 h 30 min", "Essay-1 at 18:45")
+    """Thursday 13:40. Planned today is the day's homework: the essay at 18:45, the chem report at
+    20:00 and the finished maths at 21:30, which is still on the day. Due this week is homework still
+    to do: the maths was finished. Free time runs to 22:00 around School, Dinner and both homework
+    still to do, and counts the finished maths as free: 500 minutes, less School's 50 to 14:30,
+    Dinner's 30, the essay's 60 and the chem report's 90. No focus has been timed."""
+    finished = block(
+        "math-2", "flexible", [3], "21:30", 30, assignment_id="math", completed=True, completed_day=3
+    )
+    view = shown(qapp, blocks=[*BLOCKS, finished])
+    assert figure(view, "missionPlanned") == ("3 h", "Essay-1 at 18:45")
     assert figure(view, "missionDue") == ("3", "2 placed, 1 not placed yet")
     assert figure(view, "missionFree") == ("4 h 30 min", "Until 22:00")
     assert figure(view, "missionFocus") == ("0 min", "None yet this week")
@@ -431,6 +437,46 @@ def test_up_next_shows_whole_rows_and_leaves_out_what_does_not_fit(qapp: QApplic
     assert [showing(row).size() for row in shows] == [row.size() for row in shows], "a row is cut"
     titles = [row.findChild(FittedLabel, "missionRowTitle").full_text() for row in shows]
     assert titles == ["Soccer practice", "Dinner", "Essay-1", "Chem-1"][: len(shows)]
+
+
+def busy_thursday(qapp: QApplication, height: int) -> MissionView:
+    """Thursday at 15:40 with six things still to come and five stretches of free time left."""
+    extra = [
+        block("soccer", "locked", [1, 3], "16:00", 90, title="Soccer practice", category="exercise"),
+        block("piano", "locked", [3], "19:00", 30, title="Piano", category="extra"),
+        block("walk", "locked", [3], "21:00", 30, title="Walk", category="exercise"),
+    ]
+    return shown(qapp, surface="day", iso_day="2026-09-17", minute="15:40", size=(1280, height),
+                 blocks=[*BLOCKS, *extra])
+
+
+def test_a_card_that_leaves_rows_out_ends_with_and_n_more_in_the_room_of_a_row(qapp: QApplication) -> None:
+    """At 1280 by 800 Up next has room for three of its six rows and Free time left for three of its
+    five. Each shows whole rows, then an "and N more" where the next row would be, N counting
+    the row it replaces, so what shows and what is left out add up to the head's count."""
+    view = busy_thursday(qapp, 800)
+    for card_name, total in (("missionUpNext", 6), ("missionFreeTime", 5)):
+        card = view.findChild(QFrame, card_name)
+        rows = [row for row in card.findChildren(QFrame, "missionListRow") if row.isVisibleTo(card)]
+        more = card.findChild(QLabel, "missionMore")
+        assert more.isVisibleTo(card), f"{card_name} does not say what it leaves out"
+        left = int(re.fullmatch(r"and (\d+) more", more.text()).group(1))
+        assert len(rows) == 3
+        assert len(rows) + left == total
+        assert more.geometry().bottom() <= card.findChild(QWidget, f"{card_name}Rows").height()
+        assert more.height() == rows[-1].height()
+        assert more.geometry().top() == rows[-1].geometry().bottom() + 1, "not straight after the last row"
+        assert all(row.property("last") is False for row in rows)
+
+
+def test_a_card_whose_rows_all_fit_has_no_more_row(qapp: QApplication) -> None:
+    view = busy_thursday(qapp, 1100)
+    for card_name, total in (("missionUpNext", 6), ("missionFreeTime", 5)):
+        card = view.findChild(QFrame, card_name)
+        rows = [row for row in card.findChildren(QFrame, "missionListRow") if row.isVisibleTo(card)]
+        assert len(rows) == total
+        assert not card.findChild(QLabel, "missionMore").isVisibleTo(card)
+        assert [row.property("last") for row in rows] == [False] * (total - 1) + [True]
 
 
 def test_late_in_the_day_the_free_time_says_when_what_waits_will_not_fit(qapp: QApplication) -> None:

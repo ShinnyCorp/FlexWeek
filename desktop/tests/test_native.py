@@ -60,6 +60,11 @@ def server(qapp: QApplication, tmp_path: Path) -> Iterator[LocalServer]:
     running.stop()
 
 
+# Creating an account, signing in and recovering hash the password with scrypt (deliberately slow) on
+# the local server's thread, which takes several times longer under the full gate's load.
+HASHING_WAIT = 30.0
+
+
 def wait_until(qapp: QApplication, predicate, timeout: float = 8.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -82,11 +87,11 @@ def signed_in(qapp: QApplication, origin: str, username: str, *, create: bool) -
     HELD.append(session)
     if create:
         session.register(username, PASSWORD)
-        wait_until(qapp, lambda: session.account is not None)
+        wait_until(qapp, lambda: session.account is not None, HASHING_WAIT)
         session.finish_recovery()
     else:
         session.login(username, PASSWORD)
-    wait_until(qapp, lambda: session.account is not None and not session.busy)
+    wait_until(qapp, lambda: session.account is not None and not session.busy, HASHING_WAIT)
     hold_before_the_plans(session)
     return session
 
@@ -1070,15 +1075,15 @@ def test_recovery_code_replaces_the_password(qapp: QApplication, server: LocalSe
     codes: list[str] = []
     session.recovery_codes.connect(lambda items: codes.extend(items))
     session.register("alice", PASSWORD)
-    wait_until(qapp, lambda: session.account is not None and len(codes) == 8)
+    wait_until(qapp, lambda: session.account is not None and len(codes) == 8, HASHING_WAIT)
     session.logout()
-    wait_until(qapp, lambda: session.account is None and not session.busy)
+    wait_until(qapp, lambda: session.account is None and not session.busy, HASHING_WAIT)
     session.recover("alice", codes[0], "recovered-password-ok")
-    wait_until(qapp, lambda: session.account is not None and not session.busy)
+    wait_until(qapp, lambda: session.account is not None and not session.busy, HASHING_WAIT)
     session.logout()
-    wait_until(qapp, lambda: session.account is None and not session.busy)
+    wait_until(qapp, lambda: session.account is None and not session.busy, HASHING_WAIT)
     session.login("alice", "recovered-password-ok")
-    wait_until(qapp, lambda: session.account is not None and not session.busy)
+    wait_until(qapp, lambda: session.account is not None and not session.busy, HASHING_WAIT)
 
 
 def test_restore_point_preview_then_restore(qapp: QApplication, server: LocalServer) -> None:

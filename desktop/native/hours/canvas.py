@@ -50,10 +50,10 @@ from desktop.native.hours.geometry import (
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
 from desktop.native.look import (
     block_paint,
+    block_time_colour,
     category_paint,
     contrast,
     look_measures,
-    mix,
     readable_ink,
     text_scale,
 )
@@ -67,8 +67,6 @@ EDGE_PX = 7
 EDGE_WIDTH = 3
 RADIUS_BLOCK = RADIUS_CONTROL
 TEXT_LEFT, TEXT_RIGHT, TEXT_TOP = 8, 5, 3
-# A block's times and length, in its ink laid this much over its fill.
-MUTED_INK = 0.72
 # Homework: a block of it carries a book as well as its colour, for a student who cannot tell the colours.
 HOMEWORK_CATEGORIES = ("assignments", "homework")
 BOOK = "book-open"
@@ -284,16 +282,14 @@ class BlockPainter:
         its length; then the title and its start on one line; with no room for three letters,
         nothing, and its colour says it is there."""
         title_font, small = self.fonts(painter.font())
-        title_line = QFontMetricsF(title_font).lineSpacing()
-        # The name stays in sight while the start of a long block is scrolled away, either way.
+        # The words are laid out in the part of the block on screen, so the edge of `visible` never
+        # falls inside a word: the name stays in sight while the start of a long block is scrolled
+        # away, and a block just coming into view says what fits, or nothing but its colour.
         start = QPointF(rect.left() + TEXT_LEFT, rect.top() + TEXT_TOP)
-        if drawn.axis is Axis.DOWN and rect.bottom() - visible.top() > 2 * title_line:
-            start.setY(max(start.y(), visible.top() + TEXT_TOP))
-        elif drawn.axis is Axis.ACROSS and rect.right() - visible.left() > 2 * title_line:
-            start.setX(max(start.x(), visible.left() + TEXT_TOP))
         room = QRectF(start, QPointF(rect.right() - TEXT_RIGHT, rect.bottom() - 1))
+        room = room.intersected(visible.adjusted(TEXT_TOP, TEXT_TOP, -TEXT_RIGHT, -1))
         paper = fill if fill is not None else self.c("window")
-        muted = QColor(mix(ink.name(), paper.name(), MUTED_INK))
+        muted = QColor(block_time_colour(ink.name(), paper.name()))
         book = self._book_colour(drawn, ink, paper, edge)
         if drawn.held:
             refused = drawn.verdict is not None and not drawn.verdict.ok
@@ -304,8 +300,8 @@ class BlockPainter:
             return
         # One line may take the block's whole height: at Large text a half-hour on the week is one
         # caption line exactly, and High contrast's outlined Dinner said nothing, an empty box.
-        tight = QRectF(room.left(), max(rect.top(), room.top() - TEXT_TOP), room.width(), 0)
-        tight.setBottom(rect.bottom())
+        tight = QRectF(room.left(), max(rect.top(), visible.top(), room.top() - TEXT_TOP), room.width(), 0)
+        tight.setBottom(min(rect.bottom(), visible.bottom()))
         shown = (self.measures["show_times"], self.measures["show_lengths"])
         lay = block_layout(
             drawn, title_font, small, room, tight=tight, wide=self.wide, book=book is not None, shown=shown

@@ -71,6 +71,11 @@ def server(qapp: QApplication, tmp_path: Path) -> Iterator[LocalServer]:
     look_file().unlink(missing_ok=True)
 
 
+# Creating an account and signing in hash the password with scrypt (deliberately slow) on the local
+# server's thread, which takes several times longer under the full gate's load.
+HASHING_WAIT = 30.0
+
+
 def wait_until(qapp: QApplication, predicate: Callable[[], bool], timeout: float = 10.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -117,11 +122,11 @@ def new_account(qapp: QApplication, server: LocalServer, name: str) -> NativeWin
     window.username.setText(name)
     window.password.setText(PASSWORD)
     window.findChild(QPushButton, "createAccount").click()
-    wait_until(qapp, lambda: page(window) == "recoveryPage")
+    wait_until(qapp, lambda: page(window) == "recoveryPage", HASHING_WAIT)
     window.recovery_ack.setChecked(True)
     window.recovery_continue.click()
-    wait_until(qapp, lambda: page(window) == "setupPage" and not window.session.busy)
-    wait_until(qapp, lambda: window.session.preferences is not None)
+    wait_until(qapp, lambda: page(window) == "setupPage" and not window.session.busy, HASHING_WAIT)
+    wait_until(qapp, lambda: window.session.preferences is not None, HASHING_WAIT)
     return window
 
 
@@ -137,7 +142,7 @@ def sign_in(qapp: QApplication, server: LocalServer, name: str) -> NativeWindow:
     window.password.setText(PASSWORD)
     window.keep_signed_in.setChecked(False)
     window.sign_in_button.click()
-    wait_until(qapp, lambda: window.session.preferences is not None and not window.session.busy)
+    wait_until(qapp, lambda: window.session.preferences is not None and not window.session.busy, HASHING_WAIT)
     for _ in range(10):
         qapp.processEvents()
     return window
@@ -426,10 +431,10 @@ def test_a_new_account_starts_at_the_beginning_not_where_the_last_one_left(
     first.username.setText("setup_after")
     first.password.setText(PASSWORD)
     first.findChild(QPushButton, "createAccount").click()
-    wait_until(qapp, lambda: page(first) == "recoveryPage")
+    wait_until(qapp, lambda: page(first) == "recoveryPage", HASHING_WAIT)
     first.recovery_ack.setChecked(True)
     first.recovery_continue.click()
-    wait_until(qapp, lambda: page(first) == "setupPage" and not first.session.busy)
+    wait_until(qapp, lambda: page(first) == "setupPage" and not first.session.busy, HASHING_WAIT)
     assert first.setup_page.step == STYLE
     assert first.setup_page.homework_rows[0].name.text() == ""
     close(qapp, first)

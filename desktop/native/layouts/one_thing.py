@@ -30,6 +30,7 @@ from desktop.native.layouts.base import (
     rules,
 )
 from desktop.native.look import category_paint
+from desktop.native.motion import app_level
 from desktop.native.ring import CountdownRing, ring_colours
 from desktop.native.tokens import RADIUS_CARD, SPACING, WEIGHT_STRONG, type_pt
 from desktop.native.weekmodel import Occurrence, Waiting, clock_label, length_label, range_label
@@ -267,6 +268,8 @@ class OneThingView(LayoutView):
         item = queue[self._skip] if queue else None
         is_now = item is not None and item == current
         self.setStyleSheet(self._sheet(scene))
+        # The ring is made again below: the new one carries on from what this one draws.
+        drawn = self._ring.left() if self._ring is not None else None
         empty(self._root)
         top = QHBoxLayout()
         top.addWidget(label(f"Now {clock_label(scene.minute)}", "oneDate"))
@@ -274,7 +277,7 @@ class OneThingView(LayoutView):
         top.addWidget(label(self._left_text(scene), "oneLeft"))
         self._root.addLayout(top)
         self._root.addStretch(1)
-        self._ring = self._dial(scene, item, is_now, current is not None)
+        self._ring = self._dial(scene, item, is_now, current is not None, drawn)
         self._root.addWidget(self._ring, 0, Qt.AlignmentFlag.AlignHCenter)
         self._root.addSpacing(scene.px(SPACING[4]))
         self._then = self._then_list(scene, queue[self._skip + 1 : self._skip + 1 + THEN_ROWS])
@@ -329,7 +332,9 @@ class OneThingView(LayoutView):
             },
         )
 
-    def _dial(self, scene: Scene, item: Occurrence | None, is_now: bool, has_current: bool) -> CountdownRing:
+    def _dial(
+        self, scene: Scene, item: Occurrence | None, is_now: bool, has_current: bool, drawn: float | None
+    ) -> CountdownRing:
         tokens = scene.tokens
         ring = CountdownRing()
         ring.set_colours(
@@ -363,11 +368,10 @@ class OneThingView(LayoutView):
         when = label(line, "oneLine", wrap=True)
         when.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ring.below.addWidget(when)
-        if item is None:
-            ring.set_left(0.0)
-        else:
-            to_go = (item.end if is_now else item.start) - scene.minute
-            ring.set_left(min(to_go, 60) / 60)
+        to_go = 0 if item is None else (item.end if is_now else item.start) - scene.minute
+        share = min(to_go, 60) / 60
+        ring.run_down(share if drawn is None else drawn, share, app_level())
+        if item is not None:
             ring.set_number(*countdown(to_go))
             ring.setAccessibleName(f"{length_label(to_go)} {'left' if is_now else 'until it starts'}")
         return ring

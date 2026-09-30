@@ -25,7 +25,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.fonts import TABULAR, load_fonts
     from desktop.native.hours import canvas as canvas_module
     from desktop.native.hours.canvas import BlockPainter, Drawn, HoursCanvas, fit_lines
-    from desktop.native.hours.geometry import Axis, LinearTrack
+    from desktop.native.hours.geometry import Axis, LinearTrack, Span
     from desktop.native.hours.hand import Hand, Verdict
     from desktop.native.hours.zoom import HoursScroll, Scale
     from desktop.native.look import mix, resolved_palette
@@ -262,11 +262,57 @@ def test_a_block_with_no_room_for_three_letters_is_its_colour_alone(
         assert canvas.block_rect("dinner", 0).width() < 34
         Said.words = []
         canvas.repaint()
+        school = words_on(canvas, "school", 0)
+        # Dinner in view, or it says nothing because it is off screen, whatever the check for letters.
+        scroll = canvas.parentWidget()
+        while not isinstance(scroll, HoursScroll):
+            scroll = scroll.parentWidget()
+        scroll.scroll_to(minute_of("18:00"))
+        qapp.processEvents()
+        port = scroll.viewport()
+        seen = QRect(port.mapToGlobal(QPoint(0, 0)), port.size())
+        assert all(seen.contains(canvas.block_rect("dinner", day)) for day in range(7))
+        Said.words = []
+        canvas.repaint()
     finally:
         qapp.setFont(usual)
     for day in range(7):
         assert words_on(canvas, "dinner", day) == [], f"Dinner on day {day}"
-    assert words_on(canvas, "school", 0)[0].startswith("School")
+    assert school[0].startswith("School")
+
+
+@pytest.mark.parametrize("axis", [Axis.DOWN, Axis.ACROSS])
+def test_a_block_partly_out_of_view_says_nothing_the_edge_of_view_cuts(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, axis: Axis
+) -> None:
+    """A block scrolled partly out of view has its words laid out in the part that shows: each word
+    that is written lies whole inside `visible`, whichever edge cuts the block and however far in,
+    and when nothing fits, the colour alone is left. Laid out for the whole block and clipped, a
+    word was cut in half at the edge."""
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    load_fonts()
+    blocks = BlockPainter(resolved_palette("system", False, None))
+    rect = QRectF(100, 100, 170, 90)
+    drawn = Drawn("lab", "Photosynthesis lab", "class", False, Span(1, 9 * 60, 10 * 60), 0, 1, axis=axis)
+    image = QImage(400, 300, QImage.Format.Format_ARGB32)
+    page = QRectF(0, 0, 400, 300)
+    # Each edge of what shows, moved a pixel at a time across the block.
+    cuts = [
+        ("left", lambda at: page.adjusted(at, 0, 0, 0), range(100, 271)),
+        ("right", lambda at: page.adjusted(0, 0, at - 400, 0), range(100, 271)),
+        ("top", lambda at: page.adjusted(0, at, 0, 0), range(100, 191)),
+        ("bottom", lambda at: page.adjusted(0, 0, 0, at - 300), range(100, 191)),
+    ]
+    for edge, shown, steps in cuts:
+        for at in steps:
+            visible = shown(at)
+            paint = Said(image)
+            Said.inks = []
+            blocks.block(paint, rect, drawn, visible)
+            paint.end()
+            for text, ink in Said.inks:
+                cut = visible.intersects(ink) and not visible.adjusted(-0.5, -0.5, 0.5, 0.5).contains(ink)
+                assert not cut, f"{text!r} is cut by the {edge} edge at {at}: {ink} in {visible}"
 
 
 def test_an_hour_label_at_the_edge_of_what_shows_is_moved_inside_it(

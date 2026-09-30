@@ -191,6 +191,8 @@ HEADING_NAMES = (
     "bentoFigure",
 )
 AA_TEXT = 4.5
+# A block's times and length, in its ink laid this much over its fill where that still reads.
+MUTED_INK = 0.72
 # The luminance under which a colour is dark: a custom page under it makes a dark look.
 MID_GREY = 0.18
 # Room round a drawn menu's panel for its shadow: its window is this much larger on every side.
@@ -963,6 +965,16 @@ def block_paint(
         ink = text if own or contrast(text, category_color) >= AA_TEXT else readable_ink(category_color)
         return {"mode": mode, "fill": category_color, "ink": ink, "outline": None, "edge": edge}
     return {"mode": mode, "fill": neutral, "ink": neutral_ink, "outline": None, "edge": edge}
+
+
+def block_time_colour(ink: str, fill: str) -> str:
+    """A block's times and length: its ink laid `MUTED_INK` over its fill, quieter than the title, or
+    as much more of the ink as it takes to read at 4.5 to 1 on the fill."""
+    for step in range(round(MUTED_INK * 100), 101, 2):
+        muted = mix(ink, fill, step / 100)
+        if contrast(muted, fill) >= AA_TEXT:
+            return muted
+    return ink
 
 
 def _depth_rules(depth: str, palette: dict) -> str:

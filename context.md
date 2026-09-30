@@ -657,6 +657,17 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-29, `feat/0.17.1`: 0.17.1 prepared, the patch after 0.17.0 (Jonathan: "start the patch").
+  Units 1 to 4 of `~/.flexweek-ui-harness/scratch/017-patch-plan.md`: the intermittent test-suite
+  segfault (a test's instance patch left a HomeworkDialog in a cycle, collected on the server
+  thread; conftest now fails any test that leaves Qt objects to the GC), gate-load waits in the
+  account tests, one order for Not placed yet, the Mission and Clay mutation specs, rig runs kept
+  on disk with `--option`, the edge scroll by time (120 min/s), block words laid out in the part in
+  view, and the polish unit (Mission's "and N more", One thing's ring easing, Clay side-card
+  labels, the plan review opening down, block times at 4.5 to 1 in every look). Gate 2250 passed;
+  every mutation spec caught; rig 246/246 once the rig kept a dragged button held (the hidden KWin
+  let go of an xdotool-held button after about 1 s idle, which made Retro's day-dwell flaky). Unit 5 (audit items) and 0.17.2 (`0172-plan.md`)
+  wait for his go.
 - 2026-09-29, `tooling/fwtest-adopt`: FlexWeek's checks now run through `fwtest`, on Jonathan's
   approval after S3's parity evidence. `scripts/verify.py` and `scripts/mutate.py` are deleted;
   README, spec.md's Validation, `docs/verification.md` and roadmap.md's open release item say
