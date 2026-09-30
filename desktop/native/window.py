@@ -2018,7 +2018,10 @@ class NativeWindow(QMainWindow):
     def _go_today(self) -> None:
         self._travel(0)
         today = datetime.fromtimestamp(self.session.now_ms() / 1000).date()
-        self._reset_hours()
+        if self._clock_in_week()[0] is not None:
+            # From another week, the week changing to this one opens it at now (_on_week), and that
+            # other week stays where it was left.
+            self._reset_hours()
         self.session.load_week(monday_of(today.isoformat()))
         if self.session.planner_view == "day" or self._day_mode:
             self.session.open_day(today.isoformat())

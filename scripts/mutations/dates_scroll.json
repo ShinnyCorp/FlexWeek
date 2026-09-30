@@ -70,6 +70,13 @@
   "test": "desktop/tests/test_hours_open.py::test_each_design_keeps_day_and_week_scroll_until_today_is_pressed"
  },
  {
+  "name": "Today from another week forgets where that week was",
+  "file": "desktop/native/window.py",
+  "old": "        if self._clock_in_week()[0] is not None:\n            # From another week,",
+  "new": "        if True:\n            # From another week,",
+  "test": "desktop/tests/test_hours_open.py::test_today_opens_this_week_at_now_and_leaves_the_week_it_was_pressed_from_where_it_was"
+ },
+ {
   "name": "a day left while its hours have no room is forgotten",
   "file": "desktop/native/hours/zoom.py",
   "old": "        return self._top if shown is None else shown\n",

@@ -23,7 +23,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, QStandardPaths
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtWidgets import QApplication, QPushButton, QScrollBar
 
     from desktop.native.calendar import monday_of, sunday_due
     from desktop.native.hours.geometry import Axis
@@ -386,6 +386,47 @@ def test_each_design_keeps_day_and_week_scroll_until_today_is_pressed(
     opens_at(qapp, window, NOW, f"{design} returning to this week after scrolling next week")
     press("nextWeek")
     stays("next week after Today reopened this week")
+
+
+@pytest.mark.parametrize("design", DESIGNS)
+def test_today_opens_this_week_at_now_and_leaves_the_week_it_was_pressed_from_where_it_was(
+    qapp: QApplication, window: NativeWindow, design: str
+) -> None:
+    """Today opens this week at now. Next week, scrolled before Today was pressed, is where the student
+    left it when they go forward to it again."""
+    session = window.session
+    window._layout = sanitize_layout({"main": design, "day": "one"})
+    window._apply_appearance()
+    window._on_week()
+
+    def press(name: str) -> None:
+        window.findChild(QPushButton, name).click()
+        wait_until(qapp, lambda: not session.busy)
+        for _ in range(4):
+            qapp.processEvents()
+
+    def bar() -> QScrollBar:
+        scroll = hours(window)
+        return scroll.verticalScrollBar() if scroll.axis is Axis.DOWN else scroll.horizontalScrollBar()
+
+    press("viewWeek")
+    press("nextWeek")
+    # Today's app shows an empty week as one button, not hours.
+    session.add_block({"id": "future-dinner", "title": "Dinner", "kind": "locked", "category": "meals",
+                       "start": "18:00", "duration_min": 30, "days": [0]})
+    session.save()
+    wait_until(qapp, lambda: not session.busy and not session.dirty)
+    for _ in range(4):
+        qapp.processEvents()
+    opened = bar().value()
+    bar().setValue(opened + 40 if opened + 40 <= bar().maximum() else opened - 40)
+    left = bar().value()
+    assert abs(left - opened) == 40, f"{design}: next week's hours have no room to scroll"
+    press("todayWeek")
+    assert session.week_start == monday_of(date.today().isoformat())
+    opens_at(qapp, window, NOW, f"{design} Today from next week")
+    press("nextWeek")
+    assert bar().value() == left, f"{design}: Today lost where next week was scrolled to"
 
 
 def test_my_day_title_names_the_day_chosen_on_its_strip(
