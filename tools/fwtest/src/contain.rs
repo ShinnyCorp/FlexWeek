@@ -299,6 +299,10 @@ fn systemd_user_works() -> bool {
         .unwrap_or(false)
 }
 
+/// Every job runs with FlexWeek's alarm and reminder sounds silenced: tests and the rig ring them,
+/// and they came out of the speakers of whoever was at the machine.
+const SILENT: &str = "FLEXWEEK_SILENT";
+
 fn spawn_systemd(
     argv: &[String],
     scope: &str,
@@ -321,6 +325,7 @@ fn spawn_systemd(
             "--",
         ])
         .args(argv)
+        .env(SILENT, "1")
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -346,6 +351,7 @@ fn spawn_direct(argv: &[String], cpus: &[usize], cwd: Option<&Path>) -> io::Resu
     let mut command = Command::new(&argv[0]);
     command
         .args(&argv[1..])
+        .env(SILENT, "1")
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

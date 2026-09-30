@@ -38,6 +38,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from types import ModuleType
 
+# The app the rig drives rings reminders; they play at no volume (desktop/native/sound.py).
+os.environ["FLEXWEEK_SILENT"] = "1"
+
 MARKER = "rig-week-marker"
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
