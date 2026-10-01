@@ -31,7 +31,7 @@ from desktop.tests.window_support import (  # noqa: F401
     wait_until,
 )
 
-FIRST = "Welcome to FlexWeek"
+FIRST = "Welcome"
 AGAIN = "Welcome back"
 
 

@@ -308,7 +308,7 @@ SUGGEST_SHORT = "Suggest"
 BAR_ICON_PX = 20
 AUTH_CARD_WIDTH = 420
 # One heading on the sign-in card: a greeting there, and what the page is for when making an account.
-FIRST_GREETING = "Welcome to FlexWeek"
+FIRST_GREETING = "Welcome"
 AGAIN_GREETING = "Welcome back"
 CREATE_HEADING = "Create your account"
 CREATE_NOTE = "FlexWeek fits homework around school and sports. Your week is saved to your account."

@@ -10,7 +10,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFont, QFontMetrics
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from desktop.native.look import sanitize_look
+from desktop.native.look import resolved_palette, sanitize_look
 from desktop.native.tokens import SHADOW_LARGE
 from desktop.native.window import NativeWindow
 from desktop.tests.window_support import (  # noqa: F401
@@ -74,7 +74,7 @@ def test_the_card_has_one_heading_and_create_account_hides_forgot_password(
     signed_out: NativeWindow,  # noqa: F811
 ) -> None:
     window = signed_out
-    assert window.auth_heading.text() == "Welcome to FlexWeek"
+    assert window.auth_heading.text() == "Welcome"
     assert not window.auth_note.isVisibleTo(window), "no second heading under the first"
     assert shown(window, "forgotPassword")
     window.auth_switch.click()
@@ -98,7 +98,7 @@ def test_forgot_password_is_the_cards_own_page_with_one_filled_button(
     assert not shown(window, "forgotPassword")
     assert window.auth_switch.text() == "Back to sign in"
     window.auth_switch.click()
-    assert window.auth_heading.text() == "Welcome to FlexWeek"
+    assert window.auth_heading.text() == "Welcome"
     assert [name for name in ("signIn", "createAccount", "recoverAccount") if shown(window, name)] == [
         "signIn"
     ]
@@ -165,3 +165,83 @@ def test_every_line_on_the_card_is_whole_at_large_text(
     parts = [*held.findChildren(QLabel), *held.findChildren(QCheckBox), *held.findChildren(QPushButton)]
     cut = [part.text() for part in parts if part.isVisibleTo(window) and part.text() and not whole(part)]
     assert cut == []
+
+
+def test_the_name_is_said_once_not_again_in_the_heading(signed_out: NativeWindow) -> None:  # noqa: F811
+    """The wordmark sat right above "Welcome to FlexWeek"."""
+    window = signed_out
+    page = window._stack.currentWidget()
+    for mode in ("sign in", "create", "reset"):
+        window._entry_mode = mode
+        window._sync_auth_mode()
+        QApplication.processEvents()
+        assert "FlexWeek" not in window.auth_heading.text(), (mode, window.auth_heading.text())
+        marks = [label for label in page.findChildren(QLabel) if label.text() == "FlexWeek"]
+        assert [label.objectName() for label in marks] == ["authBrand"], mode
+
+
+def test_creating_an_account_carries_more_weight_than_forgot_password(
+    signed_out: NativeWindow,  # noqa: F811
+) -> None:
+    """The two links under Sign in were drawn alike; most students on a first run need the one that
+    makes an account."""
+    window = signed_out
+    assert shown(window, "forgotPassword") and shown(window, "authSwitch")
+    assert window.auth_switch.font().weight() > window.forgot_button.font().weight()
+    assert window.auth_switch.font().weight() == QFont.Weight.DemiBold
+    assert window.forgot_button.font().weight() == QFont.Weight.Normal
+
+
+def ink(widget: QWidget) -> QColor:
+    """The darkest fully drawn pixel of a link: its words' colour, not the faded edge of a letter."""
+    image = widget.grab().toImage()
+    solid = [
+        image.pixelColor(x, y)
+        for x in range(image.width())
+        for y in range(image.height())
+        if image.pixelColor(x, y).alpha() == 255
+    ]
+    return min(solid, key=lambda pixel: pixel.lightness())
+
+
+def underlined(widget: QPushButton) -> bool:
+    """A row drawn across nearly the whole width of the words: a letter's bar never is."""
+    image = widget.grab().toImage()
+    words = QFontMetrics(widget.font()).horizontalAdvance(widget.text())
+    wide = range(image.width())
+    rows = (sum(image.pixelColor(x, y).alpha() == 255 for x in wide) for y in range(image.height()))
+    return max(rows) >= words * 0.9
+
+
+def distance(one: QColor, other: QColor) -> int:
+    return abs(one.red() - other.red()) + abs(one.green() - other.green()) + abs(one.blue() - other.blue())
+
+
+@pytest.mark.parametrize("name", ["forgotPassword", "authSwitch"])
+@pytest.mark.parametrize("how", ["keyboard", "pointer"])
+def test_a_link_in_reach_keeps_the_accent_darker_and_underlined(
+    signed_out: NativeWindow,  # noqa: F811
+    name: str,
+    how: str,
+) -> None:
+    """It went near-black on hover and, reached by the keyboard, showed nothing at all."""
+    window = signed_out
+    pack, dark, accent = window._look_inputs()
+    palette = resolved_palette(pack, dark, window._look, accent)
+    link = window.findChild(QPushButton, name)
+    resting = ink(link)
+    assert distance(resting, QColor(palette["accent"])) <= 12, "at rest it is the accent"
+    assert not underlined(link)
+    if how == "keyboard":
+        window.activateWindow()
+        QTest.qWaitForWindowActive(window)
+        link.setFocus(Qt.FocusReason.TabFocusReason)
+    else:
+        QTest.mouseMove(link, QPoint(link.width() // 2, link.height() // 2))
+    QApplication.processEvents()
+    reached = ink(link)
+    assert underlined(link), "underlined, so the colour is not the only sign"
+    assert reached.lightness() < resting.lightness(), "darker than at rest"
+    assert distance(reached, QColor(palette["accent"])) < distance(reached, QColor(palette["text"])), (
+        f"still the accent, not near-black: {reached.name()}"
+    )

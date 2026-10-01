@@ -1376,6 +1376,9 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
     sheet = RADIUS_SHEET if card_radius else 0
     ring = mix(palette["accent"], palette["field"], 0.4)
     links = "QPushButton#authSwitch, QPushButton#forgotPassword"
+    # Still the accent, a step toward the text colour: it stays a link instead of going near-black.
+    deeper = mix(palette["accent"], palette["text"], 0.7)
+    reached = ", ".join(f'{name}:hover, {name}[keyfocus="true"]:focus' for name in links.split(", "))
     return (
         f"QWidget#authCard {{ background: {palette['panel']}; border-radius: {sheet}px; "
         f"padding: {inset}px; {edges} }}"
@@ -1391,10 +1394,12 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         f"border-radius: {radius}px; }}"
         f"QToolButton#passwordReveal:hover {{ background: {palette['hairline']}; }}"
         f"QToolButton#passwordReveal:focus {{ border: 2px solid {ring}; }}"
+        # Creating an account is the way in for most students on a first run, so it is the link that
+        # carries weight and Forgot password sits quieter under it.
         f"{links} {{ background: transparent; color: {palette['accent']}; border: none; "
-        f"padding: {SPACING[0]}px 0; min-height: 0; }}"
-        f"QPushButton#authSwitch:hover, QPushButton#forgotPassword:hover {{ color: {palette['text']}; "
-        "text-decoration: underline; }"
+        f"padding: {SPACING[0]}px 0; min-height: 0; font-weight: {WEIGHT_REGULAR}; }}"
+        f"QPushButton#authSwitch {{ font-weight: {WEIGHT_STRONG}; }}"
+        f"{reached} {{ color: {deeper}; text-decoration: underline; }}"
     )
 
 
