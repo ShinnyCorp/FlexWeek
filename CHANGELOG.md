@@ -70,7 +70,13 @@ All notable changes to FlexWeek are documented here. Format follows
   rest equally. It widens as soon as something is put on it.
 - Blocks that share a time no longer carry a black dot at their corner: they
   already sit side by side, and the dot covered the end of the name. Each half
-  keeps two pixels more room for its words.
+  keeps two pixels more room for its words. Clay and Retro had kept theirs;
+  those are gone too.
+- Retro's and Bento's Week at the narrowest window (810 pixels) names each
+  block and says when it starts, "Sch…" over "08:00", as Today's app's Week
+  does: Retro's blocks said nothing and Bento's said "Sc…" alone. A name is cut
+  short only when it does not fit, and the picture before it goes before the
+  name drops below three letters.
 
 ### Fixed
 - Today's app's hours end at 23:00: the "24:00" label under them is gone, in
