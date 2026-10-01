@@ -69,6 +69,10 @@ RADIUS_BLOCK = RADIUS_CONTROL
 TEXT_LEFT, TEXT_RIGHT, TEXT_TOP = 8, 5, 3
 # Blocks that share a time are half a column or less, so their words keep this much less at each side.
 SHARED_TRIM = 2
+# So do blocks narrower than this, on the designs that set `trims_narrow`: a week column at the
+# window's minimum width is that narrow, and with the full margins its block cannot say "Sch…" and
+# when it starts.
+NARROW_BLOCK = 64
 # The most a now line's dot or pill reaches either side of the line.
 NOW_REACH = 12
 # How far short of a block's words and icon the now line stops, and how far past them it resumes.
@@ -143,9 +147,8 @@ class BlockPainter:
     # Where the time now is written: on a pill at the start of its line, or in the gutter beside it,
     # where it takes the place of the hour labels near it.
     now_in_gutter = False
-    # A title with no room for its first word says nothing, and its colour says it is there, rather
-    # than cutting inside the word ("Robot…"). Retro desktop's; the others keep decision 14's cut.
-    whole_words = False
+    # Whether a block narrower than NARROW_BLOCK keeps its words closer to its sides.
+    trims_narrow = False
     # Whether the hour at the end of the day is labelled "24:00". The rule is drawn either way.
     end_label = True
 
@@ -339,7 +342,7 @@ class BlockPainter:
         # The words are laid out in the part of the block on screen, so the edge of `visible` never
         # falls inside a word: the name stays in sight while the start of a long block is scrolled
         # away, and a block just coming into view says what fits, or nothing but its colour.
-        trim = SHARED_TRIM if drawn.columns > 1 else 0
+        trim = SHARED_TRIM if drawn.columns > 1 or (self.trims_narrow and rect.width() < NARROW_BLOCK) else 0
         left, right = TEXT_LEFT - trim, TEXT_RIGHT - trim
         start = QPointF(rect.left() + left, rect.top() + TEXT_TOP)
         room = QRectF(start, QPointF(rect.right() - right, rect.bottom() - 1))
@@ -364,8 +367,6 @@ class BlockPainter:
         lay = block_layout(
             drawn, title_font, small, room, tight=tight, wide=self.wide, book=book is not None, shown=shown
         )
-        if self.whole_words and cuts_a_word(lay, drawn.title):
-            return []
         return _paint_layout(painter, lay, title_font, small, ink, muted, book, muted,
                              icon_name=category_icon(drawn.category) or BOOK)
 
@@ -596,11 +597,6 @@ def name_kept(lines: list[str], title: str) -> int:
     return 2 if short else 3
 
 
-def cuts_a_word(lay: list[Written], title: str) -> bool:
-    """Whether a block's words cut its title inside a word."""
-    return name_kept([line.text for line in lay if line.title], title) == 1
-
-
 def _clamp(lines: list[str], most: int, metrics: QFontMetricsF, width: float, indent: float) -> list[str]:
     """At most `most` lines, the last one ending in "…" if there was more, each within its width."""
     shown = lines[:most]
@@ -631,9 +627,12 @@ def block_layout(
     icon and less. Its colour still says the category."""
     start = {drawn.times, clock_label(drawn.span.start), short_clock(drawn.span.start)}
 
-    def said(lay: list[Written]) -> tuple[int, bool]:
-        name = name_kept([line.text for line in lay if line.title], drawn.title)
-        return name, any(line.text in start for line in lay if not line.title)
+    def said(lay: list[Written]) -> tuple[int, int, bool]:
+        titled = [line.text for line in lay if line.title]
+        # Three letters of a name are worth more than the icon, one or two are not.
+        letters = min(len(titled[0].rstrip("…")), 3) if titled else 0
+        starts = any(line.text in start for line in lay if not line.title)
+        return name_kept(titled, drawn.title), letters, starts
 
     lay = _block_words(drawn, title_font, small, room, tight=tight, wide=wide, book=book, shown=shown)
     if not book:

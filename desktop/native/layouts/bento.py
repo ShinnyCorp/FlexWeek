@@ -1094,6 +1094,8 @@ class BentoPainter(ClassicPainter):
     edge. A block's name and times are in the caption size, as the mock-up writes them, so a
     half-hour block still says its name."""
 
+    trims_narrow = True
+
     def __init__(self, tokens: dict[str, str], *, wide: bool = False) -> None:
         soft = mix_oklab(tokens["line"], tokens["surface"], 0.5)
         super().__init__(

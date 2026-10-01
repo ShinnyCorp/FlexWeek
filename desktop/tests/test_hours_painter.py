@@ -449,6 +449,24 @@ def test_a_word_too_wide_for_its_block_is_shortened_only_when_nothing_else_fits(
     assert block_layout(drawn, title, small, QRectF(0, 0, three - 1, tall)) == []
 
 
+def test_the_icon_gives_way_before_a_name_is_left_with_fewer_than_three_letters(qapp: QApplication) -> None:
+    """The name, then its start, then the icon: with room for "Sch…" and the start but not the icon
+    as well, the block says those, not the icon and "Sc…"."""
+    from desktop.native.hours.canvas import block_layout
+    from desktop.native.hours.geometry import Span
+
+    title, small = BlockPainter(resolved_palette("system", False, None)).fonts(QFont("Inter", 12))
+    tm, sm = QFontMetricsF(title), QFontMetricsF(small)
+    drawn = Drawn("school", "School", "class", False, Span(1, 9 * 60, 10 * 60), 0, 1)
+    icon = round(tm.ascent()) + 3
+    room = (tm.horizontalAdvance("Sch…"), icon + tm.horizontalAdvance("Sch"), sm.horizontalAdvance("09:00"))
+    width = max(room) + 0.5
+    assert width < icon + tm.horizontalAdvance("Sch…"), "room for the icon and three letters, not the dots"
+    lay = block_layout(drawn, title, small, QRectF(0, 0, width, tm.lineSpacing() * 4), book=True)
+    assert [(line.text, line.book) for line in lay if line.title] == [("Sch…", False)]
+    assert "09:00" in [line.text for line in lay]
+
+
 def painted(drawn: Drawn, rect: QRectF) -> QImage:
     image = QImage(200, 140, QImage.Format.Format_ARGB32)
     image.fill(QColor("white"))

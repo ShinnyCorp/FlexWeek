@@ -17,8 +17,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     import shiboken6
-    from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QRect
-    from PySide6.QtGui import QEnterEvent, QFont
+    from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QRect, QRectF
+    from PySide6.QtGui import QEnterEvent, QFont, QImage
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
@@ -461,6 +461,30 @@ def test_day_and_week_keep_their_scroll_and_zoom_through_redraw(qapp: QApplicati
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     assert not shiboken6.isValid(week)
     assert not shiboken6.isValid(day)
+
+
+def test_a_week_block_at_the_smallest_window_names_itself_and_says_when_it_starts(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In a window 810 pixels across a day on the week is a block 52.4 pixels wide: "Sch…" over
+    "08:00", where it said "Sc…" alone; no less than Today's app's Week writes any block that narrow."""
+    from desktop.tests.test_hours_painter import Said
+
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    load_fonts()
+    palette = resolved_palette("light-frost", False, None, "default")
+    painter = BentoPainter(tokens_for("bento", options_for(None, "bento")["colour"], palette))
+    drawn = Drawn("school", "School", "class", False, Span(0, 8 * 60, 14 * 60 + 30), 0, 1)
+    page = QRectF(0, 0, 200, 300)
+    image = QImage(200, 300, QImage.Format.Format_ARGB32)
+    paint = Said(image)
+    paint.setFont(QFont("Inter", 13))
+    Said.words = []
+    painter.block(paint, QRectF(20, 20, 52.4, 200), drawn, page)
+    paint.end()
+    said = [text for text, _where in Said.words]
+    assert said[:1] in (["School"], ["Sch…"]), said
+    assert "08:00" in said, said
 
 
 def test_the_tiles_stay_beside_the_hero_in_a_small_window(qapp: QApplication) -> None:

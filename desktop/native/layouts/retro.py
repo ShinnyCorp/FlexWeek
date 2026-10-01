@@ -515,7 +515,7 @@ class RetroPainter(BlockPainter):
     the other days, with its time on a Windows 98 tooltip in the gutter."""
 
     now_in_gutter = True
-    whole_words = True
+    trims_narrow = True
 
     def __init__(self, colours: Scheme, *, wide: bool = False) -> None:
         super().__init__(
