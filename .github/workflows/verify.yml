@@ -59,7 +59,7 @@ jobs:
         working-directory: engine
         run: cargo test --workspace
       - name: Build the engine module
-        run: maturin develop --release --manifest-path engine/py/Cargo.toml
+        run: maturin develop --release --manifest-path engine/py/Cargo.toml --features audit
       - run: fwtest gate --backend-only
         env:
           VERIFY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}

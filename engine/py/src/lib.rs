@@ -228,6 +228,7 @@ fn month_grid(
     })
 }
 
+#[cfg(feature = "audit")]
 fn int_one(text: &str) -> (String, String) {
     match time::py_int(text) {
         Ok(value) => ("ok".to_string(), value.to_string()),
@@ -245,16 +246,19 @@ fn int_one(text: &str) -> (String, String) {
     }
 }
 
+#[cfg(feature = "audit")]
 #[pyfunction]
 fn panic_probe() -> PyResult<()> {
     guard(|| -> PyResult<()> { panic!("probe") })
 }
 
+#[cfg(feature = "audit")]
 #[pyfunction]
 fn int_text(text: &str) -> PyResult<(String, String)> {
     guard(|| Ok(int_one(text)))
 }
 
+#[cfg(feature = "audit")]
 #[pyfunction]
 fn int_chars(text: &str) -> PyResult<Vec<(String, String)>> {
     guard(|| Ok(text.chars().map(|ch| int_one(&ch.to_string())).collect()))
@@ -275,9 +279,6 @@ fn flexweek_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     crate::export!(
         m,
         casefold,
-        panic_probe,
-        int_text,
-        int_chars,
         hhmm_to_minutes,
         clock_to_minutes,
         minutes_to_hhmm,
@@ -302,6 +303,8 @@ fn flexweek_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
         month_grid,
         guarded_names,
     );
+    #[cfg(feature = "audit")]
+    crate::export!(m, panic_probe, int_text, int_chars);
     more::add(m)?;
     rest::add(m)?;
     Ok(())

@@ -14,3 +14,8 @@ flexweek-engine = { path = "../engine" }
 flexweek-store = { path = "../store" }
 pyo3 = { version = "0.27.2", features = ["extension-module"] }
 serde_json = { version = "1.0.145", features = ["float_roundtrip", "arbitrary_precision"] }
+
+[features]
+default = []
+audit = []
+
