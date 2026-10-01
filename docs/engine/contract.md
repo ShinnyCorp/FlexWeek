@@ -111,8 +111,31 @@ the new differential tests green, and the Rust checks passing.
   lines change in `desktop/`. The pydantic classes stay in `backend/models.py`.
 - **E6, later.** `desktop/native/weekmodel.py`, when the phone app needs the same week model.
 
+## Tests and tooling
+
+Jonathan decided on 2026-09-30 that the overhaul covers everything but the interface, tests included,
+and that the interface's own tests are tidied, in Python, once the ported tests are verified. The Python tests stay the
+check while code moves: a test is ported only once the code it tests has been switched (E5), so at no
+point are the code and its check rewritten together.
+
+- **T1, the engine's tests, after E5.** The backend tests of logic and storage (not of HTTP routes)
+  become Rust tests in `engine/`, case for case. Each keeps the Python test's expected values; none is
+  re-derived from what the Rust code returns. A Python test is deleted only when its Rust version
+  passes and catches the same faults: the backend's mutation cases move to `cargo mutants` for the
+  engine, and every case the Python tests caught must still be caught. The differential tests are
+  deleted last, since by then there is one implementation.
+- **T2, the API tests.** Open, for Jonathan: they test `backend/app.py`'s routes. While the server
+  is Python they either stay Python, or become Rust tests that call the running server over HTTP.
+- **T3, the rig.** `scripts/rig/drive.py` and `hidden_session.py` move into `fwtest` in Rust with the
+  same scenarios, `results.json`, screenshots and videos, on the same hidden KWin with its private
+  D-Bus. Each design's rig gives the same pass count before and after the move.
+- **T4, the interface's tests, tidied in Python, last.** It starts only once T1 to T3 are verified:
+  the ported tests pass, catch every fault their Python versions caught, and the rig's counts match.
+  Then shared helpers are merged, overlapping and slow tests cut, and the known flaky tests fixed
+  (Sign in's pointer-hover case in `test_sign_in_card.py`). The interface's mutation specs stay.
+
 ## Not in scope
 
-The interface, the FastAPI server and the tests stay in Python. The full move to a Rust interface
-waits for the phone app. The engine does not add features: anything new goes in after E5, once
-there is one implementation to change.
+The interface and its tests stay in Python (tidied in T4). The full move to a Rust interface waits for
+the phone app. The engine does not add features: anything new goes in after E5, once there is one
+implementation to change.
