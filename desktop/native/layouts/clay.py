@@ -362,7 +362,7 @@ class ClayPainter(BlockPainter):
         return title, small
 
     def body(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> None:
-        fill, ink, _outline, edge = self.fills(drawn)
+        fill, _ink, _outline, edge = self.fills(drawn)
         assert edge is not None
         radius = min(RADIUS_BLOCK, rect.height() / 2, rect.width() / 2)
         shape = QPainterPath()
@@ -389,10 +389,6 @@ class ClayPainter(BlockPainter):
             painter.setPen(QPen(self.c("error" if refused else "selection"), 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), max(radius - 1, 0), max(radius - 1, 0))
-        if drawn.columns > 1 and not drawn.held:
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(ink)
-            painter.drawEllipse(QPointF(rect.right() - 7, rect.top() + 7), 3.5, 3.5)
 
     def words(
         self,

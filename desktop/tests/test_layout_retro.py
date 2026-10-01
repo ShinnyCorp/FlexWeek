@@ -35,7 +35,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from shiboken6 import isValid
 
     from desktop.native.fonts import load_fonts
-    from desktop.native.hours.canvas import Drawn, Started, Written, cuts_a_word
+    from desktop.native.hours.canvas import Drawn, Started
     from desktop.native.hours.chips import TrayChip
     from desktop.native.hours.geometry import Span
     from desktop.native.hours.hand import Hand, Verdict
@@ -724,8 +724,9 @@ def dark_pixels(image: QImage, left: int) -> int:
     )
 
 
-def test_a_block_with_no_room_for_its_first_word_says_nothing_rather_than_cut_it(qapp: QApplication) -> None:
-    """ "Robotics club" in a column too narrow for "Robotics" is its colour alone, not "Robot…"."""
+def test_a_block_with_no_room_for_three_letters_of_its_name_is_its_colour_alone(qapp: QApplication) -> None:
+    """ "Robotics club" in a column too narrow for "Robotics" says "Rob…"; with no room for even
+    "Rob" it is its colour alone, as on every design."""
     load_fonts()
     colours = scheme(tokens_for("retro", "teal", palette_of("light")))
     drawn = Drawn("club", "Robotics club", "extra", False, Span(0, 915, 990), 0, 1)
@@ -740,14 +741,47 @@ def test_a_block_with_no_room_for_its_first_word_says_nothing_rather_than_cut_it
         return dark_pixels(image, 4)
 
     assert painted(160) > 0
-    assert painted(56) == 0
+    assert painted(56) > 0
+    assert painted(20) == 0
 
 
-def test_a_title_cut_inside_a_word_is_found() -> None:
-    def said(*lines: str) -> list[Written]:
-        return [Written(line, True, QRectF()) for line in lines]
+def test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not(qapp: QApplication) -> None:
+    """Two blocks side by side show they share their time by sitting side by side, as on every
+    design: no dot at the corner of each."""
+    colours = scheme(tokens_for("retro", "teal", palette_of("light")))
 
-    assert cuts_a_word(said("Robot…"), "Robotics club")
-    assert not cuts_a_word(said("Robotics…"), "Robotics club")
-    assert not cuts_a_word(said("Chem lab", "report"), "Chem lab report")
-    assert cuts_a_word(said("…"), "Math worksheet")
+    def painted(columns: int) -> QImage:
+        drawn = Drawn("soccer", "Soccer practice", "extra", False, Span(1, 16 * 60, 17 * 60 + 30), 0, columns)
+        image = QImage(200, 140, QImage.Format.Format_RGB32)
+        image.fill(QColor("#ffffff"))
+        painter = QPainter(image)
+        RetroPainter(colours).body(painter, QRectF(20, 20, 60, 90), drawn)
+        painter.end()
+        return image
+
+    assert painted(2) == painted(1), "a block that shares its time has a mark on it"
+
+
+def test_a_week_block_at_the_smallest_window_names_itself_and_says_when_it_starts(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In a window 810 pixels across a day on the week is a block 49.7 pixels wide: "School" whole if
+    it fits, or "Sch…", over its start, as Today's app's Week writes any block that narrow; never
+    nothing."""
+    from desktop.native.hours import canvas as canvas_module
+    from desktop.tests.test_hours_painter import Said
+
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    load_fonts()
+    colours = scheme(tokens_for("retro", "teal", palette_of("light")))
+    drawn = Drawn("school", "School", "class", False, Span(0, 8 * 60, 14 * 60 + 30), 0, 1)
+    page = QRectF(0, 0, 200, 300)
+    image = QImage(200, 300, QImage.Format.Format_RGB32)
+    paint = Said(image)
+    paint.setFont(QFont("Pixelify Sans", 13))
+    Said.words = []
+    RetroPainter(colours).block(paint, QRectF(20, 20, 49.7, 200), drawn, page)
+    paint.end()
+    said = [text for text, _where in Said.words]
+    assert said[:1] in (["School"], ["Sch…"]), said
+    assert "08:00" in said, said

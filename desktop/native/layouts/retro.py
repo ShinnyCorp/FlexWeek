@@ -515,7 +515,7 @@ class RetroPainter(BlockPainter):
     the other days, with its time on a Windows 98 tooltip in the gutter."""
 
     now_in_gutter = True
-    whole_words = True
+    trims_narrow = True
 
     def __init__(self, colours: Scheme, *, wide: bool = False) -> None:
         super().__init__(
@@ -609,7 +609,7 @@ class RetroPainter(BlockPainter):
     def body(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> None:
         colours = self.scheme
         self.wide = self.day and rect.width() >= DAY_WIDE_LEAST
-        fill, ink, _outline, edge = self.fills(drawn)
+        fill, _ink, _outline, edge = self.fills(drawn)
         box = QRect(round(rect.left()), round(rect.top()), round(rect.width()), max(round(rect.height()), 1))
         painter.fillRect(box, fill)
         if colours.contrast:
@@ -622,10 +622,6 @@ class RetroPainter(BlockPainter):
             ring = QColor(colours.danger if refused else colours.accent)
             frame_in(painter, box, ring, ring)
             frame_in(painter, box.adjusted(1, 1, -1, -1), ring, ring)
-        if drawn.columns > 1 and not drawn.held:
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(ink)
-            painter.drawEllipse(QPointF(box.right() - 6, box.top() + 6), 3, 3)
 
     def words(
         self,
