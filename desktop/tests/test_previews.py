@@ -77,3 +77,11 @@ def test_a_picture_is_of_the_design_once_it_has_finished_laying_out(
     render(main, None, "system", None, CANVAS.width())
     [(picture, later)] = taken
     assert picture == later
+
+
+def test_the_preview_week_puts_soccer_in_sports() -> None:
+    from desktop.native.previews import sample_week
+
+    _monday, blocks, _homework = sample_week()
+    soccer = next(block for block in blocks if block["id"] == "soccer")
+    assert soccer["category"] == "exercise"

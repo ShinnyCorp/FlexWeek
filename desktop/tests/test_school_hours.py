@@ -134,3 +134,17 @@ def test_an_end_before_the_start_is_said_and_nothing_is_saved(qapp: QApplication
     save = buttons.button(QDialogButtonBox.StandardButton.Save)
     cancel = buttons.button(QDialogButtonBox.StandardButton.Cancel)
     assert (save.isDefault(), cancel.property("quiet")) == (True, True), "Save filled, Cancel quiet"
+
+
+def test_no_school_days_is_said_only_when_no_day_is_picked(qapp: QApplication, host: QWidget) -> None:
+    """Audit X7: the hint showed under a week of school days, where it read as a warning."""
+    dialog = SchoolHoursDialog(host, None)
+    dialog.show()
+    hint = next(label for label in dialog.findChildren(QLabel) if label.text().startswith("No school days"))
+    assert dialog.days.days() and not hint.isVisible()
+    for day in list(dialog.days.days()):
+        dialog.days.buttons[day].click()
+    assert hint.isVisible()
+    dialog.days.buttons[2].click()
+    assert not hint.isVisible()
+    dialog.close()

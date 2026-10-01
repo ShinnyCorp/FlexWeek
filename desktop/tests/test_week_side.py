@@ -1,6 +1,6 @@
 """Today's app's rail (0.17's pick B): the mini month, what is next, Not placed yet and the focus list
 left of Day and Week, the running timer as its first card, the month folded away and remembered;
-folded into one line on a narrow window, where blocks say their names only; and the window's floor."""
+folded into one line on a narrow window, where blocks keep their times; and the window's floor."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, QRectF, Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QFontMetricsF
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
@@ -110,6 +110,25 @@ def test_each_days_header_carries_its_homework_hours(
     assert names[0].accessibleName().endswith("1 h of homework")
 
 
+def test_a_days_homework_length_is_never_cut_at_any_window_width(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    seeded(qapp, window)
+    label = window.week_table.findChild(QLabel, "weekDayName0")
+    for width in range(810, 1281, 47):
+        window.resize(width, 860)
+        for _ in range(5):
+            qapp.processEvents()
+        label.show_day("Mon", "28", 90, False)
+        words = label.homework_words()
+        assert words in ("1 h 30 min", "1 h 30", "1:30"), (width, words)
+        icon = round(QFontMetricsF(label._fonts()[2]).ascent())
+        room = label.width() - label._homework_left(icon)
+        fits = QFontMetricsF(label._fonts()[2]).horizontalAdvance(words) <= room
+        assert fits, f"{words!r} is cut at {width} px: {label.width()} wide"
+
+
 def test_the_month_folds_away_from_its_header_and_stays_folded_after_a_restart(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
@@ -200,7 +219,7 @@ def test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way(
     assert tasks.viewport().height() >= tasks.count() * tasks.sizeHintForRow(0)
 
 
-def test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_say_their_names(
+def test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_keep_their_times(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
@@ -209,7 +228,7 @@ def test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_say_their_names
     window.resize(1100, 860)
     for _ in range(5):
         qapp.processEvents()
-    assert rail.folded and hours.hours.short_words
+    assert rail.folded and not hours.hours.short_words
     line_foot = rail.mapTo(window, rail.rect().bottomLeft()).y()
     assert line_foot < hours.mapTo(window, hours.rect().topLeft()).y(), "the line sits above the hours"
     assert rail.height() < 80, "one slim line"

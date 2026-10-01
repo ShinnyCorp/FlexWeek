@@ -44,10 +44,13 @@ LEVELS = {
     "off": Level(0.0, 0.0),
 }
 # Every duration and distance below is Normal's; the level scales it.
-# A page changing fades through: the old one out, then the new one in (decision 28).
-PAGE_OUT_MS, PAGE_IN_MS = 90, 120
-# How far Day, Week and Month slide as they change, toward the segment chosen.
-SLIDE_PX = 12
+# A page changing: the old one fades out steadily and the new one comes in PAGE_IN_AFTER_MS behind it,
+# so the window is never empty (Grok Bot's 0.17.0 audit found 3 or 4 blank frames when the new page
+# waited for the old one to go, as decision 28 had it).
+PAGE_OUT_MS, PAGE_IN_MS, PAGE_IN_AFTER_MS = 120, 160, 30
+# How far Day, Week and Month slide as they change, toward the segment chosen. At 12 no slide was seen.
+SLIDE_PX = 24
+LINEAR = QEasingCurve(QEasingCurve.Type.Linear)
 # How far a picture of the old week drifts as it fades, the way the student went with ‹ ›.
 DRIFT_PX = 16
 # How far a notice, a sheet, a dialog and Ctrl+K rise as they appear (decision 31).
@@ -213,12 +216,16 @@ def clear_fades(host: QWidget) -> None:
         leftover.deleteLater()
 
 
-def hold_picture(host: QWidget, level: str, area: QRect | None = None) -> QLabel | None:
+def hold_picture(
+    host: QWidget, level: str, area: QRect | None = None, *, beside: bool = False
+) -> QLabel | None:
     """A picture of `host`, or of `area` of it, as it looks now, laid over it until it is let go.
-    None when nothing would fade."""
+    None when nothing would fade. `beside` is a second picture of the same change, which keeps the
+    first rather than clearing it as a stale one."""
     if duration(EASE_MS, level) == 0 or not host.isVisible() or host.width() <= 0 or host.height() <= 0:
         return None
-    clear_fades(host)
+    if not beside:
+        clear_fades(host)
     shown = area if area is not None else host.rect()
     picture = QLabel(host)
     picture.setObjectName(FADE_NAME)
@@ -244,9 +251,12 @@ def trim_picture(picture: QLabel, area: QRect) -> None:
     picture.setGeometry(inside.translated(picture.pos()))
 
 
-def fade_away(picture: QLabel | None, level: str, *, ms: int = EASE_MS, drift: int = 0) -> None:
+def fade_away(
+    picture: QLabel | None, level: str, *, ms: int = EASE_MS, drift: int = 0, steady: bool = False
+) -> None:
     """Fade `picture` out in Normal's `ms`, drifting `drift` of Normal's pixels sideways (to the left
-    when negative) where things may travel, then delete it."""
+    when negative) where things may travel, then delete it. `steady` fades it at an even pace rather
+    than fast first, for a page whose successor is still coming in under it."""
     if picture is None:
         return
     length = duration(ms, level)
@@ -256,9 +266,10 @@ def fade_away(picture: QLabel | None, level: str, *, ms: int = EASE_MS, drift: i
     end = QPoint(distance(drift, level), 0)
     effect = Shift(picture, end)
     picture.setGraphicsEffect(effect)
+    fading = LINEAR if steady else OUT
 
     def step(at: float) -> None:
-        share = _along(at, 0, length)
+        share = fading.valueForProgress(at / length)
         effect.set(1 - share, end * share)
 
     _run(picture, length, step, picture.deleteLater)
@@ -305,15 +316,16 @@ def appear(
 
 
 def fade_through(picture: QLabel | None, incoming: Iterable[QWidget], level: str, direction: int = 0) -> None:
-    """The picture of what was there out, then what replaced it in (decision 28): the old fades in
-    PAGE_OUT_MS and each of `incoming` in PAGE_IN_MS after it, so two pages are never read on top of
-    each other. With a `direction` (1 forward, -1 back) the old drifts away from it and the new
-    slides in from its side."""
+    """The picture of what was there out and what replaced it in: the old fades steadily in
+    PAGE_OUT_MS and each of `incoming` comes in over PAGE_IN_MS, PAGE_IN_AFTER_MS behind it, so the
+    window is never empty and the two are only seen together faintly and briefly. With a `direction`
+    (1 forward, -1 back) the old drifts away from it and the new slides in from its side, so the two
+    are moving apart while both show."""
     if picture is None:
         return
-    fade_away(picture, level, ms=PAGE_OUT_MS, drift=-direction * SLIDE_PX)
+    fade_away(picture, level, ms=PAGE_OUT_MS, drift=-direction * SLIDE_PX, steady=True)
     for widget in incoming:
-        appear(widget, level, shift=direction * SLIDE_PX, delay_ms=PAGE_OUT_MS, ms=PAGE_IN_MS)
+        appear(widget, level, shift=direction * SLIDE_PX, delay_ms=PAGE_IN_AFTER_MS, ms=PAGE_IN_MS)
 
 
 def switch_page(stack: QStackedWidget, page: QWidget, level: str, direction: int = 0) -> None:

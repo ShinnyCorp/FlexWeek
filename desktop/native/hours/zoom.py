@@ -18,8 +18,9 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from math import ceil
 
-from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QSize, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -34,8 +35,9 @@ from PySide6.QtWidgets import (
 
 from desktop.native import icons
 from desktop.native.hours.canvas import HoursCanvas
-from desktop.native.hours.geometry import Axis
+from desktop.native.hours.geometry import FIRST, LAST, Axis
 from desktop.native.look import ZOOM_PILL_PX
+from desktop.native.motion import EASE_MS, OUT, duration, moves
 from desktop.native.weekmodel import WeekModel
 from desktop.native.widgets import overlay_scroll_bars
 
@@ -44,6 +46,8 @@ KEY = re.compile(r"[a-z]+\.[a-z]+")
 ZOOM_KEYS = {Qt.Key.Key_Equal: 1, Qt.Key.Key_Plus: 1, Qt.Key.Key_Minus: -1, Qt.Key.Key_0: 0}
 # Hours with neither now nor a block to show open at 08:00.
 OPENS = 8 * 60
+# Minutes shown before now when hours open with now near the start of what shows.
+NOW_MARGIN = 45
 # The zoom pill's minus and plus, as the mock-up draws them.
 ZOOM_ICON_PX = 14
 
@@ -169,18 +173,25 @@ class HoursScroll(QScrollArea):
         self.px = scale.default
         self._length_for = length_for
         self._gutter = gutter
-        self._pending: tuple[int, int | None] | None = None
+        self._pending: tuple[int, int | None, bool, int | None] | None = None
         # The minute at the start of what showed when the hours were hidden, until it is put back,
         # and where the bar stopped while there was no room yet to put it back.
         self._kept: float | None = None
         self._short_at: int | None = None
-        # A minute opened in the middle of what shows, and where the bar was put for it: kept in the
-        # middle while what shows changes size, as a new look's taller header makes it, until the
-        # student scrolls.
+        # A minute opened in the middle of what shows, or at its end, and where the bar was put for
+        # it: kept there while what shows changes size, as a new look's taller header makes it,
+        # until the student scrolls.
         self._centre: float | None = None
+        self._at_end = False
+        self._keep: int | None = None
         self._placed: int | None = None
         # The week, or day, these hours last opened on.
         self._opened: object = None
+        # Where the student left each week or day these hours showed: the minute at its start.
+        self._positions: dict[object, float] = {}
+        # The minute at the start of what showed when the bar last moved. Hours with no room cannot
+        # say where they are, and a day is left while they have none (see `_left_at`).
+        self._top: float | None = None
         # The header first: the scroll area starts filtering events as soon as it holds the hours.
         self.buttons = ZoomButtons(name)
         self.buttons.out.clicked.connect(lambda: self.zoom_by(-1))
@@ -199,7 +210,12 @@ class HoursScroll(QScrollArea):
         (self.setHorizontalScrollBarPolicy if self._down else self.setVerticalScrollBarPolicy)(across)
         self.setWidget(canvas)
         self._fix_length(length_for(self.px))
+        # Connected before any design's own listener, such as Retro's drawn bar, so it sees the value
+        # the range is about to cut.
+        self._bar().rangeChanged.connect(self._cut)
+        self._bar().valueChanged.connect(self._moved)
         canvas.zoom_asked.connect(self._asked)
+        canvas.labels_changed.connect(self._place_header)
         self._show_limits()
 
     @property
@@ -279,34 +295,121 @@ class HoursScroll(QScrollArea):
 
     # Scrolling to a time
 
-    def scroll_to(self, minute: int, above: int | None = 90) -> None:
+    def scroll_to(
+        self, minute: int, above: int | None = 90, end: bool = False, keep: int | None = None
+    ) -> None:
         """Put `minute` near the start of what shows, with `above` minutes of the day before it, or
-        in the middle of what shows when `above` is None. Hours that are not on screen yet do it
-        when they are shown, and only then. Shown while their page is still being laid out, they may
-        not reach it yet; they do once they can."""
-        self._pending = (minute, above)
+        in the middle of what shows when `above` is None, or at the end of what shows when `end` is
+        set; with `end`, `keep` is a minute that stays on screen, NOW_MARGIN minutes from the start,
+        when the end and it do not both fit. Hours that are not on screen yet do it when they are
+        shown, and only then. Shown while their page is still being laid out, they may not reach it
+        yet; they do once they can."""
+        self._pending = (minute, above, end, keep)
         self._kept = self._short_at = None
-        self._centre = minute if above is None else None
+        self._centre = minute if above is None or end else None
+        self._at_end, self._keep = end, keep
         if not self.isVisible():
             return
         self._lay_out_now()
         if self.canvas.tracks:
             self._pending = None
             half = self._port_length() / 2 / self.canvas.tracks[0].per_minute()
-            self._kept = minute - (half if above is None else above)
+            self._kept = self._start_for_end(minute) if end else minute - (half if above is None else above)
             self._put_back()
             self._placed = self._bar().value()
 
-    def open_at(self, key: object, minute: int, above: int | None = 90) -> None:
-        """Scroll to `minute` the first time these hours show `key`, a week or one of its days. The
-        same one shown again stays wherever the student scrolled it, through saves and refreshes."""
-        if key != self._opened:
-            self._opened = key
-            self.scroll_to(minute, above)
+    def _start_for_end(self, end: float) -> float:
+        """The minute at the start of what shows when `end` is at its end, or `_keep` would be less than
+        NOW_MARGIN minutes from the start."""
+        start = end - self._port_length() / self.canvas.tracks[0].per_minute()
+        if self._keep is not None:
+            start = min(start, self._keep - NOW_MARGIN)
+        return max(start, 0)
 
-    def forget(self) -> None:
-        """The next `open_at` opens, whatever these hours showed last."""
-        self._opened = None
+    def reveal(self, minute: int, above: int, level: str) -> None:
+        """Bring `minute` into sight as `scroll_to` puts it, easing there where things may travel, and
+        not at all when it already shows with `above` minutes before it: after a plan the grid jumped
+        to homework that was already on screen (Grok Bot's 0.17.0 audit, T7)."""
+        bar = self._bar()
+        start = bar.value()
+        top = self._minute_at(start)
+        if top is not None and self.canvas.tracks:
+            shown = self._port_length() / self.canvas.tracks[0].per_minute()
+            if top + min(above, shown / 4) <= minute <= top + shown - 60:
+                return
+        self.scroll_to(minute, above)
+        end = bar.value()
+        length = duration(EASE_MS + 60, level)
+        if end == start or length == 0 or not moves(level):
+            return
+        glide = QVariantAnimation(self)
+        glide.setStartValue(start)
+        glide.setEndValue(end)
+        glide.setDuration(length)
+        glide.setEasingCurve(OUT)
+        glide.valueChanged.connect(lambda value: bar.setValue(round(value)))
+        bar.setValue(start)
+        glide.start(QVariantAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    def open_at(
+        self, key: object, minute: int, above: int | None = 90, end: bool = False, keep: int | None = None
+    ) -> None:
+        """Open a new week or day once, and restore its position when it is visited again."""
+        if key != self._opened:
+            if self._opened is not None:
+                left = self._left_at()
+                if left is None:
+                    self._positions.pop(self._opened, None)
+                else:
+                    self._positions[self._opened] = left
+            self._opened = key
+            if key in self._positions:
+                self._pending = self._centre = None
+                self._kept = self._positions[key]
+                self._short_at = None
+                if self.isVisible():
+                    self._put_back()
+            else:
+                self.scroll_to(minute, above, end, keep)
+
+    def take_places(self, before: HoursScroll) -> None:
+        """Go back where the student left each week and day on `before`, the hours these replace."""
+        self._positions = dict(before._positions)
+        left = before._left_at() if before._opened is not None else None
+        if left is not None:
+            self._positions[before._opened] = left
+
+    def forget(self, week_start: str | None = None) -> None:
+        """Reopen a week's hours, or forget the whole session when no week is given."""
+        if week_start is None:
+            self._opened = None
+            self._positions.clear()
+            return
+        self._positions = {key: position for key, position in self._positions.items()
+                           if (key[0] if isinstance(key, tuple) else key) != week_start}
+        opened_week = self._opened[0] if isinstance(self._opened, tuple) else self._opened
+        if opened_week == week_start:
+            self._opened = None
+
+    def _left_at(self) -> float | None:
+        """The minute to come back to: the one waiting to be put at the start of what shows, else the
+        one there now, else the last one there while the hours had room, as Clay's open card has none
+        when the day it slid away from is left. None when a time was asked for and never shown: the
+        student has not seen these hours, and they open afresh."""
+        if self._pending is not None:
+            return None
+        bar = self._bar()
+        if self._kept is not None and (
+            self._short_at is None or bar.value() == min(self._short_at, bar.maximum())
+        ):
+            return self._kept
+        shown = self._minute_at(bar.value())
+        return self._top if shown is None else shown
+
+    def _moved(self, value: int) -> None:
+        shown = self._minute_at(value)
+        if shown is not None:
+            self._top = shown
 
     def focusNextPrevChild(self, next: bool) -> bool:  # noqa: N802
         # QScrollArea's own then scrolls to show the child that had the focus: for hours longer than
@@ -319,7 +422,8 @@ class HoursScroll(QScrollArea):
         self._centre = None
 
     def _keep_centre(self) -> None:
-        """The minute opened in the middle stays there through a resize, unless the student scrolled."""
+        """The minute opened in the middle, or at the end, stays there through a resize, unless the student
+        scrolled."""
         if self._centre is None or not self.isVisible() or not self.canvas.tracks:
             return
         bar = self._bar()
@@ -327,7 +431,10 @@ class HoursScroll(QScrollArea):
             self._centre = None
             return
         self._lay_out_now()
-        bar.setValue(round(self._y_for(self._centre) - self._port_length() / 2))
+        if self._at_end:
+            bar.setValue(round(self._y_for(self._start_for_end(self._centre))))
+        else:
+            bar.setValue(round(self._y_for(self._centre) - self._port_length() / 2))
         self._placed = bar.value()
 
     def showEvent(self, event: object) -> None:  # noqa: N802
@@ -342,11 +449,15 @@ class HoursScroll(QScrollArea):
 
     def _put_back(self) -> None:
         """Put the kept minute at the start of what shows. A design still laying out its page can
-        show the hours wider than they end up, with no room to start there: the bar stops at its
-        end, and the minute is put back when they narrow, unless the student has scrolled."""
+        show the hours wider than they end up, with no room to start there, or with no room at all:
+        the bar stops where it can, and the minute is put back when they have the room, unless the
+        student has scrolled."""
         self._lay_out_now()
         kept, bar = self._kept, self._bar()
-        if kept is None or not self.canvas.tracks:
+        if kept is None:
+            return
+        if not self.canvas.tracks:
+            self._short_at = bar.value()
             return
         wanted = round(self._y_for(kept))
         bar.setValue(wanted)
@@ -354,6 +465,15 @@ class HoursScroll(QScrollArea):
             self._kept = self._short_at = None
         else:
             self._short_at = bar.value()
+
+    def _cut(self, _low: int, high: int) -> None:
+        """A page still laying itself out, as Retro's is after a drop, can give the hours a little less
+        to scroll for a moment, and the bar is cut back to that shorter end. Where they were is kept,
+        and put back when the room returns, unless the student scrolls first. Qt says the range
+        changed before it cuts the value, so the value here is still the one on screen."""
+        bar = self._bar()
+        if self._kept is None and self.isVisible() and self.canvas.tracks and bar.value() > high:
+            self._kept, self._short_at = self._minute_at(bar.value()), high
 
     def _minute_at(self, along: float) -> float | None:
         """The minute at a distance along the hours, down or across."""
@@ -367,7 +487,7 @@ class HoursScroll(QScrollArea):
         """How far along the hours, down or across, a minute lies."""
         track = self.canvas.tracks[0]
         start = track.area.top() if self._down else track.area.left()
-        return start + track.offset(min(max(minute, track.first), track.last))
+        return start + track.offset(minute)
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
         # Lanes have nothing to scroll up and down, so the wheel moves them through the day.
@@ -383,6 +503,11 @@ class HoursScroll(QScrollArea):
     def _place_header(self) -> None:
         row = self.buttons.layout()
         corner = max(self._gutter, float(self.buttons.pill.sizeHint().width() + 10))
+        if self._down:
+            first = min((track.first for track in self.canvas.tracks), default=FIRST)
+            last = max((track.last for track in self.canvas.tracks), default=LAST)
+            needed = self.canvas.painter.hour_gutter(self.canvas.font(), first, last, self.canvas.now_min)
+            corner = max(corner, float(ceil(needed)))
         self.buttons.setFixedWidth(round(corner))
         row.setContentsMargins(4, 0, 0, 0)
         if not self._down:
@@ -413,6 +538,10 @@ class HoursScroll(QScrollArea):
     def resizeEvent(self, event: object) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._place_header()
+        if self._pending is not None and self.isVisible():
+            # Asked for a time while they had no room, as Clay's open card sliding in from a narrow
+            # neighbour: they go there once they have some.
+            self.scroll_to(*self._pending)
         if self._short_at is not None and self.isVisible():
             # Hours that grew pull the bar back with them; that is not the student scrolling.
             if self._bar().value() == min(self._short_at, self._bar().maximum()):

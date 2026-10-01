@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import cache
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QEvent, QObject, QRectF, Qt
+from PySide6.QtCore import QByteArray, QEvent, QObject, QRectF, QSize, Qt
 from PySide6.QtGui import QIcon, QPainter, QPalette, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QAbstractButton
@@ -53,14 +53,27 @@ def pixmap(
     return made
 
 
-def icon(name: str, colour: str, disabled: str | None = None) -> QIcon:
+def icon(name: str, colour: str, disabled: str | None = None, gap: int = 0) -> QIcon:
     """A QIcon of `name` in `colour` at both of the system's sizes, and in `disabled` when greyed out."""
     made = QIcon()
     for size in SIZES:
         for ratio in (1.0, 2.0):
-            made.addPixmap(pixmap(name, colour, size, ratio), QIcon.Mode.Normal)
+            made.addPixmap(_with_gap(pixmap(name, colour, size, ratio), gap), QIcon.Mode.Normal)
             if disabled:
-                made.addPixmap(pixmap(name, disabled, size, ratio), QIcon.Mode.Disabled)
+                made.addPixmap(_with_gap(pixmap(name, disabled, size, ratio), gap), QIcon.Mode.Disabled)
+    return made
+
+
+def _with_gap(source: QPixmap, gap: int) -> QPixmap:
+    if not gap:
+        return source
+    ratio = source.devicePixelRatioF()
+    made = QPixmap(source.width() + round(gap * ratio), source.height())
+    made.setDevicePixelRatio(ratio)
+    made.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(made)
+    painter.drawPixmap(0, 0, source)
+    painter.end()
     return made
 
 
@@ -88,19 +101,23 @@ def _apply(button: QObject) -> None:
     colours = button.palette()
     words = colours.color(QPalette.ColorGroup.Active, QPalette.ColorRole.ButtonText).name()
     greyed = colours.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText).name()
-    made = (name, words, greyed)
+    gap = button.property("iconGap") or 0
+    made = (name, words, greyed, str(gap))
     if button.property("iconTint") != "|".join(made):
         button.setProperty("iconTint", "|".join(made))
-        button.setIcon(icon(name, words, greyed))
+        button.setIcon(icon(name, words, greyed, gap))
 
 
-def tint(button: QAbstractButton, name: str | None) -> None:
+def tint(button: QAbstractButton, name: str | None, *, gap: int = 0) -> None:
     """Show Lucide's `name` on `button` in its own text colour, which follows the look; None takes the
     icon off, for a button that draws another."""
     global _TINT
     if _TINT is None:
         _TINT = _Tint()
     button.setProperty(NAME, name or "")
+    button.setProperty("iconGap", gap)
+    if gap:
+        button.setIconSize(QSize(16 + gap, 16))
     button.setProperty("iconTint", "")
     button.removeEventFilter(_TINT)
     if name:

@@ -466,7 +466,11 @@ class NativeSession(QObject):
     def open_month(self, month: str | None = None) -> None:
         if self.account is None:
             return
-        anchor = self.selected_day if self.planner_view == "day" else date_for_day(self.week_start, 3)
+        today = datetime.fromtimestamp(self.now_ms() / 1000).date().isoformat()
+        anchor = self.selected_day if self.planner_view == "day" else (
+            today if monday_of(today) == self.week_start else date_for_day(self.week_start, 3)
+        )
+        self.selected_day = anchor
         self.selected_month = month or month_for_view(anchor)
         self.planner_view = "month"
         self.month_data = None
@@ -489,7 +493,10 @@ class NativeSession(QObject):
             self.planner_view = view
             self.week_changed.emit()
             return
-        anchor = month_anchor_date(self.selected_month, date.today().isoformat())
+        today = datetime.fromtimestamp(self.now_ms() / 1000).date().isoformat()
+        anchor = self.selected_day if self.selected_day[:7] == self.selected_month else (
+            month_anchor_date(self.selected_month, today)
+        )
         monday = monday_of(anchor)
         self.selected_day = anchor
         self.planner_view = view
@@ -1526,7 +1533,11 @@ class NativeSession(QObject):
                     else:
                         push_step(self._undo, self._pending_step)
                     self._redo.clear()
-                self._say(held if held is not None else "Saved.")
+                if planned:
+                    # `planned` says it, with Undo.
+                    self.message = held or "Saved."
+                else:
+                    self._say(held if held is not None else "Saved.")
             self._traveling = None
             self._travel_step = None
             self._pending_step = None
@@ -1664,10 +1675,14 @@ class NativeSession(QObject):
             if changed and not split_note:
                 self._history_label = "planning the week"
             placed_note = plan_sentence(placed, waiting) + split_note
-            self._say(placed_note)
-            self.week_changed.emit()
             if not changed and not self.dirty and not self.dirty_assignments:
+                self._say(placed_note)
+                self.week_changed.emit()
                 return
+            # Said once its save lands, by `planned`, with Undo. Said now as well, the toast showed it
+            # without Undo and then rewrapped it (Grok Bot's 0.17.0 audit, T7).
+            self.message = placed_note
+            self.week_changed.emit()
             self.dirty = self.dirty or changed
             self.save(status=placed_note, join=join)
             self._plan_step = None if join or not changed else self._pending_step

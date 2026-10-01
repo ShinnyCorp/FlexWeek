@@ -93,8 +93,8 @@
   {
     "file": "desktop/native/window.py",
     "name": "Log out sits with Help and About",
-    "old": "                more_menu.addSeparator()\n            action = mark(",
-    "new": "                pass\n            action = mark(",
+    "old": "                more_menu.addSeparator()\n                add_heading(more_menu, ACCOUNT_HEADING)\n",
+    "new": "                add_heading(more_menu, ACCOUNT_HEADING)\n",
     "test": "desktop/tests/test_more_menu_words.py::test_every_row_under_more_has_an_icon_and_log_out_stands_apart"
   },
   {

@@ -93,9 +93,16 @@
  {
   "file": "desktop/native/custom_look.py",
   "name": "a pale accent's fix that does not move it",
-  "old": "                fixed = fit_lightness(accent, surfaces[:2], AA_TEXT)\n",
+  "old": "                fixed = fit_lightness(accent, surfaces + (tint,), need)\n",
   "new": "                fixed = accent\n",
   "test": "desktop/tests/test_custom_look.py::test_a_colour_of_the_students_own_as_the_accent"
+ },
+ {
+  "file": "desktop/native/custom_look.py",
+  "name": "the now line held to the 4.5 to 1 of text",
+  "old": "        need = AA_GRAPHIC if words == \"Now line\" else AA_TEXT\n",
+  "new": "        need = AA_TEXT\n",
+  "test": "desktop/tests/test_looks_polish.py::test_the_now_line_is_flagged_only_when_the_line_would_not_show"
  },
  {
   "file": "desktop/native/look.py",

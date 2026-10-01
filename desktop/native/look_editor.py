@@ -1017,7 +1017,7 @@ class LookEditor(QWidget):
         said.addWidget(self.dismiss)
         line.addWidget(message, 1)
         self._unsay()
-        self.save_new = _button(SAVE_AS_NEW, "lookSaveAsNew", "plus", "secondary")
+        self.save_new = _button(SAVE_AS_NEW, "lookSaveAsNew", "plus", "outline")
         self.save_new.clicked.connect(lambda: self._save(None))
         self.done = _button(DONE, "lookEditorDone")
         self.done.clicked.connect(self.finish)

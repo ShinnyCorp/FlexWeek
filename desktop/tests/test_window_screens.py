@@ -29,7 +29,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.reuse import planner_title
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
-    from desktop.tests.logic_support import past_setup
+    from desktop.tests.logic_support import fail_once, fixed, past_setup
 
 PASSWORD = "a-long-test-password"
 DESIGNS = ("classic", "timeline", "mission", "bento", "retro", "clay")
@@ -189,3 +189,44 @@ def test_the_top_bar_is_never_cut_mid_word(qapp: QApplication, window: NativeWin
     title_foot = window.week_title.mapTo(window, QPoint(0, window.week_title.height())).y()
     assert window.solve_button.mapTo(window, QPoint(0, 0)).y() < title_foot, "at 1150 the bar is one row"
     assert cut_on_the_bar(window) == [], "at 1150 pixels"
+
+
+def test_retry_save_shows_only_after_a_save_fails(qapp: QApplication, window: NativeWindow) -> None:
+    """A save on its way is not a failed one. Month's own fetch landing while the week saved drew
+    the week with Retry save showing, and the view buttons jumped 129 pixels left under the pointer.
+    A save that failed keeps Retry showing, greyed, while it is tried again."""
+    session = window.session
+    month = window.findChild(QPushButton, "viewMonth")
+    month.click()
+    wait_until(qapp, lambda: session.month_data is not None and not session.busy)
+    page = window._week_page.layout()
+    page.activate()
+    home = month.mapTo(window, QPoint(0, 0))
+
+    def drawn_mid_save() -> None:
+        # What a reply landing during the save does: the week is drawn again.
+        assert session.busy and session.pending_save is not None, "the save is no longer on its way"
+        session.week_changed.emit()
+        page.activate()
+
+    session.blocks = [*session.blocks, fixed("lab", "Lab", 1, "09:00")]
+    session.dirty = True
+    session.save()
+    drawn_mid_save()
+    assert not window.retry_button.isVisible(), "Retry save showed while the save was still on its way"
+    assert month.mapTo(window, QPoint(0, 0)) == home, "Month moved aside while the week saved"
+    settled(qapp, window)
+    assert not window.retry_button.isVisible()
+
+    fail_once(session, "POST", "/api/changes")
+    session.blocks = [*session.blocks, fixed("art", "Art", 2, "10:00")]
+    session.dirty = True
+    session.save()
+    wait_until(qapp, lambda: not session.busy)
+    assert window.retry_button.isVisible() and window.retry_button.isEnabled(), "a failed save offers Retry"
+    window.retry_button.click()
+    drawn_mid_save()
+    assert window.retry_button.isVisible(), "Retry save went away while its own retry was on its way"
+    assert not window.retry_button.isEnabled(), "Retry save was pressable while it was retrying"
+    settled(qapp, window)
+    assert not window.retry_button.isVisible(), "Retry save stayed after the retry saved"

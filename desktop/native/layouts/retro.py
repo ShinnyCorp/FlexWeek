@@ -67,7 +67,15 @@ from backend.models import due_is_timed, due_sort_key
 from desktop.native import icons
 from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS, category_title
 from desktop.native.fonts import at_scale, load_fonts, time_font, weighted
-from desktop.native.hours.canvas import EDGE_WIDTH, TEXT_TOP, BlockPainter, Drawn, HoursCanvas, fit_lines
+from desktop.native.hours.canvas import (
+    EDGE_WIDTH,
+    TEXT_TOP,
+    BlockPainter,
+    Drawn,
+    HoursCanvas,
+    Started,
+    fit_lines,
+)
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.classic import open_hours
 from desktop.native.hours.geometry import FIRST, LAST, Axis, LinearTrack
@@ -89,7 +97,7 @@ from desktop.native.layouts.base import (
 from desktop.native.layouts.colourways import RETRO
 from desktop.native.look import AA_TEXT, category_paint, look_measures, type_sizes
 from desktop.native.motion import app_level, appear, between, duration, moves
-from desktop.native.reuse import MONTHS
+from desktop.native.reuse import MONTHS, planner_title
 from desktop.native.tokens import (
     WEIGHT_REGULAR,
     WEIGHT_STRONG,
@@ -402,10 +410,11 @@ def due_heading(due: str | None, week: WeekModel, today: int | None) -> str:
 
 def deadlines(week: WeekModel, today: int | None) -> list[DueGroup]:
     """Every homework still to do, placed or not, under its deadline, the soonest first. Placed work
-    says when; the rest says it is not placed yet."""
+    says when it is placed, in those words, so the time is not read as its deadline; the rest says it
+    is not placed yet."""
     groups: dict[str, list[tuple[tuple, Deadline]]] = {}
     for item in week.open_work():
-        when = f"{DAYS[item.day]} {clock_label(item.start)}"
+        when = f"placed {DAYS[item.day]} {clock_label(item.start)}"
         line = Deadline(item.title, short_length(item.minutes), when, item.block_id)
         groups.setdefault(item.due or "", []).append(((0, item.day, item.start), line))
     for index, waiting in enumerate(week.waiting):
@@ -500,21 +509,13 @@ def free_from(items: tuple[Occurrence, ...], start: int) -> list[tuple[int, int]
     return [(a, b) for a, b in free_stretches(items, start, FREE_UNTIL) if b - a >= FREE_LEAST]
 
 
-class Started(Drawn):
-    """A block on the week, whose time is its start alone: "School 08:00", as the mock-up writes it."""
-
-    @property
-    def times(self) -> str:
-        return clock_label(self.span.start)
-
-
 class RetroPainter(BlockPainter):
     """Week.exe's hours: the white field with grey rules, blocks in the category family with a
     three-pixel edge and a one-pixel bevel, and now as a line in the title bar's colour, dotted across
     the other days, with its time on a Windows 98 tooltip in the gutter."""
 
     now_in_gutter = True
-    whole_words = True
+    trims_narrow = True
 
     def __init__(self, colours: Scheme, *, wide: bool = False) -> None:
         super().__init__(
@@ -605,10 +606,10 @@ class RetroPainter(BlockPainter):
             time_font(base), "caption", scale, WEIGHT_REGULAR
         )
 
-    def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:
+    def body(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> None:
         colours = self.scheme
         self.wide = self.day and rect.width() >= DAY_WIDE_LEAST
-        fill, ink, _outline, edge = self.fills(drawn)
+        fill, _ink, _outline, edge = self.fills(drawn)
         box = QRect(round(rect.left()), round(rect.top()), round(rect.width()), max(round(rect.height()), 1))
         painter.fillRect(box, fill)
         if colours.contrast:
@@ -621,11 +622,6 @@ class RetroPainter(BlockPainter):
             ring = QColor(colours.danger if refused else colours.accent)
             frame_in(painter, box, ring, ring)
             frame_in(painter, box.adjusted(1, 1, -1, -1), ring, ring)
-        if drawn.columns > 1 and not drawn.held:
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(ink)
-            painter.drawEllipse(QPointF(box.right() - 6, box.top() + 6), 3, 3)
-        self.words(painter, rect, drawn, ink, visible, fill, edge)
 
     def words(
         self,
@@ -636,12 +632,12 @@ class RetroPainter(BlockPainter):
         visible: QRectF,
         fill: QColor | None = None,
         edge: QColor | None = None,
-    ) -> None:
+    ) -> list[QRectF]:
         shown = drawn if self.wide or drawn.held else Started(**vars(drawn))
         # Words from the block's top edge to its foot, where the shared ones keep 3 pixels and 1 clear:
         # the pixel face's own line height keeps them off the bevel, and at the mock-up's 40 pixels an
         # hour it is what lets a half hour say its name and an hour two lines of it.
-        super().words(painter, rect.adjusted(0, -TEXT_TOP, 0, 1), shown, ink, visible, fill, edge)
+        return super().words(painter, rect.adjusted(0, -TEXT_TOP, 0, 1), shown, ink, visible, fill, edge)
 
 
 class RetroCanvas(HoursCanvas):
@@ -1059,17 +1055,28 @@ class Mirror(QObject):
     def __init__(self, source: QScrollBar, shown: QScrollBar, port: QWidget) -> None:
         super().__init__(shown)
         self.source, self.shown = source, shown
+        self._copying = False
         source.rangeChanged.connect(self.sync)
         source.valueChanged.connect(shown.setValue)
-        shown.valueChanged.connect(source.setValue)
+        shown.valueChanged.connect(self._moved)
         port.installEventFilter(self)
         self.sync()
 
     def sync(self, *_: object) -> None:
-        self.shown.setRange(self.source.minimum(), self.source.maximum())
-        self.shown.setPageStep(self.source.pageStep())
-        self.shown.setSingleStep(self.source.singleStep())
-        self.shown.setValue(self.source.value())
+        """The hours' range, copied. A smaller range cuts the drawn bar's value, and that cut is not
+        the student scrolling: written back, it moved the hours before they could keep their place."""
+        self._copying = True
+        try:
+            self.shown.setRange(self.source.minimum(), self.source.maximum())
+            self.shown.setPageStep(self.source.pageStep())
+            self.shown.setSingleStep(self.source.singleStep())
+            self.shown.setValue(self.source.value())
+        finally:
+            self._copying = False
+
+    def _moved(self, value: int) -> None:
+        if not self._copying:
+            self.source.setValue(value)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize:
@@ -1697,9 +1704,7 @@ class RetroView(LayoutView):
         if day is not None:
             shown = week.date_of(day)
             return f"Week.exe - {DAY_FULL[day]} {shown.day} {MONTHS[shown.month - 1]}"
-        first, last = week.date_of(0), week.date_of(6)
-        start = f"{first.day}" if first.month == last.month else f"{first.day} {MONTHS[first.month - 1]}"
-        return f"Week.exe - {start} to {last.day} {MONTHS[last.month - 1]}"
+        return f"Week.exe - {planner_title(week, 'week')}"
 
     def _menu(self, key: str) -> QHBoxLayout:
         """A window's menu bar, as drawn. Its menus are pictures: FlexWeek's own are in More and Start."""
@@ -2074,6 +2079,9 @@ class RetroView(LayoutView):
     def _side(self) -> int:
         width = self._desk.width() or self.width()
         return min(SIDE, max(SIDE_LEAST, round(width * SIDE / STAGE)))
+
+    def bottom_inset(self) -> int:
+        return self._bar.height()
 
     def _arrange(self) -> None:
         if self._scene is None:

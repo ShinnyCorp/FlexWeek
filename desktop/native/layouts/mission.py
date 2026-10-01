@@ -37,11 +37,12 @@ from PySide6.QtWidgets import (
 
 from backend.models import due_sort_key
 from desktop.native import icons
-from desktop.native.calendar import DAY_FULL, DAYS
+from desktop.native.calendar import DAY_FULL, DAYS, category_icon
 from desktop.native.fonts import at_scale
 from desktop.native.hours.canvas import (
     BOOK,
     HOMEWORK_CATEGORIES,
+    NOW_CLEAR,
     TEXT_LEFT,
     TEXT_RIGHT,
     TEXT_TOP,
@@ -52,7 +53,6 @@ from desktop.native.hours.canvas import (
     block_layout,
 )
 from desktop.native.hours.chips import TrayChip
-from desktop.native.hours.classic import open_hours
 from desktop.native.hours.geometry import Axis, LinearTrack, overlap_columns
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import HoursScroll, Scale
@@ -109,6 +109,12 @@ LANE_UNDER = 52
 DAY_LANE, DAY_LEAST = 296, 140
 TABLE = 364
 AROUND = 16
+# The focus figure's line while a timer runs: the minutes it shows are only those already credited.
+FOCUS_NOW = {"focusing": "Focusing now", "paused": "Focus paused", "break": "On a break"}
+# Minutes kept after the last block, so its end and the hour label there show whole.
+END_ROOM = 30
+# Clear space kept between the now pill and an hour label beside it.
+LABEL_CLEAR = 4
 # A block this short is a tick in its category's colour, named on hover.
 TICK = 30
 # Hours of lanes the table leaves at the least before it goes under them.
@@ -230,6 +236,12 @@ def _length(px: int) -> int:
     return 24 * px + LEAD + TAIL
 
 
+def lanes_end(items: Sequence[Occurrence]) -> int:
+    """The minute the lanes open with at their right edge: 22:00, or the end of the last block if
+    that is later, so the evening shows and a name is not cut off at the edge."""
+    return min(max([EVENING, *(item.end for item in items)]) + END_ROOM, 24 * 60)
+
+
 class MissionPainter(BlockPainter):
     """Lanes as cards with a rule at each hour, today's washed and edged in the accent. Blocks are the
     category's fill with its mark down the start edge; one of half an hour or less is a tick. A block
@@ -247,6 +259,9 @@ class MissionPainter(BlockPainter):
                 "rule": mix_oklab(tokens["text"], tokens["surface"], 0.07),
                 "accent": tokens["accent"],
                 "accent_ink": tokens["accent_ink"],
+                "accent_text": tokens.get("accent_text", tokens["accent"]),
+                "now": tokens.get("now", tokens["accent"]),
+                "selection": tokens.get("selection", tokens["accent"]),
                 "error": tokens["danger"],
                 "text": tokens["text"],
                 "muted": tokens["muted"],
@@ -298,42 +313,57 @@ class MissionPainter(BlockPainter):
         every: int = 60,
         visible: QRectF | None = None,
     ) -> None:
-        """Every other hour over the first lane, and the time now on a pill in their row, the hours
-        beside it left out. A label cut by the edge of what shows is moved inside it."""
+        """Every other hour over the first lane, and the time now on a pill in their row, any hour
+        the pill would cover left out. A label cut by the edge of what shows is moved inside it."""
         font = mono(at_scale(painter.font(), "caption", self.scale(painter.font())))
         metrics = QFontMetricsF(font)
         base = self.lane(track).top() - 6
         now = self.now_minute
+        pill = None
+        if now is not None:
+            strong = mono(at_scale(font, "caption", self.scale(font), WEIGHT_STRONG))
+            strong_metrics = QFontMetricsF(strong)
+            wide = strong_metrics.horizontalAdvance(clock_label(now)) + 12
+            tall = strong_metrics.height() + 4
+            pill = QRectF(track.area.left() + track.offset(now) - wide / 2, base + 2 - tall, wide, tall)
         painter.setFont(font)
         painter.setPen(self.c("muted"))
-        for minute in range(-(-track.first // 120) * 120, track.last + 1, 120):
-            if now is not None and abs(minute - now) <= 40:
-                continue
+        # Every other hour, or every fourth or sixth or twelfth when 12-hour words would run together.
+        widest = max(metrics.horizontalAdvance(clock_label(minute)) for minute in (0, 12 * 60))
+        room = widest + LABEL_CLEAR
+        step = next((span for span in (120, 240, 360) if track.offset(span) - track.offset(0) >= room), 720)
+        written: list[tuple[QRectF, str, bool]] = []
+        for minute in range(-(-track.first // step) * step, track.last + 1, step):
             words = clock_label(minute)
             wide = metrics.horizontalAdvance(words) + 2
             box = QRectF(track.area.left() + track.offset(minute) - wide / 2, base - metrics.height(), wide,
                          metrics.height())
+            moved = False
             if visible is not None and box.right() > visible.left() and box.left() < visible.right():
-                box.moveLeft(max(min(box.left(), visible.right() - wide), visible.left()))
+                inside = max(min(box.left(), visible.right() - wide), visible.left())
+                moved = inside != box.left()
+                box.moveLeft(inside)
+            if pill is None or not box.intersects(pill.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0)):
+                written.append((box, words, moved))
+        for box, words, moved in written:
+            # Moved in from the edge it sits over no hour of its own, so it gives way to a neighbour.
+            if moved and any(box.intersects(other.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0))
+                             for other, _words, _moved in written if other is not box):
+                continue
             painter.drawText(box, Qt.AlignmentFlag.AlignCenter, words)
-        if now is None:
+        if pill is None:
             return
-        strong = mono(at_scale(painter.font(), "caption", self.scale(painter.font()), WEIGHT_STRONG))
-        metrics = QFontMetricsF(strong)
-        words = clock_label(now)
-        wide, tall = metrics.horizontalAdvance(words) + 12, metrics.height() + 4
-        pill = QRectF(track.area.left() + track.offset(now) - wide / 2, base + 2 - tall, wide, tall)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(self.c("accent"))
-        painter.drawRoundedRect(pill, tall / 2, tall / 2)
+        painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2)
         painter.setPen(self.c("accent_ink"))
         painter.setFont(strong)
-        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, clock_label(now))
 
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
         lane = self.lane(track)
         at = track.area.left() + track.offset(minute)
-        painter.setPen(QPen(self.c("accent"), 2))
+        painter.setPen(QPen(self.c("now"), 2))
         painter.drawLine(QPointF(at, lane.top() - 1), QPointF(at, lane.bottom() + 1))
 
     def fills(self, drawn: Drawn) -> tuple[QColor, QColor, QColor | None, QColor | None]:
@@ -351,19 +381,36 @@ class MissionPainter(BlockPainter):
         if drawn.done or drawn.missed:
             mark = QColor(mix_oklab(mark.name(), self.tokens["surface"], 0.45))
         top = rect.top() + 8
-        if drawn.category in HOMEWORK_CATEGORIES:
-            # Never its colour alone: homework keeps its book.
+        icon = []
+        if category_icon(drawn.category) is not None:
             size = round(QFontMetricsF(self.fonts(painter.font())[0]).ascent())
-            self._book(painter, QPointF(rect.center().x() - size / 2, top), size, mark)
+            fill, ink, _outline, edge = self.fills(drawn)
+            colour = self._book_colour(drawn, ink, fill, edge) or ink
+            at = QPointF(rect.center().x() - size / 2, top)
+            self._clear_of_now(painter, QRectF(at.x(), at.y(), size, size))
+            icon = [self._book(painter, at, size, colour, category_icon(drawn.category) or BOOK)]
             top += size + 3
         bar = QRectF(rect.center().x() - 3, top, 6, max(rect.bottom() - 8 - top, 6))
         if drawn.chosen:
-            painter.setPen(QPen(self.c("accent"), 2))
+            painter.setPen(QPen(self.c("selection"), 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(bar.adjusted(-4, -4, 4, 4), RADIUS_CONTROL, RADIUS_CONTROL)
         shape = QPainterPath()
         shape.addRoundedRect(bar, 3, 3)
         painter.fillPath(shape, mark)
+        self.crossing(painter, rect, icon)
+
+    def _clear_of_now(self, painter: QPainter, icon: QRectF) -> None:
+        """A tick leaves the lane showing round its icon, and the line for now, drawn across the lane
+        before the blocks, ran through the icon there. The lane is laid again round the icon where
+        the line reaches it, so the line stops short of it as it does of a block's words."""
+        track, minute = self.now_track, self.now_minute
+        if track is None or minute is None:
+            return
+        room = icon.adjusted(-NOW_CLEAR, -NOW_CLEAR, NOW_CLEAR, NOW_CLEAR)
+        if room.left() <= track.area.left() + track.offset(minute) <= room.right():
+            # Today's lane, the only one the line is drawn on, washed as `track` washes it.
+            painter.fillRect(room, QColor(mix_oklab(self.tokens["text"], self.tokens["surface"], TODAY_WASH)))
 
     def words(
         self,
@@ -374,18 +421,15 @@ class MissionPainter(BlockPainter):
         visible: QRectF,
         fill: QColor | None = None,
         edge: QColor | None = None,
-    ) -> None:
+    ) -> list[QRectF]:
         if drawn.held or self._whole(painter.font(), rect, drawn, visible):
-            super().words(painter, rect, drawn, ink, visible, fill, edge)
-            return
-        if self._beside(painter, rect, drawn):
-            self._bare(painter, rect, drawn, ink, fill, edge)
-            return
+            return super().words(painter, rect, drawn, ink, visible, fill, edge)
+        if self._beside(painter, rect, drawn, visible):
+            return self._bare(painter, rect, drawn, ink, fill, edge)
         first = replace(drawn, title=drawn.title.split()[0] if drawn.title.split() else drawn.title)
         if self._whole(painter.font(), rect, first, visible):
-            super().words(painter, rect, first, ink, visible, fill, edge)
-            return
-        self._bare(painter, rect, drawn, ink, fill, edge)
+            return super().words(painter, rect, first, ink, visible, fill, edge)
+        return self._bare(painter, rect, drawn, ink, fill, edge)
 
     def _whole(self, font: QFont, rect: QRectF, drawn: Drawn, visible: QRectF) -> bool:
         """Whether the block says something with no word cut, as `words` would lay it out."""
@@ -398,7 +442,7 @@ class MissionPainter(BlockPainter):
         )
         tight = QRectF(room.left(), rect.top(), room.width(), rect.height())
         shown = (self.measures["show_times"], self.measures["show_lengths"])
-        book = drawn.category in HOMEWORK_CATEGORIES
+        book = category_icon(drawn.category) is not None
         lay = block_layout(drawn, title, small, room, tight=tight, book=book, shown=shown)
         return bool(lay) and not any(line.text.endswith("…") for line in lay)
 
@@ -410,28 +454,33 @@ class MissionPainter(BlockPainter):
         ink: QColor,
         fill: QColor | None,
         edge: QColor | None,
-    ) -> None:
-        """No words: homework keeps its book, at the top of the block."""
-        if drawn.category not in HOMEWORK_CATEGORIES:
-            return
+    ) -> list[QRectF]:
+        """No words: the category keeps its icon at the top of the block."""
+        if category_icon(drawn.category) is None:
+            return []
         size = round(QFontMetricsF(self.fonts(painter.font())[0]).ascent())
-        if rect.width() >= size + 4:
-            colour = self._book_colour(drawn, ink, fill or self.c("window"), edge)
-            at = QPointF(rect.center().x() - size / 2 + 1, rect.top() + 7)
-            self._book(painter, at, size, colour or ink)
+        if rect.width() < size + 4:
+            return []
+        colour = self._book_colour(drawn, ink, fill or self.c("window"), edge)
+        at = QPointF(rect.center().x() - size / 2 + 1, rect.top() + 7)
+        return [self._book(painter, at, size, colour or ink, category_icon(drawn.category) or BOOK)]
 
-    def _book(self, painter: QPainter, at: QPointF, size: int, colour: QColor) -> None:
+    def _book(self, painter: QPainter, at: QPointF, size: int, colour: QColor,
+              icon_name: str = BOOK) -> QRectF:
+        """Draws the icon and returns where."""
         ratio = painter.device().devicePixelRatioF() if painter.device() is not None else 1.0
-        painter.drawPixmap(at, icons.pixmap(BOOK, colour.name(), size, ratio))
+        painter.drawPixmap(at, icons.pixmap(icon_name, colour.name(), size, ratio))
+        return QRectF(at.x(), at.y(), size, size)
 
-    def _beside(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> bool:
+    def _beside(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> bool:
         """The name, and its start if there is room, written beside the block where its row of the
         lane is free, as a Gantt chart labels a short bar: after it, else before it. On up to two
-        lines, with no word broken, and clear of the lane's edges."""
+        lines, with no word broken, and clear of the lane's edges and of the edges of what shows."""
         found = self.taken.get(drawn.span.day)
         if found is None:
             return False
         first, last, taken = found
+        first, last = max(first, visible.left()), min(last, visible.right())
         title, small = self.fonts(painter.font())
         tm, sm = QFontMetricsF(title), QFontMetricsF(small)
         row = [box for box in taken if box.top() < rect.bottom() and box.bottom() > rect.top()]
@@ -852,8 +901,13 @@ class MissionView(LayoutView):
         canvas.relayout()
         items = week.on_day(day) if is_day else week.occurrences
         canvas.set_week(items, scene.today, scene.minute)
-        open_hours(scroll, (week.week_start, day) if is_day else week.week_start, week, scene.today,
-                   scene.minute, day if is_day else None)
+        at_now = scene.today is not None and scene.minute is not None and (not is_day or day == scene.today)
+        scroll.open_at(
+            (week.week_start, day) if is_day else week.week_start,
+            lanes_end(items),
+            end=True,
+            keep=scene.minute if at_now else None,
+        )
         if is_day:
             # The mock-up's height, or less in a short window beside the table, where what is still to
             # come today is the point. Under the table the page scrolls anyway.
@@ -912,10 +966,8 @@ class MissionView(LayoutView):
         else:
             line = f"{self._figure(finished)} finished" if finished else "Nothing is due this week."
         counted = (self._number(scene, len(due)), line)
-        focus = (
-            self._length(scene, week.focus_min),
-            "On this week's homework" if week.focus_min else "None yet this week",
-        )
+        credited = "On this week's homework" if week.focus_min else "None yet this week"
+        focus = (self._length(scene, week.focus_min), FOCUS_NOW.get(scene.focus, credited))
         cards = [
             self._card(scene, "missionPlanned", "Planned today", "calendar", *planned),
             self._card(scene, "missionDue", "Due this week", "book-open", *counted),

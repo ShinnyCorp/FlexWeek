@@ -1,6 +1,81 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `feat/0.17.2`: 0.17.2 prepared (version, dated changelog, `docs/release-notes-v0.17.2.md`).
+  It is Grok Bot's 0.17.0 audit (T1 to T37, A1 to A12, X1 to X9), split between Claude and GPT 6.1 Sol;
+  every lane and unit below is merged. Last two: the 12-hour clock unit (above) and Retry save showing
+  only once a save has failed (`NativeWindow._on_week`): shown mid-save it pushed the view buttons
+  aside, which made the rig's Month and Week clicks miss in Retro and Clay. Release checks were cut
+  short on Jonathan's word: the last full gate (f0b2baf) had 2608 passed and 1 flaky failure, and the
+  clock unit's own gate 2658 passed; after the last two merges only their touched test files (461
+  passed) and `fwtest rig --design retro --tab month` (9/9) ran. No full rig or mutation pass on the
+  final tree. Known flaky: `test_sign_in_card.py::test_a_link_in_reach_keeps_the_accent_darker_and_underlined[pointer-*]`
+  fails now and then in the gate and passes alone (two fixes failed; left for 0.17.3).
+- 2026-09-30, `claude/0172-w5-mission` (from 4bca099): two of Jonathan's calls after reviewing Mission and
+  Timeline. Mission's lanes (Week and Day) open with now always in view when now is in what shows: the
+  evening's end (22:00 or the last block's end, plus 30 min) at the right edge when both fit, else now
+  `NOW_MARGIN` (45 min) from the left edge and the evening a scroll; another week or day keeps the
+  evening rule (`HoursScroll.scroll_to/open_at(end=True, keep=now)`, held through layout steps). Timeline
+  fills every block with its category's fill (ink outline and tab kept, homework unchanged, a finished or
+  missed block still the page's colour); `_no_room`/`_wordless` are gone. `test_hours_open.opens_at`
+  follows the new lanes rule.
+- 2026-09-30, `claude/0172-w5-clock`: the 12-hour clock's hour labels and now pill (audit X2). Down a column the
+  hours' header takes its width from the drawn labels, and from the now pill where a design puts it in the gutter
+  (`BlockPainter.hour_gutter`), and is made again when the clock format or the time now changes
+  (`HoursCanvas.labels_changed`). Mission's labels step to every fourth, sixth or twelfth hour when 12-hour words
+  would run together. Sol's Clay Day failure was a test sampling the Day card while it slid in from 35 px; the test
+  now waits for the card's size to settle. Gate 2658 passed; `clock_gutters.json` caught.
+- 2026-09-30, `claude/0172-u04-setup` (from bd2d134): setup and Sign in, part 3 of unit 04 (the audit's T35 and
+  T36). Setup's style and look cards are a CardGrid, so at 810 px they run one to a row instead of past
+  the right edge; the planning-hours presets are pills (`chip` property) and Send a test reminder and Add
+  custom hours are outlined; the example homework is the placeholder "e.g. History essay" in the muted
+  colour and is not added, so Done says "None yet"; School sits in a card like each activity, whose
+  Sports/Activity choice moved up beside its name, so the times share an x; designs use Settings' single
+  names. Sign in's heading is "Welcome", Create an account is the heavier link, and a link under the
+  pointer or reached by keyboard is a darker accent, underlined. Gate 2561 passed; `firstrun.json` has
+  eleven new cases, all caught. Unresolved: at Large text the second row of style cards is still cut by
+  the page's edge until scrolled (the page scrolls; fitting all four needs a design call).
+- 2026-09-30, `claude/0172-u04-timeline` (from bd2d134): Timeline's gutter shadow is gone (fold line
+  only). Mission's now pill leaves out any hour label its box would meet (was a fixed 40 minutes,
+  wrong at 40 px an hour). Mission's lanes open with 22:00, or the last block's end, plus 30 minutes
+  at the right edge (`HoursScroll.scroll_to(end=True)`, held through layout steps), instead of now
+  in the middle, so the morning is a scroll to the left at 1280; names written beside a block stay
+  inside what shows. `test_hours_open.opens_at` checks 22:00 for lanes instead of now in the middle.
+  Timeline's white School was settled on 0172-w5-mission (every block is filled).
+- 2026-09-30, `claude/0172-dragleak` from 5256662: the drag results tests' order dependence is
+  fixed. Mission and Timeline tests leave bare views showing as top-level windows (their own
+  signal lambdas keep them alive), and conftest's widgetAt fallback past the 800 px offscreen
+  screen could pick one of them over the window under the drop. A conftest fixture now hides
+  what each test left showing (test-only; product views are parented to the planner stack).
+  The My day test's failure had a separate cause, a look file an earlier test saved; the
+  test_hours_open window fixture now clears it (ab78f93).
+- 2026-09-30, `claude/0172-lookcalls` (from 5256662): Jonathan's three calls on the looks work. A short
+  block says its name, then its start time, then its icon (a half-hour Dinner is "Dinner 18:30");
+  the now line and selection ring start from the accent and fit to 3 to 1 (`AA_GRAPHIC`), so
+  Light's blue is #3d6ec3, while the pill's time and accent words keep 4.5; category icons are the
+  category's mark fitted to 3 to 1 on the block in every look and block style, and Free has none.
+  Lint and mypy clean; 405 mutation cases over the 17 specs naming changed files all caught.
+  Known: `BlockPainter._book_colour` keeps an unused `ink` argument so Mission's callers are
+  untouched; custom_look's Readability still lists "Now line" at 4.5 for a custom accent.
+- 2026-09-30, `claude/0172-dates-int`: Sol's dates-and-scroll unit (`sol-snap/0172-dates`) merged
+  onto `feat/0.17.2` at 132ee90. Month and the mini month follow today at a month boundary, My day's
+  title names the day, and every design keeps its scroll within a session (open at now only at
+  start-up, on Today, and on coming back to this week). Fixes on top: hours with no room still
+  remember and restore a place (Clay's sliding card), hours never shown remember nothing, Today from
+  another week leaves that week's scroll, and Timeline and Bento keep places when they rebuild
+  their hours for a new text size. Gate: 2395 passed, ruff and mypy clean. Rig 246/246.
+  Known: `test_my_day_actions_leave_room_after_their_icons` failed once under the 4-worker gate and
+  passed alone and in the next gate (order-dependent, cause not found).
+- 2026-09-30, `integrate/0172-sol`: Sol's lane 2 (time, dates and numbers) and lane 4 (looks and
+  colour) are merged onto `feat/0.17.2`. Lane 4 brought category icons and re-spaced hues, Paper
+  and Pastel, Sand, Dark's chosen segment, Readability for a pale custom accent, and setup's
+  Sports or Activity. On top: the hours end their painter when a design's painter raises (the
+  "combined Qt painter cleanup crash"); a block's icon gives way wherever the name says more
+  without it; the look cards widen with the text (150 px at Normal, 180 at Large); the now line
+  stops 3 px short of a block's words and icon; Timeline's now pill sits beside the hour labels
+  or centred on the fold. Gate, mutation specs and rig: see Session Handoff. Known gaps: Bento's
+  now pill still sits inside today's column, and Mission's names written beside a block are
+  still crossed by the now line.
 - Date: 2026-09-25 (0.15 Lane C), branch `claude/0-15-homework-planning`.
   Five inherited fixes cover the DueField signal, due-today default, homework
   length bounds, full-month date picker and planning after now (`7b9d19b`,
@@ -657,6 +732,24 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-30, `feat/0.17.2`: ready to push, PR to main, merge after CI and release v0.17.2 as latest
+  (Jonathan's word). Then Grok Bot reviews 0.17.2 and Jonathan decides on 0.17.3. Open for 0.17.3: the
+  sign-in hover flake; Bento's now pill inside today's column; Mission's beside-block names crossed by
+  the now line; Clay's Day card with no hours for ~100 ms while it slides in; Clay's Day summary and
+  Retro's deadlines cutting 12-hour times at Large 810; Bento's header "F 2" at Large 810; Mission's
+  00:00 label 6 px left of the canvas; Help's other book icons not fitted to 3:1; dead `open_again` in
+  classic.py; decision 12 in docs/0.17/plan.md not reworded.
+- 2026-09-30, `claude/0172-w5-clock`: clock-label unit done and committed locally, not merged or pushed. Pictures
+  before and after: `~/.flexweek-ui-harness/scratch/0172-w5-clock/before/` and `after/` (`pairs/` side by side).
+- 2026-09-30, `claude/0172-u04-setup`: T35 and T36 done and committed locally, not merged or pushed.
+  Pictures before and after: `~/.flexweek-ui-harness/scratch/0172-u04-setup/before/` and `after/`.
+- 2026-09-30, `integrate/0172-sol`: the drag and look-file test leaks fixed and Jonathan's three looks
+  calls merged on top of Sol's looks and dates units; next into feat/0.17.2. Pictures:
+  `~/.flexweek-ui-harness/scratch/0172-lookcalls/`, `0172-sol-int-looks/`, `0172-dates-int/`.
+- 2026-09-30, `integrate/0172-sol`: Sol's lanes 2 and 4 and its dates-and-scroll unit are integrated
+  (see Current State); not pushed. Open: decision 12's "opening at now every time" in
+  docs/0.17/plan.md is superseded by T1 and not reworded.
+  Pictures: `~/.flexweek-ui-harness/scratch/0172-sol-int-looks/` and `0172-dates-int/`.
 - 2026-09-29, `feat/0.17.1`: 0.17.1 prepared, the patch after 0.17.0 (Jonathan: "start the patch").
   Units 1 to 4 of `~/.flexweek-ui-harness/scratch/017-patch-plan.md`: the intermittent test-suite
   segfault (a test's instance patch left a HomeworkDialog in a cycle, collected on the server

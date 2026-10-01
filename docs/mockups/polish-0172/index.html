@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FlexWeek 0.17.2 mock-ups: finding things, looks and colour, sheets</title>
+<link rel="stylesheet" href="../look-017/looks.css">
+<style>
+  body { margin: 0; background: #e9ecf1; font-family: "Inter", sans-serif; color: #111827; }
+  header { padding: 16px 24px 0; }
+  header h1 { font-size: 20px; margin: 0 0 4px; }
+  header p { margin: 0 0 12px; color: #5b6474; max-width: 980px; }
+  .tabs { display: flex; gap: 6px; padding: 0 24px; flex-wrap: wrap; }
+  .tabs button { font: inherit; border: 1px solid #d0d5dd; background: #fff; border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: #3d6fc4; color: #fff; border-color: #3d6fc4; }
+  .lane { display: none; padding: 16px 24px 48px; }
+  .lane.on { display: block; }
+  .q { font-weight: 600; margin: 20px 0 6px; font-size: 15px; }
+  .note { color: #5b6474; margin: 0 0 12px; max-width: 980px; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .opt { width: 400px; }
+  .opt h3 { margin: 0 0 4px; font-size: 14px; }
+  .opt .why { color: #5b6474; font-size: 12.5px; margin: 0 0 8px; min-height: 48px; }
+  .pick { display: inline-block; font-size: 11px; font-weight: 600; background: #3d6fc4; color: #fff; border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: 2px; }
+
+  /* The stage: FlexWeek Light, at a scale where 400 px is about half of a 1280 window. */
+  .fw-stage { background: var(--page); color: var(--text); font-family: var(--font-body); font-size: 12px;
+    border: 1px solid #c9ced8; border-radius: 10px; overflow: hidden; }
+  .card { background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-card); padding: 10px 12px; margin: 8px; }
+  .card h4 { margin: 0 0 6px; font-size: 13px; }
+  .muted { color: var(--muted); }
+  .hr { height: 1px; background: var(--hairline); margin: 8px 0; }
+  .line { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; }
+  .lbl { color: var(--text); }
+
+  /* Buttons */
+  button { white-space: nowrap; }
+  .b-fill { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: var(--r-control); padding: 5px 12px; font: 600 12px var(--font-body); }
+  .b-out { background: var(--card); color: var(--text); border: 1px solid var(--hairline-strong); border-radius: var(--r-control); padding: 4px 11px; font: 500 12px var(--font-body); }
+  .b-soft { background: var(--accent-tint); color: var(--accent); border: 0; border-radius: var(--r-control); padding: 5px 12px; font: 600 12px var(--font-body); }
+  .b-plain { background: none; border: 0; color: var(--text); font: 12px var(--font-body); padding: 5px 0; }
+  .b-row { display: flex; justify-content: space-between; align-items: center; width: 100%; background: none; border: 0; border-top: 1px solid var(--hairline); padding: 8px 0; font: 12px var(--font-body); color: var(--text); }
+  .b-row:first-child { border-top: 0; }
+  .chev { color: var(--muted); }
+  .b-ghost { background: none; border: 1px solid var(--hairline); color: var(--muted); border-radius: var(--r-control); padding: 4px 10px; font: 500 12px var(--font-body); }
+
+  /* Settings frame */
+  .settings { display: grid; grid-template-columns: 110px 1fr; height: 330px; }
+  .side { background: var(--card); border-right: 1px solid var(--hairline); padding: 8px 6px; }
+  .side div { padding: 5px 8px; border-radius: 6px; }
+  .side .here { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+  .main { overflow: hidden; }
+  .main h2 { font-size: 15px; margin: 10px 8px 0; }
+  .thumbs { display: flex; gap: 6px; }
+  .thumb { width: 64px; height: 42px; border-radius: 6px; border: 1px solid var(--hairline-strong); background: linear-gradient(#fff 30%, #dde6f5 30% 70%, #fff 70%); }
+  .thumb.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .swatches { display: flex; gap: 6px; }
+  .sw { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--card); box-shadow: 0 0 0 1px var(--hairline-strong); }
+  .seg { display: inline-flex; background: var(--page); border: 1px solid var(--hairline); border-radius: 7px; padding: 2px; }
+  .seg span { padding: 3px 10px; border-radius: 5px; }
+  .seg .on { background: var(--card); box-shadow: var(--shadow-sm); font-weight: 600; }
+  .topbar { display: flex; align-items: center; gap: 6px; background: var(--card); border-bottom: 1px solid var(--hairline); padding: 6px 8px; }
+  .topbar .t { font-weight: 600; font-size: 13px; margin-right: auto; }
+  .icon { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--hairline); display: inline-grid; place-items: center; color: var(--muted); font-size: 11px; }
+  .pop { position: relative; margin: 0 8px 0 auto; width: 250px; background: var(--card); border: 1px solid var(--hairline-strong); border-radius: 10px; box-shadow: var(--shadow-lg); padding: 10px; }
+
+  /* Rail and strips */
+  .week { display: grid; grid-template-columns: 120px 1fr; height: 250px; }
+  .rail { background: var(--card); border-right: 1px solid var(--hairline); padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .grid { background: repeating-linear-gradient(90deg, transparent 0 39px, var(--grid-rule) 39px 40px), repeating-linear-gradient(transparent 0 23px, var(--grid-rule) 23px 24px); position: relative; }
+  .blk { position: absolute; border-radius: 5px; font-size: 10px; padding: 2px 4px; color: var(--block-ink); }
+  .strip { background: var(--card); border-bottom: 1px solid var(--hairline); padding: 5px 8px; display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+  .chip { border: 1px solid var(--hairline-strong); border-radius: 999px; padding: 2px 8px; font-size: 11px; background: var(--card); }
+
+  /* Sheets */
+  .dim { background: rgba(17, 24, 39, 0.28); padding: 18px; min-height: 380px; display: flex; justify-content: center; align-items: flex-start; }
+  .dim.right { justify-content: flex-end; padding: 0; }
+  .sheet { background: var(--card); border-radius: var(--r-sheet); box-shadow: var(--shadow-lg); padding: 14px 16px; width: 330px; }
+  .drawer { background: var(--card); box-shadow: var(--shadow-lg); padding: 14px 16px; width: 250px; min-height: 380px; border-radius: 0; }
+  .sheet h4, .drawer h4 { margin: 0 0 10px; font-size: 15px; display: flex; justify-content: space-between; }
+  .x { color: var(--muted); font-weight: 400; }
+  .f { margin-bottom: 9px; }
+  .f.side-lbl { display: grid; grid-template-columns: 86px 1fr; align-items: center; gap: 8px; }
+  .f > label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; font-weight: 600; }
+  .f.side-lbl > label { margin: 0; font-size: 12px; color: var(--text); font-weight: 400; }
+  .in { border: 1px solid var(--hairline-strong); border-radius: var(--r-control); padding: 5px 8px; background: var(--card); min-height: 16px; }
+  .in.ph { color: var(--muted); }
+  .pills { display: flex; gap: 4px; flex-wrap: nowrap; }
+  .pill { border: 1px solid var(--hairline-strong); border-radius: 999px; padding: 2px 7px; font-size: 11px; }
+  .pill.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .step { display: inline-flex; justify-self: start; width: max-content; align-items: center; border: 1px solid var(--hairline-strong); border-radius: var(--r-control); overflow: hidden; }
+  .step span { padding: 4px 9px; }
+  .step .pm { background: var(--page); color: var(--muted); font-weight: 600; }
+  .quick { display: flex; gap: 4px; margin-top: 4px; }
+  .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .cal { margin-top: 4px; border: 1px solid var(--hairline-strong); border-radius: 10px; padding: 8px; width: 196px; box-shadow: var(--shadow-sm); }
+  .cal .hd { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 4px; }
+  .cal .g { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-size: 10.5px; }
+  .cal .g .d { padding: 3px 0; border-radius: 999px; }
+  .cal .g .wd { color: var(--muted); font-weight: 600; }
+  .cal .g .today { box-shadow: inset 0 0 0 1px var(--accent); }
+  .cal .g .sel { background: var(--accent); color: var(--accent-ink); }
+  .cal .g .out { color: var(--muted); opacity: 0.6; }
+  .widths { display: flex; gap: 8px; align-items: flex-end; margin-top: 8px; }
+  .widths div { background: var(--card); border: 1px dashed var(--hairline-strong); border-radius: 8px; font-size: 10.5px; color: var(--muted); text-align: center; padding: 6px 0; }
+
+  /* Colour lane */
+  .cats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+  .cat { border-radius: 6px; padding: 5px 7px; font-size: 11px; display: flex; gap: 6px; align-items: center; border-left: 4px solid; }
+  .gl { width: 14px; height: 14px; display: inline-grid; place-items: center; color: oklch(0.45 0.1 250); }
+  .looks { display: flex; gap: 6px; }
+  .mini { width: 124px; border-radius: 8px; overflow: hidden; border: 1px solid #c9ced8; font-size: 10px; }
+  .mini .tb { padding: 4px 6px; font-weight: 600; }
+  .mini .bd { padding: 6px; height: 64px; }
+  .mini .bk { border-radius: 4px; padding: 2px 4px; margin-bottom: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>FlexWeek 0.17.2 mock-ups</h1>
+  <p>Three lanes from Grok Bot's 0.17.0 audit, each with options that differ in where things live and how they work, not only in colour. Everything is drawn in Light. Pick one option per question; "Claude's pick" is a recommendation, not a default.</p>
+</header>
+<div class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" data-lane="l3">Lane 3: finding things and plain buttons</button>
+  <button role="tab" aria-selected="false" data-lane="l4">Lane 4: looks and colour</button>
+  <button role="tab" aria-selected="false" data-lane="l5">Lane 5: sheets and dialogs</button>
+</div>
+
+<!-- ============================ LANE 3 ============================ -->
+<section class="lane on" id="l3">
+  <div class="q">3.1 Where Look, Customise, Accent and Fine-tune live (X1, A11, T33, T34)</div>
+  <p class="note">Today the Colours card sits under every design card, "Fine-tune this look" sits under Every screen, and Ctrl+K has no Look or Settings commands. All three options also add Ctrl+K commands: "Look: Dark", "Customise look", "Settings: Planning" and so on.</p>
+  <div class="row">
+    <div class="opt">
+      <h3>A. Look first, designs second <span class="pick">Claude's pick</span></h3>
+      <p class="why">One page, reordered. The Colours card comes first because it is the thing most students change; its Fine-tune joins it. Designs follow, one name each.</p>
+      <div class="fw-stage"><div class="settings">
+        <div class="side"><div class="here">Appearance</div><div>Planning</div><div>Focus</div><div>Alerts</div><div>This computer</div></div>
+        <div class="main"><h2>Appearance</h2>
+          <div class="card"><h4>Colours</h4>
+            <div class="line"><span>Look</span><span class="seg"><span class="on">Light</span><span>Dark</span><span>System</span></span></div>
+            <div class="line"><span>Accent</span><span class="swatches"><i class="sw" style="background:#3d6fc4"></i><i class="sw" style="background:#2b8fb8"></i><i class="sw" style="background:#1f8a70"></i><i class="sw" style="background:#b08a2e"></i><i class="sw" style="background:#9a6b4f"></i></span></div>
+            <div class="line"><button class="b-out">More looks…</button><button class="b-out">Customise…</button><button class="b-plain" style="color:var(--accent)">Fine-tune ▾</button></div>
+          </div>
+          <div class="card"><h4>Week design</h4><div class="thumbs"><div class="thumb sel"></div><div class="thumb"></div><div class="thumb"></div><div class="thumb"></div></div>
+            <div class="muted" style="margin-top:4px">Today's app · Timeline · Mission control · Bento</div></div>
+        </div></div></div>
+    </div>
+    <div class="opt">
+      <h3>B. Look gets its own page</h3>
+      <p class="why">"Look" and "Layout" become two entries in the side list. Nothing scrolls past designs to reach colours, and each page is shorter. One more place to look for things.</p>
+      <div class="fw-stage"><div class="settings">
+        <div class="side"><div class="here">Look</div><div>Layout</div><div>Planning</div><div>Focus</div><div>Alerts</div><div>This computer</div></div>
+        <div class="main"><h2>Look</h2>
+          <div class="card"><h4>Look</h4><div class="thumbs"><div class="thumb sel"></div><div class="thumb" style="background:#1a1d21"></div><div class="thumb" style="background:linear-gradient(90deg,#fff 50%,#1a1d21 50%)"></div></div>
+            <div class="muted" style="margin-top:3px">Light · Dark · System</div></div>
+          <div class="card"><h4>Accent</h4><span class="swatches"><i class="sw" style="background:#3d6fc4"></i><i class="sw" style="background:#2b8fb8"></i><i class="sw" style="background:#1f8a70"></i><i class="sw" style="background:#b08a2e"></i><i class="sw" style="background:#9a6b4f"></i></span></div>
+          <div class="card"><div class="line"><span>Make your own look</span><button class="b-out">Customise…</button></div><div class="line"><span>Fine-tune this look</span><span class="muted">›</span></div></div>
+        </div></div></div>
+    </div>
+    <div class="opt">
+      <h3>C. Look in the top bar</h3>
+      <p class="why">A palette button beside the gear opens a small panel with the look, accent and Customise, so colours change without leaving the week. Settings keeps only designs and the rest.</p>
+      <div class="fw-stage" style="height:332px">
+        <div class="topbar"><span class="icon">‹</span><span class="icon">›</span><span class="t">28 Sep – 4 Oct</span><span class="b-fill" style="padding:3px 9px">Add</span><span class="icon" style="border-color:var(--accent);color:var(--accent)">◐</span><span class="icon">⚙</span></div>
+        <div class="pop" style="margin-top:6px">
+          <div class="line"><strong>Look</strong><span class="seg"><span class="on">Light</span><span>Dark</span><span>Auto</span></span></div>
+          <div class="line"><span>Accent</span><span class="swatches"><i class="sw" style="background:#3d6fc4"></i><i class="sw" style="background:#2b8fb8"></i><i class="sw" style="background:#1f8a70"></i><i class="sw" style="background:#b08a2e"></i></span></div>
+          <div class="hr"></div>
+          <div class="line"><span class="muted">More looks</span><span class="chev">›</span></div>
+          <div class="line"><button class="b-out">Customise…</button><button class="b-plain" style="color:var(--accent)">Fine-tune</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="q">3.2 Action buttons that read as buttons (T5, A12, T35's chips, T21's Remove)</div>
+  <p class="note">Customise…, Availability…, Manage account…, Run setup again, Check for updates, Add alarm, More details, Copy and Save… are drawn as plain text today. One filled button per screen stays the answer (Done, Save).</p>
+  <div class="row">
+    <div class="opt">
+      <h3>A. Outlined buttons <span class="pick">Claude's pick</span></h3>
+      <p class="why">A hairline box in the card colour: plainly a button, quieter than the one filled answer. Works in every look, High contrast included.</p>
+      <div class="fw-stage"><div class="card"><h4>Account</h4>
+        <div class="line"><span>jonathan@school</span><button class="b-out">Manage account…</button></div>
+        <div class="line"><span>Study times</span><button class="b-out">Availability…</button></div>
+        <div class="line"><span>FlexWeek 0.17.2</span><button class="b-out">Check for updates</button></div>
+        <div class="line"><span></span><button class="b-fill">Done</button></div></div></div>
+    </div>
+    <div class="opt">
+      <h3>B. Tinted buttons</h3>
+      <p class="why">The accent at 10 % behind accent text. Friendlier and clearly pressable; it leans on the accent, so a pale accent needs the Readability check.</p>
+      <div class="fw-stage"><div class="card"><h4>Account</h4>
+        <div class="line"><span>jonathan@school</span><button class="b-soft">Manage account…</button></div>
+        <div class="line"><span>Study times</span><button class="b-soft">Availability…</button></div>
+        <div class="line"><span>FlexWeek 0.17.2</span><button class="b-soft">Check for updates</button></div>
+        <div class="line"><span></span><button class="b-fill">Done</button></div></div></div>
+    </div>
+    <div class="opt">
+      <h3>C. Rows you open</h3>
+      <p class="why">Things that open another place become whole rows with a chevron, like a phone's settings; only things that act now (Check for updates, Copy) stay buttons.</p>
+      <div class="fw-stage"><div class="card"><h4>Account</h4>
+        <button class="b-row"><span>Manage account</span><span class="chev">jonathan@school ›</span></button>
+        <button class="b-row"><span>Availability</span><span class="chev">›</span></button>
+        <button class="b-row"><span>FlexWeek 0.17.2</span><span class="b-out">Check for updates</span></button>
+        <div class="line"><span></span><button class="b-fill">Done</button></div></div></div>
+    </div>
+  </div>
+
+  <div class="q">3.3 Above the grid, and the rail's Focus button (X3, X8)</div>
+  <p class="note">Every design but Today's app stacks three strips above the grid, and the rail's full-width filled "Focus screen" is louder than Add.</p>
+  <div class="row">
+    <div class="opt">
+      <h3>A. One line <span class="pick">Claude's pick</span></h3>
+      <p class="why">Now, Next and Quick focus merge into one strip; the timer hint appears only while a timer runs, in the same line. Focus becomes an outlined button.</p>
+      <div class="fw-stage">
+        <div class="strip"><strong>Now</strong> Free <span class="muted">→ Next</span> Math worksheet 15:00 <span style="margin-left:auto" class="chip">▶ Focus 25 min</span></div>
+        <div class="week"><div class="rail"><div class="muted">Up next</div><div>Math worksheet</div><button class="b-out" style="width:100%">Focus screen</button><button class="b-fill" style="width:100%">Add</button></div>
+          <div class="grid"><div class="blk" style="left:6px;top:10px;width:30px;height:90px;background:var(--c-class-fill)">School</div><div class="blk" style="left:86px;top:130px;width:30px;height:40px;background:var(--c-assignments-fill)">Essay</div></div></div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>B. Nothing above, all in the rail</h3>
+      <p class="why">The grid starts at the top bar. Now, Next and the focus timer move into the rail's first card, where Today's app already keeps them.</p>
+      <div class="fw-stage">
+        <div class="week" style="height:274px"><div class="rail"><div class="card" style="margin:0"><strong>Now</strong> Free<div class="muted">Next 15:00 Math worksheet</div><button class="b-ghost" style="margin-top:4px">▶ Focus 25 min</button></div><button class="b-fill" style="width:100%">Add</button></div>
+          <div class="grid"><div class="blk" style="left:6px;top:10px;width:30px;height:90px;background:var(--c-class-fill)">School</div><div class="blk" style="left:86px;top:130px;width:30px;height:40px;background:var(--c-assignments-fill)">Essay</div></div></div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>C. A footer bar</h3>
+      <p class="why">A slim bar under the grid holds Now → Next and the timer, like a status bar. The top stays clean; eyes go to it only when wanted.</p>
+      <div class="fw-stage">
+        <div class="week" style="height:246px"><div class="rail"><div class="muted">Up next</div><div>Math worksheet</div><button class="b-fill" style="width:100%">Add</button><button class="b-plain" style="color:var(--accent)">Focus screen</button></div>
+          <div class="grid"><div class="blk" style="left:6px;top:10px;width:30px;height:90px;background:var(--c-class-fill)">School</div><div class="blk" style="left:86px;top:130px;width:30px;height:40px;background:var(--c-assignments-fill)">Essay</div></div></div>
+        <div class="strip" style="border-top:1px solid var(--hairline);border-bottom:0"><strong>Now</strong> Free <span class="muted">→</span> Math worksheet 15:00 <span style="margin-left:auto" class="chip">▶ 25 min</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="q">3.4 More looks (A10)</div>
+  <div class="row">
+    <div class="opt">
+      <h3>A. A grid of little previews <span class="pick">Claude's pick</span></h3>
+      <p class="why">Each look is a small week drawn in its own colours, with its name; your own looks follow under "Your looks". One click wears it.</p>
+      <div class="fw-stage" style="padding:8px"><div class="looks" style="flex-wrap:wrap">
+        <div class="mini"><div class="tb" style="background:#eef1f5">Slate</div><div class="bd" style="background:#fff"><div class="bk" style="background:#dbe4f3">School</div><div class="bk" style="background:#f6dcd8">Essay</div></div></div>
+        <div class="mini"><div class="tb" style="background:#121633;color:#e0e4f0">Nocturne</div><div class="bd" style="background:#0a0e27;color:#e0e4f0"><div class="bk" style="background:#26305c">School</div><div class="bk" style="background:#4a2a3a">Essay</div></div></div>
+        <div class="mini"><div class="tb" style="background:#fffdf9;font-family:var(--font-serif)">Paper</div><div class="bd" style="background:#fdfbf7"><div class="bk" style="background:#e5ebf3">School</div><div class="bk" style="background:#f3e3dc">Essay</div></div></div>
+      </div></div>
+    </div>
+    <div class="opt">
+      <h3>B. A list with a swatch strip</h3>
+      <p class="why">Keeps today's list, and puts each look's page, card, accent and two category colours beside its name. Denser, less visual.</p>
+      <div class="fw-stage"><div class="card">
+        <div class="line"><span>Slate</span><span class="swatches"><i class="sw" style="background:#eef1f5"></i><i class="sw" style="background:#3d6fc4"></i><i class="sw" style="background:#dbe4f3"></i></span></div>
+        <div class="line"><span>Nocturne</span><span class="swatches"><i class="sw" style="background:#0a0e27"></i><i class="sw" style="background:#7fa8ff"></i><i class="sw" style="background:#26305c"></i></span></div>
+        <div class="line"><span style="font-family:var(--font-serif)">Paper</span><span class="swatches"><i class="sw" style="background:#fdfbf7"></i><i class="sw" style="background:#3d6fc4"></i><i class="sw" style="background:#e5ebf3"></i></span></div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ LANE 4 ============================ -->
+<section class="lane" id="l4">
+  <div class="q">4.1 Telling the categories apart (T12, T13)</div>
+  <p class="note">Today School (hue 255), Sleep (275) and Study (295) sit within 40° of each other at one lightness, and Club has no category, so it is grey and looks disabled. Soccer is "Activity" in teal. In every option Club becomes an Activity and Soccer becomes Sports.</p>
+  <div class="row">
+    <div class="opt">
+      <h3>A. Re-spaced hues</h3>
+      <p class="why">The eight hues spread evenly round the wheel, so no two are neighbours; Sleep also sits darker, since it is night. Colour alone still carries the difference.</p>
+      <div class="fw-stage" style="padding:8px"><div class="cats">
+        <div class="cat" style="background:oklch(0.92 0.045 250);border-color:oklch(0.62 0.14 250)">School</div>
+        <div class="cat" style="background:oklch(0.92 0.045 25);border-color:oklch(0.62 0.14 25)">Homework</div>
+        <div class="cat" style="background:oklch(0.92 0.05 320);border-color:oklch(0.62 0.15 320)">Study</div>
+        <div class="cat" style="background:oklch(0.92 0.045 150);border-color:oklch(0.62 0.14 150)">Sports</div>
+        <div class="cat" style="background:oklch(0.92 0.045 200);border-color:oklch(0.62 0.14 200)">Activity (Club)</div>
+        <div class="cat" style="background:oklch(0.92 0.045 70);border-color:oklch(0.62 0.14 70)">Meals</div>
+        <div class="cat" style="background:oklch(0.84 0.04 280);border-color:oklch(0.5 0.12 280)">Sleep</div>
+        <div class="cat" style="background:oklch(0.94 0.01 250);border-color:oklch(0.62 0.01 250)">Free</div>
+      </div></div>
+    </div>
+    <div class="opt">
+      <h3>B. A small picture per category <span class="pick">Claude's pick</span></h3>
+      <p class="why">Hues re-spaced as in A, and each block carries a small icon, as homework already carries its book: a building for School, a moon for Sleep, a pencil for Study, a target for Sports. Works for students who cannot tell the colours.</p>
+      <div class="fw-stage" style="padding:8px"><div class="cats">
+        <div class="cat" style="background:oklch(0.92 0.045 250);border-color:oklch(0.62 0.14 250)"><span class="gl" data-i="house"></span>School</div>
+        <div class="cat" style="background:oklch(0.92 0.045 25);border-color:oklch(0.62 0.14 25)"><span class="gl" data-i="book-open"></span>Homework</div>
+        <div class="cat" style="background:oklch(0.92 0.05 320);border-color:oklch(0.62 0.15 320)"><span class="gl" data-i="pencil"></span>Study</div>
+        <div class="cat" style="background:oklch(0.92 0.045 150);border-color:oklch(0.62 0.14 150)"><span class="gl" data-i="target"></span>Sports</div>
+        <div class="cat" style="background:oklch(0.92 0.045 200);border-color:oklch(0.62 0.14 200)"><span class="gl" data-i="sparkles"></span>Activity (Club)</div>
+        <div class="cat" style="background:oklch(0.92 0.045 70);border-color:oklch(0.62 0.14 70)"><span class="gl" data-i="clock"></span>Meals</div>
+        <div class="cat" style="background:oklch(0.84 0.04 280);border-color:oklch(0.5 0.12 280)"><span class="gl" data-i="moon"></span>Sleep</div>
+        <div class="cat" style="background:oklch(0.94 0.01 250);border-color:oklch(0.62 0.01 250)">Free</div>
+      </div><p class="muted" style="margin:6px 0 0">Lucide icons, in the block's edge colour, as homework's book is today. The exact icons are open.</p></div>
+    </div>
+    <div class="opt">
+      <h3>C. Hues kept, edges patterned</h3>
+      <p class="why">The colours stay as they are; the three that clash get a different edge: School solid, Study dashed, Sleep a soft full-height shade. Smallest change, weakest fix.</p>
+      <div class="fw-stage" style="padding:8px"><div class="cats">
+        <div class="cat" style="background:oklch(0.92 0.045 255);border-color:oklch(0.62 0.14 255)">School</div>
+        <div class="cat" style="background:oklch(0.92 0.045 295);border-left:4px dashed oklch(0.62 0.14 295)">Study</div>
+        <div class="cat" style="background:repeating-linear-gradient(135deg,oklch(0.9 0.045 275) 0 6px,oklch(0.86 0.05 275) 6px 12px);border-color:oklch(0.62 0.14 275)">Sleep</div>
+        <div class="cat" style="background:oklch(0.92 0.045 205);border-color:oklch(0.62 0.14 205)">Activity (Club)</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="q">4.2 Paper and Pastel clearly not Light (T14, T15)</div>
+  <p class="note">Today only the page tint and a serif title differ. Terminal's mono must also stop clipping the rail, and Poster's 2 px borders must meet its corners (sharp corners, or 1 px borders); those are fixes, not choices.</p>
+  <div class="row">
+    <div class="opt">
+      <h3>A. Paper: a planner page <span class="pick">Claude's pick</span></h3>
+      <p class="why">Cream page, ruled hour lines, ink-blue accent, serif headings and times, no shadows. Pastel: tinted cards, rounder corners, fuller category fills.</p>
+      <div class="fw-stage" style="padding:8px"><div class="looks">
+        <div class="mini"><div class="tb" style="background:#fff">Light</div><div class="bd" style="background:#f7f8fa"><div class="bk" style="background:#dde6f5">School</div><div class="bk" style="background:#f6dcd8">Essay</div></div></div>
+        <div class="mini" style="border-color:#cfc7b9"><div class="tb" style="background:#f7f0e1;font-family:var(--font-serif);color:#1f3a68">Paper</div><div class="bd" style="background:repeating-linear-gradient(#fbf6ea 0 13px,#e4d9c2 13px 14px);font-family:var(--font-serif)"><div class="bk" style="background:#e3e8f0;border-left:2px solid #1f3a68">School</div><div class="bk" style="background:#f3e1d6;border-left:2px solid #8a3b22">Essay</div></div></div>
+        <div class="mini" style="border-radius:14px"><div class="tb" style="background:#f3ecff">Pastel</div><div class="bd" style="background:#fbf8ff"><div class="bk" style="background:#cfe0ff;border-radius:8px">School</div><div class="bk" style="background:#ffd3d6;border-radius:8px">Essay</div></div></div>
+      </div></div>
+    </div>
+    <div class="opt">
+      <h3>B. Change by texture only</h3>
+      <p class="why">Paper gets a faint paper grain and ruled lines; Pastel gets a soft gradient page. Colours of blocks stay as in Light, so switching look never changes what a colour means.</p>
+      <div class="fw-stage" style="padding:8px"><div class="looks">
+        <div class="mini"><div class="tb" style="background:#fff">Light</div><div class="bd" style="background:#f7f8fa"><div class="bk" style="background:#dde6f5">School</div></div></div>
+        <div class="mini"><div class="tb" style="background:#fdfbf7;font-family:var(--font-serif)">Paper</div><div class="bd" style="background:repeating-linear-gradient(#fdfbf7 0 13px,#ece5d8 13px 14px)"><div class="bk" style="background:#dde6f5">School</div></div></div>
+        <div class="mini"><div class="tb" style="background:#fff">Pastel</div><div class="bd" style="background:linear-gradient(160deg,#fdf2ff,#eef6ff)"><div class="bk" style="background:#dde6f5">School</div></div></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="q">4.3 Dark's selection and Done, Gold and Sand, a pale accent (T16, A9, A8)</div>
+  <p class="note">These are fixes with one clear answer, shown for sign-off: Dark's selected segment gets a lighter chip and a 1 px ring; Done uses the accent at full strength with dark text; Sand moves toward clay so it no longer matches Gold; a pale custom accent used as text is flagged by Readability and shown darker where it is text.</p>
+  <div class="row">
+    <div class="opt" style="width:auto">
+      <div class="fw-stage" style="padding:10px;background:#111315;color:#e8eaed;display:flex;gap:18px;align-items:center">
+        <span style="display:inline-flex;background:#1a1d21;border:1px solid #2a2e34;border-radius:7px;padding:2px"><span style="padding:3px 10px;border-radius:5px;background:#3a3f46;box-shadow:0 0 0 1px #7fa8ff;font-weight:600">Week</span><span style="padding:3px 10px">Month</span></span>
+        <button style="background:#7fa8ff;color:#0b1224;border:0;border-radius:6px;padding:5px 14px;font-weight:600">Done</button>
+        <span>Gold <i class="sw" style="display:inline-block;vertical-align:middle;background:#b08a2e"></i></span>
+        <span>Sand, now clay <i class="sw" style="display:inline-block;vertical-align:middle;background:#b0664a"></i></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ LANE 5 ============================ -->
+<section class="lane" id="l5">
+  <div class="q">5.1 What a sheet is (T6, T18, X7)</div>
+  <p class="note">Routines, Help, About, Running late and School hours become sheets like Add and Edit, inside the window. Every sheet gets a title, a close button, fields in one column, one width scale, and Save right of Cancel as Qt orders it (your call).</p>
+  <div class="row">
+    <div class="opt">
+      <h3>A. Centred sheet, labels above <span class="pick">Claude's pick</span></h3>
+      <p class="why">Each label sits above its field, so every field starts at one edge and widths line up without a label column. Two widths only: 440 for forms, 600 for lists like Routines and Help.</p>
+      <div class="fw-stage"><div class="dim"><div class="sheet"><h4>New homework <span class="x">✕</span></h4>
+        <div class="f"><label>Title</label><div class="in ph">History essay</div></div>
+        <div class="f"><label>Due</label><div class="in">Fri 2 Oct</div></div>
+        <div class="f"><label>Time it needs</label><span class="step"><span class="pm">−</span><span>1 h</span><span class="pm">+</span></span></div>
+        <div class="foot"><button class="b-out">Cancel</button><button class="b-fill">Save</button></div>
+        <div class="widths"><div style="width:44%">440 forms</div><div style="width:60%">600 lists</div></div>
+      </div></div></div>
+    </div>
+    <div class="opt">
+      <h3>B. Centred sheet, labels left</h3>
+      <p class="why">Today's layout, made consistent: one label column of fixed width in every sheet, so fields line up across sheets. More compact; long labels wrap.</p>
+      <div class="fw-stage"><div class="dim"><div class="sheet"><h4>New homework <span class="x">✕</span></h4>
+        <div class="f side-lbl"><label>Title</label><div class="in ph">History essay</div></div>
+        <div class="f side-lbl"><label>Due</label><div class="in">Fri 2 Oct</div></div>
+        <div class="f side-lbl"><label>Time it needs</label><span class="step"><span class="pm">−</span><span>1 h</span><span class="pm">+</span></span></div>
+        <div class="foot"><button class="b-out">Cancel</button><button class="b-fill">Save</button></div>
+      </div></div></div>
+    </div>
+    <div class="opt">
+      <h3>C. A panel from the right</h3>
+      <p class="why">Sheets slide in from the right edge, full height, like Settings does, and the week stays visible on the left. Good for long ones (Routines, Help); a big change for Add.</p>
+      <div class="fw-stage"><div class="dim right"><div class="drawer"><h4>New homework <span class="x">✕</span></h4>
+        <div class="f"><label>Title</label><div class="in ph">History essay</div></div>
+        <div class="f"><label>Due</label><div class="in">Fri 2 Oct</div></div>
+        <div class="f"><label>Time it needs</label><span class="step"><span class="pm">−</span><span>1 h</span><span class="pm">+</span></span></div>
+        <div class="foot"><button class="b-out">Cancel</button><button class="b-fill">Save</button></div>
+      </div></div></div>
+    </div>
+  </div>
+
+  <div class="q">5.2 Dates, days and times (T19, T20, T21, X7)</div>
+  <p class="note">Qt's stock calendar (red weekends, square selection, no border) and big spin boxes with tiny arrows go. Days are pills everywhere, Setup's planning hours and Add fixed time included; alarm days stay on one row; percentages read "80%".</p>
+  <div class="row">
+    <div class="opt">
+      <h3>A. Picker in the look, steppers with quick picks <span class="pick">Claude's pick</span></h3>
+      <p class="why">The calendar pops under the field in the look's card colour, round selection, today ringed, weekends plain. Lengths use − and + with 15/30/45/60 chips; clock times are typed ("16:00").</p>
+      <div class="fw-stage" style="padding:10px">
+        <div class="f"><label>Due</label><div class="in">Fri 2 Oct</div>
+          <div class="cal"><div class="hd"><span>‹</span><span>October 2026</span><span>›</span></div><div class="g">
+            <span class="wd">M</span><span class="wd">T</span><span class="wd">W</span><span class="wd">T</span><span class="wd">F</span><span class="wd">S</span><span class="wd">S</span>
+            <span class="d out">28</span><span class="d today out" style="opacity:1;color:var(--text)">29</span><span class="d out">30</span><span class="d">1</span><span class="d sel">2</span><span class="d">3</span><span class="d">4</span>
+            <span class="d">5</span><span class="d">6</span><span class="d">7</span><span class="d">8</span><span class="d">9</span><span class="d">10</span><span class="d">11</span></div></div></div>
+        <div class="f"><label>Time it needs</label><span class="step"><span class="pm">−</span><span>45 min</span><span class="pm">+</span></span><div class="quick"><span class="pill">15</span><span class="pill">30</span><span class="pill on">45</span><span class="pill">60</span><span class="pill">90</span></div></div>
+        <div class="f"><label>Days</label><div class="pills"><span class="pill on">Mon</span><span class="pill">Tue</span><span class="pill on">Wed</span><span class="pill">Thu</span><span class="pill on">Fri</span><span class="pill">Sat</span><span class="pill">Sun</span></div></div>
+      </div>
+    </div>
+    <div class="opt">
+      <h3>B. Quick dates first, calendar second</h3>
+      <p class="why">Due opens on chips for the likely answers (Tomorrow, Fri, Next Mon, In a week) with "Pick a date…" for the rest. Fewer clicks for the common case; one more for an odd date.</p>
+      <div class="fw-stage" style="padding:10px">
+        <div class="f"><label>Due</label><div class="pills" style="flex-wrap:wrap;gap:5px"><span class="pill">Tomorrow</span><span class="pill on">Fri 2 Oct</span><span class="pill">Mon 5 Oct</span><span class="pill">In a week</span><span class="pill" style="border-style:dashed">Pick a date…</span></div></div>
+        <div class="f"><label>Time it needs</label><div class="pills"><span class="pill">15 min</span><span class="pill">30 min</span><span class="pill on">45 min</span><span class="pill">1 h</span><span class="pill">1 h 30</span><span class="pill" style="border-style:dashed">Other…</span></div></div>
+        <div class="f"><label>Days</label><div class="pills"><span class="pill on">Mon</span><span class="pill">Tue</span><span class="pill on">Wed</span><span class="pill">Thu</span><span class="pill on">Fri</span><span class="pill">Sat</span><span class="pill">Sun</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script src="../look-017/icons.js"></script>
+<script>
+  for (const el of document.querySelectorAll('[data-i]')) {
+    el.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${window.FW_ICONS[el.dataset.i]}</svg>`;
+  }
+  function show(id) {
+    for (const t of document.querySelectorAll('[role="tab"]')) t.setAttribute('aria-selected', t.dataset.lane === id);
+    for (const l of document.querySelectorAll('.lane')) l.classList.toggle('on', l.id === id);
+  }
+  for (const tab of document.querySelectorAll('[role="tab"]')) {
+    tab.addEventListener('click', () => { show(tab.dataset.lane); history.replaceState(null, '', '#' + tab.dataset.lane); });
+  }
+  if (document.getElementById(location.hash.slice(1))) show(location.hash.slice(1));
+</script>
+</body>
+</html>

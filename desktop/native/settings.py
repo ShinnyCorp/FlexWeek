@@ -7,7 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from uuid import uuid4
 
-from PySide6.QtCore import QEvent, QMargins, QObject, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QMargins, QObject, QSize, Qt, QTime, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -24,7 +24,6 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QBoxLayout,
     QButtonGroup,
-    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -45,7 +44,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QStackedLayout,
     QStackedWidget,
-    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -55,7 +53,9 @@ from backend.models import valid_spotify_url
 from backend.slots import SLOT_MIN
 from desktop.native import autostart
 from desktop.native.calendar import DAY_FULL
+from desktop.native.controller import ROUTINE_STATUS
 from desktop.native.custom_look import UNNAMED, sanitize_saved, wear
+from desktop.native.fields import ClockField, DayPicker, Stepper
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
 from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import drag_step
@@ -78,19 +78,27 @@ from desktop.native.look import (
     parse_look_menu_token,
     resolved_palette,
     sanitize_look,
+    text_scale,
 )
 from desktop.native.look_editor import LookEditor
+from desktop.native.look_preview import look_choice, look_preview
 from desktop.native.motion import switch_page
 from desktop.native.remind import ALARM_SNOOZE_MIN
 from desktop.native.sound import Bell
 from desktop.native.spotify import SpotifyPlayer, open_in_app
-from desktop.native.tokens import SPACING, type_pt
+from desktop.native.tokens import SPACING
 from desktop.native.tones import FALLBACK, SOUNDS
 from desktop.native.version import VERSION
-from desktop.native.weekmodel import hhmm_text, length_label, time_format
+from desktop.native.weekmodel import hhmm_text, length_label
 from desktop.native.widgets import (
+    CARD_GAP,
+    CARD_WIDTH_PAD,
+    SHEET_LIST,
+    CardGrid,
+    ChoiceCard,
     Choices,
     Dialog,
+    FitScroll,
     FlowLayout,
     Form,
     Segmented,
@@ -98,7 +106,7 @@ from desktop.native.widgets import (
     Switch,
     bare,
     even_fields,
-    fit_scroll_dialog,
+    even_labels,
     info_card,
     overlay_scroll_bars,
 )
@@ -120,7 +128,9 @@ SECTION_ICONS = ("palette", "calendar", "timer", "bell", "laptop")
 # The three looks most people choose between; every other look is under More looks.
 MAIN_LOOKS = ("light-frost", "dark-frost", "system")
 MORE_LOOKS = "More looks"
-MORE_LOOKS_HINT = "Choose another look"
+# A More looks card's picture is this wide at normal text, and wider as the text is larger; its
+# card a little more (ChoiceCard).
+LOOK_TILE = 150
 ACCENT_LABELS = {"default": "Blue"}
 OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
 # A look of the student's own sets the accent and every knob (look.py's resolved_palette and
@@ -133,6 +143,10 @@ CUSTOMISE_TIP = "Change any look, colours, corners and fonts included, and save 
 SAVED_LOOK = "saved:"
 YOUR_LOOKS = "Your looks"
 UNSAVED_LOOK = "{name} (not saved)"
+WEARING = "Wearing {name}"
+# The footer says this one thing; the status line's routine "Saving…" and "Saved preferences." would
+# have it swap between two sentences for the same fact (Grok Bot's 0.17.0 audit, T33).
+SAVE_STATE = "Changes are saved as you make them."
 MOTION_CHOICES = (("Normal", "normal"), ("More", "extra"), ("Reduce", "reduce"), ("Off", "off"))
 PREFERRED_VIEWS = (("Whatever I had open", None), ("Week", "week"), ("Day", "day"))
 KNOB_LABELS = {
@@ -172,11 +186,10 @@ SPOTIFY_TONE_NOTE = (
 # What only Today's app reads. Every other design has its own colours and shapes, so these changed
 # nothing there (measured 2026-09-21: not the view, not the top bar, apart from Corners on the bar).
 TODAYS_APP_KNOBS = ("surface", "corners", "blocks")
-FINE_TUNE_LOOK = "Fine-tune this look"
-ABOUT_MIN_WIDTH = 420
-HELP_MIN_WIDTH = 600
-# Screens on the left and shortcuts on the right, over a window at least this wide.
-HELP_TWO_COLUMN_WIDTH = 900
+# What the switch shows, so it does not read as the design's own "more options" (Grok Bot's 0.17.0
+# audit, T33: "Fine-tune this design" and "Fine-tune this look" read as one toggle).
+FINE_TUNE_LOOK = "Show shape, spacing and type"
+OWN_LOOK = "Your own look"
 SECTION_GAP = 14
 ABOUT_LINE = "FlexWeek plans your homework around school, sports and everything else in your week."
 ABOUT_HERE = "Your plans are saved on this computer."
@@ -247,11 +260,12 @@ def _note(words: str, name: str) -> QLabel:
 
 
 def _page_button(words: str, name: str) -> QPushButton:
-    """A button that opens something else. Plain and as wide as its words, since Done is the one
-    filled button in Settings; stretched and filled, each was the loudest thing on its page."""
+    """A button that opens something else or acts on the side. Outlined and as wide as its words, since
+    Done is the one filled button in Settings; stretched and filled, each was the loudest thing on its
+    page, and as words alone none looked like a button."""
     made = QPushButton(words)
     made.setObjectName(name)
-    made.setProperty("quiet", True)
+    made.setProperty("outline", True)
     made.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     return made
 
@@ -309,8 +323,9 @@ def _section_page(title: str, cards: tuple[QWidget, ...]) -> QWidget:
 
 
 class LookPicker(Choices):
-    """Look as "Light | Dark | System", with every other look in a list under them (decision 24 of 0.17).
-    To the code that reads it, one control whose choices are every look, as the dropdown it replaces."""
+    """Look as "Light | Dark | System", with every other look as a small picture of a week in its own
+    colours under them, and the student's own looks after those (decision 24 of 0.17; Grok Bot's
+    0.17.0 audit, A10 and T15). To the code that reads it, one control whose choices are every look."""
 
     def __init__(self, name: str) -> None:
         super().__init__()
@@ -322,52 +337,80 @@ class LookPicker(Choices):
         ordered = sorted(looks, key=lambda item: main.index(item[1]) if item[1] in main else len(main))
         for label, token in ordered:
             self._remember(label, token)
+        self._tile_width = LOOK_TILE
         self.main = Segmented(tuple(item for item in ordered if item[1] in main), f"{name}Main")
         self.main.setAccessibleName("Look")
-        self.more = QComboBox()
+        self.more = CardGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP)
         self.more.setObjectName(f"{name}More")
         self.more.setAccessibleName(MORE_LOOKS)
-        self.more.setPlaceholderText(MORE_LOOKS_HINT)
-        for label, token in ordered:
-            if token not in main:
-                self.more.addItem(label, token)
+        self.more.set_cards([self._tile(label, token, []) for label, token in ordered if token not in main])
+        self.yours = CardGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP)
+        self.yours.setObjectName(f"{name}Yours")
+        self.yours.setAccessibleName(YOUR_LOOKS)
+        self.worn = QLabel()
+        self.worn.setObjectName("prefLookWorn")
+        self.worn.setVisible(False)
+        self.yours_heading = QLabel(YOUR_LOOKS)
+        self.yours_heading.setObjectName("settingsCardNote")
+        self.yours_heading.setVisible(False)
+        self.yours.setVisible(False)
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
         box.addWidget(self.main, 0, Qt.AlignmentFlag.AlignLeft)
-        line = QHBoxLayout()
-        line.setSpacing(8)
-        more = QLabel(MORE_LOOKS)
-        more.setObjectName("settingsCardNote")
-        line.addWidget(more)
-        line.addWidget(self.more)
-        line.addStretch(1)
-        box.addLayout(line)
+        caption = QLabel(MORE_LOOKS)
+        caption.setObjectName("settingsCardNote")
+        box.addWidget(caption)
+        box.addWidget(self.more)
+        box.addWidget(self.yours_heading)
+        box.addWidget(self.yours)
+        box.addWidget(self.worn)
         self.main.currentIndexChanged.connect(self._picked_main)
-        self.more.activated.connect(self._picked_more)
-        self._built_in = (self.count(), self.more.count())
+        self._built_in = self.count()
+        self._unsaved: str | None = None
+        self._saved: list[dict] = []
 
-    def set_saved(self, names: list[str]) -> None:
-        """The student's saved looks, under the others in More looks (decision 24 and plan, "Saved
-        looks"), each chosen by its name."""
-        choices, listed = self._built_in
-        del self._texts[choices:], self._data[choices:]
-        while self.more.count() > listed:
-            self.more.removeItem(self.more.count() - 1)
-        if names:
-            self.more.insertSeparator(listed)
-            self.more.addItem(YOUR_LOOKS)
-            # A heading, not a look to choose.
-            self.more.model().item(self.more.count() - 1).setEnabled(False)
-        for name in names:
-            self._remember(name, SAVED_LOOK + name)
-            self.more.addItem(name, SAVED_LOOK + name)
-        self.more.setMaxVisibleItems(max(10, self.more.count()))
+    def _tile(self, label: str, token: str, saved: list[dict]) -> ChoiceCard:
+        """A look as a picture of a week in its colours over its name; one click, or Space or Enter,
+        wears it."""
+        card = ChoiceCard(label, "", self._tile_width)
+        card.setProperty("token", token)
+        pack, look = look_choice(token, saved)
+        card.set_picture(look_preview(pack, look, self._tile_width))
+        card.chosen.connect(self._picked_tile)
+        return card
+
+    def set_text_scale(self, scale: float) -> None:
+        """The pictures as much wider as the text is larger, so a name keeps its one line under its
+        picture: at Large text "High contrast" wrapped under a picture of the normal width."""
+        width = round(LOOK_TILE * scale)
+        if width == self._tile_width:
+            return
+        self._tile_width = width
+        for grid in (self.more, self.yours):
+            for card in grid.cards:
+                card.set_width(width)
+                pack, look = look_choice(card.property("token"), self._saved)
+                card.set_picture(look_preview(pack, look, width))
+            grid.set_card_width(width + CARD_WIDTH_PAD)
+
+    def set_saved(self, looks: list[dict]) -> None:
+        """The student's saved looks, after the others, each chosen by its name."""
+        del self._texts[self._built_in :], self._data[self._built_in :]
+        self._saved = looks
+        tiles = []
+        for look in looks:
+            self._remember(look["name"], SAVED_LOOK + look["name"])
+            tiles.append(self._tile(look["name"], SAVED_LOOK + look["name"], looks))
+        self.yours.set_cards(tiles)
+        self.yours_heading.setVisible(bool(tiles))
+        self.yours.setVisible(bool(tiles))
 
     def show_unsaved(self, name: str | None) -> None:
-        """With a look of the student's own worn and not saved, More looks names it where it would
-        otherwise ask for a look."""
-        self.more.setPlaceholderText(UNSAVED_LOOK.format(name=name) if name else MORE_LOOKS_HINT)
+        """A look of the student's own that is worn and not saved has no picture, so it is named
+        under the pictures."""
+        self._unsaved = name
+        self._say_worn()
 
     def first_line(self) -> QWidget:
         """What the Look label sits beside: the three looks, not the middle of both lines."""
@@ -377,19 +420,25 @@ class LookPicker(Choices):
         if index >= 0:
             self.setCurrentIndex(self.findData(self.main.itemData(index)))
 
-    def _picked_more(self, index: int) -> None:
-        if index >= 0:
-            self.setCurrentIndex(self.findData(self.more.itemData(index)))
+    def _picked_tile(self) -> None:
+        self.setCurrentIndex(self.findData(self.sender().property("token")))
+
+    def _say_worn(self) -> None:
+        """Light, Dark and System show no choice while another look is worn, so the look is named
+        where the pictures are, as well as marked on its own."""
+        name = self.currentText() or (UNSAVED_LOOK.format(name=self._unsaved) if self._unsaved else "")
+        elsewhere = bool(name) and self.main.currentIndex() < 0
+        self.worn.setText(WEARING.format(name=name) if elsewhere else "")
+        self.worn.setVisible(elsewhere)
 
     def _show(self, index: int) -> None:
         token = self.itemData(index) if index >= 0 else None
-        for box in (self.main, self.more):
-            box.blockSignals(True)
+        self.main.blockSignals(True)
         self.main.setCurrentIndex(self.main.findData(token))
-        # The heading and the line above the saved looks carry no value, as nothing chosen does.
-        self.more.setCurrentIndex(self.more.findData(token) if token is not None else -1)
-        for box in (self.main, self.more):
-            box.blockSignals(False)
+        self.main.blockSignals(False)
+        for card in (*self.more.cards, *self.yours.cards):
+            card.select(card.property("token") == token)
+        self._say_worn()
 
 
 class FocusPanel(QWidget):
@@ -433,6 +482,9 @@ class FocusPanel(QWidget):
         # timer is one line and a way to that screen.
         self.screen = QPushButton("Focus screen")
         self.screen.setObjectName("focusScreenOpen")
+        # Outlined: filled, and full width in the rail, it was louder than Add (Grok Bot's 0.17.0
+        # audit, X8).
+        self.screen.setProperty("outline", True)
         self.screen.setToolTip("Show the timer on its own, large. F")
         self.screen.clicked.connect(self.screen_requested.emit)
         status.insertWidget(status.count() - 1, self.screen)
@@ -489,7 +541,6 @@ class FocusPanel(QWidget):
                 row.setDirection(direction)
         self.layout().setContentsMargins(QMargins() if compact else self._margins)
         self._compact = compact
-        self.note.setVisible(not compact or self.finished.isVisibleTo(self))
 
     def show_now_next(self, text: str) -> None:
         self.now_next.setText(text)
@@ -516,9 +567,15 @@ class FocusPanel(QWidget):
             widget.setVisible(ended)
         self.card.setVisible(state is not None)
         self.note.setText(FOCUS_ENDED_NOTE if ended else FOCUS_RUNNING_NOTE)
-        # In the rail a running timer is its name, time and way to the focus screen; what to do next
-        # is said once it ends.
-        self.note.setVisible(ended or not self._compact)
+        # A running timer is one line: its name, time and way to the focus screen. Now and Next, Quick
+        # focus and the sentence on what to do made three strips over the week (Grok Bot's 0.17.0
+        # audit, X3); the sentence is the time's tooltip, and what to do next is said once it ends.
+        running = state is not None and not ended
+        self.note.setVisible(ended)
+        self.time.setToolTip(FOCUS_RUNNING_NOTE if running else "")
+        self.quick.setVisible(not running)
+        if running:
+            self.now_next.setVisible(False)
         self.more.setEnabled(bool(choices))
         for label in (self.task, self.phase, self.time):
             label.setVisible(bool(label.text()))
@@ -656,7 +713,7 @@ class SettingsPage(QWidget):
         self.volume = QSpinBox()
         self.volume.setObjectName("prefAlertVolume")
         self.volume.setRange(0, 100)
-        self.volume.setSuffix(" %")
+        self.volume.setSuffix("%")
         self.volume.setValue(int(preferences.get("alert_volume", 80)))
         self.end_chime = Switch("Chime when a session ends")
         self.end_chime.setObjectName("prefEndChime")
@@ -702,18 +759,22 @@ class SettingsPage(QWidget):
         main_section, day_section = self.layout_sections
         self.colours_card, appear = _card("Colours")
         appear.addRow("Look", self.look)
-        appear.addRow(CUSTOMISE, self.customise)
+        appear.addRow(OWN_LOOK, self.customise)
         appear.addRow("Accent", self.accent)
         appear.addRow("", self.accent_note)
         appear.addRow(self.accent_chips)
+        appear.addRow(self.fine_tune)
+        appear.addRow(self.fine_host)
         self._colours_form = appear
         self._show_look_settings()
+        self._fit_look_cards()
+        self.changed.connect(self._fit_look_cards)
         everywhere_card, everywhere = _card("Every screen")
         everywhere.addRow("Animations", self.motion)
-        everywhere.addRow(self.fine_tune)
-        everywhere.addRow(self.fine_host)
+        # Colours first: it is what most students change, and below every design card it was not found
+        # (Grok Bot's 0.17.0 audit, X1 and A11).
         appearance = _section_page(
-            "Appearance & layout", (main_section, self.colours_card, day_section, everywhere_card)
+            "Appearance & layout", (self.colours_card, main_section, day_section, everywhere_card)
         )
         planning_card, planning_form = _card("How homework gets a time")
         self.planning_style = QButtonGroup(planning_card)
@@ -746,11 +807,14 @@ class SettingsPage(QWidget):
         drag_form.addRow("Steps", self.drag_step)
         planning = _section_page("Planning", (planning_card, where_card, drag_card))
         focus_card, focus_form = _card("Focus timer")
-        focus_form.addRow("Focus minutes", self.work)
-        focus_form.addRow("Break minutes", self.break_min)
-        focus_form.addRow("Long break minutes", self.long_break)
+        boxes = (self.work, self.break_min, self.long_break, self.long_every)
+        self.focus_steppers = [Stepper(box) for box in boxes]
+        work, rest, long_rest, every = self.focus_steppers
+        focus_form.addRow("Focus minutes", work)
+        focus_form.addRow("Break minutes", rest)
+        focus_form.addRow("Long break minutes", long_rest)
         focus_form.addRow("Timer preset", self.preset_timer)
-        focus_form.addRow("Long break after", self.long_every)
+        focus_form.addRow("Long break after", every)
         focus_form.addRow(self.auto_split)
         focus = _section_page("Focus", (focus_card,))
         reminders_card, alerts_form = _card("Reminders")
@@ -762,7 +826,7 @@ class SettingsPage(QWidget):
         reminder_form = Form(self.reminder_controls)
         reminder_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         reminder_form.setContentsMargins(0, 0, 0, 0)
-        reminder_form.addRow("How long before", self.lead)
+        reminder_form.addRow("How long before", Stepper(self.lead))
         reminder_form.addRow(self.reminder_sound)
         tone_row = QHBoxLayout()
         tone_row.addWidget(self.alarm_tone)
@@ -797,8 +861,9 @@ class SettingsPage(QWidget):
         self.alarm_name = QLineEdit()
         self.alarm_name.setObjectName("alarmName")
         self.alarm_name.setPlaceholderText("Alarm name")
-        self.alarm_time = QTimeEdit()
-        self.alarm_time.setDisplayFormat(time_format())
+        # A usual time to wake, not midnight (T21 of the 0.17.0 audit).
+        self.alarm_time = ClockField(QTime(7, 0))
+        self.alarm_time.setObjectName("alarmTime")
         self.alarm_sound = QComboBox()
         self.alarm_sound.setObjectName("alarmSound")
         self.alarm_name.setMinimumWidth(120)
@@ -812,32 +877,25 @@ class SettingsPage(QWidget):
         alarms_form.addRow("Sound", self.alarm_sound)
         self.alarm_spotify = QLineEdit()
         self.alarm_spotify.setObjectName("alarmSpotify")
-        self.alarm_spotify.setPlaceholderText("Spotify link (optional)")
-        alarms_form.addRow(self.alarm_spotify)
-        # Two rows, Monday to Thursday and Friday to Sunday. Seven in a line were wider than the page.
-        day_row = QGridLayout()
-        day_row.setHorizontalSpacing(14)
-        self.alarm_days: list[QCheckBox] = []
-        for index, name in enumerate(DAY_FULL):
-            day_box = QCheckBox(name[:3])
-            day_box.setObjectName(f"alarmDay{index}")
-            day_box.setChecked(index < 5)
-            self.alarm_days.append(day_box)
-            day_row.addWidget(day_box, index // 4, index % 4)
+        self.alarm_spotify.setPlaceholderText("Optional")
+        alarms_form.addRow("Spotify link", self.alarm_spotify)
+        # The days as pills on one line, as everywhere else. As check boxes they took two rows, Monday
+        # to Thursday and then Friday to Sunday (T21 of the 0.17.0 audit).
+        self.alarm_day_picker = DayPicker(range(5), "alarmDay")
+        self.alarm_days = self.alarm_day_picker.buttons
         add_alarm = _page_button("Add alarm", "addAlarm")
         add_alarm.clicked.connect(self._add_alarm)
-        remove_alarm = _page_button("Remove alarm", "removeAlarm")
-        remove_alarm.clicked.connect(self._remove_alarm)
-        day_row.setColumnStretch(4, 1)
-        alarms_form.addRow(day_row)
+        self.remove_alarm = _page_button("Remove alarm", "removeAlarm")
+        self.remove_alarm.clicked.connect(self._remove_alarm)
+        alarms_form.addRow("Days", self.alarm_day_picker)
         button_row = QHBoxLayout()
         button_row.setSpacing(8)
         button_row.addWidget(add_alarm)
-        button_row.addWidget(remove_alarm)
+        button_row.addWidget(self.remove_alarm)
         button_row.addStretch(1)
         alarms_form.addRow(button_row)
         all_card, all_form = _card("All alerts")
-        all_form.addRow("Volume", self.volume)
+        all_form.addRow("Volume", Stepper(self.volume))
         all_form.addRow(self.end_chime)
         all_form.addRow(self.tray)
         all_form.addRow(_note(TRAY_NOTE, "prefTrayNote"))
@@ -905,7 +963,7 @@ class SettingsPage(QWidget):
         footer.setObjectName("settingsFooter")
         footer_line = QHBoxLayout(footer)
         footer_line.setContentsMargins(32, 12, 32, 16)
-        self.save_state = QLabel("Changes are saved as you make them.")
+        self.save_state = QLabel(SAVE_STATE)
         self.save_state.setObjectName("prefsSaveState")
         self.save_state.setWordWrap(True)
         footer_line.addWidget(self.save_state, 1)
@@ -964,6 +1022,10 @@ class SettingsPage(QWidget):
         self._show_what_applies()
         self.alarm_tone.currentIndexChanged.connect(self._follow_tone)
         self._follow_tone()
+
+    def say(self, text: str) -> None:
+        """What the footer says: anything that needs reading, and otherwise the one standing sentence."""
+        self.save_state.setText(SAVE_STATE if text in ROUTINE_STATUS else text)
 
     def _follow_tone(self, *_index: object) -> None:
         """New alarms start with the chosen sound, and the note says what Spotify means for the rest."""
@@ -1024,11 +1086,23 @@ class SettingsPage(QWidget):
         # Section by section: a dropdown on Alerts need not make Appearance's wider than its page.
         for index in range(self.stack.count()):
             even_fields(self.stack.widget(index))
+            even_labels(self.stack.widget(index))
+        # Once the steppers have their look: before it, their − and + had no width yet.
+        QTimer.singleShot(0, self, self._even_focus)
         margins = self.nav.contentsMargins()
         self.nav.setFixedWidth(
             self.nav.sizeHintForColumn(0) + margins.left() + margins.right() + 2 * self.nav.frameWidth()
             + PREFS_NAV_PAD
         )
+
+    def _even_focus(self) -> None:
+        """Timer preset as wide as the − value + fields above and below it (T20 of the 0.17.0 audit);
+        when its longest name is wider, every box widens with it instead."""
+        stepped = self.focus_steppers[0].sizeHint().width()
+        width = max(self.preset_timer.sizeHint().width(), stepped)
+        for stepper in self.focus_steppers:
+            stepper.box.setFixedWidth(stepper.box.width() + width - stepped)
+        self.preset_timer.setFixedWidth(width)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         if event.key() == Qt.Key.Key_Escape:
@@ -1128,6 +1202,8 @@ class SettingsPage(QWidget):
             self.alarm_list.addItem(f"{alarm.get('name')} · {label}{off}\n{when}")
         self._alarms_form.setRowVisible(self.alarm_list, bool(self._alarms))
         self._alarms_form.setRowVisible(self.alarm_empty, not self._alarms)
+        # Nothing to remove until there is an alarm.
+        self.remove_alarm.setVisible(bool(self._alarms))
 
     def _add_alarm(self) -> None:
         if len(self._alarms) >= 20:
@@ -1272,6 +1348,9 @@ class SettingsPage(QWidget):
         self._colours_form.setRowVisible(self.accent_note, custom is not None or own_accent)
         self._fine_form.setRowVisible(self.own_look_note, custom is not None)
 
+    def _fit_look_cards(self) -> None:
+        self.look.set_text_scale(text_scale(self.look_choice()))
+
     def _saved_look(self, token: object) -> dict | None:
         if not isinstance(token, str) or not token.startswith(SAVED_LOOK):
             return None
@@ -1281,7 +1360,7 @@ class SettingsPage(QWidget):
     def _show_look(self) -> None:
         """Look as worn: one of the looks, a saved look by its name, or nothing for a look of the
         student's own that is not saved."""
-        self.look.set_saved([look["name"] for look in self.saved_looks])
+        self.look.set_saved(self.saved_looks)
         custom = self._look.get("custom")
         unsaved = custom is not None and custom not in self.saved_looks
         if custom is None:
@@ -1603,14 +1682,6 @@ class TransferPreviewDialog(QDialog):
         layout.addWidget(buttons)
 
 
-def _close_row(dialog: QDialog) -> QDialogButtonBox:
-    # A Close of its own words, not the standard button, which carries an icon on KDE.
-    buttons = QDialogButtonBox()
-    buttons.addButton("Close", QDialogButtonBox.ButtonRole.RejectRole)
-    buttons.rejected.connect(dialog.reject)
-    return buttons
-
-
 def _line(words: str, name: str) -> QLabel:
     made = QLabel(words)
     made.setObjectName(name)
@@ -1673,7 +1744,8 @@ class ScrollFade(QWidget):
         self.raise_()
 
     def paintEvent(self, _event: QPaintEvent) -> None:  # noqa: N802
-        page = self._area.window().palette().color(QPalette.ColorRole.Window)
+        # The card the words sit on, not the window: a sheet's window is only room for its shadow.
+        page = self._area.parentWidget().palette().color(QPalette.ColorRole.Window)
         clear = QColor(page)
         clear.setAlpha(0)
         ramp = QLinearGradient(0, 0, 0, self.height())
@@ -1704,10 +1776,8 @@ def _logo(side: int) -> QLabel:
 
 class AboutDialog(Dialog):
     def __init__(self, parent: QWidget | None, storage: dict | None, folder: str) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("About FlexWeek")
-        self.setMinimumWidth(ABOUT_MIN_WIDTH)
-        layout = QVBoxLayout(self)
+        super().__init__(parent, sheet=True)
+        layout = self.card_body("About FlexWeek")
         brand = QHBoxLayout()
         brand.setSpacing(SECTION_GAP)
         brand.addWidget(_logo(ABOUT_LOGO_PX))
@@ -1730,32 +1800,23 @@ class AboutDialog(Dialog):
             open_folder.setToolTip(folder)
             open_folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(folder)))
             layout.addWidget(open_folder)
-        layout.addWidget(_close_row(self))
 
 
 class HelpDialog(Dialog):
-    """Enough to find your way: the screens on the left, the keys on the right, drawn as keycaps.
-    One column at large text or over a narrow window, where two would each be too narrow to read."""
+    """Enough to find your way: the screens two by two, then the keys, drawn as keycaps. A list's sheet,
+    600 wide (5.1 A of 0.17.2), so the shortcuts are one column: beside the screens, their words wrapped
+    a word or two to a line."""
 
     def __init__(self, parent: QWidget | None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Help")
-        self.ensurePolished()
-        large = self.font().pointSizeF() >= type_pt("body", "large")
-        wide = parent is not None and parent.window().width() >= HELP_TWO_COLUMN_WIDTH
-        self.columns = 2 if wide and not large else 1
-        self.setMinimumWidth(HELP_TWO_COLUMN_WIDTH if self.columns == 2 else HELP_MIN_WIDTH)
+        super().__init__(parent, sheet=True)
+        layout = self.card_body("Help", SHEET_LIST)
         body = QWidget()
         column = QVBoxLayout(body)
         column.setContentsMargins(0, 0, 0, 0)
-        sides = QBoxLayout(
-            QBoxLayout.Direction.LeftToRight if self.columns == 2 else QBoxLayout.Direction.TopToBottom
-        )
-        sides.setSpacing(SECTION_GAP * 2)
-        column.addLayout(sides)
-        screens = QVBoxLayout()
+        column.setSpacing(SECTION_GAP // 2)
+        column.addWidget(_heading("The screens"))
+        screens = QGridLayout()
         screens.setSpacing(SECTION_GAP // 2)
-        screens.addWidget(_heading("The screens"))
         for index, (name, words) in enumerate(HELP_SCREENS):
             card = QFrame()
             card.setObjectName("helpCard")
@@ -1767,13 +1828,13 @@ class HelpDialog(Dialog):
             title.setObjectName("helpScreenName")
             inside.addWidget(title)
             inside.addWidget(_line(words, f"helpScreen{index}"))
-            screens.addWidget(card)
-        screens.addStretch(1)
-        sides.addLayout(screens, 1)
-        keys_side = QVBoxLayout()
-        keys_side.addWidget(_heading("Keyboard shortcuts"))
+            inside.addStretch(1)
+            screens.addWidget(card, index // 2, index % 2)
+        column.addLayout(screens)
+        column.addSpacing(SECTION_GAP // 2)
+        column.addWidget(_heading("Keyboard shortcuts"))
         # A form, not a grid: a grid gave a two-line description one line and a bit, and cut it.
-        key_list = QWidget()
+        key_list = bare(QWidget())
         key_list.setObjectName("helpKeys")
         keys = QFormLayout(key_list)
         keys.setContentsMargins(0, 0, 0, 0)
@@ -1781,27 +1842,14 @@ class HelpDialog(Dialog):
         keys.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
         for key, what in HELP_KEYS:
             keys.addRow(keycaps(key), _line(what, "helpKeyDoes"))
-        keys_side.addWidget(key_list)
-        keys_side.addStretch(1)
-        sides.addLayout(keys_side, 1)
+        column.addWidget(key_list)
         column.addStretch(1)
         # A dialog's minimum counts a wrapped line as one line, so at large text on a laptop, Help at
         # its minimum squeezed the shortcuts to half their height. A scroll area gives the words the
-        # height they need at the width they get, and the dialog fits the screen.
-        area = QScrollArea()
-        area.setObjectName("helpScroll")
-        area.setWidgetResizable(True)
-        area.setFrameShape(QFrame.Shape.NoFrame)
-        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        area.setWidget(body)
+        # height they need at the width they get, and the sheet fits its window.
+        area = FitScroll(body, "helpScroll")
         self.fades = (ScrollFade(area, top=True), ScrollFade(area, top=False))
-        layout = QVBoxLayout(self)
-        layout.addWidget(area)
-        layout.addWidget(_close_row(self))
-
-    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
-        super().showEvent(event)
-        fit_scroll_dialog(self)
+        layout.addWidget(area, 1)
 
 
 class UpdateDialog(QDialog):

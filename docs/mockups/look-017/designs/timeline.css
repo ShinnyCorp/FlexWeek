@@ -44,6 +44,7 @@
 .design-timeline .tl-zoom > i { width: 1px; height: 14px; background: var(--hairline-strong); }
 
 /* --- Blocks: ink-outlined cards with a 3-pixel category tab ------------------------------------ */
+/* 0.17.2: the app fills every block with its category's colour, keeping the outline and tab. */
 
 .design-timeline .tl-block {
   position: absolute; box-sizing: border-box; overflow: hidden;

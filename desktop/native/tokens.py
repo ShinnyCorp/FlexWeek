@@ -180,15 +180,20 @@ SINK = 0.34
 # At one lightness a deuteranope sees homework's red and sports' green as one colour, and the two lie
 # side by side all week. Homework's mark alone is darker, which no colour filter takes away.
 HOMEWORK_DARKER = 0.22
+SLEEP_FILL_DARKER = 0.08
+SLEEP_MARK_DARKER = 0.12
 
 
-def family_colours(hue: float, *, grey: bool = False, homework: bool = False) -> dict[str, tuple[str, str]]:
+def family_colours(
+    hue: float, *, grey: bool = False, homework: bool = False, sleep: bool = False,
+) -> dict[str, tuple[str, str]]:
     """A category's colours in each kind of look: (fill, mark) in light looks, (tone, mark) in dark
     and high-contrast ones."""
-    fill = oklch(FILL[0], GREY_CHROMA if grey else FILL[1], hue)
+    fill = oklch(FILL[0] - (SLEEP_FILL_DARKER if sleep else 0), GREY_CHROMA if grey else FILL[1], hue)
     colours = {}
     for family, (light, chroma) in MARK.items():
         chroma = GREY_CHROMA if grey else chroma
-        mark = oklch(light - (HOMEWORK_DARKER if homework else 0), chroma, hue)
-        colours[family] = (fill if family == "light" else oklch(light, chroma, hue), mark)
+        tone = light - (SLEEP_MARK_DARKER if sleep else 0)
+        mark = oklch(tone - (HOMEWORK_DARKER if homework else 0), chroma, hue)
+        colours[family] = (fill if family == "light" else oklch(tone, chroma, hue), mark)
     return colours

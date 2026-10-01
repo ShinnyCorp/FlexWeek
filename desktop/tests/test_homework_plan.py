@@ -37,7 +37,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.look import sanitize_look
     from desktop.native.reuse import plan_start
     from desktop.native.setup import FIRST
-    from desktop.native.widgets import DueField, HomeworkDialog
+    from desktop.native.widgets import DueField, HomeworkDialog, Toast
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
     from desktop.tests.logic_support import past_setup
@@ -462,7 +462,7 @@ def stored_blocks(window: NativeWindow) -> list[dict]:
 
 
 def test_plan_says_what_it_did_with_an_undo_that_takes_it_all_back(
-    qapp: QApplication, window: NativeWindow
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session = window.session
     for key, title in (("poster", "Science poster"), ("vocab", "Spanish vocab")):
@@ -471,8 +471,18 @@ def test_plan_says_what_it_did_with_an_undo_that_takes_it_all_back(
     session.save()
     settled(qapp, window)
     before = stored_blocks(window)
+    shown: list[tuple[str, str]] = []
+    show = Toast.show_message
+
+    def recorded(toast: Toast, text: str, button: str = "", callback=None) -> None:
+        shown.append((text, button))
+        show(toast, text, button, callback)
+
+    monkeypatch.setattr(Toast, "show_message", recorded)
     window.findChild(QPushButton, "solveButton").click()
     settled(qapp, window)
+    monkeypatch.undo()
+    assert shown == [("Planned 3 homework blocks.", "Undo")], "said once, with its Undo, not rewrapped"
     planned = stored_blocks(window)
     assert planned != before
     assert window.toast.button.isVisible()

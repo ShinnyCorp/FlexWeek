@@ -13,7 +13,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QPushButton, QSpinBox, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSpinBox, QWidget
 
 from desktop.native.look import ACCENT_COLORS, look_menu_token, resolved_palette
 from desktop.native.settings import SETTINGS_COLUMN, SettingsPage
@@ -44,7 +44,8 @@ def test_the_column_of_cards_is_centred_up_to_960(qapp: QApplication, window: Na
     page = open_settings(qapp, window, (1600, 900))
     area = page.stack.currentWidget()
     body = area.widget()
-    column = body.layout().itemAt(1).widget()
+    items = [body.layout().itemAt(index) for index in range(body.layout().count())]
+    column = next(item.widget() for item in items if item.widget() is not None)
     assert column.width() == SETTINGS_COLUMN == 960
     left = column.mapTo(area.viewport(), QPoint(0, 0)).x()
     right = area.viewport().width() - left - column.width()
@@ -74,18 +75,17 @@ def test_look_is_light_dark_or_system_and_the_other_looks_are_under_more_looks(
 ) -> None:
     page = open_settings(qapp, window)
     main = page.findChild(Segmented, "prefThemeMain")
-    more = page.findChild(QComboBox, "prefThemeMore")
+    more = page.look.more
     assert [button.text() for button in main.buttons()] == ["Light", "Dark", "System"]
-    shown = [more.itemText(index) for index in range(more.count())]
+    shown = [card.accessibleName() for card in more.cards]
     assert "High contrast" in shown and "Nocturne" in shown
     assert not {"Light", "Dark", "System"} & set(shown)
-    more.setCurrentIndex(more.findData(look_menu_token("pack", "nocturne")))
-    more.activated.emit(more.currentIndex())
+    next(card for card in more.cards if card.accessibleName() == "Nocturne").chosen.emit()
     assert page.updates()["theme_pack"] == "nocturne"
     assert not any(button.isChecked() for button in main.buttons()), "no segment claims Nocturne"
     main.buttons()[1].click()
     assert page.updates()["theme_pack"] == "dark-frost"
-    assert more.currentIndex() == -1 and more.currentText() == "", "More looks shows its hint again"
+    assert not any(card.is_selected() for card in more.cards), "no picture is marked once Dark is"
     page.close_page()
 
 
@@ -114,7 +114,7 @@ def test_customise_has_its_row_under_look_and_opens_the_look_editor(
     page = open_settings(qapp, window)
     button = page.findChild(QPushButton, "prefCustomise")
     label = page.colours_card.layout().labelForField(button)
-    assert isinstance(label, QLabel) and label.text() == "Customise"
+    assert isinstance(label, QLabel) and label.text() == "Your own look"
     assert button.isEnabled() and button.toolTip()
     look = page.findChild(QWidget, "prefTheme")
     assert button.mapTo(page, QPoint(0, 0)).y() > look.mapTo(page, QPoint(0, 0)).y()

@@ -29,6 +29,8 @@ from desktop.native.tokens import (
     RADIUS_SHEET,
     SHADOW_SMALL,
     SINK,
+    SLEEP_FILL_DARKER,
+    SLEEP_MARK_DARKER,
     SPACING,
     TEXT_SCALE,
     TYPE_PT,
@@ -118,7 +120,7 @@ LOOK_PRESETS = {
     },
     # E-Ink / Paper: serif headings and hairline rules. Its depth draws those hairlines; Qt draws no
     # shadow under them.
-    "paper": {"surface": "layered", "corners": "soft", "depth": "soft", "font": "serif"},
+    "paper": {"surface": "layered", "corners": "soft", "depth": "none", "font": "serif"},
     "ink": {"surface": "layered", "corners": "soft", "depth": "soft", "font": "serif"},
     "terminal": {"surface": "layered", "corners": "sharp", "depth": "soft", "font": "mono"},
     # Neubrutalism: square corners and heavy black edges.
@@ -191,6 +193,8 @@ HEADING_NAMES = (
     "bentoFigure",
 )
 AA_TEXT = 4.5
+# The bar for a graphic that is not text: the now line, a selection ring, a category's icon.
+AA_GRAPHIC = 3.0
 # A block's times and length, in its ink laid this much over its fill where that still reads.
 MUTED_INK = 0.72
 # The luminance under which a colour is dark: a custom page under it makes a dark look.
@@ -209,7 +213,7 @@ ACCENT_COLORS = {
     "sky": {"dark": ("#38bdf8", DARK_INK), "light": ("#0369a1", LIGHT_INK)},
     "gold": {"dark": ("#eab308", DARK_INK), "light": ("#a16207", LIGHT_INK)},
     "sea": {"dark": ("#2dd4bf", DARK_INK), "light": ("#0f766e", LIGHT_INK)},
-    "sand": {"dark": ("#e7d5a3", DARK_INK), "light": ("#926a2a", LIGHT_INK)},
+    "sand": {"dark": ("#e4a88e", DARK_INK), "light": ("#805441", LIGHT_INK)},
 }
 # Looks whose accent no swatch replaces: High contrast's yellow is part of its contrast.
 OWN_ACCENT = ("high-contrast",)
@@ -397,11 +401,13 @@ PRESET_PALETTES = {
     # E-Ink / Paper: ink on off-white, matte, the category fills a little quieter.
     "paper": _palette(
         "light",
-        window="#fdfbf7",
-        panel="#fffdf9",
+        window="#f7f0e1",
+        panel="#fbf6ea",
         card_2="#f6f1e8",
-        field="#fffdf9",
-        grid="#fffdf9",
+        field="#fbf6ea",
+        grid="#fbf6ea",
+        accent="#1f3a68",
+        accent_ink=LIGHT_INK,
         text="#1a1a1a",
         muted="#5c5750",
         hairline="#e6e0d6",
@@ -437,8 +443,8 @@ PRESET_PALETTES = {
     # Soft UI Evolution: improved-contrast pastels on lavender, text at slate-900's depth.
     "pastel": _palette(
         "light",
-        window="#f3f0ff",
-        panel="#ffffff",
+        window="#f3ecff",
+        panel="#fbf8ff",
         card_2="#ece7ff",
         field="#ffffff",
         grid="#ffffff",
@@ -452,6 +458,7 @@ PRESET_PALETTES = {
         block_flex="#ffe4ef",
         block_flex_ink="#4a1230",
         block_edge="#a78bda",
+        fill=(0.90, 0.05),
     ),
 }
 
@@ -706,6 +713,8 @@ def effective_look(choice: dict | None) -> dict:
     for field, knob in (("spacing", "density"), ("shadows", "depth"), ("blocks", "blocks")):
         knobs[knob] = custom.get(field, knobs[knob])
     body, heading = FONT_PAIRS[knobs["font"]]
+    if selected["preset"] == "paper" and knobs["font"] == "serif":
+        body = "serif"
     body, heading = custom.get("body_font", body), custom.get("heading_font", heading)
     if (body, heading) != FONT_PAIRS[knobs["font"]]:
         knobs["font"] = "mono" if body == "mono" else "serif" if "serif" in (body, heading) else "sans"
@@ -730,9 +739,13 @@ def look_measures(choice: dict | None) -> dict:
         card_radius = custom["corners"]
         radius = round(card_radius * RADIUS_CONTROL / RADIUS_CARD)
     body, heading = FONT_PAIRS[knobs["font"]]
+    if selected["preset"] == "paper" and knobs["font"] == "serif":
+        body = "serif"
     if custom:
         base_font = {**LOOK_DEFAULTS, **LOOK_PRESETS[LOOK_BASES[custom["base"]][1]]}["font"]
         body, heading = FONT_PAIRS[base_font]
+        if custom["base"] == "paper":
+            body = "serif"
         body, heading = custom.get("body_font", body), custom.get("heading_font", heading)
     scale = custom.get("text_scale", TEXT_SCALE[knobs["text"]])
     return {
@@ -866,7 +879,8 @@ def resolved_palette(pack: object, system_dark: bool, look: dict | None, accent:
     if custom is not None:
         palette = _customised(palette, custom)
         accent = custom.get("accent", accent)
-    if preset not in OWN_ACCENT or (custom is not None and "accent" in custom):
+    paper_default = preset == "paper" and accent == "default"
+    if (preset not in OWN_ACCENT and not paper_default) or (custom is not None and "accent" in custom):
         palette["accent"], palette["accent_ink"] = _accent(palette, accent)
     if effective_look(choice)["surface"] == "flat":
         # Flat has no raised surfaces: panels and inputs sit in the page and only hairlines divide them.
@@ -878,6 +892,14 @@ def resolved_palette(pack: object, system_dark: bool, look: dict | None, accent:
     if readable != palette["accent"] and not own:
         palette["accent"] = readable
         palette["accent_ink"] = readable_ink(readable)
+    tint = mix(palette["accent"], palette["window"], 0.10)
+    palette["accent_text"] = fit_lightness(
+        palette["accent"], (palette["window"], palette["panel"], palette["grid"], tint), AA_TEXT,
+    )
+    fills = tuple(category_paint(key, palette)[0] for key in CATEGORIES)
+    # A line, not text, so it keeps as much of the accent as 3 to 1 allows.
+    palette["now"] = fit_lightness(palette["accent"], fills + (palette["grid"],), AA_GRAPHIC)
+    palette["selection"] = palette["now"]
     if custom is not None and custom.get("now_line") == "text":
         palette["now"] = palette["text"]
     return palette
@@ -916,6 +938,8 @@ def _own_paint(
     info = CATEGORIES[category]
     homework = HOMEWORK_DARKER if category == "assignments" else 0.0
     mark_light, mark_chroma = MARK[family]
+    sleep = category == "sleep"
+    mark_light -= SLEEP_MARK_DARKER if sleep else 0
     if spec is not None and spec[0] == "colour":
         colour = str(spec[1])
         _light, chroma, hue = oklch_of(colour)
@@ -927,6 +951,7 @@ def _own_paint(
     if family != "light":
         return _sunk(oklch(mark_light, chroma, hue), panel), mark
     light, fill_chroma = fill or FILL
+    light -= SLEEP_FILL_DARKER if sleep else 0
     return oklch(light, GREY_CHROMA if grey else fill_chroma, hue), mark
 
 
@@ -1075,6 +1100,18 @@ def control_rules(palette: dict, radius: int, text: float | str, art: dict[str, 
         "width: 24px; border: none; background: transparent; }"
         f"QAbstractSpinBox::up-arrow {{ image: url({up}); width: 12px; height: 12px; }}"
         f"QAbstractSpinBox::down-arrow {{ image: url({down}); width: 12px; height: 12px; }}"
+        # A stepped number: − and + joined to its box, on the page's colour (5.2 A of 0.17.2).
+        'QAbstractSpinBox[stepped="true"] { border-radius: 0; }'
+        f'QPushButton[step="true"] {{ background: {palette["window"]}; color: {palette["muted"]}; '
+        f'border: 1px solid {palette["hairline_strong"]}; padding: 0; min-width: 34px; max-width: 34px; '
+        "min-height: 0; }"
+        f'QPushButton[step="true"]:hover {{ background: {palette["hairline"]}; color: {palette["text"]}; }}'
+        f'QPushButton[step="true"]:disabled {{ background: {palette["window"]}; '
+        f'color: {mix(palette["muted"], palette["window"], 0.5)}; }}'
+        f"QPushButton#stepLess {{ border-right: none; border-radius: 0; border-top-left-radius: {corner}px; "
+        f"border-bottom-left-radius: {corner}px; }}"
+        f"QPushButton#stepMore {{ border-left: none; border-radius: 0; border-top-right-radius: {corner}px; "
+        f"border-bottom-right-radius: {corner}px; }}"
         "QDateTimeEdit::drop-down { subcontrol-origin: padding; subcontrol-position: center right; "
         "width: 26px; border: none; background: transparent; }"
         f"QDateTimeEdit::down-arrow {{ image: url({down}); width: 14px; height: 14px; }}"
@@ -1088,6 +1125,8 @@ def control_rules(palette: dict, radius: int, text: float | str, art: dict[str, 
         f"selection-color: {palette['accent_ink']}; outline: 0; padding: 0; border: none; "
         "border-radius: 0; }"
         f"QCalendarWidget QAbstractItemView:disabled {{ color: {palette['muted']}; }}"
+        # The month button needs no arrow of its own: the month is a menu to pick from as it was.
+        "QCalendarWidget QToolButton::menu-indicator { image: none; width: 0; }"
         "QCheckBox, QRadioButton { background: transparent; spacing: 8px; }"
         f"QCheckBox::indicator, QRadioButton::indicator {{ width: 16px; height: 16px; "
         f"border: 1px solid {palette['muted']}; background: {palette['field']}; }}"
@@ -1181,11 +1220,10 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f'QCheckBox[exact="true"], QPushButton[small="true"] {{ font-size: {pt["caption"]}; }}'
         "QLabel#lookFieldLabel, QLabel#lookCategoryName, QLabel#lookTag, QLabel#lookChip, QLabel#lookPair { "
         f"font-weight: {WEIGHT_STRONG}; }}"
-        "QLabel#settingsCardNote, QLabel#cardNote, QLabel#settingsExperimental, QLabel#prefPlanningNote, "
+        "QLabel#settingsCardNote, QLabel#cardNote, QLabel#prefPlanningNote, "
         "QLabel#prefDndNote, "
         "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits { "
         f"color: {palette['muted']}; }}"
-        f"QLabel#settingsExperimental {{ font-weight: {WEIGHT_STRONG}; margin-top: 6px; }}"
         f'QFrame[segmented="true"] {{ background: {track}; border: none; '
         f"border-radius: {max(radius, 6) + 2}px; padding: 0; }}"
         f'QPushButton[segment="true"] {{ background: transparent; color: {palette["muted"]}; border: none; '
@@ -1211,9 +1249,11 @@ def _rgba(colour: str, alpha: float) -> str:
 DISABLED = 0.4
 
 
-def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str) -> str:
+def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str, text: float | str) -> str:
     """Dialogs (decision 23 of 0.17): the body is the card, a sheet's card is rounded as a sheet, and a
-    button that cannot be pressed yet keeps its shape at 40 %, not a grey slab that looked broken."""
+    button that cannot be pressed yet keeps its shape at 40 %, not a grey slab that looked broken.
+    A sheet's title is a heading, and each label above its field is a small muted caption (5.1 A of
+    0.17.2)."""
     edges = _depth_rules(depth, palette)
     sheet = RADIUS_SHEET if card_radius else 0
     return (
@@ -1221,11 +1261,17 @@ def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str) -
         'QDialog[sheet="true"] { background: transparent; }'
         f"QFrame#sheetCard {{ background: {palette['panel']}; border-radius: {sheet}px; padding: 0; "
         f"{edges} }}"
+        f"QLabel#sheetTitle {{ font-size: {type_pt('heading', text)}pt; font-weight: {WEIGHT_STRONG}; }}"
+        f"QPushButton#sheetClose {{ padding: {SPACING[0]}px; min-height: 0; min-width: 0; }}"
+        f"QLabel#fieldLabel {{ color: {palette['muted']}; font-size: {type_pt('caption', text)}pt; "
+        f"font-weight: {WEIGHT_STRONG}; }}"
         'QWidget[bare="true"], QScrollArea[bare="true"] { background: transparent; border: none; '
         "padding: 0; border-radius: 0; }"
         'QScrollArea[bare="true"] > QWidget#qt_scrollarea_viewport { background: transparent; }'
+        # Its words in the text colour: the accent's own ink at 40 % on that fill could not be read
+        # (Running late's Accept, T6 of the 0.17.0 audit).
         f"QDialog QPushButton:disabled {{ background: {_rgba(palette['accent'], DISABLED)}; "
-        f"color: {_rgba(palette['accent_ink'], DISABLED)}; }}"
+        f"color: {palette['text']}; }}"
         'QDialog QPushButton[quiet="true"]:disabled, '
         'QWidget#settingsPage QPushButton[quiet="true"]:disabled '
         f"{{ {quiet_edge} color: {_rgba(palette['text'], DISABLED)}; }}"
@@ -1253,8 +1299,11 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     )
     quiet_rule = ", ".join(f"QPushButton#{name}" for name in quiet)
     quiet_hover = ", ".join(f"QPushButton#{name}:hover" for name in quiet)
-    pills = "QPushButton#setupChip, QPushButton#setupDay, QPushButton#setupStudyChip"
-    pills_hover = "QPushButton#setupChip:hover, QPushButton#setupDay:hover, QPushButton#setupStudyChip:hover"
+    day = 'QPushButton[pill="true"]'
+    # A chip that adds something rather than picks it, such as a planning-hours preset: the same pill.
+    adds = 'QPushButton[chip="true"]'
+    pills = f"QPushButton#setupChip, {day}, {adds}, QPushButton#setupStudyChip"
+    pills_hover = f"QPushButton#setupChip:hover, {day}:hover, {adds}:hover, QPushButton#setupStudyChip:hover"
     return (
         f"QWidget#setupRail {{ background: {palette['panel']}; }}"
         f"QWidget#setupNav {{ background: {palette['window']}; }}"
@@ -1278,6 +1327,8 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         # A margin on a label turns on its indent, which set each section 5 pixels right of the title.
         f"QLabel#setupSection {{ {heading} margin-top: {SPACING[1]}px; qproperty-indent: 0; }}"
         f"QLabel#setupError {{ color: {palette['error']}; {strong} }}"
+        # An example in a box is not an answer: the muted colour, and "e.g." in the words.
+        f"QWidget#setupPage QLineEdit {{ placeholder-text-color: {palette['muted']}; }}"
         f"QLabel#setupSummaryName {{ {strong} }}"
         f"QFrame#setupChoice {{ background: {palette['panel']}; border: 2px solid {ring}; "
         f"border-radius: {card_radius}px; padding: 0; }}"
@@ -1286,12 +1337,18 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         f"QFrame#setupChoice[selected=\"true\"] {{ border-color: {palette['accent']}; background: {lift}; }}"
         f"QLabel#setupChoiceName {{ {heading} }}"
         f"QLabel#setupChoiceNote {{ color: {palette['muted']}; }}"
+        f"QLabel#setupChoiceTag {{ color: {palette['muted']}; {strong} }}"
         f"QFrame#setupGroup {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
         f"{pills} {{ background: {palette['field']}; color: {palette['text']}; {edges} "
         f"border-radius: 14px; padding: 4px 12px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"
-        f"QPushButton#setupDay {{ padding: 4px 9px; }}"
+        f"{day} {{ padding: 4px 6px; }}"
         f"{pills_hover} {{ background: {mix(palette['accent'], palette['field'], 0.14)}; }}"
-        f"QPushButton#setupChip:checked, QPushButton#setupDay:checked {{ background: {palette['accent']}; "
+        f"QPushButton#setupChip:checked, {day}:checked {{ background: {palette['accent']}; "
+        f"color: {palette['accent_ink']}; }}"
+        # Days that cannot change, as under "This day only": the picked one still reads as picked.
+        f"{day}:disabled {{ background: {palette['field']}; "
+        f"color: {mix(palette['text'], palette['field'], 0.5)}; }}"
+        f"{day}:checked:disabled {{ background: {mix(palette['accent'], palette['field'], 0.6)}; "
         f"color: {palette['accent_ink']}; }}"
         f"{quiet_rule} {{ background: transparent; color: {palette['accent']}; border: none; "
         f"padding: {pad}px 2px; font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
@@ -1323,6 +1380,9 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
     sheet = RADIUS_SHEET if card_radius else 0
     ring = mix(palette["accent"], palette["field"], 0.4)
     links = "QPushButton#authSwitch, QPushButton#forgotPassword"
+    # Still the accent, a step toward the text colour: it stays a link instead of going near-black.
+    deeper = mix(palette["accent"], palette["text"], 0.7)
+    reached = ", ".join(f'{name}:hover, {name}[keyfocus="true"]:focus' for name in links.split(", "))
     return (
         f"QWidget#authCard {{ background: {palette['panel']}; border-radius: {sheet}px; "
         f"padding: {inset}px; {edges} }}"
@@ -1331,17 +1391,19 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         f"QLabel#authNote {{ color: {palette['muted']}; }}"
         f"QLabel#passwordHint, QLabel#usernameHint {{ color: {palette['muted']}; "
         f"font-size: {type_pt('caption', text)}pt; }}"
-        # Inter with figures of one width and a little air between letters reads as code.
-        f"QLabel#recoveryList {{ background: {mix(palette['text'], palette['panel'], 0.05)}; "
+        f"QLabel#recoveryList {{ font-family: {FONT_FAMILIES['mono']}; "
+        f"background: {mix(palette['text'], palette['panel'], 0.05)}; "
         f"border-radius: {radius}px; padding: {SPACING[2]}px {SPACING[3]}px; letter-spacing: 0.5px; }}"
         f"QToolButton#passwordReveal {{ background: transparent; border: none; padding: 0; "
         f"border-radius: {radius}px; }}"
         f"QToolButton#passwordReveal:hover {{ background: {palette['hairline']}; }}"
         f"QToolButton#passwordReveal:focus {{ border: 2px solid {ring}; }}"
+        # Creating an account is the way in for most students on a first run, so it is the link that
+        # carries weight and Forgot password sits quieter under it.
         f"{links} {{ background: transparent; color: {palette['accent']}; border: none; "
-        f"padding: {SPACING[0]}px 0; min-height: 0; }}"
-        f"QPushButton#authSwitch:hover, QPushButton#forgotPassword:hover {{ color: {palette['text']}; "
-        "text-decoration: underline; }"
+        f"padding: {SPACING[0]}px 0; min-height: 0; font-weight: {WEIGHT_REGULAR}; }}"
+        f"QPushButton#authSwitch {{ font-weight: {WEIGHT_STRONG}; }}"
+        f"{reached} {{ color: {deeper}; text-decoration: underline; }}"
     )
 
 
@@ -1374,7 +1436,8 @@ def _veil(colour: str, amount: float) -> str:
 
 def button_rules(palette: dict, pad: int, radius: int, depth: str, button_min: str) -> str:
     """Decision 11: one set of states dresses every button in the app. Primary is filled in the accent,
-    secondary is accent words on a tenth of the accent, quiet is words in the text colour. Each takes
+    secondary is accent words on a tenth of the accent, outline is words in the text colour on the card
+    inside a hairline, quiet is words in the text colour. Each takes
     6 % of the text colour on hover and 10 % when pressed; a disabled one shows at 40 %; the key that
     reached it draws a 2-pixel ring at 40 % of the accent (the whole accent in High contrast), which
     a click does not (see `widgets.KeyFocus`).
@@ -1392,7 +1455,7 @@ def button_rules(palette: dict, pad: int, radius: int, depth: str, button_min: s
     rest = _depth_rules(depth, palette) if hard else "border: 2px solid transparent;"
     kinds = (
         ("QPushButton", accent, ink, WEIGHT_STRONG),
-        ('QPushButton[secondary="true"]', tint, accent, WEIGHT_STRONG),
+        ('QPushButton[secondary="true"]', tint, palette.get("accent_text", accent), WEIGHT_STRONG),
         ('QPushButton[danger="true"]', danger, readable_ink(danger), WEIGHT_STRONG),
     )
     rules = [f"QPushButton {{ padding: {pad}px {pad * 2}px; border-radius: {radius}px; {rest}{button_min} }}"]
@@ -1407,6 +1470,17 @@ def button_rules(palette: dict, pad: int, radius: int, depth: str, button_min: s
     if contrast_look:
         # A tint of yellow on black is mud, so High contrast outlines a secondary button instead.
         rules.append(f'QPushButton[secondary="true"] {{ border-color: {accent}; }}')
+    # Outline: an action that is not the page's answer, such as Availability… or Check for updates.
+    # Drawn as words alone it was not seen as a button (Grok Bot's 0.17.0 audit, T5).
+    card, edge = palette["panel"], text if contrast_look else palette["hairline_strong"]
+    rules += [
+        f'QPushButton[outline="true"] {{ background: {card}; color: {text}; font-weight: {WEIGHT_REGULAR}; '
+        f"border: 1px solid {edge}; padding: {pad + 1}px {pad * 2 + 1}px; }}",
+        f'QPushButton[outline="true"]:hover {{ background: {mix(text, card, 0.06)}; }}',
+        f'QPushButton[outline="true"]:pressed {{ background: {mix(text, card, 0.10)}; }}',
+        f'QPushButton[outline="true"]:disabled {{ background: {card}; color: {mix(text, page, 0.4)}; '
+        f"border-color: {mix(edge, page, 0.4)}; }}",
+    ]
     rules += [
         f'QPushButton[quiet="true"] {{ background: transparent; color: {text}; '
         f"font-weight: {WEIGHT_REGULAR}; }}",
@@ -1440,11 +1514,12 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
     contrast_look = palette.get("family") == "contrast"
     ring = palette["accent"] if contrast_look else mix(palette["accent"], page, 0.4)
     track = page if contrast_look else mix(text, page, 0.06)
-    chosen = palette["accent"] if contrast_look else palette["panel"]
+    dark = palette.get("axis") == "dark"
+    chosen = palette["accent"] if contrast_look else palette["hairline_strong"] if dark else palette["panel"]
+    selected_ring = palette["accent"] if dark and not contrast_look else "transparent"
     chosen_words = palette["accent_ink"] if contrast_look else text
     outline = text if contrast_look else track
     lifted = depth == "soft" and not contrast_look
-    dark = palette.get("axis") == "dark"
     shade = round(255 * (SHADOW_SMALL.dark_opacity if dark else SHADOW_SMALL.opacity)) if lifted else 0
     divider = mix(palette["accent_ink"], palette["accent"], 0.3)
     more = art.get("more") if art else None
@@ -1466,7 +1541,7 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
     return (
         f"QFrame#segments {{ background: transparent; border: none; border-radius: 0; padding: 3px; "
         f"alternate-background-color: {track}; selection-background-color: {chosen}; color: {outline}; "
-        f"qproperty-shade: {shade}; }}"
+        f"qproperty-shade: {shade}; qproperty-ring: {selected_ring}; }}"
         f"{views()} {{ background: transparent; color: {quiet_ink}; font-weight: {WEIGHT_REGULAR}; "
         # Inside a track 3 pixels in from the bar's other controls: a view's own padding is that much
         # less, or the track squeezed it and cut the tails off "Day" and "My day".
@@ -1543,6 +1618,8 @@ def pack_stylesheet(
         f"QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {{ background: {palette['field']}; "
         f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; "
         f"min-height: {field_min}px; {edges} }}"
+        # A typed time and a stepped number have no arrows inside, so no room kept for them.
+        f'QAbstractSpinBox[typed="true"], QAbstractSpinBox[stepped="true"] {{ padding-right: {pad}px; }}'
         f"QPlainTextEdit {{ background: {palette['field']}; color: {palette['text']}; "
         f"padding: {pad}px; border-radius: {radius}px; {edges} }}"
         f"QTableWidget {{ gridline-color: {palette['hairline']}; "
@@ -1552,7 +1629,7 @@ def pack_stylesheet(
         f"QHeaderView, QStackedWidget {{ background: transparent; border: none; "
         f"padding: 0; border-radius: 0; }}"
         # The week's hours paint their own background; as a frame the scroll area boxed them twice.
-        f"QScrollArea#weekScroll, QScrollArea#dayScroll, QScrollArea#helpScroll {{ background: transparent; "
+        f"QScrollArea#weekScroll, QScrollArea#dayScroll {{ background: transparent; "
         f"border: none; padding: 0; border-radius: 0; }}"
         # What follows the pointer while something is carried: a pill, readable over any calendar.
         f"QLabel#heldChip {{ background: {palette['accent']}; color: {palette['accent_ink']}; "
@@ -1610,7 +1687,7 @@ def pack_stylesheet(
         + setup_rules(palette, radius, scale, pad, knobs["depth"])
         + settings_rules(palette, radius, scale, pad, knobs["depth"])
         + auth_rules(palette, knobs, radius, card_radius)
-        + dialog_rules(palette, card_radius, knobs["depth"], quiet_edge)
+        + dialog_rules(palette, card_radius, knobs["depth"], quiet_edge, scale)
         + f"QPushButton#updateSkip {{ background: transparent; "
         f"color: {palette['accent']}; border: none; padding: {pad}px 0; "
         f"font-size: {pt['caption']}; text-align: left; min-height: 0; }}"
@@ -1717,8 +1794,10 @@ def overlay_rules(palette: dict, knobs: dict, pad: int, card_radius: int) -> str
         "QListWidget#commandList { background: transparent; border: none; padding: 0; }"
         f"QListWidget#commandList::item {{ color: {palette['text']}; padding: 0 8px; "
         f"border-radius: {RADIUS_CONTROL if card_radius else 0}px; }}"
-        f"QListWidget#commandList::item:hover, QListWidget#commandList::item:selected {{ "
-        f"background: {hover}; color: {palette['text']}; }}"
+        f"QListWidget#commandList::item:hover {{ background: {hover}; color: {palette['text']}; }}"
+        # The row Enter runs, tinted with the accent, not the grey of a row under the pointer (T22).
+        f"QListWidget#commandList::item:selected {{ "
+        f"background: {mix(palette['accent'], palette['panel'], 0.14)}; color: {palette['text']}; }}"
         f"QLabel#commandNothing {{ color: {palette['muted']}; padding: 8px; }}"
         # A drawn menu: transparent round its panel, which it paints itself, with the shadow's room.
         f'QMenu[drawn="true"] {{ background: transparent; border: none; padding: {MENU_EDGE + 4}px; }}'

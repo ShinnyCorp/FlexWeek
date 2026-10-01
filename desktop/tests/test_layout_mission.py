@@ -21,8 +21,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     import shiboken6
-    from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, Qt
-    from PySide6.QtGui import QColor, QHelpEvent, QMouseEvent, QTextDocumentFragment
+    from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt
+    from PySide6.QtGui import QColor, QHelpEvent, QMouseEvent, QPainter, QTextDocumentFragment
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import (
         QApplication,
@@ -35,6 +35,7 @@ if importlib.util.find_spec("PySide6") is not None:
         QWidget,
     )
 
+    from desktop.native.hours import canvas as canvas_module
     from desktop.native.hours.chips import TrayChip
     from desktop.native.hours.geometry import Axis, Span
     from desktop.native.hours.hand import Hand, Move, Verdict
@@ -64,6 +65,7 @@ def shown(
     size: tuple[int, int] = (1366, 760),
     scale: float = 1.0,
     hand: Hand | None = None,
+    focus: str = "",
     **chosen: str,
 ) -> MissionView:
     """Mission on the test week, Thursday 13:40 unless told otherwise."""
@@ -82,6 +84,7 @@ def shown(
             scale=scale,
             surface=surface,
             iso_day=iso_day,
+            focus=focus,
         )
     )
     view.show()
@@ -286,6 +289,17 @@ def test_focus_minutes_are_what_the_timer_credited_to_this_weeks_homework(qapp: 
     assert figure(view, "missionFocus") == ("35 min", "On this week's homework")
 
 
+def test_the_focus_figure_says_a_timer_is_running_instead_of_none_yet(qapp: QApplication) -> None:
+    """Audit X5: a session was running and the figure said "None yet this week". The minutes stay
+    those already credited; the line says what the timer is doing."""
+    assert figure(shown(qapp, focus="focusing"), "missionFocus") == ("0 min", "Focusing now")
+    assert figure(shown(qapp, focus="paused"), "missionFocus") == ("0 min", "Focus paused")
+    assert figure(shown(qapp, focus="break"), "missionFocus") == ("0 min", "On a break")
+    homework = {**HOMEWORK, "chem": {**HOMEWORK["chem"], "focus_minutes": 35}}
+    credited = shown(qapp, homework=homework, focus="focusing")
+    assert figure(credited, "missionFocus") == ("35 min", "Focusing now")
+
+
 def test_another_week_has_no_today_to_count_from(qapp: QApplication) -> None:
     view = shown(qapp, today=None)
     for name in ("missionPlanned", "missionFree"):
@@ -357,6 +371,197 @@ def test_half_an_hour_or_less_is_a_tick_and_longer_a_filled_block(qapp: QApplica
     assert image.pixelColor(QPoint(round(dinner.left()) + 3, middle.y())).name() != meals_fill
     quiz = next(rect for item, rect in hours.drawn(hours.track_for(4)) if item.block_id == "quiz")
     assert image.pixelColor(QPoint(round(quiz.left()) + 6, round(quiz.bottom()) - 4)).name() == class_fill
+
+
+def test_the_line_for_now_crosses_a_tick_it_lies_on(qapp: QApplication) -> None:
+    """At 18:15 now is the middle of Dinner's half hour, where its tick is drawn. The line goes over
+    the tick, as it goes over a filled block's colour: under it, now had a gap at Dinner."""
+    view = shown(qapp, minute="18:15")
+    hours = view.findChild(MissionCanvas, "missionHours")
+    image = hours.grab().toImage()
+    dinner = next(rect for item, rect in hours.drawn(hours.track_for(3)) if item.block_id == "dinner")
+    middle = dinner.center().toPoint()
+    across = {image.pixelColor(x, middle.y()).name() for x in range(middle.x() - 2, middle.x() + 3)}
+    assert view.scene.tokens["now"] in across
+
+
+def minutes_shown(view: MissionView, name: str) -> tuple[float, float]:
+    """The minutes at the left and right edges of the lanes as they are scrolled."""
+    scroll = view.findChild(HoursScroll, name)
+    track = view.findChild(MissionCanvas, "missionHours").tracks[0]
+    along = scroll.horizontalScrollBar().value()
+    return tuple(track.first + (edge - track.area.left()) / track.per_minute()
+                 for edge in (along, along + scroll.viewport().width()))
+
+
+def last_minute_shown(view: MissionView, name: str) -> float:
+    return minutes_shown(view, name)[1]
+
+
+SURFACES = [("week", "missionWeekScroll", {}), ("day", "missionDayScroll", {"iso_day": "2026-09-17"})]
+
+
+@pytest.mark.parametrize("size", [(1366, 760), (1280, 800), (810, 800)])
+def test_the_lanes_of_another_week_open_through_the_evening(
+    qapp: QApplication, size: tuple[int, int]
+) -> None:
+    """With now not in what shows, the lanes open showing the end of the day that has something in it:
+    22:00 at the least, plus half an hour, so a name written at the evening's end is not cut off at the
+    edge of the lanes, and for a day with a late block, that block's end. The view of the hours is not
+    shrunk to get there: it scrolls."""
+    week = shown(qapp, size=size, today=None)
+    assert last_minute_shown(week, "missionWeekScroll") == pytest.approx(22 * 60 + 30, abs=2)
+    late = block("late", "locked", [4], "22:00", 75, title="Late", category="extra")
+    week = shown(qapp, size=size, blocks=[*BLOCKS, late], today=None)
+    assert last_minute_shown(week, "missionWeekScroll") == pytest.approx(23 * 60 + 45, abs=2)
+    assert week._scrolls["week"].px == WEEK_SCALE.default
+    day = shown(qapp, size=size, surface="day", iso_day="2026-09-16")
+    assert last_minute_shown(day, "missionDayScroll") == pytest.approx(22 * 60 + 30, abs=2)
+
+
+@pytest.mark.parametrize("size", [(1280, 800), (810, 800)])
+@pytest.mark.parametrize(("surface", "name", "chosen"), SURFACES)
+def test_now_is_on_screen_when_the_evening_does_not_fit_with_it(
+    qapp: QApplication, size: tuple[int, int], surface: str, name: str, chosen: dict
+) -> None:
+    """At 08:00 the lanes cannot show both now and 22:30, so now stays near the left edge, with 30 to
+    60 minutes of the morning before it, and the evening is a scroll."""
+    view = shown(qapp, size=size, surface=surface, minute="08:00", **chosen)
+    first, last = minutes_shown(view, name)
+    assert last < 22 * 60 + 30, "the case is one where the evening does not fit"
+    assert 8 * 60 - 60 <= first <= 8 * 60 - 30, f"{surface}: the lanes start at {first:.0f}"
+
+
+@pytest.mark.parametrize("size", [(1280, 800), (810, 800)])
+@pytest.mark.parametrize(("surface", "name", "chosen"), SURFACES)
+def test_now_and_the_evening_both_show_when_they_fit(
+    qapp: QApplication, size: tuple[int, int], surface: str, name: str, chosen: dict
+) -> None:
+    view = shown(qapp, size=size, surface=surface, minute="15:40", **chosen)
+    first, last = minutes_shown(view, name)
+    assert first <= 15 * 60 + 40 <= last
+    assert last == pytest.approx(22 * 60 + 30, abs=2), f"{surface}: the lanes end at {last:.0f}"
+
+
+def test_the_day_after_today_opens_through_the_evening_whatever_the_time_now(qapp: QApplication) -> None:
+    """Now is not in the day shown when it is another day's, so the evening rule holds for it."""
+    view = shown(qapp, size=(1280, 800), surface="day", iso_day="2026-09-18", minute="08:00")
+    assert last_minute_shown(view, "missionDayScroll") == pytest.approx(22 * 60 + 30, abs=2)
+
+
+@pytest.mark.parametrize(("minute", "today"), [("13:40", None), ("08:00", 3)])
+def test_the_lanes_keep_their_opening_while_the_window_settles(
+    qapp: QApplication, minute: str, today: int | None
+) -> None:
+    """A window is laid out in steps, and the lanes are narrower or wider than they started. They
+    open where the rule puts them and stay there until the student scrolls: the evening's end at the
+    right edge, or now near the left edge when the evening does not fit with it. A wider window may
+    fit both, and then the evening wins."""
+    view = shown(qapp, size=(1280, 800), minute=minute, today=today)
+    for width in (1000, 1200):
+        view.resize(width, 800)
+        qapp.processEvents()
+        first, last = minutes_shown(view, "missionWeekScroll")
+        if today is None:
+            assert 22 * 60 <= last <= 22 * 60 + 60, width
+        else:
+            assert 8 * 60 - 60 <= first <= 8 * 60 - 30, width
+
+
+def test_a_name_written_beside_a_block_stays_inside_what_shows(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A short block that ends at 22:00 has lane after it, but its name would run off the lanes' edge when
+    that is where they are scrolled to; it goes before the tick, where it shows whole."""
+    seen: list[QRectF] = []
+
+    class Said(QPainter):
+        def drawText(self, *args) -> None:  # noqa: N802
+            if len(args) == 3 and isinstance(args[0], QRectF) and args[2] == "Chemistry":
+                seen.append(QRectF(args[0]))
+            super().drawText(*args)
+
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    tick = block("tick", "locked", [4], "21:15", 45, title="Chemistry", category="extra")
+    view = shown(qapp, blocks=[*BLOCKS, tick])
+    scroll = view.findChild(HoursScroll, "missionWeekScroll")
+    track = view.findChild(MissionCanvas, "missionHours").tracks[0]
+    edge = round(track.area.left() + (22 * 60 + 5) * track.per_minute())
+    scroll.horizontalScrollBar().setValue(edge - scroll.viewport().width())
+    seen.clear()
+    view.findChild(MissionCanvas, "missionHours").repaint()
+    assert len(seen) == 1, "the name is written once, beside its tick"
+    assert seen[0].right() <= edge, "and not past the right edge of the lanes"
+
+
+def test_the_now_pill_covers_no_hour_label_at_any_zoom(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pill that gives the time now sits in the row of hours. An hour label it would overlap is
+    left out, however far apart the zoom puts the hours: at the smallest, a pill at 10:45 lay over
+    the 10:00 label, which the old rule of leaving out labels within 40 minutes of now let through."""
+    seen: list[tuple[QRectF, str]] = []
+
+    class Said(QPainter):
+        def drawText(self, *args) -> None:  # noqa: N802
+            if len(args) == 3 and isinstance(args[0], QRectF):
+                seen.append((QRectF(args[0]), args[2]))
+            super().drawText(*args)
+
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    for clock, px in itertools.product(("10:20", "10:45", "10:50", "11:10", "11:15"), (40, 56)):
+        view = shown(qapp, minute=clock)
+        scroll = view.findChild(HoursScroll, "missionWeekScroll")
+        while scroll.px != px:
+            scroll.zoom_by(1 if scroll.px < px else -1)
+        hours = view.findChild(MissionCanvas, "missionHours")
+        seen.clear()
+        hours.repaint()
+        row = hours.tracks[0].area.top()
+        times = [(box, text) for box, text in seen if re.fullmatch(r"\d\d:\d\d", text) and box.top() < row]
+        (pill,) = [box for box, text in times if text == clock]
+        covered = [text for box, text in times if text != clock and box.intersects(pill)]
+        assert covered == [], f"{clock} at {px} px an hour"
+        assert len(times) > 2, "the other hours are still written"
+        view.deleteLater()
+
+
+def test_the_line_for_now_stops_short_of_a_ticks_icon(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Dinner's tick carries its clock above the mark. At 18:15 the line for now crosses the tick and
+    stops short of the clock, as it stops short of a block's words, and resumes on the mark."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QPainter
+
+    from desktop.native.hours import canvas as canvas_module
+
+    drawn: list[QRectF] = []
+
+    class Pictures(QPainter):
+        def drawPixmap(self, *args):  # noqa: N802
+            if isinstance(args[0], QPointF):
+                drawn.append(self.transform().mapRect(QRectF(args[0], args[1].deviceIndependentSize())))
+            return super().drawPixmap(*args)
+
+    monkeypatch.setattr(canvas_module, "QPainter", Pictures)
+    images = []
+    for minute in ("12:00", "18:15"):
+        hours = shown(qapp, minute=minute).findChild(MissionCanvas, "missionHours")
+        drawn.clear()
+        images.append(hours.grab().toImage())
+    dinner = next(rect for item, rect in hours.drawn(hours.track_for(3)) if item.block_id == "dinner")
+    (icon,) = [box for box in drawn if dinner.contains(box.center())]
+    near = icon.adjusted(-2, -2, 2, 2).toAlignedRect()
+    bare, lit = images
+    changed = [
+        (x, y) for x in range(near.left(), near.right() + 1) for y in range(near.top(), near.bottom() + 1)
+        if bare.pixel(x, y) != lit.pixel(x, y)
+    ]
+    assert changed == [], "the line for now is drawn on the tick's icon"
+    middle = dinner.center().toPoint()
+    across = {lit.pixelColor(x, middle.y()).name() for x in range(middle.x() - 2, middle.x() + 3)}
+    assert hours.painter.c("now").name() in across
 
 
 def test_a_name_that_cannot_fit_is_written_beside_its_block_where_the_lane_is_free(

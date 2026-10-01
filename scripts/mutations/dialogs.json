@@ -4,28 +4,28 @@
   "file": "desktop/native/widgets.py",
   "old": "        self.sheet = sheet and parent is not None\n",
   "new": "        self.sheet = False\n",
-  "test": "desktop/tests/test_dialogs_look.py::test_the_two_editors_are_sheets_over_the_dimmed_week_and_the_rest_stay_windows"
+  "test": "desktop/tests/test_dialogs_look.py::test_the_editors_and_the_seven_others_are_sheets_over_the_dimmed_week"
  },
  {
   "name": "the week behind a sheet is not dimmed",
   "file": "desktop/native/widgets.py",
   "old": "        self._shade.show()\n",
   "new": "",
-  "test": "desktop/tests/test_dialogs_look.py::test_the_two_editors_are_sheets_over_the_dimmed_week_and_the_rest_stay_windows"
+  "test": "desktop/tests/test_dialogs_look.py::test_the_editors_and_the_seven_others_are_sheets_over_the_dimmed_week"
  },
  {
   "name": "the dimming stays after the sheet closes",
   "file": "desktop/native/widgets.py",
   "old": "            self._shade.deleteLater()\n            self._shade = None\n",
   "new": "            pass\n",
-  "test": "desktop/tests/test_dialogs_look.py::test_the_two_editors_are_sheets_over_the_dimmed_week_and_the_rest_stay_windows"
+  "test": "desktop/tests/test_dialogs_look.py::test_the_editors_and_the_seven_others_are_sheets_over_the_dimmed_week"
  },
  {
   "name": "Save made outside its dialog, so Enter presses More details",
   "file": "desktop/native/widgets.py",
   "old": "    buttons = QDialogButtonBox(choices, dialog)\n",
   "new": "    buttons = QDialogButtonBox(choices)\n",
-  "test": "desktop/tests/test_dialogs_look.py::test_the_two_editors_are_sheets_over_the_dimmed_week_and_the_rest_stay_windows"
+  "test": "desktop/tests/test_dialogs_look.py::test_the_editors_and_the_seven_others_are_sheets_over_the_dimmed_week"
  },
  {
   "name": "the scrolled body a pale box inside the card",
@@ -39,7 +39,7 @@
   "file": "desktop/native/widgets.py",
   "old": "        return QSize(size.width(), max(size.height(), self._line.sizeHint().height()))\n",
   "new": "        return size\n",
-  "test": "desktop/tests/test_dialogs_look.py::test_a_label_sits_on_its_fields_line_of_words"
+  "test": "desktop/tests/test_dialogs_look.py::test_a_settings_label_sits_beside_its_field_on_its_line_of_words"
  },
  {
   "name": "each field as wide as its row or its text",
@@ -60,7 +60,7 @@
   "file": "desktop/native/look.py",
   "old": "        f\"QDialog QPushButton:disabled {{ background: {_rgba(palette['accent'], DISABLED)}; \"\n",
   "new": "        f\"QDialog QPushButton:disabled {{ background: {palette['hairline_strong']}; \"\n",
-  "test": "desktop/tests/test_dialogs_look.py::test_a_primary_that_cannot_be_pressed_yet_keeps_its_colour_at_40_percent"
+  "test": "desktop/tests/test_dialogs_look.py::test_a_primary_that_cannot_be_pressed_yet_keeps_its_colour_at_40_percent_and_reads"
  },
  {
   "name": "a list's ticks drawn by Qt",

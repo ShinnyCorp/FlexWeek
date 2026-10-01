@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import time
 from collections.abc import Iterator
 from dataclasses import replace
+from itertools import product
 
 import pytest
 
@@ -22,8 +24,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     import shiboken6
-    from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-    from PySide6.QtGui import QColor, QMouseEvent, QPainter, QTextDocument
+    from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
+    from PySide6.QtGui import QColor, QFontMetricsF, QMouseEvent, QPainter, QTextDocument
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import (
         QApplication,
@@ -35,22 +37,33 @@ if importlib.util.find_spec("PySide6") is not None:
         QWidget,
     )
 
+    from desktop.native.calendar import CATEGORIES
     from desktop.native.fonts import load_fonts
     from desktop.native.hours import canvas as canvas_module
+    from desktop.native.hours.canvas import Drawn
     from desktop.native.hours.chips import TrayChip
-    from desktop.native.hours.geometry import Axis
+    from desktop.native.hours.geometry import Axis, Span
     from desktop.native.hours.zoom import HoursScroll
-    from desktop.native.layouts.base import Scene
+    from desktop.native.layouts.base import Scene, family
     from desktop.native.layouts.registry import options_for, tokens_for
     from desktop.native.layouts.timeline import (
         Due,
         Split,
         TimelineCanvas,
+        TimelinePainter,
         TimelineView,
         due_this_week,
         week_figures,
     )
-    from desktop.native.look import category_paint, mix_oklab, resolved_palette
+    from desktop.native.look import (
+        AA_TEXT,
+        PACKS,
+        block_time_colour,
+        category_paint,
+        mix_oklab,
+        resolved_palette,
+    )
+    from desktop.native.tokens import contrast
     from desktop.native.weekmodel import build_week, minute_of
     from desktop.native.widgets import FittedLabel
 
@@ -70,6 +83,7 @@ def scene_of(
     blocks: list[dict] | None = None,
     homework: dict | None = None,
     palette: dict | None = None,
+    today: int = THURSDAY,
     **chosen: str,
 ) -> Scene:
     options = {**options_for(None, "timeline"), **chosen}
@@ -79,12 +93,12 @@ def scene_of(
     )
     return Scene(
         week,
-        THURSDAY,
+        today,
         minute_of(clock),
         options,
         tokens_for("timeline", options["colour"], palette),
         surface=tab,
-        iso_day=week.date_of(THURSDAY).isoformat(),
+        iso_day=week.date_of(today).isoformat(),
     )
 
 
@@ -240,22 +254,39 @@ def test_a_days_name_shortens_before_it_is_cut_and_its_date_follows_it(
 # Blocks
 
 
-def test_homework_and_a_block_with_no_room_for_a_word_are_their_colour_and_the_rest_the_page(
-    qapp: QApplication,
-) -> None:
-    """Dinner is a half-hour: at the week's 36 pixels an hour no word of it fits, and an outlined
-    card of the page's colour would read as an empty box."""
-    view = shown(qapp)
+@pytest.mark.parametrize("colour", ["match", "paper", "night"])
+def test_every_block_is_filled_with_its_category_colour(qapp: QApplication, colour: str) -> None:
+    """School, Dinner and homework alike: the one fill the other designs give each category, in every
+    colourway, where School was the page's colour in a card."""
+    view = shown(qapp, colour=colour)
     hours = canvas(view)
     tokens = view.scene.tokens
 
     def fill(category: str) -> str:
-        return category_paint(category, {"family": "light", "panel": tokens["surface"]})[0]
+        return category_paint(category, {"family": family(tokens), "panel": tokens["surface"]})[0]
 
     seen = Seen(view)
     assert near(seen.inside(hours, "essay-1", 3), fill("assignments"))
-    assert near(seen.inside(hours, "school", 3), tokens["surface"])
+    assert near(seen.inside(hours, "school", 3), fill("class"))
     assert near(seen.inside(hours, "dinner", 3), fill("meals"))
+    assert not near(seen.inside(hours, "school", 3), tokens["surface"], 4)
+
+
+def test_a_blocks_words_and_times_read_on_its_fill_in_every_colourway() -> None:
+    """The title in the page's text colour and the times a little quieter, on every category's fill, in
+    the design's two colourways and in Match my look over every pack, dark or light."""
+    looks = [(pack, dark) for pack in PACKS for dark in (False, True)]
+    for colour, (pack, dark) in product(("paper", "night", "match"), looks):
+        palette = resolved_palette(pack, dark, None, "default")
+        tokens = tokens_for("timeline", colour, palette)
+        painter = TimelinePainter(tokens)
+        for name in CATEGORIES:
+            drawn = Drawn("block", "Block", name, False, Span(0, 600, 660), 0, 1)
+            fill, ink, _outline, _mark = (item.name() if item else None for item in painter.fills(drawn))
+            where = f"{colour}/{pack}/{dark} {name}"
+            assert fill != tokens["surface"], f"{where}: the block is the page's colour"
+            assert contrast(ink, fill) >= AA_TEXT, f"{where}: its title"
+            assert contrast(block_time_colour(ink, fill), fill) >= AA_TEXT, f"{where}: its times"
 
 
 def test_every_block_is_outlined_in_ink_with_its_category_down_its_start_edge(qapp: QApplication) -> None:
@@ -269,8 +300,10 @@ def test_every_block_is_outlined_in_ink_with_its_category_down_its_start_edge(qa
     assert near(seen.at(hours, local + QPoint(1, box.height() // 2)), mark, 12)
     # A one-pixel line on a column a fraction of a pixel wide shares its ink between two pixels.
     edge = min(seen.at(hours, local + QPoint(box.width() - x, box.height() // 2)).lightness() for x in (1, 2))
-    ink, paper = QColor(mix_oklab(tokens["text"], tokens["surface"], 0.78)), QColor(tokens["surface"])
-    assert edge <= (ink.lightness() + paper.lightness()) / 2, "no ink round the block"
+    ink, fill = QColor(mix_oklab(tokens["text"], tokens["surface"], 0.78)), QColor(
+        category_paint("class", {"family": "light", "panel": tokens["surface"]})[0]
+    )
+    assert edge <= (ink.lightness() + fill.lightness()) / 2, "no ink round the block"
 
 
 def test_the_weeks_blocks_say_their_times_and_days_say_their_length_too(
@@ -291,19 +324,63 @@ def test_a_half_hour_on_day_says_its_name_and_times_in_the_caption_size(
     assert "Dinner" in said and "18:00–18:30" in said
 
 
-def test_now_is_a_line_across_todays_column_with_its_time_and_on_day_says_now(
+def test_now_is_a_line_across_todays_column_with_its_time(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     view = shown(qapp, clock="15:40")
     assert "15:40" in drawn_words(qapp, monkeypatch, view)
     hours = canvas(view)
-    accent = view.scene.tokens["accent"]
+    accent = view.scene.tokens["now"]
     at = hours.mapFromGlobal(hours.point_for(THURSDAY, 15 * 60 + 40))
     friday = hours.mapFromGlobal(hours.point_for(4, 15 * 60 + 40))
     seen = Seen(view)
     assert near(seen.at(hours, at + QPoint(30, 0)), accent, 24)
     assert not any(near(seen.at(hours, friday + QPoint(0, dy)), accent, 40) for dy in range(-2, 3))
-    assert "Now 15:40" in drawn_words(qapp, monkeypatch, shown(qapp, "day", clock="15:40"))
+    assert "15:40" in drawn_words(qapp, monkeypatch, shown(qapp, "day", clock="15:40"))
+
+
+class Placed(QPainter):
+    """Every text the hours draw, the box it was given and where its words lie, in the canvas's own
+    pixels."""
+
+    said: list[tuple[str, QRectF, QRectF]] = []
+
+    def drawText(self, *args) -> None:  # noqa: N802
+        if isinstance(args[0], QRectF):
+            flags = getattr(args[1], "value", args[1])
+            ink = QFontMetricsF(self.font()).boundingRect(args[0], int(flags), args[-1])
+            turned = self.transform()
+            Placed.said.append((args[-1], turned.mapRect(args[0]), turned.mapRect(ink)))
+        super().drawText(*args)
+
+
+@pytest.mark.parametrize("today", range(7))
+@pytest.mark.parametrize(("tab", "density"), [("week", "roomy"), ("week", "compact"), ("day", "roomy")])
+def test_the_time_now_is_on_a_pill_clear_of_every_block_and_hour_label(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, today: int, tab: str, density: str
+) -> None:
+    """At 10:05, with School on every day. Beside today's own column the pill lay on the day
+    before and covered its School, and on Day it lay over the 10:00 label and the start of School.
+    It is beside the hour labels, in place of the one it is nearest, or for a day on the right page
+    in that page's margin at the fold."""
+    school = block("school", "locked", list(range(7)), "08:00", 390, title="School", category="class")
+    options = {"density": "compact"} if density == "compact" else {}
+    view = shown(qapp, tab, clock="10:05", today=today, blocks=[school], **options)
+    hours = canvas(view)
+    monkeypatch.setattr(canvas_module, "QPainter", Placed)
+    Placed.said = []
+    hours.repaint()
+    # Drawn again wherever the line crosses a block, clipped to it: each time clear of both.
+    pills = [box for words, box, _ink in Placed.said if words.endswith("10:05")]
+    assert pills
+    blocks = [track.transform.mapRect(rect) for track in hours.tracks for _item, rect in hours.drawn(track)]
+    assert len(blocks) == (7 if tab == "week" else 1)
+    labels = [(words, ink) for words, _box, ink in Placed.said if re.fullmatch(r"\d\d:00", words)]
+    assert len(labels) >= 10
+    for pill in pills:
+        assert pill.left() >= 0 and pill.right() <= hours.width()
+        assert [box for box in blocks if box.intersects(pill)] == [], f"the pill at {pill} covers a block"
+        assert [words for words, ink in labels if ink.intersects(pill)] == [], "the pill covers an hour label"
 
 
 def test_two_blocks_at_one_time_go_half_width(qapp: QApplication) -> None:
@@ -349,6 +426,24 @@ def test_the_paper_shows_under_the_hours_and_the_notes_outside_the_window_too(qa
         if tab == "day":
             notes = view.findChild(QWidget, "timelineNotesPage")
             assert seen.at(notes, QPoint(notes.width() - 3, 3)).name() == paper
+
+
+def test_the_gutter_is_plain_paper_either_side_of_the_fold_line(qapp: QApplication) -> None:
+    """The fold is one line. The shade that once darkened the pages toward it is gone."""
+    for tab in ("week", "day"):
+        view = shown(qapp, tab)
+        spread = view.findChild(QWidget, f"timeline{tab.title()}Spread")
+        paper = view.scene.tokens["surface"]
+        seen = Seen(view)
+        fold, middle = spread.width() // 2, spread.height() // 2
+        assert [
+            reach
+            for reach in (3, 8, 14)
+            for side in (-1, 1)
+            if seen.at(spread, QPoint(fold + side * reach, middle)).name() != paper
+        ] == [], f"{tab}: paper either side of the fold"
+        line = [seen.at(spread, QPoint(fold + beside, middle)).name() for beside in (-1, 0)]
+        assert line != [paper, paper], f"{tab}: the fold line stays"
 
 
 def test_the_right_pages_foot_holds_the_notes_and_what_is_due_this_week(qapp: QApplication) -> None:

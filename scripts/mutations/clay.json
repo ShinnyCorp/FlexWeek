@@ -138,5 +138,33 @@
   "old": "            muted=\"#595272\",\n            line=\"#e2daf2\",\n",
   "new": "            muted=\"#595272\",\n            accent=\"#3a2f4d\",\n            accent_ink=\"#ffffff\",\n            line=\"#e2daf2\",\n",
   "test": "desktop/tests/test_layouts_registry.py::test_a_colourway_in_the_students_accent_reads_in_every_one[clay-pastel]"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "the edge cuts the day two away",
+  "old": "    after = [day for day in range(front + 1, 7) if found[day].right() > width]\n",
+  "new": "    after = []\n",
+  "test": "desktop/tests/test_layout_clay.py::test_every_card_is_whole_in_the_row_or_wholly_past_its_ends"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "Day's neighbours keep 70 % and run past the edge",
+  "old": "        narrow = min(narrow, beside)\n",
+  "new": "        pass\n",
+  "test": "desktop/tests/test_layout_clay.py::test_open_on_day_the_neighbours_narrow_to_the_room_beside_it"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "side cards have no hour labels",
+  "old": "        hours.gutter = math.ceil(widest) + PEEK_LABEL_GAP\n",
+  "new": "        hours.gutter = 0\n",
+  "test": "desktop/tests/test_layout_clay.py::test_a_side_card_labels_its_hours_left_of_its_blocks"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "a block that shares its time carries a dot",
+  "old": "            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), max(radius - 1, 0), max(radius - 1, 0))\n",
+  "new": "            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), max(radius - 1, 0), max(radius - 1, 0))\n        if drawn.columns > 1 and not drawn.held:\n            painter.setBrush(self.fills(drawn)[1])\n            painter.drawEllipse(QPointF(rect.right() - 7, rect.top() + 7), 3.5, 3.5)\n",
+  "test": "desktop/tests/test_layout_clay.py::test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not"
  }
 ]

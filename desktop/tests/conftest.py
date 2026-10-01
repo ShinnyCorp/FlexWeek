@@ -16,6 +16,8 @@ import pytest
 # Qt's test mode keeps its files in ~/.qttest. Workers running side by side would share the look
 # file, the kept sessions and the rest, and hand one test's state to another's, so each worker gets a
 # home of its own. The cache stays the real one, so fonts are not indexed again for every worker.
+# Alarms and reminders the tests ring are played at no volume (sound.SILENT).
+os.environ["FLEXWEEK_SILENT"] = "1"
 if os.environ.get("PYTEST_XDIST_WORKER"):
     os.environ.setdefault("XDG_CACHE_HOME", str(Path.home() / ".cache"))
     os.environ["HOME"] = tempfile.mkdtemp(prefix=f"flexweek-{os.environ['PYTEST_XDIST_WORKER']}-")
@@ -47,6 +49,31 @@ def the_pointer_finds_windows_past_the_screens_edge(monkeypatch: pytest.MonkeyPa
 
         monkeypatch.setattr(QApplication, "widgetAt", staticmethod(widget_at))
     yield
+
+
+@pytest.fixture(autouse=True)
+def no_window_is_left_showing() -> Iterator[None]:
+    """A view a test shows on its own is a window of its own, and one whose signals hold it lives on
+    after the test. Every one left showing lay over the next tests' windows at the top left, and where
+    the pointer found one of them first, a later test's drag dropped on it and not on its own hours.
+    Windows the test showed are hidden when it ends; a module's fixtures open theirs before this."""
+    if importlib.util.find_spec("PySide6") is None:
+        yield
+        return
+    from PySide6.QtWidgets import QApplication, QWidget
+    from shiboken6 import getCppPointer
+
+    def showing() -> dict[int, QWidget]:
+        if QApplication.instance() is None:
+            return {}
+        windows = QApplication.topLevelWidgets()
+        return {getCppPointer(window)[0]: window for window in windows if window.isVisible()}
+
+    before = showing()
+    yield
+    for pointer, window in showing().items():
+        if pointer not in before:
+            window.hide()
 
 
 @pytest.fixture(autouse=True)

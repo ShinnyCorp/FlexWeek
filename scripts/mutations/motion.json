@@ -7,11 +7,25 @@
     "test": "desktop/tests/test_motion.py::test_normal_runs_the_plans_numbers_and_the_other_levels_scale_them"
   },
   {
-    "name": "a page cross-fades instead of fading through",
+    "name": "a page waits for the old one to go again, through blank frames",
     "file": "desktop/native/motion.py",
-    "old": "        appear(widget, level, shift=direction * SLIDE_PX, delay_ms=PAGE_OUT_MS, ms=PAGE_IN_MS)",
+    "old": "        appear(widget, level, shift=direction * SLIDE_PX, delay_ms=PAGE_IN_AFTER_MS, ms=PAGE_IN_MS)",
+    "new": "        appear(widget, level, shift=direction * SLIDE_PX, delay_ms=PAGE_OUT_MS, ms=PAGE_IN_MS)",
+    "test": "desktop/tests/test_motion.py::test_a_switch_never_shows_an_empty_page"
+  },
+  {
+    "name": "a page cross-fades over the old one from the first frame",
+    "file": "desktop/native/motion.py",
+    "old": "        appear(widget, level, shift=direction * SLIDE_PX, delay_ms=PAGE_IN_AFTER_MS, ms=PAGE_IN_MS)",
     "new": "        appear(widget, level, shift=direction * SLIDE_PX, delay_ms=0, ms=PAGE_IN_MS)",
-    "test": "desktop/tests/test_motion.py::test_a_switch_fades_through_the_old_page_out_before_the_new_one_shows"
+    "test": "desktop/tests/test_motion.py::test_a_switch_never_shows_an_empty_page"
+  },
+  {
+    "name": "the old page fades fast first and leaves the window near empty",
+    "file": "desktop/native/motion.py",
+    "old": "    fade_away(picture, level, ms=PAGE_OUT_MS, drift=-direction * SLIDE_PX, steady=True)",
+    "new": "    fade_away(picture, level, ms=PAGE_OUT_MS, drift=-direction * SLIDE_PX)",
+    "test": "desktop/tests/test_motion.py::test_a_switch_never_shows_an_empty_page"
   },
   {
     "name": "Day, Week and Month do not slide",
@@ -58,9 +72,9 @@
   {
     "name": "Ctrl+K's box appears where it stays",
     "file": "desktop/native/command_bar.py",
-    "old": "        self.box.move(home.topLeft() + QPoint(0, distance(RISE_PX, self.motion)))\n",
+    "old": "        self.box.move(home.topLeft() + QPoint(0, distance(BAR_RISE_PX, self.motion)))\n",
     "new": "",
-    "test": "desktop/tests/test_command_bar.py::test_the_box_rises_8_pixels_into_place_as_the_window_dims"
+    "test": "desktop/tests/test_command_bar.py::test_the_box_rises_16_pixels_into_place_as_the_window_dims"
   },
   {
     "name": "the segmented selection jumps",
@@ -124,5 +138,75 @@
     "old": "        if start is None or not moves(level):\n",
     "new": "        if True:\n",
     "test": "desktop/tests/test_layout_retro.py::test_a_window_opens_with_windows_98s_zoom_rectangle_within_the_levels"
+  },
+  {
+    "name": "the title changes a frame before the page again",
+    "file": "desktop/native/window.py",
+    "old": "            fade_through(title_picture, [self.week_title], self._motion)\n",
+    "new": "            title_picture.deleteLater()\n",
+    "test": "desktop/tests/test_layouts_window.py::test_a_new_view_is_live_at_once_while_the_old_one_fades"
+  },
+  {
+    "name": "the focus ring before Start looks finished again",
+    "file": "desktop/native/focus_screen.py",
+    "old": "        self.ring.set_waiting(state is None)\n",
+    "new": "",
+    "test": "desktop/tests/test_focus_screen.py::test_quick_focus_fills_the_window_and_esc_comes_back"
+  },
+  {
+    "name": "a waiting ring is drawn in the full accent",
+    "file": "desktop/native/ring.py",
+    "old": "            arc = mix_oklab(colours.arc, colours.track, WAITING_SHARE) if self._waiting else colours.arc\n",
+    "new": "            arc = colours.arc\n",
+    "test": "desktop/tests/test_ring.py::test_a_timer_not_started_draws_its_arc_softer_so_it_does_not_look_finished"
+  },
+  {
+    "name": "Ctrl+K rises only a notice's 8 pixels",
+    "file": "desktop/native/command_bar.py",
+    "old": "BAR_RISE_PX, BAR_RISE_MS = 2 * RISE_PX, EASE_MS + 80\n",
+    "new": "BAR_RISE_PX, BAR_RISE_MS = RISE_PX, EASE_MS + 80\n",
+    "test": "desktop/tests/test_command_bar.py::test_the_box_rises_16_pixels_into_place_as_the_window_dims"
+  },
+  {
+    "name": "a notice said under Ctrl+K stays bright over its dimming",
+    "file": "desktop/native/widgets.py",
+    "old": "                    cover.raise_()\n",
+    "new": "                    pass\n",
+    "test": "desktop/tests/test_command_bar.py::test_a_notice_said_while_ctrl_k_is_open_goes_under_its_dimming"
+  },
+  {
+    "name": "the top bar greys the moment it is busy",
+    "file": "desktop/native/window.py",
+    "old": "            self._busy_look.start()\n",
+    "new": "            self._grey_while_busy()\n",
+    "test": "desktop/tests/test_layouts_window.py::test_a_short_busy_spell_takes_no_clicks_but_does_not_grey_the_top_bar"
+  },
+  {
+    "name": "a busy top bar takes clicks before it greys",
+    "file": "desktop/native/window.py",
+    "old": "        return event.type() in self.SWALLOWED and self._busy()\n",
+    "new": "        return False\n",
+    "test": "desktop/tests/test_layouts_window.py::test_a_short_busy_spell_takes_no_clicks_but_does_not_grey_the_top_bar"
+  },
+  {
+    "name": "after a plan the hours scroll to homework already in sight",
+    "file": "desktop/native/hours/zoom.py",
+    "old": "            if top + min(above, shown / 4) <= minute <= top + shown - 60:\n                return\n",
+    "new": "            if top + min(above, shown / 4) <= minute <= top + shown - 60:\n                pass\n",
+    "test": "desktop/tests/test_hours_zoom.py::test_after_a_plan_the_hours_ease_to_homework_off_screen_and_stay_for_homework_on_it"
+  },
+  {
+    "name": "after a plan the hours jump instead of easing",
+    "file": "desktop/native/hours/zoom.py",
+    "old": "        if end == start or length == 0 or not moves(level):\n            return\n",
+    "new": "        if True:\n            return\n",
+    "test": "desktop/tests/test_hours_zoom.py::test_after_a_plan_the_hours_ease_to_homework_off_screen_and_stay_for_homework_on_it"
+  },
+  {
+    "name": "a plan's words are toasted before its Undo again",
+    "file": "desktop/native/controller.py",
+    "old": "                if planned:\n                    # `planned` says it, with Undo.\n",
+    "new": "                if False:\n                    # `planned` says it, with Undo.\n",
+    "test": "desktop/tests/test_homework_plan.py::test_plan_says_what_it_did_with_an_undo_that_takes_it_all_back"
   }
 ]

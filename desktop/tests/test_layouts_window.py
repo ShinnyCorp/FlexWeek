@@ -252,6 +252,39 @@ def test_the_notice_sits_under_the_bar_on_one_line(qapp: QApplication, window: N
         assert window.toast.y() > bar_bottom, text
 
 
+def test_the_notice_keeps_above_retros_taskbar_and_stays_put_in_todays_app(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Retro's tray (bell and clock) is on its taskbar, so the notice sits wholly above it. Today's app
+    has no bar of its own, so its notice stays 16 pixels in from the page's corner.
+    Mutation that turns this red: RetroView.bottom_inset returns 0."""
+    from desktop.native.widgets import TOAST_FOOT
+
+    window.resize(1280, 800)
+    settled(qapp, window)
+    window.toast.show_message("Moved History essay to Fri 18:00.", "Undo", lambda: None)
+    qapp.processEvents()
+    page = window.planner.currentWidget()
+    card = window.toast.card
+    assert page is window.week_table
+    page_foot = page.mapTo(window, page.rect().bottomLeft()).y() + 1
+    assert window.toast.y() + card.geometry().bottom() + 1 == page_foot - TOAST_FOOT
+
+    window._layout = sanitize_layout({"main": "retro", "day": "one"})
+    window._day_mode = False
+    window.session.set_view("week")
+    window._on_week()
+    settled(qapp, window)
+    window.toast.show_message("Moved History essay to Fri 18:00.", "Undo", lambda: None)
+    qapp.processEvents()
+    retro = window.planner.currentWidget()
+    bar = retro.findChild(QWidget, "retroTaskbar")
+    assert bar is not None and bar.isVisible()
+    bar_top = bar.mapTo(window, QPoint(0, 0)).y()
+    card_bottom = window.toast.y() + card.geometry().bottom() + 1
+    assert card_bottom <= bar_top, (card_bottom, bar_top)
+
+
 def accept_late(qapp: QApplication, window: NativeWindow) -> tuple[dict, str]:
     from desktop.native.reuse import late_locked_line
 
@@ -417,18 +450,18 @@ def prefs_layout(choice: dict | None = None) -> SettingsPage:
     return SettingsPage(None, {}, {}, {}, choice)
 
 
-def test_every_view_says_what_it_is_for_before_its_style_name(qapp: QApplication) -> None:
-    """ "Today's app" turned out to be the plain calendar; nothing in the menu said so. A student picks
-    by what the view does, so that comes first and the style name after it."""
+def test_every_view_has_one_name(qapp: QApplication) -> None:
+    """ "Calendar · Today's app" was two names for one design (Grok Bot's 0.17.0 audit, T34); the card's
+    words under the name say what it is for."""
     dialog = prefs_layout()
     main = combo(dialog, "layoutMain")
     assert [main.itemText(index) for index in range(main.count())] == [
-        "Calendar · Today's app",
-        "Agenda · Timeline",
-        "Dashboard · Mission control",
-        "Dashboard · Bento",
-        "Dashboard · Retro desktop",
-        "Agenda · Clay deck",
+        "Today's app",
+        "Timeline",
+        "Mission control",
+        "Bento",
+        "Retro desktop",
+        "Clay deck",
     ]
 
 
@@ -548,7 +581,8 @@ def test_a_custom_look_dresses_the_window_and_is_kept_with_the_saved_looks(
     assert "#262d3b" in colours
     window._save_look()
     stored = json.loads(look_file().read_text())
-    assert stored["custom"] == custom and stored["saved_looks"] == [custom]
+    assert stored["custom"] == custom
+    assert stored.get("saved_looks") == [custom], "the saved looks are not in the look file"
     window._look, window._saved_looks = {}, []
     window._load_look()
     assert window._look["custom"] == custom and window._saved_looks == [custom]
@@ -557,8 +591,8 @@ def test_a_custom_look_dresses_the_window_and_is_kept_with_the_saved_looks(
 def test_the_dialog_shows_style_first_and_fine_tune_on_request(qapp: QApplication) -> None:
     dialog = prefs_layout()
     assert [combo(dialog, "layoutDay").itemText(index) for index in range(2)] == [
-        "Clock · Day dial",
-        "Focus · One thing",
+        "Day dial",
+        "One thing",
     ]
     pick = combo(dialog, "layoutDay")
     pick.setCurrentIndex(pick.findData("one"))
@@ -821,7 +855,8 @@ def test_plan_and_more_stay_on_the_bar_in_every_layout(qapp: QApplication, windo
     qapp.processEvents()
     assert window.planner.height() > window.height() * 0.8
     offered = more_actions(window)
-    assert more_sections(window) == ["Planning"]
+    # Every group under a heading (T23 of the 0.17.0 audit).
+    assert more_sections(window) == ["Planning", "Edit", "Help and info", "Account"]
     assert not {"Add homework", "Add fixed time", "School hours"} & set(offered), "adding is under Add"
     wanted = {"Running late", "Routines", "Reload", "Undo", "Redo", "Undo, copy and save", "Log out"}
     assert wanted <= set(offered)
@@ -1435,7 +1470,7 @@ def test_the_week_toolbar_keeps_only_what_is_reached_for(qapp: QApplication, win
     menu.aboutToShow.emit()
     sections = more_sections(window)
     items = more_actions(window)
-    assert sections == ["Planning"]
+    assert sections == ["Planning", "Edit", "Help and info", "Account"]
     wanted = {"Undo", "Redo", "Duplicate", "Running late", "Routines", "Undo, copy and save", "Log out"}
     assert wanted <= set(items)
     assert "Settings" not in items
@@ -1479,9 +1514,7 @@ def test_the_week_title_sits_beside_its_arrows_and_is_whole_when_there_is_room(
 def test_a_week_across_two_months_shortens_to_month_abbreviations_not_an_ellipsis(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """Beside 0.17's top bar at 1280 px "28 September – 4 October" does not fit, and cut short it read
-    "28 Septemb…": no end date at all. The short form keeps the whole range. Wider, the whole words
-    come back; narrower, the controls go under the title, which then has room again."""
+    """The short date stays the same when the controls wrap beneath it."""
     window.session.load_week("2026-09-28")
     wait_until(qapp, lambda: not window.session.busy and window.session.week_start == "2026-09-28")
     seen = {}
@@ -1489,10 +1522,10 @@ def test_a_week_across_two_months_shortens_to_month_abbreviations_not_an_ellipsi
         window.resize(width, 768)
         qapp.processEvents()
         seen[width] = window.week_title.text()
-        assert window.week_title.accessibleName() == "28 September – 4 October", width
-    assert seen[1440] == "28 September – 4 October"
+        assert window.week_title.accessibleName() == "28 Sep – 4 Oct", width
+    assert seen[1440] == "28 Sep – 4 Oct"
     assert seen[1280] == "28 Sep – 4 Oct"
-    assert set(seen.values()) <= {"28 September – 4 October", "28 Sep – 4 Oct"}, seen
+    assert set(seen.values()) == {"28 Sep – 4 Oct"}, seen
 
 
 def test_the_top_bar_keeps_the_gear_on_a_1024_window(qapp: QApplication, window: NativeWindow) -> None:
@@ -2175,14 +2208,21 @@ def at_level(window: NativeWindow, level: str) -> None:
 
 def test_a_new_view_is_live_at_once_while_the_old_one_fades(qapp: QApplication, window: NativeWindow) -> None:
     at_level(window, "normal")
+    title = window.week_title
+    week_title = title.full_text()
     click(window, "viewMonth")
     month = window._planner_widget("month")
     assert window.planner.currentWidget() is month
-    assert len(_fades(window)) == 1
+    assert title.full_text() != week_title
+    over_title = [picture for picture in _fades(window) if picture.geometry().topLeft() == title.pos()]
+    assert len(_fades(window)) == 2 and len(over_title) == 1, "the page and, over the new title, the old one"
+    assert title.graphicsEffect() is not None, "the new title comes in through a fade of its own"
+    assert title.graphicsEffect().opacity == 0, "and the new title comes in with the page, not a frame early"
     effect = month.graphicsEffect()
-    assert effect.opacity == 0, "Month waits for the week to go (decision 28 of 0.17)"
+    assert effect.opacity == 0, "Month starts under the week, which is still there"
     assert effect.offset.x() > 0, "and comes in from the right, where its segment is"
     faded_in()
+    assert title.graphicsEffect() is None
     assert _fades(window) == [] and month.graphicsEffect() is None
     click(window, "viewDay")
     assert window.planner.currentWidget().graphicsEffect().offset.x() < 0, "Day comes in from the left"
@@ -2681,3 +2721,33 @@ def test_a_change_to_the_week_does_not_restyle_the_window_when_the_look_is_the_s
     window.session.preferences = {**window.session.preferences, "theme_pack": "dark-frost"}
     window._on_week()
     assert len(dressed) == 1, "a new look is still put on at once"
+
+
+def test_a_short_busy_spell_takes_no_clicks_but_does_not_grey_the_top_bar(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Grok Bot's 0.17.0 audit (T7): Plan my homework greyed the whole top bar for one frame. A plan
+    takes a few milliseconds; the bar greys only once the session has been busy BUSY_LOOK_MS, and takes
+    no click from the first moment."""
+    from desktop.native.window import BUSY_LOOK_MS
+
+    session = window.session
+    plan = window.findChild(QPushButton, "solveButton")
+    pressed: list[bool] = []
+    plan.clicked.connect(lambda: pressed.append(True))
+    session.busy = True
+    session.busy_changed.emit(True)
+    assert plan.isEnabled(), "not greyed at once"
+    QTest.mouseClick(plan, Qt.MouseButton.LeftButton)
+    assert pressed == [], "but it takes no click while busy"
+    session.busy = False
+    session.busy_changed.emit(False)
+    QTest.qWait(BUSY_LOOK_MS + 100)
+    assert plan.isEnabled(), "a short spell never greys it"
+    session.busy = True
+    session.busy_changed.emit(True)
+    QTest.qWait(BUSY_LOOK_MS + 100)
+    assert not plan.isEnabled(), "a long one does"
+    session.busy = False
+    session.busy_changed.emit(False)
+    assert plan.isEnabled(), "and it comes back at once"

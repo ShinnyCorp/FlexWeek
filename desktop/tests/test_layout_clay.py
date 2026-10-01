@@ -10,7 +10,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from desktop.tests.test_weekmodel import BLOCKS, HOMEWORK, TRACE, WEEK
+from desktop.tests.test_weekmodel import BLOCKS, HOMEWORK, TRACE, WEEK, block
 
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="Desktop dependencies absent"
@@ -19,7 +19,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, QRectF, Qt
-    from PySide6.QtGui import QCursor, QFont, QImage, QPainter
+    from PySide6.QtGui import QCursor, QFont, QFontMetricsF, QImage, QPainter
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
@@ -29,10 +29,10 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.hours.geometry import Span
     from desktop.native.hours.zoom import HoursScroll
     from desktop.native.layouts.base import Scene
-    from desktop.native.layouts.clay import ClayChip, ClayDeckView, slots
+    from desktop.native.layouts.clay import Card, ClayChip, ClayDeckView, ClayPainter, Fade, slots
     from desktop.native.layouts.registry import options_for, tokens_for
     from desktop.native.look import resolved_palette
-    from desktop.native.weekmodel import build_week, minute_of
+    from desktop.native.weekmodel import build_week, clock_label, minute_of
 
 
 @pytest.fixture(scope="module")
@@ -50,10 +50,12 @@ def still() -> Iterator[None]:
     motion.apply_ui_effects(was)
 
 
-def shown(qapp: QApplication, *, tab: str = "week", day: int = 3, **chosen: str) -> ClayDeckView:
+def shown(
+    qapp: QApplication, *, tab: str = "week", day: int = 3, blocks: list[dict] | None = None, **chosen: str
+) -> ClayDeckView:
     options = {**options_for(None, "clay"), **chosen}
     palette = resolved_palette("light-frost", False, None, "default")
-    week = build_week(WEEK, BLOCKS, HOMEWORK, TRACE)
+    week = build_week(WEEK, BLOCKS if blocks is None else blocks, HOMEWORK, TRACE)
     view = ClayDeckView()
     view.resize(1280, 764)
     view.show_week(Scene(
@@ -155,7 +157,7 @@ def test_neighbours_are_the_card_in_front_at_70_percent_with_the_room_between_ke
         assert rects[day].center().y() == pytest.approx(rects[3].center().y())
     assert rects[2].right() == pytest.approx(414 - 32)
     assert rects[4].left() == pytest.approx(414 + 452 + 32)
-    assert rects[5].left() == pytest.approx(rects[4].right() + 32)
+    assert rects[5].left() >= 1280, "the day after the neighbour waits past the edge rather than cut by it"
     assert rects[2].left() == pytest.approx(66, abs=1)
     assert slots(1280, 632, 3, 1.0, wide=True)[3].width() == 800
 
@@ -164,6 +166,84 @@ def test_a_narrower_row_narrows_the_card_in_front_so_both_neighbours_stay_whole(
     rects = slots(1150, 632, 3, 1.2, wide=False)
     assert rects[3].width() < 452 * 1.2
     assert rects[2].left() >= 0 and rects[4].right() <= 1150
+
+
+@pytest.mark.parametrize("wide", [False, True])
+@pytest.mark.parametrize(("width", "scale"), [(1280, 1.0), (1150, 1.2), (1024, 1.0), (900, 1.0), (1600, 1.0)])
+def test_every_card_is_whole_in_the_row_or_wholly_past_its_ends(width: int, scale: float, wide: bool) -> None:
+    """A card cut by the window's edge read as clipped, and on Day a neighbour's homework was a pink bar
+    whose name lay past the edge. A card is seen whole or not at all."""
+    for day_in_front in range(7):
+        for day, rect in slots(width, 632, day_in_front, scale, wide=wide).items():
+            inside = rect.left() >= -0.5 and rect.right() <= width + 0.5
+            past = rect.right() <= 0.5 or rect.left() >= width - 0.5
+            assert inside or past, (day_in_front, day, rect)
+
+
+def test_open_on_day_the_neighbours_narrow_to_the_room_beside_it() -> None:
+    """At 1280 the open card keeps the mock-up's 800 pixels, and a neighbour at 70 % would run past the
+    window's edge: it takes the room beside the card instead, whole, at the height a neighbour has."""
+    rects = slots(1280, 632, 3, 1.0, wide=True)
+    assert rects[3].width() == 800
+    for day in (2, 4):
+        assert rects[day].left() >= 0 and rects[day].right() <= 1280
+        assert rects[day].width() >= 140
+        assert rects[day].height() == pytest.approx(0.7 * rects[3].height())
+    assert rects[2].right() == pytest.approx(rects[3].left() - 32)
+    assert rects[4].left() == pytest.approx(rects[3].right() + 32)
+
+
+@pytest.mark.parametrize("tab", ["week", "day"])
+def test_the_fade_at_the_rows_ends_stays_off_the_cards_in_view(qapp: QApplication, tab: str) -> None:
+    """The row's ends fade into the page where the days further off slide in. Open on Day it ran 80
+    pixels in, over the neighbour that now fits whole beside the open card."""
+    view = shown(qapp, tab=tab)
+    fade = view.row.findChild(Fade)
+    row = view.row.rect()
+    shown_cards = [card for card in view.findChildren(Card) if card.isVisible()]
+    cards = [card.geometry() for card in shown_cards if row.contains(card.geometry())]
+    assert len(cards) == 2
+    for box in cards:
+        assert fade.reach <= box.left() and fade.reach <= row.width() - (box.left() + box.width())
+
+
+def test_a_side_card_labels_its_hours_left_of_its_blocks(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cards beside the one in front show the stretch it shows, but with no hour labels they read
+    as a day squeezed on its own. Each labels its whole hours, as the card in front does, left of
+    where its blocks are drawn."""
+    monkeypatch.setattr(canvas_module, "QPainter", Wrote)
+    view = shown(qapp)
+    for name in ("clayPeek2", "clayPeek4"):
+        side = view.findChild(HoursCanvas, name)
+        (track,) = side.tracks
+        Wrote.words, Wrote.boxes = [], []
+        side.repaint()
+        inside = range(-(-(track.first + 30) // 60) * 60, track.last - 30 + 1, 60)
+        labels = [clock_label(minute) for minute in inside]
+        assert len(labels) >= 8, labels
+        beside = {words for words, box in Wrote.boxes if box.right() <= track.area.left()}
+        assert set(labels) <= beside, (name, Wrote.words)
+
+
+def test_homework_on_a_neighbour_of_the_open_day_says_its_name_on_screen(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Open on Day, Wednesday's card ran past the window's left edge, and its homework showed as a
+    pink bar: the name was drawn, off screen. It is written where the student can read it."""
+    monkeypatch.setattr(canvas_module, "QPainter", Wrote)
+    extra = block("essay-2", "flexible", [2], "19:00", 60, assignment_id="essay")
+    view = shown(qapp, tab="day", blocks=[*BLOCKS, extra])
+    side = view.findChild(HoursCanvas, "clayPeek2")
+    assert side.isVisible()
+    Wrote.words, Wrote.boxes = [], []
+    side.repaint()
+    said = [box for words, box in Wrote.boxes if words.startswith("Essay")]
+    assert said, Wrote.words
+    for box in said:
+        at = side.mapTo(view.row, box.topLeft().toPoint())
+        assert view.row.rect().contains(at), at
 
 
 def test_the_arrows_slide_the_row_a_day_and_stop_at_the_weeks_ends(qapp: QApplication) -> None:
@@ -396,9 +476,14 @@ if importlib.util.find_spec("PySide6") is not None:
         """A painter that keeps every string drawn with it."""
 
         words: list[str] = []
+        # Each string with the box it was drawn in, where it was drawn in one, in the painter's frame.
+        boxes: list[tuple[str, QRectF]] = []
 
         def drawText(self, *args: object) -> None:  # noqa: N802
-            Wrote.words.append(next(arg for arg in reversed(args) if isinstance(arg, str)))
+            words = next(arg for arg in reversed(args) if isinstance(arg, str))
+            Wrote.words.append(words)
+            if isinstance(args[0], QRectF):
+                Wrote.boxes.append((words, self.transform().mapRect(args[0])))
             super().drawText(*args)
 
 
@@ -441,3 +526,98 @@ def test_a_short_block_on_a_side_card_keeps_its_name_where_a_shortened_one_fits(
         assert written(24) == []
     finally:
         qapp.setFont(usual)
+
+
+def test_the_icon_gives_way_on_a_card_where_it_would_cost_the_name(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A block with room for "Piano lesson" or for the icon and "Piano…" says its name, as the
+    shared hours do. With room for both it has both."""
+    from desktop.native import icons
+
+    monkeypatch.setattr(canvas_module, "QPainter", Wrote)
+    drew: list[str] = []
+    real = icons.pixmap
+
+    def pixmap(name: str, *rest: object):
+        drew.append(name)
+        return real(name, *rest)
+
+    monkeypatch.setattr(icons, "pixmap", pixmap)
+    view = shown(qapp)
+    painter = view.findChild(HoursCanvas, "clayPeek2").painter
+    drawn = Drawn("piano", "Piano lesson", "extra", False, Span(2, 17 * 60, 17 * 60 + 30), 0, 1)
+    image = QImage(400, 40, QImage.Format.Format_ARGB32)
+    page = QRectF(0, 0, 400, 40)
+
+    def written(width: float) -> tuple[list[str], list[str]]:
+        Wrote.words = []
+        drew.clear()
+        paint = Wrote(image)
+        painter.block(paint, QRectF(10, 10, width, 10), drawn, page)
+        paint.end()
+        return Wrote.words, list(drew)
+
+    name = QFontMetricsF(painter.fonts(qapp.font())[0]).horizontalAdvance("Piano lesson")
+    # The name's own width and the 14 and 8 pixels a side card keeps clear at a block's ends.
+    assert written(name + 23) == (["Piano lesson"], [])
+    # Room for its time as well: the icon comes after the name and the time.
+    words, pictures = written(name + 110)
+    assert words[0] == "Piano lesson" and pictures == ["sparkles"]
+
+
+def test_a_half_hour_on_a_card_says_its_start_time_rather_than_its_icon(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The name, then the time, then the icon, as on the shared hours: room for "Dinner 18:30" or
+    for the icon and "Dinner" says the time, and with room for all three the card has all three."""
+    from desktop.native import icons
+
+    monkeypatch.setattr(canvas_module, "QPainter", Wrote)
+    drew: list[str] = []
+    real = icons.pixmap
+
+    def pixmap(name: str, *rest: object):
+        drew.append(name)
+        return real(name, *rest)
+
+    monkeypatch.setattr(icons, "pixmap", pixmap)
+    view = shown(qapp)
+    painter = view.findChild(HoursCanvas, "clayPeek2").painter
+    drawn = Drawn("dinner", "Dinner", "meals", False, Span(2, 18 * 60 + 30, 19 * 60), 0, 1)
+    image = QImage(400, 40, QImage.Format.Format_ARGB32)
+    page = QRectF(0, 0, 400, 40)
+
+    def written(width: float) -> tuple[list[str], list[str]]:
+        Wrote.words = []
+        drew.clear()
+        paint = Wrote(image)
+        painter.block(paint, QRectF(10, 10, width, 10), drawn, page)
+        paint.end()
+        return Wrote.words, list(drew)
+
+    title, small = painter.fonts(qapp.font())
+    both = QFontMetricsF(title).horizontalAdvance("Dinner") + 6
+    both += QFontMetricsF(small).horizontalAdvance("18:30")
+    icon = round(QFontMetricsF(title).ascent()) + 4
+    # The 14 and 8 pixels a side card keeps clear at a block's ends.
+    assert written(both + 23) == (["Dinner", "18:30"], [])
+    assert written(both + 23 + icon) == (["Dinner", "18:30"], ["clock"])
+
+
+def test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not(qapp: QApplication) -> None:
+    """Two blocks side by side show they share their time by sitting side by side: the dot at the
+    corner of each said nothing a student could read, and covered the end of the name."""
+    options = options_for(None, "clay")
+    tokens = tokens_for("clay", options["colour"], resolved_palette("light-frost", False, None, "default"))
+
+    def painted(columns: int) -> QImage:
+        drawn = Drawn("soccer", "Soccer practice", "extra", False, Span(1, 16 * 60, 17 * 60 + 30), 0, columns)
+        image = QImage(200, 140, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.white)
+        painter = QPainter(image)
+        ClayPainter(tokens, full=True).body(painter, QRectF(20, 20, 60, 90), drawn)
+        painter.end()
+        return image
+
+    assert painted(2) == painted(1), "a block that shares its time has a mark on it"

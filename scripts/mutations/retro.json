@@ -29,17 +29,17 @@
  },
  {
   "file": "desktop/native/layouts/retro.py",
-  "name": "Retro's blocks cut inside a word",
-  "old": "    whole_words = True\n",
-  "new": "    whole_words = False\n",
-  "test": "desktop/tests/test_layout_retro.py::test_a_block_with_no_room_for_its_first_word_says_nothing_rather_than_cut_it"
+  "name": "Retro's narrow blocks keep their full margins",
+  "old": "    trims_narrow = True\n",
+  "new": "    trims_narrow = False\n",
+  "test": "desktop/tests/test_layout_retro.py::test_a_week_block_at_the_smallest_window_names_itself_and_says_when_it_starts"
  },
  {
   "file": "desktop/native/hours/canvas.py",
-  "name": "whole words asked for and not kept",
-  "old": "        if self.whole_words and cuts_a_word(lay, drawn.title):\n",
-  "new": "        if False:\n",
-  "test": "desktop/tests/test_layout_retro.py::test_a_block_with_no_room_for_its_first_word_says_nothing_rather_than_cut_it"
+  "name": "the icon outranks the first three letters of a name",
+  "old": "        letters = min(len(titled[0].rstrip(\"…\")), 3) if titled else 0\n",
+  "new": "        letters = 0\n",
+  "test": "desktop/tests/test_hours_painter.py::test_the_icon_gives_way_before_a_name_is_left_with_fewer_than_three_letters"
  },
  {
   "file": "desktop/native/layouts/retro.py",
@@ -79,7 +79,7 @@
  {
   "file": "desktop/native/layouts/retro.py",
   "name": "Windows 98's bar scrolls nothing",
-  "old": "        shown.valueChanged.connect(source.setValue)\n",
+  "old": "        shown.valueChanged.connect(self._moved)\n",
   "new": "",
   "test": "desktop/tests/test_layout_retro.py::test_the_week_scrolls_on_windows_98s_bar_in_step_with_the_hours"
  },
@@ -89,5 +89,26 @@
   "old": "    return max(min(title, chars - length - when - 4), 0), length\n",
   "new": "    return title, length\n",
   "test": "desktop/tests/test_layout_retro.py::test_notepads_columns_and_their_fallbacks"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "Windows 98's bar writes its cut value back to the hours",
+  "old": "        if not self._copying:\n",
+  "new": "        if True:\n",
+  "test": "desktop/tests/test_layout_retro.py::test_windows_98s_bar_leaves_a_cut_value_for_the_hours_to_keep"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "a narrow block keeps the full margins",
+  "old": "        trim = SHARED_TRIM if drawn.columns > 1 or (self.trims_narrow and rect.width() < NARROW_BLOCK) else 0\n",
+  "new": "        trim = SHARED_TRIM if drawn.columns > 1 else 0\n",
+  "test": "desktop/tests/test_layout_retro.py::test_a_week_block_at_the_smallest_window_names_itself_and_says_when_it_starts"
+ },
+ {
+  "file": "desktop/native/layouts/retro.py",
+  "name": "a block that shares its time carries a dot",
+  "old": "            frame_in(painter, box.adjusted(1, 1, -1, -1), ring, ring)\n",
+  "new": "            frame_in(painter, box.adjusted(1, 1, -1, -1), ring, ring)\n        if drawn.columns > 1 and not drawn.held:\n            painter.setBrush(self.fills(drawn)[1])\n            painter.drawEllipse(QPointF(box.right() - 6, box.top() + 6), 3, 3)\n",
+  "test": "desktop/tests/test_layout_retro.py::test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not"
  }
 ]

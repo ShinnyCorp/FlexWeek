@@ -188,7 +188,7 @@ def test_plan_is_second_to_add_and_more_is_in_the_text_colour(
     assert near(
         picture.pixelColor(plan.left() + 4, plan.center().y()), mix(palette["accent"], palette["window"], 0.1)
     )
-    assert window.solve_button.palette().buttonText().color().name() == palette["accent"]
+    assert window.solve_button.palette().buttonText().color().name() == palette["accent_text"]
     more = bar(window, "moreButton")
     assert more.palette().buttonText().color().name() == palette["text"]
     spot = box(window, more)
@@ -296,13 +296,17 @@ def test_the_chosen_view_is_raised_on_its_track(qapp: QApplication, window: Nati
         picture = window.grab().toImage()
         week, day = box(window, bar(window, "viewWeek")), box(window, bar(window, "viewDay"))
         contrast_look = preset == "high-contrast"
-        chosen = palette["accent"] if contrast_look else palette["panel"]
+        chosen = palette["accent"] if contrast_look else (
+            palette["hairline_strong"] if pack == "dark-frost" else palette["panel"]
+        )
         track = palette["window"] if contrast_look else mix(palette["text"], palette["window"], 0.06)
         assert near(picture.pixelColor(week.left() + 6, week.center().y()), chosen), (pack, preset)
         assert near(picture.pixelColor(day.left() + 4, day.center().y()), track), (pack, preset)
         under = picture.pixelColor(week.center().x(), week.bottom() + 1)
         if contrast_look:
             assert near(under, track), "High contrast has no shadows"
+        elif pack == "dark-frost":
+            assert under.lightness() > QColor(track).lightness(), "Dark's chosen edge stays visible"
         else:
             assert under.lightness() < QColor(track).lightness(), f"{pack}: the chosen view casts no shadow"
 
@@ -377,3 +381,31 @@ def test_the_zoom_is_a_small_minus_plus_pill(qapp: QApplication, window: NativeW
     assert pill is into.parentWidget() and pill.property("zoomPill") and pill.height() == 24
     assert box(window, out).right() < box(window, into).left()
     assert out.icon().isNull() is False and into.icon().isNull() is False
+
+
+def test_the_zoom_buttons_are_quiet_at_rest_and_take_the_6_percent_hover(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """The audit's T24: the − and + read as the app's other quiet icon buttons: nothing drawn behind
+    them at rest, 6 % of the text colour on hover and 10 % pressed, over the pill they sit in."""
+    window.resize(1280, 800)
+    shown(qapp, window, "week")
+    palette = dress(qapp, window)
+    text, ground = palette["text"], palette["panel"]
+    for name in ("weekZoomOut", "weekZoomIn"):
+        button = bar(window, name)
+        for state, share in (
+            (QStyle.StateFlag.State_Enabled, 0.0),
+            (QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_MouseOver, 0.06),
+            (QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_Sunken, 0.10),
+        ):
+            option = QStyleOptionButton()
+            button.initStyleOption(option)
+            option.state = state
+            image = QImage(button.size(), QImage.Format.Format_ARGB32)
+            image.fill(QColor(ground))
+            painter = QPainter(image)
+            button.style().drawControl(QStyle.ControlElement.CE_PushButton, option, painter, button)
+            painter.end()
+            seen = image.pixelColor(4, button.height() // 2)
+            assert near(seen, mix(text, ground, share)), f"{name} {state}: {seen.name()}"

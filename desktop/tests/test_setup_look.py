@@ -133,7 +133,7 @@ def filled(setup: SetupPage, accent: str) -> list[str]:
         if not button.isVisibleTo(setup) or button.width() < 8:
             continue
         # A ticked day or chip is an answer shown, like a segment, not a second thing to press.
-        if button.isCheckable() and button.objectName() in {"setupDay", "setupChip"}:
+        if button.isCheckable() and (button.property("pill") or button.objectName() == "setupChip"):
             continue
         # Above the words, so a link in the accent does not count as a fill.
         if button.grab().toImage().pixelColor(button.width() // 2, 3) == QColor(accent):

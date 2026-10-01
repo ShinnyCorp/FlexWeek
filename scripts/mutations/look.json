@@ -86,7 +86,7 @@
  {
   "file": "desktop/native/calendar.py",
   "name": "a category's colours drift from the family",
-  "old": "        \"color\": \"#c3eef3\",\n",
+  "old": "        \"color\": \"#c3eef0\",\n",
   "new": "        \"color\": \"#a5f3fc\",\n",
   "test": "desktop/tests/test_tokens.py::test_the_category_colours_are_the_family_worked_out_from_their_hues"
  },
@@ -219,7 +219,7 @@
  {
   "file": "desktop/native/look.py",
   "name": "High contrast's view control grey again",
-  "old": "    chosen = palette[\"accent\"] if contrast_look else palette[\"panel\"]\n",
+  "old": "    chosen = palette[\"accent\"] if contrast_look else palette[\"hairline_strong\"] if dark else palette[\"panel\"]\n",
   "new": "    chosen = palette[\"panel\"]\n",
   "test": "desktop/tests/test_controls_look.py::test_high_contrasts_view_control_reads_every_choice_and_fills_the_chosen_one"
  },

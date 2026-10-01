@@ -93,7 +93,9 @@ def deuteranope_sees(colour: str) -> tuple[float, float, float]:
 def test_the_category_colours_are_the_family_worked_out_from_their_hues() -> None:
     """The hex values in calendar.py are what the family's OKLCH gives, so none drifts by hand."""
     for key, info in CATEGORIES.items():
-        worked = family_colours(info["hue"], grey=key == "free", homework=key == "assignments")
+        worked = family_colours(
+            info["hue"], grey=key == "free", homework=key == "assignments", sleep=key == "sleep",
+        )
         held = {"light": (info["color"], info["mark"]), "dark": info["dark"], "contrast": info["contrast"]}
         assert held == worked, key
 
@@ -103,7 +105,8 @@ def test_every_category_fill_has_one_lightness(name: str) -> None:
     """No category shouts over another: every fill within 0.02 of the others in lightness."""
     for surface in LOOK_KNOBS["surface"]:
         palette = palette_for(name, surface)
-        lightness = {key: oklab(category_paint(key, palette)[0])[0] for key in CATEGORIES}
+        lightness = {key: oklab(category_paint(key, palette)[0])[0]
+                     for key in CATEGORIES if key != "sleep"}
         spread = max(lightness.values()) - min(lightness.values())
         assert spread <= 0.02, (name, surface, {key: round(value, 3) for key, value in lightness.items()})
 
@@ -177,9 +180,9 @@ def test_the_accent_is_never_a_page_card_or_wash(name: str, surface: str, accent
     """Decision 1: the accent marks controls and is never spread over anything larger. Gold once
     turned today's column khaki, and the setup cards were washed blue."""
     palette = palette_for(name, surface, accent)
-    washed = accent_mixes(palette) | {palette["accent"]}
+    reference = palette_for(name, surface, "default")
     for key in ("window", "panel", "field", "grid"):
-        assert palette[key] not in washed, key
+        assert palette[key] == reference[key], key
     pack, dark, _look = LOOKS[name]
     sheet = pack_stylesheet(pack, dark, look_for(name, surface), accent, palette)
     painted = [
@@ -189,26 +192,34 @@ def test_the_accent_is_never_a_page_card_or_wash(name: str, surface: str, accent
         for colour in re.findall(r"background: (#[0-9a-f]{6})", body)
     ]
     assert painted, "the pattern found no page or card to check"
-    assert [(selector, colour) for selector, colour in painted if colour in washed] == []
+    probe = {**palette, "accent": "#ff00ff"}
+    reference_sheet = pack_stylesheet(pack, dark, look_for(name, surface), accent, probe)
+    reference_painted = [
+        (selector.strip(), colour)
+        for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", reference_sheet)
+        if LARGE.search(selector)
+        for colour in re.findall(r"background: (#[0-9a-f]{6})", body)
+    ]
+    assert painted == reference_painted
     # A design in Match my look wears the look: its cards are not the accent either.
     match = tokens_for("clay", MATCH, palette)
     large = [key for key in match if key.startswith("card_") or key in {"bg", "surface"}]
-    assert {key: match[key] for key in large if match[key] in washed} == {}
+    reference_match = tokens_for("clay", MATCH, probe)
+    assert {key: match[key] for key in large} == {key: reference_match[key] for key in large}
 
 
 @pytest.mark.parametrize(("name", "surface", "accent"), CASES)
 def test_the_now_line_and_the_selection_show_over_every_block(name: str, surface: str, accent: str) -> None:
-    """The accent draws the now line and the chosen block's ring across the blocks, so it holds 3 to 1
-    against every category however blocks are drawn (WCAG's non-text contrast). School's blue sits
-    beside FlexWeek's blue on purpose; lightness keeps them apart."""
+    """The drawn Now and selection shades contrast with blocks without changing the chosen accent."""
     palette = palette_for(name, surface, accent)
     faint = []
-    for key, mode in product(CATEGORIES, LOOK_KNOBS["blocks"]):
+    for key, mode, shade in product(CATEGORIES, LOOK_KNOBS["blocks"], ("now", "selection")):
         fill, mark = category_paint(key, palette)
         drawn = block_paint({"preset": "default", "knobs": {"blocks": mode}}, palette, fill, "locked", mark)
-        if contrast(palette["accent"], drawn["fill"]) < 3.0:
-            faint.append(f"{key} {mode} {contrast(palette['accent'], drawn['fill']):.2f}")
+        if contrast(palette[shade], drawn["fill"]) < 3.0:
+            faint.append(f"{key} {mode} {shade} {contrast(palette[shade], drawn['fill']):.2f}")
     assert faint == [], (name, surface, accent)
+
 
 
 SIZE = re.compile(r"font-size: ([^;}]+)")

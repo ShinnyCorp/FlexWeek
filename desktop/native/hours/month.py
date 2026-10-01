@@ -631,7 +631,7 @@ class MonthGrid(QWidget):
         layout.addWidget(self.overdue)
         self._week: WeekModel | None = None
         self._unsaved: Mapping[str, WeekModel] = {}
-        self._shown: tuple[dict | None, bool] | None = None
+        self._shown: tuple[dict | None, bool, str | None] | None = None
 
     def set_palette(self, palette: dict) -> None:
         self._palette = palette
@@ -673,8 +673,8 @@ class MonthGrid(QWidget):
         if self._shown is not None:
             self.set_month(*self._shown)
 
-    def set_month(self, snapshot: dict | None, dirty: bool) -> None:
-        self._shown = (snapshot, dirty)
+    def set_month(self, snapshot: dict | None, dirty: bool, today_iso: str | None = None) -> None:
+        self._shown = (snapshot, dirty, today_iso)
         if snapshot is None:
             self.canvas.set_cells([])
             self._say(self.warning, "Loading month…")
@@ -686,7 +686,7 @@ class MonthGrid(QWidget):
         if self._week is not None and self._week.week_start:
             weeks[self._week.week_start] = self._week
         self.canvas.open_week = self._week.week_start if self._week is not None else None
-        self.canvas.set_cells(month_cells(snapshot, weeks, date.today().isoformat()))
+        self.canvas.set_cells(month_cells(snapshot, weeks, today_iso or date.today().isoformat()))
         overdue = snapshot.get("overdue") or []
         titles = ", ".join(str(item.get("title") or item.get("id", "")) for item in overdue[:8])
         self._say(self.overdue, "Overdue: " + titles if overdue else "")

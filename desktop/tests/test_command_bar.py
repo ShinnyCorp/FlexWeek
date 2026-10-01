@@ -13,6 +13,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, QStandardPaths, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
@@ -122,10 +123,12 @@ def test_ctrl_k_opens_a_centred_box_listing_what_can_be_done(
     assert box.width() == BAR_WIDTH
     assert abs(box.center().x() - window.width() // 2) <= 1
     assert box.top() < window.height() / 3, "the box sits in the top third"
-    assert bar.shown_groups() == ["Add", "Go to", "Homework"]
+    assert bar.shown_groups() == ["Add", "Go to", "Settings", "Homework"]
     assert bar.shown_words() == [
         "Add homework", "Add fixed time", "School hours",
         "Day", "Week", "Month", "My day", "Focus screen", "Settings", "Help",
+        "Look and colours", "Customise look…", "Planning settings", "Focus settings", "Alerts",
+        "This computer",
         "Plan my homework", "History essay", "Math worksheet",
     ]
     QTest.keyClick(bar.input, Qt.Key.Key_Escape)
@@ -187,7 +190,7 @@ def test_a_click_outside_the_box_closes_it_and_nothing_matching_runs_nothing(
 def test_a_click_on_a_row_runs_it(qapp: QApplication, window: NativeWindow) -> None:
     open_bar(window)
     bar = window.command_bar
-    QTest.keyClicks(bar.input, "focus")
+    QTest.keyClicks(bar.input, "focus scr")
     assert bar.shown_words() == ["Focus screen"]
     rows = [bar.list.item(row) for row in range(bar.list.count())]
     focus = next(item for item in rows if item.text() == "Focus screen")
@@ -245,11 +248,12 @@ def test_every_row_has_an_icon_and_the_views_their_keys(qapp: QApplication, wind
     assert bar.list.currentItem().text() == "Day", "and over the Go to label"
 
 
-def test_the_box_rises_8_pixels_into_place_as_the_window_dims(
+def test_the_box_rises_16_pixels_into_place_as_the_window_dims(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """Decision 31 of 0.17: Ctrl+K fades and rises; under Reduce it only fades."""
-    for level, rise in (("normal", 8), ("reduce", 0)):
+    """Decision 31 of 0.17: Ctrl+K fades and rises; under Reduce it only fades. Grok Bot's 0.17.0 audit
+    (A6) saw no rise at 8 pixels, over the same time the window dims."""
+    for level, rise in (("normal", 16), ("extra", 21), ("reduce", 0)):
         window.session.preferences = {**(window.session.preferences or {}), "motion": level}
         window._apply_appearance()
         open_bar(window)
@@ -257,7 +261,7 @@ def test_the_box_rises_8_pixels_into_place_as_the_window_dims(
         first = bar.box.y()
         assert bar.graphicsEffect() is not None, "the dimmed window fades in"
         wait_until(qapp, lambda bar=bar: bar.graphicsEffect() is None)
-        QTest.qWait(100)
+        wait_until(qapp, lambda bar=bar: getattr(bar.box, "_motion_running", None) is None)
         assert first - bar.box.y() == rise, level
         bar.close_bar()
 
@@ -279,3 +283,83 @@ def test_the_window_is_dimmed_40_percent_and_the_box_is_lifted_with_the_large_sh
     assert bar.graphicsEffect() is not None
     wait_until(qapp, lambda: bar.graphicsEffect() is None)
     assert bar.box.graphicsEffect() is shadow, "the fade leaves the box's shadow alone"
+
+
+def test_a_notice_said_while_ctrl_k_is_open_goes_under_its_dimming(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Grok Bot's 0.17.0 audit (A6): "Moved… Undo" stayed bright over Ctrl+K's dimmed window. The notice
+    is said when its save comes back, after the bar has opened, and a notice raises itself."""
+    open_bar(window)
+    bar = window.command_bar
+    window.toast.show_message("Moved Essay-1.", "Undo", lambda: None)
+    order = window.children()
+    assert order.index(bar) > order.index(window.toast), "the notice is under the dimming"
+    assert order.index(bar) > order.index(window.toast.button), "and so is its button"
+    bar.close_bar()
+    window.toast.show_message("Moved Essay-1.", "Undo", lambda: None)
+    order = window.children()
+    assert order.index(window.toast) > order.index(bar), "with nothing over the window, it is on top"
+
+
+def test_look_finds_the_look_and_opens_settings_where_it_is(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Grok Bot's 0.17.0 audit (X1): "look" found nothing in Ctrl+K."""
+    open_bar(window)
+    bar = window.command_bar
+    QTest.keyClicks(bar.input, "look")
+    assert bar.shown_words()[:2] == ["Look and colours", "Customise look…"]
+    QTest.keyClick(bar.input, Qt.Key.Key_Return)
+    settings = window._settings
+    assert settings is not None and window._stack.currentWidget() is settings
+    assert settings.nav.currentRow() == 0, "Appearance, where Colours comes first"
+    settings.close_page()
+    open_bar(window)
+    QTest.keyClicks(bar.input, "alerts")
+    QTest.keyClick(bar.input, Qt.Key.Key_Return)
+    assert window._settings.nav.currentRow() == 3
+    window._settings.close_page()
+
+
+def test_the_chosen_row_is_accent_tinted_a_list_that_fits_never_scrolls_and_keys_are_caps(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """T22 of the 0.17.0 audit: the chosen row was the grey of a row under the pointer, a scroll bar
+    showed beside a list with room to spare, and the keys were plain letters."""
+    from desktop.native.look import mix, resolved_palette
+
+    palette = resolved_palette(*window._look_inputs()[:2], window._look, window._look_inputs()[2])
+    # Tall enough for every command, Settings' group included.
+    window.resize(1280, 1100)
+    qapp.processEvents()
+    open_bar(window)
+    bar = window.command_bar
+    qapp.processEvents()
+    assert bar.list.verticalScrollBar().maximum() == 0, "every row shows at once"
+    picture = bar.list.viewport().grab().toImage()
+    chosen = bar.list.visualItemRect(bar.list.currentItem())
+    tint = picture.pixelColor(chosen.right() - 20, chosen.center().y())
+    wanted = QColor(mix(palette["accent"], palette["panel"], 0.14))
+    pairs = zip(tint.getRgb()[:3], wanted.getRgb()[:3], strict=True)
+    assert max(abs(one - two) for one, two in pairs) <= 3, "the accent's tint, not grey"
+    items = [bar.list.item(index) for index in range(bar.list.count())]
+    row = bar.list.visualItemRect(next(item for item in items if item.text() == "Week"))
+    edge = QColor(palette["hairline_strong"])
+    # A cap's edge runs down each side of the key, so a column of the edge colour stands at the right.
+    columns = [
+        sum(picture.pixelColor(x, y) == edge for y in range(row.top(), row.bottom()))
+        for x in range(row.right() - 40, row.right())
+    ]
+    assert max(columns) >= 10, "the key drawn in a cap with an edge"
+    bar.close_bar()
+    window.resize(1280, 460)
+    qapp.processEvents()
+    open_bar(window)
+    qapp.processEvents()
+    bar_scroll = bar.list.verticalScrollBar()
+    assert bar_scroll.maximum() > 0, "a list longer than the window scrolls"
+    assert bar_scroll.property("overlay") is True, "under the app's thin bar"
+    box = bar.box.geometry()
+    assert box.bottom() <= window.height(), "the box stays in the window"
+    bar.close_bar()

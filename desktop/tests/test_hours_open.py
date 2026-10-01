@@ -1,6 +1,7 @@
-"""Where every design's Day and Week open: at now on today and this week, otherwise at the first block
-of the day or the week, otherwise at 08:00. On first show, and again each time the student goes to
-another day or week; the same day or week keeps wherever the student scrolled it."""
+"""Opening hours and keeping the student's scroll across views and designs.
+
+Today and returning to this week reopen at now; other returns keep the chosen position.
+"""
 
 from __future__ import annotations
 
@@ -21,8 +22,8 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QPoint, QPointF, QStandardPaths
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, QStandardPaths
+    from PySide6.QtWidgets import QApplication, QPushButton, QScrollBar
 
     from desktop.native.calendar import monday_of, sunday_due
     from desktop.native.hours.geometry import Axis
@@ -53,10 +54,18 @@ def wait_until(qapp: QApplication, predicate: Callable[[], bool], timeout: float
     raise AssertionError("condition was still false")
 
 
+def look_file() -> Path:
+    root = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
+    return Path(root) / "flexweek-look.json"
+
+
 @pytest.fixture()
 def window(qapp: QApplication, tmp_path: Path) -> Iterator[NativeWindow]:
     """Signed in with the clock held at Thursday 15:40 from before the week is first shown: school
     on weekdays from 08:00, dinner every day at 18:00, and nothing next week."""
+    # A look saved by an earlier test on this worker would choose another day screen (One thing has no
+    # Running late), and the window reads it at start.
+    look_file().unlink(missing_ok=True)
     server = LocalServer(tmp_path / "flexweek.db")
     server.start()
     made = NativeWindow(server.origin)
@@ -91,6 +100,7 @@ def window(qapp: QApplication, tmp_path: Path) -> Iterator[NativeWindow]:
         made.hide()
         qapp.processEvents()
         server.stop()
+        look_file().unlink(missing_ok=True)
 
 
 def hours(window: NativeWindow) -> HoursScroll:
@@ -117,11 +127,27 @@ def span_shown(scroll: HoursScroll) -> tuple[float, float]:
 
 def opens_at(qapp: QApplication, window: NativeWindow, minute: int, where: str) -> None:
     """`minute` is on screen, with at most half of what shows before it, or the hours go no further:
-    now opens in the middle (decision 12 of 0.17), a first block a little below the top."""
+    now opens in the middle (decision 12 of 0.17), a first block a little below the top. Clay deck
+    slides its row to the day asked for, so the day is measured where it lands: part way, the card
+    coming in from beside the open one can have hours with no width yet, and whether it was still
+    sliding depended on how soon the server answered."""
+    view = window.planner.currentWidget()
+    running = QAbstractAnimation.State.Running
+    wait_until(qapp, lambda: all(item.state() != running for item in view.findChildren(QAbstractAnimation)))
     for _ in range(4):
         qapp.processEvents()
     scroll = hours(window)
     first, last = span_shown(scroll)
+    if scroll.axis is Axis.ACROSS:
+        # Mission control's lanes: now always shows when it is in what is shown, and 22:00 does too
+        # when both fit, else now sits 30 to 60 minutes from the left edge. Another week, or another
+        # day, opens with the evening's end at the right edge.
+        if minute == NOW:
+            assert first <= minute <= last, f"{where}: now is not on screen"
+            assert last >= 22 * 60 or 30 <= minute - first <= 60, f"{where}: now is not near the left edge"
+        else:
+            assert last >= 22 * 60, f"{where}: the lanes do not reach 22:00"
+        return
     assert first <= minute <= last, f"{where}: {minute // 60:02d}:{minute % 60:02d} is not on screen"
     bar = scroll.verticalScrollBar() if scroll.axis is Axis.DOWN else scroll.horizontalScrollBar()
     at_end = bar.value() == bar.maximum()
@@ -190,11 +216,10 @@ def test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_o
         opens_at(qapp, window, NOW, f"{design} Thursday again")
 
 
-def test_todays_app_opens_at_now_every_time_it_is_shown_and_not_on_a_save(
+def test_todays_app_keeps_its_scroll_after_a_page_or_look_change(
     qapp: QApplication, window: NativeWindow
 ) -> None:
-    """Decision 12 of 0.17. Scrolled away, Week opened on the night again after Month, a new look or
-    Settings. Each of those opens it at now; a save while it shows leaves it where it is."""
+    """The 0.17.2 scroll decision replaces reopening at now after a page or look change."""
     from desktop.native.look import sanitize_look
 
     session = window.session
@@ -233,7 +258,7 @@ def test_todays_app_opens_at_now_every_time_it_is_shown_and_not_on_a_save(
     ):
         away()
         act()
-        opens_at(qapp, window, NOW, f"Week {how}")
+        assert hours(window).verticalScrollBar().value() == 0, how
 
 
 def test_after_plan_the_week_scrolls_to_the_first_homework_it_placed(
@@ -264,3 +289,211 @@ def test_after_plan_the_week_scrolls_to_the_first_homework_it_placed(
     start = int(placed["start"][:2]) * 60 + int(placed["start"][3:])
     first, last = span_shown(hours(window))
     assert first <= start <= last, f"{placed['start']} is not on screen ({first:.0f} to {last:.0f})"
+
+
+@pytest.mark.parametrize("today, month", [
+    ("2026-09-29", "2026-09"), ("2026-10-01", "2026-10"), ("2026-10-04", "2026-10"),
+])
+def test_month_and_mini_month_use_today_at_a_week_boundary(
+    qapp: QApplication, window: NativeWindow, today: str, month: str
+) -> None:
+    session = window.session
+    held = datetime.fromisoformat(today + "T10:20")
+    session.now_ms = lambda: int(held.timestamp() * 1000)
+    session.load_week("2026-09-28")
+    wait_until(qapp, lambda: not session.busy)
+    window._on_week()
+    assert window.rail.month.title.text() == ("September 2026" if month.endswith("09") else "October 2026")
+    window.findChild(QPushButton, "viewMonth").click()
+    wait_until(qapp, lambda: session.month_data is not None)
+    assert session.selected_month == month
+    assert [cell.iso for cell in window.month_grid.canvas.cells if cell.today] == [today]
+    window.findChild(QPushButton, "viewDay").click()
+    wait_until(qapp, lambda: not session.busy)
+    assert session.selected_day == today
+    window.findChild(QPushButton, "viewWeek").click()
+    wait_until(qapp, lambda: not session.busy)
+    window.findChild(QPushButton, "viewMyDay").click()
+    qapp.processEvents()
+    expected = {"2026-09-29": "Tuesday 29 September", "2026-10-01": "Thursday 1 October",
+                "2026-10-04": "Sunday 4 October"}
+    assert window.week_title.full_text() == expected[today]
+
+
+def test_month_keeps_a_picked_day_and_uses_thursday_for_a_week_without_today(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    session = window.session
+    held = datetime.fromisoformat("2026-09-29T10:20")
+    session.now_ms = lambda: int(held.timestamp() * 1000)
+    session.open_day("2026-09-30")
+    wait_until(qapp, lambda: not session.busy)
+    session.set_view("month")
+    wait_until(qapp, lambda: session.month_data is not None)
+    session.set_view("day")
+    wait_until(qapp, lambda: not session.busy)
+    assert session.selected_day == "2026-09-30"
+    session.set_view("week")
+    session.load_week("2026-10-26")
+    wait_until(qapp, lambda: not session.busy)
+    session.set_view("month")
+    wait_until(qapp, lambda: session.month_data is not None)
+    assert session.selected_month == "2026-10"
+
+
+@pytest.mark.parametrize("design", DESIGNS)
+def test_each_design_keeps_day_and_week_scroll_until_today_is_pressed(
+    qapp: QApplication, window: NativeWindow, design: str
+) -> None:
+    session = window.session
+    today = datetime.fromtimestamp(session.now_ms() / 1000).date().isoformat()
+    window._layout = sanitize_layout({"main": design, "day": "one"})
+    window._apply_appearance()
+    window._on_week()
+
+    def press(name: str) -> None:
+        window.findChild(QPushButton, name).click()
+        wait_until(qapp, lambda: not session.busy)
+        for _ in range(4):
+            qapp.processEvents()
+
+    def away() -> None:
+        scroll = hours(window)
+        bar = scroll.verticalScrollBar() if scroll.axis is Axis.DOWN else scroll.horizontalScrollBar()
+        bar.setValue(0)
+        qapp.processEvents()
+
+    def stays(where: str) -> None:
+        scroll = hours(window)
+        bar = scroll.verticalScrollBar() if scroll.axis is Axis.DOWN else scroll.horizontalScrollBar()
+        assert bar.value() == 0, f"{design} {where} moved the hours away from midnight"
+
+    press("viewWeek")
+    away()
+    session.open_day(today)
+    wait_until(qapp, lambda: not session.busy)
+    away()
+    press("viewWeek")
+    stays("Week after Day")
+    press("viewDay")
+    stays("Day after Week")
+    session.open_day((date.fromisoformat(today) + timedelta(days=1)).isoformat())
+    wait_until(qapp, lambda: not session.busy)
+    session.open_day(today)
+    wait_until(qapp, lambda: not session.busy)
+    stays("Day after another day")
+    press("viewWeek")
+    press("viewMonth")
+    press("viewWeek")
+    stays("Week after Month")
+    window._open_focus_screen()
+    window._close_focus_screen()
+    qapp.processEvents()
+    stays("Week after Focus")
+    press("todayWeek")
+    opens_at(qapp, window, NOW, f"{design} Today")
+    away()
+    press("nextWeek")
+    press("prevWeek")
+    opens_at(qapp, window, NOW, f"{design} returning to this week")
+    press("nextWeek")
+    session.add_block({"id": "future-dinner", "title": "Dinner", "kind": "locked", "category": "meals",
+                       "start": "18:00", "duration_min": 30, "days": [0]})
+    wait_until(qapp, lambda: not session.busy)
+    away()
+    press("prevWeek")
+    opens_at(qapp, window, NOW, f"{design} returning to this week after scrolling next week")
+    press("nextWeek")
+    stays("next week after Today reopened this week")
+
+
+@pytest.mark.parametrize("design", DESIGNS)
+def test_today_opens_this_week_at_now_and_leaves_the_week_it_was_pressed_from_where_it_was(
+    qapp: QApplication, window: NativeWindow, design: str
+) -> None:
+    """Today opens this week at now. Next week, scrolled before Today was pressed, is where the student
+    left it when they go forward to it again."""
+    session = window.session
+    window._layout = sanitize_layout({"main": design, "day": "one"})
+    window._apply_appearance()
+    window._on_week()
+
+    def press(name: str) -> None:
+        window.findChild(QPushButton, name).click()
+        wait_until(qapp, lambda: not session.busy)
+        for _ in range(4):
+            qapp.processEvents()
+
+    def bar() -> QScrollBar:
+        scroll = hours(window)
+        return scroll.verticalScrollBar() if scroll.axis is Axis.DOWN else scroll.horizontalScrollBar()
+
+    press("viewWeek")
+    press("nextWeek")
+    # Today's app shows an empty week as one button, not hours.
+    session.add_block({"id": "future-dinner", "title": "Dinner", "kind": "locked", "category": "meals",
+                       "start": "18:00", "duration_min": 30, "days": [0]})
+    session.save()
+    wait_until(qapp, lambda: not session.busy and not session.dirty)
+    for _ in range(4):
+        qapp.processEvents()
+    opened = bar().value()
+    bar().setValue(opened + 40 if opened + 40 <= bar().maximum() else opened - 40)
+    left = bar().value()
+    assert abs(left - opened) == 40, f"{design}: next week's hours have no room to scroll"
+    press("todayWeek")
+    assert session.week_start == monday_of(date.today().isoformat())
+    opens_at(qapp, window, NOW, f"{design} Today from next week")
+    press("nextWeek")
+    assert bar().value() == left, f"{design}: Today lost where next week was scrolled to"
+
+
+@pytest.mark.parametrize("design", DESIGNS)
+def test_each_design_keeps_the_week_where_it_was_through_a_new_text_size(
+    qapp: QApplication, window: NativeWindow, design: str
+) -> None:
+    """Timeline and Bento make their hours again for a new text size. Those are where the student left
+    the week, not at now, like every other look change."""
+    from desktop.native.look import sanitize_look
+
+    session = window.session
+    window._layout = sanitize_layout({"main": design, "day": "one"})
+    window._apply_appearance()
+    window._on_week()
+    window.findChild(QPushButton, "viewWeek").click()
+    wait_until(qapp, lambda: not session.busy)
+    for _ in range(4):
+        qapp.processEvents()
+    scroll = hours(window)
+    bar = scroll.verticalScrollBar() if scroll.axis is Axis.DOWN else scroll.horizontalScrollBar()
+    opened = bar.value()
+    bar.setValue(opened + 40 if opened + 40 <= bar.maximum() else opened - 40)
+    assert bar.value() != opened
+    left = span_shown(scroll)[0]
+    window._look = sanitize_look({"knobs": {"text": "large"}})
+    window._apply_appearance()
+    window._on_week()
+    for _ in range(4):
+        qapp.processEvents()
+    top = span_shown(hours(window))[0]
+    assert abs(top - left) <= 2, f"{design}: a new text size moved the week from {left:.0f} to {top:.0f}"
+
+
+def test_my_day_title_names_the_day_chosen_on_its_strip(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from desktop.native.layouts.dial import DialFace
+
+    window._layout = sanitize_layout({"main": "classic", "day": "dial"})
+    window._enter_day()
+    for _ in range(4):
+        qapp.processEvents()
+    face = next(face for face in window.planner.currentWidget().findChildren(DialFace)
+                if face.mini and face.day == 4)
+    QTest.mouseClick(face, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, face.rect().center())
+    qapp.processEvents()
+    chosen = date.fromisoformat(window.session.week_start) + timedelta(days=4)
+    assert window.week_title.full_text() == f"Friday {chosen.day} {chosen.strftime('%B')}"

@@ -1,0 +1,114 @@
+[
+ {
+  "name": "mini month always uses Thursday",
+  "file": "desktop/native/hours/rail.py",
+  "old": "            anchor = today if in_week else first + timedelta(days=3)\n",
+  "new": "            anchor = first + timedelta(days=3)\n",
+  "test": "desktop/tests/test_hours_open.py::test_month_and_mini_month_use_today_at_a_week_boundary"
+ },
+ {
+  "name": "Month always uses Thursday",
+  "file": "desktop/native/controller.py",
+  "old": "            today if monday_of(today) == self.week_start else date_for_day(self.week_start, 3)\n",
+  "new": "            date_for_day(self.week_start, 3)\n",
+  "test": "desktop/tests/test_hours_open.py::test_month_and_mini_month_use_today_at_a_week_boundary"
+ },
+ {
+  "name": "Month discards the picked day",
+  "file": "desktop/native/controller.py",
+  "old": "        anchor = self.selected_day if self.selected_day[:7] == self.selected_month else (\n            month_anchor_date(self.selected_month, today)\n        )\n",
+  "new": "        anchor = month_anchor_date(self.selected_month, today)\n",
+  "test": "desktop/tests/test_hours_open.py::test_month_keeps_a_picked_day_and_uses_thursday_for_a_week_without_today"
+ },
+ {
+  "name": "My day shows the underlying view title",
+  "file": "desktop/native/window.py",
+  "old": "        title_view = \"myday\" if self._day_mode else view\n",
+  "new": "        title_view = view\n",
+  "test": "desktop/tests/test_hours_open.py::test_month_and_mini_month_use_today_at_a_week_boundary"
+ },
+ {
+  "name": "Month ignores the injected clock",
+  "file": "desktop/native/hours/month.py",
+  "old": "month_cells(snapshot, weeks, today_iso or date.today().isoformat())",
+  "new": "month_cells(snapshot, weeks, date.today().isoformat())",
+  "test": "desktop/tests/test_hours_open.py::test_month_and_mini_month_use_today_at_a_week_boundary"
+ },
+ {
+  "name": "Day loses a visited scroll position",
+  "file": "desktop/native/hours/zoom.py",
+  "old": "            if key in self._positions:\n",
+  "new": "            if False:\n",
+  "test": "desktop/tests/test_hours_open.py::test_each_design_keeps_day_and_week_scroll_until_today_is_pressed"
+ },
+ {
+  "name": "scroll retention clamps away the leading padding",
+  "file": "desktop/native/hours/zoom.py",
+  "old": "        return start + track.offset(minute)\n",
+  "new": "        return start + track.offset(min(max(minute, track.first), track.last))\n",
+  "test": "desktop/tests/test_hours_open.py::test_each_design_keeps_day_and_week_scroll_until_today_is_pressed"
+ },
+ {
+  "name": "Today cannot reopen an unchanged design scene",
+  "file": "desktop/native/window.py",
+  "old": "                    scroll.scroll_to(minute, None)\n",
+  "new": "                    pass\n",
+  "test": "desktop/tests/test_hours_open.py::test_each_design_keeps_day_and_week_scroll_until_today_is_pressed"
+ },
+ {
+  "name": "My day ignores a day chosen on its strip",
+  "file": "desktop/native/layouts/dial.py",
+  "old": "        self.watched_day_changed.emit(scene.week.date_of(day).isoformat())\n",
+  "new": "        pass\n",
+  "test": "desktop/tests/test_hours_open.py::test_my_day_title_names_the_day_chosen_on_its_strip"
+ },
+ {
+  "name": "Today also discards future weeks scroll",
+  "file": "desktop/native/window.py",
+  "old": "                scroll.forget(None if clear_all else self.session.week_start)\n",
+  "new": "                scroll.forget()\n",
+  "test": "desktop/tests/test_hours_open.py::test_each_design_keeps_day_and_week_scroll_until_today_is_pressed"
+ },
+ {
+  "name": "Today from another week forgets where that week was",
+  "file": "desktop/native/window.py",
+  "old": "        if self._clock_in_week()[0] is not None:\n            # From another week,",
+  "new": "        if True:\n            # From another week,",
+  "test": "desktop/tests/test_hours_open.py::test_today_opens_this_week_at_now_and_leaves_the_week_it_was_pressed_from_where_it_was"
+ },
+ {
+  "name": "a day left while its hours have no room is forgotten",
+  "file": "desktop/native/hours/zoom.py",
+  "old": "        return self._top if shown is None else shown\n",
+  "new": "        return shown\n",
+  "test": "desktop/tests/test_hours_zoom.py::test_a_week_left_while_its_hours_have_no_room_is_where_it_was_when_it_is_shown_again"
+ },
+ {
+  "name": "a place gone back to with no room is never put back",
+  "file": "desktop/native/hours/zoom.py",
+  "old": "        if not self.canvas.tracks:\n            self._short_at = bar.value()\n            return\n",
+  "new": "        if not self.canvas.tracks:\n            return\n",
+  "test": "desktop/tests/test_hours_zoom.py::test_a_week_gone_back_to_while_its_hours_have_no_room_is_put_where_it_was_once_they_do"
+ },
+ {
+  "name": "hours never shown are remembered where they lay",
+  "file": "desktop/native/hours/zoom.py",
+  "old": "        if self._pending is not None:\n            return None\n        bar = self._bar()\n",
+  "new": "        bar = self._bar()\n",
+  "test": "desktop/tests/test_hours_zoom.py::test_a_week_asked_for_and_never_shown_has_no_place_to_go_back_to"
+ },
+ {
+  "name": "a place waited for is remembered over where the student scrolled",
+  "file": "desktop/native/hours/zoom.py",
+  "old": "            self._short_at is None or bar.value() == min(self._short_at, bar.maximum())\n        ):\n            return self._kept\n",
+  "new": "            True\n        ):\n            return self._kept\n",
+  "test": "desktop/tests/test_hours_zoom.py::test_a_week_scrolled_while_its_hours_waited_for_room_is_left_where_it_was_scrolled_to"
+ },
+ {
+  "name": "hours made again for a new text size open at now",
+  "file": "desktop/native/layouts/base.py",
+  "old": "            scroll.take_places(before)\n",
+  "new": "            pass\n",
+  "test": "desktop/tests/test_hours_open.py::test_each_design_keeps_the_week_where_it_was_through_a_new_text_size"
+ }
+]

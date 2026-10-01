@@ -32,7 +32,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QStackedWidget,
-    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -41,12 +40,12 @@ from backend.models import valid_spotify_url
 from backend.slots import SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm
 from desktop.native import icons
 from desktop.native.calendar import (
-    DAY_FULL,
     SETUP_ACTIVITY_PREFIX,
     SETUP_SCHOOL_ID,
     is_setup_block,
     sunday_due,
 )
+from desktop.native.fields import QUICK_LENGTHS, ClockField, DayPicker, Stepper
 from desktop.native.fonts import numeral
 from desktop.native.hours.geometry import drag_step
 from desktop.native.layouts.registry import (
@@ -79,8 +78,16 @@ from desktop.native.settings import (
 from desktop.native.sound import Bell
 from desktop.native.tokens import WEIGHT_STRONG
 from desktop.native.tones import FALLBACK, RECIPES
-from desktop.native.weekmodel import clock_text, hhmm_text, time_format
-from desktop.native.widgets import DAYS, ChoiceCard, DueField, FlowLayout, rounded_picture
+from desktop.native.weekmodel import clock_text, hhmm_text
+from desktop.native.widgets import (
+    CARD_WIDTH_PAD,
+    DAYS,
+    CardGrid,
+    ChoiceCard,
+    DueField,
+    FlowLayout,
+    rounded_picture,
+)
 from desktop.native.work_windows import WorkWindowsEditor
 
 SETUP_VERSION = 1
@@ -152,7 +159,7 @@ STYLES = (
     Style(
         "plain",
         "Plain calendar",
-        "Calendar · Today's app. Your week as a grid, like a timetable.",
+        "Today's app. Your week as a grid, like a timetable.",
         "classic",
         None,
         "light-frost",
@@ -160,7 +167,7 @@ STYLES = (
     Style(
         "dashboard",
         "Dashboard",
-        "Dashboard · Bento in indigo. What's next and what's due, as tiles.",
+        "Bento in indigo. What's next and what's due, as tiles.",
         "bento",
         "indigo",
         "light-frost",
@@ -168,7 +175,7 @@ STYLES = (
     Style(
         "night",
         "Night owl",
-        "Agenda · Timeline at night, with compact spacing.",
+        "Timeline at night, with compact spacing.",
         "timeline",
         "night",
         "dark-frost",
@@ -178,7 +185,7 @@ STYLES = (
     Style(
         "retro",
         "Retro",
-        "Dashboard · Retro desktop in teal, with large text.",
+        "Retro desktop in teal, with large text.",
         "retro",
         "teal",
         "light-frost",
@@ -241,7 +248,7 @@ def days_label(days: list[int]) -> str:
 
 
 def _design_chips(specs: tuple[LayoutSpec, ...]) -> tuple[tuple[str, str], ...]:
-    return tuple((spec.id, f"{spec.purpose} · {spec.label}") for spec in specs)
+    return tuple((spec.id, spec.label) for spec in specs)
 
 
 def span_label(start: str, minutes: int) -> str:
@@ -297,16 +304,15 @@ def _quiet(text: str, name: str = "setupQuiet") -> QPushButton:
     return button
 
 
-def _card_grid(box: QVBoxLayout) -> QGridLayout:
+def _card_grid(box: QVBoxLayout, picture: int) -> CardGrid:
     """A grid for picture cards, added to `box`. A grid, not a flow: a flow sizes each card by its
-    hint and cannot give a name that wraps its second line, so the name was drawn over the picture."""
-    cards = QWidget()
+    hint and cannot give a name that wraps its second line, so the name was drawn over the picture.
+    As many columns as the page has room for: two fixed columns ran off the right edge of a narrow
+    window."""
+    cards = CardGrid(picture + CARD_WIDTH_PAD, 14)
     cards.setObjectName("setupRow")
-    grid = QGridLayout(cards)
-    grid.setContentsMargins(0, 0, 0, 0)
-    grid.setSpacing(14)
     box.addWidget(cards)
-    return grid
+    return cards
 
 
 def _centred_column(line: QHBoxLayout) -> QWidget:
@@ -413,43 +419,13 @@ class Chips(QWidget):
         return [button for button in self._group.buttons() if isinstance(button, QPushButton)]
 
 
-class DayPicker(QWidget):
-    changed = Signal()
-
-    def __init__(self, days: list[int] | tuple[int, ...] = ()) -> None:
-        super().__init__()
-        self.setObjectName("setupRow")
-        line = QHBoxLayout(self)
-        line.setContentsMargins(0, 0, 0, 0)
-        line.setSpacing(4)
-        self.buttons: list[QPushButton] = []
-        for index, name in enumerate(DAYS):
-            button = QPushButton(name)
-            button.setObjectName("setupDay")
-            button.setCheckable(True)
-            button.setChecked(index in days)
-            button.setAccessibleName(DAY_FULL[index])
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.toggled.connect(self.changed)
-            line.addWidget(button)
-            self.buttons.append(button)
-
-    def days(self) -> list[int]:
-        return [index for index, button in enumerate(self.buttons) if button.isChecked()]
-
-    def set_days(self, days: list[int]) -> None:
-        for index, button in enumerate(self.buttons):
-            button.setChecked(index in days)
-
-
-class QuarterTime(QTimeEdit):
-    """A time of day. The arrows and the wheel move the minutes a quarter hour at a time; a time typed
-    between quarters keeps its minute, as the block editor does."""
+class QuarterTime(ClockField):
+    """A time of day, typed. The arrow keys and the wheel move the minutes a quarter hour at a time; a
+    time typed between quarters keeps its minute, as the block editor does."""
 
     def __init__(self, hhmm: str) -> None:
         super().__init__(QTime.fromString(hhmm, "HH:mm"))
         self.setObjectName("setupTime")
-        self.setDisplayFormat(time_format())
         self.setCorrectionMode(QAbstractSpinBox.CorrectionMode.CorrectToNearestValue)
 
     def minutes(self) -> int:
@@ -504,7 +480,8 @@ class ActivityRow(QFrame):
     removed = Signal(object)
 
     def __init__(
-        self, title: str = "", days: list[int] | None = None, start: str = "15:30", minutes: int = 90
+        self, title: str = "", days: list[int] | None = None, start: str = "15:30", minutes: int = 90,
+        category: str = "extra",
     ) -> None:
         super().__init__()
         self.setObjectName("setupGroup")
@@ -519,11 +496,20 @@ class ActivityRow(QFrame):
         remove = _quiet("Remove")
         remove.setAccessibleName("Remove this activity")
         remove.clicked.connect(lambda: self.removed.emit(self))
+        self.category = QComboBox()
+        self.category.setObjectName("setupActivityCategory")
+        self.category.setAccessibleName("Sports or Activity")
+        self.category.addItem("Activity", "extra")
+        self.category.addItem("Sports", "exercise")
+        self.category.setCurrentIndex(max(0, self.category.findData(category)))
         top = QHBoxLayout()
         top.addWidget(self.name, 1)
+        top.addWidget(self.category)
         top.addWidget(remove)
         box.addLayout(top)
-        self.days = DayPicker(days or [])
+        # The days and times as School's line has them, under the name, so the two columns of times
+        # stand at one x down the page.
+        self.days = DayPicker(days or [], "setupDay")
         self.times = TimeRange(start, minutes_to_hhmm(hhmm_to_minutes(start) + minutes), "Activity")
         bottom = FlowLayout(gap=12)
         bottom.addWidget(self.days)
@@ -543,7 +529,7 @@ class HomeworkRow(QFrame):
         grid.setVerticalSpacing(8)
         self.name = QLineEdit()
         self.name.setObjectName("setupHomeworkName")
-        self.name.setPlaceholderText("History essay")
+        self.name.setPlaceholderText("e.g. History essay")
         self.name.setMaxLength(80)
         self.name.setAccessibleName("Homework name")
         self.minutes = QSpinBox()
@@ -561,7 +547,7 @@ class HomeworkRow(QFrame):
         grid.addWidget(self.name, 0, 1, 1, 3)
         grid.addWidget(remove, 0, 4)
         grid.addWidget(_label("Takes", "setupFieldLabel", wrap=False), 1, 0)
-        grid.addWidget(self.minutes, 1, 1)
+        grid.addWidget(Stepper(self.minutes, QUICK_LENGTHS), 1, 1)
         grid.addWidget(_label("Due", "setupFieldLabel", wrap=False), 1, 2)
         grid.addWidget(self.due, 1, 3, 1, 2)
         grid.setColumnStretch(3, 1)
@@ -726,13 +712,13 @@ class SetupPage(QWidget):
             styles = [style for style in STYLES if LAYOUTS[style.main].experimental == experimental]
             if experimental:
                 self._section(box, EXPERIMENTAL)
-            grid = _card_grid(box)
-            for index, style in enumerate(styles):
+            cards = []
+            for style in styles:
                 card = ChoiceCard(style.name, style.note, STYLE_THUMB)
                 card.chosen.connect(lambda style=style: self._choose_style(style))
-                grid.addWidget(card, index // 2, index % 2)
+                cards.append(card)
                 self.style_cards[style.key] = card
-            grid.setColumnStretch(2, 1)
+            _card_grid(box, STYLE_THUMB).set_cards(cards)
         own = _quiet(OWN_LOOK_LABEL, "setupOwnLook")
         own.clicked.connect(self._choose_own_look)
         box.addWidget(own, 0, Qt.AlignmentFlag.AlignLeft)
@@ -747,13 +733,13 @@ class SetupPage(QWidget):
         for experimental in (False, True):
             if experimental:
                 self._section(box, EXPERIMENTAL)
-            grid = _card_grid(box)
-            for index, spec in enumerate(layouts_for("plan", experimental)):
-                card = ChoiceCard(f"{spec.purpose} · {spec.label}", spec.summary, LOOK_THUMB)
+            cards = []
+            for spec in layouts_for("plan", experimental):
+                card = ChoiceCard(spec.label, spec.summary, LOOK_THUMB)
                 card.chosen.connect(lambda layout_id=spec.id: self._choose_main(layout_id))
-                grid.addWidget(card, index // 3, index % 3)
+                cards.append(card)
                 self.look_cards[spec.id] = card
-            grid.setColumnStretch(3, 1)
+            _card_grid(box, LOOK_THUMB).set_cards(cards)
         return content
 
     def _build_colours(self) -> QWidget:
@@ -821,12 +807,12 @@ class SetupPage(QWidget):
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
         box.addWidget(_label("School", "setupSection"))
-        self.school_days = DayPicker([0, 1, 2, 3, 4])
+        self.school_days = DayPicker([0, 1, 2, 3, 4], "setupDay")
         self.school_times = TimeRange("08:00", "14:30", "School")
-        school = QWidget()
-        school.setObjectName("setupRow")
+        school = QFrame()
+        school.setObjectName("setupGroup")
         school_line = FlowLayout(school, gap=12)
-        school_line.setContentsMargins(0, 0, 0, 0)
+        school_line.setContentsMargins(12, 10, 12, 10)
         school_line.addWidget(self.school_days)
         school_line.addWidget(self.school_times)
         box.addWidget(school)
@@ -880,8 +866,15 @@ class SetupPage(QWidget):
             box.addWidget(button)
         self._section(box, "When may FlexWeek plan homework?")
         self.work_editor = WorkWindowsEditor([])
-        # Next is the one filled button on every page; a second one here read as the way on.
-        self.work_editor.add_button.setProperty("quiet", True)
+        # Next is the one filled button on every page; a second filled one here read as the way on.
+        # The presets are pills like the day picker's, which add a row rather than pick one; an
+        # outlined button adds the custom one.
+        for preset in self.work_editor.findChildren(QPushButton):
+            if not preset.objectName().startswith("workWindowPreset"):
+                continue
+            preset.setProperty("quiet", False)
+            preset.setProperty("chip", True)
+        self.work_editor.add_button.setProperty("outline", True)
         box.addWidget(self.work_editor)
         return content
 
@@ -900,7 +893,7 @@ class SetupPage(QWidget):
         self.lead.setSingleStep(5)
         self.lead.setSuffix(" min before")
         self.lead.setAccessibleName("How long before")
-        box.addWidget(_row(self.lead))
+        box.addWidget(_row(Stepper(self.lead)))
         self.reminders.toggled.connect(self.lead.setEnabled)
         self._section(box, "Alarm sound")
         self.tones = QButtonGroup(content)
@@ -939,7 +932,7 @@ class SetupPage(QWidget):
         self.tones.buttonToggled.connect(lambda *_args: self._follow_tone())
         self.test = QPushButton("Send a test reminder")
         self.test.setObjectName("setupTest")
-        self.test.setProperty("quiet", True)
+        self.test.setProperty("outline", True)
         self.test.clicked.connect(self._send_test)
         self.test_result = _label("", "setupHint")
         box.addSpacing(6)
@@ -1061,6 +1054,7 @@ class SetupPage(QWidget):
                     days=list(block.get("days") or []),
                     start=str(block["start"]),
                     minutes=int(block["duration_min"]),
+                    category=str(block.get("category") or "extra"),
                 )
         if not self.activities:
             self._add_activity()
@@ -1338,10 +1332,11 @@ class SetupPage(QWidget):
         start: str = "15:30",
         minutes: int = 90,
         focus: bool = False,
+        category: str = "extra",
     ) -> None:
         if len(self.activities) >= MAX_ACTIVITIES:
             return
-        row = ActivityRow(title, days, start, minutes)
+        row = ActivityRow(title, days, start, minutes, category)
         row.removed.connect(self._remove_activity)
         self.activity_box.addWidget(row)
         self.activities.append(row)
@@ -1385,7 +1380,7 @@ class SetupPage(QWidget):
                     "id": f"{SETUP_ACTIVITY_PREFIX}{index + 1}",
                     "title": row.name.text().strip() or SPORT_FALLBACK,
                     "kind": "locked",
-                    "category": "extra",
+                    "category": row.category.currentData(),
                     "start": start,
                     "duration_min": minutes,
                     "days": days,
@@ -1553,7 +1548,7 @@ class SetupPage(QWidget):
         else:
             colour_name = PACK_LABELS.get(state.pack, "your colours")
         text = effective_look(state.look)["text"]
-        look = f"{spec.purpose} · {spec.label} in {colour_name}"
+        look = f"{spec.label} in {colour_name}"
         if text != "normal":
             look += f", {text} text"
         week_parts = []

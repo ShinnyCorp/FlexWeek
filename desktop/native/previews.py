@@ -69,7 +69,7 @@ def sample_week(today: date | None = None) -> tuple[str, list[dict], dict[str, d
     }
     blocks = [
         _block("school", "School", "locked", "class", [0, 1, 2, 3, 4], "08:00", 390),
-        _block("soccer", "Soccer", "locked", "extra", [1, 3], "15:30", 90),
+        _block("soccer", "Soccer", "locked", "exercise", [1, 3], "15:30", 90),
         _block("dinner", "Dinner", "locked", "meals", [0, 1, 2, 3, 4, 5, 6], "18:00", 30),
         _block(
             "essay-1", "History essay", "flexible", "assignments", [2], "19:00", 60, assignment_id="essay"

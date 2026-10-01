@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from desktop.native.tokens import family_colours
+
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="Desktop dependencies absent"
 )
@@ -64,8 +66,9 @@ SCHOOL = {
 }
 CLUB = {"id": "club", "title": "Club", "kind": "locked", "start": "10:00", "duration_min": 30, "days": [1]}
 # School's colours: the pale fill and strong mark of a light look, and the tone and mark of a dark one.
-PALE, STRONG = "#d1e7ff", "#4687d8"
-TONE, DEEP_MARK = "#65a7fa", "#65a7fa"
+SCHOOL_FAMILY = family_colours(250)
+PALE, STRONG = SCHOOL_FAMILY["light"]
+TONE, DEEP_MARK = SCHOOL_FAMILY["dark"]
 # The hosts of the hands these tests make: a hand is its host's Qt child and keeps no reference to it.
 HOSTS: list = []
 
@@ -373,10 +376,14 @@ def test_a_dialogs_content_sits_24_px_in_from_its_edges(qapp: QApplication) -> N
     use_app_style(qapp)
     host = QWidget()
     HOSTS.append(host)
-    about = AboutDialog(host, None, "/tmp/flexweek")
-    margins = about.layout().contentsMargins()
+    window_dialog = QDialog(host)
+    margins = QVBoxLayout(window_dialog).contentsMargins()
     assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (DIALOG_MARGIN,) * 4
     assert DIALOG_MARGIN == 24
+    # A sheet draws its own card, which is padded the same 24 inside the room for its shadow.
+    about = AboutDialog(host, None, "/tmp/flexweek")
+    margins = about.card.layout().contentsMargins()
+    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (DIALOG_MARGIN,) * 4
     plain = QDialog(host)
     outer = QVBoxLayout(plain)
     inner_host = QWidget()

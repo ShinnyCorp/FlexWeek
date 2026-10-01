@@ -9,7 +9,7 @@
  {
   "file": "desktop/native/layouts/mission.py",
   "name": "no name beside a block",
-  "old": "        if self._beside(painter, rect, drawn):\n",
+  "old": "        if self._beside(painter, rect, drawn, visible):\n",
   "new": "        if False:\n",
   "test": "desktop/tests/test_layout_mission.py::test_a_name_that_cannot_fit_is_written_beside_its_block_where_the_lane_is_free"
  },
@@ -103,5 +103,40 @@
   "old": "            accent=\"#7fa8ff\",\n            accent_ink=\"#0b1224\",\n            line=\"#2c3846\",\n",
   "new": "            line=\"#2c3846\",\n",
   "test": "desktop/tests/test_layout_mission.py::test_flight_deck_is_the_mock_ups_signature_in_flexweeks_blue_whatever_the_look"
+ },
+ {
+  "file": "desktop/native/layouts/mission.py",
+  "name": "now pill drawn over an hour label",
+  "old": "            if pill is None or not box.intersects(pill.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0)):\n",
+  "new": "            if True:\n",
+  "test": "desktop/tests/test_layout_mission.py::test_the_now_pill_covers_no_hour_label_at_any_zoom"
+ },
+ {
+  "file": "desktop/native/layouts/mission.py",
+  "name": "lanes open before the evening",
+  "old": "    return min(max([EVENING, *(item.end for item in items)]) + END_ROOM, 24 * 60)\n",
+  "new": "    return 16 * 60\n",
+  "test": "desktop/tests/test_layout_mission.py::test_the_lanes_of_another_week_open_through_the_evening"
+ },
+ {
+  "file": "desktop/native/layouts/mission.py",
+  "name": "a name beside a block runs past the edge of what shows",
+  "old": "        first, last = max(first, visible.left()), min(last, visible.right())\n",
+  "new": "",
+  "test": "desktop/tests/test_layout_mission.py::test_a_name_written_beside_a_block_stays_inside_what_shows"
+ },
+ {
+  "file": "desktop/native/layouts/mission.py",
+  "name": "the lanes open without now in view",
+  "old": "            keep=scene.minute if at_now else None,\n",
+  "new": "            keep=None,\n",
+  "test": "desktop/tests/test_layout_mission.py::test_now_is_on_screen_when_the_evening_does_not_fit_with_it"
+ },
+ {
+  "file": "desktop/native/layouts/mission.py",
+  "name": "another day's lanes open at now",
+  "old": "(not is_day or day == scene.today)",
+  "new": "True",
+  "test": "desktop/tests/test_layout_mission.py::test_the_day_after_today_opens_through_the_evening_whatever_the_time_now"
  }
 ]

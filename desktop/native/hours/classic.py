@@ -33,7 +33,8 @@ from desktop.native.hours.geometry import FIRST, LAST, Axis, LinearTrack
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.rail import Colours
 from desktop.native.hours.zoom import HoursScroll, Scale, opening_minute
-from desktop.native.look import category_paint, mix, text_scale
+from desktop.native.layouts.base import short_length
+from desktop.native.look import category_paint, mix, readable_ink, text_scale
 from desktop.native.tokens import SPACING, WEIGHT_STRONG
 from desktop.native.weekmodel import (
     HOMEWORK,
@@ -49,10 +50,16 @@ DAY_SCALE = Scale("classic.day", (96, 128, 160, 192), 96)
 WEEK_SCALE = Scale("classic.week", (32, 48, 64, 96, 128), 48)
 DAY_HOUR_PX = DAY_SCALE.default
 WEEK_HOUR_PX = WEEK_SCALE.default
-# Room above 00:00 and below 24:00, so their hour labels are never cut.
+# Room above 00:00 and below 24:00, so the labels at either end of the hours are never cut.
 PAD = 12
 GUTTER = 60
 AGENDA_PX = 288
+# An empty Saturday or Sunday takes this share of a full day's width, and never less than EMPTY_MIN_PX
+# (or the equal share where that is already smaller): a block dropped there still reads, with its
+# icon, the first word of its name and its times.
+WEEKEND = (5, 6)
+EMPTY_SHARE = 0.6
+EMPTY_MIN_PX = 96
 # How much of the accent the time now's line across the rest of the week takes.
 NOW_ACROSS = 0.45
 
@@ -90,6 +97,7 @@ class ClassicPainter(BlockPainter):
     the gutter where the hour labels are."""
 
     now_in_gutter = True
+    end_label = False
 
     def background(self, painter: QPainter, rect: QRectF) -> None:
         painter.fillRect(rect, self.c("panel") if "panel" in self.colours else self.c("window"))
@@ -97,7 +105,7 @@ class ClassicPainter(BlockPainter):
     def track(self, painter: QPainter, track: LinearTrack, today: bool) -> None:
         super().track(painter, track, today)
         if not today and self.now_minute is not None and not self.wide:
-            faint = self.c("accent")
+            faint = self.c("now")
             faint.setAlphaF(NOW_ACROSS)
             at = track.area.top() + track.offset(self.now_minute)
             painter.setPen(QPen(faint, 1))
@@ -112,11 +120,11 @@ class ClassicPainter(BlockPainter):
         start, end = QPointF(area.left() - 1, at), QPointF(area.right(), at)
         painter.setPen(QPen(halo, 5))
         painter.drawLine(start, end)
-        painter.setPen(QPen(self.c("accent"), 2))
+        painter.setPen(QPen(self.c("now"), 2))
         painter.drawLine(start, end)
         if not self.wide:
             painter.setPen(QPen(halo, 2))
-            painter.setBrush(self.c("accent"))
+            painter.setBrush(self.c("now"))
             painter.drawEllipse(QPointF(area.left() + 1, at), 5, 5)
 
     def hour_labels(
@@ -138,9 +146,9 @@ class ClassicPainter(BlockPainter):
         at = track.area.top() + track.offset(self.now_minute)
         pill = QRectF(track.area.left() - 3 - width, at - height / 2, width, height)
         painter.setPen(QPen(self.c("panel") if "panel" in self.colours else self.c("window"), 2))
-        painter.setBrush(self.c("accent"))
+        painter.setBrush(self.c("now"))
         painter.drawRoundedRect(pill, height / 2, height / 2)
-        painter.setPen(self.c("accent_ink"))
+        painter.setPen(QColor(readable_ink(self.colours.get("now", self.colours["accent"]))))
         painter.setFont(font)
         painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
 
@@ -191,6 +199,21 @@ class DayName(QLabel):
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         return QSize(0, self.sizeHint().height())
 
+    def _homework_left(self, icon: int) -> float:
+        return SPACING[2] + icon + SPACING[0]
+
+    def _homework_room(self, icon: int) -> float:
+        return self.width() - self._homework_left(icon) - SPACING[1]
+
+    def homework_words(self) -> str:
+        """The day's homework length whole, or in the shorter form where the column is too narrow for it."""
+        small = self._fonts()[2]
+        metrics = QFontMetricsF(small)
+        whole = length_label(self.homework)
+        if metrics.horizontalAdvance(whole) <= self._homework_room(round(metrics.ascent())):
+            return whole
+        return short_length(self.homework)
+
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -202,7 +225,7 @@ class DayName(QLabel):
         x = float(SPACING[2])
         name_font = strong if today else body
         painter.setFont(name_font)
-        painter.setPen(QColor(colours.accent if today else colours.muted))
+        painter.setPen(QColor(colours.accent_text if today else colours.muted))
         name_width = QFontMetricsF(name_font).horizontalAdvance(self.name)
         painter.drawText(QRectF(x, y, name_width + 1, top), Qt.AlignmentFlag.AlignVCenter, self.name)
         x += name_width + SPACING[0]
@@ -230,9 +253,9 @@ class DayName(QLabel):
             painter.setFont(small)
             painter.setPen(QColor(colours.muted))
             painter.drawText(
-                QRectF(SPACING[2] + size + SPACING[0], below, self.width(), line),
+                QRectF(self._homework_left(size), below, self._homework_room(size), line),
                 Qt.AlignmentFlag.AlignVCenter,
-                length_label(self.homework),
+                self.homework_words(),
             )
         painter.end()
 
@@ -244,12 +267,20 @@ class DayName(QLabel):
         super().mousePressEvent(event)
 
 
-def _seven_columns(area: QRectF) -> list[LinearTrack]:
-    width = area.width() / 7
-    return [
-        LinearTrack(day, QRectF(area.left() + day * width, area.top() + PAD, width, area.height() - 2 * PAD))
-        for day in range(7)
-    ]
+def column_widths(total: float, empty: frozenset[int]) -> list[float]:
+    """The seven days' widths over `total` pixels: equal, except that an empty weekend day is narrower
+    (see EMPTY_SHARE) and the days with something in them share what that leaves, equally."""
+    share = total / 7
+    quiet = [day for day in WEEKEND if day in empty]
+    if not quiet:
+        return [share] * 7
+    narrow = min(share, max(EMPTY_MIN_PX, share * EMPTY_SHARE))
+    full = (total - narrow * len(quiet)) / (7 - len(quiet))
+    return [narrow if day in quiet else full for day in range(7)]
+
+
+def _empty_days(week: WeekModel) -> frozenset[int]:
+    return frozenset(day for day in range(7) if not week.on_day(day))
 
 
 class ClassicWeek(QFrame):
@@ -262,7 +293,10 @@ class ClassicWeek(QFrame):
         self.setObjectName("weekTable")
         self.week_start = ""
         self._shown: tuple[WeekModel, int | None, int | None] | None = None
-        self.hours = HoursCanvas(hand, ClassicPainter({}), _seven_columns, gutter=GUTTER, names=self._name)
+        self._empty: frozenset[int] = frozenset()
+        self.hours = HoursCanvas(
+            hand, ClassicPainter({}), self._seven_columns, gutter=GUTTER, names=self._name
+        )
         self.hours.setObjectName("weekHours")
         self.hours.day_opened.connect(self.day_opened.emit)
         self.scroll = HoursScroll(self.hours, WEEK_SCALE, _hours_height, name="week", gutter=GUTTER)
@@ -271,6 +305,7 @@ class ClassicWeek(QFrame):
         row = QHBoxLayout(names)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
+        self._names_row = row
         self._name_labels: list[DayName] = []
         for day in range(7):
             name = DayName(day)
@@ -283,6 +318,18 @@ class ClassicWeek(QFrame):
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(0)
         box.addWidget(self.scroll, 1)
+
+    def _seven_columns(self, area: QRectF) -> list[LinearTrack]:
+        widths = column_widths(area.width(), self._empty)
+        left = area.left()
+        tracks = []
+        for day, width in enumerate(widths):
+            tracks.append(LinearTrack(day, QRectF(left, area.top() + PAD, width, area.height() - 2 * PAD)))
+            left += width
+        # The names above keep to their columns: a layout's stretch is the ratio of the widths.
+        for day, width in enumerate(widths):
+            self._names_row.setStretch(day, max(1, round(width * 10)))
+        return tracks
 
     def set_narrow(self, narrow: bool) -> None:
         """Short of room, blocks give their names the room their times took."""
@@ -305,6 +352,11 @@ class ClassicWeek(QFrame):
 
     def set_week(self, week: WeekModel, today: int | None, now_min: int | None) -> None:
         self.week_start = week.week_start
+        empty = _empty_days(week)
+        if empty != self._empty:
+            # Laid out for the new widths before the blocks arrive, so none slides for a change of width.
+            self._empty = empty
+            self.hours.relayout()
         self.hours.set_week(week.occurrences, today, now_min)
         for day, label in enumerate(self._name_labels):
             label.show_day(DAYS[day], str(week.date_of(day).day), homework_minutes(week, day), day == today)
@@ -426,16 +478,15 @@ class DaySummary(QWidget):
 
 @dataclass(frozen=True)
 class Row:
-    """A line of the day's agenda as drawn: the block, or the time now, and where."""
+    """A block in the day's agenda and where it is drawn."""
 
     box: QRectF
-    item: Occurrence | None
+    item: Occurrence
 
 
 class AgendaList(QWidget):
     """The day in order: each thing's start and end, its name with its category's edge, how long, and
-    the time now as a line between what has been and what is next. A click opens a thing; a
-    right-click shows its menu."""
+    a click opens a thing and a right-click shows its menu."""
 
     def __init__(self, hand: Hand, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -462,20 +513,11 @@ class AgendaList(QWidget):
     def _lay_out(self) -> None:
         title, small, _strong = self._fonts()
         tall = QFontMetricsF(title).lineSpacing() + QFontMetricsF(small).lineSpacing() + 2 * SPACING[1]
-        now_tall = QFontMetricsF(small).height() + 6 + SPACING[1]
         rows: list[Row] = []
         top = 0.0
-        drawn_now = self.now is None
         for item in self.items:
-            if not drawn_now and item.start > (self.now or 0):
-                rows.append(Row(QRectF(0, top, self.width(), now_tall), None))
-                top += now_tall
-                drawn_now = True
             rows.append(Row(QRectF(0, top, self.width(), tall), item))
             top += tall
-        if not drawn_now:
-            rows.append(Row(QRectF(0, top, self.width(), now_tall), None))
-            top += now_tall
         self.rows = rows
         self.setMinimumHeight(round(top))
         self.updateGeometry()
@@ -494,31 +536,15 @@ class AgendaList(QWidget):
         palette = self.palette_
         colours = Colours.of(palette) if palette else Colours()
         title_font, small, strong = self._fonts()
-        column = 44.0
+        column = max(
+            [44.0, *(QFontMetricsF(font).horizontalAdvance(clock_label(minute)) + 2
+              for row in self.rows
+              for font, minute in ((strong, row.item.start), (small, row.item.end)))],
+        )
         body_left = column + SPACING[2]
         ratio = self.devicePixelRatioF()
         for row in self.rows:
             box = row.box
-            if row.item is None:
-                words = clock_label(self.now or 0)
-                width = QFontMetricsF(strong).horizontalAdvance(words) + 10
-                pill = QRectF(
-                    0,
-                    box.center().y() - QFontMetricsF(strong).height() / 2 - 2,
-                    width,
-                    QFontMetricsF(strong).height() + 4,
-                )
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QColor(colours.accent))
-                painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2)
-                painter.setFont(strong)
-                painter.setPen(QColor(colours.accent_ink))
-                painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
-                painter.fillRect(
-                    QRectF(body_left, box.center().y() - 1, box.width() - body_left, 2),
-                    QColor(colours.accent),
-                )
-                continue
             item = row.item
             past = self.now is not None and item.end <= self.now
             if item.block_id == self._hover:
@@ -594,7 +620,7 @@ class AgendaList(QWidget):
         painter.end()
 
     def _item_at(self, point: QPointF) -> Occurrence | None:
-        return next((row.item for row in self.rows if row.item is not None and row.box.contains(point)), None)
+        return next((row.item for row in self.rows if row.box.contains(point)), None)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         item = self._item_at(event.position())
@@ -672,7 +698,7 @@ class ClassicAgenda(QFrame):
 
     def set_day(self, week: WeekModel, day: int, today: int | None, now_min: int | None) -> None:
         items = week.on_day(day)
-        self.heading.setText(DAY_FULL[day])
+        self.heading.setText("Agenda")
         things = f"{len(items)} thing{'s' if len(items) != 1 else ''}"
         total = sum(item.minutes for item in items)
         self.sub.setText(f"{things} · {length_label(total)}" if items else "Nothing planned")
@@ -725,7 +751,9 @@ class ClassicDay(QFrame):
             self.hours.relayout()
         self.hours.set_week(week.on_day(day), today, now_min)
         self.agenda.set_day(week, day, today, now_min)
-        self.name.show_day(DAYS[day], str(week.date_of(day).day), homework_minutes(week, day), day == today)
+        self.name.show_day("Hours", "", homework_minutes(week, day), day == today)
+        self.name.setAccessibleName("Hours")
+        self.name.setToolTip("")
         self._shown = (week, today, now_min)
         open_hours(self.scroll, (week.week_start, day), week, today, now_min, day)
 

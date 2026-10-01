@@ -163,15 +163,15 @@ def test_the_homework_editor_is_wide_enough_to_read_after_it_was_made_to_scroll(
     qapp: QApplication,
 ) -> None:
     """A scroll area reports its own width, not its content's, so the dialog came up too narrow to
-    read the fields until a minimum was set."""
-    from desktop.native.widgets import HomeworkDialog
+    read the fields until a minimum was set. It is a form, so as wide as a form's sheet (0.17.2)."""
+    from desktop.native.widgets import SHEET_FORM, HomeworkDialog
 
     dialog = HomeworkDialog(None, None, "2026-09-14")
     dialog.show()
     qapp.processEvents()
     dialog.adjustSize()
     qapp.processEvents()
-    assert dialog.width() >= 500
+    assert dialog.width() >= SHEET_FORM
     assert dialog.height() >= 400
     dialog.close()
 

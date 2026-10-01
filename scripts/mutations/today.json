@@ -114,8 +114,8 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "the block editor is titled as a student says it",
-  "old": "self.setWindowTitle(\"Edit event\" if existing else \"New event\")",
-  "new": "self.setWindowTitle(\"Edit fixed commitment\" if existing else \"Add fixed commitment\")",
+  "old": "self.card_body(\"Edit event\" if existing else \"New event\")",
+  "new": "self.card_body(\"Edit fixed commitment\" if existing else \"Add fixed commitment\")",
   "test": "desktop/tests/test_block_editor_words.py::test_the_editor_is_titled_as_a_student_says_it"
  },
  {
@@ -141,9 +141,9 @@
  },
  {
   "file": "desktop/native/widgets.py",
-  "name": "the repeat note sits in the Days field, not a row of its own",
-  "old": "        days_field = QVBoxLayout()\n        days_field.addLayout(choices)\n        days_field.addWidget(self.repeat_note)\n        # The label sits on the boxes' line, not halfway down to the note.\n        form.addRow(\"Days\", days_field)\n",
-  "new": "        self.repeat_note.setWordWrap(True)\n        form.addRow(\"Days\", choices)\n        form.addRow(\"\", self.repeat_note)\n",
+  "name": "the repeat note sits under the day pills, in their field",
+  "old": "        days_column.addWidget(self.day_picker)\n        days_column.addWidget(self.repeat_note)\n",
+  "new": "        days_column.addWidget(self.repeat_note)\n        days_column.addWidget(self.day_picker)\n",
   "test": "desktop/tests/test_block_editor_words.py::test_the_repeat_note_sits_whole_under_the_day_boxes"
  },
  {
@@ -190,13 +190,6 @@
  },
  {
   "file": "desktop/native/look.py",
-  "name": "Help has no box around its words",
-  "old": "QScrollArea#weekScroll, QScrollArea#dayScroll, QScrollArea#helpScroll {{",
-  "new": "QScrollArea#weekScroll, QScrollArea#dayScroll {{",
-  "test": "desktop/tests/test_more_menu_words.py::test_help_shows_every_line_whole_at_large_text_and_fits_the_screen"
- },
- {
-  "file": "desktop/native/look.py",
   "name": "a description takes the chosen text size",
   "old": "border-radius: {item}px; font-size: {pt['body']}; }}",
   "new": "border-radius: {item}px; }}",
@@ -207,7 +200,7 @@
   "name": "Settings opens on Main view with one sentence on designs",
   "old": "lines = (DESIGN_LINE, blurb) if slot == \"main\" else (blurb,)",
   "new": "lines = (blurb,)",
-  "test": "desktop/tests/test_settings_words.py::test_appearance_opens_on_main_view_and_ends_with_animations_and_fine_tune"
+  "test": "desktop/tests/test_settings_words.py::test_appearance_opens_on_colours_then_the_designs_and_ends_with_animations"
  },
  {
   "file": "desktop/native/settings.py",
@@ -226,9 +219,9 @@
  {
   "file": "desktop/native/layouts/dialog.py",
   "name": "Reset is a quiet button",
-  "old": "        self.reset.setProperty(\"quiet\", True)\n",
+  "old": "        self.reset.setProperty(\"outline\", True)\n",
   "new": "",
-  "test": "desktop/tests/test_settings_words.py::test_reset_is_a_quiet_button_at_the_left_not_a_bar_across_the_page"
+  "test": "desktop/tests/test_settings_words.py::test_reset_is_an_outlined_button_at_the_left_not_a_bar_across_the_page"
  },
  {
   "file": "desktop/native/look.py",
@@ -240,9 +233,9 @@
  {
   "file": "desktop/native/settings.py",
   "name": "a button that opens something else is plain",
-  "old": "    made.setProperty(\"quiet\", True)\n    made.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)\n",
+  "old": "    made.setProperty(\"outline\", True)\n    made.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)\n",
   "new": "",
-  "test": "desktop/tests/test_settings_words.py::test_a_button_that_opens_something_else_is_plain_and_as_wide_as_its_words"
+  "test": "desktop/tests/test_settings_words.py::test_a_button_that_opens_something_else_is_outlined_and_as_wide_as_its_words"
  },
  {
   "file": "desktop/native/look.py",
@@ -408,7 +401,7 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "the toast runs off the bottom of a short window",
-  "old": "        bottom = min(area.top() + area.height(), host.height()) - TOAST_FOOT + TOAST_SHADOW\n",
+  "old": "        bottom = min(area.top() + area.height(), host.height()) - inset - TOAST_FOOT + TOAST_SHADOW\n",
   "new": "        bottom = area.top() + area.height() + TOAST_FOOT * 4\n",
   "test": "desktop/tests/test_drag_results.py::test_the_toast_sits_bottom_right_of_the_page_and_lets_the_pointer_through"
  },
@@ -417,7 +410,7 @@
   "name": "the rail never folds",
   "old": "        narrow = self.width() < NARROW_WIDTH\n        if narrow != self.rail.folded:\n",
   "new": "        narrow = False\n        if narrow != self.rail.folded:\n",
-  "test": "desktop/tests/test_week_side.py::test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_say_their_names"
+  "test": "desktop/tests/test_week_side.py::test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_keep_their_times"
  },
  {
   "file": "desktop/native/hours/canvas.py",

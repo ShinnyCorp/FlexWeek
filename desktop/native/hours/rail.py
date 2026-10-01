@@ -74,8 +74,12 @@ SHOW_MONTH = "Show the month"
 # 8 at the sides: the window's own 9-pixel margin puts the rail's words 17 from its edge, where the
 # mock-up has them at 16, and a focus row or a chip has the room to say "Chem lab report" whole.
 PAD = SPACING[1]
+# The gaps that keep a homework title from the book before it and the length or day after it. They are
+# small so that a title as long as "Math worksheet" is not cut on a row with room for it.
+BOOK_GAP = 6
+TITLE_GAP = SPACING[0]
 # Where a chip's title starts: past its edge, the book and the gaps between.
-CHIP_TITLE_LEFT = SPACING[1] + 3 + SPACING[1] + 16 + SPACING[1]
+CHIP_TITLE_LEFT = SPACING[1] + 3 + SPACING[1] + 16 + BOOK_GAP
 
 
 def label(words: str, name: str, *, kind: str = "railLabel") -> QLabel:
@@ -114,6 +118,7 @@ class Colours:
     window: str = "#f7f8fa"
     hairline: str = "#e4e7ec"
     accent: str = "#3d6fc4"
+    accent_text: str = "#3d6fc4"
     accent_ink: str = "#ffffff"
     homework: str = "#831a1d"
     contrast: bool = False
@@ -127,6 +132,7 @@ class Colours:
             window=palette["window"],
             hairline=palette["hairline"],
             accent=palette["accent"],
+            accent_text=palette.get("accent_text", palette["accent"]),
             accent_ink=palette["accent_ink"],
             homework=category_paint(HOMEWORK, palette)[1] or palette["text"],
             contrast=palette.get("family") == "contrast",
@@ -267,7 +273,7 @@ class MonthCard(QWidget):
         self.on.clicked.connect(lambda: self._page(1))
         self.fold.clicked.connect(self.hide_requested.emit)
         self.dates.date_chosen.connect(self.date_chosen.emit)
-        self._anchor = ""
+        self._anchor: tuple[str, str | None] | None = None
 
     def _page(self, by: int) -> None:
         month = self.dates.month
@@ -284,10 +290,13 @@ class MonthCard(QWidget):
     def show_week(self, week_start: str, today: date, due: frozenset[str]) -> None:
         """The month of the week on screen, unless the student has paged it and the week is the same."""
         dates = self.dates
-        if week_start != self._anchor:
-            self._anchor = week_start
-            # The month most of the week is in: its Thursday's.
-            dates.month = (date.fromisoformat(week_start) + timedelta(days=3)).replace(day=1)
+        first = date.fromisoformat(week_start)
+        in_week = first <= today <= first + timedelta(days=6)
+        key = (week_start, today.isoformat()[:7] if in_week else None)
+        if key != self._anchor:
+            self._anchor = key
+            anchor = today if in_week else first + timedelta(days=3)
+            dates.month = anchor.replace(day=1)
         dates.week_start, dates.today, dates.due = week_start, today, due
         self._say()
 
@@ -336,6 +345,7 @@ class NextCard(QWidget):
         self.title.setWordWrap(True)
         self.when = QLabel()
         self.when.setObjectName("railNextWhen")
+        self.when.setWordWrap(True)
         self.when.setFont(time_font(self.when.font()))
         self.then = QLabel()
         self.then.setObjectName("railNextThen")
@@ -412,7 +422,7 @@ class RailChip(TrayChip):
     def sizeHint(self) -> QSize:  # noqa: N802
         body, small = self._fonts()
         tall = max(QFontMetricsF(body).height(), QFontMetricsF(small).height()) + 10
-        wide = 3 + 3 * SPACING[1] + 16 + QFontMetricsF(body).horizontalAdvance(self._title)
+        wide = 3 + 2 * SPACING[1] + BOOK_GAP + 16 + QFontMetricsF(body).horizontalAdvance(self._title)
         return QSize(round(wide + QFontMetricsF(small).horizontalAdvance(self.length)), round(max(30, tall)))
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
@@ -422,7 +432,7 @@ class RailChip(TrayChip):
         """The title as it fits beside the book and the length."""
         body, small = self._fonts()
         length = QFontMetricsF(small).horizontalAdvance(self.length)
-        room = self.width() - CHIP_TITLE_LEFT - SPACING[1] - length - SPACING[1]
+        room = self.width() - CHIP_TITLE_LEFT - TITLE_GAP - length - SPACING[1]
         return QFontMetricsF(body).elidedText(self._title, Qt.TextElideMode.ElideRight, max(room, 0))
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
@@ -446,7 +456,7 @@ class RailChip(TrayChip):
         painter.drawPixmap(
             QPointF(at, (box.height() - 16) / 2), icons.pixmap("book-open", colours.homework, 16, ratio)
         )
-        at += 16 + SPACING[1]
+        at += 16 + BOOK_GAP
         length_room = QFontMetricsF(small).horizontalAdvance(self.length)
         painter.setFont(small)
         painter.setPen(QColor(colours.muted))
@@ -459,7 +469,7 @@ class RailChip(TrayChip):
         painter.setFont(body)
         painter.setPen(QColor(colours.text))
         painter.drawText(
-            QRectF(at, 0, max(0.0, right - length_room - SPACING[1] - at), box.height()),
+            QRectF(at, 0, max(0.0, right - length_room - TITLE_GAP - at), box.height()),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             self.shown_title(),
         )
@@ -505,7 +515,7 @@ class FocusRows(QStyledItemDelegate):
             QPointF(at, box.top() + (box.height() - 16) / 2),
             icons.pixmap("book-open", colours.homework, 16, painter.device().devicePixelRatioF()),
         )
-        at += 16 + SPACING[1]
+        at += 16 + BOOK_GAP
         when = str(index.data(Qt.ItemDataRole.ToolTipRole) or "")
         today = bool(index.data(Qt.ItemDataRole.UserRole + 1))
         timing = weighted(small, WEIGHT_STRONG) if today else QFont(small)
@@ -520,7 +530,7 @@ class FocusRows(QStyledItemDelegate):
         )
         painter.setFont(body)
         painter.setPen(QColor(colours.text))
-        room = max(0.0, right - width - SPACING[1] - at)
+        room = max(0.0, right - width - TITLE_GAP - at)
         title = QFontMetricsF(body).elidedText(str(index.data()), Qt.TextElideMode.ElideRight, room)
         painter.drawText(
             QRectF(at, box.top(), room, box.height()),

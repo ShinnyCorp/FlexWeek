@@ -40,6 +40,7 @@ if importlib.util.find_spec("PySide6") is not None:
         FADE_NAME,
         LEVELS,
         OVER_MS,
+        PAGE_IN_AFTER_MS,
         PAGE_IN_MS,
         PAGE_OUT_MS,
         RISE_PX,
@@ -71,7 +72,7 @@ def pictures(host: QWidget) -> list[QLabel]:
 
 
 # Long enough for a page to fade through at the slowest level, with room for a busy machine.
-THROUGH_MS = duration(PAGE_OUT_MS + PAGE_IN_MS, "extra") + 150
+THROUGH_MS = duration(max(PAGE_OUT_MS, PAGE_IN_AFTER_MS + PAGE_IN_MS), "extra") + 150
 
 
 def two_pages(qapp: QApplication) -> tuple[QStackedWidget, QWidget, QWidget]:
@@ -116,15 +117,17 @@ def test_the_four_levels_are_the_ones_preferences_and_custom_looks_store() -> No
 
 
 def test_normal_runs_the_plans_numbers_and_the_other_levels_scale_them() -> None:
-    """Decisions 28 and 30 to 33 of 0.17: 90 ms out and 120 in, a 12-pixel slide, an 8-pixel rise,
-    Settings in 200 ms and the segment in 160. Reduce keeps every fade at Normal's length and moves
-    nothing; More is longer and further; Off is at once."""
-    normal = {ms: duration(ms, "normal") for ms in (PAGE_OUT_MS, PAGE_IN_MS, OVER_MS, SEGMENT_MS)}
-    assert list(normal.values()) == [90, 120, 200, 160]
-    assert (distance(SLIDE_PX, "normal"), distance(RISE_PX, "normal")) == (12, 8)
+    """Decisions 30 to 33 of 0.17, and the page change as 0.17.2 has it: 120 ms out, 160 in starting
+    30 ms after, a 24-pixel slide (at 12 none was seen), an 8-pixel rise, Settings in 200 ms and the
+    segment in 160. Reduce keeps every fade at Normal's length and moves nothing; More is longer and
+    further; Off is at once."""
+    timings = (PAGE_OUT_MS, PAGE_IN_MS, PAGE_IN_AFTER_MS, OVER_MS, SEGMENT_MS)
+    normal = [duration(ms, "normal") for ms in timings]
+    assert normal == [120, 160, 30, 200, 160]
+    assert (distance(SLIDE_PX, "normal"), distance(RISE_PX, "normal")) == (24, 8)
     for ms in normal:
-        assert duration(ms, "reduce") == normal[ms]
-        assert duration(ms, "extra") > normal[ms]
+        assert duration(ms, "reduce") == ms
+        assert duration(ms, "extra") > ms
         assert duration(ms, "off") == 0
     for px in (SLIDE_PX, RISE_PX):
         assert distance(px, "reduce") == distance(px, "off") == 0
@@ -142,10 +145,14 @@ def test_a_switch_is_immediate_and_its_fade_clears_itself(qapp: QApplication) ->
     stack.close()
 
 
-def test_a_switch_fades_through_the_old_page_out_before_the_new_one_shows(qapp: QApplication) -> None:
-    """Two pages were read on top of each other halfway through a cross-fade (decision 28 of 0.17)."""
+@pytest.mark.parametrize("level", ["normal", "extra", "reduce"])
+def test_a_switch_never_shows_an_empty_page(qapp: QApplication, level: str) -> None:
+    """Grok Bot's 0.17.0 audit (A1): when the new page waited for the old one to go (decision 28), the
+    window dipped through 3 or 4 almost blank frames. Now the new page comes in while the old one is
+    still going: together they are never less than three quarters there, and the old one is half gone
+    before the new one is half there, so the two are only seen together faintly."""
     stack, _first, second = two_pages(qapp)
-    switch_page(stack, second, "normal")
+    switch_page(stack, second, level)
     frames: list[tuple[float, float]] = []
 
     def frame() -> bool:
@@ -156,9 +163,10 @@ def test_a_switch_fades_through_the_old_page_out_before_the_new_one_shows(qapp: 
         return not old and new is None
 
     assert within(2, frame), "an effect left in place slows every later repaint"
-    assert frames[0] == (1.0, 0.0), "the new page waits, unseen, for the old one to go"
-    assert [both for both in frames if min(both) > 0] == [], "the two pages are never painted at once"
-    assert any(0 < new < 1 for _old, new in frames), "then comes in"
+    assert frames[0] == (1.0, 0.0), "it starts from the old page"
+    assert min(old + new for old, new in frames) >= 0.7, "never an empty page"
+    assert any(0 < old < 1 and 0 < new < 1 for old, new in frames), "the new one comes in as the old goes"
+    assert all(old <= 0.5 for old, new in frames if new >= 0.5), "the old is half gone by the time"
     stack.close()
 
 
@@ -204,7 +212,7 @@ def test_a_page_slides_in_from_the_side_it_is_heading_and_lands_in_place(qapp: Q
     stack, _first, second = two_pages(qapp)
     switch_page(stack, second, "normal", 1)
     assert stack.currentWidget() is second, "the new page is live before any animation"
-    assert second.graphicsEffect().offset == QPoint(12, 0), "going forward, it comes in from the right"
+    assert second.graphicsEffect().offset == QPoint(24, 0), "going forward, it comes in from the right"
     assert second.pos().isNull(), "painted to the side: the page itself is where clicks find it"
     QTest.qWait(40)
     (old,) = pictures(stack)
@@ -546,7 +554,7 @@ def test_a_sheet_fades_its_card_and_shadow_as_one_and_keeps_the_shadow(qapp: QAp
     window.show()
     qapp.processEvents()
     sheet = Dialog(window, sheet=True)
-    sheet.card_body().addWidget(QLabel("Homework"))
+    sheet.card_body("Add homework").addWidget(QLabel("Homework"))
     sheet.show()
     qapp.processEvents()
     shadow = sheet.card.graphicsEffect()

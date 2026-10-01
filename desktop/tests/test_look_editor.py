@@ -29,7 +29,7 @@ from desktop.native.look_editor import (
     with_setting,
 )
 from desktop.native.settings import SettingsPage
-from desktop.native.tokens import MARK, WEIGHT_REGULAR, WEIGHT_STRONG, oklch, type_pt
+from desktop.native.tokens import MARK, WEIGHT_REGULAR, WEIGHT_STRONG, contrast, oklch, type_pt
 from desktop.native.window import NativeWindow
 from desktop.tests.window_support import look_file, qapp, server, signed_out, wait_until, window  # noqa: F401
 
@@ -142,6 +142,7 @@ def test_customise_fills_the_window_and_a_change_is_worn_at_once_while_the_contr
     assert editor.state.text() == ""
     type_colour(qapp, editor, "page", "#1e2430")
     type_colour(qapp, editor, "text", "#999999")
+    assert "custom" in window._look, "the change is not worn"
     worn = window._look["custom"]
     assert worn["colours"]["page"] == "#1e2430" and worn["colours"]["text"] == "#999999"
     assert window.week_table.hours.painter.colours["window"] == "#1e2430"
@@ -194,18 +195,19 @@ def test_done_keeps_the_look_by_its_name_and_more_looks_offers_it_beside_the_ten
     assert [look["name"] for look in stored["saved_looks"]] == ["Night study"]
     assert stored["custom"]["colours"]["card"] == "#262d3b"
     more = page.look.more
-    listed = [more.itemText(index) for index in range(more.count())]
-    assert listed[-2:] == ["Your looks", "Night study"] and "High contrast" in listed
-    assert more.currentText() == "Night study", "Look shows the saved look worn"
+    assert [card.accessibleName() for card in more.cards].count("High contrast") == 1
+    assert [card.accessibleName() for card in page.look.yours.cards] == ["Night study"]
+    assert page.look.yours_heading.text() == "Your looks"
+    assert page.look.currentText() == "Night study", "Look shows the saved look worn"
+    assert page.look.yours.cards[0].is_selected()
     assert not page.accent.isEnabled() and not page.knobs["density"].isEnabled(), "the look sets them"
     page.look.main.buttons()[0].click()
     pump(qapp)
     assert "custom" not in window._look, "another look takes it off"
     assert page.accent.isEnabled() and page.knobs["density"].isEnabled()
-    at = more.findData("saved:Night study")
-    more.setCurrentIndex(at)
-    more.activated.emit(at)
+    page.look.yours.cards[0].chosen.emit()
     pump(qapp)
+    assert "custom" in window._look, "the saved look chosen is not worn"
     assert window._look["custom"]["name"] == "Night study"
     assert window.week_table.hours.painter.colours["panel"] == "#262d3b"
     page.close_page()
@@ -242,7 +244,7 @@ def test_leaving_with_changes_not_saved_asks_once_to_save_keep_or_discard(
     assert page.editor is None and len(asked) == 2
     assert window._look["custom"]["colours"]["page"] == "#1e2430", "kept on without saving"
     assert window._saved_looks == []
-    assert page.look.more.placeholderText() == "My look (not saved)"
+    assert page.look.worn.text() == "Wearing My look (not saved)"
     page.customise.click()
     pump(qapp)
     editor = page.editor
@@ -302,7 +304,8 @@ def test_grey_text_is_written_on_the_blocks_and_their_colours_are_one_line_with_
     pump(qapp)
     type_colour(qapp, editor, "text", "#999999")
     said = [label.text() for label in shown(editor, QLabel, "lookWarnText")]
-    assert said[-1] == "Text on 8 block colours is 2.2:1 at worst", said
+    worst = min(contrast("#999999", info["color"]) for info in CATEGORIES.values())
+    assert said[-1] == f"Text on 8 block colours is {worst:.1f}:1 at worst", said
 
     hours = window.week_table.hours
     if not hours.tracks:

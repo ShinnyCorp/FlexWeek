@@ -66,7 +66,7 @@
   "file": "desktop/native/hours/zoom.py",
   "name": "hidden hours never scroll on show",
   "old": "        if self._pending is not None:\n            self.scroll_to(*self._pending)\n",
-  "new": "",
+  "new": "        if self._pending is not None:\n            pass\n",
   "test": "desktop/tests/test_hours_zoom.py::test_a_week_opened_while_hidden_scrolls_to_now_when_it_is_shown"
  },
  {
@@ -88,7 +88,7 @@
   "name": "the same week scrolled back every render",
   "old": "        if key != self._opened:\n",
   "new": "        if True:\n",
-  "test": "desktop/tests/test_hours_zoom.py::test_a_week_keeps_where_it_was_scrolled_when_it_is_shown_again"
+  "test": "desktop/tests/test_hours_zoom.py::test_the_same_week_rendered_again_keeps_now_in_the_middle_while_the_page_settles"
  },
  {
   "file": "desktop/native/hours/zoom.py",
@@ -128,7 +128,7 @@
  {
   "file": "desktop/native/layouts/mission.py",
   "name": "Mission opens at midnight",
-  "old": "        open_hours(scroll, (week.week_start, day) if is_day else week.week_start, week, scene.today,\n                   scene.minute, day if is_day else None)\n",
+  "old": "        scroll.open_at(\n            (week.week_start, day) if is_day else week.week_start,\n            lanes_end(items),\n            end=True,\n            keep=scene.minute if at_now else None,\n        )\n",
   "new": "",
   "test": "desktop/tests/test_hours_open.py::test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_or_week"
  },
@@ -164,7 +164,7 @@
   "file": "desktop/native/hours/canvas.py",
   "name": "an hour label cut by the edge of what shows",
   "old": "                    box.moveLeft(max(min(box.left(), visible.right() - wide), visible.left()))\n",
-  "new": "",
+  "new": "                    pass\n",
   "test": "desktop/tests/test_hours_painter.py::test_an_hour_label_at_the_edge_of_what_shows_is_moved_inside_it"
  },
  {
@@ -180,5 +180,33 @@
   "old": "        chosen = self.hand.selection\n        mine = ",
   "new": "        if event.modifiers() & Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_Equal:\n            self.zoom_asked.emit(1, None)\n        chosen = self.hand.selection\n        mine = ",
   "test": "desktop/tests/test_zoom_keys.py::test_with_the_hours_holding_the_keyboard_one_press_is_one_step"
+ },
+ {
+  "file": "desktop/native/hours/zoom.py",
+  "name": "hours cut short for a moment stay cut",
+  "old": "        if self._kept is None and self.isVisible() and self.canvas.tracks and bar.value() > high:\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_hours_zoom.py::test_hours_cut_short_for_a_moment_go_back_to_where_they_were"
+ },
+ {
+  "file": "desktop/native/hours/zoom.py",
+  "name": "a time asked for with no room waits for the next show",
+  "old": "        if self._pending is not None and self.isVisible():\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_hours_zoom.py::test_a_time_asked_for_while_the_hours_have_no_room_is_shown_once_they_do"
+ },
+ {
+  "file": "desktop/native/hours/zoom.py",
+  "name": "lanes open at the evening whatever now is",
+  "old": "            start = min(start, self._keep - NOW_MARGIN)\n",
+  "new": "            start = start\n",
+  "test": "desktop/tests/test_layout_mission.py::test_now_is_on_screen_when_the_evening_does_not_fit_with_it"
+ },
+ {
+  "file": "desktop/native/hours/zoom.py",
+  "name": "a resize forgets that now was kept in view",
+  "old": "            bar.setValue(round(self._y_for(self._start_for_end(self._centre))))\n",
+  "new": "            bar.setValue(round(self._y_for(self._centre) - self._port_length()))\n",
+  "test": "desktop/tests/test_layout_mission.py::test_the_lanes_keep_their_opening_while_the_window_settles"
  }
 ]

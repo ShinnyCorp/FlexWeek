@@ -114,8 +114,8 @@
  {
   "file": "desktop/native/settings.py",
   "name": "saved looks missing from More looks",
-  "old": "        for name in names:\n            self._remember(name, SAVED_LOOK + name)",
-  "new": "        for name in []:\n            self._remember(name, SAVED_LOOK + name)",
+  "old": "        for look in looks:\n            self._remember(look[\"name\"], SAVED_LOOK + look[\"name\"])",
+  "new": "        for look in []:\n            self._remember(look[\"name\"], SAVED_LOOK + look[\"name\"])",
   "test": "desktop/tests/test_look_editor.py::test_done_keeps_the_look_by_its_name_and_more_looks_offers_it_beside_the_ten"
  },
  {
@@ -128,8 +128,8 @@
  {
   "file": "desktop/native/settings.py",
   "name": "More looks names no look kept without saving",
-  "old": "        self.more.setPlaceholderText(UNSAVED_LOOK.format(name=name) if name else MORE_LOOKS_HINT)",
-  "new": "        self.more.setPlaceholderText(MORE_LOOKS_HINT)",
+  "old": "        self._unsaved = name\n        self._say_worn()",
+  "new": "        self._unsaved = None\n        self._say_worn()",
   "test": "desktop/tests/test_look_editor.py::test_leaving_with_changes_not_saved_asks_once_to_save_keep_or_discard"
  },
  {

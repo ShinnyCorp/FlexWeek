@@ -17,11 +17,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     import shiboken6
-    from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QRect
-    from PySide6.QtGui import QEnterEvent
+    from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QRect, QRectF
+    from PySide6.QtGui import QEnterEvent, QFont, QImage
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
+    from desktop.native.fonts import load_fonts
     from desktop.native.hours import canvas as canvas_module
     from desktop.native.hours.canvas import Drawn, HoursCanvas
     from desktop.native.hours.chips import TrayChip
@@ -166,7 +167,12 @@ def test_waiting_homework_is_a_hand_chip_and_due_soon_says_where_each_is(qapp: Q
     assert chip.hand is view.hand
     assert text(view, "bentoWaitingLabel") == "Not placed yet"
     # Soonest due first: Chem due tonight, the essay tomorrow, the poster on Sunday and not placed.
-    assert texts(view, "bentoDueMeta") == ["1 h 30 · Thu 20:00", "1 h · Thu 18:45", "2 h · Not placed"]
+    # Where each is placed says so, and is never read as when it is due, which the figure says.
+    assert texts(view, "bentoDueMeta") == [
+        "1 h 30 · placed Thu 20:00",
+        "1 h · placed Thu 18:45",
+        "2 h · Not placed",
+    ]
     rows = [view.findChild(QPushButton, f"bentoDue{index}") for index in range(3)]
     assert [row.property("block_id") for row in rows] == ["chem-1", "essay-1", "poster-1"]
     assert text(view, "bentoDuePlaced") == "2 of 3 placed"
@@ -179,16 +185,45 @@ def test_waiting_homework_is_a_hand_chip_and_due_soon_says_where_each_is(qapp: Q
     assert text(day, "bentoWaitingHint") == "Drag one onto your day."
 
 
+@pytest.mark.parametrize("size", [(1280, 764), (1150, 768)])
+def test_a_due_rows_placed_time_is_never_cut_by_the_tile(
+    qapp: QApplication, size: tuple[int, int]
+) -> None:
+    """In the window's face and body size a Due soon row had no room for "1 h 30 · placed Thu 20:00", and the
+    tile cut it inside the time. Short of room the rows say where the homework is placed, whole, and
+    say it the same way."""
+    load_fonts()
+    usual = QFont(qapp.font())
+    font = QFont("Inter")
+    font.setPointSize(13)
+    qapp.setFont(font)
+    try:
+        view = shown(qapp, size=size)
+        metas = [item for item in view.findChildren(QLabel, "bentoDueMeta") if item.isVisible()]
+        ends = ("placed Thu 20:00", "placed Thu 18:45", "Not placed")
+        assert len(metas) == 3
+        assert all(meta.text().endswith(end) for meta, end in zip(metas, ends, strict=True))
+        for meta in metas:
+            room = meta.contentsRect().width()
+            assert meta.fontMetrics().horizontalAdvance(meta.text()) <= room, meta.text()
+        # All the long way, with each length, or all the short way: one row without its length read as
+        # another kind of row.
+        assert len({" · " in meta.text() for meta in metas}) == 1, [meta.text() for meta in metas]
+    finally:
+        qapp.setFont(usual)
+
+
 def test_due_soon_counts_down_to_the_first_homework_due(qapp: QApplication) -> None:
     due = shown(qapp).findChild(QWidget, "bentoDue")
     # Chem lab report is due at the end of today, Thursday, and it is 13:40.
     figure = (due.findChild(QLabel, "bentoFigure").text(), due.findChild(QLabel, "bentoDueUntil").text())
-    assert figure == ("10 h 20 min", "until the end of today")
+    assert figure == ("10 h 20 min", "left · due by the end of today")
     from datetime import date
 
     thursday = date(2026, 9, 17)
-    assert time_left("2026-09-20T20:00", thursday, 820) == ("3 days", "until Sunday 20", False)
-    assert time_left("2026-09-18T21:00", thursday, 820) == ("1 day", "until Friday 18", False)
+    assert time_left("2026-09-20T20:00", thursday, 820) == ("3 days", "left · due Sunday 20", False)
+    assert time_left("2026-09-18T21:00", thursday, 820) == ("1 day", "left · due Friday 18", False)
+    assert time_left("2026-09-17T21:00", thursday, 820) == ("7 h 20 min", "left · due at 21:00", False)
     assert time_left("2026-09-17T12:00", thursday, 820) == ("Past due", "was due at 12:00", True)
     assert time_left("2026-09-16T21:00", thursday, 820) == ("Past due", "was due Wednesday 16", True)
 
@@ -259,15 +294,44 @@ def test_a_half_hour_block_says_its_name_at_the_level_the_hours_open_at(
     written: list[str] = []
     real = canvas_module._paint_layout
 
-    def spy(painter, lay, *rest) -> None:
+    def spy(painter, lay, *rest, **kwargs) -> None:
         written.extend(line.text for line in lay)
-        real(painter, lay, *rest)
+        real(painter, lay, *rest, **kwargs)
 
     monkeypatch.setattr(canvas_module, "_paint_layout", spy)
     for surface, name in (("week", "bentoWeekHours"), ("day", "bentoDayHours")):
         written.clear()
         hours(shown(qapp, surface), name).grab()
         assert any(line.startswith("Dinner") for line in written), (surface, written)
+
+
+def test_the_week_keeps_school_s_time_where_its_times_do_not_fit(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In the window's body font a week column at 1280 is too narrow for "08:00–14:30", and School
+    said its name alone. It says when it starts instead, as Retro's week does, and a column wide
+    enough for the whole range still says it."""
+    blocks: list[list[str]] = []
+    real = canvas_module._paint_layout
+
+    def spy(painter, lay, *rest, **kwargs) -> None:
+        blocks.append([line.text for line in lay])
+        real(painter, lay, *rest, **kwargs)
+
+    monkeypatch.setattr(canvas_module, "_paint_layout", spy)
+    usual = QFont(qapp.font())
+    font = QFont(usual)
+    font.setPointSize(13)
+    qapp.setFont(font)
+    try:
+        for size, said in (((1280, 764), "08:00"), ((2400, 764), "08:00–14:30")):
+            view = shown(qapp, size=size)
+            blocks.clear()
+            hours(view, "bentoWeekHours").grab()
+            school = [lines for lines in blocks if lines and lines[0] == "School"]
+            assert school and all(lines[1:] == [said] for lines in school), (size, school)
+    finally:
+        qapp.setFont(usual)
 
 
 def test_the_today_hero_swaps_in_the_day_a_tile_is_clicked_on(qapp: QApplication) -> None:
@@ -397,6 +461,30 @@ def test_day_and_week_keep_their_scroll_and_zoom_through_redraw(qapp: QApplicati
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     assert not shiboken6.isValid(week)
     assert not shiboken6.isValid(day)
+
+
+def test_a_week_block_at_the_smallest_window_names_itself_and_says_when_it_starts(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In a window 810 pixels across a day on the week is a block 52.4 pixels wide: "Sch…" over
+    "08:00", where it said "Sc…" alone; no less than Today's app's Week writes any block that narrow."""
+    from desktop.tests.test_hours_painter import Said
+
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    load_fonts()
+    palette = resolved_palette("light-frost", False, None, "default")
+    painter = BentoPainter(tokens_for("bento", options_for(None, "bento")["colour"], palette))
+    drawn = Drawn("school", "School", "class", False, Span(0, 8 * 60, 14 * 60 + 30), 0, 1)
+    page = QRectF(0, 0, 200, 300)
+    image = QImage(200, 300, QImage.Format.Format_ARGB32)
+    paint = Said(image)
+    paint.setFont(QFont("Inter", 13))
+    Said.words = []
+    painter.block(paint, QRectF(20, 20, 52.4, 200), drawn, page)
+    paint.end()
+    said = [text for text, _where in Said.words]
+    assert said[:1] in (["School"], ["Sch…"]), said
+    assert "08:00" in said, said
 
 
 def test_the_tiles_stay_beside_the_hero_in_a_small_window(qapp: QApplication) -> None:

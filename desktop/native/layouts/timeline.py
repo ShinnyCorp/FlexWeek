@@ -20,7 +20,7 @@ from datetime import date
 from functools import cached_property, partial
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QLinearGradient, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen
 from PySide6.QtWidgets import (
     QBoxLayout,
     QFrame,
@@ -38,16 +38,11 @@ from desktop.native import icons
 from desktop.native.calendar import DAY_FULL, DAYS
 from desktop.native.fonts import at_scale, caption, time_font, weighted
 from desktop.native.hours.canvas import (
-    HOMEWORK_CATEGORIES,
     RADIUS_BLOCK,
-    TEXT_LEFT,
-    TEXT_RIGHT,
-    TEXT_TOP,
     TODAY_WASH,
     BlockPainter,
     Drawn,
     HoursCanvas,
-    block_layout,
     fit_lines,
 )
 from desktop.native.hours.chips import TrayChip
@@ -108,8 +103,6 @@ DUE_WIDE = 230
 COMPACT = 0.6
 # The sheet of the next pages, showing under each page's foot.
 SHEET = 3
-# The gutter's shade, from the fold out across each page.
-FOLD, FOLD_SHADE = 30, 0.07
 
 
 def _spread(inner: float, area: QRectF) -> list[LinearTrack]:
@@ -209,8 +202,8 @@ def _paint(tokens: dict[str, str], category: str) -> tuple[str, str]:
 
 class TimelinePainter(BlockPainter):
     """Ruled paper. The hours are ruled at each hour on the spread's pages, with a hairline between
-    days; blocks are cards outlined in ink with their category's tab down the start edge, and
-    homework, or a block with no room for a word, is its category's colour."""
+    days; blocks are cards in their category's colour outlined in ink, with its tab down the start
+    edge."""
 
     def __init__(
         self,
@@ -218,8 +211,7 @@ class TimelinePainter(BlockPainter):
         *,
         edged: frozenset[int] = frozenset(),
         wide: bool = False,
-        now_words: str = "",
-        now_at: float = 4,
+        spine: float = 0,
     ) -> None:
         soft = mix_oklab(tokens["line"], tokens["surface"], 0.5)
         super().__init__(
@@ -229,6 +221,9 @@ class TimelinePainter(BlockPainter):
                 "rule": soft,
                 "accent": tokens["accent"],
                 "accent_ink": tokens["accent_ink"],
+                "accent_text": tokens.get("accent_text", tokens["accent"]),
+                "now": tokens.get("now", tokens["accent"]),
+                "selection": tokens.get("selection", tokens["accent"]),
                 "error": tokens["danger"],
                 "text": tokens["text"],
                 "muted": tokens["muted"],
@@ -238,12 +233,14 @@ class TimelinePainter(BlockPainter):
         self.tokens = tokens
         # The days with a hairline down their start edge: every column but the first on the right page.
         self.edged = edged
-        self.now_words, self.now_at = now_words, now_at
+        # While today is on the right page, which has no hour labels, the room between the pages at
+        # the fold, where the time now goes if it fits; otherwise 0. Beside the labels it takes the
+        # place of the one nearest it, as in Today's app.
+        self.spine = spine
         self._ink = QColor(mix_oklab(tokens["text"], tokens["surface"], 0.78))
-        # Set as each block is drawn, for `fills` and `fonts`: a block with no room for a word, and
-        # one on Day too short for a line at the body size, whose title is then in the caption size,
-        # as the mock-up writes "Dinner 18:30–19:00 · 30 min".
-        self._wordless = self._tiny = False
+        # Set as each block is drawn, for `fonts`: one on Day too short for a line at the body size,
+        # whose title is then in the caption size, as the mock-up writes "Dinner 18:30–19:00 · 30 min".
+        self._tiny = False
 
     @cached_property
     def measures(self) -> dict:
@@ -271,12 +268,7 @@ class TimelinePainter(BlockPainter):
         paper = self.tokens["surface"]
         if drawn.done or drawn.missed:
             return QColor(paper), QColor(self.tokens["muted"]), None, QColor(mark)
-        return (
-            QColor(fill if drawn.work or self._wordless else paper),
-            QColor(self.tokens["text"]),
-            None,
-            QColor(mark),
-        )
+        return QColor(fill), QColor(self.tokens["text"]), None, QColor(mark)
 
     def fonts(self, base: QFont) -> tuple[QFont, QFont]:
         title, small = super().fonts(base)
@@ -288,7 +280,6 @@ class TimelinePainter(BlockPainter):
         self._tiny = False
         body = QFontMetricsF(self.fonts(painter.font())[0]).lineSpacing()
         self._tiny = self.wide and rect.height() + 0.5 < body
-        self._wordless = not drawn.held and self._no_room(painter.font(), rect, drawn)
         super().block(painter, rect, drawn, visible)
         if not (drawn.held or drawn.chosen):
             painter.setPen(QPen(self._ink, 1))
@@ -297,30 +288,55 @@ class TimelinePainter(BlockPainter):
                 rect.adjusted(0.5, 0.5, -0.5, -0.5), RADIUS_BLOCK - 0.5, RADIUS_BLOCK - 0.5
             )
 
-    def _no_room(self, font: QFont, rect: QRectF, drawn: Drawn) -> bool:
-        """Whether the block says nothing, as `words` would find: an outlined card with only a tab
-        would read as an empty box, so it is its category's colour, as the mock-up draws Dinner."""
-        title, small = self.fonts(font)
-        room = QRectF(
-            QPointF(rect.left() + TEXT_LEFT, rect.top() + TEXT_TOP),
-            QPointF(rect.right() - TEXT_RIGHT, rect.bottom() - 1),
-        )
-        tight = QRectF(room.left(), rect.top(), room.width(), rect.height())
-        book = drawn.category in HOMEWORK_CATEGORIES
-        return not block_layout(drawn, title, small, room, tight=tight, wide=self.wide, book=book)
+    def hour_labels(
+        self,
+        painter: QPainter,
+        track: LinearTrack,
+        room: float,
+        every: int = 60,
+        visible: QRectF | None = None,
+    ) -> None:
+        font = QFont(painter.font())
+        self.now_in_gutter = self._beside_labels(font)
+        super().hour_labels(painter, track, room, every, visible)
+        if self.now_in_gutter and self.now_minute is not None:
+            painter.setFont(font)
+            at = track.area.top() + track.offset(self.now_minute)
+            pill = self._pill_width(font, self.now_minute)
+            self._now_pill(painter, track.area.left() - 3 - pill, at, self.now_minute)
 
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
-        """A line across the day at `minute`, and a pill near its start with the time on it."""
-        colour = QColor(self.colours.get("now", self.colours["accent"]))
-        font = weighted(time_font(caption(painter.font())), WEIGHT_STRONG)
-        words = f"{self.now_words} {clock_label(minute)}".strip()
-        metrics = QFontMetricsF(font)
-        width, height = metrics.horizontalAdvance(words) + 12, metrics.height() + 2
+        """A line across the day at `minute`. Its time is on a pill beside the hour labels
+        (`hour_labels`), or for a day on the right page in the middle of the fold: beside today's own
+        column the pill lay on the day before and covered its blocks."""
         area = track.area
         at = area.top() + track.offset(minute)
-        painter.setPen(QPen(colour, 2))
+        painter.setPen(QPen(self.c("now"), 2))
         painter.drawLine(QPointF(area.left(), at), QPointF(area.right(), at))
-        pill = QRectF(area.left() + self.now_at, at - height / 2, width, height)
+        if not self._beside_labels(painter.font()):
+            page = next(days for days in PAGES if track.day in days)
+            fold = area.left() - page.index(track.day) * area.width() - self.spine / 2
+            self._now_pill(painter, fold - self._pill_width(painter.font(), minute) / 2, at, minute)
+
+    def _beside_labels(self, base: QFont) -> bool:
+        """Whether the pill goes beside the hour labels: unless today is on the right page and the
+        pill fits the fold with a pixel to spare on either side. In Compact it does not."""
+        return self.now_minute is None or self._pill_width(base, self.now_minute) + 2 > self.spine
+
+    @staticmethod
+    def _pill_font(base: QFont) -> QFont:
+        return weighted(time_font(caption(base)), WEIGHT_STRONG)
+
+    def _pill_width(self, base: QFont, minute: int) -> float:
+        return QFontMetricsF(self._pill_font(base)).horizontalAdvance(clock_label(minute)) + 6
+
+    def _now_pill(self, painter: QPainter, left: float, at: float, minute: int) -> None:
+        """The time now on a pill from `left`, in the canvas's font `painter` has."""
+        colour = self.c("now")
+        font = self._pill_font(painter.font())
+        words = clock_label(minute)
+        width, height = self._pill_width(painter.font(), minute), QFontMetricsF(font).height() + 2
+        pill = QRectF(max(0, left), at - height / 2, width, height)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(colour)
         painter.drawRoundedRect(pill, height / 2, height / 2)
@@ -330,8 +346,8 @@ class TimelinePainter(BlockPainter):
 
 
 class Spread(QWidget):
-    """A planner opened flat: two pages joined at a fold down the middle, shaded either side of it,
-    and the next sheet showing under their foot. What is laid on it is clear, so its paper shows."""
+    """A planner opened flat: two pages joined at a fold line down the middle, and the next sheet
+    showing under their foot. What is laid on it is clear, so its paper shows."""
 
     def __init__(self, name: str) -> None:
         super().__init__()
@@ -350,14 +366,6 @@ class Spread(QWidget):
         for sheet in (box.translated(0, SHEET).adjusted(1, 0, -1, 0), box):
             painter.drawRoundedRect(sheet, RADIUS_CARD, RADIUS_CARD)
         fold = self.width() / 2
-        shade, clear = QColor(self.tokens["text"]), QColor(self.tokens["text"])
-        shade.setAlphaF(FOLD_SHADE)
-        clear.setAlphaF(0)
-        for toward in (fold - FOLD, fold + FOLD):
-            ramp = QLinearGradient(QPointF(toward, 0), QPointF(fold, 0))
-            ramp.setColorAt(0, clear)
-            ramp.setColorAt(1, shade)
-            painter.fillRect(QRectF(min(toward, fold), box.top() + 1, FOLD, box.height() - 1), ramp)
         painter.setPen(QPen(edge, 1))
         painter.drawLine(QPointF(fold, box.top()), QPointF(fold, box.bottom()))
         painter.end()
@@ -775,7 +783,8 @@ class TimelineView(LayoutView):
         hours = pages.hours
         canvas = hours.canvas
         canvas._lay_out = partial(_spread, inner)
-        canvas.set_painter(TimelinePainter(scene.tokens, edged=frozenset({0, 1, 2, 4, 5, 6})))
+        spine = 2 * inner if scene.today in PAGES[1] else 0
+        canvas.set_painter(TimelinePainter(scene.tokens, edged=frozenset({0, 1, 2, 4, 5, 6}), spine=spine))
         canvas.relayout()
         self._date_heads(scene, canvas.heads)
         canvas.set_week(_shown(scene, scene.week.occurrences), scene.today, scene.minute)
@@ -840,7 +849,7 @@ class TimelineView(LayoutView):
         hours = pages.hours
         canvas = hours.canvas
         canvas._lay_out = partial(_column, day)
-        canvas.set_painter(TimelinePainter(scene.tokens, wide=True, now_words="Now", now_at=scene.px(40)))
+        canvas.set_painter(TimelinePainter(scene.tokens, wide=True))
         if canvas.heads is not None:
             canvas.heads.show_days((day,))
         canvas.relayout()

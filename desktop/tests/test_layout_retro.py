@@ -22,11 +22,20 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, QSize, Qt
     from PySide6.QtGui import QColor, QFont, QImage, QPainter
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QLayout, QLayoutItem, QPushButton, QWidget
+    from PySide6.QtWidgets import (
+        QApplication,
+        QFrame,
+        QLabel,
+        QLayout,
+        QLayoutItem,
+        QPushButton,
+        QScrollBar,
+        QWidget,
+    )
     from shiboken6 import isValid
 
     from desktop.native.fonts import load_fonts
-    from desktop.native.hours.canvas import Drawn, Written, cuts_a_word
+    from desktop.native.hours.canvas import Drawn, Started
     from desktop.native.hours.chips import TrayChip
     from desktop.native.hours.geometry import Span
     from desktop.native.hours.hand import Hand, Verdict
@@ -37,9 +46,9 @@ if importlib.util.find_spec("PySide6") is not None:
         NOT_PLACED,
         ZOOM_MS,
         Deadline,
+        Mirror,
         RetroPainter,
         RetroView,
-        Started,
         Zoom,
         arrange,
         deadlines,
@@ -240,6 +249,24 @@ def test_the_week_scrolls_on_windows_98s_bar_in_step_with_the_hours(qapp: QAppli
     assert scroll.verticalScrollBar().value() == 200
 
 
+def test_windows_98s_bar_leaves_a_cut_value_for_the_hours_to_keep(qapp: QApplication) -> None:
+    """The drawn bar copies the hours' range whenever it changes. Qt says a range changed before it
+    cuts the value to it, which is when the hours keep where they were; the drawn bar wrote its own cut
+    value back first, and so whoever heard of the range after it saw the hours already moved."""
+    host = QWidget()
+    source, shown = QScrollBar(host), QScrollBar(host)
+    source.setRange(0, 400)
+    source.setValue(400)
+    Mirror(source, shown, host)
+    seen: list[int] = []
+    source.rangeChanged.connect(lambda _low, _high: seen.append(source.value()))
+    source.setRange(0, 380)
+    assert seen == [400]
+    assert (source.value(), shown.value(), shown.maximum()) == (380, 380, 380)
+    shown.setValue(120)
+    assert source.value() == 120, "the student's own scrolling on the drawn bar still moves the hours"
+
+
 def test_a_window_closes_and_the_taskbar_brings_it_back(qapp: QApplication) -> None:
     view = shown(qapp)
     view.findChild(QPushButton, "retroClose-notes").click()
@@ -412,7 +439,8 @@ def test_every_weekday_and_the_tray_are_reachable_when_the_desk_is_narrow(qapp: 
 def test_notepad_lists_the_homework_under_its_deadline_with_its_length_and_time(qapp: QApplication) -> None:
     """Chem lab report is due today and placed at 20:00 for 1 h 30; the history essay is due tomorrow at
     21:00 and placed at 18:45 for an hour; the poster, due Sunday at 20:00, has no time yet. Each line's
-    length and time sit in columns as wide as the widest."""
+    length and time sit in columns as wide as the widest. The time a homework is placed at says so, so
+    it is never read as when it is due, which the heading above it says."""
     view = shown(qapp)
     headings = [label.text() for label in view.findChildren(QLabel, "retroNoteDue")]
     assert headings == [
@@ -422,8 +450,8 @@ def test_notepad_lists_the_homework_under_its_deadline_with_its_length_and_time(
     ]
     rows = [view.findChild(QPushButton, name) for name in ("retroNote0", "retroNote1", "retroNoteWaiting0")]
     assert [row.lines for row in rows] == [
-        ["Chem-1    1 h 30  Thu 20:00"],
-        ["Essay-1   1 h     Thu 18:45"],
+        ["Chem-1    1 h 30  placed Thu 20:00"],
+        ["Essay-1   1 h     placed Thu 18:45"],
         [f"Poster-1  2 h     {NOT_PLACED}"],
     ]
     chip = view.findChild(TrayChip, "retroNoteWaiting0")
@@ -469,7 +497,8 @@ def test_a_notepad_line_short_of_room_puts_its_length_and_time_under_its_title(q
     essay = next(row for row in view.findChildren(QPushButton) if row.objectName() == "retroNote1")
     assert len(essay.lines) == 2, essay.lines
     assert "History essay on the causes of the war".startswith(essay.lines[0].removesuffix("…"))
-    assert essay.lines[1].split() == ["1", "h", "Thu", "18:45"] and essay.lines[1].startswith("   ")
+    # Under the title, in from the edge; "placed" leaves this narrow page no title column.
+    assert essay.lines[1].split() == ["1", "h", "placed", "Thu", "18:45"] and essay.lines[1].startswith("  ")
     for row in view.findChildren(QPushButton):
         if row.property("role") != "note":
             continue
@@ -695,8 +724,9 @@ def dark_pixels(image: QImage, left: int) -> int:
     )
 
 
-def test_a_block_with_no_room_for_its_first_word_says_nothing_rather_than_cut_it(qapp: QApplication) -> None:
-    """ "Robotics club" in a column too narrow for "Robotics" is its colour alone, not "Robot…"."""
+def test_a_block_with_no_room_for_three_letters_of_its_name_is_its_colour_alone(qapp: QApplication) -> None:
+    """ "Robotics club" in a column too narrow for "Robotics" says "Rob…"; with no room for even
+    "Rob" it is its colour alone, as on every design."""
     load_fonts()
     colours = scheme(tokens_for("retro", "teal", palette_of("light")))
     drawn = Drawn("club", "Robotics club", "extra", False, Span(0, 915, 990), 0, 1)
@@ -711,14 +741,47 @@ def test_a_block_with_no_room_for_its_first_word_says_nothing_rather_than_cut_it
         return dark_pixels(image, 4)
 
     assert painted(160) > 0
-    assert painted(56) == 0
+    assert painted(56) > 0
+    assert painted(20) == 0
 
 
-def test_a_title_cut_inside_a_word_is_found() -> None:
-    def said(*lines: str) -> list[Written]:
-        return [Written(line, True, QRectF()) for line in lines]
+def test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not(qapp: QApplication) -> None:
+    """Two blocks side by side show they share their time by sitting side by side, as on every
+    design: no dot at the corner of each."""
+    colours = scheme(tokens_for("retro", "teal", palette_of("light")))
 
-    assert cuts_a_word(said("Robot…"), "Robotics club")
-    assert not cuts_a_word(said("Robotics…"), "Robotics club")
-    assert not cuts_a_word(said("Chem lab", "report"), "Chem lab report")
-    assert cuts_a_word(said("…"), "Math worksheet")
+    def painted(columns: int) -> QImage:
+        drawn = Drawn("soccer", "Soccer practice", "extra", False, Span(1, 16 * 60, 17 * 60 + 30), 0, columns)
+        image = QImage(200, 140, QImage.Format.Format_RGB32)
+        image.fill(QColor("#ffffff"))
+        painter = QPainter(image)
+        RetroPainter(colours).body(painter, QRectF(20, 20, 60, 90), drawn)
+        painter.end()
+        return image
+
+    assert painted(2) == painted(1), "a block that shares its time has a mark on it"
+
+
+def test_a_week_block_at_the_smallest_window_names_itself_and_says_when_it_starts(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In a window 810 pixels across a day on the week is a block 49.7 pixels wide: "School" whole if
+    it fits, or "Sch…", over its start, as Today's app's Week writes any block that narrow; never
+    nothing."""
+    from desktop.native.hours import canvas as canvas_module
+    from desktop.tests.test_hours_painter import Said
+
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    load_fonts()
+    colours = scheme(tokens_for("retro", "teal", palette_of("light")))
+    drawn = Drawn("school", "School", "class", False, Span(0, 8 * 60, 14 * 60 + 30), 0, 1)
+    page = QRectF(0, 0, 200, 300)
+    image = QImage(200, 300, QImage.Format.Format_RGB32)
+    paint = Said(image)
+    paint.setFont(QFont("Pixelify Sans", 13))
+    Said.words = []
+    RetroPainter(colours).block(paint, QRectF(20, 20, 49.7, 200), drawn, page)
+    paint.end()
+    said = [text for text, _where in Said.words]
+    assert said[:1] in (["School"], ["Sch…"]), said
+    assert "08:00" in said, said

@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QApplication, QFrame, QLabel, QLayout, QPushButton, QScrollArea, QWidget
+from shiboken6 import isValid
 
 from desktop.native.calendar import CATEGORIES
 from desktop.native.hours.hand import Hand, is_date_surface, is_surface
@@ -39,6 +40,9 @@ class Scene:
     dirty: bool = False
     # Weeks other than this one that the student changed and left unsaved, by their Monday.
     unsaved_weeks: Mapping[str, WeekModel] = field(default_factory=dict)
+    # The focus timer: "" when none runs, else "focusing", "paused" or "break".
+    focus: str = ""
+    today_iso: str = ""
 
     def px(self, size: float) -> int:
         """A size in pixels that follows the student's Text size knob."""
@@ -180,6 +184,7 @@ class LayoutView(QWidget):
     my_day_requested = Signal()
     back_requested = Signal()
     day_activated = Signal(str)
+    watched_day_changed = Signal(str)
     # The app's own menu, opening up from this point on the screen, as Retro desktop's Start asks.
     menu_requested = Signal(QPoint)
     # A level the student chose on hours this design made, to remember: the scale's key and pixels an hour.
@@ -203,6 +208,9 @@ class LayoutView(QWidget):
         # The levels this device chose, by scale. The window hands over its own and keeps it current, so
         # hours made on a later render open where the student left them. A picture has none.
         self.remembered_zoom: Mapping[str, int] = {}
+        # The hours made last for each scale. Timeline and Bento make theirs again for a new text size,
+        # and the new ones take over where the student left each week and day.
+        self._made_hours: dict[str, HoursScroll] = {}
 
     @property
     def scene(self) -> Scene | None:
@@ -242,6 +250,10 @@ class LayoutView(QWidget):
         design passes every `HoursScroll` it makes through this, where it makes it."""
         scroll.restore(self.remembered_zoom)
         scroll.zoomed.connect(self.zoomed)
+        before = self._made_hours.get(scroll.scale.key)
+        if before is not None and before is not scroll and isValid(before):
+            scroll.take_places(before)
+        self._made_hours[scroll.scale.key] = scroll
         return scroll
 
     def hours_surfaces(self) -> list[QWidget]:
@@ -262,6 +274,11 @@ class LayoutView(QWidget):
             held, self._held = self._held, None
             if held is not None:
                 self.show_week(held)
+
+    def bottom_inset(self) -> int:
+        """Pixels of this design's own bottom edge taken by chrome, such as Retro's taskbar. A notice
+        placed over the design keeps clear of them."""
+        return 0
 
     @property
     def cramped(self) -> bool:
@@ -299,6 +316,12 @@ class LayoutView(QWidget):
     def render(self, scene: Scene, week_changed: bool) -> None:
         raise NotImplementedError
 
+    def watched_date(self) -> str | None:
+        scene = self._scene
+        if scene is None or scene.today is None:
+            return None
+        return scene.week.date_of(scene.today).isoformat()
+
     def render_month(self, scene: Scene, week_changed: bool) -> None:
         """A chip calendar in this design's colours. Retro and Mission keep this; they only paint."""
         from desktop.native.hours.month import MonthGrid
@@ -312,7 +335,7 @@ class LayoutView(QWidget):
         board.set_tokens(scene.tokens)
         board.set_unsaved(scene.unsaved_weeks)
         board.set_week(scene.week)
-        board.set_month(scene.month, scene.dirty)
+        board.set_month(scene.month, scene.dirty, scene.today_iso or None)
         opened = ((scene.month or {}).get("month"), scene.iso_day)
         if scene.month and scene.iso_day and opened != getattr(self, "_month_revealed", None):
             # Once per month opened, and after the board has its size: after that it stays wherever
@@ -351,7 +374,7 @@ def day_buttons(view: LayoutView, scene: Scene, item: Occurrence | None, prefix:
     back.clicked.connect(view.back_requested.emit)
     made.append(back)
     for entry in made:
-        tint(entry, DAY_ICONS[entry.objectName().removeprefix(prefix)])
+        tint(entry, DAY_ICONS[entry.objectName().removeprefix(prefix)], gap=scene.px(4))
     return made
 
 
