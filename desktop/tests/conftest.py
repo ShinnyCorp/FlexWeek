@@ -92,6 +92,23 @@ def no_mouse_button_is_left_held() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def the_pointer_starts_where_a_new_worker_has_it() -> Iterator[None]:
+    """The offscreen pointer keeps its place, and the window it was last over, from one test to the
+    next. Clay's arrow tests park it over a view that lives on hidden; the sign-in test's next move
+    then sent that view's leave first, it took hover off the sign-in window, and Forgot password never
+    showed hover. Every test starts with the pointer at (10, 10), over no window, as a new worker has
+    it."""
+    if importlib.util.find_spec("PySide6") is not None:
+        from PySide6.QtCore import QPoint
+        from PySide6.QtGui import QCursor
+        from PySide6.QtWidgets import QApplication
+
+        if QApplication.instance() is not None:
+            QCursor.setPos(QPoint(10, 10))
+    yield
+
+
+@pytest.fixture(autouse=True)
 def nothing_leaves_the_test(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """No test reaches this computer's own apps. A Spotify alarm tells the Spotify app to play, over
     the session bus or by opening its address, and the developer's Spotify was running: a test would
