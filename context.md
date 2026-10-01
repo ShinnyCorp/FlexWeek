@@ -749,8 +749,9 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
-- 2026-10-01, `engine/full-port`: A/B leftovers cleared, not yet through the gate in this
-  round. Part C (one SQLite) is next. Nothing pushed.
+- 2026-10-01, `engine/full-port`: A/B leftovers committed (`3117a9f`, `89fc820`,
+  `dd76fcf`). Gate 3025 passed after one run hit the known sign-in hover flake.
+  Part C (one SQLite) is next. Nothing pushed.
 - 2026-09-30, `feat/0.17.2`: ready to push, PR to main, merge after CI and release v0.17.2 as latest
   (Jonathan's word). Then Grok Bot reviews 0.17.2 and Jonathan decides on 0.17.3. Open for 0.17.3: the
   sign-in hover flake; Bento's now pill inside today's column; Mission's beside-block names crossed by
