@@ -56,14 +56,12 @@ pub fn install_kind(
     appdir: Option<&str>,
     executable: Option<&str>,
 ) -> &'static str {
-    let system = platform.unwrap_or(std::env::consts::OS);
+    let system = platform.unwrap_or("");
     if system.starts_with("win") {
         return "windows";
     }
-    let image_store = std::env::var("APPIMAGE").unwrap_or_default();
-    let mount_store = std::env::var("APPDIR").unwrap_or_default();
-    let image = appimage.unwrap_or(image_store.as_str());
-    let mount = appdir.unwrap_or(mount_store.as_str());
+    let image = appimage.unwrap_or("");
+    let mount = appdir.unwrap_or("");
     let running = executable.unwrap_or("");
     if !image.is_empty()
         && !mount.is_empty()
@@ -327,5 +325,33 @@ mod sha256 {
             out[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::install_kind;
+
+    #[test]
+    fn install_kind_ignores_the_process_environment() {
+        let mount = std::env::temp_dir();
+        let image = mount.join("flexweek-appimage-probe");
+        let exe = mount.join("flexweek-probe-bin");
+        std::fs::write(&image, b"x").unwrap();
+        std::fs::write(&exe, b"x").unwrap();
+        // set_var is unsafe in this toolchain because another thread can read the
+        // environment at the same time. This test is that reader, on one thread.
+        unsafe {
+            std::env::set_var("APPIMAGE", &image);
+            std::env::set_var("APPDIR", &mount);
+        }
+        let kind = install_kind(Some("linux"), None, None, Some(exe.to_str().unwrap()));
+        unsafe {
+            std::env::remove_var("APPIMAGE");
+            std::env::remove_var("APPDIR");
+        }
+        let _ = std::fs::remove_file(&image);
+        let _ = std::fs::remove_file(&exe);
+        assert_eq!(kind, "tarball");
     }
 }
