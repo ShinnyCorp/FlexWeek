@@ -18,6 +18,10 @@ def _exported_functions() -> set[str]:
     return names
 
 
+def test_make_token_is_not_part_of_the_module() -> None:
+    assert not hasattr(flexweek_engine, "make_token")
+
+
 def test_every_exported_function_went_through_export() -> None:
     registered = set(flexweek_engine.guarded_names())
     missing = sorted(_exported_functions() - registered)

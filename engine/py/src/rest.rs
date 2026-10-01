@@ -339,16 +339,6 @@ fn password_matches(py: Python<'_>, password: &str, encoded: &str) -> PyResult<b
 }
 
 #[pyfunction]
-fn make_token(raw: &[u8]) -> PyResult<String> {
-    guard(|| {
-        let bytes: [u8; 32] = raw
-            .try_into()
-            .map_err(|_| value_error("a sign-in token is 32 bytes".into()))?;
-        Ok(store::make_token(&bytes))
-    })
-}
-
-#[pyfunction]
 fn transfer_apply_envelope(snapshot: &str) -> PyResult<String> {
     guard(|| Ok(dump(&snapshot::transfer_apply_envelope(&parse(snapshot)?))))
 }
@@ -405,7 +395,6 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         digest,
         password_hash,
         password_matches,
-        make_token,
         transfer_apply_envelope,
         store_initialize,
         store_throttle,

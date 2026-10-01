@@ -3,15 +3,10 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
-use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rusqlite::{Connection, OptionalExtension, params};
 use scrypt::{Params, scrypt};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-
-pub const SESSION_SECONDS: i64 = 7 * 24 * 60 * 60;
-pub const PREFS_VERSION: i64 = 1;
 
 const PREFERENCES_TABLE: &str = r#"
     CREATE TABLE IF NOT EXISTS preferences (
@@ -86,17 +81,6 @@ const RECOVERY_CODES_TABLE: &str = r#"
     )
 "#;
 
-const ACCOUNT_TABLES: &[&str] = &[
-    "sessions",
-    "weeks",
-    "assignments",
-    "routines",
-    "restore_points",
-    "operations",
-    "preferences",
-    "recovery_codes",
-];
-
 const OPERATIONS_TABLE: &str = r#"
     CREATE TABLE IF NOT EXISTS operations (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,18 +135,10 @@ impl From<std::io::Error> for StoreError {
 
 pub type StoreResult<T> = Result<T, StoreError>;
 
-pub fn store_ready() -> bool {
-    true
-}
-
 pub fn digest(value: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(value.as_bytes());
     hex::encode(hasher.finalize())
-}
-
-pub fn make_token(bytes: &[u8; 32]) -> String {
-    URL_SAFE_NO_PAD.encode(bytes)
 }
 
 fn decode_salt(salt: &str) -> StoreResult<Vec<u8>> {
@@ -223,28 +199,6 @@ pub fn password_matches(password: &str, encoded: &str) -> StoreResult<bool> {
     Ok(constant_time_eq(computed.as_bytes(), encoded.as_bytes()))
 }
 
-pub fn normalize_recovery_code(value: &str) -> String {
-    value
-        .chars()
-        .filter(|ch| ch.is_ascii_hexdigit())
-        .flat_map(|ch| ch.to_lowercase())
-        .collect()
-}
-
-pub fn hash_recovery_code(value: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(b"flexweek-recovery:");
-    hasher.update(normalize_recovery_code(value).as_bytes());
-    hex::encode(hasher.finalize())
-}
-
-pub fn recovery_code_matches(presented: &str, stored_hash: &str) -> bool {
-    constant_time_eq(
-        hash_recovery_code(presented).as_bytes(),
-        stored_hash.as_bytes(),
-    )
-}
-
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -261,17 +215,6 @@ pub fn open_connection(path: &Path) -> StoreResult<Connection> {
     db.busy_timeout(std::time::Duration::from_secs(10))?;
     db.execute("PRAGMA foreign_keys = ON", [])?;
     Ok(db)
-}
-
-pub fn with_connection<T>(
-    path: &Path,
-    f: impl FnOnce(&Connection) -> StoreResult<T>,
-) -> StoreResult<T> {
-    let mut db = open_connection(path)?;
-    let tx = db.transaction()?;
-    let out = f(&tx)?;
-    tx.commit()?;
-    Ok(out)
 }
 
 pub fn date_legacy_weeks(db: &Connection, current_week_start: &str) -> StoreResult<()> {
@@ -396,14 +339,6 @@ pub fn upgrade_preferences(db: &Connection) -> StoreResult<()> {
     Ok(())
 }
 
-pub fn new_preferences(db: &Connection, user_id: i64) -> StoreResult<()> {
-    db.execute(
-        "INSERT INTO preferences(user_id, reminders_enabled, prefs_version) VALUES (?1, 1, ?2)",
-        params![user_id, PREFS_VERSION],
-    )?;
-    Ok(())
-}
-
 pub fn migrate_assignments(db: &Connection) -> StoreResult<()> {
     let tables: HashSet<String> = db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")?
@@ -514,34 +449,6 @@ pub fn initialize(path: &Path, current_week_start: &str) -> StoreResult<()> {
     Ok(())
 }
 
-pub fn delete_account(db: &Connection, user_id: i64) -> StoreResult<()> {
-    for table in ACCOUNT_TABLES {
-        db.execute(
-            &format!("DELETE FROM {table} WHERE user_id = ?1"),
-            params![user_id],
-        )?;
-    }
-    db.execute("DELETE FROM users WHERE id = ?1", params![user_id])?;
-    Ok(())
-}
-
-pub fn create_session(
-    db: &Connection,
-    user_id: i64,
-    token: &str,
-    now_unix: i64,
-) -> StoreResult<()> {
-    db.execute(
-        "DELETE FROM sessions WHERE expires <= ?1",
-        params![now_unix],
-    )?;
-    db.execute(
-        "INSERT INTO sessions VALUES (?1, ?2, ?3)",
-        params![digest(token), user_id, now_unix + SESSION_SECONDS],
-    )?;
-    Ok(())
-}
-
 pub fn throttle(path: &Path, address: &str, username: &str, now_unix: i64) -> StoreResult<bool> {
     let db = open_connection(path)?;
     db.execute_batch("BEGIN IMMEDIATE")?;
@@ -624,14 +531,6 @@ mod tests {
         assert_eq!(
             digest("flexweek"),
             "62613e7e087bc908bd61b5f08e4f59237a54929ef1310ec5868762c37c633e24"
-        );
-    }
-
-    #[test]
-    fn hash_recovery_code_vector() {
-        assert_eq!(
-            hash_recovery_code("abcd-ef01-2345-6789"),
-            "56c4c7208e7f5650f4a7e7294df7536eae58143eb59c7abed85674e674fcb5b3"
         );
     }
 
