@@ -46,7 +46,14 @@ jobs:
         run: |
           python -m venv .venv
           .venv\Scripts\python -m pip install --upgrade pip
-          .venv\Scripts\python -m pip install -r requirements.txt -r requirements-desktop.txt
+          .venv\Scripts\python -m pip install -r requirements.txt -r requirements-desktop.txt -r requirements-dev.txt
+
+      - name: Install Rust and build the engine module
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          .venv\Scripts\python -m maturin develop --release --manifest-path engine/py/Cargo.toml
+        shell: pwsh
 
       - name: Build Windows onedir package
         # -AssumeYesForDownloads lets Nuitka fetch dependency walker (required
@@ -228,7 +235,13 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install -r requirements.txt -r requirements-desktop.txt
+          .venv/bin/python -m pip install -r requirements.txt -r requirements-desktop.txt -r requirements-dev.txt
+
+      - name: Install Rust and build the engine module
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          .venv/bin/python -m maturin develop --release --manifest-path engine/py/Cargo.toml
 
       - name: Build and package Linux onedir
         run: |

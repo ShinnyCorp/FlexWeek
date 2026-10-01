@@ -29,6 +29,7 @@ def test_nuitka_does_not_compile_chromium() -> None:
     assert "'--include-package=desktop'" not in WINDOWS
     for text in (LINUX, WINDOWS):
         assert "include-package=desktop.native" in text
+        assert "include-module=flexweek_engine" in text
         assert "desktop.webengine" not in text
         assert "PySide6.QtWebEngineCore" in text
         assert "noinclude-module" not in text

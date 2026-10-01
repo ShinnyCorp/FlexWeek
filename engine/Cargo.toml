@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = ["engine", "store", "py"]
+
+[workspace.package]
+edition = "2024"
+license = "GPL-3.0-only"
+version = "0.1.0"
+publish = false

@@ -82,6 +82,7 @@ $NuitkaArgs = @(
     '--enable-plugins=pyside6',
     '--include-package=desktop.native',
     '--include-package=backend',
+    '--include-module=flexweek_engine',
     # The window's icon and the Inter faces, found beside the code as they are in a checkout.
     "--include-data-dir=$(Join-Path $Root 'desktop\assets')=desktop/assets",
     '--nofollow-import-to=desktop.tests,backend.tests',

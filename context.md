@@ -1,6 +1,11 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `engine/full-port` (from `engine/contract` at 6e86802, main d5dfcd6 / v0.17.2): Rust engine
+  started. `slots` and `weeks` call `flexweek_engine`. The rest of the contract (model, plan, solver,
+  store, desktop logic) is Rust in `engine/` and compiles, with unit tests for the hash vectors and
+  two solver cases. Those Python modules still run the original bodies. E6 (callers import the
+  engine directly) and E7 (the interface map) are not done. Gate: 2952 passed. spec.md was not edited.
 - 2026-09-30, `feat/0.17.2`: 0.17.2 prepared (version, dated changelog, `docs/release-notes-v0.17.2.md`).
   It is Grok Bot's 0.17.0 audit (T1 to T37, A1 to A12, X1 to X9), split between Claude and GPT 6.1 Sol;
   every lane and unit below is merged. Last two: the 12-hour clock unit (above) and Retry save showing
@@ -732,6 +737,10 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-30, `engine/full-port`: time is wired through `flexweek_engine`. Model, plan, solver, store
+  and desk Rust is in the tree and `cargo test --workspace` passes. Python for those modules is still
+  the original. Do not start a second full gate until the next switch; the last gate was 2952 passed.
+  Windows packaging and CI were not run. spec.md Validation still omits the engine checks.
 - 2026-09-30, `feat/0.17.2`: ready to push, PR to main, merge after CI and release v0.17.2 as latest
   (Jonathan's word). Then Grok Bot reviews 0.17.2 and Jonathan decides on 0.17.3. Open for 0.17.3: the
   sign-in hover flake; Bento's now pill inside today's column; Mission's beside-block names crossed by
