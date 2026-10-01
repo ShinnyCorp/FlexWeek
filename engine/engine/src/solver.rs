@@ -904,6 +904,15 @@ fn reshape_moves(
                 let idx = pos.1;
                 trace.moves[idx].from_day = old.as_ref().map(|(d, _)| *d);
                 trace.moves[idx].from_start = old.as_ref().map(|(_, s)| s.clone());
+            } else {
+                changes.push(Move {
+                    block_id: block.id.clone(),
+                    reason: reason.into(),
+                    from_day: old.as_ref().map(|(d, _)| *d),
+                    from_start: old.as_ref().map(|(_, s)| s.clone()),
+                    to_day: None,
+                    to_start: None,
+                });
             }
         } else if let Some((to_day, to_start)) = new.as_ref() {
             changes.push(Move {

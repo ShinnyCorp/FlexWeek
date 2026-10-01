@@ -1,5 +1,6 @@
 // Full Unicode case fold, generated from this machine's Python str.casefold.
 // Characters that fold to themselves are absent.
+// Regenerate with engine/tools/generate_casefold.py.
 
 pub fn casefold(text: &str) -> String {
     let mut out = String::with_capacity(text.len());

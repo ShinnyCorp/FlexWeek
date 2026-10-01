@@ -530,7 +530,7 @@ fn as_session(block: &mut Value, assignment_id: &str) {
 pub fn due_placement_bound(week_start: &str, due: &str) -> EngineResult<Option<(i64, i64)>> {
     let monday = parse_iso_date(week_start)?;
     let (due_day, minutes) = parse_due(due)?;
-    let sunday = monday + Duration::days(6);
+    let sunday = shift_days(monday, 6)?;
     if due_day > sunday {
         return Ok(None);
     }
@@ -883,8 +883,8 @@ pub fn lateness_occupancy(day: i64, from_start: &str, minutes: i64) -> EngineRes
 }
 
 fn casefold_trim(s: Option<&str>) -> Option<String> {
-    s.filter(|t| !t.trim().is_empty())
-        .map(|t| crate::casefold::casefold(t.trim()))
+    s.filter(|t| !crate::time::py_strip(t).is_empty())
+        .map(|t| crate::casefold::casefold(crate::time::py_strip(t)))
 }
 
 pub fn study_rank(
@@ -919,7 +919,7 @@ pub fn study_rank(
             && window
                 .get("subject")
                 .and_then(Value::as_str)
-                .map(|s| crate::casefold::casefold(s.trim()))
+                .map(|s| crate::casefold::casefold(crate::time::py_strip(s)))
                 == Some(wanted.clone())
         {
             return 0;
@@ -955,7 +955,8 @@ fn merged_work_spans(
         }
         if let Some(subject) = window.get("subject").and_then(Value::as_str)
             && (wanted.is_none()
-                || crate::casefold::casefold(subject.trim()) != wanted.as_deref().unwrap_or(""))
+                || crate::casefold::casefold(crate::time::py_strip(subject))
+                    != wanted.as_deref().unwrap_or(""))
         {
             continue;
         }

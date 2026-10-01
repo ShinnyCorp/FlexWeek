@@ -39,19 +39,7 @@ fn spotify_share() -> &'static Regex {
 }
 
 fn py_repr(text: &str) -> String {
-    let mut out = String::from("'");
-    for ch in text.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '\'' => out.push_str("\\'"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            other => out.push(other),
-        }
-    }
-    out.push('\'');
-    out
+    crate::time::py_repr(text)
 }
 
 fn leap(year: i32) -> bool {

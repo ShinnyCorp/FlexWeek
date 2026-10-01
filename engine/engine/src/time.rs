@@ -38,19 +38,46 @@ pub fn day_name_to_index() -> Vec<(&'static str, i64)> {
     ]
 }
 
+pub(crate) fn py_space(ch: char) -> bool {
+    ch.is_whitespace() || matches!(ch, '\u{1c}' | '\u{1d}' | '\u{1e}' | '\u{1f}')
+}
+
+pub(crate) fn py_strip(text: &str) -> &str {
+    text.trim_matches(py_space)
+}
+
 pub(crate) fn py_repr(text: &str) -> String {
-    let mut out = String::from("'");
+    let quote = if text.contains('\'') && !text.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    let mut out = String::new();
+    out.push(quote);
     for ch in text.chars() {
         match ch {
             '\\' => out.push_str("\\\\"),
-            '\'' => out.push_str("\\'"),
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            other => out.push(other),
+            c if c == quote => {
+                out.push('\\');
+                out.push(quote);
+            }
+            c if !crate::pyprint::py_printable(c) => {
+                let cp = c as u32;
+                if cp < 0x100 {
+                    out.push_str(&format!("\\x{cp:02x}"));
+                } else if cp < 0x10000 {
+                    out.push_str(&format!("\\u{cp:04x}"));
+                } else {
+                    out.push_str(&format!("\\U{cp:08x}"));
+                }
+            }
+            c => out.push(c),
         }
     }
-    out.push('\'');
+    out.push(quote);
     out
 }
 
@@ -80,7 +107,7 @@ fn decimal_digit(ch: char) -> Option<u8> {
 }
 
 /// Python `int()`, including Unicode decimal digits and underscores between digits.
-pub(crate) fn py_int(raw: &str) -> EngineResult<i64> {
+pub fn py_int(raw: &str) -> EngineResult<i64> {
     let fail = || {
         EngineError::value(format!(
             "invalid literal for int() with base 10: {}",
@@ -465,8 +492,13 @@ fn week_date(value: &str) -> EngineResult<Option<NaiveDate>> {
 }
 
 pub(crate) fn shift_days(day: NaiveDate, days: i64) -> EngineResult<NaiveDate> {
-    day.checked_add_signed(Duration::days(days))
-        .ok_or_else(|| EngineError::overflow("date value out of range"))
+    let next = day
+        .checked_add_signed(Duration::days(days))
+        .ok_or_else(|| EngineError::overflow("date value out of range"))?;
+    if !(1..=9999).contains(&next.year()) {
+        return Err(EngineError::overflow("date value out of range"));
+    }
+    Ok(next)
 }
 
 fn from_iso(value: &str) -> EngineResult<NaiveDate> {

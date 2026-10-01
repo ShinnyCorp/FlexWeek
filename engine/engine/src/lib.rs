@@ -8,6 +8,7 @@ pub mod desk;
 pub mod error;
 pub mod model;
 pub mod plan;
+pub mod pyprint;
 pub mod snapshot;
 pub mod solver;
 pub mod time;
