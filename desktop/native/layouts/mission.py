@@ -328,14 +328,27 @@ class MissionPainter(BlockPainter):
             pill = QRectF(track.area.left() + track.offset(now) - wide / 2, base + 2 - tall, wide, tall)
         painter.setFont(font)
         painter.setPen(self.c("muted"))
-        for minute in range(-(-track.first // 120) * 120, track.last + 1, 120):
+        # Every other hour, or every fourth or sixth or twelfth when 12-hour words would run together.
+        widest = max(metrics.horizontalAdvance(clock_label(minute)) for minute in (0, 12 * 60))
+        room = widest + LABEL_CLEAR
+        step = next((span for span in (120, 240, 360) if track.offset(span) - track.offset(0) >= room), 720)
+        written: list[tuple[QRectF, str, bool]] = []
+        for minute in range(-(-track.first // step) * step, track.last + 1, step):
             words = clock_label(minute)
             wide = metrics.horizontalAdvance(words) + 2
             box = QRectF(track.area.left() + track.offset(minute) - wide / 2, base - metrics.height(), wide,
                          metrics.height())
+            moved = False
             if visible is not None and box.right() > visible.left() and box.left() < visible.right():
-                box.moveLeft(max(min(box.left(), visible.right() - wide), visible.left()))
-            if pill is not None and box.intersects(pill.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0)):
+                inside = max(min(box.left(), visible.right() - wide), visible.left())
+                moved = inside != box.left()
+                box.moveLeft(inside)
+            if pill is None or not box.intersects(pill.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0)):
+                written.append((box, words, moved))
+        for box, words, moved in written:
+            # Moved in from the edge it sits over no hour of its own, so it gives way to a neighbour.
+            if moved and any(box.intersects(other.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0))
+                             for other, _words, _moved in written if other is not box):
                 continue
             painter.drawText(box, Qt.AlignmentFlag.AlignCenter, words)
         if pill is None:

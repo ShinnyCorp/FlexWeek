@@ -1346,7 +1346,14 @@ class NativeWindow(QMainWindow):
     def _set_clock(self) -> bool:
         """Whether the clock changed. Only a change redraws the week, so this is safe to call from
         the redraw itself."""
-        return set_clock_24h((self.session.preferences or {}).get("clock_24h", True) is not False)
+        changed = set_clock_24h((self.session.preferences or {}).get("clock_24h", True) is not False)
+        if changed:
+            # Every design's hours, shown or not: a redraw that finds no new blocks does not tell
+            # them their labels got wider or narrower.
+            for scroll in self.planner.findChildren(HoursScroll):
+                scroll.canvas.labels_changed.emit()
+                scroll.canvas.update()
+        return changed
 
     def _keep_bar_whole(self) -> None:
         """The window is never narrower than the top bar's buttons at their smallest, which large

@@ -9,6 +9,12 @@
   fills every block with its category's fill (ink outline and tab kept, homework unchanged, a finished or
   missed block still the page's colour); `_no_room`/`_wordless` are gone. `test_hours_open.opens_at`
   follows the new lanes rule.
+- 2026-09-30, `claude/0172-w5-clock`: the 12-hour clock's hour labels and now pill (audit X2). Down a column the
+  hours' header takes its width from the drawn labels, and from the now pill where a design puts it in the gutter
+  (`BlockPainter.hour_gutter`), and is made again when the clock format or the time now changes
+  (`HoursCanvas.labels_changed`). Mission's labels step to every fourth, sixth or twelfth hour when 12-hour words
+  would run together. Sol's Clay Day failure was a test sampling the Day card while it slid in from 35 px; the test
+  now waits for the card's size to settle. Gate 2658 passed; `clock_gutters.json` caught.
 - 2026-09-30, `claude/0172-u04-setup` (from bd2d134): setup and Sign in, part 3 of unit 04 (the audit's T35 and
   T36). Setup's style and look cards are a CardGrid, so at 810 px they run one to a row instead of past
   the right edge; the planning-hours presets are pills (`chip` property) and Send a test reminder and Add
@@ -716,6 +722,8 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-30, `claude/0172-w5-clock`: clock-label unit done and committed locally, not merged or pushed. Pictures
+  before and after: `~/.flexweek-ui-harness/scratch/0172-w5-clock/before/` and `after/` (`pairs/` side by side).
 - 2026-09-30, `claude/0172-u04-setup`: T35 and T36 done and committed locally, not merged or pushed.
   Pictures before and after: `~/.flexweek-ui-harness/scratch/0172-u04-setup/before/` and `after/`.
 - 2026-09-30, `integrate/0172-sol`: the drag and look-file test leaks fixed and Jonathan's three looks
