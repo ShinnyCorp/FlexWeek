@@ -175,6 +175,8 @@ class Hand(QObject):
     selected = Signal(str, int)
     # A block's menu asked for: its id, its day (-1 for homework with no time yet), where to show it.
     menu_requested = Signal(str, int, QPoint)
+    # An empty spot's menu asked for: its day, the minute under the pointer, where to show it.
+    spot_menu_requested = Signal(int, int, QPoint)
     active_changed = Signal(bool)
     # From the press to the release: nothing the press started on may be rebuilt meanwhile.
     holding = Signal(bool)
@@ -271,6 +273,14 @@ class Hand(QObject):
         if day >= 0:
             self.select(block_id, day)
         self.menu_requested.emit(block_id, day, at)
+
+    def ask_spot_menu(self, day: int, minute: int, at: QPoint) -> None:
+        """A right-click on free time: the window shows what can be added there. As for a block, while
+        something is carried it does nothing."""
+        if self._active:
+            return
+        self._end(silent=True)
+        self.spot_menu_requested.emit(day, minute, at)
 
     def commit(self, change: Change) -> None:
         """For a tap that makes something, such as a click on free time."""

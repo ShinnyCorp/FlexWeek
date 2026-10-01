@@ -5,6 +5,14 @@ All notable changes to FlexWeek are documented here. Format follows
 
 ## [0.17.2] - Unreleased
 
+### Added
+- Right-clicking free time in the hours, in Today's app and in every design,
+  offers Add fixed time at that time, Add homework due that day, and Paste
+  (greyed, saying why, until something is copied). Each opens its sheet with
+  the day and time filled in. With the hours focused, Shift+F10 or the Menu
+  key opens the same menu at the first free time of the chosen block's day,
+  or today's.
+
 ### Changed
 - Choose a time and Spread, which open from the homework editor, are sheets
   inside the window like the editors: centred over the dimmed week, with their

@@ -1290,12 +1290,16 @@ class HoursCanvas(QWidget):
         track = self.track_at(point)
         if track is None:
             return
-        # Less half a step, so rounding floors: the block starts in the step the pointer went down in.
         step = self.hand.step
-        anchor = min(max(snap(track.minute_at(point) - step / 2, step), track.first), track.last - step)
+        anchor = self._step_at(track, point)
         held = Held(Gesture.CREATE, "", step, None, track.day, Span(track.day, anchor, anchor + step))
         self.hand.selection = None
         self.hand.press(self, held, at, tap=lambda: self._quick_create(track, anchor), home=(self, track))
+
+    def _step_at(self, track: LinearTrack, point: QPointF) -> int:
+        """The start of the step the pointer is in. Less half a step, so rounding floors."""
+        step = self.hand.step
+        return min(max(snap(track.minute_at(point) - step / 2, step), track.first), track.last - step)
 
     def _edge_kind(self, rect: QRectF, upright: QPointF, track: LinearTrack) -> Gesture:
         """Resize from within a few pixels of the start or end edge of a block long enough to have
@@ -1336,14 +1340,45 @@ class HoursCanvas(QWidget):
         self.hand.open(hit[0].block_id, second_click=True)
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
-        """A right-click on a block asks for its menu. It picks nothing up, and on free time or while
-        something is carried it does nothing."""
-        hit = self._block_at(QPointF(event.pos()))
-        if hit is None or self.hand.busy:
+        """A right-click on a block asks for its menu, on free time for what can be added there. It
+        picks nothing up, and while something is carried it does nothing. The keyboard's way to the
+        free-time menu is `_ask_spot_menu`, from the key press."""
+        point = QPointF(event.pos())
+        hit = self._block_at(point)
+        track = self.track_at(point)
+        by_key = event.reason() == QContextMenuEvent.Reason.Keyboard
+        if self.hand.busy or (hit is None and (track is None or by_key)):
             event.ignore()
             return
         event.accept()
-        self.hand.ask_menu(hit[0].block_id, hit[0].span.day, event.globalPos())
+        if hit is not None:
+            self.hand.ask_menu(hit[0].block_id, hit[0].span.day, event.globalPos())
+        else:
+            self.hand.ask_spot_menu(track.day, self._step_at(track, point), event.globalPos())
+
+    def _ask_spot_menu(self) -> bool:
+        """Shift+F10 and the Menu key: the free-time menu at the first free step of the chosen block's
+        day, or today's, or the first day shown. False when there is nothing to ask it about."""
+        chosen = self.hand.selection
+        track = (
+            (self.track_for(chosen[1]) if chosen is not None else None)
+            or (self.track_for(self.today) if self.today is not None else None)
+            or next(iter(self.tracks), None)
+        )
+        if self.hand.busy or track is None:
+            return False
+        step = self.hand.step
+        taken = [(item.start, item.end) for item in self.occurrences if item.day == track.day]
+        minute = -(-track.first // step) * step
+        while minute + step <= track.last and any(
+            start < minute + step and minute < end for start, end in taken
+        ):
+            minute += step
+        minute = min(minute, track.last - step)
+        if not self.in_view(track.day, minute):
+            self.reveal(track.day, minute, minute + step)
+        self.hand.ask_spot_menu(track.day, minute, self.mapToGlobal(track.point_for(minute).toPoint()))
+        return True
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if self.hand.busy:
@@ -1392,8 +1427,14 @@ class HoursCanvas(QWidget):
             self.zoom_asked.emit(steps, event.position())
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
-        """Enter opens the chosen block. Everything else goes to the window's shortcuts, zoom
-        included."""
+        """Enter opens the chosen block; Shift+F10 and the Menu key ask for the free-time menu.
+        Everything else goes to the window's shortcuts, zoom included."""
+        asks = event.key() == Qt.Key.Key_Menu or (
+            event.key() == Qt.Key.Key_F10 and event.modifiers() == Qt.KeyboardModifier.ShiftModifier
+        )
+        if asks and self._ask_spot_menu():
+            event.accept()
+            return
         chosen = self.hand.selection
         mine = chosen is not None and any(item.block_id == chosen[0] for item in self.occurrences)
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and chosen is not None and mine:

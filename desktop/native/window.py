@@ -137,6 +137,7 @@ from desktop.native.version import VERSION
 from desktop.native.weekmodel import (
     added_words,
     build_week,
+    clock_text,
     dated_words,
     hhmm_text,
     moved_words,
@@ -1162,6 +1163,7 @@ class NativeWindow(QMainWindow):
         self.hand.refused.connect(self.session._say)
         self.hand.opened.connect(self._edit_block)
         self.hand.menu_requested.connect(self._block_menu)
+        self.hand.spot_menu_requested.connect(self._spot_menu)
         self.hand.selected.connect(self.session.select_block)
         self.hand.holding.connect(self._hold_renders)
         self.hand.date_judge = self._date_judge
@@ -2087,6 +2089,18 @@ class NativeWindow(QMainWindow):
             category = None
         self._commit_block(BlockDialog(self, category=category))
 
+    def _add_fixed_at(self, day: int, minute: int) -> None:
+        category = self.session.armed_category
+        if category in FLEX_CATEGORIES:
+            category = None
+        self._commit_block(BlockDialog(self, day=day, start=minutes_to_hhmm(minute), category=category))
+
+    def _add_homework_due(self, due: str) -> None:
+        category = self.session.armed_category
+        if category not in FLEX_CATEGORIES:
+            category = "assignments"
+        self._commit_homework(HomeworkDialog(self, today=self._today(), category=category, due=due))
+
     def _delete_block(self, block: dict, scope: str, day: int | None) -> None:
         self.session.delete_block(block["id"], scope=scope, day=day)
         self.session.save()
@@ -2558,6 +2572,34 @@ class NativeWindow(QMainWindow):
             if confirm(self, "Delete event", f"Delete {name}? You can undo this.", "Delete"):
                 self._delete_block(block, "occurrence" if one_day else "series", on)
 
+    def _spot_menu(self, day: int, minute: int, at: QPoint) -> None:
+        """What an empty spot in the hours offers: fixed time at the step under the pointer, homework
+        due that day, and the copied blocks pasted there. Each opens the sheet the Add and Paste
+        buttons open, with the day and time filled in."""
+        menu = Menu(self)
+        menu.setObjectName("spotMenu")
+        menu.set_colours(self.more_menu.colours())
+        menu.add(f"Add fixed time at {clock_text(minute)}", "clock", name="spotMenuFixed")
+        menu.add("Add homework due this day", "book-open", name="spotMenuHomework")
+        paste = menu.add("Paste", "clipboard-paste", name="spotMenuPaste")
+        session = self.session
+        if session.clipboard is None or session.busy:
+            # Greyed as in More, with its reason: on the row when nothing is copied, else on hover.
+            paste.setEnabled(False)
+            waiting = session.busy or session.dirty or session.pending_save is not None
+            paste.setToolTip(WAIT_TIP if waiting else GREYED_TIPS["pasteBlock"])
+            if not waiting:
+                paste.setText(f"Paste\t{GREYED_TIPS['pasteBlock']}")
+        chosen = menu.exec(at)
+        menu.deleteLater()
+        picked = chosen.objectName() if chosen is not None else ""
+        if picked == "spotMenuFixed":
+            self._add_fixed_at(day, minute)
+        elif picked == "spotMenuHomework":
+            self._add_homework_due(date_for_day(session.week_start, day))
+        elif picked == "spotMenuPaste":
+            self._told(lambda: self._paste_at(day, minute))
+
     def _show_preview(
         self,
         title: str,
@@ -2600,12 +2642,17 @@ class NativeWindow(QMainWindow):
         self.session.copy_selected()
 
     def _paste_clipboard(self) -> None:
+        self._paste_preview(self.session.paste_destination(), self.session.paste_proposals())
+
+    def _paste_at(self, day: int, minute: int) -> None:
+        start = minutes_to_hhmm(minute)
+        self._paste_preview((day, start), self.session.paste_proposals(day, start))
+
+    def _paste_preview(self, dest: tuple[int, str | None] | None, rows: list[dict] | None) -> None:
         clip = self.session.clipboard
-        rows = self.session.paste_proposals()
         label = "pasting " + clip["label"] if clip else "pasting"
         key = None
         if clip and self.session.account is not None:
-            dest = self.session.paste_destination()
             key = (
                 f"paste|{self.session.account['id']}|{self.session.week_start}|"
                 f"{dest[0] if dest else ''}|{(dest[1] if dest else '') or ''}|"
