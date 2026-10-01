@@ -77,6 +77,21 @@ def no_window_is_left_showing() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def no_mouse_button_is_left_held() -> Iterator[None]:
+    """A button QTest pressed and never released stays down in Qt for the rest of the worker, so every
+    later pointer move is a drag and hover never moves to the widget under it: a later test's link
+    showed no hover only when it shared a worker with the test that held the button."""
+    yield
+    if importlib.util.find_spec("PySide6") is None:
+        return
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    if QApplication.instance() is not None:
+        assert QApplication.mouseButtons() == Qt.MouseButton.NoButton, "left a mouse button held down"
+
+
+@pytest.fixture(autouse=True)
 def nothing_leaves_the_test(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """No test reaches this computer's own apps. A Spotify alarm tells the Spotify app to play, over
     the session bus or by opening its address, and the developer's Spotify was running: a test would
