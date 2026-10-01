@@ -45,6 +45,8 @@ All notable changes to FlexWeek are documented here. Format follows
 - In the Look editor, Readability lists each place a pale accent of your own
   is used as words (Plan, today's name, the line for now) with a Fix, and the
   app draws those words darker until then. The stock accents are not listed.
+  The line for now is listed only when it would not show (under 3 to 1), not
+  when it is merely too pale for text.
 - Terminal's Next card wraps the time left instead of cutting it off.
 - The look pictures in Settings widen with the text, so at Large text, as in
   High contrast, each name stays on one line.

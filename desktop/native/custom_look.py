@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from desktop.native.calendar import CATEGORIES
 from desktop.native.look import (
+    AA_GRAPHIC,
     AA_TEXT,
     BASE_LABELS,
     LOOK_BASES,
@@ -240,10 +241,10 @@ class Problem:
 def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
     """Every pair that reads under 4.5 to 1, named as the Customise mock-up names them: text and muted
     text on the page, cards and the calendar, accent text on cards, text on accent buttons, and each
-    block's words on its category's fill. Text and muted text are moved to read on every surface at
-    once, and the text on the blocks too, but for a block on the other side of mid-grey from the page:
-    no one text reads on both, so that block keeps its own Fix. An outlined block is the text on the
-    calendar."""
+    block's words on its category's fill; the now line is held to 3 to 1, as a line. Text and muted text
+    are moved to read on every surface at once, and the text on the blocks too, but for a block on the
+    other side of mid-grey from the page: no one text reads on both, so that block keeps its own Fix.
+    An outlined block is the text on the calendar."""
     look = {"preset": "default", "knobs": {}, "custom": custom}
     palette = resolved_palette("system", system_dark, look)
     surfaces = (palette["window"], palette["panel"], palette["grid"])
@@ -278,11 +279,13 @@ def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
     ):
         if field == "accent" and not own_accent:
             continue
+        # The now line is a line, fitted to 3 to 1 as the look draws it; the rest is text.
+        need = AA_GRAPHIC if words == "Now line" else AA_TEXT
         ratio = contrast(ink, ground)
-        if ratio < AA_TEXT:
+        if ratio < need:
             if field == "accent":
                 # Its words on the page and cards, and white or black on it, which any colour reads.
-                fixed = fit_lightness(accent, surfaces + (tint,), AA_TEXT)
+                fixed = fit_lightness(accent, surfaces + (tint,), need)
                 found.append(Problem(words, ink, ground, ratio, ("accent",), fixed))
                 continue
             fixed = text_fixed if field == "text" else fit_lightness(ink, surfaces, AA_TEXT)
