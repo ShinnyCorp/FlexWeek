@@ -83,6 +83,88 @@ All notable changes to FlexWeek are documented here. Format follows
   does: Retro's blocks said nothing and Bento's said "Sc…" alone. A name is cut
   short only when it does not fit, and the picture before it goes before the
   name drops below three letters.
+- Changing pages no longer dips through a blank moment: the old page fades
+  steadily and the new one comes in just behind it, so the window is never
+  empty, and the page's title fades with it instead of changing first.
+  Reduce cross-fades without sliding, so it is visibly calmer than Normal.
+- The top bar's buttons grey only once FlexWeek has been busy a moment (a
+  plan takes milliseconds), but they take no clicks, keys or shortcuts
+  from the first moment. After a plan the hours ease to the first placed
+  homework instead of jumping, and stay put when it already shows; the
+  plan's words are said once, with Undo, instead of plain first and then
+  rewrapped.
+- Ctrl+K rises further over a longer moment, so its rise is seen after the
+  window dims, and a notice said while it is open goes under the dimming.
+- On the focus screen, the ring before Start is drawn between the track
+  and the accent, so it reads as set, not finished.
+- Actions that are not a page's answer are outlined buttons, words inside
+  a hairline: Settings' Availability…, Manage account…, Run setup again,
+  Check for updates and Add alarm, recovery codes' Copy and Save…, More
+  details, Routines' Close, Reset this layout's options and the look
+  editor's Save as new. As plain words none of them read as a button, and
+  the filled button stays the one answer.
+- Settings' Appearance page opens on Colours, with the look's fine-tuning
+  inside it, then the designs. The switches read "Show shape, spacing and
+  type" and "Show more options for this design", and Customise's row is
+  "Your own look", not "Customise" twice.
+- Ctrl+K has a Settings group: Look and colours, Customise look…, and each
+  Settings page.
+- While a timer runs, one line over the week says its name, its time and
+  a way to the Focus screen: Now and Next, Quick focus and the sentence on
+  what to do no longer stack three strips. What to do next is the time's
+  tip while it runs, and said once it ends. The Focus screen button is
+  outlined, no longer louder than Add.
+- More looks is a grid of small weeks drawn in each look's own colours and
+  corners, each with its name; one click, or Space or Enter, wears it.
+  Looks you saved follow under "Your looks", the worn look's picture is
+  marked, and while Light, Dark or System shows no choice because one of
+  your own is worn, the line under the pictures names it ("Wearing …").
+- The Settings footer keeps its one sentence, "Changes are saved as you
+  make them.": a routine's "Saving preferences…" and "Saved preferences."
+  no longer replace it, while anything that needs reading still does. Each
+  page lines its labels up in one column.
+- Settings' design cards sit in one grid whose rows are full, the ones
+  still being tried tagged "Experimental" on their card, instead of those
+  under a heading of their own with a last card standing alone.
+- Every sheet starts with its title and a close button, and stacks each
+  label above its field, so every field starts at one edge: Add and Edit
+  said nothing about what they were. Form sheets are 440 pixels wide and
+  list sheets 600, where the two editors were different widths, and Start
+  and End sit side by side under their labels, which keeps the block
+  editor inside the window at 1280x800. The block editor picks its days
+  with the pills setup already had, not tick boxes.
+- Routines, Help, About, Running late and School hours open as sheets
+  inside the window, centred, each with its title and a close button.
+  They were windows of their own with title bars, Running late off to one
+  side. Routines is one card with two headed parts, its lists a fixed
+  height and its name beside Save, so it fits 1280x800. Help puts its
+  four screens two by two above one column of shortcuts, each key on one
+  line with its words beside it. Running late's summary waits for the
+  preview, and a greyed main button in any sheet or dialog keeps its pale
+  accent fill but writes its words in the text colour, so Accept late
+  start can be read.
+- Days are picked with pills everywhere: the alarm editor in Settings >
+  Alerts, the work-hours rows used by setup's Homework time step and by
+  Availability, and the block editor, Routines and School hours. The
+  alarm's days sit on one row under a "Days" label; as tick boxes they
+  wrapped into two rows.
+- Every date in a sheet (homework's Due, Routines' Week of, Spread's
+  Starting, and setup's first homework) opens a month drawn in your look:
+  Monday first, the days named by one letter with Saturday and Sunday in
+  the same colour as the rest, the picked day a round dot in the accent,
+  today ringed, other months' days faint, and chevron arrows. The stock
+  calendar drew weekends red and the picked day as a square.
+- Numbers in sheets, setup and Settings (a homework's length, setup's
+  first homework and reminder lead, Focus's lengths and long-break count,
+  the reminder lead and the volume) sit between a minus and a plus big
+  enough to hit, which stop at their ends, grey with the box, and repeat
+  while held. A homework's length has 15, 30, 45, 60 and 90 as pills
+  under it, the one matching the value lit.
+- Every clock time (a block's Start and End, a due time, Choose a time,
+  study windows, a new alarm, setup's times) is typed with no arrows
+  inside the box; they were too small to hit and took a quarter of it.
+  The volume reads "80%", Focus's Timer preset is as wide as the fields
+  around it, and sheets grow with Large text so their fields fit.
 
 ### Fixed
 - Today's app's hours end at 23:00: the "24:00" label under them is gone, in
@@ -116,6 +198,54 @@ All notable changes to FlexWeek are documented here. Format follows
 - At a narrow window Week's day header shows a day's homework as "1 h 30" when "1 h 30 min" would be cut off.
 - Setup's style and look cards fit a narrow window: they run one to a row when
   two would not fit, instead of running off the right edge at 810 pixels.
+- Clay deck's side days are whole and say what is in them: on Week the day
+  two away was cut by the window's edge, and on Day both neighbours ran
+  past it, so a neighbour's homework was a pink bar whose name was drawn
+  off screen. A side card now narrows to the room beside the card in
+  front, and a card the edge would cut waits wholly past it until the row
+  slides it in. Each side card also labels its hours down its left, so it
+  no longer reads as a day of its own, and the shading at the row's ends
+  stays off the cards in view.
+- In Bento's Week, a column too narrow for a block's whole time says when
+  it starts, "School 08:00", instead of the name alone: at the window's
+  usual width "08:00-14:30" had no room, so School, Soccer practice and
+  the rest said their names with no times. A wide column keeps the range.
+- Bento's Due soon says "left · due Thursday 1" (or "due at 21:00", "due
+  by the end of today") rather than "until Thursday 1", and both Bento
+  and Retro write a placed time as "placed Wed 19:00", the word Mission
+  control already uses, so a time the homework sits at is not read as its
+  deadline.
+- Bento's Due soon rows keep the placed time whole in a narrow tile: they
+  say the length and where it is placed while every row has room, and
+  otherwise all say where it is placed, instead of cutting the time off
+  or one row dropping its length while the rest kept theirs.
+- The hours keep their place when a design lays its page out again after
+  a drop and there is briefly less to scroll: Retro's hours jumped back a
+  little instead.
+- Clay deck's Day opens at the day's first block, not at now: while the
+  open card was still sliding in, its hours had no width, and a time
+  asked for then was kept for a showing that never came. Hours asked for
+  a time while they have no room now go there once room returns.
+- Mission control's Focus minutes say "Focusing now", "Focus paused" or
+  "On a break" while a session runs, instead of "None yet this week"; the
+  minutes stay those already credited.
+- School hours' note "No school days picked means no school on the
+  calendar" shows only when no day is picked, not under a week of picked
+  days.
+- In Ctrl+K, the row Enter will run is tinted with the accent (a row
+  under the pointer keeps its grey), the list shows every row while the
+  window has room — it stopped at ten and showed a scroll bar beside a
+  list that fit — and each key hint is drawn as a keycap, with "+" plain
+  between them.
+- The More menu's groups each sit under a heading: Planning, Edit, Help
+  and info and Account; only Planning had one. A greyed Unfinished with
+  nothing under it says "None left" on its row, not only in its tooltip.
+- In Settings > Alerts, a new alarm's time starts at 07:00 rather than
+  00:00, its Spotify field is labelled "Spotify link" (its hint says
+  "Optional"), and Remove alarm shows only while there is an alarm to
+  remove.
+- A notice in Retro desktop no longer covers the taskbar's tray (the bell
+  and the clock): it keeps above the bar, as in every other design.
 
 ## [0.17.1] - 2026-09-29
 
