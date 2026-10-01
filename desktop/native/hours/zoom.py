@@ -45,6 +45,8 @@ KEY = re.compile(r"[a-z]+\.[a-z]+")
 ZOOM_KEYS = {Qt.Key.Key_Equal: 1, Qt.Key.Key_Plus: 1, Qt.Key.Key_Minus: -1, Qt.Key.Key_0: 0}
 # Hours with neither now nor a block to show open at 08:00.
 OPENS = 8 * 60
+# Minutes shown before now when hours open with now near the start of what shows.
+NOW_MARGIN = 45
 # The zoom pill's minus and plus, as the mock-up draws them.
 ZOOM_ICON_PX = 14
 
@@ -170,7 +172,7 @@ class HoursScroll(QScrollArea):
         self.px = scale.default
         self._length_for = length_for
         self._gutter = gutter
-        self._pending: tuple[int, int | None, bool] | None = None
+        self._pending: tuple[int, int | None, bool, int | None] | None = None
         # The minute at the start of what showed when the hours were hidden, until it is put back,
         # and where the bar stopped while there was no room yet to put it back.
         self._kept: float | None = None
@@ -180,6 +182,7 @@ class HoursScroll(QScrollArea):
         # until the student scrolls.
         self._centre: float | None = None
         self._at_end = False
+        self._keep: int | None = None
         self._placed: int | None = None
         # The week, or day, these hours last opened on.
         self._opened: object = None
@@ -290,24 +293,36 @@ class HoursScroll(QScrollArea):
 
     # Scrolling to a time
 
-    def scroll_to(self, minute: int, above: int | None = 90, end: bool = False) -> None:
+    def scroll_to(
+        self, minute: int, above: int | None = 90, end: bool = False, keep: int | None = None
+    ) -> None:
         """Put `minute` near the start of what shows, with `above` minutes of the day before it, or
         in the middle of what shows when `above` is None, or at the end of what shows when `end` is
-        set. Hours that are not on screen yet do it when they are shown, and only then. Shown while
-        their page is still being laid out, they may not reach it yet; they do once they can."""
-        self._pending = (minute, above, end)
+        set; with `end`, `keep` is a minute that stays on screen, NOW_MARGIN minutes from the start,
+        when the end and it do not both fit. Hours that are not on screen yet do it when they are
+        shown, and only then. Shown while their page is still being laid out, they may not reach it
+        yet; they do once they can."""
+        self._pending = (minute, above, end, keep)
         self._kept = self._short_at = None
         self._centre = minute if above is None or end else None
-        self._at_end = end
+        self._at_end, self._keep = end, keep
         if not self.isVisible():
             return
         self._lay_out_now()
         if self.canvas.tracks:
             self._pending = None
             half = self._port_length() / 2 / self.canvas.tracks[0].per_minute()
-            self._kept = max(minute - 2 * half, 0) if end else minute - (half if above is None else above)
+            self._kept = self._start_for_end(minute) if end else minute - (half if above is None else above)
             self._put_back()
             self._placed = self._bar().value()
+
+    def _start_for_end(self, end: float) -> float:
+        """The minute at the start of what shows when `end` is at its end, or `_keep` would be less than
+        NOW_MARGIN minutes from the start."""
+        start = end - self._port_length() / self.canvas.tracks[0].per_minute()
+        if self._keep is not None:
+            start = min(start, self._keep - NOW_MARGIN)
+        return max(start, 0)
 
     def reveal(self, minute: int, above: int, level: str) -> None:
         """Bring `minute` into sight as `scroll_to` puts it, easing there where things may travel, and
@@ -334,7 +349,9 @@ class HoursScroll(QScrollArea):
         bar.setValue(start)
         glide.start(QVariantAnimation.DeletionPolicy.DeleteWhenStopped)
 
-    def open_at(self, key: object, minute: int, above: int | None = 90, end: bool = False) -> None:
+    def open_at(
+        self, key: object, minute: int, above: int | None = 90, end: bool = False, keep: int | None = None
+    ) -> None:
         """Open a new week or day once, and restore its position when it is visited again."""
         if key != self._opened:
             if self._opened is not None:
@@ -351,7 +368,7 @@ class HoursScroll(QScrollArea):
                 if self.isVisible():
                     self._put_back()
             else:
-                self.scroll_to(minute, above, end)
+                self.scroll_to(minute, above, end, keep)
 
     def take_places(self, before: HoursScroll) -> None:
         """Go back where the student left each week and day on `before`, the hours these replace."""
@@ -412,7 +429,10 @@ class HoursScroll(QScrollArea):
             self._centre = None
             return
         self._lay_out_now()
-        bar.setValue(round(self._y_for(self._centre) - self._port_length() / (1 if self._at_end else 2)))
+        if self._at_end:
+            bar.setValue(round(self._y_for(self._start_for_end(self._centre))))
+        else:
+            bar.setValue(round(self._y_for(self._centre) - self._port_length() / 2))
         self._placed = bar.value()
 
     def showEvent(self, event: object) -> None:  # noqa: N802

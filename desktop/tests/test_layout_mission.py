@@ -385,37 +385,87 @@ def test_the_line_for_now_crosses_a_tick_it_lies_on(qapp: QApplication) -> None:
     assert view.scene.tokens["now"] in across
 
 
-def last_minute_shown(view: MissionView, name: str) -> float:
-    """The minute at the right edge of the lanes as they are scrolled."""
+def minutes_shown(view: MissionView, name: str) -> tuple[float, float]:
+    """The minutes at the left and right edges of the lanes as they are scrolled."""
     scroll = view.findChild(HoursScroll, name)
     track = view.findChild(MissionCanvas, "missionHours").tracks[0]
-    along = scroll.horizontalScrollBar().value() + scroll.viewport().width()
-    return track.first + (along - track.area.left()) / track.per_minute()
+    along = scroll.horizontalScrollBar().value()
+    return tuple(track.first + (edge - track.area.left()) / track.per_minute()
+                 for edge in (along, along + scroll.viewport().width()))
+
+
+def last_minute_shown(view: MissionView, name: str) -> float:
+    return minutes_shown(view, name)[1]
+
+
+SURFACES = [("week", "missionWeekScroll", {}), ("day", "missionDayScroll", {"iso_day": "2026-09-17"})]
 
 
 @pytest.mark.parametrize("size", [(1366, 760), (1280, 800), (810, 800)])
-def test_the_lanes_open_through_the_evening(qapp: QApplication, size: tuple[int, int]) -> None:
-    """The lanes open showing the end of the day that has something in it: 22:00 at the least, so a
-    name written at the evening's end is not cut off at the edge of the lanes, and for a day with a
-    late block, that block's end. The view of the hours is not shrunk to get there: it scrolls."""
-    week = shown(qapp, size=size)
-    assert last_minute_shown(week, "missionWeekScroll") >= 22 * 60
+def test_the_lanes_of_another_week_open_through_the_evening(
+    qapp: QApplication, size: tuple[int, int]
+) -> None:
+    """With now not in what shows, the lanes open showing the end of the day that has something in it:
+    22:00 at the least, plus half an hour, so a name written at the evening's end is not cut off at the
+    edge of the lanes, and for a day with a late block, that block's end. The view of the hours is not
+    shrunk to get there: it scrolls."""
+    week = shown(qapp, size=size, today=None)
+    assert last_minute_shown(week, "missionWeekScroll") == pytest.approx(22 * 60 + 30, abs=2)
     late = block("late", "locked", [4], "22:00", 75, title="Late", category="extra")
-    week = shown(qapp, size=size, blocks=[*BLOCKS, late])
-    assert last_minute_shown(week, "missionWeekScroll") >= 23 * 60 + 15
+    week = shown(qapp, size=size, blocks=[*BLOCKS, late], today=None)
+    assert last_minute_shown(week, "missionWeekScroll") == pytest.approx(23 * 60 + 45, abs=2)
     assert week._scrolls["week"].px == WEEK_SCALE.default
-    day = shown(qapp, size=size, surface="day", iso_day="2026-09-17")
-    assert last_minute_shown(day, "missionDayScroll") >= 22 * 60
+    day = shown(qapp, size=size, surface="day", iso_day="2026-09-16")
+    assert last_minute_shown(day, "missionDayScroll") == pytest.approx(22 * 60 + 30, abs=2)
 
 
-def test_the_lanes_keep_the_evening_at_their_edge_while_the_window_settles(qapp: QApplication) -> None:
+@pytest.mark.parametrize("size", [(1280, 800), (810, 800)])
+@pytest.mark.parametrize(("surface", "name", "chosen"), SURFACES)
+def test_now_is_on_screen_when_the_evening_does_not_fit_with_it(
+    qapp: QApplication, size: tuple[int, int], surface: str, name: str, chosen: dict
+) -> None:
+    """At 08:00 the lanes cannot show both now and 22:30, so now stays near the left edge, with 30 to
+    60 minutes of the morning before it, and the evening is a scroll."""
+    view = shown(qapp, size=size, surface=surface, minute="08:00", **chosen)
+    first, last = minutes_shown(view, name)
+    assert last < 22 * 60 + 30, "the case is one where the evening does not fit"
+    assert 8 * 60 - 60 <= first <= 8 * 60 - 30, f"{surface}: the lanes start at {first:.0f}"
+
+
+@pytest.mark.parametrize("size", [(1280, 800), (810, 800)])
+@pytest.mark.parametrize(("surface", "name", "chosen"), SURFACES)
+def test_now_and_the_evening_both_show_when_they_fit(
+    qapp: QApplication, size: tuple[int, int], surface: str, name: str, chosen: dict
+) -> None:
+    view = shown(qapp, size=size, surface=surface, minute="15:40", **chosen)
+    first, last = minutes_shown(view, name)
+    assert first <= 15 * 60 + 40 <= last
+    assert last == pytest.approx(22 * 60 + 30, abs=2), f"{surface}: the lanes end at {last:.0f}"
+
+
+def test_the_day_after_today_opens_through_the_evening_whatever_the_time_now(qapp: QApplication) -> None:
+    """Now is not in the day shown when it is another day's, so the evening rule holds for it."""
+    view = shown(qapp, size=(1280, 800), surface="day", iso_day="2026-09-18", minute="08:00")
+    assert last_minute_shown(view, "missionDayScroll") == pytest.approx(22 * 60 + 30, abs=2)
+
+
+@pytest.mark.parametrize(("minute", "today"), [("13:40", None), ("08:00", 3)])
+def test_the_lanes_keep_their_opening_while_the_window_settles(
+    qapp: QApplication, minute: str, today: int | None
+) -> None:
     """A window is laid out in steps, and the lanes are narrower or wider than they started. They
-    open at the evening's end and stay there until the student scrolls."""
-    view = shown(qapp, size=(1366, 760))
-    for width in (1000, 1500):
-        view.resize(width, 760)
+    open where the rule puts them and stay there until the student scrolls: the evening's end at the
+    right edge, or now near the left edge when the evening does not fit with it. A wider window may
+    fit both, and then the evening wins."""
+    view = shown(qapp, size=(1280, 800), minute=minute, today=today)
+    for width in (1000, 1200):
+        view.resize(width, 800)
         qapp.processEvents()
-        assert 22 * 60 <= last_minute_shown(view, "missionWeekScroll") <= 22 * 60 + 60, width
+        first, last = minutes_shown(view, "missionWeekScroll")
+        if today is None:
+            assert 22 * 60 <= last <= 22 * 60 + 60, width
+        else:
+            assert 8 * 60 - 60 <= first <= 8 * 60 - 30, width
 
 
 def test_a_name_written_beside_a_block_stays_inside_what_shows(

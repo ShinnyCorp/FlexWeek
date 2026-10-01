@@ -888,7 +888,13 @@ class MissionView(LayoutView):
         canvas.relayout()
         items = week.on_day(day) if is_day else week.occurrences
         canvas.set_week(items, scene.today, scene.minute)
-        scroll.open_at((week.week_start, day) if is_day else week.week_start, lanes_end(items), end=True)
+        at_now = scene.today is not None and scene.minute is not None and (not is_day or day == scene.today)
+        scroll.open_at(
+            (week.week_start, day) if is_day else week.week_start,
+            lanes_end(items),
+            end=True,
+            keep=scene.minute if at_now else None,
+        )
         if is_day:
             # The mock-up's height, or less in a short window beside the table, where what is still to
             # come today is the point. Under the table the page scrolls anyway.

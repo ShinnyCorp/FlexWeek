@@ -139,10 +139,14 @@ def opens_at(qapp: QApplication, window: NativeWindow, minute: int, where: str) 
     scroll = hours(window)
     first, last = span_shown(scroll)
     if scroll.axis is Axis.ACROSS:
-        # Mission control's lanes open with the evening's end at their right edge, not a first block
-        # or now in the middle (T29), so a name written there is not cut; now stays on screen.
-        assert last >= 22 * 60, f"{where}: the lanes do not reach 22:00"
-        assert minute != NOW or first <= minute <= last, f"{where}: now is not on screen"
+        # Mission control's lanes: now always shows when it is in what is shown, and 22:00 does too
+        # when both fit, else now sits 30 to 60 minutes from the left edge. Another week, or another
+        # day, opens with the evening's end at the right edge.
+        if minute == NOW:
+            assert first <= minute <= last, f"{where}: now is not on screen"
+            assert last >= 22 * 60 or 30 <= minute - first <= 60, f"{where}: now is not near the left edge"
+        else:
+            assert last >= 22 * 60, f"{where}: the lanes do not reach 22:00"
         return
     assert first <= minute <= last, f"{where}: {minute // 60:02d}:{minute % 60:02d} is not on screen"
     bar = scroll.verticalScrollBar() if scroll.axis is Axis.DOWN else scroll.horizontalScrollBar()

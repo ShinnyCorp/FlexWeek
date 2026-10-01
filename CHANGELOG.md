@@ -18,7 +18,9 @@ All notable changes to FlexWeek are documented here. Format follows
   of the day's last block if that is later, scrolled there rather than zoomed
   out. Names written beside a block stay inside what shows, so "History" is
   no longer cut to "Histor" at the right edge; the morning is a scroll to the
-  left.
+  left. The time now always shows when it is in the week or day shown: if
+  the lanes cannot show both now and the evening's end, they open with now 45
+  minutes from the left edge and the evening is a scroll.
 - Mission control's pill for the time now no longer lies over an hour label
   when the lanes are zoomed out: the label it would cover is left out.
 - Timeline's two pages meet at a fold line only: the grey shade either side of
