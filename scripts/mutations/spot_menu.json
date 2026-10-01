@@ -1,0 +1,44 @@
+[
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "free time asks for no menu",
+  "old": "        if self.hand.busy or (hit is None and (track is None or by_key)):\n",
+  "new": "        if self.hand.busy or hit is None:\n",
+  "test": "desktop/tests/test_context_menu.py::test_a_right_click_on_free_time_offers_what_can_be_added_there"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "the menu key and Shift+F10 do nothing",
+  "old": "        if asks and self._ask_spot_menu():\n",
+  "new": "        if False and asks and self._ask_spot_menu():\n",
+  "test": "desktop/tests/test_context_menu.py::test_the_menu_key_and_shift_f10_ask_at_the_days_first_free_time"
+ },
+ {
+  "file": "desktop/native/hours/canvas.py",
+  "name": "the keyboard menu starts on a taken step",
+  "old": "        while minute + step <= track.last and any(\n",
+  "new": "        while False and minute + step <= track.last and any(\n",
+  "test": "desktop/tests/test_context_menu.py::test_the_menu_key_and_shift_f10_ask_at_the_days_first_free_time"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "Add fixed time ignores the spot's day",
+  "old": "BlockDialog(self, day=day, start=minutes_to_hhmm(minute), category=category)",
+  "new": "BlockDialog(self, day=0, start=minutes_to_hhmm(minute), category=category)",
+  "test": "desktop/tests/test_context_menu.py::test_add_fixed_time_opens_the_sheet_on_that_day_at_that_time"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "Paste at a spot ignores where it was asked",
+  "old": "self._paste_preview((day, start), self.session.paste_proposals(day, start))",
+  "new": "self._paste_preview((day, start), self.session.paste_proposals())",
+  "test": "desktop/tests/test_context_menu.py::test_paste_is_offered_once_something_is_copied_and_pastes_there"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "Add homework is due today, not on the spot's day",
+  "old": "self._add_homework_due(date_for_day(session.week_start, day))",
+  "new": "self._add_homework_due(self._today())",
+  "test": "desktop/tests/test_context_menu.py::test_add_homework_opens_the_sheet_due_on_that_day"
+ }
+]
