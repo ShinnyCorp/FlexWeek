@@ -1727,9 +1727,12 @@ class NativeWindow(QMainWindow):
             self._show_page("weekPage")
         can_retry = self.session.pending_save is not None and not self.session.conflict
         # Hidden, not merely greyed: a button that is never pressable is a permanent piece of
-        # furniture that says a save failed when none has.
-        self.retry_button.setVisible(can_retry)
-        self.retry_button.setEnabled(can_retry)
+        # furniture that says a save failed when none has. A save on its way has a pending save too,
+        # so only a finished one shows or hides it: drawn mid-save, as Month's fetch landing does,
+        # Retry showed and pushed the view buttons aside.
+        if not self.session.busy:
+            self.retry_button.setVisible(can_retry)
+        self.retry_button.setEnabled(can_retry and not self.session.busy)
         undo = self.findChild(QPushButton, "undoButton")
         redo = self.findChild(QPushButton, "redoButton")
         if undo is not None:
