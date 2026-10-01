@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from math import ceil
 
 from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QSize, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QWheelEvent
@@ -34,7 +35,7 @@ from PySide6.QtWidgets import (
 
 from desktop.native import icons
 from desktop.native.hours.canvas import HoursCanvas
-from desktop.native.hours.geometry import Axis
+from desktop.native.hours.geometry import FIRST, LAST, Axis
 from desktop.native.look import ZOOM_PILL_PX
 from desktop.native.motion import EASE_MS, OUT, duration, moves
 from desktop.native.weekmodel import WeekModel
@@ -211,6 +212,7 @@ class HoursScroll(QScrollArea):
         self._bar().rangeChanged.connect(self._cut)
         self._bar().valueChanged.connect(self._moved)
         canvas.zoom_asked.connect(self._asked)
+        canvas.labels_changed.connect(self._place_header)
         self._show_limits()
 
     @property
@@ -481,6 +483,11 @@ class HoursScroll(QScrollArea):
     def _place_header(self) -> None:
         row = self.buttons.layout()
         corner = max(self._gutter, float(self.buttons.pill.sizeHint().width() + 10))
+        if self._down:
+            first = min((track.first for track in self.canvas.tracks), default=FIRST)
+            last = max((track.last for track in self.canvas.tracks), default=LAST)
+            needed = self.canvas.painter.hour_gutter(self.canvas.font(), first, last, self.canvas.now_min)
+            corner = max(corner, float(ceil(needed)))
         self.buttons.setFixedWidth(round(corner))
         row.setContentsMargins(4, 0, 0, 0)
         if not self._down:

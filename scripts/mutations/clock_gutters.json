@@ -1,0 +1,58 @@
+[
+ {
+  "name": "hour gutter ignores the actual label width",
+  "file": "desktop/native/hours/zoom.py",
+  "old": "            corner = max(corner, float(ceil(needed)))\n",
+  "new": "            corner = corner\n",
+  "test": "desktop/tests/test_clock_gutters.py::test_the_hours_and_now_label_fit_their_painted_boxes[810-large-12h-timeline]"
+ },
+ {
+  "name": "hour gutter measures Normal instead of Large",
+  "file": "desktop/native/hours/canvas.py",
+  "old": "        font = at_scale(time_font(base), \"caption\", self.scale(base))\n        width = max(",
+  "new": "        font = at_scale(time_font(base), \"caption\", 1.0)\n        width = max(",
+  "test": "desktop/tests/test_clock_gutters.py::test_the_hours_and_now_label_fit_their_painted_boxes[810-large-12h-timeline]"
+ },
+ {
+  "name": "hour gutter keeps Normal after a live change to Large",
+  "file": "desktop/native/hours/canvas.py",
+  "old": "        font = at_scale(time_font(base), \"caption\", self.scale(base))\n        width = max(",
+  "new": "        font = at_scale(time_font(base), \"caption\", 1.0)\n        width = max(",
+  "test": "desktop/tests/test_clock_gutters.py::test_a_new_text_size_gives_the_hours_the_room_their_labels_need[timeline]"
+ },
+ {
+  "name": "a changed clock format does not tell every design's hours",
+  "file": "desktop/native/window.py",
+  "old": "                scroll.canvas.labels_changed.emit()\n",
+  "new": "                pass\n",
+  "test": "desktop/tests/test_clock_gutters.py::test_the_hours_and_now_label_fit_their_painted_boxes[810-normal-24h-timeline]"
+ },
+ {
+  "name": "the gutter leaves the now pill out of its width",
+  "file": "desktop/native/hours/canvas.py",
+  "old": "        if self.now_in_gutter and now is not None:\n            strong",
+  "new": "        if False and now is not None:\n            strong",
+  "test": "desktop/tests/test_clock_gutters.py::test_the_now_pill_is_whole_beside_the_hours_as_the_minutes_pass_to_its_widest[large-classic]"
+ },
+ {
+  "name": "the gutter is not made again when the time now moves",
+  "file": "desktop/native/hours/canvas.py",
+  "old": "            self.today, self.now_min = today, now_min\n            self.labels_changed.emit()\n",
+  "new": "            self.today, self.now_min = today, now_min\n",
+  "test": "desktop/tests/test_clock_gutters.py::test_the_now_pill_is_whole_beside_the_hours_as_the_minutes_pass_to_its_widest[large-classic]"
+ },
+ {
+  "name": "Mission writes every other hour however wide the words",
+  "file": "desktop/native/layouts/mission.py",
+  "old": "        step = next((span for span in (120, 240, 360) if track.offset(span) - track.offset(0) >= room), 720)\n",
+  "new": "        step = 120\n",
+  "test": "desktop/tests/test_clock_gutters.py::test_the_hours_and_now_label_fit_their_painted_boxes[810-large-12h-mission]"
+ },
+ {
+  "name": "Mission keeps an hour moved in from the edge on top of its neighbour",
+  "file": "desktop/native/layouts/mission.py",
+  "old": "            if moved and any(",
+  "new": "            if False and any(",
+  "test": "desktop/tests/test_clock_gutters.py::test_the_hours_and_now_label_fit_their_painted_boxes[810-large-12h-mission]"
+ }
+]

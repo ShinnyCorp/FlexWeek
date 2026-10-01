@@ -197,6 +197,20 @@ class BlockPainter:
         else:
             painter.drawLine(area.topLeft(), area.topRight())
 
+    def hour_gutter(self, base: QFont, first: int, last: int, now: int | None) -> float:
+        """The room the hour labels from `first` to `last` need beside the hours, in their clock,
+        and for the time now on a pill in the gutter, where a design puts it there."""
+        font = at_scale(time_font(base), "caption", self.scale(base))
+        width = max(
+            (QFontMetricsF(font).horizontalAdvance(clock_label(minute))
+             for minute in range(-(-first // 60) * 60, last + 1, 60)),
+            default=0.0,
+        ) + 8
+        if self.now_in_gutter and now is not None:
+            strong = QFontMetricsF(weighted(font, WEIGHT_STRONG))
+            width = max(width, strong.horizontalAdvance(clock_label(now)) + 14)
+        return width
+
     def hour_labels(
         self,
         painter: QPainter,
@@ -880,6 +894,8 @@ class HoursCanvas(QWidget):
     # Zoom by this many steps (0 goes back to the surface's own level), about this point in the
     # canvas, or about the middle of what is on screen when there is none.
     zoom_asked = Signal(int, object)
+    # The words on the hours, or the time now on their pill, are wider or narrower than they were.
+    labels_changed = Signal()
 
     def __init__(
         self,
@@ -998,6 +1014,7 @@ class HoursCanvas(QWidget):
     def set_clock(self, today: int | None, now_min: int | None) -> None:
         if (today, now_min) != (self.today, self.now_min):
             self.today, self.now_min = today, now_min
+            self.labels_changed.emit()
             self.update()
 
     def set_painter(self, painter: BlockPainter) -> None:

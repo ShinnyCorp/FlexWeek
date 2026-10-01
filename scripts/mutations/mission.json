@@ -107,8 +107,8 @@
  {
   "file": "desktop/native/layouts/mission.py",
   "name": "now pill drawn over an hour label",
-  "old": "            if pill is not None and box.intersects(pill.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0)):\n                continue\n",
-  "new": "",
+  "old": "            if pill is None or not box.intersects(pill.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0)):\n",
+  "new": "            if True:\n",
   "test": "desktop/tests/test_layout_mission.py::test_the_now_pill_covers_no_hour_label_at_any_zoom"
  },
  {
