@@ -6,6 +6,8 @@ All notable changes to FlexWeek are documented here. Format follows
 ## [0.17.2] - Unreleased
 
 ### Changed
+- Mission control's pill for the time now no longer lies over an hour label
+  when the lanes are zoomed out: the label it would cover is left out.
 - Timeline's two pages meet at a fold line only: the grey shade either side of
   it is gone.
 - Choose a time and Spread, which open from the homework editor, are sheets

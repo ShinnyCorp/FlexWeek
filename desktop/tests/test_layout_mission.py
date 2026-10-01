@@ -21,8 +21,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     import shiboken6
-    from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, Qt
-    from PySide6.QtGui import QColor, QHelpEvent, QMouseEvent, QTextDocumentFragment
+    from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt
+    from PySide6.QtGui import QColor, QHelpEvent, QMouseEvent, QPainter, QTextDocumentFragment
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import (
         QApplication,
@@ -35,6 +35,7 @@ if importlib.util.find_spec("PySide6") is not None:
         QWidget,
     )
 
+    from desktop.native.hours import canvas as canvas_module
     from desktop.native.hours.chips import TrayChip
     from desktop.native.hours.geometry import Axis, Span
     from desktop.native.hours.hand import Hand, Move, Verdict
@@ -382,6 +383,38 @@ def test_the_line_for_now_crosses_a_tick_it_lies_on(qapp: QApplication) -> None:
     middle = dinner.center().toPoint()
     across = {image.pixelColor(x, middle.y()).name() for x in range(middle.x() - 2, middle.x() + 3)}
     assert view.scene.tokens["now"] in across
+
+
+def test_the_now_pill_covers_no_hour_label_at_any_zoom(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pill that gives the time now sits in the row of hours. An hour label it would overlap is
+    left out, however far apart the zoom puts the hours: at the smallest, a pill at 10:45 lay over
+    the 10:00 label, which the old rule of leaving out labels within 40 minutes of now let through."""
+    seen: list[tuple[QRectF, str]] = []
+
+    class Said(QPainter):
+        def drawText(self, *args) -> None:  # noqa: N802
+            if len(args) == 3 and isinstance(args[0], QRectF):
+                seen.append((QRectF(args[0]), args[2]))
+            super().drawText(*args)
+
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    for clock, px in itertools.product(("10:20", "10:45", "10:50", "11:10", "11:15"), (40, 56)):
+        view = shown(qapp, minute=clock)
+        scroll = view.findChild(HoursScroll, "missionWeekScroll")
+        while scroll.px != px:
+            scroll.zoom_by(1 if scroll.px < px else -1)
+        hours = view.findChild(MissionCanvas, "missionHours")
+        seen.clear()
+        hours.repaint()
+        row = hours.tracks[0].area.top()
+        times = [(box, text) for box, text in seen if re.fullmatch(r"\d\d:\d\d", text) and box.top() < row]
+        (pill,) = [box for box, text in times if text == clock]
+        covered = [text for box, text in times if text != clock and box.intersects(pill)]
+        assert covered == [], f"{clock} at {px} px an hour"
+        assert len(times) > 2, "the other hours are still written"
+        view.deleteLater()
 
 
 def test_the_line_for_now_stops_short_of_a_ticks_icon(

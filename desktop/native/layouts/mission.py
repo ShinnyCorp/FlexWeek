@@ -112,6 +112,8 @@ TABLE = 364
 AROUND = 16
 # The focus figure's line while a timer runs: the minutes it shows are only those already credited.
 FOCUS_NOW = {"focusing": "Focusing now", "paused": "Focus paused", "break": "On a break"}
+# Clear space kept between the now pill and an hour label beside it.
+LABEL_CLEAR = 4
 # A block this short is a tick in its category's colour, named on hover.
 TICK = 30
 # Hours of lanes the table leaves at the least before it goes under them.
@@ -304,37 +306,39 @@ class MissionPainter(BlockPainter):
         every: int = 60,
         visible: QRectF | None = None,
     ) -> None:
-        """Every other hour over the first lane, and the time now on a pill in their row, the hours
-        beside it left out. A label cut by the edge of what shows is moved inside it."""
+        """Every other hour over the first lane, and the time now on a pill in their row, any hour
+        the pill would cover left out. A label cut by the edge of what shows is moved inside it."""
         font = mono(at_scale(painter.font(), "caption", self.scale(painter.font())))
         metrics = QFontMetricsF(font)
         base = self.lane(track).top() - 6
         now = self.now_minute
+        pill = None
+        if now is not None:
+            strong = mono(at_scale(font, "caption", self.scale(font), WEIGHT_STRONG))
+            strong_metrics = QFontMetricsF(strong)
+            wide = strong_metrics.horizontalAdvance(clock_label(now)) + 12
+            tall = strong_metrics.height() + 4
+            pill = QRectF(track.area.left() + track.offset(now) - wide / 2, base + 2 - tall, wide, tall)
         painter.setFont(font)
         painter.setPen(self.c("muted"))
         for minute in range(-(-track.first // 120) * 120, track.last + 1, 120):
-            if now is not None and abs(minute - now) <= 40:
-                continue
             words = clock_label(minute)
             wide = metrics.horizontalAdvance(words) + 2
             box = QRectF(track.area.left() + track.offset(minute) - wide / 2, base - metrics.height(), wide,
                          metrics.height())
             if visible is not None and box.right() > visible.left() and box.left() < visible.right():
                 box.moveLeft(max(min(box.left(), visible.right() - wide), visible.left()))
+            if pill is not None and box.intersects(pill.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0)):
+                continue
             painter.drawText(box, Qt.AlignmentFlag.AlignCenter, words)
-        if now is None:
+        if pill is None:
             return
-        strong = mono(at_scale(painter.font(), "caption", self.scale(painter.font()), WEIGHT_STRONG))
-        metrics = QFontMetricsF(strong)
-        words = clock_label(now)
-        wide, tall = metrics.horizontalAdvance(words) + 12, metrics.height() + 4
-        pill = QRectF(track.area.left() + track.offset(now) - wide / 2, base + 2 - tall, wide, tall)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(self.c("accent"))
-        painter.drawRoundedRect(pill, tall / 2, tall / 2)
+        painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2)
         painter.setPen(self.c("accent_ink"))
         painter.setFont(strong)
-        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, clock_label(now))
 
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
         lane = self.lane(track)
