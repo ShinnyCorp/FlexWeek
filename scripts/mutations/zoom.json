@@ -128,7 +128,7 @@
  {
   "file": "desktop/native/layouts/mission.py",
   "name": "Mission opens at midnight",
-  "old": "        open_hours(scroll, (week.week_start, day) if is_day else week.week_start, week, scene.today,\n                   scene.minute, day if is_day else None)\n",
+  "old": "        scroll.open_at((week.week_start, day) if is_day else week.week_start, lanes_end(items), end=True)\n",
   "new": "",
   "test": "desktop/tests/test_hours_open.py::test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_or_week"
  },
