@@ -312,12 +312,12 @@ def test_a_delete_row_is_painted_red_and_the_rest_in_the_text_colour(
 SPOT_ROWS = ["Add fixed time at 17:00", "Add homework due this day", "Paste\tCopy a block or a day first."]
 
 
-def free_spot(hours: object, minute: int = 17 * 60 + 5) -> QPoint:
+def free_spot(hours: object, minute: int = 17 * 60 + 5, day: int = 1) -> QPoint:
     """Tuesday at a minute, where nothing is: School ends 14:30 and the essay is on Wednesday."""
     hours.hand.step = 15
-    hours.reveal(1, minute, minute + 30)
+    hours.reveal(day, minute, minute + 30)
     QApplication.processEvents()
-    return hours.point_for(1, minute)
+    return hours.point_for(day, minute)
 
 
 def test_a_right_click_on_free_time_offers_what_can_be_added_there(
@@ -432,10 +432,17 @@ def test_every_design_with_shared_hours_has_the_free_time_menu(
     window._on_week()
     settled(qapp, window)
     shown = window.planner.currentWidget().hours_surfaces()
-    canvases = [surface for surface in shown if surface.track_for(1, 17 * 60)]
-    assert canvases, f"{design} shows no hours with Tuesday in them"
-    hours = canvases[0]
-    right_click(hours, free_spot(hours))
+    # Clay shows only the days round today, so Tuesday is there on some weekdays only. 17:00 is free
+    # on every day of this week.
+    found = [
+        (surface, day)
+        for day in (1, 0, 2, 3, 4, 5, 6)
+        for surface in shown
+        if surface.track_for(day, 17 * 60)
+    ]
+    assert found, f"{design} shows no hours at 17:00"
+    hours, day = found[0]
+    right_click(hours, free_spot(hours, day=day))
     assert [rows[0] for rows in menus["shown"]] == ["Add fixed time at 17:00"]
 
 
