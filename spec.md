@@ -497,6 +497,12 @@ nothing loops.
   Never downgrade.
 - Current languages: Python, and SQL for account storage. The client is PySide6
   Qt widgets; see DESKTOP.md.
+- Moving to Rust: the engine (`docs/engine/contract.md`) takes over the
+  backend's logic and storage and the desktop's Qt-free logic, slice by slice.
+  Once a module is in a slice that has started, new logic for it is written in
+  Rust, not Python. A fix needed in it before its slice lands is the smallest
+  change that works, and the slice carries it over. Code that imports Qt,
+  `backend/app.py` and their tests stay Python until the full rewrite.
 - Frameworks, pinned in `requirements.txt`: FastAPI 0.141.1,
   uvicorn[standard] 0.52.4, pytest 9.1.1, httpx 0.28.1, ruff 0.16.6, mypy 2.3.1, Pydantic 2.13.5.
 - Storage: SQLite, in the user data folder for the app (`FLEXWEEK_DATABASE`,
