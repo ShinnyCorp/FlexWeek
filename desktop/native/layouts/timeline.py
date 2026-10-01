@@ -20,7 +20,7 @@ from datetime import date
 from functools import cached_property, partial
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QLinearGradient, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen
 from PySide6.QtWidgets import (
     QBoxLayout,
     QFrame,
@@ -108,8 +108,6 @@ DUE_WIDE = 230
 COMPACT = 0.6
 # The sheet of the next pages, showing under each page's foot.
 SHEET = 3
-# The gutter's shade, from the fold out across each page.
-FOLD, FOLD_SHADE = 30, 0.07
 
 
 def _spread(inner: float, area: QRectF) -> list[LinearTrack]:
@@ -372,8 +370,8 @@ class TimelinePainter(BlockPainter):
 
 
 class Spread(QWidget):
-    """A planner opened flat: two pages joined at a fold down the middle, shaded either side of it,
-    and the next sheet showing under their foot. What is laid on it is clear, so its paper shows."""
+    """A planner opened flat: two pages joined at a fold line down the middle, and the next sheet
+    showing under their foot. What is laid on it is clear, so its paper shows."""
 
     def __init__(self, name: str) -> None:
         super().__init__()
@@ -392,14 +390,6 @@ class Spread(QWidget):
         for sheet in (box.translated(0, SHEET).adjusted(1, 0, -1, 0), box):
             painter.drawRoundedRect(sheet, RADIUS_CARD, RADIUS_CARD)
         fold = self.width() / 2
-        shade, clear = QColor(self.tokens["text"]), QColor(self.tokens["text"])
-        shade.setAlphaF(FOLD_SHADE)
-        clear.setAlphaF(0)
-        for toward in (fold - FOLD, fold + FOLD):
-            ramp = QLinearGradient(QPointF(toward, 0), QPointF(fold, 0))
-            ramp.setColorAt(0, clear)
-            ramp.setColorAt(1, shade)
-            painter.fillRect(QRectF(min(toward, fold), box.top() + 1, FOLD, box.height() - 1), ramp)
         painter.setPen(QPen(edge, 1))
         painter.drawLine(QPointF(fold, box.top()), QPointF(fold, box.bottom()))
         painter.end()

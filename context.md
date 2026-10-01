@@ -11,6 +11,14 @@
   pointer or reached by keyboard is a darker accent, underlined. Gate 2561 passed; `firstrun.json` has
   eleven new cases, all caught. Unresolved: at Large text the second row of style cards is still cut by
   the page's edge until scrolled (the page scrolls; fitting all four needs a design call).
+- 2026-09-30, `claude/0172-u04-timeline` (from bd2d134): Timeline's gutter shadow is gone (fold line
+  only). Mission's now pill leaves out any hour label its box would meet (was a fixed 40 minutes,
+  wrong at 40 px an hour). Mission's lanes open with 22:00, or the last block's end, plus 30 minutes
+  at the right edge (`HoursScroll.scroll_to(end=True)`, held through layout steps), instead of now
+  in the middle, so the morning is a scroll to the left at 1280; names written beside a block stay
+  inside what shows. `test_hours_open.opens_at` checks 22:00 for lanes instead of now in the middle.
+  Not done: Timeline's white School (every non-homework block there is an ink-outlined card by the
+  approved mock-up; needs Jonathan's call).
 - 2026-09-30, `claude/0172-dragleak` from 5256662: the drag results tests' order dependence is
   fixed. Mission and Timeline tests leave bare views showing as top-level windows (their own
   signal lambdas keep them alive), and conftest's widgetAt fallback past the 800 px offscreen

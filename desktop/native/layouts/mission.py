@@ -53,7 +53,6 @@ from desktop.native.hours.canvas import (
     block_layout,
 )
 from desktop.native.hours.chips import TrayChip
-from desktop.native.hours.classic import open_hours
 from desktop.native.hours.geometry import Axis, LinearTrack, overlap_columns
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import HoursScroll, Scale
@@ -112,6 +111,10 @@ TABLE = 364
 AROUND = 16
 # The focus figure's line while a timer runs: the minutes it shows are only those already credited.
 FOCUS_NOW = {"focusing": "Focusing now", "paused": "Focus paused", "break": "On a break"}
+# Minutes kept after the last block, so its end and the hour label there show whole.
+END_ROOM = 30
+# Clear space kept between the now pill and an hour label beside it.
+LABEL_CLEAR = 4
 # A block this short is a tick in its category's colour, named on hover.
 TICK = 30
 # Hours of lanes the table leaves at the least before it goes under them.
@@ -233,6 +236,12 @@ def _length(px: int) -> int:
     return 24 * px + LEAD + TAIL
 
 
+def lanes_end(items: Sequence[Occurrence]) -> int:
+    """The minute the lanes open with at their right edge: 22:00, or the end of the last block if
+    that is later, so the evening shows and a name is not cut off at the edge."""
+    return min(max([EVENING, *(item.end for item in items)]) + END_ROOM, 24 * 60)
+
+
 class MissionPainter(BlockPainter):
     """Lanes as cards with a rule at each hour, today's washed and edged in the accent. Blocks are the
     category's fill with its mark down the start edge; one of half an hour or less is a tick. A block
@@ -304,37 +313,39 @@ class MissionPainter(BlockPainter):
         every: int = 60,
         visible: QRectF | None = None,
     ) -> None:
-        """Every other hour over the first lane, and the time now on a pill in their row, the hours
-        beside it left out. A label cut by the edge of what shows is moved inside it."""
+        """Every other hour over the first lane, and the time now on a pill in their row, any hour
+        the pill would cover left out. A label cut by the edge of what shows is moved inside it."""
         font = mono(at_scale(painter.font(), "caption", self.scale(painter.font())))
         metrics = QFontMetricsF(font)
         base = self.lane(track).top() - 6
         now = self.now_minute
+        pill = None
+        if now is not None:
+            strong = mono(at_scale(font, "caption", self.scale(font), WEIGHT_STRONG))
+            strong_metrics = QFontMetricsF(strong)
+            wide = strong_metrics.horizontalAdvance(clock_label(now)) + 12
+            tall = strong_metrics.height() + 4
+            pill = QRectF(track.area.left() + track.offset(now) - wide / 2, base + 2 - tall, wide, tall)
         painter.setFont(font)
         painter.setPen(self.c("muted"))
         for minute in range(-(-track.first // 120) * 120, track.last + 1, 120):
-            if now is not None and abs(minute - now) <= 40:
-                continue
             words = clock_label(minute)
             wide = metrics.horizontalAdvance(words) + 2
             box = QRectF(track.area.left() + track.offset(minute) - wide / 2, base - metrics.height(), wide,
                          metrics.height())
             if visible is not None and box.right() > visible.left() and box.left() < visible.right():
                 box.moveLeft(max(min(box.left(), visible.right() - wide), visible.left()))
+            if pill is not None and box.intersects(pill.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0)):
+                continue
             painter.drawText(box, Qt.AlignmentFlag.AlignCenter, words)
-        if now is None:
+        if pill is None:
             return
-        strong = mono(at_scale(painter.font(), "caption", self.scale(painter.font()), WEIGHT_STRONG))
-        metrics = QFontMetricsF(strong)
-        words = clock_label(now)
-        wide, tall = metrics.horizontalAdvance(words) + 12, metrics.height() + 4
-        pill = QRectF(track.area.left() + track.offset(now) - wide / 2, base + 2 - tall, wide, tall)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(self.c("accent"))
-        painter.drawRoundedRect(pill, tall / 2, tall / 2)
+        painter.drawRoundedRect(pill, pill.height() / 2, pill.height() / 2)
         painter.setPen(self.c("accent_ink"))
         painter.setFont(strong)
-        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, clock_label(now))
 
     def now(self, painter: QPainter, track: LinearTrack, minute: int) -> None:
         lane = self.lane(track)
@@ -400,7 +411,7 @@ class MissionPainter(BlockPainter):
     ) -> list[QRectF]:
         if drawn.held or self._whole(painter.font(), rect, drawn, visible):
             return super().words(painter, rect, drawn, ink, visible, fill, edge)
-        if self._beside(painter, rect, drawn):
+        if self._beside(painter, rect, drawn, visible):
             return self._bare(painter, rect, drawn, ink, fill, edge)
         first = replace(drawn, title=drawn.title.split()[0] if drawn.title.split() else drawn.title)
         if self._whole(painter.font(), rect, first, visible):
@@ -448,14 +459,15 @@ class MissionPainter(BlockPainter):
         painter.drawPixmap(at, icons.pixmap(icon_name, colour.name(), size, ratio))
         return QRectF(at.x(), at.y(), size, size)
 
-    def _beside(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> bool:
+    def _beside(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> bool:
         """The name, and its start if there is room, written beside the block where its row of the
         lane is free, as a Gantt chart labels a short bar: after it, else before it. On up to two
-        lines, with no word broken, and clear of the lane's edges."""
+        lines, with no word broken, and clear of the lane's edges and of the edges of what shows."""
         found = self.taken.get(drawn.span.day)
         if found is None:
             return False
         first, last, taken = found
+        first, last = max(first, visible.left()), min(last, visible.right())
         title, small = self.fonts(painter.font())
         tm, sm = QFontMetricsF(title), QFontMetricsF(small)
         row = [box for box in taken if box.top() < rect.bottom() and box.bottom() > rect.top()]
@@ -876,8 +888,7 @@ class MissionView(LayoutView):
         canvas.relayout()
         items = week.on_day(day) if is_day else week.occurrences
         canvas.set_week(items, scene.today, scene.minute)
-        open_hours(scroll, (week.week_start, day) if is_day else week.week_start, week, scene.today,
-                   scene.minute, day if is_day else None)
+        scroll.open_at((week.week_start, day) if is_day else week.week_start, lanes_end(items), end=True)
         if is_day:
             # The mock-up's height, or less in a short window beside the table, where what is still to
             # come today is the point. Under the table the page scrolls anyway.

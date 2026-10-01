@@ -14,6 +14,15 @@ All notable changes to FlexWeek are documented here. Format follows
   or today's.
 
 ### Changed
+- Mission control's lanes open showing the evening: through 22:00, or the end
+  of the day's last block if that is later, scrolled there rather than zoomed
+  out. Names written beside a block stay inside what shows, so "History" is
+  no longer cut to "Histor" at the right edge; the morning is a scroll to the
+  left.
+- Mission control's pill for the time now no longer lies over an hour label
+  when the lanes are zoomed out: the label it would cover is left out.
+- Timeline's two pages meet at a fold line only: the grey shade either side of
+  it is gone.
 - Choose a time and Spread, which open from the homework editor, are sheets
   inside the window like the editors: centred over the dimmed week, with their
   title and a close button at the top and each label above its field. They
