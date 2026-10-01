@@ -449,6 +449,47 @@ def test_a_word_too_wide_for_its_block_is_shortened_only_when_nothing_else_fits(
     assert block_layout(drawn, title, small, QRectF(0, 0, three - 1, tall)) == []
 
 
+def painted(drawn: Drawn, rect: QRectF) -> QImage:
+    image = QImage(200, 140, QImage.Format.Format_ARGB32)
+    image.fill(QColor("white"))
+    painter = QPainter(image)
+    BlockPainter(resolved_palette("system", False, None)).body(painter, rect, drawn)
+    painter.end()
+    return image
+
+
+def test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not(qapp: QApplication) -> None:
+    """Two blocks side by side show they share their time by sitting side by side. The dot that 0.14
+    drew at the corner of each said nothing a student could read, and covered the end of the name."""
+    rect = QRectF(20, 20, 60, 90)
+    alone = Drawn("soccer", "Soccer practice", "extra", False, Span(1, 16 * 60, 17 * 60 + 30), 0, 1)
+    shared = Drawn("soccer", "Soccer practice", "extra", False, Span(1, 16 * 60, 17 * 60 + 30), 0, 2)
+    assert painted(shared, rect) == painted(alone, rect), "a block that shares its time has a mark on it"
+
+
+def test_a_half_of_a_column_names_its_block_to_the_last_word_it_has_room_for(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Homework dropped on Soccer leaves each of them half a column. A half that has room for
+    "Math…" says that, not "M…"."""
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    load_fonts()
+    blocks = BlockPainter(resolved_palette("system", False, None))
+    title, _small = blocks.fonts(QFont("Inter", 11))
+    need = QFontMetricsF(title).horizontalAdvance("Math…")
+    # A block alone keeps 8 pixels before its words and 5 after; a half keeps 4 pixels fewer in all.
+    wide = need + 9 + 0.5
+    image = QImage(300, 200, QImage.Format.Format_ARGB32)
+    page = QRectF(0, 0, 300, 200)
+    drawn = Drawn("math", "Math worksheet", "homework", True, Span(1, 16 * 60 + 15, 17 * 60), 1, 2)
+    paint = Said(image)
+    paint.setFont(QFont("Inter", 11))
+    Said.words = []
+    blocks.block(paint, QRectF(20, 20, wide, 33), drawn, page)
+    paint.end()
+    assert [text for text, _where in Said.words] == ["Math…"]
+
+
 def rows(palette: dict, today: bool) -> QImage:
     """One track from 08:00 to 10:00 at 48 pixels an hour, painted on the window colour."""
     track = LinearTrack(0, QRectF(10, 10, 100, 2 * HOUR_PX), first=8 * 60, last=10 * 60)
