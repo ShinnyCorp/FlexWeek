@@ -8,6 +8,8 @@ use ::flexweek_engine::solver::{self, DeadlineOverrides, StudyWindow, TimeBlock,
 use flexweek_store as store;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+
+use crate::guard;
 use pyo3::types::PyModule;
 use serde_json::Value;
 
@@ -102,19 +104,23 @@ fn add_occupancy(
     start_min: i64,
     end_min: i64,
 ) -> PyResult<Vec<u128>> {
-    plan::add_occupancy(&mut occ, day, start_min, end_min).map_err(crate::raise)?;
-    Ok(occ)
+    guard(|| {
+        plan::add_occupancy(&mut occ, day, start_min, end_min).map_err(crate::raise)?;
+        Ok(occ)
+    })
 }
 
 #[pyfunction]
 fn occupancy_from_windows(protected: &str, day_cutoff: Option<&str>) -> PyResult<Vec<u128>> {
-    let protected = parse(protected)?.as_array().cloned().unwrap_or_default();
-    plan::occupancy_from_windows(&protected, day_cutoff).map_err(crate::raise)
+    guard(|| {
+        let protected = parse(protected)?.as_array().cloned().unwrap_or_default();
+        plan::occupancy_from_windows(&protected, day_cutoff).map_err(crate::raise)
+    })
 }
 
 #[pyfunction]
 fn lateness_occupancy(day: i64, from_start: &str, minutes: i64) -> PyResult<Vec<u128>> {
-    plan::lateness_occupancy(day, from_start, minutes).map_err(crate::raise)
+    guard(|| plan::lateness_occupancy(day, from_start, minutes).map_err(crate::raise))
 }
 
 #[pyfunction]
@@ -125,22 +131,26 @@ fn study_rank(
     start_min: i64,
     duration_min: i64,
 ) -> PyResult<i64> {
-    let windows = parse(windows)?.as_array().cloned().unwrap_or_default();
-    Ok(plan::study_rank(
-        &windows,
-        course,
-        day,
-        start_min,
-        duration_min,
-    ))
+    guard(|| {
+        let windows = parse(windows)?.as_array().cloned().unwrap_or_default();
+        Ok(plan::study_rank(
+            &windows,
+            course,
+            day,
+            start_min,
+            duration_min,
+        ))
+    })
 }
 
 #[pyfunction]
 fn resolve_work_windows(windows: Option<&str>) -> PyResult<(String, bool)> {
-    let parsed = windows.map(parse).transpose()?;
-    let list = parsed.as_ref().and_then(Value::as_array);
-    let (resolved, defaulted) = plan::resolve_work_windows(list.map(Vec::as_slice));
-    Ok((dump(&Value::Array(resolved)), defaulted))
+    guard(|| {
+        let parsed = windows.map(parse).transpose()?;
+        let list = parsed.as_ref().and_then(Value::as_array);
+        let (resolved, defaulted) = plan::resolve_work_windows(list.map(Vec::as_slice));
+        Ok((dump(&Value::Array(resolved)), defaulted))
+    })
 }
 
 #[pyfunction]
@@ -151,14 +161,16 @@ fn session_inside_work_windows(
     start_min: i64,
     duration_min: i64,
 ) -> PyResult<bool> {
-    let windows = parse(windows)?.as_array().cloned().unwrap_or_default();
-    plan::session_inside_work_windows(&windows, course, day, start_min, duration_min)
-        .map_err(crate::raise)
+    guard(|| {
+        let windows = parse(windows)?.as_array().cloned().unwrap_or_default();
+        plan::session_inside_work_windows(&windows, course, day, start_min, duration_min)
+            .map_err(crate::raise)
+    })
 }
 
 #[pyfunction]
 fn merge_occupancy(base: Vec<u128>, extra: Vec<u128>) -> PyResult<Vec<u128>> {
-    plan::merge_occupancy(&base, &extra).map_err(crate::raise)
+    guard(|| plan::merge_occupancy(&base, &extra).map_err(crate::raise))
 }
 
 #[pyfunction]
@@ -170,16 +182,18 @@ fn spread_sessions(
     session_min: i64,
     from_date: &str,
 ) -> PyResult<(String, i64)> {
-    let (sessions, remaining) = plan::spread_sessions(
-        estimate_min,
-        focus_minutes,
-        planned_min,
-        due,
-        session_min,
-        from_date,
-    )
-    .map_err(|error| value_error(error.message))?;
-    Ok((dump(&Value::Array(sessions)), remaining))
+    guard(|| {
+        let (sessions, remaining) = plan::spread_sessions(
+            estimate_min,
+            focus_minutes,
+            planned_min,
+            due,
+            session_min,
+            from_date,
+        )
+        .map_err(|error| value_error(error.message))?;
+        Ok((dump(&Value::Array(sessions)), remaining))
+    })
 }
 
 #[pyfunction]
@@ -194,23 +208,25 @@ fn solve(
     work_windows: Option<&str>,
     clock: Py<PyAny>,
 ) -> PyResult<String> {
-    let blocks = blocks_of(blocks)?;
-    let study = study_windows_of(study_windows)?;
-    let work = work_windows_of(work_windows)?;
-    let overrides = overrides_of(deadlines, slack_deadlines)?;
-    let trace = search(py, &clock, |elapsed| {
-        solver::solve(
-            &blocks,
-            extra_occ.as_deref(),
-            study.as_deref(),
-            work.as_deref(),
-            Some(&overrides),
-            solver::SOLVE_BUDGET_MS,
-            elapsed,
-        )
-        .map_err(|error| error.message)
-    })?;
-    Ok(dump(&solver::trace_to_value(&trace)))
+    guard(|| {
+        let blocks = blocks_of(blocks)?;
+        let study = study_windows_of(study_windows)?;
+        let work = work_windows_of(work_windows)?;
+        let overrides = overrides_of(deadlines, slack_deadlines)?;
+        let trace = search(py, &clock, |elapsed| {
+            solver::solve(
+                &blocks,
+                extra_occ.as_deref(),
+                study.as_deref(),
+                work.as_deref(),
+                Some(&overrides),
+                solver::SOLVE_BUDGET_MS,
+                elapsed,
+            )
+            .map_err(|error| error.message)
+        })?;
+        Ok(dump(&solver::trace_to_value(&trace)))
+    })
 }
 
 #[pyfunction]
@@ -228,28 +244,30 @@ fn reschedule_after_miss(
     work_windows: Option<&str>,
     clock: Py<PyAny>,
 ) -> PyResult<String> {
-    let blocks = blocks_of(blocks)?;
-    let previous = blocks_of(previous_placed)?;
-    let study = study_windows_of(study_windows)?;
-    let work = work_windows_of(work_windows)?;
-    let overrides = overrides_of(deadlines, slack_deadlines)?;
-    let missed = missed_block_id.to_string();
-    let trace = search(py, &clock, |elapsed| {
-        solver::reschedule_after_miss(
-            &blocks,
-            &missed,
-            missed_day,
-            &previous,
-            extra_occ.as_deref(),
-            study.as_deref(),
-            work.as_deref(),
-            Some(&overrides),
-            solver::SOLVE_BUDGET_MS,
-            elapsed,
-        )
-        .map_err(|error| error.message)
-    })?;
-    Ok(dump(&solver::trace_to_value(&trace)))
+    guard(|| {
+        let blocks = blocks_of(blocks)?;
+        let previous = blocks_of(previous_placed)?;
+        let study = study_windows_of(study_windows)?;
+        let work = work_windows_of(work_windows)?;
+        let overrides = overrides_of(deadlines, slack_deadlines)?;
+        let missed = missed_block_id.to_string();
+        let trace = search(py, &clock, |elapsed| {
+            solver::reschedule_after_miss(
+                &blocks,
+                &missed,
+                missed_day,
+                &previous,
+                extra_occ.as_deref(),
+                study.as_deref(),
+                work.as_deref(),
+                Some(&overrides),
+                solver::SOLVE_BUDGET_MS,
+                elapsed,
+            )
+            .map_err(|error| error.message)
+        })?;
+        Ok(dump(&solver::trace_to_value(&trace)))
+    })
 }
 
 #[pyfunction]
@@ -268,69 +286,79 @@ fn reschedule_running_late(
     work_windows: Option<&str>,
     clock: Py<PyAny>,
 ) -> PyResult<String> {
-    let blocks = blocks_of(blocks)?;
-    let previous = blocks_of(previous_placed)?;
-    let study = study_windows_of(study_windows)?;
-    let work = work_windows_of(work_windows)?;
-    let overrides = overrides_of(deadlines, slack_deadlines)?;
-    let from_start = from_start.to_string();
-    let trace = search(py, &clock, |elapsed| {
-        solver::reschedule_running_late(
-            &blocks,
-            day,
-            minutes,
-            &from_start,
-            &previous,
-            extra_occ.as_deref(),
-            study.as_deref(),
-            work.as_deref(),
-            Some(&overrides),
-            solver::SOLVE_BUDGET_MS,
-            elapsed,
-        )
-        .map_err(|error| error.message)
-    })?;
-    Ok(dump(&solver::trace_to_value(&trace)))
+    guard(|| {
+        let blocks = blocks_of(blocks)?;
+        let previous = blocks_of(previous_placed)?;
+        let study = study_windows_of(study_windows)?;
+        let work = work_windows_of(work_windows)?;
+        let overrides = overrides_of(deadlines, slack_deadlines)?;
+        let from_start = from_start.to_string();
+        let trace = search(py, &clock, |elapsed| {
+            solver::reschedule_running_late(
+                &blocks,
+                day,
+                minutes,
+                &from_start,
+                &previous,
+                extra_occ.as_deref(),
+                study.as_deref(),
+                work.as_deref(),
+                Some(&overrides),
+                solver::SOLVE_BUDGET_MS,
+                elapsed,
+            )
+            .map_err(|error| error.message)
+        })?;
+        Ok(dump(&solver::trace_to_value(&trace)))
+    })
 }
 
 #[pyfunction]
-fn digest(value: &str) -> String {
-    store::digest(value)
+fn digest(value: &str) -> PyResult<String> {
+    guard(|| Ok(store::digest(value)))
 }
 
 #[pyfunction]
 fn password_hash(password: &str, salt: &str) -> PyResult<String> {
-    store::password_hash(password, salt).map_err(|error| value_error(error.to_string()))
+    guard(|| store::password_hash(password, salt).map_err(|error| value_error(error.to_string())))
 }
 
 #[pyfunction]
 fn password_matches(password: &str, encoded: &str) -> PyResult<bool> {
-    store::password_matches(password, encoded).map_err(|error| value_error(error.to_string()))
+    guard(|| {
+        store::password_matches(password, encoded).map_err(|error| value_error(error.to_string()))
+    })
 }
 
 #[pyfunction]
 fn make_token(raw: &[u8]) -> PyResult<String> {
-    let bytes: [u8; 32] = raw
-        .try_into()
-        .map_err(|_| value_error("a sign-in token is 32 bytes".into()))?;
-    Ok(store::make_token(&bytes))
+    guard(|| {
+        let bytes: [u8; 32] = raw
+            .try_into()
+            .map_err(|_| value_error("a sign-in token is 32 bytes".into()))?;
+        Ok(store::make_token(&bytes))
+    })
 }
 
 #[pyfunction]
 fn transfer_apply_envelope(snapshot: &str) -> PyResult<String> {
-    Ok(dump(&snapshot::transfer_apply_envelope(&parse(snapshot)?)))
+    guard(|| Ok(dump(&snapshot::transfer_apply_envelope(&parse(snapshot)?))))
 }
 
 #[pyfunction]
 fn store_initialize(path: &str, current_week_start: &str) -> PyResult<()> {
-    store::initialize(Path::new(path), current_week_start)
-        .map_err(|error| value_error(error.to_string()))
+    guard(|| {
+        store::initialize(Path::new(path), current_week_start)
+            .map_err(|error| value_error(error.to_string()))
+    })
 }
 
 #[pyfunction]
 fn store_throttle(path: &str, address: &str, username: &str, now_unix: i64) -> PyResult<bool> {
-    store::throttle(Path::new(path), address, username, now_unix)
-        .map_err(|error| value_error(error.to_string()))
+    guard(|| {
+        store::throttle(Path::new(path), address, username, now_unix)
+            .map_err(|error| value_error(error.to_string()))
+    })
 }
 
 pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {

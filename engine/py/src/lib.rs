@@ -23,8 +23,8 @@ pub(crate) fn raise(err: EngineError) -> PyErr {
     }
 }
 
-pub(crate) fn guard<T>(func: impl FnOnce() -> PyResult<T> + std::panic::UnwindSafe) -> PyResult<T> {
-    match std::panic::catch_unwind(func) {
+pub(crate) fn guard<T>(func: impl FnOnce() -> PyResult<T>) -> PyResult<T> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(func)) {
         Ok(result) => result,
         Err(payload) => Err(PyRuntimeError::new_err(panic_message(&payload))),
     }
@@ -56,8 +56,8 @@ fn iso_of(value: &Bound<'_, PyAny>) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn casefold(text: &str) -> String {
-    ::flexweek_engine::casefold::casefold(text)
+fn casefold(text: &str) -> PyResult<String> {
+    guard(|| Ok(::flexweek_engine::casefold::casefold(text)))
 }
 
 #[pyfunction]
@@ -71,108 +71,114 @@ fn clock_to_minutes(hhmm: &str) -> PyResult<i64> {
 }
 
 #[pyfunction]
-fn minutes_to_hhmm(minutes: i64) -> String {
-    time::minutes_to_hhmm(minutes)
+fn minutes_to_hhmm(minutes: i64) -> PyResult<String> {
+    guard(|| Ok(time::minutes_to_hhmm(minutes)))
 }
 
 #[pyfunction]
-fn start_fits_day(start_min: i64) -> bool {
-    time::start_fits_day(start_min)
+fn start_fits_day(start_min: i64) -> PyResult<bool> {
+    guard(|| Ok(time::start_fits_day(start_min)))
 }
 
 #[pyfunction]
-fn span_fits_day(start_min: i64, duration_min: i64) -> bool {
-    time::span_fits_day(start_min, duration_min)
+fn span_fits_day(start_min: i64, duration_min: i64) -> PyResult<bool> {
+    guard(|| Ok(time::span_fits_day(start_min, duration_min)))
 }
 
 #[pyfunction]
-fn on_slot(minutes: i64) -> bool {
-    time::on_slot(minutes)
+fn on_slot(minutes: i64) -> PyResult<bool> {
+    guard(|| Ok(time::on_slot(minutes)))
 }
 
 #[pyfunction]
 fn minutes_to_slot(minutes: i64) -> PyResult<i64> {
-    time::minutes_to_slot(minutes).map_err(raise)
+    guard(|| time::minutes_to_slot(minutes).map_err(raise))
 }
 
 #[pyfunction]
 fn hhmm_to_slot(hhmm: &str) -> PyResult<i64> {
-    time::hhmm_to_slot(hhmm).map_err(raise)
+    guard(|| time::hhmm_to_slot(hhmm).map_err(raise))
 }
 
 #[pyfunction]
 fn slot_to_hhmm(slot: i64) -> PyResult<String> {
-    time::slot_to_hhmm(slot).map_err(raise)
+    guard(|| time::slot_to_hhmm(slot).map_err(raise))
 }
 
 #[pyfunction]
 fn duration_to_slots(duration_min: i64) -> PyResult<i64> {
-    time::duration_to_slots(duration_min).map_err(raise)
+    guard(|| time::duration_to_slots(duration_min).map_err(raise))
 }
 
 #[pyfunction]
-fn overlaps(a_start: i64, a_end: i64, b_start: i64, b_end: i64) -> bool {
-    time::overlaps(a_start, a_end, b_start, b_end)
+fn overlaps(a_start: i64, a_end: i64, b_start: i64, b_end: i64) -> PyResult<bool> {
+    guard(|| Ok(time::overlaps(a_start, a_end, b_start, b_end)))
 }
 
 #[pyfunction]
 fn block_interval_on_day(block: &Bound<'_, PyAny>, day: i64) -> PyResult<Option<(i64, i64)>> {
-    let days: Vec<i64> = block.getattr("days")?.extract()?;
-    let start: Option<String> = block.getattr("start")?.extract()?;
-    let duration_min: i64 = block.getattr("duration_min")?.extract()?;
-    time::block_interval_on_day(&days, start.as_deref(), duration_min, day).map_err(raise)
+    guard(|| {
+        let days: Vec<i64> = block.getattr("days")?.extract()?;
+        let start: Option<String> = block.getattr("start")?.extract()?;
+        let duration_min: i64 = block.getattr("duration_min")?.extract()?;
+        time::block_interval_on_day(&days, start.as_deref(), duration_min, day).map_err(raise)
+    })
 }
 
 #[pyfunction]
 fn parse_deadline(latest: Option<&str>, days: Vec<i64>) -> PyResult<Option<(i64, i64)>> {
-    time::parse_deadline(latest, &days).map_err(raise)
+    guard(|| time::parse_deadline(latest, &days).map_err(raise))
 }
 
 #[pyfunction]
 fn occupancy_mask(start_slot: i64, n_slots: i64) -> PyResult<u128> {
-    time::occupancy_mask(start_slot, n_slots).map_err(raise)
+    guard(|| time::occupancy_mask(start_slot, n_slots).map_err(raise))
 }
 
 #[pyfunction]
 fn occupancy_between(start_min: i64, end_min: i64) -> PyResult<u128> {
-    time::occupancy_between(start_min, end_min).map_err(raise)
+    guard(|| time::occupancy_between(start_min, end_min).map_err(raise))
 }
 
 #[pyfunction]
 fn monday_of(date_str: &str) -> PyResult<String> {
-    time::monday_of(date_str).map_err(raise)
+    guard(|| time::monday_of(date_str).map_err(raise))
 }
 
 #[pyfunction]
 fn current_week_start(py: Python<'_>) -> PyResult<String> {
-    let today: String = py
-        .import("datetime")?
-        .getattr("date")?
-        .call_method0("today")?
-        .call_method0("isoformat")?
-        .extract()?;
-    time::monday_of(&today).map_err(raise)
+    guard(|| {
+        let today: String = py
+            .import("datetime")?
+            .getattr("date")?
+            .call_method0("today")?
+            .call_method0("isoformat")?
+            .extract()?;
+        time::monday_of(&today).map_err(raise)
+    })
 }
 
 #[pyfunction]
-fn is_week_start(value: &str) -> bool {
-    time::is_week_start(value)
+fn is_week_start(value: &str) -> PyResult<bool> {
+    guard(|| Ok(time::is_week_start(value)))
 }
 
 #[pyfunction]
-fn is_calendar_date(value: &str) -> bool {
-    time::is_calendar_date(value)
+fn is_calendar_date(value: &str) -> PyResult<bool> {
+    guard(|| Ok(time::is_calendar_date(value)))
 }
 
 #[pyfunction]
 fn parse_month(py: Python<'_>, value: &str) -> PyResult<(Py<PyDate>, Py<PyDate>)> {
-    let (start, end) = time::parse_month(value).map_err(raise)?;
-    Ok((as_date(py, &start)?, as_date(py, &end)?))
+    guard(|| {
+        let (start, end) = time::parse_month(value).map_err(raise)?;
+        Ok((as_date(py, &start)?, as_date(py, &end)?))
+    })
 }
 
 #[pyfunction]
-fn is_month_label(value: &str) -> bool {
-    time::is_month_label(value)
+fn is_month_label(value: &str) -> PyResult<bool> {
+    guard(|| Ok(time::is_month_label(value)))
 }
 
 #[pyfunction]
@@ -181,8 +187,43 @@ fn month_grid(
     start: &Bound<'_, PyAny>,
     end: &Bound<'_, PyAny>,
 ) -> PyResult<(Py<PyDate>, Py<PyDate>)> {
-    let (grid_start, grid_end) = time::month_grid(&iso_of(start)?, &iso_of(end)?).map_err(raise)?;
-    Ok((as_date(py, &grid_start)?, as_date(py, &grid_end)?))
+    guard(|| {
+        let (grid_start, grid_end) =
+            time::month_grid(&iso_of(start)?, &iso_of(end)?).map_err(raise)?;
+        Ok((as_date(py, &grid_start)?, as_date(py, &grid_end)?))
+    })
+}
+
+fn int_one(text: &str) -> (String, String) {
+    match time::py_int(text) {
+        Ok(value) => ("ok".to_string(), value.to_string()),
+        Err(err) => {
+            let kind = match err.kind {
+                ErrorKind::Overflow => "OverflowError",
+                ErrorKind::Value => "ValueError",
+                ErrorKind::Key => "KeyError",
+                ErrorKind::Index => "IndexError",
+                ErrorKind::Lookup => "LookupError",
+                ErrorKind::ZeroDivision => "ZeroDivisionError",
+            };
+            (kind.to_string(), err.message)
+        }
+    }
+}
+
+#[pyfunction]
+fn panic_probe() -> PyResult<()> {
+    guard(|| -> PyResult<()> { panic!("probe") })
+}
+
+#[pyfunction]
+fn int_text(text: &str) -> PyResult<(String, String)> {
+    guard(|| Ok(int_one(text)))
+}
+
+#[pyfunction]
+fn int_chars(text: &str) -> PyResult<Vec<(String, String)>> {
+    guard(|| Ok(text.chars().map(|ch| int_one(&ch.to_string())).collect()))
 }
 
 #[pymodule]
@@ -198,6 +239,9 @@ fn flexweek_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
     m.add("DAY_NAME_TO_INDEX", names)?;
     m.add_function(wrap_pyfunction!(casefold, m)?)?;
+    m.add_function(wrap_pyfunction!(panic_probe, m)?)?;
+    m.add_function(wrap_pyfunction!(int_text, m)?)?;
+    m.add_function(wrap_pyfunction!(int_chars, m)?)?;
     m.add_function(wrap_pyfunction!(hhmm_to_minutes, m)?)?;
     m.add_function(wrap_pyfunction!(clock_to_minutes, m)?)?;
     m.add_function(wrap_pyfunction!(minutes_to_hhmm, m)?)?;
