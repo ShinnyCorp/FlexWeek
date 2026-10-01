@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 flexweek-engine = { path = "../engine" }
 flexweek-store = { path = "../store" }
 pyo3 = { version = "0.27.2", features = ["extension-module"] }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
 serde_json = { version = "1.0.145", features = ["float_roundtrip", "arbitrary_precision"] }
 
 [features]

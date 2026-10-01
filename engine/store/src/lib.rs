@@ -461,8 +461,7 @@ fn prepare_db_path(path: &Path) -> StoreResult<()> {
     if !path.exists() {
         std::fs::OpenOptions::new()
             .write(true)
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .mode(0o600)
             .open(path)?;
     }

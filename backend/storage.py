@@ -6,6 +6,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import flexweek_engine  # type: ignore[import-untyped]
 
@@ -45,9 +46,9 @@ def password_matches(password: str, encoded: str) -> bool:
 
 
 @contextmanager
-def connect(path: Path) -> Iterator[sqlite3.Connection]:
-    db = sqlite3.connect(path, timeout=10)
-    db.row_factory = sqlite3.Row
+def connect(path: Path) -> Iterator[Any]:
+    """The Rust store's connection. Python's sqlite3 is not opened on this file."""
+    db = flexweek_engine.open_connection(str(path))
     db.execute("PRAGMA foreign_keys = ON")
     try:
         with db:

@@ -146,6 +146,7 @@ dependencies = [
  "flexweek-engine",
  "flexweek-store",
  "pyo3",
+ "rusqlite",
  "serde_json",
 ]
 

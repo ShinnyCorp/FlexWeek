@@ -319,14 +319,22 @@ fn digest(value: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn password_hash(password: &str, salt: &str) -> PyResult<String> {
-    guard(|| store::password_hash(password, salt).map_err(|error| value_error(error.to_string())))
+fn password_hash(py: Python<'_>, password: &str, salt: &str) -> PyResult<String> {
+    let password = password.to_string();
+    let salt = salt.to_string();
+    guard(|| {
+        py.detach(|| store::password_hash(&password, &salt))
+            .map_err(|error| store_py(py, error))
+    })
 }
 
 #[pyfunction]
-fn password_matches(password: &str, encoded: &str) -> PyResult<bool> {
+fn password_matches(py: Python<'_>, password: &str, encoded: &str) -> PyResult<bool> {
+    let password = password.to_string();
+    let encoded = encoded.to_string();
     guard(|| {
-        store::password_matches(password, encoded).map_err(|error| value_error(error.to_string()))
+        py.detach(|| store::password_matches(&password, &encoded))
+            .map_err(|error| store_py(py, error))
     })
 }
 
@@ -346,19 +354,37 @@ fn transfer_apply_envelope(snapshot: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn store_initialize(path: &str, current_week_start: &str) -> PyResult<()> {
+fn store_initialize(py: Python<'_>, path: &str, current_week_start: &str) -> PyResult<()> {
+    let path = path.to_string();
+    let current_week_start = current_week_start.to_string();
     guard(|| {
-        store::initialize(Path::new(path), current_week_start)
-            .map_err(|error| value_error(error.to_string()))
+        py.detach(|| store::initialize(Path::new(&path), &current_week_start))
+            .map_err(|error| store_py(py, error))
     })
 }
 
 #[pyfunction]
-fn store_throttle(path: &str, address: &str, username: &str, now_unix: i64) -> PyResult<bool> {
+fn store_throttle(
+    py: Python<'_>,
+    path: &str,
+    address: &str,
+    username: &str,
+    now_unix: i64,
+) -> PyResult<bool> {
+    let path = path.to_string();
+    let address = address.to_string();
+    let username = username.to_string();
     guard(|| {
-        store::throttle(Path::new(path), address, username, now_unix)
-            .map_err(|error| value_error(error.to_string()))
+        py.detach(|| store::throttle(Path::new(&path), &address, &username, now_unix))
+            .map_err(|error| store_py(py, error))
     })
+}
+
+fn store_py(py: Python<'_>, error: flexweek_store::StoreError) -> PyErr {
+    match error {
+        flexweek_store::StoreError::Sqlite(sqlite) => crate::db::sqlite_py(py, &sqlite),
+        other => value_error(other.to_string()),
+    }
 }
 
 pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {

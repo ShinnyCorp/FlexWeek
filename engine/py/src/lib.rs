@@ -11,6 +11,7 @@ use pyo3::exceptions::{
 use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDict, PyModule};
 
+mod db;
 mod more;
 mod rest;
 
@@ -307,5 +308,6 @@ fn flexweek_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     crate::export!(m, panic_probe, int_text, int_chars);
     more::add(m)?;
     rest::add(m)?;
+    db::add(m)?;
     Ok(())
 }
