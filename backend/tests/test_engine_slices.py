@@ -102,4 +102,3 @@ def test_saved_look_names_and_a_clash_match_the_rules():
     assert "start" not in kept[1]
     assert "Essay no longer fits" in lost[0]["message"]
     assert "School is there now" in lost[0]["message"]
-

@@ -22,9 +22,11 @@ from backend import models as live_models
 from backend import month as live_month
 from backend import recovery as live_recovery
 from backend import restore as live_restore
+from backend import slots as live_slots
 from backend import solver as live_solver
 from backend import storage as live_storage
 from backend import transfer as live_transfer
+from backend import weeks as live_weeks
 from backend.tests.engine_ref import assignments as ref_assignments
 from backend.tests.engine_ref import availability as ref_availability
 from backend.tests.engine_ref import comfort as ref_comfort
@@ -34,9 +36,11 @@ from backend.tests.engine_ref import models as ref_models
 from backend.tests.engine_ref import month as ref_month
 from backend.tests.engine_ref import recovery as ref_recovery
 from backend.tests.engine_ref import restore as ref_restore
+from backend.tests.engine_ref import slots as ref_slots
 from backend.tests.engine_ref import solver as ref_solver
 from backend.tests.engine_ref import storage as ref_storage
 from backend.tests.engine_ref import transfer as ref_transfer
+from backend.tests.engine_ref import weeks as ref_weeks
 
 N = int(os.environ.get("AUDIT_EXAMPLES", "300"))
 COMMON = settings(
@@ -929,6 +933,54 @@ def test_recorded_backend_fixtures_match():
         )
     for code in ref_explain.REASON_COPY:
         same(lambda code=code: live_explain.sentence(code), lambda code=code: ref_explain.sentence(code), code)
+    for clock in ("00:00", "06:00", "23:00", "16:00", "23:45", "08:10", "24:00", "8", "17:37"):
+        same(lambda clock=clock: live_slots.hhmm_to_minutes(clock), lambda clock=clock: ref_slots.hhmm_to_minutes(clock), clock)
+        same(lambda clock=clock: live_slots.hhmm_to_slot(clock), lambda clock=clock: ref_slots.hhmm_to_slot(clock), clock)
+    for minutes in (0, 6 * 60, 23 * 60, 1440):
+        same(lambda minutes=minutes: live_slots.minutes_to_hhmm(minutes), lambda minutes=minutes: ref_slots.minutes_to_hhmm(minutes), str(minutes))
+    for latest, days in (
+        ("Thursday 21:00", [0, 1, 2, 3, 4]),
+        ("Wednesday 07:45", [0, 1, 2]),
+        ("2026-09-10T21:00", [0, 1, 2, 3]),
+        ("21:00", [0, 1, 4]),
+        (None, [0]),
+        ("", [0]),
+    ):
+        same(
+            lambda latest=latest, days=days: live_slots.parse_deadline(latest, days),
+            lambda latest=latest, days=days: ref_slots.parse_deadline(latest, days),
+            str(latest),
+        )
+    for day in (
+        "2026-09-07", "2026-09-08", "2026-09-13", "2026-09-7", "not-a-date", "2026-13-40",
+        "20260907", "2026-W37-1", "2000-01-01", "2000-01-03", "2099-12-31", "1999-12-31",
+        "2100-01-01", "2026-10-01", "2027-01-01",
+    ):
+        same(lambda day=day: live_weeks.monday_of(day), lambda day=day: ref_weeks.monday_of(day), day)
+        same(lambda day=day: live_weeks.is_week_start(day), lambda day=day: ref_weeks.is_week_start(day), day)
+        same(lambda day=day: live_weeks.is_calendar_date(day), lambda day=day: ref_weeks.is_calendar_date(day), day)
+    for label in ("2026-09", "2026-02", "2000-01", "2099-12", "", "2026-9", "2026-13", "1999-12", "2100-01"):
+        same(lambda label=label: live_weeks.parse_month(label), lambda label=label: ref_weeks.parse_month(label), label)
+        same(lambda label=label: live_weeks.is_month_label(label), lambda label=label: ref_weeks.is_month_label(label), label)
+    for args in ((25, 1, 180), (5, 1, 60), (1, 1, 180), (30, 1, 180)):
+        same(lambda args=args: live_comfort.snap_minutes(*args), lambda args=args: ref_comfort.snap_minutes(*args), str(args))
+    same(lambda: live_comfort.split_plan(90, 30, 15, 15, 4), lambda: ref_comfort.split_plan(90, 30, 15, 15, 4), "split")
+    for slack, status in ((29, "danger"), (135, "tight"), (300, "ok"), (0, "danger")):
+        same(
+            lambda slack=slack, status=status: live_explain.slack_sentence(slack, status),
+            lambda slack=slack, status=status: ref_explain.slack_sentence(slack, status),
+            status,
+        )
+    same(
+        lambda: live_recovery.normalize_recovery_code("A1B2-C3D4-E5F6-7890"),
+        lambda: ref_recovery.normalize_recovery_code("A1B2-C3D4-E5F6-7890"),
+        "recovery",
+    )
+    same(
+        lambda: live_recovery.hash_recovery_code("a1b2-c3d4-e5f6-7890"),
+        lambda: ref_recovery.hash_recovery_code("a1b2-c3d4-e5f6-7890"),
+        "recovery-hash",
+    )
 
 
 # ---------- subjects that differ by case beyond ASCII (the original folds with str.casefold)
