@@ -5,7 +5,11 @@
   Qt holding the left button for the rest of their worker (`test_hours_zoom`'s press with no release, and
   `test_layout_mission`'s `QTest.mouseDClick`, which in PySide6 6.11 ends held), so later pointer moves
   were drags and the sign-in links never got hover. Both now release; conftest's
-  `no_mouse_button_is_left_held` fails any test that leaves a button down. Gate 2676 passed.
+  `no_mouse_button_is_left_held` fails any test that leaves a button down. A second cause: the offscreen
+  pointer keeps its place and the window it was last over, and Clay's arrow test leaves it over a view that
+  lives on hidden, so the sign-in move sent that view's stale leave and Forgot password lost hover.
+  `the_pointer_starts_where_a_new_worker_has_it` puts it at (10, 10) before each test, and
+  `test_windows_between_tests` runs that order in a pytest of its own. Gate 2677 passed.
   Seen flaky, not chased: `test_context_menu.py::test_every_design_with_shared_hours_has_the_free_time_menu[clay]`
   ("clay shows no hours with Tuesday in them"), 2 of 3 gates on 2026-10-01 and 1 of 6 runs of the file alone.
 - 2026-09-30, `feat/0.17.2`: 0.17.2 prepared (version, dated changelog, `docs/release-notes-v0.17.2.md`).
