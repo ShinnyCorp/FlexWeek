@@ -246,6 +246,11 @@ All notable changes to FlexWeek are documented here. Format follows
   remove.
 - A notice in Retro desktop no longer covers the taskbar's tray (the bell
   and the clock): it keeps above the bar, as in every other design.
+- With the 12-hour clock, the hour labels and the pill for the time now show
+  whole in Today's app, Timeline, Bento, Retro and Clay, at any text size and
+  zoom. They were cut off on the left, so 9:00 AM read ":00 AM". Changing the
+  clock in Settings fits them at once. Mission control's hours no longer run
+  together when its lanes are zoomed out.
 
 ## [0.17.1] - 2026-09-29
 
@@ -260,11 +265,6 @@ All notable changes to FlexWeek are documented here. Format follows
   with it instead of jumping in one frame.
 
 ### Fixed
-- With the 12-hour clock, the hour labels and the pill for the time now show
-  whole in Today's app, Timeline, Bento, Retro and Clay, at any text size and
-  zoom. They were cut off on the left, so 9:00 AM read ":00 AM". Changing the
-  clock in Settings fits them at once. Mission control's hours no longer run
-  together when its lanes are zoomed out.
 - Holding a block at the edge of the hours scrolls about two hours a second
   at any zoom. In Clay deck it raced through the day at about 16 hours a
   second.
