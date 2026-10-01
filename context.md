@@ -1,15 +1,11 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-10-01, `engine/full-port` at `d83718e`: the four leftover asks are in, and the
-  sign-in hover fix is cherry-picked (`1b64f7c`, `54a80b1`, `d83718e`; its context.md
-  commit was left on `fix/sign-in-hover-flake`). A full-budget solve keeps another
-  thread's longest wait within 5 ms of the Python solver. Exports go through one
-  macro. 1217 calls from the existing backend tests are in
-  `backend/tests/fixtures/engine_recorded_calls.json`. `panic_probe`, `int_text`, and
-  `int_chars` compile only with `--features audit`. Gate: 3028 passed. Part C is a
-  design note only (`~/.flexweek-ui-harness/scratch/engine-grok/partC-design.md`);
-  no storage code. Nothing pushed.
+- 2026-10-01, `engine/full-port`: Part C step 1 is in (`907def4`). `storage.connect` is the Rust
+  connection; app SQL is unchanged. Part D drops store helpers Python never calls and
+  `install_kind` no longer reads the process environment. Desk stays unwired. JSON text
+  still crosses the boundary; a 12-block week is about 0.02 ms to encode and decode.
+  Nothing pushed.
 - 2026-10-01, `engine/full-port`: parts A and B of the engine audit are in. Day helpers match
   Python on the audit's digit, date, and overflow cases. Subject matching uses Python's full
   case fold (a table generated from this interpreter, no new crate). The solver keeps the GIL
@@ -753,10 +749,9 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
-- 2026-10-01, `engine/full-port` at `d83718e`: leftovers committed, hover-flake
-  cherry-pick applied, gate 3028 passed. Waiting on Jonathan before any storage
-  code. Design note: `~/.flexweek-ui-harness/scratch/engine-grok/partC-design.md`.
-  Nothing pushed.
+- 2026-10-01, `engine/full-port`: Part C step 1 committed (`c5c1aa2`, `f9d1362`, `907def4`).
+  Gate before those commits: 3040 passed. Part D is the unused-store removal and the
+  environment read in `install_kind`. Nothing pushed.
 - 2026-09-30, `feat/0.17.2`: ready to push, PR to main, merge after CI and release v0.17.2 as latest
   (Jonathan's word). Then Grok Bot reviews 0.17.2 and Jonathan decides on 0.17.3. Open for 0.17.3: the
   sign-in hover flake; Bento's now pill inside today's column; Mission's beside-block names crossed by
