@@ -50,10 +50,16 @@ DAY_SCALE = Scale("classic.day", (96, 128, 160, 192), 96)
 WEEK_SCALE = Scale("classic.week", (32, 48, 64, 96, 128), 48)
 DAY_HOUR_PX = DAY_SCALE.default
 WEEK_HOUR_PX = WEEK_SCALE.default
-# Room above 00:00 and below 24:00, so their hour labels are never cut.
+# Room above 00:00 and below 24:00, so the labels at either end of the hours are never cut.
 PAD = 12
 GUTTER = 60
 AGENDA_PX = 288
+# An empty Saturday or Sunday takes this share of a full day's width, and never less than EMPTY_MIN_PX
+# (or the equal share where that is already smaller): a block dropped there still reads, with its
+# icon, the first word of its name and its times.
+WEEKEND = (5, 6)
+EMPTY_SHARE = 0.6
+EMPTY_MIN_PX = 96
 # How much of the accent the time now's line across the rest of the week takes.
 NOW_ACROSS = 0.45
 
@@ -91,6 +97,7 @@ class ClassicPainter(BlockPainter):
     the gutter where the hour labels are."""
 
     now_in_gutter = True
+    end_label = False
 
     def background(self, painter: QPainter, rect: QRectF) -> None:
         painter.fillRect(rect, self.c("panel") if "panel" in self.colours else self.c("window"))
@@ -260,12 +267,20 @@ class DayName(QLabel):
         super().mousePressEvent(event)
 
 
-def _seven_columns(area: QRectF) -> list[LinearTrack]:
-    width = area.width() / 7
-    return [
-        LinearTrack(day, QRectF(area.left() + day * width, area.top() + PAD, width, area.height() - 2 * PAD))
-        for day in range(7)
-    ]
+def column_widths(total: float, empty: frozenset[int]) -> list[float]:
+    """The seven days' widths over `total` pixels: equal, except that an empty weekend day is narrower
+    (see EMPTY_SHARE) and the days with something in them share what that leaves, equally."""
+    share = total / 7
+    quiet = [day for day in WEEKEND if day in empty]
+    if not quiet:
+        return [share] * 7
+    narrow = min(share, max(EMPTY_MIN_PX, share * EMPTY_SHARE))
+    full = (total - narrow * len(quiet)) / (7 - len(quiet))
+    return [narrow if day in quiet else full for day in range(7)]
+
+
+def _empty_days(week: WeekModel) -> frozenset[int]:
+    return frozenset(day for day in range(7) if not week.on_day(day))
 
 
 class ClassicWeek(QFrame):
@@ -278,7 +293,10 @@ class ClassicWeek(QFrame):
         self.setObjectName("weekTable")
         self.week_start = ""
         self._shown: tuple[WeekModel, int | None, int | None] | None = None
-        self.hours = HoursCanvas(hand, ClassicPainter({}), _seven_columns, gutter=GUTTER, names=self._name)
+        self._empty: frozenset[int] = frozenset()
+        self.hours = HoursCanvas(
+            hand, ClassicPainter({}), self._seven_columns, gutter=GUTTER, names=self._name
+        )
         self.hours.setObjectName("weekHours")
         self.hours.day_opened.connect(self.day_opened.emit)
         self.scroll = HoursScroll(self.hours, WEEK_SCALE, _hours_height, name="week", gutter=GUTTER)
@@ -287,6 +305,7 @@ class ClassicWeek(QFrame):
         row = QHBoxLayout(names)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
+        self._names_row = row
         self._name_labels: list[DayName] = []
         for day in range(7):
             name = DayName(day)
@@ -299,6 +318,18 @@ class ClassicWeek(QFrame):
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(0)
         box.addWidget(self.scroll, 1)
+
+    def _seven_columns(self, area: QRectF) -> list[LinearTrack]:
+        widths = column_widths(area.width(), self._empty)
+        left = area.left()
+        tracks = []
+        for day, width in enumerate(widths):
+            tracks.append(LinearTrack(day, QRectF(left, area.top() + PAD, width, area.height() - 2 * PAD)))
+            left += width
+        # The names above keep to their columns: a layout's stretch is the ratio of the widths.
+        for day, width in enumerate(widths):
+            self._names_row.setStretch(day, max(1, round(width * 10)))
+        return tracks
 
     def set_narrow(self, narrow: bool) -> None:
         """Short of room, blocks give their names the room their times took."""
@@ -321,6 +352,11 @@ class ClassicWeek(QFrame):
 
     def set_week(self, week: WeekModel, today: int | None, now_min: int | None) -> None:
         self.week_start = week.week_start
+        empty = _empty_days(week)
+        if empty != self._empty:
+            # Laid out for the new widths before the blocks arrive, so none slides for a change of width.
+            self._empty = empty
+            self.hours.relayout()
         self.hours.set_week(week.occurrences, today, now_min)
         for day, label in enumerate(self._name_labels):
             label.show_day(DAYS[day], str(week.date_of(day).day), homework_minutes(week, day), day == today)

@@ -74,8 +74,12 @@ SHOW_MONTH = "Show the month"
 # 8 at the sides: the window's own 9-pixel margin puts the rail's words 17 from its edge, where the
 # mock-up has them at 16, and a focus row or a chip has the room to say "Chem lab report" whole.
 PAD = SPACING[1]
+# The gaps that keep a homework title from the book before it and the length or day after it. They are
+# small so that a title as long as "Math worksheet" is not cut on a row with room for it.
+BOOK_GAP = 6
+TITLE_GAP = SPACING[0]
 # Where a chip's title starts: past its edge, the book and the gaps between.
-CHIP_TITLE_LEFT = SPACING[1] + 3 + SPACING[1] + 16 + SPACING[1]
+CHIP_TITLE_LEFT = SPACING[1] + 3 + SPACING[1] + 16 + BOOK_GAP
 
 
 def label(words: str, name: str, *, kind: str = "railLabel") -> QLabel:
@@ -418,7 +422,7 @@ class RailChip(TrayChip):
     def sizeHint(self) -> QSize:  # noqa: N802
         body, small = self._fonts()
         tall = max(QFontMetricsF(body).height(), QFontMetricsF(small).height()) + 10
-        wide = 3 + 3 * SPACING[1] + 16 + QFontMetricsF(body).horizontalAdvance(self._title)
+        wide = 3 + 2 * SPACING[1] + BOOK_GAP + 16 + QFontMetricsF(body).horizontalAdvance(self._title)
         return QSize(round(wide + QFontMetricsF(small).horizontalAdvance(self.length)), round(max(30, tall)))
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
@@ -428,7 +432,7 @@ class RailChip(TrayChip):
         """The title as it fits beside the book and the length."""
         body, small = self._fonts()
         length = QFontMetricsF(small).horizontalAdvance(self.length)
-        room = self.width() - CHIP_TITLE_LEFT - SPACING[1] - length - SPACING[1]
+        room = self.width() - CHIP_TITLE_LEFT - TITLE_GAP - length - SPACING[1]
         return QFontMetricsF(body).elidedText(self._title, Qt.TextElideMode.ElideRight, max(room, 0))
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
@@ -452,7 +456,7 @@ class RailChip(TrayChip):
         painter.drawPixmap(
             QPointF(at, (box.height() - 16) / 2), icons.pixmap("book-open", colours.homework, 16, ratio)
         )
-        at += 16 + SPACING[1]
+        at += 16 + BOOK_GAP
         length_room = QFontMetricsF(small).horizontalAdvance(self.length)
         painter.setFont(small)
         painter.setPen(QColor(colours.muted))
@@ -465,7 +469,7 @@ class RailChip(TrayChip):
         painter.setFont(body)
         painter.setPen(QColor(colours.text))
         painter.drawText(
-            QRectF(at, 0, max(0.0, right - length_room - SPACING[1] - at), box.height()),
+            QRectF(at, 0, max(0.0, right - length_room - TITLE_GAP - at), box.height()),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             self.shown_title(),
         )
@@ -511,7 +515,7 @@ class FocusRows(QStyledItemDelegate):
             QPointF(at, box.top() + (box.height() - 16) / 2),
             icons.pixmap("book-open", colours.homework, 16, painter.device().devicePixelRatioF()),
         )
-        at += 16 + SPACING[1]
+        at += 16 + BOOK_GAP
         when = str(index.data(Qt.ItemDataRole.ToolTipRole) or "")
         today = bool(index.data(Qt.ItemDataRole.UserRole + 1))
         timing = weighted(small, WEIGHT_STRONG) if today else QFont(small)
@@ -526,7 +530,7 @@ class FocusRows(QStyledItemDelegate):
         )
         painter.setFont(body)
         painter.setPen(QColor(colours.text))
-        room = max(0.0, right - width - SPACING[1] - at)
+        room = max(0.0, right - width - TITLE_GAP - at)
         title = QFontMetricsF(body).elidedText(str(index.data()), Qt.TextElideMode.ElideRight, room)
         painter.drawText(
             QRectF(at, box.top(), room, box.height()),

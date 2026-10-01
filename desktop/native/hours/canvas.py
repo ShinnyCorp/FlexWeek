@@ -144,6 +144,8 @@ class BlockPainter:
     # A title with no room for its first word says nothing, and its colour says it is there, rather
     # than cutting inside the word ("Robot…"). Retro desktop's; the others keep decision 14's cut.
     whole_words = False
+    # Whether the hour at the end of the day is labelled "24:00". The rule is drawn either way.
+    end_label = True
 
     def __init__(self, colours: dict[str, str], look: dict | None = None, *, wide: bool = False) -> None:
         self.colours = colours
@@ -211,6 +213,8 @@ class BlockPainter:
         metrics = QFontMetricsF(font)
         tall = metrics.height() + 2
         for minute in range(((track.first + every - 1) // every) * every, track.last + 1, every):
+            if minute == track.last and not self.end_label:
+                continue
             at = track.offset(minute)
             words = clock_label(minute)
             if track.axis is Axis.DOWN:
