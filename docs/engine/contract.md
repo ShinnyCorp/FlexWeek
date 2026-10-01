@@ -114,9 +114,10 @@ the new differential tests green, and the Rust checks passing.
 ## Tests and tooling
 
 Jonathan decided on 2026-09-30 that the overhaul covers everything but the interface, tests included,
-and that the interface's own tests are tidied, in Python, once the ported tests are verified. The Python tests stay the
-check while code moves: a test is ported only once the code it tests has been switched (E5), so at no
-point are the code and its check rewritten together.
+and that the interface's own tests are tidied, in Python, once the ported tests are verified. The
+reason is the full rewrite: whatever moves now stops growing in Python, so there is less to rewrite
+later. The Python tests stay the check while code moves: a test is ported only once the code it
+tests has been switched (E5), so at no point are the code and its check rewritten together.
 
 - **T1, the engine's tests, after E5.** The backend tests of logic and storage (not of HTTP routes)
   become Rust tests in `engine/`, case for case. Each keeps the Python test's expected values; none is
@@ -124,8 +125,8 @@ point are the code and its check rewritten together.
   passes and catches the same faults: the backend's mutation cases move to `cargo mutants` for the
   engine, and every case the Python tests caught must still be caught. The differential tests are
   deleted last, since by then there is one implementation.
-- **T2, the API tests.** Open, for Jonathan: they test `backend/app.py`'s routes. While the server
-  is Python they either stay Python, or become Rust tests that call the running server over HTTP.
+- **T2, the API tests, stay Python.** They test `backend/app.py`'s routes, which stay Python, and
+  move with the server in the full rewrite.
 - **T3, the rig.** `scripts/rig/drive.py` and `hidden_session.py` move into `fwtest` in Rust with the
   same scenarios, `results.json`, screenshots and videos, on the same hidden KWin with its private
   D-Bus. Each design's rig gives the same pass count before and after the move.
