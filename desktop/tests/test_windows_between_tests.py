@@ -65,3 +65,19 @@ def test_a_window_one_test_leaves_showing_is_gone_before_the_next(tmp_path: Path
     )
     assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-2000:]
     assert "2 passed" in result.stdout
+
+
+def test_where_one_test_leaves_the_pointer_does_not_take_hover_from_the_next() -> None:
+    """Clay's arrow test leaves the pointer over its view, which lives on hidden; the sign-in test's move
+    onto Forgot password after it showed no hover. Run in that order, in one pytest of its own."""
+    env = {name: value for name, value in os.environ.items() if not name.startswith("PYTEST_")}
+    env.update(QT_QPA_PLATFORM="offscreen", FLEXWEEK_SILENT="1")
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "no:xdist",
+         "desktop/tests/test_layout_clay.py::test_a_block_held_on_an_arrow_slides_the_row_to_the_next_day",
+         "desktop/tests/test_sign_in_card.py::test_a_link_in_reach_keeps_the_accent_darker_and_underlined"
+         "[pointer-forgotPassword]"],
+        cwd=ROOT, env=env, capture_output=True, text=True, timeout=300,
+    )
+    assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-2000:]
+    assert "2 passed" in result.stdout
