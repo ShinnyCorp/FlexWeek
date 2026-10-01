@@ -33,6 +33,20 @@ All notable changes to FlexWeek are documented here. Format follows
   colour (3 to 1, the bar for lines rather than text), so in Light the blue
   stays close to the one picked. The accent stays as picked, and the time on
   the pill keeps its own 4.5 to 1.
+- Setup's planning-hours choices (After school, Evenings, Weekend mornings)
+  are pills like the day picker's, and Send a test reminder and Add custom
+  hours are outlined buttons, so none reads as plain text. The example
+  homework is greyed "e.g. History essay" in the muted colour; it is only
+  words in an empty box, so leaving it adds nothing and Done says "None yet".
+- Setup's School now sits in a card like each sport, club or job, with the
+  Sports or Activity choice beside the name, so the times line up down the page.
+- Setup names each design as Settings does: "Today's app", not "Calendar ·
+  Today's app", on its cards, day screens and the Done page.
+- Sign in says the name once, in the wordmark; the heading is "Welcome" (and
+  "Welcome back"). Creating an account is the stronger link under Sign in and
+  Forgot password the lighter. A link under the pointer or reached by the
+  keyboard turns a darker shade of the accent and is underlined, where it went
+  near-black, and showed nothing at all by keyboard.
 
 ### Fixed
 - The line for now crosses a block over its colour and stops a few pixels
@@ -58,6 +72,8 @@ All notable changes to FlexWeek are documented here. Format follows
   back to this week; the week you pressed Today from stays where you left it.
 - Help and the other scrolling sheets use the app's thin scroll bar, as Ctrl+K and Settings do, instead of a thick one that took width from the words.
 - At a narrow window Week's day header shows a day's homework as "1 h 30" when "1 h 30 min" would be cut off.
+- Setup's style and look cards fit a narrow window: they run one to a row when
+  two would not fit, instead of running off the right edge at 810 pixels.
 
 ## [0.17.1] - 2026-09-29
 

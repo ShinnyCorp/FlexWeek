@@ -79,15 +79,15 @@
   {
     "name": "Send a test reminder filled like Next",
     "file": "desktop/native/setup.py",
-    "old": "        self.test.setProperty(\"quiet\", True)\n",
-    "new": "        self.test.setProperty(\"quiet\", False)\n",
+    "old": "        self.test.setProperty(\"outline\", True)\n",
+    "new": "        self.test.setProperty(\"outline\", False)\n",
     "test": "desktop/tests/test_setup_look.py::test_next_is_the_one_filled_button_on_every_page"
   },
   {
     "name": "Add custom hours filled like Next",
     "file": "desktop/native/setup.py",
-    "old": "        self.work_editor.add_button.setProperty(\"quiet\", True)\n",
-    "new": "        self.work_editor.add_button.setProperty(\"quiet\", False)\n",
+    "old": "        self.work_editor.add_button.setProperty(\"outline\", True)\n",
+    "new": "        self.work_editor.add_button.setProperty(\"outline\", False)\n",
     "test": "desktop/tests/test_setup_look.py::test_next_is_the_one_filled_button_on_every_page"
   },
   {
@@ -138,5 +138,82 @@
     "old": "        brand.addWidget(_logo(ABOUT_LOGO_PX))\n",
     "new": "",
     "test": "desktop/tests/test_more_menu_words.py::test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_lives_in"
+  },
+  {
+    "name": "Setup's picture cards run off a narrow page",
+    "file": "desktop/native/setup.py",
+    "old": "    cards = CardGrid(picture + CARD_WIDTH_PAD, 14)\n",
+    "new": "    cards = CardGrid(10, 14)\n",
+    "test": "desktop/tests/test_setup_audit.py::test_the_picture_cards_are_whole_at_the_end_of_their_page"
+  },
+  {
+    "name": "Planning-hours presets drawn as plain words",
+    "file": "desktop/native/setup.py",
+    "old": "            preset.setProperty(\"chip\", True)\n",
+    "new": "            preset.setProperty(\"chip\", False)\n",
+    "test": "desktop/tests/test_setup_audit.py::test_the_planning_hours_chips_are_the_pills_the_day_picker_uses"
+  },
+  {
+    "name": "The example homework without e.g.",
+    "file": "desktop/native/setup.py",
+    "old": "setPlaceholderText(\"e.g. History essay\")",
+    "new": "setPlaceholderText(\"History essay\")",
+    "test": "desktop/tests/test_setup_audit.py::test_the_example_homework_reads_as_an_example_and_adds_nothing"
+  },
+  {
+    "name": "School's line without its card, so a sport's times sit elsewhere",
+    "file": "desktop/native/setup.py",
+    "old": "        school_line.setContentsMargins(12, 10, 12, 10)\n",
+    "new": "        school_line.setContentsMargins(0, 0, 0, 0)\n",
+    "test": "desktop/tests/test_setup_audit.py::test_a_sports_time_fields_line_up_with_schools"
+  },
+  {
+    "name": "Setup's day screens with two names",
+    "file": "desktop/native/setup.py",
+    "old": "    return tuple((spec.id, spec.label) for spec in specs)\n",
+    "new": "    return tuple((spec.id, f\"{spec.purpose} · {spec.label}\") for spec in specs)\n",
+    "test": "desktop/tests/test_setup_audit.py::test_setup_calls_each_design_by_the_one_name_settings_uses"
+  },
+  {
+    "name": "Setup's example in the field's own grey",
+    "file": "desktop/native/look.py",
+    "old": "placeholder-text-color: {palette['muted']}; }}",
+    "new": "placeholder-text-color: {palette['text']}; }}",
+    "test": "desktop/tests/test_setup_audit.py::test_the_example_homework_reads_as_an_example_and_adds_nothing"
+  },
+  {
+    "name": "Preset chips lose the pill rule",
+    "file": "desktop/native/look.py",
+    "old": "    pills = f\"QPushButton#setupChip, {day}, {adds}, QPushButton#setupStudyChip\"\n",
+    "new": "    pills = f\"QPushButton#setupChip, {day}, QPushButton#setupStudyChip\"\n",
+    "test": "desktop/tests/test_setup_audit.py::test_the_planning_hours_chips_are_the_pills_the_day_picker_uses"
+  },
+  {
+    "name": "The sign-in greeting says the name again",
+    "file": "desktop/native/window.py",
+    "old": "FIRST_GREETING = \"Welcome\"\n",
+    "new": "FIRST_GREETING = \"Welcome to FlexWeek\"\n",
+    "test": "desktop/tests/test_sign_in_card.py::test_the_name_is_said_once_not_again_in_the_heading"
+  },
+  {
+    "name": "Forgot password as heavy as Create an account",
+    "file": "desktop/native/look.py",
+    "old": "min-height: 0; font-weight: {WEIGHT_REGULAR}; }}\"\n",
+    "new": "min-height: 0; font-weight: {WEIGHT_STRONG}; }}\"\n",
+    "test": "desktop/tests/test_sign_in_card.py::test_creating_an_account_carries_more_weight_than_forgot_password"
+  },
+  {
+    "name": "A link in reach goes near-black",
+    "file": "desktop/native/look.py",
+    "old": "deeper = mix(palette[\"accent\"], palette[\"text\"], 0.7)\n",
+    "new": "deeper = palette[\"text\"]\n",
+    "test": "desktop/tests/test_sign_in_card.py::test_a_link_in_reach_keeps_the_accent_darker_and_underlined"
+  },
+  {
+    "name": "A link reached by the keyboard shows nothing",
+    "file": "desktop/native/look.py",
+    "old": "{name}:hover, {name}[keyfocus=\"true\"]:focus'",
+    "new": "{name}:hover'",
+    "test": "desktop/tests/test_sign_in_card.py::test_a_link_in_reach_keeps_the_accent_darker_and_underlined"
   }
 ]

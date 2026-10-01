@@ -1,6 +1,16 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `claude/0172-u04-setup` (from bd2d134): setup and Sign in, part 3 of unit 04 (the audit's T35 and
+  T36). Setup's style and look cards are a CardGrid, so at 810 px they run one to a row instead of past
+  the right edge; the planning-hours presets are pills (`chip` property) and Send a test reminder and Add
+  custom hours are outlined; the example homework is the placeholder "e.g. History essay" in the muted
+  colour and is not added, so Done says "None yet"; School sits in a card like each activity, whose
+  Sports/Activity choice moved up beside its name, so the times share an x; designs use Settings' single
+  names. Sign in's heading is "Welcome", Create an account is the heavier link, and a link under the
+  pointer or reached by keyboard is a darker accent, underlined. Gate 2561 passed; `firstrun.json` has
+  eleven new cases, all caught. Unresolved: at Large text the second row of style cards is still cut by
+  the page's edge until scrolled (the page scrolls; fitting all four needs a design call).
 - 2026-09-30, `claude/0172-dragleak` from 5256662: the drag results tests' order dependence is
   fixed. Mission and Timeline tests leave bare views showing as top-level windows (their own
   signal lambdas keep them alive), and conftest's widgetAt fallback past the 800 px offscreen
@@ -691,6 +701,8 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-30, `claude/0172-u04-setup`: T35 and T36 done and committed locally, not merged or pushed.
+  Pictures before and after: `~/.flexweek-ui-harness/scratch/0172-u04-setup/before/` and `after/`.
 - 2026-09-30, `integrate/0172-sol`: the drag and look-file test leaks fixed and Jonathan's three looks
   calls merged on top of Sol's looks and dates units; next into feat/0.17.2. Pictures:
   `~/.flexweek-ui-harness/scratch/0172-lookcalls/`, `0172-sol-int-looks/`, `0172-dates-int/`.

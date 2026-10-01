@@ -236,7 +236,7 @@ def test_every_page_is_kept_when_the_student_leaves_it(qapp: QApplication, serve
 
     assert setup.step == DONE
     summary = setup.summary_text()
-    assert summary[0] == "Dashboard · Bento in Indigo"
+    assert summary[0] == "Bento in Indigo"
     assert "Soccer Tue, Thu 15:30–17:00" in summary[1] and "Band Mon 16:00–17:00" in summary[1]
     assert summary[4] == "History essay"
     setup.next.click()
@@ -797,8 +797,9 @@ def test_the_day_screen_chips_are_one_choice_across_two_rows(qapp: QApplication)
     setup.close()
 
 
-def test_the_planning_hours_presets_are_quiet_buttons_that_add_a_row(qapp: QApplication) -> None:
-    """R21: drawn as filled pills they read as choices, and none showed as chosen."""
+def test_the_planning_hours_presets_are_chips_that_add_a_row(qapp: QApplication) -> None:
+    """R21: drawn as filled pills they read as choices, and none showed as chosen. They are pills in
+    the day picker's own colours and none of them is checkable, so none ever shows as picked."""
     setup = opened(qapp)
     setup._show(HOMEWORK)
     qapp.processEvents()
@@ -806,9 +807,10 @@ def test_the_planning_hours_presets_are_quiet_buttons_that_add_a_row(qapp: QAppl
     note = editor.findChild(QLabel, "workWindowsPresetsNote")
     assert note.text() == "Each adds a row of hours you can change."
     after = editor.findChild(QPushButton, "workWindowPresetAfterschool")
-    assert after.text() == "+ After school" and after.property("quiet") is True
-    # Next is setup's one filled button (decision 26 of 0.17), so Add custom hours is quiet here too.
-    assert editor.add_button.property("quiet") is True
+    assert after.text() == "+ After school" and after.property("chip") is True
+    assert not after.isCheckable()
+    # Next is setup's one filled button (decision 26 of 0.17), so Add custom hours is outlined here.
+    assert editor.add_button.property("outline") is True
     after.click()
     assert editor.windows() == [{"days": [0, 1, 2, 3, 4], "start": "15:30", "end": "18:00"}]
     setup.close()

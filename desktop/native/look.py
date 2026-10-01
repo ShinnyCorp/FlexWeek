@@ -1300,8 +1300,10 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     quiet_rule = ", ".join(f"QPushButton#{name}" for name in quiet)
     quiet_hover = ", ".join(f"QPushButton#{name}:hover" for name in quiet)
     day = 'QPushButton[pill="true"]'
-    pills = f"QPushButton#setupChip, {day}, QPushButton#setupStudyChip"
-    pills_hover = f"QPushButton#setupChip:hover, {day}:hover, QPushButton#setupStudyChip:hover"
+    # A chip that adds something rather than picks it, such as a planning-hours preset: the same pill.
+    adds = 'QPushButton[chip="true"]'
+    pills = f"QPushButton#setupChip, {day}, {adds}, QPushButton#setupStudyChip"
+    pills_hover = f"QPushButton#setupChip:hover, {day}:hover, {adds}:hover, QPushButton#setupStudyChip:hover"
     return (
         f"QWidget#setupRail {{ background: {palette['panel']}; }}"
         f"QWidget#setupNav {{ background: {palette['window']}; }}"
@@ -1325,6 +1327,8 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         # A margin on a label turns on its indent, which set each section 5 pixels right of the title.
         f"QLabel#setupSection {{ {heading} margin-top: {SPACING[1]}px; qproperty-indent: 0; }}"
         f"QLabel#setupError {{ color: {palette['error']}; {strong} }}"
+        # An example in a box is not an answer: the muted colour, and "e.g." in the words.
+        f"QWidget#setupPage QLineEdit {{ placeholder-text-color: {palette['muted']}; }}"
         f"QLabel#setupSummaryName {{ {strong} }}"
         f"QFrame#setupChoice {{ background: {palette['panel']}; border: 2px solid {ring}; "
         f"border-radius: {card_radius}px; padding: 0; }}"
