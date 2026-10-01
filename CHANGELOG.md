@@ -23,6 +23,10 @@ All notable changes to FlexWeek are documented here. Format follows
   minutes from the left edge and the evening is a scroll.
 - Mission control's pill for the time now no longer lies over an hour label
   when the lanes are zoomed out: the label it would cover is left out.
+- Timeline fills every block with its category's colour, as the other designs
+  do, in every colourway: School, Dinner and the rest were the page's colour
+  in an outlined card. The ink outline and the category tab stay, and
+  homework is as it was.
 - Timeline's two pages meet at a fold line only: the grey shade either side of
   it is gone.
 - Choose a time and Spread, which open from the homework editor, are sheets

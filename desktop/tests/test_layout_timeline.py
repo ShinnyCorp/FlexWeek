@@ -10,6 +10,7 @@ import re
 import time
 from collections.abc import Iterator
 from dataclasses import replace
+from itertools import product
 
 import pytest
 
@@ -36,22 +37,33 @@ if importlib.util.find_spec("PySide6") is not None:
         QWidget,
     )
 
+    from desktop.native.calendar import CATEGORIES
     from desktop.native.fonts import load_fonts
     from desktop.native.hours import canvas as canvas_module
+    from desktop.native.hours.canvas import Drawn
     from desktop.native.hours.chips import TrayChip
-    from desktop.native.hours.geometry import Axis
+    from desktop.native.hours.geometry import Axis, Span
     from desktop.native.hours.zoom import HoursScroll
-    from desktop.native.layouts.base import Scene
+    from desktop.native.layouts.base import Scene, family
     from desktop.native.layouts.registry import options_for, tokens_for
     from desktop.native.layouts.timeline import (
         Due,
         Split,
         TimelineCanvas,
+        TimelinePainter,
         TimelineView,
         due_this_week,
         week_figures,
     )
-    from desktop.native.look import category_paint, mix_oklab, resolved_palette
+    from desktop.native.look import (
+        AA_TEXT,
+        PACKS,
+        block_time_colour,
+        category_paint,
+        mix_oklab,
+        resolved_palette,
+    )
+    from desktop.native.tokens import contrast
     from desktop.native.weekmodel import build_week, minute_of
     from desktop.native.widgets import FittedLabel
 
@@ -242,22 +254,39 @@ def test_a_days_name_shortens_before_it_is_cut_and_its_date_follows_it(
 # Blocks
 
 
-def test_homework_and_a_block_with_no_room_for_a_word_are_their_colour_and_the_rest_the_page(
-    qapp: QApplication,
-) -> None:
-    """Dinner is a half-hour: at the week's 36 pixels an hour no word of it fits, and an outlined
-    card of the page's colour would read as an empty box."""
-    view = shown(qapp)
+@pytest.mark.parametrize("colour", ["match", "paper", "night"])
+def test_every_block_is_filled_with_its_category_colour(qapp: QApplication, colour: str) -> None:
+    """School, Dinner and homework alike: the one fill the other designs give each category, in every
+    colourway, where School was the page's colour in a card."""
+    view = shown(qapp, colour=colour)
     hours = canvas(view)
     tokens = view.scene.tokens
 
     def fill(category: str) -> str:
-        return category_paint(category, {"family": "light", "panel": tokens["surface"]})[0]
+        return category_paint(category, {"family": family(tokens), "panel": tokens["surface"]})[0]
 
     seen = Seen(view)
     assert near(seen.inside(hours, "essay-1", 3), fill("assignments"))
-    assert near(seen.inside(hours, "school", 3), tokens["surface"])
+    assert near(seen.inside(hours, "school", 3), fill("class"))
     assert near(seen.inside(hours, "dinner", 3), fill("meals"))
+    assert not near(seen.inside(hours, "school", 3), tokens["surface"], 4)
+
+
+def test_a_blocks_words_and_times_read_on_its_fill_in_every_colourway() -> None:
+    """The title in the page's text colour and the times a little quieter, on every category's fill, in
+    the design's two colourways and in Match my look over every pack, dark or light."""
+    looks = [(pack, dark) for pack in PACKS for dark in (False, True)]
+    for colour, (pack, dark) in product(("paper", "night", "match"), looks):
+        palette = resolved_palette(pack, dark, None, "default")
+        tokens = tokens_for("timeline", colour, palette)
+        painter = TimelinePainter(tokens)
+        for name in CATEGORIES:
+            drawn = Drawn("block", "Block", name, False, Span(0, 600, 660), 0, 1)
+            fill, ink, _outline, _mark = (item.name() if item else None for item in painter.fills(drawn))
+            where = f"{colour}/{pack}/{dark} {name}"
+            assert fill != tokens["surface"], f"{where}: the block is the page's colour"
+            assert contrast(ink, fill) >= AA_TEXT, f"{where}: its title"
+            assert contrast(block_time_colour(ink, fill), fill) >= AA_TEXT, f"{where}: its times"
 
 
 def test_every_block_is_outlined_in_ink_with_its_category_down_its_start_edge(qapp: QApplication) -> None:
@@ -271,8 +300,10 @@ def test_every_block_is_outlined_in_ink_with_its_category_down_its_start_edge(qa
     assert near(seen.at(hours, local + QPoint(1, box.height() // 2)), mark, 12)
     # A one-pixel line on a column a fraction of a pixel wide shares its ink between two pixels.
     edge = min(seen.at(hours, local + QPoint(box.width() - x, box.height() // 2)).lightness() for x in (1, 2))
-    ink, paper = QColor(mix_oklab(tokens["text"], tokens["surface"], 0.78)), QColor(tokens["surface"])
-    assert edge <= (ink.lightness() + paper.lightness()) / 2, "no ink round the block"
+    ink, fill = QColor(mix_oklab(tokens["text"], tokens["surface"], 0.78)), QColor(
+        category_paint("class", {"family": "light", "panel": tokens["surface"]})[0]
+    )
+    assert edge <= (ink.lightness() + fill.lightness()) / 2, "no ink round the block"
 
 
 def test_the_weeks_blocks_say_their_times_and_days_say_their_length_too(

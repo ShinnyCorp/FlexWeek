@@ -38,16 +38,11 @@ from desktop.native import icons
 from desktop.native.calendar import DAY_FULL, DAYS
 from desktop.native.fonts import at_scale, caption, time_font, weighted
 from desktop.native.hours.canvas import (
-    HOMEWORK_CATEGORIES,
     RADIUS_BLOCK,
-    TEXT_LEFT,
-    TEXT_RIGHT,
-    TEXT_TOP,
     TODAY_WASH,
     BlockPainter,
     Drawn,
     HoursCanvas,
-    block_layout,
     fit_lines,
 )
 from desktop.native.hours.chips import TrayChip
@@ -207,8 +202,8 @@ def _paint(tokens: dict[str, str], category: str) -> tuple[str, str]:
 
 class TimelinePainter(BlockPainter):
     """Ruled paper. The hours are ruled at each hour on the spread's pages, with a hairline between
-    days; blocks are cards outlined in ink with their category's tab down the start edge, and
-    homework, or a block with no room for a word, is its category's colour."""
+    days; blocks are cards in their category's colour outlined in ink, with its tab down the start
+    edge."""
 
     def __init__(
         self,
@@ -243,10 +238,9 @@ class TimelinePainter(BlockPainter):
         # place of the one nearest it, as in Today's app.
         self.spine = spine
         self._ink = QColor(mix_oklab(tokens["text"], tokens["surface"], 0.78))
-        # Set as each block is drawn, for `fills` and `fonts`: a block with no room for a word, and
-        # one on Day too short for a line at the body size, whose title is then in the caption size,
-        # as the mock-up writes "Dinner 18:30–19:00 · 30 min".
-        self._wordless = self._tiny = False
+        # Set as each block is drawn, for `fonts`: one on Day too short for a line at the body size,
+        # whose title is then in the caption size, as the mock-up writes "Dinner 18:30–19:00 · 30 min".
+        self._tiny = False
 
     @cached_property
     def measures(self) -> dict:
@@ -274,12 +268,7 @@ class TimelinePainter(BlockPainter):
         paper = self.tokens["surface"]
         if drawn.done or drawn.missed:
             return QColor(paper), QColor(self.tokens["muted"]), None, QColor(mark)
-        return (
-            QColor(fill if drawn.work or self._wordless else paper),
-            QColor(self.tokens["text"]),
-            None,
-            QColor(mark),
-        )
+        return QColor(fill), QColor(self.tokens["text"]), None, QColor(mark)
 
     def fonts(self, base: QFont) -> tuple[QFont, QFont]:
         title, small = super().fonts(base)
@@ -291,7 +280,6 @@ class TimelinePainter(BlockPainter):
         self._tiny = False
         body = QFontMetricsF(self.fonts(painter.font())[0]).lineSpacing()
         self._tiny = self.wide and rect.height() + 0.5 < body
-        self._wordless = not drawn.held and self._no_room(painter.font(), rect, drawn)
         super().block(painter, rect, drawn, visible)
         if not (drawn.held or drawn.chosen):
             painter.setPen(QPen(self._ink, 1))
@@ -299,18 +287,6 @@ class TimelinePainter(BlockPainter):
             painter.drawRoundedRect(
                 rect.adjusted(0.5, 0.5, -0.5, -0.5), RADIUS_BLOCK - 0.5, RADIUS_BLOCK - 0.5
             )
-
-    def _no_room(self, font: QFont, rect: QRectF, drawn: Drawn) -> bool:
-        """Whether the block says nothing, as `words` would find: an outlined card with only a tab
-        would read as an empty box, so it is its category's colour, as the mock-up draws Dinner."""
-        title, small = self.fonts(font)
-        room = QRectF(
-            QPointF(rect.left() + TEXT_LEFT, rect.top() + TEXT_TOP),
-            QPointF(rect.right() - TEXT_RIGHT, rect.bottom() - 1),
-        )
-        tight = QRectF(room.left(), rect.top(), room.width(), rect.height())
-        book = drawn.category in HOMEWORK_CATEGORIES
-        return not block_layout(drawn, title, small, room, tight=tight, wide=self.wide, book=book)
 
     def hour_labels(
         self,
