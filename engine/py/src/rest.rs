@@ -363,23 +363,26 @@ fn store_throttle(path: &str, address: &str, username: &str, now_unix: i64) -> P
 
 pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("MAX_BODY", snapshot::MAX_BODY)?;
-    module.add_function(wrap_pyfunction!(add_occupancy, module)?)?;
-    module.add_function(wrap_pyfunction!(occupancy_from_windows, module)?)?;
-    module.add_function(wrap_pyfunction!(lateness_occupancy, module)?)?;
-    module.add_function(wrap_pyfunction!(study_rank, module)?)?;
-    module.add_function(wrap_pyfunction!(resolve_work_windows, module)?)?;
-    module.add_function(wrap_pyfunction!(session_inside_work_windows, module)?)?;
-    module.add_function(wrap_pyfunction!(merge_occupancy, module)?)?;
-    module.add_function(wrap_pyfunction!(spread_sessions, module)?)?;
-    module.add_function(wrap_pyfunction!(solve, module)?)?;
-    module.add_function(wrap_pyfunction!(reschedule_after_miss, module)?)?;
-    module.add_function(wrap_pyfunction!(reschedule_running_late, module)?)?;
-    module.add_function(wrap_pyfunction!(digest, module)?)?;
-    module.add_function(wrap_pyfunction!(password_hash, module)?)?;
-    module.add_function(wrap_pyfunction!(password_matches, module)?)?;
-    module.add_function(wrap_pyfunction!(make_token, module)?)?;
-    module.add_function(wrap_pyfunction!(transfer_apply_envelope, module)?)?;
-    module.add_function(wrap_pyfunction!(store_initialize, module)?)?;
-    module.add_function(wrap_pyfunction!(store_throttle, module)?)?;
+    crate::export!(
+        module,
+        add_occupancy,
+        occupancy_from_windows,
+        lateness_occupancy,
+        study_rank,
+        resolve_work_windows,
+        session_inside_work_windows,
+        merge_occupancy,
+        spread_sessions,
+        solve,
+        reschedule_after_miss,
+        reschedule_running_late,
+        digest,
+        password_hash,
+        password_matches,
+        make_token,
+        transfer_apply_envelope,
+        store_initialize,
+        store_throttle,
+    );
     Ok(())
 }

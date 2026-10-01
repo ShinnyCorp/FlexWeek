@@ -432,41 +432,44 @@ fn is_work_session(block: &str) -> PyResult<bool> {
 }
 
 pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(sentence, module)?)?;
-    module.add_function(wrap_pyfunction!(slack_sentence, module)?)?;
-    module.add_function(wrap_pyfunction!(canonical, module)?)?;
-    module.add_function(wrap_pyfunction!(state_token, module)?)?;
-    module.add_function(wrap_pyfunction!(diff_snapshots, module)?)?;
-    module.add_function(wrap_pyfunction!(diff_transfer, module)?)?;
-    module.add_function(wrap_pyfunction!(transfer_apply_bytes, module)?)?;
-    module.add_function(wrap_pyfunction!(transfer_fits, module)?)?;
-    module.add_function(wrap_pyfunction!(format_recovery_code, module)?)?;
-    module.add_function(wrap_pyfunction!(recovery_code_well_formed, module)?)?;
-    module.add_function(wrap_pyfunction!(hash_recovery_code, module)?)?;
-    module.add_function(wrap_pyfunction!(normalize_recovery_code, module)?)?;
-    module.add_function(wrap_pyfunction!(free_name, module)?)?;
-    module.add_function(wrap_pyfunction!(rename_look, module)?)?;
-    module.add_function(wrap_pyfunction!(duplicate_look, module)?)?;
-    module.add_function(wrap_pyfunction!(delete_look, module)?)?;
-    module.add_function(wrap_pyfunction!(solve_request, module)?)?;
-    module.add_function(wrap_pyfunction!(settle_placements, module)?)?;
-    module.add_function(wrap_pyfunction!(snap_minutes, module)?)?;
-    module.add_function(wrap_pyfunction!(split_plan, module)?)?;
-    module.add_function(wrap_pyfunction!(preview_split, module)?)?;
-    module.add_function(wrap_pyfunction!(timer_presets, module)?)?;
-    module.add_function(wrap_pyfunction!(migrated_assignment_id, module)?)?;
-    module.add_function(wrap_pyfunction!(due_from_latest, module)?)?;
-    module.add_function(wrap_pyfunction!(completed_at_for_block, module)?)?;
-    module.add_function(wrap_pyfunction!(due_placement_bound, module)?)?;
-    module.add_function(wrap_pyfunction!(due_slack_point, module)?)?;
-    module.add_function(wrap_pyfunction!(unplanned_minutes, module)?)?;
-    module.add_function(wrap_pyfunction!(prepare_solve, module)?)?;
-    module.add_function(wrap_pyfunction!(legacy_session, module)?)?;
-    module.add_function(wrap_pyfunction!(rewrite_session, module)?)?;
-    module.add_function(wrap_pyfunction!(planned_minutes_by_id, module)?)?;
-    module.add_function(wrap_pyfunction!(migrate_blocks, module)?)?;
-    module.add_function(wrap_pyfunction!(build_day, module)?)?;
-    module.add_function(wrap_pyfunction!(build_month, module)?)?;
-    module.add_function(wrap_pyfunction!(is_work_session, module)?)?;
+    crate::export!(
+        module,
+        sentence,
+        slack_sentence,
+        canonical,
+        state_token,
+        diff_snapshots,
+        diff_transfer,
+        transfer_apply_bytes,
+        transfer_fits,
+        format_recovery_code,
+        recovery_code_well_formed,
+        hash_recovery_code,
+        normalize_recovery_code,
+        free_name,
+        rename_look,
+        duplicate_look,
+        delete_look,
+        solve_request,
+        settle_placements,
+        snap_minutes,
+        split_plan,
+        preview_split,
+        timer_presets,
+        migrated_assignment_id,
+        due_from_latest,
+        completed_at_for_block,
+        due_placement_bound,
+        due_slack_point,
+        unplanned_minutes,
+        prepare_solve,
+        legacy_session,
+        rewrite_session,
+        planned_minutes_by_id,
+        migrate_blocks,
+        build_day,
+        build_month,
+        is_work_session,
+    );
     Ok(())
 }

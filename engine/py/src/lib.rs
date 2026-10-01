@@ -1,5 +1,7 @@
 //! Python module `flexweek_engine`. The core stays free of Python.
 
+use std::sync::{Mutex, OnceLock};
+
 use ::flexweek_engine::time;
 use ::flexweek_engine::{EngineError, ErrorKind};
 use pyo3::exceptions::{
@@ -28,6 +30,38 @@ pub(crate) fn guard<T>(func: impl FnOnce() -> PyResult<T>) -> PyResult<T> {
         Ok(result) => result,
         Err(payload) => Err(PyRuntimeError::new_err(panic_message(&payload))),
     }
+}
+
+fn export_names() -> &'static Mutex<Vec<&'static str>> {
+    static NAMES: OnceLock<Mutex<Vec<&'static str>>> = OnceLock::new();
+    NAMES.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+pub(crate) fn register_export(name: &'static str) {
+    export_names().lock().expect("export registry").push(name);
+}
+
+macro_rules! export {
+    ($module:expr, $($fn:ident),+ $(,)?) => {{
+        $(
+            crate::register_export(stringify!($fn));
+            $module.add_function(pyo3::wrap_pyfunction!($fn, $module)?)?;
+        )+
+    }};
+}
+pub(crate) use export;
+
+#[pyfunction]
+fn guarded_names() -> PyResult<Vec<String>> {
+    guard(|| {
+        Ok(export_names()
+            .lock()
+            .expect("export registry")
+            .iter()
+            .copied()
+            .map(str::to_string)
+            .collect())
+    })
 }
 
 fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
@@ -238,32 +272,36 @@ fn flexweek_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
         names.set_item(name, index)?;
     }
     m.add("DAY_NAME_TO_INDEX", names)?;
-    m.add_function(wrap_pyfunction!(casefold, m)?)?;
-    m.add_function(wrap_pyfunction!(panic_probe, m)?)?;
-    m.add_function(wrap_pyfunction!(int_text, m)?)?;
-    m.add_function(wrap_pyfunction!(int_chars, m)?)?;
-    m.add_function(wrap_pyfunction!(hhmm_to_minutes, m)?)?;
-    m.add_function(wrap_pyfunction!(clock_to_minutes, m)?)?;
-    m.add_function(wrap_pyfunction!(minutes_to_hhmm, m)?)?;
-    m.add_function(wrap_pyfunction!(start_fits_day, m)?)?;
-    m.add_function(wrap_pyfunction!(span_fits_day, m)?)?;
-    m.add_function(wrap_pyfunction!(on_slot, m)?)?;
-    m.add_function(wrap_pyfunction!(minutes_to_slot, m)?)?;
-    m.add_function(wrap_pyfunction!(hhmm_to_slot, m)?)?;
-    m.add_function(wrap_pyfunction!(slot_to_hhmm, m)?)?;
-    m.add_function(wrap_pyfunction!(duration_to_slots, m)?)?;
-    m.add_function(wrap_pyfunction!(overlaps, m)?)?;
-    m.add_function(wrap_pyfunction!(block_interval_on_day, m)?)?;
-    m.add_function(wrap_pyfunction!(parse_deadline, m)?)?;
-    m.add_function(wrap_pyfunction!(occupancy_mask, m)?)?;
-    m.add_function(wrap_pyfunction!(occupancy_between, m)?)?;
-    m.add_function(wrap_pyfunction!(monday_of, m)?)?;
-    m.add_function(wrap_pyfunction!(current_week_start, m)?)?;
-    m.add_function(wrap_pyfunction!(is_week_start, m)?)?;
-    m.add_function(wrap_pyfunction!(is_calendar_date, m)?)?;
-    m.add_function(wrap_pyfunction!(parse_month, m)?)?;
-    m.add_function(wrap_pyfunction!(is_month_label, m)?)?;
-    m.add_function(wrap_pyfunction!(month_grid, m)?)?;
+    crate::export!(
+        m,
+        casefold,
+        panic_probe,
+        int_text,
+        int_chars,
+        hhmm_to_minutes,
+        clock_to_minutes,
+        minutes_to_hhmm,
+        start_fits_day,
+        span_fits_day,
+        on_slot,
+        minutes_to_slot,
+        hhmm_to_slot,
+        slot_to_hhmm,
+        duration_to_slots,
+        overlaps,
+        block_interval_on_day,
+        parse_deadline,
+        occupancy_mask,
+        occupancy_between,
+        monday_of,
+        current_week_start,
+        is_week_start,
+        is_calendar_date,
+        parse_month,
+        is_month_label,
+        month_grid,
+        guarded_names,
+    );
     more::add(m)?;
     rest::add(m)?;
     Ok(())
