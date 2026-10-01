@@ -63,8 +63,12 @@ interface's tests. The HTTP API does not change.
    side and not the other; a plan returned on running out of time is not compared.
 6. **Errors keep their types.** Where Python callers catch `ValueError`, `LookupError` or a named
    error, the engine raises the same type with the same message.
-7. **The solver lets other threads run.** A solve releases Python's interpreter lock while it
-   searches, so the window stays responsive during a plan.
+7. **The solver lets other threads run.** During a solve, another Python thread waits no longer
+   for its turn than it did under the Python solver, so the window stays responsive during a plan.
+   A test measures it on a week that uses the whole budget. (Reworded on 2026-10-01 with Jonathan's
+   approval: the search keeps the interpreter lock and reads the caller's clock through Python,
+   which hands the lock round; releasing and re-taking it on every reading made a solve 12 times
+   slower beside a busy thread.)
 
 ## Shape
 
@@ -91,6 +95,9 @@ engine's own types are Rust structs with serde, named as the Python models are.
   toolchain and builds the module on both, as the fwtest contract already requires for Linux.
 - Pinned versions: the Rust toolchain in `rust-toolchain.toml`, crates in `Cargo.lock`, and
   maturin in `requirements-dev.txt`.
+- Crates approved by Jonathan on 2026-10-01, where the code uses them: chrono, regex, sha2, hex and
+  scrypt, beside PyO3, serde, serde_json and rusqlite. hmac and base64 stay only if still used once
+  the storage slice is done. Any other crate is asked for first.
 
 ## Slices
 
