@@ -79,9 +79,13 @@ engine/                    a Cargo workspace at the repository root
   py/                      crate `flexweek-py`: the Python module `flexweek_engine` (PyO3, built by maturin)
 ```
 
-Data crosses into Python as plain values: dicts, lists, strings and numbers in the shapes the
-pydantic models already dump (`model_dump()`), so `app.py` and `desktop/` keep their types. The
-engine's own types are Rust structs with serde, named as the Python models are.
+Data crosses into Python as JSON text in the shapes the pydantic models already dump
+(`model_dump()`); the Python wrappers encode and decode it, so `app.py` and `desktop/` keep their
+types. Plain numbers, strings and occupancy lists cross as they are. (Changed on 2026-10-01 with
+Jonathan's approval from "plain values": measured at about 0.02 ms for a 12-block week, and a
+phone app calls the Rust types directly.) The engine's own types are Rust structs with serde,
+named as the Python models are. The database connection is the exception: it hands Python rows
+whose values are Python's own types, as `sqlite3` did.
 
 ## Building and checking
 
