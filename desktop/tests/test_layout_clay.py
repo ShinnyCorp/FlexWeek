@@ -29,7 +29,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.hours.geometry import Span
     from desktop.native.hours.zoom import HoursScroll
     from desktop.native.layouts.base import Scene
-    from desktop.native.layouts.clay import Card, ClayChip, ClayDeckView, Fade, slots
+    from desktop.native.layouts.clay import Card, ClayChip, ClayDeckView, ClayPainter, Fade, slots
     from desktop.native.layouts.registry import options_for, tokens_for
     from desktop.native.look import resolved_palette
     from desktop.native.weekmodel import build_week, clock_label, minute_of
@@ -603,3 +603,21 @@ def test_a_half_hour_on_a_card_says_its_start_time_rather_than_its_icon(
     # The 14 and 8 pixels a side card keeps clear at a block's ends.
     assert written(both + 23) == (["Dinner", "18:30"], [])
     assert written(both + 23 + icon) == (["Dinner", "18:30"], ["clock"])
+
+
+def test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not(qapp: QApplication) -> None:
+    """Two blocks side by side show they share their time by sitting side by side: the dot at the
+    corner of each said nothing a student could read, and covered the end of the name."""
+    options = options_for(None, "clay")
+    tokens = tokens_for("clay", options["colour"], resolved_palette("light-frost", False, None, "default"))
+
+    def painted(columns: int) -> QImage:
+        drawn = Drawn("soccer", "Soccer practice", "extra", False, Span(1, 16 * 60, 17 * 60 + 30), 0, columns)
+        image = QImage(200, 140, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.white)
+        painter = QPainter(image)
+        ClayPainter(tokens, full=True).body(painter, QRectF(20, 20, 60, 90), drawn)
+        painter.end()
+        return image
+
+    assert painted(2) == painted(1), "a block that shares its time has a mark on it"
