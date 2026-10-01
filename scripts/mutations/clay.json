@@ -159,5 +159,12 @@
   "old": "        hours.gutter = math.ceil(widest) + PEEK_LABEL_GAP\n",
   "new": "        hours.gutter = 0\n",
   "test": "desktop/tests/test_layout_clay.py::test_a_side_card_labels_its_hours_left_of_its_blocks"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "a block that shares its time carries a dot",
+  "old": "            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), max(radius - 1, 0), max(radius - 1, 0))\n",
+  "new": "            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), max(radius - 1, 0), max(radius - 1, 0))\n        if drawn.columns > 1 and not drawn.held:\n            painter.setBrush(self.fills(drawn)[1])\n            painter.drawEllipse(QPointF(rect.right() - 7, rect.top() + 7), 3.5, 3.5)\n",
+  "test": "desktop/tests/test_layout_clay.py::test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not"
  }
 ]
