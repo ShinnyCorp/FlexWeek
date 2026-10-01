@@ -1,9 +1,9 @@
 //! Pomodoro splitting from `desktop/native/pomodoro.py`.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::desk::calendar::deep_copy;
-use crate::time::{hhmm_to_minutes, minutes_to_hhmm, DAY_END_MIN, SLOT_MIN};
+use crate::time::{DAY_END_MIN, SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm};
 
 pub const TITLE_MAX: usize = 80;
 pub const MAX_BLOCKS: usize = 100;
@@ -29,7 +29,7 @@ pub fn timers(prefs: Option<&serde_json::Map<String, Value>>) -> (i64, i64, i64,
             .get("timer_long_break_min")
             .and_then(Value::as_i64)
             .unwrap_or(30),
-        every.max(2).min(12),
+        every.clamp(2, 12),
     )
 }
 
@@ -85,7 +85,11 @@ pub fn child_title(title: &str, index: i64, total: i64) -> String {
     let suffix = format!(" · focus {index}/{total}");
     let room = TITLE_MAX.saturating_sub(suffix.len());
     let head = title;
-    let head = if head.len() > room { &head[..room] } else { head };
+    let head = if head.len() > room {
+        &head[..room]
+    } else {
+        head
+    };
     format!("{head}{suffix}")
 }
 
@@ -100,9 +104,13 @@ pub fn split_children(
         .and_then(Value::as_str)
         .or_else(|| source.get("id").and_then(Value::as_str))
         .unwrap_or("");
-    let mut cursor = hhmm_to_minutes(placed.get("start").and_then(Value::as_str).unwrap_or(""))
-        .unwrap_or(0);
-    let segments = plan.get("segments").and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut cursor =
+        hhmm_to_minutes(placed.get("start").and_then(Value::as_str).unwrap_or("")).unwrap_or(0);
+    let segments = plan
+        .get("segments")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let total_work = segments
         .iter()
         .filter(|s| s.get("role").and_then(Value::as_str) == Some("work"))
@@ -138,20 +146,25 @@ pub fn split_children(
                     .and_then(Value::as_i64)
                     .unwrap_or(0)]),
             );
-            obj.insert(
-                "start".into(),
-                json!(minutes_to_hhmm(cursor)),
-            );
+            obj.insert("start".into(), json!(minutes_to_hhmm(cursor)));
             obj.insert(
                 "duration_min".into(),
-                json!(segment.get("duration_min").and_then(Value::as_i64).unwrap_or(0)),
+                json!(
+                    segment
+                        .get("duration_min")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
+                ),
             );
             obj.insert("completed".into(), json!(false));
             obj.insert("missed_days".into(), json!([]));
             obj.insert(
                 "focus_sessions".into(),
                 json!(if carry {
-                    source.get("focus_sessions").and_then(Value::as_i64).unwrap_or(0)
+                    source
+                        .get("focus_sessions")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
                 } else {
                     0
                 }),
@@ -159,13 +172,19 @@ pub fn split_children(
             obj.insert(
                 "focus_minutes".into(),
                 json!(if carry {
-                    source.get("focus_minutes").and_then(Value::as_i64).unwrap_or(0)
+                    source
+                        .get("focus_minutes")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
                 } else {
                     0
                 }),
             );
             obj.insert("pomodoro_parent_id".into(), json!(parent_id));
-            obj.insert("pomodoro_role".into(), segment.get("role").cloned().unwrap_or(Value::Null));
+            obj.insert(
+                "pomodoro_role".into(),
+                segment.get("role").cloned().unwrap_or(Value::Null),
+            );
             obj.insert("pomodoro_index".into(), json!(index));
             obj.insert(
                 "category".into(),
@@ -205,7 +224,10 @@ pub fn split_children(
         if work {
             first_work = false;
         }
-        cursor += segment.get("duration_min").and_then(Value::as_i64).unwrap_or(0);
+        cursor += segment
+            .get("duration_min")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
         children.push(child);
     }
     children
@@ -216,11 +238,22 @@ pub fn splittable(block: &Value, prefs: Option<&serde_json::Map<String, Value>>)
     block.get("kind").and_then(Value::as_str) == Some("flexible")
         && block.get("completed").and_then(Value::as_bool) != Some(true)
         && block.get("pomodoro_role").is_none()
-        && block.get("duration_min").and_then(Value::as_i64).unwrap_or(0) > work
+        && block
+            .get("duration_min")
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+            > work
 }
 
-pub fn inflate_for_solve(blocks: &[Value], prefs: Option<&serde_json::Map<String, Value>>) -> Vec<Value> {
-    if prefs.and_then(|p| p.get("auto_split_pomodoro")).and_then(Value::as_bool) != Some(true) {
+pub fn inflate_for_solve(
+    blocks: &[Value],
+    prefs: Option<&serde_json::Map<String, Value>>,
+) -> Vec<Value> {
+    if prefs
+        .and_then(|p| p.get("auto_split_pomodoro"))
+        .and_then(Value::as_bool)
+        != Some(true)
+    {
         return blocks.to_vec();
     }
     blocks
@@ -229,7 +262,13 @@ pub fn inflate_for_solve(blocks: &[Value], prefs: Option<&serde_json::Map<String
             if !splittable(block, prefs) {
                 return block.clone();
             }
-            let plan = plan_for(block.get("duration_min").and_then(Value::as_i64).unwrap_or(0), prefs);
+            let plan = plan_for(
+                block
+                    .get("duration_min")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0),
+                prefs,
+            );
             if plan.get("error").and_then(Value::as_str).is_some() {
                 return block.clone();
             }
@@ -251,7 +290,10 @@ pub fn split_solved(
     prefs: Option<&serde_json::Map<String, Value>>,
     mut next_id: impl FnMut() -> String,
 ) -> (Vec<Value>, i64) {
-    if prefs.and_then(|p| p.get("auto_split_pomodoro")).and_then(Value::as_bool) != Some(true)
+    if prefs
+        .and_then(|p| p.get("auto_split_pomodoro"))
+        .and_then(Value::as_bool)
+        != Some(true)
         || trace.is_none()
     {
         return (blocks.to_vec(), 0);
@@ -282,14 +324,23 @@ pub fn split_solved(
         if !splittable(source, prefs) {
             continue;
         }
-        let plan = plan_for(source.get("duration_min").and_then(Value::as_i64).unwrap_or(0), prefs);
+        let plan = plan_for(
+            source
+                .get("duration_min")
+                .and_then(Value::as_i64)
+                .unwrap_or(0),
+            prefs,
+        );
         if plan.get("error").and_then(Value::as_str).is_some()
-            || plan.get("segments").and_then(Value::as_array).is_none_or(|s| s.is_empty())
+            || plan
+                .get("segments")
+                .and_then(Value::as_array)
+                .is_none_or(|s| s.is_empty())
         {
             continue;
         }
-        let start = hhmm_to_minutes(placed.get("start").and_then(Value::as_str).unwrap_or(""))
-            .unwrap_or(0);
+        let start =
+            hhmm_to_minutes(placed.get("start").and_then(Value::as_str).unwrap_or("")).unwrap_or(0);
         let total = plan.get("total_min").and_then(Value::as_i64).unwrap_or(0);
         if start + total > DAY_END_MIN {
             continue;
@@ -305,11 +356,11 @@ pub fn split_solved(
     }
     let mut split = Vec::new();
     for block in blocks {
-        if let Some(id) = block.get("id").and_then(Value::as_str) {
-            if let Some(children) = replacements.get(id) {
-                split.extend(children.clone());
-                continue;
-            }
+        if let Some(id) = block.get("id").and_then(Value::as_str)
+            && let Some(children) = replacements.get(id)
+        {
+            split.extend(children.clone());
+            continue;
         }
         split.push(block.clone());
     }

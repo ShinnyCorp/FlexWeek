@@ -38,7 +38,7 @@ pub fn day_name_to_index() -> Vec<(&'static str, i64)> {
     ]
 }
 
-fn py_repr(text: &str) -> String {
+pub(crate) fn py_repr(text: &str) -> String {
     let mut out = String::from("'");
     for ch in text.chars() {
         match ch {
@@ -54,46 +54,82 @@ fn py_repr(text: &str) -> String {
     out
 }
 
-fn parse_int(raw: &str) -> EngineResult<i64> {
-    let trimmed = raw.trim();
+/// Starts of the Unicode blocks of ten decimal digits (0 through 9).
+const DIGIT_BLOCKS: &[u32] = &[
+    0x30, 0x660, 0x6F0, 0x7C0, 0x966, 0x9E6, 0xA66, 0xAE6, 0xB66, 0xBE6, 0xC66, 0xCE6, 0xD66,
+    0xDE6, 0xE50, 0xED0, 0xF20, 0x1040, 0x1090, 0x17E0, 0x1810, 0x1946, 0x19D0, 0x1A80, 0x1A90,
+    0x1B50, 0x1BB0, 0x1C40, 0x1C50, 0xA620, 0xA8D0, 0xA900, 0xA9D0, 0xA9F0, 0xAA50, 0xABF0, 0xFF10,
+    0x104A0, 0x10D30, 0x10D40, 0x11066, 0x110F0, 0x11136, 0x111D0, 0x112F0, 0x11450, 0x114D0,
+    0x11650, 0x116C0, 0x116D0, 0x116DA, 0x11730, 0x118E0, 0x11950, 0x11BF0, 0x11C50, 0x11D50,
+    0x11DA0, 0x11F50, 0x16130, 0x16A60, 0x16AC0, 0x16B50, 0x16D70, 0x1CCF0, 0x1D7CE, 0x1D7D8,
+    0x1D7E2, 0x1D7EC, 0x1D7F6, 0x1E140, 0x1E2F0, 0x1E4F0, 0x1E5F1, 0x1E950, 0x1FBF0,
+];
+
+fn decimal_digit(ch: char) -> Option<u8> {
+    let cp = ch as u32;
+    let idx = DIGIT_BLOCKS.partition_point(|start| *start <= cp);
+    if idx == 0 {
+        return None;
+    }
+    let offset = cp - DIGIT_BLOCKS[idx - 1];
+    if offset < 10 {
+        Some(offset as u8)
+    } else {
+        None
+    }
+}
+
+/// Python `int()`, including Unicode decimal digits and underscores between digits.
+pub(crate) fn py_int(raw: &str) -> EngineResult<i64> {
     let fail = || {
         EngineError::value(format!(
             "invalid literal for int() with base 10: {}",
             py_repr(raw)
         ))
     };
+    let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(fail());
     }
-    let (sign, rest) = match trimmed.as_bytes()[0] {
-        b'+' => (1i64, &trimmed[1..]),
-        b'-' => (-1i64, &trimmed[1..]),
-        _ => (1i64, trimmed),
+    let mut chars = trimmed.chars().peekable();
+    let sign = match chars.peek() {
+        Some('+') => {
+            chars.next();
+            1i64
+        }
+        Some('-') => {
+            chars.next();
+            -1
+        }
+        _ => 1,
     };
-    if rest.is_empty() || rest.starts_with('_') || rest.ends_with('_') {
-        return Err(fail());
-    }
-    let mut digits = String::new();
+    let mut magnitude: i64 = 0;
+    let mut saw_digit = false;
     let mut prev_underscore = false;
-    for byte in rest.bytes() {
-        if byte == b'_' {
-            if prev_underscore {
+    for ch in chars {
+        if ch == '_' {
+            if !saw_digit || prev_underscore {
                 return Err(fail());
             }
             prev_underscore = true;
             continue;
         }
-        if !byte.is_ascii_digit() {
+        let Some(digit) = decimal_digit(ch) else {
             return Err(fail());
-        }
+        };
         prev_underscore = false;
-        digits.push(byte as char);
+        saw_digit = true;
+        magnitude = magnitude
+            .checked_mul(10)
+            .and_then(|value| value.checked_add(i64::from(digit)))
+            .ok_or_else(|| EngineError::overflow("Python int too large to convert to C long"))?;
     }
-    if digits.is_empty() {
+    if !saw_digit || prev_underscore {
         return Err(fail());
     }
-    let magnitude: i64 = digits.parse().map_err(|_| fail())?;
-    Ok(sign * magnitude)
+    magnitude
+        .checked_mul(sign)
+        .ok_or_else(|| EngineError::overflow("Python int too large to convert to C long"))
 }
 
 pub fn hhmm_to_minutes(hhmm: &str) -> EngineResult<i64> {
@@ -104,8 +140,26 @@ pub fn hhmm_to_minutes(hhmm: &str) -> EngineResult<i64> {
             py_repr(hhmm)
         )));
     }
-    let hour = parse_int(parts[0])?;
-    let minute = parse_int(parts[1])?;
+    let hour = match py_int(parts[0]) {
+        Ok(value) => value,
+        Err(error) if error.kind == crate::error::ErrorKind::Overflow => {
+            return Err(EngineError::value(format!(
+                "invalid time {}",
+                py_repr(hhmm)
+            )));
+        }
+        Err(error) => return Err(error),
+    };
+    let minute = match py_int(parts[1]) {
+        Ok(value) => value,
+        Err(error) if error.kind == crate::error::ErrorKind::Overflow => {
+            return Err(EngineError::value(format!(
+                "invalid time {}",
+                py_repr(hhmm)
+            )));
+        }
+        Err(error) => return Err(error),
+    };
     if !(0..=23).contains(&hour) || !(0..=59).contains(&minute) {
         return Err(EngineError::value(format!(
             "invalid time {}",
@@ -278,6 +332,143 @@ fn last_day(year: i32, month: u32) -> u32 {
     }
 }
 
+pub(crate) fn date_from_iso(value: &str) -> EngineResult<NaiveDate> {
+    if let Some(parsed) = calendar_date(value, true)? {
+        return Ok(parsed);
+    }
+    if let Some(parsed) = week_date(value)? {
+        return Ok(parsed);
+    }
+    if let Some(parsed) = calendar_date(value, false)? {
+        return Ok(parsed);
+    }
+    Err(EngineError::value(format!(
+        "Invalid isoformat string: {}",
+        py_repr(value)
+    )))
+}
+
+fn ascii_digits(text: &str, n: usize) -> Option<&str> {
+    if text.len() == n && text.bytes().all(|byte| byte.is_ascii_digit()) {
+        Some(text)
+    } else {
+        None
+    }
+}
+
+fn calendar_date(value: &str, dashed: bool) -> EngineResult<Option<NaiveDate>> {
+    let (year, month, day) = if dashed {
+        let Some(year) = ascii_digits(value.get(0..4).unwrap_or(""), 4) else {
+            return Ok(None);
+        };
+        if value.as_bytes().get(4) != Some(&b'-') || value.as_bytes().get(7) != Some(&b'-') {
+            return Ok(None);
+        }
+        let Some(month) = ascii_digits(value.get(5..7).unwrap_or(""), 2) else {
+            return Ok(None);
+        };
+        let Some(day) = ascii_digits(value.get(8..10).unwrap_or(""), 2) else {
+            return Ok(None);
+        };
+        if value.len() != 10 {
+            return Ok(None);
+        }
+        (year, month, day)
+    } else {
+        if value.len() != 8 {
+            return Ok(None);
+        }
+        let Some(year) = ascii_digits(value.get(0..4).unwrap_or(""), 4) else {
+            return Ok(None);
+        };
+        let Some(month) = ascii_digits(value.get(4..6).unwrap_or(""), 2) else {
+            return Ok(None);
+        };
+        let Some(day) = ascii_digits(value.get(6..8).unwrap_or(""), 2) else {
+            return Ok(None);
+        };
+        (year, month, day)
+    };
+    let joined = format!("{year}-{month}-{day}");
+    from_iso(&joined).map(Some)
+}
+
+fn week_date(value: &str) -> EngineResult<Option<NaiveDate>> {
+    let bytes = value.as_bytes();
+    let (year, week, day) =
+        if bytes.len() == 8 && bytes.get(4) == Some(&b'-') && bytes.get(5) == Some(&b'W') {
+            let Some(year) = ascii_digits(value.get(0..4).unwrap_or(""), 4) else {
+                return Ok(None);
+            };
+            let Some(week) = ascii_digits(value.get(6..8).unwrap_or(""), 2) else {
+                return Ok(None);
+            };
+            (year, week, "1")
+        } else if bytes.len() == 10
+            && bytes.get(4) == Some(&b'-')
+            && bytes.get(5) == Some(&b'W')
+            && bytes.get(8) == Some(&b'-')
+        {
+            let Some(year) = ascii_digits(value.get(0..4).unwrap_or(""), 4) else {
+                return Ok(None);
+            };
+            let Some(week) = ascii_digits(value.get(6..8).unwrap_or(""), 2) else {
+                return Ok(None);
+            };
+            let Some(day) = ascii_digits(value.get(9..10).unwrap_or(""), 1) else {
+                return Ok(None);
+            };
+            (year, week, day)
+        } else if bytes.len() == 7 && bytes.get(4) == Some(&b'W') {
+            let Some(year) = ascii_digits(value.get(0..4).unwrap_or(""), 4) else {
+                return Ok(None);
+            };
+            let Some(week) = ascii_digits(value.get(5..7).unwrap_or(""), 2) else {
+                return Ok(None);
+            };
+            (year, week, "1")
+        } else if bytes.len() == 8 && bytes.get(4) == Some(&b'W') {
+            let Some(year) = ascii_digits(value.get(0..4).unwrap_or(""), 4) else {
+                return Ok(None);
+            };
+            let Some(week) = ascii_digits(value.get(5..7).unwrap_or(""), 2) else {
+                return Ok(None);
+            };
+            let Some(day) = ascii_digits(value.get(7..8).unwrap_or(""), 1) else {
+                return Ok(None);
+            };
+            (year, week, day)
+        } else {
+            return Ok(None);
+        };
+    let year: i32 = year.parse().unwrap_or(0);
+    let week: u32 = week.parse().unwrap_or(0);
+    let day: u32 = day.parse().unwrap_or(0);
+    let weekday = match day {
+        1 => chrono::Weekday::Mon,
+        2 => chrono::Weekday::Tue,
+        3 => chrono::Weekday::Wed,
+        4 => chrono::Weekday::Thu,
+        5 => chrono::Weekday::Fri,
+        6 => chrono::Weekday::Sat,
+        7 => chrono::Weekday::Sun,
+        _ => {
+            return Err(EngineError::value(format!(
+                "Invalid isoformat string: {}",
+                py_repr(value)
+            )));
+        }
+    };
+    NaiveDate::from_isoywd_opt(year, week, weekday)
+        .map(Some)
+        .ok_or_else(|| EngineError::value(format!("Invalid isoformat string: {}", py_repr(value))))
+}
+
+pub(crate) fn shift_days(day: NaiveDate, days: i64) -> EngineResult<NaiveDate> {
+    day.checked_add_signed(Duration::days(days))
+        .ok_or_else(|| EngineError::overflow("date value out of range"))
+}
+
 fn from_iso(value: &str) -> EngineResult<NaiveDate> {
     if !value.is_ascii() {
         return Err(EngineError::value(format!(
@@ -288,6 +479,11 @@ fn from_iso(value: &str) -> EngineResult<NaiveDate> {
     let year: i32 = value[0..4]
         .parse()
         .map_err(|_| EngineError::value(format!("Invalid isoformat string: {}", py_repr(value))))?;
+    if !(1..=9999).contains(&year) {
+        return Err(EngineError::value(format!(
+            "year must be in 1..9999, not {year}"
+        )));
+    }
     let month: u32 = value[5..7]
         .parse()
         .map_err(|_| EngineError::value(format!("Invalid isoformat string: {}", py_repr(value))))?;
@@ -359,6 +555,11 @@ pub fn parse_month(value: &str) -> EngineResult<(String, String)> {
     }
     let year: i32 = value[0..4].parse().unwrap_or(0);
     let month: u32 = value[5..7].parse().unwrap_or(0);
+    if !(1..=9999).contains(&year) {
+        return Err(EngineError::value(format!(
+            "year must be in 1..9999, not {year}"
+        )));
+    }
     if !(1..=12).contains(&month) {
         return Err(EngineError::value("month must be written YYYY-MM"));
     }

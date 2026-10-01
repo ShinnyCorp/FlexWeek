@@ -132,9 +132,11 @@ name = "flexweek-engine"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "hex",
  "regex",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -142,7 +144,9 @@ name = "flexweek-py"
 version = "0.1.0"
 dependencies = [
  "flexweek-engine",
+ "flexweek-store",
  "pyo3",
+ "serde_json",
 ]
 
 [[package]]
@@ -150,7 +154,6 @@ name = "flexweek-store"
 version = "0.1.0"
 dependencies = [
  "base64",
- "chrono",
  "flexweek-engine",
  "hex",
  "hmac",

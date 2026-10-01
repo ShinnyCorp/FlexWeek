@@ -1,7 +1,7 @@
 //! Custom look saved-name and readability helpers from `desktop/native/custom_look.py`.
 
 use regex::Regex;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::sync::LazyLock;
 
 use crate::desk::tokens::{contrast, fit_lightness, luminance, mix};
@@ -20,17 +20,41 @@ static HEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"((?i)^#[0-9a-f]{6}$)").expect("hex pattern"));
 
 static LOOK_BASES: [&str; 11] = [
-    "light", "dark", "system", "high-contrast", "slate", "nocturne", "paper", "ink", "terminal",
-    "poster", "pastel",
+    "light",
+    "dark",
+    "system",
+    "high-contrast",
+    "slate",
+    "nocturne",
+    "paper",
+    "ink",
+    "terminal",
+    "poster",
+    "pastel",
 ];
 
 static BASE_LABELS: [&str; 11] = [
-    "Light", "Dark", "System", "High contrast", "Slate", "Nocturne", "Paper", "Ink", "Terminal",
-    "Poster", "Pastel",
+    "Light",
+    "Dark",
+    "System",
+    "High contrast",
+    "Slate",
+    "Nocturne",
+    "Paper",
+    "Ink",
+    "Terminal",
+    "Poster",
+    "Pastel",
 ];
 static PACK_LABELS: [&str; 5] = ["System", "Light", "Dark", "Nocturne", "Slate"];
 static PRESET_LABELS: [&str; 7] = [
-    "Pack default", "Terminal", "Poster", "Ink", "High contrast", "Paper", "Pastel",
+    "Pack default",
+    "Terminal",
+    "Poster",
+    "Ink",
+    "High contrast",
+    "Paper",
+    "Pastel",
 ];
 static ACCENTS: [&str; 5] = ["default", "sky", "gold", "sea", "sand"];
 
@@ -86,7 +110,10 @@ fn hex(value: &str) -> Option<String> {
 
 pub fn sanitize_custom(raw: &Value) -> (Option<Map<String, Value>>, Vec<String>) {
     let Some(raw) = raw.as_object() else {
-        return (None, vec!["A look has to be a set of named settings.".to_string()]);
+        return (
+            None,
+            vec!["A look has to be a set of named settings.".to_string()],
+        );
     };
     let base = raw.get("base").and_then(Value::as_str);
     if !base.is_some_and(|b| LOOK_BASES.contains(&b)) {
@@ -94,7 +121,12 @@ pub fn sanitize_custom(raw: &Value) -> (Option<Map<String, Value>>, Vec<String>)
             None,
             vec![format!(
                 "It starts from a look FlexWeek does not have: {:?}.",
-                raw.get("base").map(|v| v.to_string()).unwrap_or_default().chars().take(40).collect::<String>()
+                raw.get("base")
+                    .map(|v| v.to_string())
+                    .unwrap_or_default()
+                    .chars()
+                    .take(40)
+                    .collect::<String>()
             )],
         );
     }
@@ -105,22 +137,32 @@ pub fn sanitize_custom(raw: &Value) -> (Option<Map<String, Value>>, Vec<String>)
         if !name.trim().is_empty() {
             clean.insert(
                 "name".into(),
-                json!(name.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(NAME_MAX).collect::<String>()),
+                json!(
+                    name.split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .chars()
+                        .take(NAME_MAX)
+                        .collect::<String>()
+                ),
             );
         } else {
             problems.push("The name was not text, so it was left out.".to_string());
         }
     }
-    if let Some(accent) = raw.get("accent") {
-        if let Some(accent) = accent.as_str() {
-            if ACCENTS.contains(&accent) || hex(accent).is_some() {
-                clean.insert("accent".into(), json!(hex(accent).unwrap_or_else(|| accent.to_string())));
-            } else {
-                problems.push(
-                    "The accent was not a swatch or a colour like #3d6fc4, so it was left out."
-                        .to_string(),
-                );
-            }
+    if let Some(accent) = raw.get("accent")
+        && let Some(accent) = accent.as_str()
+    {
+        if ACCENTS.contains(&accent) || hex(accent).is_some() {
+            clean.insert(
+                "accent".into(),
+                json!(hex(accent).unwrap_or_else(|| accent.to_string())),
+            );
+        } else {
+            problems.push(
+                "The accent was not a swatch or a colour like #3d6fc4, so it was left out."
+                    .to_string(),
+            );
         }
     }
     (Some(clean), problems)
@@ -175,7 +217,12 @@ pub fn sanitize_saved(raw: &Value) -> Vec<Map<String, Value>> {
         if let Ok(clean) = name_valid(name) {
             custom.insert("name".into(), json!(clean));
         }
-        if find_index(&kept, custom.get("name").and_then(Value::as_str).unwrap_or("")).is_none() {
+        if find_index(
+            &kept,
+            custom.get("name").and_then(Value::as_str).unwrap_or(""),
+        )
+        .is_none()
+        {
             kept.push(custom);
         }
     }
@@ -188,7 +235,7 @@ pub fn save_look(
     name: &str,
 ) -> EngineResult<Vec<Map<String, Value>>> {
     let clean = name_valid(name)?;
-    let mut kept: Vec<Map<String, Value>> = saved.iter().cloned().collect();
+    let mut kept: Vec<Map<String, Value>> = saved.to_vec();
     let mut look = custom.clone();
     look.insert("name".into(), json!(clean));
     if let Some(at) = find_index(&kept, &clean) {
@@ -197,6 +244,109 @@ pub fn save_look(
         kept.push(look);
     }
     Ok(kept)
+}
+
+pub fn reset_look(custom: &Map<String, Value>) -> Map<String, Value> {
+    let mut out = Map::new();
+    for key in ["name", "base"] {
+        if let Some(value) = custom.get(key) {
+            out.insert(key.to_string(), value.clone());
+        }
+    }
+    out
+}
+
+pub fn free_name(saved: &[Map<String, Value>], name: &str) -> EngineResult<String> {
+    let clean = name_valid(name)?;
+    let stem: String = clean.chars().take(NAME_MAX.saturating_sub(3)).collect();
+    let mut free = clean.clone();
+    let mut count = 2i64;
+    while find_index(saved, &free).is_some() {
+        free = format!("{stem} {count}");
+        count += 1;
+    }
+    Ok(free)
+}
+
+pub fn rename_look(
+    saved: &[Map<String, Value>],
+    old: &str,
+    new_name: &str,
+) -> EngineResult<Vec<Map<String, Value>>> {
+    let Some(at) = find_index(saved, old) else {
+        return Err(EngineError::value(format!(
+            "No saved look is called {old}."
+        )));
+    };
+    let clean = name_valid(new_name)?;
+    if let Some(other) = find_index(saved, &clean)
+        && other != at
+    {
+        return Err(EngineError::value(format!(
+            "There is already a look called {clean}."
+        )));
+    }
+    let mut kept = saved.to_vec();
+    kept[at].insert("name".into(), json!(clean));
+    Ok(kept)
+}
+
+pub fn duplicate_look(
+    saved: &[Map<String, Value>],
+    name: &str,
+) -> EngineResult<(Vec<Map<String, Value>>, String)> {
+    let Some(at) = find_index(saved, name) else {
+        return Err(EngineError::value(format!(
+            "No saved look is called {name}."
+        )));
+    };
+    let original = saved[at]
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or(name);
+    let stem: String = format!(
+        "{} copy",
+        original
+            .chars()
+            .take(NAME_MAX.saturating_sub(8))
+            .collect::<String>()
+    );
+    let mut copy = stem.clone();
+    let mut count = 2i64;
+    while find_index(saved, &copy).is_some() {
+        copy = format!("{stem} {count}");
+        count += 1;
+    }
+    let mut kept = saved.to_vec();
+    let mut twin = saved[at].clone();
+    twin.insert("name".into(), json!(copy));
+    kept.insert(at + 1, twin);
+    let given = kept[at + 1]
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    Ok((kept, given))
+}
+
+pub fn delete_look(
+    saved: &[Map<String, Value>],
+    name: &str,
+) -> EngineResult<Vec<Map<String, Value>>> {
+    if find_index(saved, name).is_none() {
+        return Err(EngineError::value(format!(
+            "No saved look is called {name}."
+        )));
+    }
+    Ok(saved
+        .iter()
+        .filter(|look| {
+            look.get("name")
+                .and_then(Value::as_str)
+                .is_none_or(|existing| !existing.eq_ignore_ascii_case(name))
+        })
+        .cloned()
+        .collect())
 }
 
 pub fn export_look(custom: &Value) -> String {
@@ -209,7 +359,10 @@ pub fn export_look(custom: &Value) -> String {
             body.insert(k, v);
         }
     }
-    format!("{}\n", serde_json::to_string_pretty(&body).unwrap_or_default())
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(&body).unwrap_or_default()
+    )
 }
 
 pub fn import_look(text: &[u8]) -> ImportedLook {
@@ -227,7 +380,7 @@ pub fn import_look(text: &[u8]) -> ImportedLook {
                 problems: vec![
                     "This file is not a FlexWeek look: it could not be read as one.".to_string(),
                 ],
-            }
+            };
         }
     };
     let Some(obj) = raw.as_object() else {
@@ -295,19 +448,62 @@ pub fn readability(
     let mut under: Vec<&str> = surfaces.to_vec();
     under.extend(alike.iter().copied());
     let mut text_fixed = fit_lightness(&palette.text, &under, AA_TEXT);
-    if under.iter().any(|ground| contrast(&text_fixed, ground) < AA_TEXT) {
+    if under
+        .iter()
+        .any(|ground| contrast(&text_fixed, ground) < AA_TEXT)
+    {
         text_fixed = fit_lightness(&palette.text, &surfaces, AA_TEXT);
     }
     let mut found = Vec::new();
     let checks = [
-        ("Text on the page", palette.text.as_str(), palette.window.as_str(), "text"),
-        ("Text on cards", palette.text.as_str(), palette.panel.as_str(), "text"),
-        ("Text on the calendar", palette.text.as_str(), palette.grid.as_str(), "text"),
-        ("Muted text on the page", palette.muted.as_str(), palette.window.as_str(), "muted"),
-        ("Muted text on cards", palette.muted.as_str(), palette.panel.as_str(), "muted"),
-        ("Accent text on cards", palette.accent.as_str(), palette.panel.as_str(), "accent"),
-        ("Plan button words", palette.accent.as_str(), tint.as_str(), "accent"),
-        ("Today's day name", palette.accent.as_str(), palette.grid.as_str(), "accent"),
+        (
+            "Text on the page",
+            palette.text.as_str(),
+            palette.window.as_str(),
+            "text",
+        ),
+        (
+            "Text on cards",
+            palette.text.as_str(),
+            palette.panel.as_str(),
+            "text",
+        ),
+        (
+            "Text on the calendar",
+            palette.text.as_str(),
+            palette.grid.as_str(),
+            "text",
+        ),
+        (
+            "Muted text on the page",
+            palette.muted.as_str(),
+            palette.window.as_str(),
+            "muted",
+        ),
+        (
+            "Muted text on cards",
+            palette.muted.as_str(),
+            palette.panel.as_str(),
+            "muted",
+        ),
+        (
+            "Accent text on cards",
+            palette.accent.as_str(),
+            palette.panel.as_str(),
+            "accent",
+        ),
+        (
+            "Plan button words",
+            palette.accent.as_str(),
+            tint.as_str(),
+            "accent",
+        ),
+        (
+            "Today's day name",
+            palette.accent.as_str(),
+            palette.grid.as_str(),
+            "accent",
+        ),
         (
             "Now line",
             if custom.get("now_line").and_then(Value::as_str) == Some("text") {
@@ -329,11 +525,19 @@ pub fn readability(
         if field == "accent" && !own_accent {
             continue;
         }
-        let need = if words == "Now line" { AA_GRAPHIC } else { AA_TEXT };
+        let need = if words == "Now line" {
+            AA_GRAPHIC
+        } else {
+            AA_TEXT
+        };
         let ratio = contrast(ink, ground);
         if ratio < need {
             let fixed = if field == "accent" {
-                fit_lightness(&palette.accent, &[surfaces[0], surfaces[1], tint.as_str()], need)
+                fit_lightness(
+                    &palette.accent,
+                    &[surfaces[0], surfaces[1], tint.as_str()],
+                    need,
+                )
             } else if field == "text" {
                 text_fixed.clone()
             } else {
@@ -341,8 +545,6 @@ pub fn readability(
             };
             let field_vec = if field == "accent" {
                 vec!["accent".to_string()]
-            } else if field == "text" {
-                vec!["colours".to_string(), field.to_string()]
             } else {
                 vec!["colours".to_string(), field.to_string()]
             };

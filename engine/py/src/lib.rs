@@ -2,15 +2,42 @@
 
 use ::flexweek_engine::time;
 use ::flexweek_engine::{EngineError, ErrorKind};
-use pyo3::exceptions::{PyLookupError, PyValueError};
+use pyo3::exceptions::{
+    PyIndexError, PyKeyError, PyLookupError, PyOverflowError, PyRuntimeError, PyValueError,
+    PyZeroDivisionError,
+};
 use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDict, PyModule};
 
-fn raise(err: EngineError) -> PyErr {
+mod more;
+mod rest;
+
+pub(crate) fn raise(err: EngineError) -> PyErr {
     match err.kind {
         ErrorKind::Value => PyValueError::new_err(err.message),
         ErrorKind::Lookup => PyLookupError::new_err(err.message),
+        ErrorKind::Key => PyKeyError::new_err(err.message),
+        ErrorKind::Index => PyIndexError::new_err(err.message),
+        ErrorKind::Overflow => PyOverflowError::new_err(err.message),
+        ErrorKind::ZeroDivision => PyZeroDivisionError::new_err(err.message),
     }
+}
+
+pub(crate) fn guard<T>(func: impl FnOnce() -> PyResult<T> + std::panic::UnwindSafe) -> PyResult<T> {
+    match std::panic::catch_unwind(func) {
+        Ok(result) => result,
+        Err(payload) => Err(PyRuntimeError::new_err(panic_message(&payload))),
+    }
+}
+
+fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        return (*message).to_string();
+    }
+    if let Some(message) = payload.downcast_ref::<String>() {
+        return message.clone();
+    }
+    "rust panic".to_string()
 }
 
 fn as_date(py: Python<'_>, iso: &str) -> PyResult<Py<PyDate>> {
@@ -29,13 +56,18 @@ fn iso_of(value: &Bound<'_, PyAny>) -> PyResult<String> {
 }
 
 #[pyfunction]
+fn casefold(text: &str) -> String {
+    ::flexweek_engine::casefold::casefold(text)
+}
+
+#[pyfunction]
 fn hhmm_to_minutes(hhmm: &str) -> PyResult<i64> {
-    time::hhmm_to_minutes(hhmm).map_err(raise)
+    guard(|| time::hhmm_to_minutes(hhmm).map_err(raise))
 }
 
 #[pyfunction]
 fn clock_to_minutes(hhmm: &str) -> PyResult<i64> {
-    time::clock_to_minutes(hhmm).map_err(raise)
+    guard(|| time::clock_to_minutes(hhmm).map_err(raise))
 }
 
 #[pyfunction]
@@ -165,6 +197,7 @@ fn flexweek_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
         names.set_item(name, index)?;
     }
     m.add("DAY_NAME_TO_INDEX", names)?;
+    m.add_function(wrap_pyfunction!(casefold, m)?)?;
     m.add_function(wrap_pyfunction!(hhmm_to_minutes, m)?)?;
     m.add_function(wrap_pyfunction!(clock_to_minutes, m)?)?;
     m.add_function(wrap_pyfunction!(minutes_to_hhmm, m)?)?;
@@ -187,5 +220,7 @@ fn flexweek_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_month, m)?)?;
     m.add_function(wrap_pyfunction!(is_month_label, m)?)?;
     m.add_function(wrap_pyfunction!(month_grid, m)?)?;
+    more::add(m)?;
+    rest::add(m)?;
     Ok(())
 }

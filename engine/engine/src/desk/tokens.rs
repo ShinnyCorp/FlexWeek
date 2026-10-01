@@ -73,15 +73,13 @@ impl From<f64> for TextScale<'static> {
 }
 
 pub fn text_knob(body_pt: f64) -> Option<&'static str> {
-    TEXT_SCALE
-        .iter()
-        .find_map(|(name, _)| {
-            if type_pt("body", TextScale::Named(name)) == body_pt {
-                Some(*name)
-            } else {
-                None
-            }
-        })
+    TEXT_SCALE.iter().find_map(|(name, _)| {
+        if type_pt("body", TextScale::Named(name)) == body_pt {
+            Some(*name)
+        } else {
+            None
+        }
+    })
 }
 
 fn decode(channel: f64) -> f64 {
@@ -103,17 +101,11 @@ fn encode(channel: f64) -> f64 {
 pub fn linear_rgb(colour: &str) -> (f64, f64, f64) {
     let raw = colour.trim_start_matches('#');
     let parse = |at: usize| i64::from_str_radix(&raw[at..at + 2], 16).unwrap_or(0) as f64 / 255.0;
-    (
-        decode(parse(0)),
-        decode(parse(2)),
-        decode(parse(4)),
-    )
+    (decode(parse(0)), decode(parse(2)), decode(parse(4)))
 }
 
 pub fn hex_from_linear(red: f64, green: f64, blue: f64) -> String {
-    let channel = |value: f64| -> i64 {
-        (encode(value.clamp(0.0, 1.0)) * 255.0).round() as i64
-    };
+    let channel = |value: f64| -> i64 { (encode(value.clamp(0.0, 1.0)) * 255.0).round() as i64 };
     format!(
         "#{:02x}{:02x}{:02x}",
         channel(red),
@@ -151,11 +143,7 @@ pub fn oklab(colour: &str) -> (f64, f64, f64) {
 
 pub fn oklch(light: f64, chroma: f64, hue: f64) -> String {
     let angle = hue.to_radians();
-    let (r, g, b) = linear_from_oklab(
-        light,
-        chroma * angle.cos(),
-        chroma * angle.sin(),
-    );
+    let (r, g, b) = linear_from_oklab(light, chroma * angle.cos(), chroma * angle.sin());
     hex_from_linear(r, g, b)
 }
 
@@ -268,6 +256,7 @@ const MARK: [(&str, (f64, f64)); 3] = [
     ("contrast", (0.78, 0.16)),
 ];
 const GREY_CHROMA: f64 = 0.01;
+#[allow(dead_code)]
 const SINK: f64 = 0.34;
 const HOMEWORK_DARKER: f64 = 0.22;
 const SLEEP_FILL_DARKER: f64 = 0.08;

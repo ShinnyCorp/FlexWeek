@@ -5,7 +5,9 @@ use serde_json::Value;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::desk::calendar::{self, deep_copy, due_is_timed, due_sort_key, is_series, is_work_session, DAYS};
+use crate::desk::calendar::{
+    self, DAYS, deep_copy, due_is_timed, due_sort_key, is_series, is_work_session,
+};
 
 static CLOCK_24H: AtomicBool = AtomicBool::new(true);
 
@@ -62,11 +64,7 @@ pub fn hhmm_text(hhmm: &str) -> String {
 }
 
 pub fn time_format() -> &'static str {
-    if clock_24h() {
-        "HH:mm"
-    } else {
-        "h:mm AP"
-    }
+    if clock_24h() { "HH:mm" } else { "h:mm AP" }
 }
 
 pub fn clock_label(minute: i64) -> String {
@@ -156,14 +154,27 @@ pub fn moved_words(block: &Value, from_day: i64, day: i64, start: i64, end: i64)
         .and_then(Value::as_str)
         .unwrap_or("the block");
     if block.get("start").is_none() {
-        return format!("Placed {title} on {} {}.", DAYS[day as usize], clock_label(start));
+        return format!(
+            "Placed {title} on {} {}.",
+            DAYS[day as usize],
+            clock_label(start)
+        );
     }
     let mut title = title.to_string();
     if is_series(block) {
         title = format!("{}'s {title}", calendar::DAY_FULL[from_day as usize]);
     }
-    let was = minute_of(block.get("start").and_then(Value::as_str).unwrap_or("00:00"));
-    let was_end = was + block.get("duration_min").and_then(Value::as_i64).unwrap_or(0);
+    let was = minute_of(
+        block
+            .get("start")
+            .and_then(Value::as_str)
+            .unwrap_or("00:00"),
+    );
+    let was_end = was
+        + block
+            .get("duration_min")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
     if day == from_day && start == was && end != was_end {
         return format!("{title} now ends at {}.", clock_label(end));
     }
@@ -188,7 +199,12 @@ pub fn added_words(block: &Value) -> String {
         return format!(
             "Added {title} on {} {}.",
             DAYS[day],
-            hhmm_text(block.get("start").and_then(Value::as_str).unwrap_or("00:00"))
+            hhmm_text(
+                block
+                    .get("start")
+                    .and_then(Value::as_str)
+                    .unwrap_or("00:00")
+            )
         );
     }
     format!("Added {title}.")
@@ -294,13 +310,12 @@ impl WeekModel {
                     .map(|(_, v)| *v)
                     .unwrap_or(2)
             };
-            (
-                order(&a.slack),
-                a.day,
-                a.start,
-                &a.block_id,
-            )
-                .cmp(&(order(&b.slack), b.day, b.start, &b.block_id))
+            (order(&a.slack), a.day, a.start, &a.block_id).cmp(&(
+                order(&b.slack),
+                b.day,
+                b.start,
+                &b.block_id,
+            ))
         });
         items
     }
@@ -384,7 +399,11 @@ impl WeekModel {
     }
 
     pub fn day_queue(&self, day: i64, minute: i64) -> DayQueue {
-        let live: Vec<_> = self.on_day(day).into_iter().filter(|item| item.live()).collect();
+        let live: Vec<_> = self
+            .on_day(day)
+            .into_iter()
+            .filter(|item| item.live())
+            .collect();
         let mut running: Vec<_> = live
             .iter()
             .filter(|item| item.start <= minute && minute < item.end)
@@ -418,12 +437,7 @@ pub fn build_week(
         .map(|items| {
             items
                 .iter()
-                .filter_map(|item| {
-                    Some((
-                        item.get("id")?.as_str()?.to_string(),
-                        item.clone(),
-                    ))
-                })
+                .filter_map(|item| Some((item.get("id")?.as_str()?.to_string(), item.clone())))
                 .collect()
         })
         .unwrap_or_default();
@@ -434,10 +448,7 @@ pub fn build_week(
             items
                 .iter()
                 .filter_map(|item| {
-                    Some((
-                        item.get("block_id")?.as_str()?.to_string(),
-                        item.clone(),
-                    ))
+                    Some((item.get("block_id")?.as_str()?.to_string(), item.clone()))
                 })
                 .collect()
         })
@@ -461,7 +472,10 @@ pub fn build_week(
             .and_then(|id| homework.get(id));
         let work = is_work_session(original);
         let done = block.get("completed").and_then(Value::as_bool) == Some(true)
-            || assignment.and_then(|a| a.get("completed")).and_then(Value::as_bool) == Some(true);
+            || assignment
+                .and_then(|a| a.get("completed"))
+                .and_then(Value::as_bool)
+                == Some(true);
         let note = original
             .get("id")
             .and_then(Value::as_str)
@@ -510,13 +524,23 @@ pub fn build_week(
             .and_then(Value::as_array)
             .map(|d| d.iter().filter_map(Value::as_i64).collect())
             .unwrap_or_default();
-        if block.get("completed").and_then(Value::as_bool) == Some(true) {
-            if let Some(day) = block.get("completed_day").and_then(Value::as_i64) {
-                days = vec![day];
-            }
+        if block.get("completed").and_then(Value::as_bool) == Some(true)
+            && let Some(day) = block.get("completed_day").and_then(Value::as_i64)
+        {
+            days = vec![day];
         }
-        let start = minute_of(block.get("start").and_then(Value::as_str).unwrap_or("00:00"));
-        let end = (start + block.get("duration_min").and_then(Value::as_i64).unwrap_or(0)).min(END_OF_DAY);
+        let start = minute_of(
+            block
+                .get("start")
+                .and_then(Value::as_str)
+                .unwrap_or("00:00"),
+        );
+        let end = (start
+            + block
+                .get("duration_min")
+                .and_then(Value::as_i64)
+                .unwrap_or(0))
+        .min(END_OF_DAY);
         for day in days {
             occurrences.push(Occurrence {
                 block_id: original
@@ -533,7 +557,13 @@ pub fn build_week(
                     .get("category")
                     .and_then(Value::as_str)
                     .map(str::to_string)
-                    .unwrap_or_else(|| if work { HOMEWORK.to_string() } else { String::new() }),
+                    .unwrap_or_else(|| {
+                        if work {
+                            HOMEWORK.to_string()
+                        } else {
+                            String::new()
+                        }
+                    }),
                 day,
                 start,
                 end,
@@ -555,7 +585,10 @@ pub fn build_week(
                     .and_then(|n| n.get("slack_status"))
                     .and_then(Value::as_str)
                     .map(str::to_string),
-                pinned: block.get("pinned").and_then(Value::as_bool).unwrap_or(false),
+                pinned: block
+                    .get("pinned")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
             });
         }
     }
@@ -567,7 +600,11 @@ pub fn build_week(
     });
     let worked: std::collections::HashSet<String> = blocks
         .iter()
-        .filter_map(|b| b.get("assignment_id").and_then(Value::as_str).map(str::to_string))
+        .filter_map(|b| {
+            b.get("assignment_id")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
         .collect();
     let mut focus = 0i64;
     for key in &worked {

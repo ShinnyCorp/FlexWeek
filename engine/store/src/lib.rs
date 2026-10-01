@@ -5,17 +5,13 @@ use std::path::Path;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use chrono::{Datelike, Duration, NaiveDate};
-use flexweek_engine::time::{hhmm_to_minutes, minutes_to_hhmm, parse_deadline};
 use rusqlite::{Connection, OptionalExtension, params};
 use scrypt::{Params, scrypt};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 pub const SESSION_SECONDS: i64 = 7 * 24 * 60 * 60;
 pub const PREFS_VERSION: i64 = 1;
-
-const LAST_DAY: &str = "2099-12-31";
 
 const PREFERENCES_TABLE: &str = r#"
     CREATE TABLE IF NOT EXISTS preferences (
@@ -169,8 +165,48 @@ pub fn make_token(bytes: &[u8; 32]) -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
+fn decode_salt(salt: &str) -> StoreResult<Vec<u8>> {
+    if !salt.len().is_multiple_of(2) {
+        return Err(StoreError::Date(
+            "fromhex() arg must contain an even number of hexadecimal digits".into(),
+        ));
+    }
+    let bytes = salt.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len() / 2);
+    let mut index = 0;
+    while index < bytes.len() {
+        let high = hex_digit(bytes[index]);
+        let low = hex_digit(bytes[index + 1]);
+        match (high, low) {
+            (Some(high), Some(low)) => out.push((high << 4) | low),
+            (None, _) => {
+                return Err(StoreError::Date(format!(
+                    "non-hexadecimal number found in fromhex() arg at position {index}"
+                )));
+            }
+            (_, None) => {
+                return Err(StoreError::Date(format!(
+                    "non-hexadecimal number found in fromhex() arg at position {}",
+                    index + 1
+                )));
+            }
+        }
+        index += 2;
+    }
+    Ok(out)
+}
+
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 pub fn password_hash(password: &str, salt: &str) -> StoreResult<String> {
-    let salt_bytes = hex::decode(salt).map_err(|e| StoreError::Date(e.to_string()))?;
+    let salt_bytes = decode_salt(salt)?;
     let params = Params::new(15, 8, 3, 32).map_err(|e| StoreError::Date(e.to_string()))?;
     let mut key = [0u8; 32];
     scrypt(password.as_bytes(), &salt_bytes, &params, &mut key)
@@ -567,234 +603,8 @@ fn sorted_json_array(values: &[Value]) -> String {
     format!("[{}]", inner.join(","))
 }
 
-fn parse_iso_date(value: &str) -> StoreResult<NaiveDate> {
-    NaiveDate::parse_from_str(value, "%Y-%m-%d")
-        .map_err(|e| StoreError::Date(format!("invalid date {value}: {e}")))
-}
-
-fn migrated_assignment_id(week_start: &str, source_id: &str) -> String {
-    format!("a-{}", &digest(&format!("{week_start}:{source_id}"))[..32])
-}
-
-fn due_from_latest(week_start: &str, latest: Option<&str>, days: &[i64]) -> StoreResult<String> {
-    let monday = parse_iso_date(week_start)?;
-    let parsed = parse_deadline(latest, days).map_err(StoreError::Engine)?;
-    if let Some((day_index, minutes)) = parsed {
-        let day = monday + Duration::days(day_index);
-        return Ok(format!("{}T{}", iso(day), minutes_to_hhmm(minutes)));
-    }
-    let sunday = monday + Duration::days(6);
-    Ok(format!("{}T23:59", iso(sunday)))
-}
-
-fn completed_at_for_block(week_start: &str, block: &Value) -> StoreResult<String> {
-    let monday = parse_iso_date(week_start)?;
-    let start = block.get("start").and_then(Value::as_str);
-    let days: Vec<i64> = block
-        .get("days")
-        .and_then(Value::as_array)
-        .map(|items| items.iter().filter_map(|v| v.as_i64()).collect::<Vec<_>>())
-        .unwrap_or_default();
-    let mut day = block.get("completed_day").and_then(Value::as_i64);
-    if start.is_some() {
-        if day.is_none() && days.len() == 1 {
-            day = Some(days[0]);
-        }
-        if let (Some(start_hhmm), Some(day_index)) = (start, day) {
-            let end = hhmm_to_minutes(start_hhmm).map_err(StoreError::Engine)?
-                + block
-                    .get("duration_min")
-                    .and_then(Value::as_i64)
-                    .unwrap_or(0);
-            let mut day_date = monday + Duration::days(day_index);
-            let mut end_min = end;
-            if end_min >= 24 * 60 {
-                day_date += Duration::days(end_min / (24 * 60));
-                end_min %= 24 * 60;
-            }
-            let last = parse_iso_date(LAST_DAY)?;
-            if day_date > last {
-                return Ok(format!("{LAST_DAY}T23:59"));
-            }
-            return Ok(format!("{}T{}", iso(day_date), minutes_to_hhmm(end_min)));
-        }
-    }
-    let sunday = monday + Duration::days(6);
-    Ok(format!("{}T23:59", iso(sunday)))
-}
-
-#[allow(clippy::too_many_arguments)]
-fn assignment_body(
-    assignment_id: &str,
-    block: &Value,
-    due: &str,
-    estimate_min: i64,
-    focus_minutes: i64,
-    focus_sessions: i64,
-    completed: bool,
-    completed_at: Option<&str>,
-) -> Value {
-    json!({
-        "id": assignment_id,
-        "title": block.get("title").and_then(Value::as_str).unwrap_or(assignment_id),
-        "course": block.get("course"),
-        "category": block.get("category"),
-        "priority": block.get("priority").and_then(Value::as_i64).unwrap_or(3),
-        "energy": block.get("energy").and_then(Value::as_str).unwrap_or("medium"),
-        "spotify_url": block.get("spotify_url"),
-        "due": due,
-        "estimate_min": estimate_min,
-        "focus_minutes": focus_minutes,
-        "focus_sessions": focus_sessions,
-        "completed": completed,
-        "completed_at": completed_at,
-    })
-}
-
-fn as_session(block: &mut Value, assignment_id: &str) {
-    if let Some(obj) = block.as_object_mut() {
-        obj.insert("assignment_id".into(), json!(assignment_id));
-        obj.remove("latest");
-        obj.remove("focus_minutes");
-        obj.remove("focus_sessions");
-    }
-}
-
 fn migrate_blocks(week_start: &str, blocks: Vec<Value>) -> StoreResult<(Vec<Value>, Vec<Value>)> {
-    let mut updated = blocks;
-    let mut created: Vec<Value> = Vec::new();
-    let mut grouped: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-    for (index, block) in updated.iter().enumerate() {
-        if block.get("kind").and_then(Value::as_str) == Some("locked")
-            && let Some(parent) = block.get("pomodoro_parent_id").and_then(Value::as_str)
-        {
-            grouped.entry(parent.to_string()).or_default().push(index);
-        }
-    }
-    let mut claimed: HashSet<usize> = HashSet::new();
-    let sunday_due = {
-        let monday = parse_iso_date(week_start)?;
-        format!("{}T23:59", iso(monday + Duration::days(6)))
-    };
-    for (parent, indices) in grouped {
-        let work_indices: Vec<usize> = indices
-            .iter()
-            .copied()
-            .filter(|index| {
-                updated[*index].get("pomodoro_role").and_then(Value::as_str) == Some("work")
-            })
-            .collect();
-        if work_indices.is_empty()
-            || work_indices.iter().any(|index| {
-                updated[*index]
-                    .get("assignment_id")
-                    .and_then(Value::as_str)
-                    .is_some()
-            })
-        {
-            continue;
-        }
-        let work: Vec<Value> = work_indices.iter().map(|i| updated[*i].clone()).collect();
-        let aid = migrated_assignment_id(week_start, &parent);
-        let completed = work.iter().all(|block| {
-            block
-                .get("completed")
-                .and_then(Value::as_bool)
-                .unwrap_or(false)
-        });
-        let completed_at = if completed {
-            let ends: Vec<String> = work
-                .iter()
-                .filter(|block| block.get("start").and_then(Value::as_str).is_some())
-                .map(|block| completed_at_for_block(week_start, block))
-                .collect::<StoreResult<Vec<_>>>()?;
-            if ends.is_empty() {
-                Some(sunday_due.clone())
-            } else {
-                Some(ends.into_iter().max().unwrap())
-            }
-        } else {
-            None
-        };
-        created.push(assignment_body(
-            &aid,
-            &work[0],
-            &sunday_due,
-            work.iter()
-                .map(|b| b.get("duration_min").and_then(Value::as_i64).unwrap_or(0))
-                .sum(),
-            work.iter()
-                .map(|b| b.get("focus_minutes").and_then(Value::as_i64).unwrap_or(0))
-                .sum(),
-            work.iter()
-                .map(|b| b.get("focus_sessions").and_then(Value::as_i64).unwrap_or(0))
-                .sum(),
-            completed,
-            completed_at.as_deref(),
-        ));
-        for index in work_indices {
-            as_session(&mut updated[index], &aid);
-            claimed.insert(index);
-        }
-    }
-    for (index, block) in updated.iter_mut().enumerate() {
-        if claimed.contains(&index)
-            || block.get("assignment_id").and_then(Value::as_str).is_some()
-            || block.get("kind").and_then(Value::as_str) != Some("flexible")
-        {
-            continue;
-        }
-        let block_id = block
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let aid = migrated_assignment_id(week_start, &block_id);
-        let completed = block
-            .get("completed")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let days: Vec<i64> = block
-            .get("days")
-            .and_then(Value::as_array)
-            .map(|items| items.iter().filter_map(|v| v.as_i64()).collect())
-            .unwrap_or_default();
-        let due = due_from_latest(
-            week_start,
-            block.get("latest").and_then(Value::as_str),
-            &days,
-        )?;
-        let completed_at = if completed {
-            Some(completed_at_for_block(week_start, block)?)
-        } else {
-            None
-        };
-        created.push(assignment_body(
-            &aid,
-            block,
-            &due,
-            block
-                .get("duration_min")
-                .and_then(Value::as_i64)
-                .unwrap_or(0),
-            block
-                .get("focus_minutes")
-                .and_then(Value::as_i64)
-                .unwrap_or(0),
-            block
-                .get("focus_sessions")
-                .and_then(Value::as_i64)
-                .unwrap_or(0),
-            completed,
-            completed_at.as_deref(),
-        ));
-        as_session(block, &aid);
-    }
-    Ok((updated, created))
-}
-
-fn iso(day: NaiveDate) -> String {
-    format!("{:04}-{:02}-{:02}", day.year(), day.month(), day.day())
+    flexweek_engine::plan::migrate_blocks(week_start, &blocks).map_err(StoreError::Engine)
 }
 
 #[cfg(test)]

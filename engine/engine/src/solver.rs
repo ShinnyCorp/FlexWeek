@@ -3,10 +3,12 @@
 //! Timing: the caller supplies `budget_ms` and `elapsed_ms` (monotonic milliseconds since
 //! solve start). No internal clock.
 
+use serde_json::{Map, Value};
+
 use crate::error::{EngineError, EngineResult};
 use crate::time::{
-    DAY_START_MIN, SLOT_MIN, SLOTS_PER_DAY, clock_to_minutes, duration_to_slots, hhmm_to_minutes,
-    occupancy_between, occupancy_mask, parse_deadline, slot_to_hhmm,
+    DAY_START_MIN, SLOT_MIN, SLOTS_PER_DAY, duration_to_slots, hhmm_to_minutes, occupancy_between,
+    occupancy_mask, parse_deadline, slot_to_hhmm,
 };
 
 pub const SOLVE_BUDGET_MS: f64 = 150.0;
@@ -43,6 +45,8 @@ pub struct TimeBlock {
     pub completed_day: Option<i64>,
     pub missed_days: Vec<i64>,
     pub pinned: bool,
+    /// Fields the planner does not read. Copied through so a round trip keeps them.
+    pub rest: Map<String, Value>,
 }
 
 impl Default for TimeBlock {
@@ -63,6 +67,7 @@ impl Default for TimeBlock {
             completed_day: None,
             missed_days: vec![],
             pinned: false,
+            rest: Map::new(),
         }
     }
 }
@@ -177,41 +182,47 @@ fn slack_sentence(slack_min: i64, status: &str) -> String {
     format!("Finishes {only}{} before it is due.", amount(slack_min))
 }
 
-// --- `backend/availability.py` (private copies) ---
+// --- `backend/availability.py`, the one copy in `plan` ---
+
+fn work_value(window: &WorkWindow) -> Value {
+    let mut value = serde_json::json!({
+        "days": window.days,
+        "start": window.start,
+        "end": window.end,
+    });
+    if let Some(subject) = &window.subject {
+        value["subject"] = serde_json::json!(subject);
+    }
+    value
+}
+
+fn study_value(window: &StudyWindow) -> Value {
+    let mut value = serde_json::json!({
+        "days": window.days,
+        "start": window.start,
+        "duration_min": window.duration_min,
+    });
+    if let Some(subject) = &window.subject {
+        value["subject"] = serde_json::json!(subject);
+    }
+    value
+}
 
 fn merge_occupancy(base: &[u128], extra: &[u128]) -> EngineResult<Vec<u128>> {
-    if base.len() != extra.len() {
-        return Err(EngineError::value(
-            "occupancy vectors must have equal length",
-        ));
-    }
-    Ok(base
-        .iter()
-        .zip(extra.iter())
-        .map(|(left, right)| left | right)
-        .collect())
+    crate::plan::merge_occupancy(base, extra)
 }
 
 fn resolve_work_windows(windows: Option<&[WorkWindow]>) -> (Vec<WorkWindow>, bool) {
-    if let Some(windows) = windows
-        && !windows.is_empty()
-    {
-        return (windows.to_vec(), false);
-    }
-    (default_work_windows(), true)
-}
-
-fn add_occupancy(occ: &mut [u128], day: i64, start_min: i64, end_min: i64) -> EngineResult<()> {
-    let day = day as usize;
-    occ[day] |= occupancy_between(start_min, end_min)?;
-    Ok(())
+    let values: Option<Vec<Value>> = windows.map(|items| items.iter().map(work_value).collect());
+    let (resolved, defaulted) = crate::plan::resolve_work_windows(values.as_deref());
+    (
+        resolved.iter().map(work_window_from_value).collect(),
+        defaulted,
+    )
 }
 
 fn lateness_occupancy(day: i64, from_start: &str, minutes: i64) -> EngineResult<Vec<u128>> {
-    let mut occ = vec![0u128; 7];
-    let start = hhmm_to_minutes(from_start)?;
-    add_occupancy(&mut occ, day, start, start + minutes)?;
-    Ok(occ)
+    crate::plan::lateness_occupancy(day, from_start, minutes)
 }
 
 fn study_rank(
@@ -221,74 +232,8 @@ fn study_rank(
     start_min: i64,
     duration_min: i64,
 ) -> i64 {
-    let wanted = course
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_ascii_lowercase());
-    let mut best = 2i64;
-    for window in windows {
-        if !window.days.contains(&day) {
-            continue;
-        }
-        let begin = hhmm_to_minutes(&window.start).unwrap_or(0);
-        if !(begin <= start_min && start_min + duration_min <= begin + window.duration_min) {
-            continue;
-        }
-        if window.subject.is_none() {
-            best = best.min(1);
-        } else if let Some(ref wanted) = wanted
-            && window
-                .subject
-                .as_ref()
-                .map(|s| s.trim().to_ascii_lowercase())
-                == Some(wanted.clone())
-        {
-            return 0;
-        }
-    }
-    best
-}
-
-fn merged_work_spans(
-    windows: &[WorkWindow],
-    course: Option<&str>,
-    day: i64,
-) -> EngineResult<Vec<(i64, i64)>> {
-    let wanted = course
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_ascii_lowercase());
-    let mut spans: Vec<(i64, i64)> = Vec::new();
-    for window in windows {
-        if !window.days.contains(&day) {
-            continue;
-        }
-        if let Some(ref subject) = window.subject {
-            let sub = subject.trim().to_ascii_lowercase();
-            if wanted.is_none() || wanted.as_ref() != Some(&sub) {
-                continue;
-            }
-        }
-        let begin = clock_to_minutes(&window.start)?;
-        let finish = clock_to_minutes(&window.end)?;
-        if begin < finish {
-            spans.push((begin, finish));
-        }
-    }
-    if spans.is_empty() {
-        return Ok(vec![]);
-    }
-    spans.sort_by_key(|pair| pair.0);
-    let mut merged = vec![spans[0]];
-    for (begin, finish) in spans.into_iter().skip(1) {
-        let (_last_begin, last_finish) = merged.last_mut().unwrap();
-        if begin <= *last_finish {
-            *last_finish = (*last_finish).max(finish);
-        } else {
-            merged.push((begin, finish));
-        }
-    }
-    Ok(merged)
+    let values: Vec<Value> = windows.iter().map(study_value).collect();
+    crate::plan::study_rank(&values, course, day, start_min, duration_min)
 }
 
 fn session_inside_work_windows(
@@ -298,10 +243,8 @@ fn session_inside_work_windows(
     start_min: i64,
     duration_min: i64,
 ) -> EngineResult<bool> {
-    let end_min = start_min + duration_min;
-    Ok(merged_work_spans(windows, course, day)?
-        .into_iter()
-        .any(|(begin, finish)| begin <= start_min && end_min <= finish))
+    let values: Vec<Value> = windows.iter().map(work_value).collect();
+    crate::plan::session_inside_work_windows(&values, course, day, start_min, duration_min)
 }
 
 // --- solver helpers ---
@@ -736,7 +679,9 @@ pub fn solve(
 
     let held: Vec<TimeBlock> = every_flexible
         .iter()
-        .filter(|b| b.pinned && !b.completed && b.start.is_some())
+        .filter(|b| {
+            b.pinned && !b.completed && b.start.as_ref().is_some_and(|start| !start.is_empty())
+        })
         .cloned()
         .collect();
     let flexible: Vec<TimeBlock> = every_flexible
@@ -1066,6 +1011,231 @@ pub fn reschedule_running_late(
         "RESHUFFLE_AFTER_MISS",
         LATE_COPY,
     ))
+}
+
+fn i64_field(value: &Value, key: &str, default: i64) -> i64 {
+    value.get(key).and_then(Value::as_i64).unwrap_or(default)
+}
+
+fn opt_string(value: Option<&Value>) -> Option<String> {
+    value.and_then(Value::as_str).map(str::to_string)
+}
+
+fn i64_list(value: Option<&Value>) -> Vec<i64> {
+    value
+        .and_then(Value::as_array)
+        .map(|items| items.iter().filter_map(Value::as_i64).collect())
+        .unwrap_or_default()
+}
+
+const BLOCK_FIELDS: &[&str] = &[
+    "id",
+    "title",
+    "kind",
+    "duration_min",
+    "days",
+    "priority",
+    "energy",
+    "earliest",
+    "latest",
+    "start",
+    "course",
+    "completed",
+    "completed_day",
+    "missed_days",
+    "pinned",
+];
+
+pub fn block_from_value(value: &Value) -> EngineResult<TimeBlock> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| EngineError::value("block must be an object"))?;
+    let mut rest = Map::new();
+    for (key, item) in obj {
+        if !BLOCK_FIELDS.contains(&key.as_str()) {
+            rest.insert(key.clone(), item.clone());
+        }
+    }
+    Ok(TimeBlock {
+        id: obj.get("id").and_then(Value::as_str).unwrap_or("").into(),
+        title: obj
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .into(),
+        kind: obj
+            .get("kind")
+            .and_then(Value::as_str)
+            .unwrap_or("flexible")
+            .into(),
+        duration_min: i64_field(value, "duration_min", 0),
+        days: i64_list(obj.get("days")),
+        priority: i64_field(value, "priority", 3),
+        energy: obj
+            .get("energy")
+            .and_then(Value::as_str)
+            .unwrap_or("medium")
+            .into(),
+        earliest: opt_string(obj.get("earliest")),
+        latest: opt_string(obj.get("latest")),
+        start: opt_string(obj.get("start")),
+        course: opt_string(obj.get("course")),
+        completed: obj
+            .get("completed")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        completed_day: obj.get("completed_day").and_then(Value::as_i64),
+        missed_days: i64_list(obj.get("missed_days")),
+        pinned: obj.get("pinned").and_then(Value::as_bool).unwrap_or(false),
+        rest,
+    })
+}
+
+fn put_str(map: &mut Map<String, Value>, key: &str, value: &Option<String>) {
+    if let Some(value) = value {
+        map.insert(key.into(), Value::String(value.clone()));
+    }
+}
+
+pub fn block_to_value(block: &TimeBlock) -> Value {
+    let mut map = block.rest.clone();
+    map.insert("id".into(), Value::String(block.id.clone()));
+    map.insert("title".into(), Value::String(block.title.clone()));
+    map.insert("kind".into(), Value::String(block.kind.clone()));
+    map.insert("duration_min".into(), Value::from(block.duration_min));
+    map.insert(
+        "days".into(),
+        Value::Array(block.days.iter().copied().map(Value::from).collect()),
+    );
+    map.insert("priority".into(), Value::from(block.priority));
+    map.insert("energy".into(), Value::String(block.energy.clone()));
+    put_str(&mut map, "earliest", &block.earliest);
+    put_str(&mut map, "latest", &block.latest);
+    put_str(&mut map, "start", &block.start);
+    put_str(&mut map, "course", &block.course);
+    if block.completed {
+        map.insert("completed".into(), Value::Bool(true));
+    }
+    if let Some(day) = block.completed_day {
+        map.insert("completed_day".into(), Value::from(day));
+    }
+    if !block.missed_days.is_empty() {
+        map.insert(
+            "missed_days".into(),
+            Value::Array(block.missed_days.iter().copied().map(Value::from).collect()),
+        );
+    }
+    if block.pinned {
+        map.insert("pinned".into(), Value::Bool(true));
+    }
+    Value::Object(map)
+}
+
+pub fn work_window_from_value(value: &Value) -> WorkWindow {
+    WorkWindow {
+        days: i64_list(value.get("days")),
+        start: value
+            .get("start")
+            .and_then(Value::as_str)
+            .unwrap_or("00:00")
+            .into(),
+        end: value
+            .get("end")
+            .and_then(Value::as_str)
+            .unwrap_or("24:00")
+            .into(),
+        subject: opt_string(value.get("subject")),
+    }
+}
+
+pub fn study_window_from_value(value: &Value) -> StudyWindow {
+    StudyWindow {
+        days: i64_list(value.get("days")),
+        start: value
+            .get("start")
+            .and_then(Value::as_str)
+            .unwrap_or("00:00")
+            .into(),
+        duration_min: i64_field(value, "duration_min", 0),
+        subject: opt_string(value.get("subject")),
+    }
+}
+
+fn window_to_value(window: &WorkWindow) -> Value {
+    let mut map = Map::new();
+    map.insert(
+        "days".into(),
+        Value::Array(window.days.iter().copied().map(Value::from).collect()),
+    );
+    map.insert("start".into(), Value::String(window.start.clone()));
+    map.insert("end".into(), Value::String(window.end.clone()));
+    if let Some(subject) = &window.subject {
+        map.insert("subject".into(), Value::String(subject.clone()));
+    }
+    Value::Object(map)
+}
+
+fn point_of(value: &Value) -> Option<(i64, i64)> {
+    let pair = value.as_array()?;
+    Some((pair.first()?.as_i64()?, pair.get(1)?.as_i64()?))
+}
+
+pub fn overrides_from(deadlines: Option<&Value>, slack: Option<&Value>) -> DeadlineOverrides {
+    let mut out = DeadlineOverrides::default();
+    if let Some(map) = deadlines.and_then(Value::as_object) {
+        for (key, value) in map {
+            out.deadlines.push((key.clone(), point_of(value)));
+        }
+    }
+    if let Some(map) = slack.and_then(Value::as_object) {
+        for (key, value) in map {
+            if let Some(point) = point_of(value) {
+                out.slack_deadlines.push((key.clone(), point));
+            }
+        }
+    }
+    out
+}
+
+pub fn trace_to_value(trace: &SolveTrace) -> Value {
+    let moves: Vec<Value> = trace
+        .moves
+        .iter()
+        .map(|item| {
+            serde_json::json!({
+                "block_id": item.block_id,
+                "reason": item.reason,
+                "from_day": item.from_day,
+                "from_start": item.from_start,
+                "to_day": item.to_day,
+                "to_start": item.to_start,
+            })
+        })
+        .collect();
+    let explanations: Vec<Value> = trace
+        .explanations
+        .iter()
+        .map(|item| {
+            serde_json::json!({
+                "block_id": item.block_id,
+                "message": item.message,
+                "reason": item.reason,
+                "slack_min": item.slack_min,
+                "slack_status": item.slack_status,
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "placed": trace.placed.iter().map(block_to_value).collect::<Vec<_>>(),
+        "unplaced": trace.unplaced.iter().map(block_to_value).collect::<Vec<_>>(),
+        "moves": moves,
+        "explanations": explanations,
+        "failed_constraints": trace.failed_constraints,
+        "solve_ms": trace.solve_ms,
+        "complete": trace.complete,
+        "work_windows": trace.work_windows.iter().map(window_to_value).collect::<Vec<_>>(),
+        "work_windows_defaulted": trace.work_windows_defaulted,
+    })
 }
 
 #[cfg(test)]

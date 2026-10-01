@@ -1,9 +1,9 @@
 //! Reminder due checks from `desktop/native/remind.py`.
 
 use chrono::{Datelike, NaiveDate, Timelike};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
-use crate::desk::calendar::{date_for_day, monday_of, DAYS};
+use crate::desk::calendar::{DAYS, date_for_day, monday_of};
 use crate::desk::reuse::occurrence_days;
 use crate::desk::weekmodel::hhmm_text;
 use crate::time::hhmm_to_minutes;
@@ -29,7 +29,12 @@ pub fn clock_parts(now_ms: i64) -> Map<String, Value> {
     let date = local.date();
     out.insert(
         "iso".into(),
-        json!(format!("{:04}-{:02}-{:02}", date.year(), date.month(), date.day())),
+        json!(format!(
+            "{:04}-{:02}-{:02}",
+            date.year(),
+            date.month(),
+            date.day()
+        )),
     );
     out.insert(
         "day".into(),
@@ -84,7 +89,12 @@ pub fn reminder_blocks(blocks: &[Value], trace: Option<&Value>) -> Vec<Value> {
         .cloned()
         .collect();
     let mut placed = Vec::new();
-    for item in trace.get("placed").and_then(Value::as_array).into_iter().flatten() {
+    for item in trace
+        .get("placed")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
         if item.get("kind").and_then(Value::as_str) != Some("flexible") {
             continue;
         }
@@ -103,19 +113,23 @@ pub fn reminder_blocks(blocks: &[Value], trace: Option<&Value>) -> Vec<Value> {
         );
         merged.insert(
             "missed_days".into(),
-            json!(source
-                .get("missed_days")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()),
+            json!(
+                source
+                    .get("missed_days")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+            ),
         );
         merged.insert(
             "title".into(),
-            json!(source
-                .get("title")
-                .and_then(Value::as_str)
-                .or_else(|| item.get("title").and_then(Value::as_str))
-                .unwrap_or("")),
+            json!(
+                source
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .or_else(|| item.get("title").and_then(Value::as_str))
+                    .unwrap_or("")
+            ),
         );
         placed.push(Value::Object(merged));
     }
@@ -150,7 +164,12 @@ pub fn todays_starts(
                 continue;
             }
             let start_min = hhmm_to_minutes(start).unwrap_or(0);
-            let key = reminder_key(&week_start, block.get("id").and_then(Value::as_str).unwrap_or(""), day, start);
+            let key = reminder_key(
+                &week_start,
+                block.get("id").and_then(Value::as_str).unwrap_or(""),
+                day,
+                start,
+            );
             rows.push((block.clone(), day, start_min, key));
         }
     }
@@ -242,7 +261,10 @@ pub fn due_alarms(
         }
         let time = obj.get("time").and_then(Value::as_str).unwrap_or("0:0");
         let parts: Vec<i64> = time.split(':').filter_map(|p| p.parse().ok()).collect();
-        let (hour, minute) = (parts.first().copied().unwrap_or(0), parts.get(1).copied().unwrap_or(0));
+        let (hour, minute) = (
+            parts.first().copied().unwrap_or(0),
+            parts.get(1).copied().unwrap_or(0),
+        );
         let day = NaiveDate::parse_from_str(today_iso, "%Y-%m-%d").expect("today");
         let due_at = day.and_hms_opt(hour as u32, minute as u32, 0).expect("due");
         let due_ms = due_at.and_utc().timestamp_millis();

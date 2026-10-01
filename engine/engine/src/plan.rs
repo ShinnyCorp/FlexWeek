@@ -9,8 +9,9 @@ use serde_json::{Map, Value, json};
 use crate::error::{EngineError, EngineResult};
 use crate::model::{LAST_DAY_ISO, due_sort_key, parse_due};
 use crate::time::{
-    DAY_END_MIN, SLOT_MIN, SLOTS_PER_DAY, block_interval_on_day, clock_to_minutes, hhmm_to_minutes,
-    minutes_to_hhmm, monday_of, month_grid, occupancy_between, parse_deadline, parse_month,
+    DAY_END_MIN, SLOT_MIN, SLOTS_PER_DAY, block_interval_on_day, clock_to_minutes, date_from_iso,
+    hhmm_to_minutes, minutes_to_hhmm, monday_of, month_grid, occupancy_between, parse_deadline,
+    parse_month, shift_days,
 };
 
 fn iso_date(day: NaiveDate) -> String {
@@ -164,7 +165,7 @@ pub fn split_plan(
     break_min: i64,
     long_break_min: i64,
     cadence: i64,
-) -> Value {
+) -> EngineResult<Value> {
     let mut remaining = duration_min;
     let mut work_index = 0i64;
     let mut segments: Vec<Value> = Vec::new();
@@ -178,6 +179,9 @@ pub fn split_plan(
         }));
         remaining -= length;
         if remaining > 0 {
+            if cadence == 0 {
+                return Err(EngineError::zero_division("division by zero"));
+            }
             let long = work_index.rem_euclid(cadence) == 0;
             segments.push(json!({
                 "role": "break",
@@ -190,10 +194,10 @@ pub fn split_plan(
         .iter()
         .map(|s| s["duration_min"].as_i64().unwrap_or(0))
         .sum();
-    json!({
+    Ok(json!({
         "segments": segments,
         "total_min": total_min,
-    })
+    }))
 }
 
 pub fn preview_split(
@@ -202,7 +206,7 @@ pub fn preview_split(
     timer_break_min: i64,
     timer_long_break_min: i64,
     timer_long_break_every: i64,
-) -> Value {
+) -> EngineResult<Value> {
     let snapped = json!({
         "timer_work_min": snap_minutes(timer_work_min, 1, 180),
         "timer_break_min": snap_minutes(timer_break_min, 1, 60),
@@ -236,7 +240,7 @@ pub fn preview_split(
             snapped["timer_break_min"].as_i64().unwrap_or(15),
             snapped["timer_long_break_min"].as_i64().unwrap_or(30),
             timer_long_break_every,
-        );
+        )?;
     }
     let mut out = Map::new();
     for (k, v) in snapped.as_object().unwrap() {
@@ -256,7 +260,7 @@ pub fn preview_split(
             out.insert(k.clone(), v.clone());
         }
     }
-    Value::Object(out)
+    Ok(Value::Object(out))
 }
 
 // --- assignments.py (sha256 + helpers) ---
@@ -347,7 +351,88 @@ pub fn migrated_assignment_id(week_start: &str, source_id: &str) -> String {
 }
 
 fn parse_iso_date(s: &str) -> EngineResult<NaiveDate> {
-    NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| EngineError::value("invalid date"))
+    date_from_iso(s)
+}
+
+fn py_index(len: usize, index: i64) -> EngineResult<usize> {
+    let n = i64::try_from(len).unwrap_or(i64::MAX);
+    let resolved = if index < 0 {
+        n.checked_add(index)
+    } else {
+        Some(index)
+    };
+    match resolved {
+        Some(at) if at >= 0 && at < n => Ok(at as usize),
+        _ => Err(EngineError::index("list index out of range")),
+    }
+}
+
+fn py_int(token: &str) -> EngineResult<i64> {
+    crate::time::py_int(token)
+}
+
+fn json_c_int(value: Option<&Value>) -> EngineResult<Option<i64>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let Some(number) = value.as_number() else {
+        return Ok(None);
+    };
+    let raw = number.to_string();
+    if raw.contains(['.', 'e', 'E']) {
+        if let Some(whole) = number.as_i64() {
+            return Ok(Some(whole));
+        }
+        if let Some(float) = number.as_f64()
+            && float.is_finite()
+            && float.fract() == 0.0
+            && (i64::MIN as f64..=i64::MAX as f64).contains(&float)
+        {
+            return Ok(Some(float as i64));
+        }
+        return Err(EngineError::overflow(
+            "Python int too large to convert to C int",
+        ));
+    }
+    raw.parse::<i64>()
+        .map(Some)
+        .map_err(|_| EngineError::overflow("Python int too large to convert to C int"))
+}
+
+fn py_date_add(day: NaiveDate, days: i64) -> EngineResult<NaiveDate> {
+    if days > i64::from(i32::MAX) || days < i64::from(i32::MIN) {
+        return Err(EngineError::overflow(
+            "Python int too large to convert to C int",
+        ));
+    }
+    if days.abs() > 999_999_999 {
+        return Err(EngineError::overflow(format!(
+            "days={days}; must have magnitude <= 999999999"
+        )));
+    }
+    let next = shift_days(day, days)?;
+    if !(1..=9999).contains(&next.year()) {
+        return Err(EngineError::overflow("date value out of range"));
+    }
+    Ok(next)
+}
+
+fn unpacked_minutes(text: &str) -> EngineResult<i64> {
+    // `map(int, text.split(":"))` converts each piece before the unpack counts them.
+    let mut numbers = Vec::new();
+    for part in text.split(':') {
+        numbers.push(py_int(part)?);
+    }
+    if numbers.len() < 2 {
+        return Err(EngineError::value(format!(
+            "not enough values to unpack (expected 2, got {})",
+            numbers.len()
+        )));
+    }
+    if numbers.len() > 2 {
+        return Err(EngineError::value("too many values to unpack (expected 2)"));
+    }
+    Ok(numbers[0] * 60 + numbers[1])
 }
 
 pub fn due_from_latest(
@@ -358,11 +443,11 @@ pub fn due_from_latest(
     let monday = parse_iso_date(week_start)?;
     let parsed = parse_deadline(latest, days)?;
     if parsed.is_none() {
-        let sunday = monday + Duration::days(6);
+        let sunday = shift_days(monday, 6)?;
         return Ok(format!("{}T23:59", iso_date(sunday)));
     }
     let (day_index, minutes) = parsed.unwrap();
-    let day = monday + Duration::days(day_index);
+    let day = shift_days(monday, day_index)?;
     Ok(format!("{}T{}", iso_date(day), minutes_to_hhmm(minutes)))
 }
 
@@ -374,18 +459,27 @@ pub fn completed_at_for_block(week_start: &str, block: &Value) -> EngineResult<S
         .and_then(Value::as_array)
         .map(|a| a.iter().filter_map(|v| v.as_i64()).collect())
         .unwrap_or_default();
-    let mut day = block.get("completed_day").and_then(Value::as_i64);
+    let mut day = json_c_int(block.get("completed_day"))?;
     if let Some(start) = start {
         if day.is_none() && days.len() == 1 {
             day = Some(days[0]);
         }
         if let Some(day_index) = day {
-            let mut end = hhmm_to_minutes(start)? + block["duration_min"].as_i64().unwrap_or(0);
-            let mut day_date = monday + Duration::days(day_index);
+            let duration = json_c_int(block.get("duration_min"))?.unwrap_or(0);
+            let mut end = hhmm_to_minutes(start)?
+                .checked_add(duration)
+                .ok_or_else(|| EngineError::overflow("Python int too large to convert to C int"))?;
+            let mut extra_days = 0i64;
             if end >= 24 * 60 {
-                day_date += Duration::days(end.div_euclid(24 * 60));
-                end %= 24 * 60;
+                extra_days = end.div_euclid(24 * 60);
+                end = end.rem_euclid(24 * 60);
             }
+            let day_date = py_date_add(
+                monday,
+                day_index.checked_add(extra_days).ok_or_else(|| {
+                    EngineError::overflow("Python int too large to convert to C int")
+                })?,
+            )?;
             let last = NaiveDate::parse_from_str(LAST_DAY_ISO, "%Y-%m-%d").unwrap();
             if day_date > last {
                 return Ok(format!("{LAST_DAY_ISO}T23:59"));
@@ -393,7 +487,7 @@ pub fn completed_at_for_block(week_start: &str, block: &Value) -> EngineResult<S
             return Ok(format!("{}T{}", iso_date(day_date), minutes_to_hhmm(end)));
         }
     }
-    let sunday = monday + Duration::days(6);
+    let sunday = py_date_add(monday, 6)?;
     Ok(format!("{}T23:59", iso_date(sunday)))
 }
 
@@ -504,7 +598,7 @@ pub fn prepare_solve(
         };
         let body = assignments
             .get(aid)
-            .ok_or_else(|| EngineError::lookup(format!("assignment not found: {aid}")))?;
+            .ok_or_else(|| EngineError::key(aid.to_string()))?;
         if body
             .get("completed")
             .and_then(Value::as_bool)
@@ -611,17 +705,21 @@ pub fn migrate_blocks(
 ) -> EngineResult<(Vec<Value>, Vec<Value>)> {
     let mut updated: Vec<Value> = blocks.to_vec();
     let mut created: Vec<Value> = Vec::new();
-    let mut grouped: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    let mut grouped: Vec<(String, Vec<usize>)> = Vec::new();
     for (index, block) in updated.iter().enumerate() {
         if block.get("kind").and_then(Value::as_str) == Some("locked")
             && let Some(parent) = block.get("pomodoro_parent_id").and_then(Value::as_str)
         {
-            grouped.entry(parent.to_string()).or_default().push(index);
+            if let Some((_, indices)) = grouped.iter_mut().find(|(name, _)| name == parent) {
+                indices.push(index);
+            } else {
+                grouped.push((parent.to_string(), vec![index]));
+            }
         }
     }
     let mut claimed: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
     let monday = parse_iso_date(week_start)?;
-    let sunday_due = format!("{}T23:59", iso_date(monday + Duration::days(6)));
+    let sunday_due = format!("{}T23:59", iso_date(shift_days(monday, 6)?));
     for (parent, indices) in grouped {
         let work_indices: Vec<usize> = indices
             .iter()
@@ -746,12 +844,8 @@ pub fn legacy_work_windows() -> Vec<Value> {
     })]
 }
 
-pub fn add_occupancy(
-    occ: &mut [u128],
-    day: usize,
-    start_min: i64,
-    end_min: i64,
-) -> EngineResult<()> {
+pub fn add_occupancy(occ: &mut [u128], day: i64, start_min: i64, end_min: i64) -> EngineResult<()> {
+    let day = py_index(occ.len(), day)?;
     occ[day] |= occupancy_between(start_min, end_min)?;
     Ok(())
 }
@@ -762,23 +856,18 @@ pub fn occupancy_from_windows(
 ) -> EngineResult<Vec<u128>> {
     let mut occ = vec![0u128; 7];
     for window in protected {
-        let start_str = window["start"].as_str().unwrap_or("00:00");
-        let parts: Vec<&str> = start_str.split(':').collect();
-        let start =
-            parts[0].parse::<i64>().unwrap_or(0) * 60 + parts[1].parse::<i64>().unwrap_or(0);
+        let start = unpacked_minutes(window["start"].as_str().unwrap_or("00:00"))?;
         let duration = window["duration_min"].as_i64().unwrap_or(0);
         if let Some(days) = window.get("days").and_then(Value::as_array) {
             for day in days {
                 if let Some(d) = day.as_i64() {
-                    add_occupancy(&mut occ, d as usize, start, start + duration)?;
+                    add_occupancy(&mut occ, d, start, start + duration)?;
                 }
             }
         }
     }
-    if let Some(day_cutoff) = day_cutoff {
-        let parts: Vec<&str> = day_cutoff.split(':').collect();
-        let cutoff =
-            parts[0].parse::<i64>().unwrap_or(0) * 60 + parts[1].parse::<i64>().unwrap_or(0);
+    if let Some(day_cutoff) = day_cutoff.filter(|text| !text.is_empty()) {
+        let cutoff = unpacked_minutes(day_cutoff)?;
         for day in 0..7 {
             add_occupancy(&mut occ, day, cutoff, DAY_END_MIN)?;
         }
@@ -786,16 +875,16 @@ pub fn occupancy_from_windows(
     Ok(occ)
 }
 
-pub fn lateness_occupancy(day: usize, from_start: &str, minutes: i64) -> EngineResult<Vec<u128>> {
+pub fn lateness_occupancy(day: i64, from_start: &str, minutes: i64) -> EngineResult<Vec<u128>> {
     let mut occ = vec![0u128; 7];
-    let start = hhmm_to_minutes(from_start)?;
+    let start = unpacked_minutes(from_start)?;
     add_occupancy(&mut occ, day, start, start + minutes)?;
     Ok(occ)
 }
 
 fn casefold_trim(s: Option<&str>) -> Option<String> {
     s.filter(|t| !t.trim().is_empty())
-        .map(|t| t.trim().to_lowercase())
+        .map(|t| crate::casefold::casefold(t.trim()))
 }
 
 pub fn study_rank(
@@ -830,7 +919,7 @@ pub fn study_rank(
             && window
                 .get("subject")
                 .and_then(Value::as_str)
-                .map(|s| s.trim().to_lowercase())
+                .map(|s| crate::casefold::casefold(s.trim()))
                 == Some(wanted.clone())
         {
             return 0;
@@ -866,7 +955,7 @@ fn merged_work_spans(
         }
         if let Some(subject) = window.get("subject").and_then(Value::as_str)
             && (wanted.is_none()
-                || subject.trim().to_lowercase() != wanted.as_deref().unwrap_or(""))
+                || crate::casefold::casefold(subject.trim()) != wanted.as_deref().unwrap_or(""))
         {
             continue;
         }
@@ -905,11 +994,20 @@ pub fn session_inside_work_windows(
         .any(|(begin, finish)| *begin <= start_min && end_min <= *finish))
 }
 
-pub fn merge_occupancy(base: &[u128], extra: &[u128]) -> Vec<u128> {
-    base.iter()
+pub fn merge_occupancy(base: &[u128], extra: &[u128]) -> EngineResult<Vec<u128>> {
+    if base.len() != extra.len() {
+        let message = if extra.len() > base.len() {
+            "zip() argument 2 is longer than argument 1"
+        } else {
+            "zip() argument 2 is shorter than argument 1"
+        };
+        return Err(EngineError::value(message));
+    }
+    Ok(base
+        .iter()
         .zip(extra.iter())
         .map(|(left, right)| left | right)
-        .collect()
+        .collect())
 }
 
 pub fn spread_sessions(
@@ -1615,7 +1713,7 @@ mod tests {
 
     #[test]
     fn split_plan_60_matches_python() {
-        let plan = split_plan(60, 25, 5, 15, 4);
+        let plan = split_plan(60, 25, 5, 15, 4).unwrap();
         assert_eq!(plan["total_min"].as_i64(), Some(70));
         assert_eq!(plan["segments"].as_array().map(|a| a.len()), Some(5));
     }

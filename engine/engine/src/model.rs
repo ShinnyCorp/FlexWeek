@@ -126,8 +126,8 @@ pub fn parse_naive_stamp(value: &str) -> EngineResult<(NaiveDate, i64)> {
     })?;
     let hour_minute = caps.get(2).expect("time").as_str();
     let parts: Vec<&str> = hour_minute.split(':').collect();
-    let hour: i64 = parts[0].parse().unwrap();
-    let minute: i64 = parts[1].parse().unwrap();
+    let hour = crate::time::py_int(parts[0])?;
+    let minute = crate::time::py_int(parts[1])?;
     Ok((
         iso_day(caps.get(1).expect("date").as_str())?,
         hour * 60 + minute,
@@ -147,8 +147,8 @@ pub fn parse_due(value: &str) -> EngineResult<(NaiveDate, i64)> {
         return Ok((day, END_OF_DAY_MIN));
     }
     let parts: Vec<&str> = clock.split(':').collect();
-    let hour: i64 = parts[0].parse().unwrap();
-    let minute: i64 = parts[1].parse().unwrap();
+    let hour = crate::time::py_int(parts[0])?;
+    let minute = crate::time::py_int(parts[1])?;
     Ok((day, hour * 60 + minute))
 }
 

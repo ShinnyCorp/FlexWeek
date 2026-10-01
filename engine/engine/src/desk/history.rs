@@ -1,6 +1,6 @@
 //! Undo/redo snapshots from `desktop/native/history.py`.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::desk::calendar::deep_copy;
 
@@ -23,7 +23,7 @@ fn sort_value(value: &Value) -> Value {
 }
 
 pub fn same_value(left: &Value, right: &Value) -> bool {
-    sort_value(left).to_string() == sort_value(right).to_string()
+    sort_value(left) == sort_value(right)
 }
 
 pub fn capture_step(
@@ -40,7 +40,10 @@ pub fn capture_step(
     step.insert("weeks".into(), Value::Array(Vec::new()));
     step.insert("assignments".into(), Value::Array(Vec::new()));
     step.insert("stale".into(), Value::Bool(false));
-    if !same_value(&Value::Array(before_blocks.to_vec()), &Value::Array(after_blocks.to_vec())) {
+    if !same_value(
+        &Value::Array(before_blocks.to_vec()),
+        &Value::Array(after_blocks.to_vec()),
+    ) {
         let mut entry = Map::new();
         entry.insert("week_start".into(), json!(week_start));
         entry.insert(
@@ -69,20 +72,18 @@ pub fn capture_step(
         }
         let mut entry = Map::new();
         entry.insert("id".into(), json!(item_id));
-        entry.insert(
-            "before".into(),
-            prior.map(deep_copy).unwrap_or(Value::Null),
-        );
-        entry.insert(
-            "after".into(),
-            after.map(deep_copy).unwrap_or(Value::Null),
-        );
+        entry.insert("before".into(), prior.map(deep_copy).unwrap_or(Value::Null));
+        entry.insert("after".into(), after.map(deep_copy).unwrap_or(Value::Null));
         step.get_mut("assignments")
             .and_then(Value::as_array_mut)
             .unwrap()
             .push(Value::Object(entry));
     }
-    let weeks = step.get("weeks").and_then(Value::as_array).cloned().unwrap_or_default();
+    let weeks = step
+        .get("weeks")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let assignments = step
         .get("assignments")
         .and_then(Value::as_array)
@@ -102,7 +103,13 @@ pub fn push_step(stack: &mut Vec<Map<String, Value>>, step: Map<String, Value>) 
 }
 
 pub fn join_step(stack: &mut Vec<Map<String, Value>>, step: Map<String, Value>) {
-    if stack.is_empty() || stack.last().and_then(|s| s.get("stale")).and_then(Value::as_bool) == Some(true) {
+    if stack.is_empty()
+        || stack
+            .last()
+            .and_then(|s| s.get("stale"))
+            .and_then(Value::as_bool)
+            == Some(true)
+    {
         push_step(stack, step);
         return;
     }
@@ -114,20 +121,25 @@ pub fn join_step(stack: &mut Vec<Map<String, Value>>, step: Map<String, Value>) 
         .flatten()
         .filter_map(|entry| {
             let obj = entry.as_object()?;
-            Some((
-                obj.get("week_start")?.as_str()?.to_string(),
-                obj.clone(),
-            ))
+            Some((obj.get("week_start")?.as_str()?.to_string(), obj.clone()))
         })
         .collect();
-    for entry in step.get("weeks").and_then(Value::as_array).into_iter().flatten() {
+    for entry in step
+        .get("weeks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
         let Some(obj) = entry.as_object() else {
             continue;
         };
         let week_start = obj.get("week_start").and_then(Value::as_str).unwrap_or("");
         if let Some(known) = weeks.get(week_start) {
             let mut merged = obj.clone();
-            merged.insert("before".into(), known.get("before").cloned().unwrap_or(Value::Null));
+            merged.insert(
+                "before".into(),
+                known.get("before").cloned().unwrap_or(Value::Null),
+            );
             weeks.insert(week_start.to_string(), merged);
         } else {
             weeks.insert(week_start.to_string(), obj.clone());
@@ -155,7 +167,10 @@ pub fn join_step(stack: &mut Vec<Map<String, Value>>, step: Map<String, Value>) 
         let id = obj.get("id").and_then(Value::as_str).unwrap_or("");
         if let Some(known) = assignments.get(id) {
             let mut merged = obj.clone();
-            merged.insert("before".into(), known.get("before").cloned().unwrap_or(Value::Null));
+            merged.insert(
+                "before".into(),
+                known.get("before").cloned().unwrap_or(Value::Null),
+            );
             assignments.insert(id.to_string(), merged);
         } else {
             assignments.insert(id.to_string(), obj.clone());

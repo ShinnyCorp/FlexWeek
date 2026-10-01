@@ -1,6 +1,6 @@
 //! Focus timer logic from `desktop/native/focus.py`.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::desk::calendar::deep_copy;
 use crate::desk::reuse::occurrence_days;
@@ -100,7 +100,10 @@ pub fn more_time_choices(estimate_min: i64) -> Vec<i64> {
 
 pub fn persist_payload(state: Option<&Map<String, Value>>) -> Option<Value> {
     let state = state?;
-    let running = state.get("running").and_then(Value::as_bool).unwrap_or(false);
+    let running = state
+        .get("running")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     Some(json!({
         "assignmentId": state.get("assignmentId"),
         "sessionId": state.get("blockId"),
@@ -141,12 +144,13 @@ pub fn restore_state(
         .get("assignmentId")
         .and_then(Value::as_str)
         .map(str::to_string);
-    let assignment = assignment_id
-        .as_ref()
-        .and_then(|id| assignments.get(id));
+    let assignment = assignment_id.as_ref().and_then(|id| assignments.get(id));
     if assignment_id.is_some()
         && (assignment.is_none()
-            || assignment.and_then(|a| a.get("completed")).and_then(Value::as_bool) == Some(true))
+            || assignment
+                .and_then(|a| a.get("completed"))
+                .and_then(Value::as_bool)
+                == Some(true))
     {
         return None;
     }
@@ -154,9 +158,11 @@ pub fn restore_state(
         .get("sessionId")
         .and_then(Value::as_str)
         .map(str::to_string);
-    let block = block_id
-        .as_ref()
-        .and_then(|id| blocks.iter().find(|b| b.get("id").and_then(Value::as_str) == Some(id.as_str())));
+    let block = block_id.as_ref().and_then(|id| {
+        blocks
+            .iter()
+            .find(|b| b.get("id").and_then(Value::as_str) == Some(id.as_str()))
+    });
     let running = saved.get("endsAt").and_then(Value::as_f64).is_some()
         || saved.get("endsAt").and_then(Value::as_i64).is_some();
     let mut title = "Quick focus".to_string();
@@ -173,9 +179,16 @@ pub fn restore_state(
     state.insert("blockId".into(), json!(block_id));
     state.insert(
         "assignmentId".into(),
-        json!(assignment.and_then(|a| a.get("id").cloned()).unwrap_or(Value::Null)),
+        json!(
+            assignment
+                .and_then(|a| a.get("id").cloned())
+                .unwrap_or(Value::Null)
+        ),
     );
-    state.insert("day".into(), saved.get("day").cloned().unwrap_or(Value::Null));
+    state.insert(
+        "day".into(),
+        saved.get("day").cloned().unwrap_or(Value::Null),
+    );
     state.insert(
         "start".into(),
         saved.get("start").cloned().unwrap_or(Value::Null),
@@ -190,7 +203,12 @@ pub fn restore_state(
     );
     state.insert(
         "remainingMs".into(),
-        json!(saved.get("remainingMs").and_then(Value::as_i64).unwrap_or(0)),
+        json!(
+            saved
+                .get("remainingMs")
+                .and_then(Value::as_i64)
+                .unwrap_or(0)
+        ),
     );
     if running && state.get("endsAt").and_then(Value::as_i64).unwrap_or(0) <= now_ms {
         state.insert("running".into(), json!(false));
@@ -200,7 +218,11 @@ pub fn restore_state(
     Some(state)
 }
 
-pub fn begin_state(target: Map<String, Value>, prefs: Option<&Map<String, Value>>, now_ms: i64) -> Map<String, Value> {
+pub fn begin_state(
+    target: Map<String, Value>,
+    prefs: Option<&Map<String, Value>>,
+    now_ms: i64,
+) -> Map<String, Value> {
     let duration = phase_duration_ms("work", prefs);
     let mut state = target;
     state.insert("phase".into(), json!("work"));
@@ -262,9 +284,7 @@ pub fn credit_target(
     block: Option<&Value>,
     work_min: i64,
 ) -> Option<Value> {
-    if state.get("blockId").is_none() {
-        return None;
-    }
+    state.get("blockId")?;
     let amount = work_min.min(MAX_FOCUS_MINUTES);
     if state.get("assignmentId").is_some() {
         let assignment = assignment?;
@@ -272,11 +292,23 @@ pub fn credit_target(
         if let Some(obj) = updated.as_object_mut() {
             obj.insert(
                 "focus_sessions".into(),
-                json!((obj.get("focus_sessions").and_then(Value::as_i64).unwrap_or(0) + 1).min(MAX_FOCUS_SESSIONS)),
+                json!(
+                    (obj.get("focus_sessions")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
+                        + 1)
+                    .min(MAX_FOCUS_SESSIONS)
+                ),
             );
             obj.insert(
                 "focus_minutes".into(),
-                json!((obj.get("focus_minutes").and_then(Value::as_i64).unwrap_or(0) + amount).min(MAX_FOCUS_MINUTES)),
+                json!(
+                    (obj.get("focus_minutes")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
+                        + amount)
+                        .min(MAX_FOCUS_MINUTES)
+                ),
             );
         }
         return Some(updated);
@@ -286,11 +318,23 @@ pub fn credit_target(
     if let Some(obj) = updated.as_object_mut() {
         obj.insert(
             "focus_sessions".into(),
-            json!((obj.get("focus_sessions").and_then(Value::as_i64).unwrap_or(0) + 1).min(MAX_FOCUS_SESSIONS)),
+            json!(
+                (obj.get("focus_sessions")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    + 1)
+                .min(MAX_FOCUS_SESSIONS)
+            ),
         );
         obj.insert(
             "focus_minutes".into(),
-            json!((obj.get("focus_minutes").and_then(Value::as_i64).unwrap_or(0) + amount).min(MAX_FOCUS_MINUTES)),
+            json!(
+                (obj.get("focus_minutes")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    + amount)
+                    .min(MAX_FOCUS_MINUTES)
+            ),
         );
     }
     Some(updated)
@@ -322,7 +366,11 @@ pub fn focus_candidates(
             .get("assignment_id")
             .and_then(Value::as_str)
             .and_then(|id| assignments.get(id));
-        if assignment.and_then(|a| a.get("completed")).and_then(Value::as_bool) == Some(true) {
+        if assignment
+            .and_then(|a| a.get("completed"))
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
             continue;
         }
         let placement = block
@@ -359,7 +407,9 @@ pub fn focus_candidates(
 pub fn now_and_next(blocks: &[Value], day: i64, minute: i64) -> Map<String, Value> {
     let mut active = Vec::new();
     for block in blocks {
-        if block.get("start").is_none() || block.get("completed").and_then(Value::as_bool) == Some(true) {
+        if block.get("start").is_none()
+            || block.get("completed").and_then(Value::as_bool) == Some(true)
+        {
             continue;
         }
         if block
@@ -378,16 +428,19 @@ pub fn now_and_next(blocks: &[Value], day: i64, minute: i64) -> Map<String, Valu
         hhmm_to_minutes(a.get("start").and_then(Value::as_str).unwrap_or(""))
             .unwrap_or(0)
             .cmp(
-                &hhmm_to_minutes(b.get("start").and_then(Value::as_str).unwrap_or(""))
-                    .unwrap_or(0),
+                &hhmm_to_minutes(b.get("start").and_then(Value::as_str).unwrap_or("")).unwrap_or(0),
             )
     });
     let mut current = None;
     let mut following = None;
     for block in &active {
-        let start = hhmm_to_minutes(block.get("start").and_then(Value::as_str).unwrap_or(""))
-            .unwrap_or(0);
-        let end = start + block.get("duration_min").and_then(Value::as_i64).unwrap_or(0);
+        let start =
+            hhmm_to_minutes(block.get("start").and_then(Value::as_str).unwrap_or("")).unwrap_or(0);
+        let end = start
+            + block
+                .get("duration_min")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
         if current.is_none() && start <= minute && minute < end {
             current = Some(block.clone());
         }
@@ -396,14 +449,8 @@ pub fn now_and_next(blocks: &[Value], day: i64, minute: i64) -> Map<String, Valu
         }
     }
     let mut out = Map::new();
-    out.insert(
-        "current".into(),
-        current.unwrap_or(Value::Null),
-    );
-    out.insert(
-        "next".into(),
-        following.unwrap_or(Value::Null),
-    );
+    out.insert("current".into(), current.unwrap_or(Value::Null));
+    out.insert("next".into(), following.unwrap_or(Value::Null));
     out
 }
 
@@ -412,7 +459,10 @@ pub fn now_next_line(result: &Map<String, Value>, minute: i64) -> String {
     if let Some(current) = result.get("current").and_then(Value::as_object) {
         let end = hhmm_to_minutes(current.get("start").and_then(Value::as_str).unwrap_or(""))
             .unwrap_or(0)
-            + current.get("duration_min").and_then(Value::as_i64).unwrap_or(0);
+            + current
+                .get("duration_min")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
         parts.push(format!(
             "Now: {} · {} left",
             current.get("title").and_then(Value::as_str).unwrap_or(""),
@@ -431,7 +481,12 @@ pub fn now_next_line(result: &Map<String, Value>, minute: i64) -> String {
         parts.push(format!(
             "Next: {} at {}{}",
             following.get("title").and_then(Value::as_str).unwrap_or(""),
-            hhmm_text(following.get("start").and_then(Value::as_str).unwrap_or("00:00")),
+            hhmm_text(
+                following
+                    .get("start")
+                    .and_then(Value::as_str)
+                    .unwrap_or("00:00")
+            ),
             suffix
         ));
     }

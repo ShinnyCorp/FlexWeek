@@ -5,10 +5,10 @@ use chrono::{Datelike, Duration, NaiveDate};
 fn iso_date(day: NaiveDate) -> String {
     format!("{:04}-{:02}-{:02}", day.year(), day.month(), day.day())
 }
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::error::{EngineError, EngineResult};
-use crate::time::{self, hhmm_to_minutes, minutes_to_hhmm, DAY_END_MIN, DAY_START_MIN};
+use crate::time::{self, DAY_END_MIN, DAY_START_MIN, hhmm_to_minutes, minutes_to_hhmm};
 
 pub const LOCKED_CATEGORIES: [&str; 6] = ["class", "exercise", "extra", "meals", "sleep", "free"];
 pub const FLEX_CATEGORIES: [&str; 2] = ["assignments", "study"];
@@ -25,8 +25,7 @@ pub const DAY_FULL: [&str; 7] = [
 ];
 pub const FIRST_MONTH: &str = "2000-01";
 pub const LAST_MONTH: &str = "2099-12";
-pub const SERIES_DRAG_MESSAGE: &str =
-    "{title} repeats on {count} days, so dragging it is ambiguous. Edit the occurrence or the series.";
+pub const SERIES_DRAG_MESSAGE: &str = "{title} repeats on {count} days, so dragging it is ambiguous. Edit the occurrence or the series.";
 pub const SETUP_SCHOOL_ID: &str = "school";
 pub const SETUP_ACTIVITY_PREFIX: &str = "activity-";
 
@@ -90,9 +89,12 @@ pub fn occupied_intervals(blocks: &[Value], day: i64) -> Vec<(i64, i64)> {
         {
             continue;
         }
-        let begin = hhmm_to_minutes(block.get("start").and_then(Value::as_str).unwrap_or(""))
+        let begin =
+            hhmm_to_minutes(block.get("start").and_then(Value::as_str).unwrap_or("")).unwrap_or(0);
+        let duration = block
+            .get("duration_min")
+            .and_then(Value::as_i64)
             .unwrap_or(0);
-        let duration = block.get("duration_min").and_then(Value::as_i64).unwrap_or(0);
         intervals.push((begin, begin + duration));
     }
     intervals.sort_unstable();
@@ -148,7 +150,9 @@ pub fn split_occurrence(
     day: i64,
     new_id: &str,
 ) -> (Vec<Value>, Option<String>) {
-    let current = blocks.iter().find(|b| b.get("id").and_then(Value::as_str) == Some(block_id));
+    let current = blocks
+        .iter()
+        .find(|b| b.get("id").and_then(Value::as_str) == Some(block_id));
     let Some(current) = current else {
         return (blocks.iter().map(deep_copy).collect(), None);
     };
@@ -263,10 +267,12 @@ pub fn apply_block_edit(
     let current = blocks
         .iter()
         .find(|item| item.get("id").and_then(Value::as_str) == Some(block_id));
-    if scope == "occurrence" && current.is_some() && day.is_some() && is_series(current.unwrap()) {
-        let (split, new_id) =
-            split_occurrence(blocks, block_id, day.unwrap(), new_occurrence_id);
-        let target_days = vec![day.unwrap()];
+    if let (Some(current), Some(day)) = (current, day)
+        && scope == "occurrence"
+        && is_series(current)
+    {
+        let (split, new_id) = split_occurrence(blocks, block_id, day, new_occurrence_id);
+        let target_days = vec![day];
         let missed: Vec<i64> = block
             .get("missed_days")
             .and_then(Value::as_array)
@@ -279,10 +285,7 @@ pub fn apply_block_edit(
             .unwrap_or_default();
         let mut updated = deep_copy(block);
         if let Some(obj) = updated.as_object_mut() {
-            obj.insert(
-                "id".into(),
-                json!(new_id.as_deref().unwrap_or(block_id)),
-            );
+            obj.insert("id".into(), json!(new_id.as_deref().unwrap_or(block_id)));
             obj.insert("days".into(), json!(target_days));
             obj.insert("missed_days".into(), json!(missed));
         }
@@ -395,7 +398,13 @@ pub fn relocate_block(
                 .collect();
             return Some((out, None, made));
         }
-        let out = apply_block_edit(source, &for_date(block, from_day, to_day), "series", None, new_id);
+        let out = apply_block_edit(
+            source,
+            &for_date(block, from_day, to_day),
+            "series",
+            None,
+            new_id,
+        );
         return Some((out, None, block_id.to_string()));
     }
 
@@ -450,7 +459,9 @@ pub fn days_through(due_day: Option<i64>, first_day: i64) -> Vec<i64> {
     if last < first_day {
         return vec![last];
     }
-    (0..7).filter(|day| first_day <= *day && *day <= last).collect()
+    (0..7)
+        .filter(|day| first_day <= *day && *day <= last)
+        .collect()
 }
 
 pub fn month_for_view(iso_day: &str) -> String {
@@ -537,27 +548,26 @@ pub fn placement_on(block: &Value, day: i64, trace: Option<&Value>) -> Placement
         .and_then(Value::as_array)
         .and_then(|items| {
             items.iter().find(|item| {
-                item.get("id").and_then(Value::as_str)
-                    == block.get("id").and_then(Value::as_str)
+                item.get("id").and_then(Value::as_str) == block.get("id").and_then(Value::as_str)
             })
         });
-    if let Some(placed) = placed {
-        if placed.get("start").is_some() {
-            if placed
-                .get("days")
-                .and_then(Value::as_array)
-                .is_some_and(|d| d.iter().any(|v| v.as_i64() == Some(day)))
-            {
-                return PlacementOn::Time(
-                    placed
-                        .get("start")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string(),
-                );
-            }
-            return PlacementOn::NotToday;
+    if let Some(placed) = placed
+        && placed.get("start").is_some()
+    {
+        if placed
+            .get("days")
+            .and_then(Value::as_array)
+            .is_some_and(|d| d.iter().any(|v| v.as_i64() == Some(day)))
+        {
+            return PlacementOn::Time(
+                placed
+                    .get("start")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            );
         }
+        return PlacementOn::NotToday;
     }
     if block.get("start").is_some() {
         if block
@@ -638,8 +648,8 @@ pub fn agenda_for(
             .to_string();
         (key, id)
     }
-    sessions.sort_by(|a, b| in_clock_order(a).cmp(&in_clock_order(b)));
-    fixed.sort_by(|a, b| in_clock_order(a).cmp(&in_clock_order(b)));
+    sessions.sort_by_key(in_clock_order);
+    fixed.sort_by_key(in_clock_order);
     let due_soon = due_soon_for(iso_day, assignments);
     json!({
         "day_index": day_index,
@@ -658,11 +668,17 @@ pub fn next_action_for(
 ) -> Value {
     for row in sessions {
         let block = row.get("block").unwrap();
-        let assignment_id = block.get("assignment_id").and_then(Value::as_str).unwrap_or("");
+        let assignment_id = block
+            .get("assignment_id")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let assignment = assignments.get(assignment_id);
         if row.get("start").is_some()
             && block.get("completed").and_then(Value::as_bool) != Some(true)
-            && assignment.and_then(|a| a.get("completed")).and_then(Value::as_bool) != Some(true)
+            && assignment
+                .and_then(|a| a.get("completed"))
+                .and_then(Value::as_bool)
+                != Some(true)
         {
             return json!({"kind": "start", "id": block.get("id")});
         }
@@ -676,7 +692,11 @@ pub fn next_action_for(
             if let Some(id) = item.get("id").and_then(Value::as_str) {
                 unplanned.insert(
                     id.to_string(),
-                    json!(item.get("unplanned_min").and_then(Value::as_i64).unwrap_or(0)),
+                    json!(
+                        item.get("unplanned_min")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(0)
+                    ),
                 );
             }
         }
@@ -708,10 +728,10 @@ pub fn span_problem(
     if start_min < DAY_START_MIN || end_min > DAY_END_MIN {
         return Some("That is outside the hours FlexWeek plans in, so it stayed where it was.");
     }
-    if let Some(due) = due {
-        if (day, end_min) > due {
-            return Some("That ends after it is due, so it stayed where it was.");
-        }
+    if let Some(due) = due
+        && (day, end_min) > due
+    {
+        return Some("That ends after it is due, so it stayed where it was.");
     }
     None
 }
@@ -745,9 +765,13 @@ pub fn span_clash(
                 continue;
             }
         }
-        let begin = hhmm_to_minutes(other.get("start").and_then(Value::as_str).unwrap_or(""))
-            .unwrap_or(0);
-        let other_end = begin + other.get("duration_min").and_then(Value::as_i64).unwrap_or(0);
+        let begin =
+            hhmm_to_minutes(other.get("start").and_then(Value::as_str).unwrap_or("")).unwrap_or(0);
+        let other_end = begin
+            + other
+                .get("duration_min")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
         if start_min < other_end && begin < end_min {
             return Some(
                 other
@@ -806,10 +830,10 @@ pub fn due_is_timed(value: &str) -> bool {
 }
 
 pub fn due_sort_key(due: Option<&str>, item_id: &str) -> (NaiveDate, i64, String) {
-    if let Some(due) = due {
-        if let Ok((day, minute)) = parse_due(due) {
-            return (day, minute, item_id.to_string());
-        }
+    if let Some(due) = due
+        && let Ok((day, minute)) = parse_due(due)
+    {
+        return (day, minute, item_id.to_string());
     }
     (
         NaiveDate::from_ymd_opt(9999, 12, 31).expect("max date"),
