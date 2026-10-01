@@ -53,7 +53,6 @@ from desktop.native.hours.canvas import (
     block_layout,
 )
 from desktop.native.hours.chips import TrayChip
-from desktop.native.hours.classic import open_hours
 from desktop.native.hours.geometry import Axis, LinearTrack, overlap_columns
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import HoursScroll, Scale
@@ -112,6 +111,8 @@ TABLE = 364
 AROUND = 16
 # The focus figure's line while a timer runs: the minutes it shows are only those already credited.
 FOCUS_NOW = {"focusing": "Focusing now", "paused": "Focus paused", "break": "On a break"}
+# Minutes kept after the last block, so its end and the hour label there show whole.
+END_ROOM = 30
 # Clear space kept between the now pill and an hour label beside it.
 LABEL_CLEAR = 4
 # A block this short is a tick in its category's colour, named on hover.
@@ -233,6 +234,12 @@ def _lanes(
 
 def _length(px: int) -> int:
     return 24 * px + LEAD + TAIL
+
+
+def lanes_end(items: Sequence[Occurrence]) -> int:
+    """The minute the lanes open with at their right edge: 22:00, or the end of the last block if
+    that is later, so the evening shows and a name is not cut off at the edge."""
+    return min(max([EVENING, *(item.end for item in items)]) + END_ROOM, 24 * 60)
 
 
 class MissionPainter(BlockPainter):
@@ -404,7 +411,7 @@ class MissionPainter(BlockPainter):
     ) -> list[QRectF]:
         if drawn.held or self._whole(painter.font(), rect, drawn, visible):
             return super().words(painter, rect, drawn, ink, visible, fill, edge)
-        if self._beside(painter, rect, drawn):
+        if self._beside(painter, rect, drawn, visible):
             return self._bare(painter, rect, drawn, ink, fill, edge)
         first = replace(drawn, title=drawn.title.split()[0] if drawn.title.split() else drawn.title)
         if self._whole(painter.font(), rect, first, visible):
@@ -452,14 +459,15 @@ class MissionPainter(BlockPainter):
         painter.drawPixmap(at, icons.pixmap(icon_name, colour.name(), size, ratio))
         return QRectF(at.x(), at.y(), size, size)
 
-    def _beside(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> bool:
+    def _beside(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> bool:
         """The name, and its start if there is room, written beside the block where its row of the
         lane is free, as a Gantt chart labels a short bar: after it, else before it. On up to two
-        lines, with no word broken, and clear of the lane's edges."""
+        lines, with no word broken, and clear of the lane's edges and of the edges of what shows."""
         found = self.taken.get(drawn.span.day)
         if found is None:
             return False
         first, last, taken = found
+        first, last = max(first, visible.left()), min(last, visible.right())
         title, small = self.fonts(painter.font())
         tm, sm = QFontMetricsF(title), QFontMetricsF(small)
         row = [box for box in taken if box.top() < rect.bottom() and box.bottom() > rect.top()]
@@ -880,8 +888,7 @@ class MissionView(LayoutView):
         canvas.relayout()
         items = week.on_day(day) if is_day else week.occurrences
         canvas.set_week(items, scene.today, scene.minute)
-        open_hours(scroll, (week.week_start, day) if is_day else week.week_start, week, scene.today,
-                   scene.minute, day if is_day else None)
+        scroll.open_at((week.week_start, day) if is_day else week.week_start, lanes_end(items), end=True)
         if is_day:
             # The mock-up's height, or less in a short window beside the table, where what is still to
             # come today is the point. Under the table the page scrolls anyway.

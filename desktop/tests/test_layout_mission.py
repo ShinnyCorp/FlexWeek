@@ -385,6 +385,65 @@ def test_the_line_for_now_crosses_a_tick_it_lies_on(qapp: QApplication) -> None:
     assert view.scene.tokens["now"] in across
 
 
+def last_minute_shown(view: MissionView, name: str) -> float:
+    """The minute at the right edge of the lanes as they are scrolled."""
+    scroll = view.findChild(HoursScroll, name)
+    track = view.findChild(MissionCanvas, "missionHours").tracks[0]
+    along = scroll.horizontalScrollBar().value() + scroll.viewport().width()
+    return track.first + (along - track.area.left()) / track.per_minute()
+
+
+@pytest.mark.parametrize("size", [(1366, 760), (1280, 800), (810, 800)])
+def test_the_lanes_open_through_the_evening(qapp: QApplication, size: tuple[int, int]) -> None:
+    """The lanes open showing the end of the day that has something in it: 22:00 at the least, so a
+    name written at the evening's end is not cut off at the edge of the lanes, and for a day with a
+    late block, that block's end. The view of the hours is not shrunk to get there: it scrolls."""
+    week = shown(qapp, size=size)
+    assert last_minute_shown(week, "missionWeekScroll") >= 22 * 60
+    late = block("late", "locked", [4], "22:00", 75, title="Late", category="extra")
+    week = shown(qapp, size=size, blocks=[*BLOCKS, late])
+    assert last_minute_shown(week, "missionWeekScroll") >= 23 * 60 + 15
+    assert week._scrolls["week"].px == WEEK_SCALE.default
+    day = shown(qapp, size=size, surface="day", iso_day="2026-09-17")
+    assert last_minute_shown(day, "missionDayScroll") >= 22 * 60
+
+
+def test_the_lanes_keep_the_evening_at_their_edge_while_the_window_settles(qapp: QApplication) -> None:
+    """A window is laid out in steps, and the lanes are narrower or wider than they started. They
+    open at the evening's end and stay there until the student scrolls."""
+    view = shown(qapp, size=(1366, 760))
+    for width in (1000, 1500):
+        view.resize(width, 760)
+        qapp.processEvents()
+        assert 22 * 60 <= last_minute_shown(view, "missionWeekScroll") <= 22 * 60 + 60, width
+
+
+def test_a_name_written_beside_a_block_stays_inside_what_shows(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A short block that ends at 22:00 has lane after it, but its name would run off the lanes' edge when
+    that is where they are scrolled to; it goes before the tick, where it shows whole."""
+    seen: list[QRectF] = []
+
+    class Said(QPainter):
+        def drawText(self, *args) -> None:  # noqa: N802
+            if len(args) == 3 and isinstance(args[0], QRectF) and args[2] == "Chemistry":
+                seen.append(QRectF(args[0]))
+            super().drawText(*args)
+
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    tick = block("tick", "locked", [4], "21:15", 45, title="Chemistry", category="extra")
+    view = shown(qapp, blocks=[*BLOCKS, tick])
+    scroll = view.findChild(HoursScroll, "missionWeekScroll")
+    track = view.findChild(MissionCanvas, "missionHours").tracks[0]
+    edge = round(track.area.left() + (22 * 60 + 5) * track.per_minute())
+    scroll.horizontalScrollBar().setValue(edge - scroll.viewport().width())
+    seen.clear()
+    view.findChild(MissionCanvas, "missionHours").repaint()
+    assert len(seen) == 1, "the name is written once, beside its tick"
+    assert seen[0].right() <= edge, "and not past the right edge of the lanes"
+
+
 def test_the_now_pill_covers_no_hour_label_at_any_zoom(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:

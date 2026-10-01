@@ -170,15 +170,16 @@ class HoursScroll(QScrollArea):
         self.px = scale.default
         self._length_for = length_for
         self._gutter = gutter
-        self._pending: tuple[int, int | None] | None = None
+        self._pending: tuple[int, int | None, bool] | None = None
         # The minute at the start of what showed when the hours were hidden, until it is put back,
         # and where the bar stopped while there was no room yet to put it back.
         self._kept: float | None = None
         self._short_at: int | None = None
-        # A minute opened in the middle of what shows, and where the bar was put for it: kept in the
-        # middle while what shows changes size, as a new look's taller header makes it, until the
-        # student scrolls.
+        # A minute opened in the middle of what shows, or at its end, and where the bar was put for
+        # it: kept there while what shows changes size, as a new look's taller header makes it,
+        # until the student scrolls.
         self._centre: float | None = None
+        self._at_end = False
         self._placed: int | None = None
         # The week, or day, these hours last opened on.
         self._opened: object = None
@@ -289,21 +290,22 @@ class HoursScroll(QScrollArea):
 
     # Scrolling to a time
 
-    def scroll_to(self, minute: int, above: int | None = 90) -> None:
+    def scroll_to(self, minute: int, above: int | None = 90, end: bool = False) -> None:
         """Put `minute` near the start of what shows, with `above` minutes of the day before it, or
-        in the middle of what shows when `above` is None. Hours that are not on screen yet do it
-        when they are shown, and only then. Shown while their page is still being laid out, they may
-        not reach it yet; they do once they can."""
-        self._pending = (minute, above)
+        in the middle of what shows when `above` is None, or at the end of what shows when `end` is
+        set. Hours that are not on screen yet do it when they are shown, and only then. Shown while
+        their page is still being laid out, they may not reach it yet; they do once they can."""
+        self._pending = (minute, above, end)
         self._kept = self._short_at = None
-        self._centre = minute if above is None else None
+        self._centre = minute if above is None or end else None
+        self._at_end = end
         if not self.isVisible():
             return
         self._lay_out_now()
         if self.canvas.tracks:
             self._pending = None
             half = self._port_length() / 2 / self.canvas.tracks[0].per_minute()
-            self._kept = minute - (half if above is None else above)
+            self._kept = max(minute - 2 * half, 0) if end else minute - (half if above is None else above)
             self._put_back()
             self._placed = self._bar().value()
 
@@ -332,7 +334,7 @@ class HoursScroll(QScrollArea):
         bar.setValue(start)
         glide.start(QVariantAnimation.DeletionPolicy.DeleteWhenStopped)
 
-    def open_at(self, key: object, minute: int, above: int | None = 90) -> None:
+    def open_at(self, key: object, minute: int, above: int | None = 90, end: bool = False) -> None:
         """Open a new week or day once, and restore its position when it is visited again."""
         if key != self._opened:
             if self._opened is not None:
@@ -349,7 +351,7 @@ class HoursScroll(QScrollArea):
                 if self.isVisible():
                     self._put_back()
             else:
-                self.scroll_to(minute, above)
+                self.scroll_to(minute, above, end)
 
     def take_places(self, before: HoursScroll) -> None:
         """Go back where the student left each week and day on `before`, the hours these replace."""
@@ -401,7 +403,8 @@ class HoursScroll(QScrollArea):
         self._centre = None
 
     def _keep_centre(self) -> None:
-        """The minute opened in the middle stays there through a resize, unless the student scrolled."""
+        """The minute opened in the middle, or at the end, stays there through a resize, unless the student
+        scrolled."""
         if self._centre is None or not self.isVisible() or not self.canvas.tracks:
             return
         bar = self._bar()
@@ -409,7 +412,7 @@ class HoursScroll(QScrollArea):
             self._centre = None
             return
         self._lay_out_now()
-        bar.setValue(round(self._y_for(self._centre) - self._port_length() / 2))
+        bar.setValue(round(self._y_for(self._centre) - self._port_length() / (1 if self._at_end else 2)))
         self._placed = bar.value()
 
     def showEvent(self, event: object) -> None:  # noqa: N802
