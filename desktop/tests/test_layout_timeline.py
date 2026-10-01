@@ -397,6 +397,24 @@ def test_the_paper_shows_under_the_hours_and_the_notes_outside_the_window_too(qa
             assert seen.at(notes, QPoint(notes.width() - 3, 3)).name() == paper
 
 
+def test_the_gutter_is_plain_paper_either_side_of_the_fold_line(qapp: QApplication) -> None:
+    """The fold is one line. The shade that once darkened the pages toward it is gone."""
+    for tab in ("week", "day"):
+        view = shown(qapp, tab)
+        spread = view.findChild(QWidget, f"timeline{tab.title()}Spread")
+        paper = view.scene.tokens["surface"]
+        seen = Seen(view)
+        fold, middle = spread.width() // 2, spread.height() // 2
+        assert [
+            reach
+            for reach in (3, 8, 14)
+            for side in (-1, 1)
+            if seen.at(spread, QPoint(fold + side * reach, middle)).name() != paper
+        ] == [], f"{tab}: paper either side of the fold"
+        line = [seen.at(spread, QPoint(fold + beside, middle)).name() for beside in (-1, 0)]
+        assert line != [paper, paper], f"{tab}: the fold line stays"
+
+
 def test_the_right_pages_foot_holds_the_notes_and_what_is_due_this_week(qapp: QApplication) -> None:
     view = shown(qapp)
     assert texts(view, "timelineTrayLabel") == ["Not placed yet"]

@@ -6,6 +6,8 @@ All notable changes to FlexWeek are documented here. Format follows
 ## [0.17.2] - Unreleased
 
 ### Changed
+- Timeline's two pages meet at a fold line only: the grey shade either side of
+  it is gone.
 - Choose a time and Spread, which open from the homework editor, are sheets
   inside the window like the editors: centred over the dimmed week, with their
   title and a close button at the top and each label above its field. They
