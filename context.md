@@ -1,6 +1,14 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `claude/0172-w5-mission` (from 4bca099): two of Jonathan's calls after reviewing Mission and
+  Timeline. Mission's lanes (Week and Day) open with now always in view when now is in what shows: the
+  evening's end (22:00 or the last block's end, plus 30 min) at the right edge when both fit, else now
+  `NOW_MARGIN` (45 min) from the left edge and the evening a scroll; another week or day keeps the
+  evening rule (`HoursScroll.scroll_to/open_at(end=True, keep=now)`, held through layout steps). Timeline
+  fills every block with its category's fill (ink outline and tab kept, homework unchanged, a finished or
+  missed block still the page's colour); `_no_room`/`_wordless` are gone. `test_hours_open.opens_at`
+  follows the new lanes rule.
 - 2026-09-30, `claude/0172-u04-setup` (from bd2d134): setup and Sign in, part 3 of unit 04 (the audit's T35 and
   T36). Setup's style and look cards are a CardGrid, so at 810 px they run one to a row instead of past
   the right edge; the planning-hours presets are pills (`chip` property) and Send a test reminder and Add
@@ -17,8 +25,7 @@
   at the right edge (`HoursScroll.scroll_to(end=True)`, held through layout steps), instead of now
   in the middle, so the morning is a scroll to the left at 1280; names written beside a block stay
   inside what shows. `test_hours_open.opens_at` checks 22:00 for lanes instead of now in the middle.
-  Not done: Timeline's white School (every non-homework block there is an ink-outlined card by the
-  approved mock-up; needs Jonathan's call).
+  Timeline's white School was settled on 0172-w5-mission (every block is filled).
 - 2026-09-30, `claude/0172-dragleak` from 5256662: the drag results tests' order dependence is
   fixed. Mission and Timeline tests leave bare views showing as top-level windows (their own
   signal lambdas keep them alive), and conftest's widgetAt fallback past the 800 px offscreen
