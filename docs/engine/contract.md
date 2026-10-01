@@ -23,12 +23,13 @@ This file is the contract. The engine is built and reviewed against it.
 | `restore.py`, `transfer.py`, `limits.py`, `recovery.py` | 162 | `engine::restore`, `engine::recovery` | E2 |
 | `backend/solver.py` | 486 | `engine::solver` | E3 |
 | `backend/storage.py` | 320 | `store` (SQLite) | E4 |
-| `desktop/native/weekmodel.py` | 351 | `engine::week` | E6, later |
+| `desktop/native/`: `weekmodel`, `calendar`, `focus`, `pomodoro`, `remind`, `reuse`, `history`, `files`, `tokens` (its colour maths), `custom_look` (its checks), `update` | about 3,150 | `engine::week`, `engine::desk` | E5 |
 
 What stays in Python: `backend/app.py` (the FastAPI routes), the pydantic model classes in
 `backend/models.py` as the checking layer at the HTTP edge and for `desktop/` (the engine's structs
 are the data behind them, converted with `model_dump()` and `model_validate()` at the boundary),
-everything in `desktop/` apart from its import lines, and every test. The HTTP API does not change.
+everything in `desktop/` that imports Qt (only its import lines change), the API tests, and the
+interface's tests. The HTTP API does not change.
 
 ## Guarantees
 
@@ -106,10 +107,20 @@ the new differential tests green, and the Rust checks passing.
   interpreter lock released during the search.
 - **E4, storage.** `store` with the same schema, migrations, hashes, sessions and throttling. The
   backend API tests run against it unchanged, and the two stores read each other's files.
-- **E5, the switch.** The Python bodies that now only call the engine are removed, and their
+- **E5, the desktop's logic.** The modules in `desktop/native` with no Qt in them, which a Rust
+  interface would otherwise rewrite: `weekmodel`, `calendar`, `focus`, `pomodoro`, `remind`, `reuse`,
+  `history`, `files`, the colour maths in `tokens`, the checks in `custom_look`, and `update`. Same
+  rules as E1 to E4. The week model and colour maths are called while the hours paint, so frame time
+  is measured before and after (the 2026-09-28 figures were 1 to 9.5 ms) and must stay under 16 ms.
+  Staying in Python: `look.py` (it writes Qt stylesheets), `layouts/registry.py`, `autostart.py`,
+  `kept.py`, `tones.py`, and every module that imports Qt.
+- **E6, the switch.** The Python bodies that now only call the engine are removed, and their
   callers in `backend/app.py` and `desktop/` import from `flexweek_engine` directly; only import
   lines change in `desktop/`. The pydantic classes stay in `backend/models.py`.
-- **E6, later.** `desktop/native/weekmodel.py`, when the phone app needs the same week model.
+- **E7, the map of logic left in the interface.** `docs/engine/interface-logic.md` lists the
+  decisions made inside Qt code (`window.py`, `hours/canvas.py`, `hours/zoom.py`, the layouts, the
+  sheets): what is decided, where (file and function), and which tests cover it. Nothing moves; it is
+  the starting point for the full rewrite. It can be written alongside any slice.
 
 ## Tests and tooling
 
@@ -117,13 +128,14 @@ Jonathan decided on 2026-09-30 that the overhaul covers everything but the inter
 and that the interface's own tests are tidied, in Python, once the ported tests are verified. The
 reason is the full rewrite: whatever moves now stops growing in Python, so there is less to rewrite
 later. The Python tests stay the check while code moves: a test is ported only once the code it
-tests has been switched (E5), so at no point are the code and its check rewritten together.
+tests has been switched (E6), so at no point are the code and its check rewritten together.
 
-- **T1, the engine's tests, after E5.** The backend tests of logic and storage (not of HTTP routes)
-  become Rust tests in `engine/`, case for case. Each keeps the Python test's expected values; none is
-  re-derived from what the Rust code returns. A Python test is deleted only when its Rust version
-  passes and catches the same faults: the backend's mutation cases move to `cargo mutants` for the
-  engine, and every case the Python tests caught must still be caught. The differential tests are
+- **T1, the engine's tests, after E6.** The backend tests of logic and storage (not of HTTP routes),
+  and the desktop tests that test E5's modules without Qt, become Rust tests in `engine/`, case for
+  case; desktop tests that drive widgets stay Python. Each keeps the Python test's expected values;
+  none is re-derived from what the Rust code returns. A Python test is deleted only when its Rust version
+  passes and catches the same faults: the mutation cases for moved code (backend and E5's modules)
+  move to `cargo mutants` for the engine, and every case the Python tests caught must still be caught. The differential tests are
   deleted last, since by then there is one implementation.
 - **T2, the API tests, stay Python.** They test `backend/app.py`'s routes, which stay Python, and
   move with the server in the full rewrite.
@@ -138,5 +150,5 @@ tests has been switched (E5), so at no point are the code and its check rewritte
 ## Not in scope
 
 The interface and its tests stay in Python (tidied in T4). The full move to a Rust interface waits for
-the phone app. The engine does not add features: anything new goes in after E5, once there is one
+the phone app. The engine does not add features: anything new goes in after E6, once there is one
 implementation to change.
