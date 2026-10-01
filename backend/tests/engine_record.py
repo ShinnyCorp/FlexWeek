@@ -44,6 +44,11 @@ def fixture_path() -> Path:
     return FIXTURE
 
 
+def _is_function(value: Any) -> bool:
+    """Engine re-exports are builtin callables, not Python functions."""
+    return callable(value) and not inspect.isclass(value) and not inspect.ismodule(value)
+
+
 def encode(value: Any) -> Any:
     if value is None or isinstance(value, bool | int | str):
         return value
@@ -96,10 +101,10 @@ def wrap_live_modules() -> None:
     for name in REPLACED:
         live = importlib.import_module(f"backend.{name}")
         ref = importlib.import_module(f"backend.tests.engine_ref.{name}")
-        for func_name, func in inspect.getmembers(live, inspect.isfunction):
+        for func_name, func in inspect.getmembers(live):
             if func_name.startswith("_") or func_name in SKIP_NAMES:
                 continue
-            if not inspect.isfunction(getattr(ref, func_name, None)):
+            if not _is_function(func) or not _is_function(getattr(ref, func_name, None)):
                 continue
             setattr(live, func_name, _recorder(name, func_name, func))
 
