@@ -64,8 +64,19 @@ All notable changes to FlexWeek are documented here. Format follows
   Forgot password the lighter. A link under the pointer or reached by the
   keyboard turns a darker shade of the accent and is underlined, where it went
   near-black, and showed nothing at all by keyboard.
+- On Today's app's Week, a Saturday or Sunday with nothing on it is narrower
+  than the other days (60 % of one, and never under 96 pixels, so a block
+  dropped there still reads), and the days with something in them share the
+  rest equally. It widens as soon as something is put on it.
+- Blocks that share a time no longer carry a black dot at their corner: they
+  already sit side by side, and the dot covered the end of the name. Each half
+  keeps two pixels more room for its words.
 
 ### Fixed
+- Today's app's hours end at 23:00: the "24:00" label under them is gone, in
+  Day and Week.
+- In the rail, a homework's title is cut only when the row has no room for it:
+  "Math worksheet" beside "Today 16:15" is now said whole.
 - The line for now crosses a block over its colour and stops a few pixels
   short of the block's words and picture, in every design, so it shows how far
   into the block you are without crossing its name out. Timeline's and Clay

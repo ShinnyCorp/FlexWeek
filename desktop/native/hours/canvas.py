@@ -67,6 +67,8 @@ EDGE_PX = 7
 EDGE_WIDTH = 3
 RADIUS_BLOCK = RADIUS_CONTROL
 TEXT_LEFT, TEXT_RIGHT, TEXT_TOP = 8, 5, 3
+# Blocks that share a time are half a column or less, so their words keep this much less at each side.
+SHARED_TRIM = 2
 # The most a now line's dot or pill reaches either side of the line.
 NOW_REACH = 12
 # How far short of a block's words and icon the now line stops, and how far past them it resumes.
@@ -144,6 +146,8 @@ class BlockPainter:
     # A title with no room for its first word says nothing, and its colour says it is there, rather
     # than cutting inside the word ("Robot…"). Retro desktop's; the others keep decision 14's cut.
     whole_words = False
+    # Whether the hour at the end of the day is labelled "24:00". The rule is drawn either way.
+    end_label = True
 
     def __init__(self, colours: dict[str, str], look: dict | None = None, *, wide: bool = False) -> None:
         self.colours = colours
@@ -211,6 +215,8 @@ class BlockPainter:
         metrics = QFontMetricsF(font)
         tall = metrics.height() + 2
         for minute in range(((track.first + every - 1) // every) * every, track.last + 1, every):
+            if minute == track.last and not self.end_label:
+                continue
             at = track.offset(minute)
             words = clock_label(minute)
             if track.axis is Axis.DOWN:
@@ -278,7 +284,7 @@ class BlockPainter:
 
     def body(self, painter: QPainter, rect: QRectF, drawn: Drawn) -> None:
         """A block's colour, outline, edge and marks: all of it but its words."""
-        fill, ink, outline, edge = self.fills(drawn)
+        fill, _ink, outline, edge = self.fills(drawn)
         shape = QPainterPath()
         shape.addRoundedRect(rect, RADIUS_BLOCK, RADIUS_BLOCK)
         painter.fillPath(shape, fill)
@@ -299,12 +305,6 @@ class BlockPainter:
             painter.setPen(QPen(self.c("error" if refused else "selection"), 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), RADIUS_BLOCK - 1, RADIUS_BLOCK - 1)
-        if drawn.columns > 1 and not drawn.held:
-            # Shares its time with another block: allowed, and marked so it is not missed. In its own
-            # ink, since red is for what cannot be.
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(ink)
-            painter.drawEllipse(QPointF(rect.right() - 7, rect.top() + 7), 3.5, 3.5)
 
     def scale(self, font: QFont) -> float:
         """The Text knob as a factor: the look's when the painter has one, else what the window's
@@ -339,9 +339,11 @@ class BlockPainter:
         # The words are laid out in the part of the block on screen, so the edge of `visible` never
         # falls inside a word: the name stays in sight while the start of a long block is scrolled
         # away, and a block just coming into view says what fits, or nothing but its colour.
-        start = QPointF(rect.left() + TEXT_LEFT, rect.top() + TEXT_TOP)
-        room = QRectF(start, QPointF(rect.right() - TEXT_RIGHT, rect.bottom() - 1))
-        room = room.intersected(visible.adjusted(TEXT_TOP, TEXT_TOP, -TEXT_RIGHT, -1))
+        trim = SHARED_TRIM if drawn.columns > 1 else 0
+        left, right = TEXT_LEFT - trim, TEXT_RIGHT - trim
+        start = QPointF(rect.left() + left, rect.top() + TEXT_TOP)
+        room = QRectF(start, QPointF(rect.right() - right, rect.bottom() - 1))
+        room = room.intersected(visible.adjusted(TEXT_TOP, TEXT_TOP, -right, -1))
         paper = fill if fill is not None else self.c("window")
         muted = QColor(block_time_colour(ink.name(), paper.name()))
         book = self._book_colour(drawn, ink, paper, edge)
