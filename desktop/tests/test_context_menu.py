@@ -12,9 +12,10 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QContextMenuEvent, QMouseEvent
+from PySide6.QtGui import QContextMenuEvent, QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication, QDialog, QPushButton, QWidget
 
+from backend.slots import minutes_to_hhmm
 from desktop.native import window as window_module
 from desktop.native.calendar import sunday_due
 from desktop.native.hours.chips import TrayChip
@@ -305,3 +306,147 @@ def test_a_delete_row_is_painted_red_and_the_rest_in_the_text_colour(
     assert red in colours_in("Delete") and ink not in colours_in("Delete")
     assert ink in colours_in("Open") and red not in colours_in("Open")
     menu.close()
+
+
+# What an empty spot offers: nothing is copied yet, so Paste is greyed and says why on its row.
+SPOT_ROWS = ["Add fixed time at 17:00", "Add homework due this day", "Paste\tCopy a block or a day first."]
+
+
+def free_spot(hours: object, minute: int = 17 * 60 + 5) -> QPoint:
+    """Tuesday at a minute, where nothing is: School ends 14:30 and the essay is on Wednesday."""
+    hours.hand.step = 15
+    hours.reveal(1, minute, minute + 30)
+    QApplication.processEvents()
+    return hours.point_for(1, minute)
+
+
+def test_a_right_click_on_free_time_offers_what_can_be_added_there(
+    qapp: QApplication, window: NativeWindow, menus: dict
+) -> None:
+    hours = window.week_table.hours
+    before = [dict(block) for block in window.session.blocks]
+    right_click(hours, free_spot(hours))
+    assert menus["shown"] == [SPOT_ROWS]
+    assert not menus["rows"][0][2].isEnabled()
+    assert menus["rows"][0][2].toolTip() == "Copy a block or a day first."
+    # The step the pointer is in: 17:20 is past the 17:15 step's start, not at 17:30.
+    right_click(hours, free_spot(hours, 17 * 60 + 20))
+    assert menus["shown"][-1][0] == "Add fixed time at 17:15"
+    assert window.session.blocks == before, "choosing nothing changes nothing"
+    right_click(hours, centre(window, "school", 3))
+    assert menus["shown"][-1] == ["Open\tEnter", "Duplicate\tCtrl+D", "---", "Delete\tDel"]
+
+
+def test_add_fixed_time_opens_the_sheet_on_that_day_at_that_time(
+    qapp: QApplication, window: NativeWindow, menus: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[tuple[list[int], str]] = []
+
+    def look(dialog: BlockDialog) -> int:
+        seen.append(([day for day, box in enumerate(dialog.days) if box.isChecked()], dialog.start.text()))
+        return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(BlockDialog, "exec", look)
+    hours = window.week_table.hours
+    menus["choose"] = "spotMenuFixed"
+    right_click(hours, free_spot(hours))
+    assert seen == [([1], "17:00")]
+
+
+def test_add_homework_opens_the_sheet_due_on_that_day(
+    qapp: QApplication, window: NativeWindow, menus: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[str] = []
+
+    def look(dialog: HomeworkDialog) -> int:
+        seen.append(dialog.assignment()["due"])
+        return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(HomeworkDialog, "exec", look)
+    hours = window.week_table.hours
+    menus["choose"] = "spotMenuHomework"
+    right_click(hours, free_spot(hours))
+    tuesday = date.fromisoformat(window.session.week_start) + timedelta(days=1)
+    assert seen == [tuesday.isoformat()]
+
+
+def test_paste_is_offered_once_something_is_copied_and_pastes_there(
+    qapp: QApplication, window: NativeWindow, menus: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[tuple[object, object]] = []
+    real = type(window.session).paste_proposals
+
+    def spy(session: object, day: object = None, start: object = None, **named: object) -> object:
+        asked.append((day, start))
+        return real(session, day, start, **named)
+
+    monkeypatch.setattr(type(window.session), "paste_proposals", spy)
+    opened = opened_dialogs(monkeypatch, PreviewDialog)
+    window.session.select_block("school", 3)
+    window.session.copy_selected()
+    hours = window.week_table.hours
+    menus["choose"] = "spotMenuPaste"
+    right_click(hours, free_spot(hours))
+    assert menus["shown"][0][2] == "Paste"
+    assert menus["rows"][0][2].isEnabled()
+    assert asked == [(1, "17:00")]
+    assert opened == ["PreviewDialog"]
+
+
+def press(widget: QWidget, key: Qt.Key, mods: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier) -> None:
+    QApplication.sendEvent(widget, QKeyEvent(QEvent.Type.KeyPress, key, mods))
+
+
+@pytest.mark.parametrize(
+    ("key", "mods"),
+    [(Qt.Key.Key_Menu, Qt.KeyboardModifier.NoModifier), (Qt.Key.Key_F10, Qt.KeyboardModifier.ShiftModifier)],
+)
+def test_the_menu_key_and_shift_f10_ask_at_the_days_first_free_time(
+    qapp: QApplication, window: NativeWindow, menus: dict, key: Qt.Key, mods: Qt.KeyboardModifier
+) -> None:
+    hours = window.week_table.hours
+    track = hours.track_for(3)
+    # Thursday is taken from the top of the hours to 10:00, and School runs on to 14:30.
+    taken = {
+        "id": "early", "kind": "locked", "title": "Early", "category": "class", "days": [3],
+        "start": minutes_to_hhmm(track.first), "duration_min": 600 - track.first,
+    }
+    window.session.add_block(taken)
+    window.session.save()
+    settled(qapp, window)
+    hours.hand.select("early", 3)
+    hours.setFocus()
+    press(hours, key, mods)
+    assert [rows[0] for rows in menus["shown"]] == ["Add fixed time at 14:30"]
+    assert window.session.selected_occurrence_day == 3
+
+
+@pytest.mark.parametrize("design", ["timeline", "mission", "bento", "retro", "clay"])
+def test_every_design_with_shared_hours_has_the_free_time_menu(
+    qapp: QApplication, window: NativeWindow, menus: dict, design: str
+) -> None:
+    from desktop.native.layouts.registry import sanitize_layout
+
+    window._layout = sanitize_layout({"main": design, "day": "one"})
+    window._apply_appearance()
+    window._on_week()
+    settled(qapp, window)
+    shown = window.planner.currentWidget().hours_surfaces()
+    canvases = [surface for surface in shown if surface.track_for(1, 17 * 60)]
+    assert canvases, f"{design} shows no hours with Tuesday in them"
+    hours = canvases[0]
+    right_click(hours, free_spot(hours))
+    assert [rows[0] for rows in menus["shown"]] == ["Add fixed time at 17:00"]
+
+
+def test_day_has_the_free_time_menu_at_its_own_day(
+    qapp: QApplication, window: NativeWindow, menus: dict
+) -> None:
+    window.findChild(QPushButton, "viewDay").click()
+    settled(qapp, window)
+    hours = window.day_view.hours
+    day = date.fromisoformat(window.session.selected_day).weekday()
+    hours.reveal(day, 17 * 60, 17 * 60 + 30)
+    qapp.processEvents()
+    right_click(hours, hours.point_for(day, 17 * 60 + 5))
+    assert [rows[0] for rows in menus["shown"]] == ["Add fixed time at 17:00"]

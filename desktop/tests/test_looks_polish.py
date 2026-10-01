@@ -59,12 +59,23 @@ def test_readability_names_each_use_of_a_pale_accent_and_fixes_them() -> None:
     custom = {"name": "Lime", "base": "light", "accent": "#dfff00"}
     problems = readability(custom)
     named = {problem.words: problem for problem in problems}
-    for words in ("Plan button words", "Today's day name", "Now line"):
+    for words, need in (("Plan button words", 4.5), ("Today's day name", 4.5), ("Now line", AA_GRAPHIC)):
         assert words in named
         fixed = apply_fix(custom, named[words])
         palette = resolved_palette("light-frost", False, {"custom": fixed})
         ratios = [contrast(palette["accent"], palette[under]) for under in ("window", "panel", "grid")]
-        assert min(ratios) >= 4.5
+        assert min(ratios) >= need
+
+
+@pytest.mark.parametrize(("accent", "flagged"), [("#8a8a8a", False), ("#a6a6a6", True)])
+def test_the_now_line_is_flagged_only_when_the_line_would_not_show(accent: str, flagged: bool) -> None:
+    custom = {"name": "Grey", "base": "light", "accent": accent}
+    palette = resolved_palette("light-frost", False, {"custom": custom})
+    ratio = contrast(accent, palette["grid"])
+    # The fixtures sit either side of 3 to 1; the first is a line that shows but text that does not.
+    assert (ratio < AA_GRAPHIC) is flagged
+    assert 2.0 < ratio < 4.5
+    assert ("Now line" in {problem.words for problem in readability(custom)}) is flagged
 
 
 def test_a_pale_custom_accent_stays_chosen_but_its_words_are_readable() -> None:
