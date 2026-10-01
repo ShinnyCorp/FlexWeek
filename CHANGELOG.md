@@ -3,7 +3,7 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.17.2] - Unreleased
+## [0.17.2] - 2026-09-30
 
 ### Added
 - Right-clicking free time in the hours, in Today's app and in every design,

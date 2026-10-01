@@ -1,6 +1,16 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-09-30, `feat/0.17.2`: 0.17.2 prepared (version, dated changelog, `docs/release-notes-v0.17.2.md`).
+  It is Grok Bot's 0.17.0 audit (T1 to T37, A1 to A12, X1 to X9), split between Claude and GPT 6.1 Sol;
+  every lane and unit below is merged. Last two: the 12-hour clock unit (above) and Retry save showing
+  only once a save has failed (`NativeWindow._on_week`): shown mid-save it pushed the view buttons
+  aside, which made the rig's Month and Week clicks miss in Retro and Clay. Release checks were cut
+  short on Jonathan's word: the last full gate (f0b2baf) had 2608 passed and 1 flaky failure, and the
+  clock unit's own gate 2658 passed; after the last two merges only their touched test files (461
+  passed) and `fwtest rig --design retro --tab month` (9/9) ran. No full rig or mutation pass on the
+  final tree. Known flaky: `test_sign_in_card.py::test_a_link_in_reach_keeps_the_accent_darker_and_underlined[pointer-*]`
+  fails now and then in the gate and passes alone (two fixes failed; left for 0.17.3).
 - 2026-09-30, `claude/0172-w5-mission` (from 4bca099): two of Jonathan's calls after reviewing Mission and
   Timeline. Mission's lanes (Week and Day) open with now always in view when now is in what shows: the
   evening's end (22:00 or the last block's end, plus 30 min) at the right edge when both fit, else now
@@ -722,6 +732,13 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-09-30, `feat/0.17.2`: ready to push, PR to main, merge after CI and release v0.17.2 as latest
+  (Jonathan's word). Then Grok Bot reviews 0.17.2 and Jonathan decides on 0.17.3. Open for 0.17.3: the
+  sign-in hover flake; Bento's now pill inside today's column; Mission's beside-block names crossed by
+  the now line; Clay's Day card with no hours for ~100 ms while it slides in; Clay's Day summary and
+  Retro's deadlines cutting 12-hour times at Large 810; Bento's header "F 2" at Large 810; Mission's
+  00:00 label 6 px left of the canvas; Help's other book icons not fitted to 3:1; dead `open_again` in
+  classic.py; decision 12 in docs/0.17/plan.md not reworded.
 - 2026-09-30, `claude/0172-w5-clock`: clock-label unit done and committed locally, not merged or pushed. Pictures
   before and after: `~/.flexweek-ui-harness/scratch/0172-w5-clock/before/` and `after/` (`pairs/` side by side).
 - 2026-09-30, `claude/0172-u04-setup`: T35 and T36 done and committed locally, not merged or pushed.
