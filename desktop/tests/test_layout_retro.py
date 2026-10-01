@@ -745,6 +745,23 @@ def test_a_block_with_no_room_for_three_letters_of_its_name_is_its_colour_alone(
     assert painted(20) == 0
 
 
+def test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not(qapp: QApplication) -> None:
+    """Two blocks side by side show they share their time by sitting side by side, as on every
+    design: no dot at the corner of each."""
+    colours = scheme(tokens_for("retro", "teal", palette_of("light")))
+
+    def painted(columns: int) -> QImage:
+        drawn = Drawn("soccer", "Soccer practice", "extra", False, Span(1, 16 * 60, 17 * 60 + 30), 0, columns)
+        image = QImage(200, 140, QImage.Format.Format_RGB32)
+        image.fill(QColor("#ffffff"))
+        painter = QPainter(image)
+        RetroPainter(colours).body(painter, QRectF(20, 20, 60, 90), drawn)
+        painter.end()
+        return image
+
+    assert painted(2) == painted(1), "a block that shares its time has a mark on it"
+
+
 def test_a_week_block_at_the_smallest_window_names_itself_and_says_when_it_starts(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
