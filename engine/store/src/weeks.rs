@@ -49,3 +49,41 @@ pub fn save_week(
     )?;
     Ok(WeekSave::Ready(revision + 1))
 }
+
+/// `(blocks, revision)`; None for a week nobody has saved.
+pub fn read_week(
+    conn: &Connection,
+    user_id: i64,
+    week_start: &str,
+) -> StoreResult<Option<(String, i64)>> {
+    Ok(conn
+        .query_row(
+            "SELECT blocks, revision FROM weeks WHERE user_id = ?1 AND week_start = ?2",
+            params![user_id, week_start],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?)
+}
+
+pub fn week_blocks(
+    conn: &Connection,
+    user_id: i64,
+    week_start: &str,
+) -> StoreResult<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT blocks FROM weeks WHERE user_id = ?1 AND week_start = ?2",
+            params![user_id, week_start],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+pub fn week_starts(conn: &Connection, user_id: i64) -> StoreResult<Vec<String>> {
+    let mut stmt =
+        conn.prepare("SELECT week_start FROM weeks WHERE user_id = ?1 ORDER BY week_start")?;
+    let rows = stmt
+        .query_map(params![user_id], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}

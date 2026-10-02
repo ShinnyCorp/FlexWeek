@@ -120,3 +120,16 @@ pub fn create_session_row(
     )?;
     Ok(())
 }
+
+/// The stored availability text; None when the account has no preferences row, and an empty
+/// string for a NULL column, which the caller reads as no availability.
+pub fn availability_json(conn: &Connection, user_id: i64) -> StoreResult<Option<String>> {
+    let row: Option<Option<String>> = conn
+        .query_row(
+            "SELECT availability_json FROM preferences WHERE user_id = ?1",
+            params![user_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(row.map(Option::unwrap_or_default))
+}
