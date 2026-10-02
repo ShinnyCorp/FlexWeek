@@ -370,7 +370,7 @@ fn store_throttle(
     })
 }
 
-fn store_py(py: Python<'_>, error: flexweek_store::StoreError) -> PyErr {
+pub(crate) fn store_py(py: Python<'_>, error: flexweek_store::StoreError) -> PyErr {
     match error {
         flexweek_store::StoreError::Sqlite(sqlite) => crate::db::sqlite_py(py, &sqlite),
         flexweek_store::StoreError::Engine(engine) => crate::raise(engine),

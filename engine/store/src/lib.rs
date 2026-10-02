@@ -135,6 +135,68 @@ impl From<std::io::Error> for StoreError {
 
 pub type StoreResult<T> = Result<T, StoreError>;
 
+mod assignments;
+mod ledger;
+mod prefs;
+mod routines;
+mod weeks;
+
+pub use assignments::{
+    AssignmentDelete, AssignmentSave, assignment_exists, count_assignments, delete_assignment,
+    insert_assignment, load_assignment_rows, save_assignment,
+};
+pub use ledger::{
+    Recall, capture_account, insert_restore_point, prune_operations, prune_restore_points,
+    recall_operation, remember_operation, replace_account, replace_recovery_codes,
+};
+pub use prefs::{
+    create_session_row, delete_account, insert_preferences, preference_row, write_preferences,
+};
+pub use routines::{
+    RoutineDelete, RoutineSave, RoutineWrite, delete_routine, list_routines, replace_routines,
+    save_routine,
+};
+pub use weeks::{WeekSave, list_account_weeks, save_week};
+
+/// A write joins the caller's transaction. The first one begins it, as `Connection.execute` does,
+/// and leaves it open so the Python `with` block can commit or roll it back.
+pub(crate) fn defer_write(
+    conn: &Connection,
+    sql: &str,
+    params: impl rusqlite::Params,
+) -> StoreResult<usize> {
+    if conn.is_autocommit() {
+        conn.execute("BEGIN DEFERRED", [])?;
+    }
+    Ok(conn.execute(sql, params)?)
+}
+
+pub(crate) fn json_str<'a>(value: &'a Value, key: &str) -> StoreResult<&'a str> {
+    value.get(key).and_then(Value::as_str).ok_or_else(|| {
+        StoreError::Engine(flexweek_engine::EngineError::value(format!(
+            "missing {key}"
+        )))
+    })
+}
+
+pub(crate) fn json_opt_str<'a>(value: &'a Value, key: &str) -> StoreResult<Option<&'a str>> {
+    match value.get(key) {
+        Some(Value::Null) => Ok(None),
+        Some(Value::String(text)) => Ok(Some(text.as_str())),
+        _ => Err(StoreError::Engine(flexweek_engine::EngineError::value(
+            format!("missing {key}"),
+        ))),
+    }
+}
+
+pub(crate) fn json_i64(value: &Value, key: &str) -> StoreResult<i64> {
+    value.get(key).and_then(Value::as_i64).ok_or_else(|| {
+        StoreError::Engine(flexweek_engine::EngineError::value(format!(
+            "missing {key}"
+        )))
+    })
+}
+
 pub fn digest(value: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(value.as_bytes());

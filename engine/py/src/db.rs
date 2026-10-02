@@ -33,10 +33,11 @@ struct PyCursor {
     changes: isize,
 }
 
-/// A statement can fail in SQLite or while binding a Python value; the second needs the GIL's error.
-enum Failure {
+/// A statement can fail in SQLite, while binding a Python value, or inside a store helper.
+pub(crate) enum Failure {
     Sql(SqlError),
     Bind(PyErr),
+    Store(flexweek_store::StoreError),
 }
 
 impl From<SqlError> for Failure {
@@ -174,10 +175,370 @@ impl PyConn {
             Ok(())
         })
     }
+
+    fn load_assignment_rows(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        ids: Vec<String>,
+    ) -> PyResult<Vec<(String, String, i64)>> {
+        guard(|| {
+            self.check(py)?;
+            self.with_conn(py, |conn| {
+                flexweek_store::load_assignment_rows(conn, user_id, &ids).map_err(Failure::Store)
+            })
+        })
+    }
+
+    fn assignment_exists(&self, py: Python<'_>, user_id: i64, id: &str) -> PyResult<bool> {
+        let id = id.to_string();
+        guard(|| {
+            self.check(py)?;
+            self.with_conn(py, |conn| {
+                flexweek_store::assignment_exists(conn, user_id, &id).map_err(Failure::Store)
+            })
+        })
+    }
+
+    fn count_assignments(&self, py: Python<'_>, user_id: i64) -> PyResult<i64> {
+        guard(|| {
+            self.check(py)?;
+            self.with_conn(py, |conn| {
+                flexweek_store::count_assignments(conn, user_id).map_err(Failure::Store)
+            })
+        })
+    }
+
+    fn insert_assignment(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        id: &str,
+        body: &str,
+    ) -> PyResult<()> {
+        let id = id.to_string();
+        let body = body.to_string();
+        guard(|| {
+            self.check(py)?;
+            self.with_conn(py, |conn| {
+                flexweek_store::insert_assignment(conn, user_id, &id, &body).map_err(Failure::Store)
+            })
+        })
+    }
+
+    fn save_assignment(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        id: &str,
+        body: &str,
+        revision: i64,
+        max_count: i64,
+    ) -> PyResult<(String, i64)> {
+        let id = id.to_string();
+        let body = body.to_string();
+        guard(|| {
+            self.check(py)?;
+            let outcome = self.with_conn(py, |conn| {
+                flexweek_store::save_assignment(conn, user_id, &id, &body, revision, max_count)
+                    .map_err(Failure::Store)
+            })?;
+            Ok(match outcome {
+                flexweek_store::AssignmentSave::Ready(stored) => ("ok".to_string(), stored),
+                flexweek_store::AssignmentSave::Conflict => ("conflict".to_string(), 0),
+                flexweek_store::AssignmentSave::OverLimit => ("limit".to_string(), 0),
+            })
+        })
+    }
+
+    fn delete_assignment(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        id: &str,
+        revision: &Bound<'_, PyInt>,
+    ) -> PyResult<(String, String)> {
+        let id = id.to_string();
+        let revision = revision_in_range(revision);
+        guard(|| {
+            self.check(py)?;
+            let outcome = self.with_conn(py, |conn| {
+                flexweek_store::delete_assignment(conn, user_id, &id, revision)
+                    .map_err(Failure::Store)
+            })?;
+            Ok(match outcome {
+                flexweek_store::AssignmentDelete::Missing => ("missing".to_string(), String::new()),
+                flexweek_store::AssignmentDelete::Conflict => {
+                    ("conflict".to_string(), String::new())
+                }
+                flexweek_store::AssignmentDelete::Deleted(payload) => ("ok".to_string(), payload),
+            })
+        })
+    }
+
+    fn list_account_weeks(&self, py: Python<'_>, user_id: i64) -> PyResult<Vec<(String, String)>> {
+        self.store(py, move |conn| {
+            flexweek_store::list_account_weeks(conn, user_id)
+        })
+    }
+
+    fn save_week(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        week_start: &str,
+        blocks: &str,
+        revision: i64,
+    ) -> PyResult<(String, i64)> {
+        let week_start = week_start.to_string();
+        let blocks = blocks.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::save_week(conn, user_id, &week_start, &blocks, revision)
+        })
+        .map(|outcome| match outcome {
+            flexweek_store::WeekSave::Ready(stored) => ("ok".to_string(), stored),
+            flexweek_store::WeekSave::Conflict => ("conflict".to_string(), 0),
+        })
+    }
+
+    fn capture_account(&self, py: Python<'_>, user_id: i64) -> PyResult<String> {
+        self.store(py, move |conn| {
+            flexweek_store::capture_account(conn, user_id)
+        })
+    }
+
+    fn prune_restore_points(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        keep_ids: Vec<String>,
+        keep: i64,
+    ) -> PyResult<()> {
+        self.store(py, move |conn| {
+            flexweek_store::prune_restore_points(conn, user_id, &keep_ids, keep)
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn insert_restore_point(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        point_id: &str,
+        label: &str,
+        created_at: &str,
+        weeks_count: i64,
+        assignments_count: i64,
+        body: &str,
+        keep_ids: Vec<String>,
+        keep: i64,
+    ) -> PyResult<()> {
+        let point_id = point_id.to_string();
+        let label = label.to_string();
+        let created_at = created_at.to_string();
+        let body = body.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::insert_restore_point(
+                conn,
+                user_id,
+                &point_id,
+                &label,
+                &created_at,
+                weeks_count,
+                assignments_count,
+                &body,
+                &keep_ids,
+                keep,
+            )
+        })
+    }
+
+    fn prune_operations(&self, py: Python<'_>, user_id: i64, keep: i64) -> PyResult<()> {
+        self.store(py, move |conn| {
+            flexweek_store::prune_operations(conn, user_id, keep)
+        })
+    }
+
+    fn recall_operation(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        operation_id: &str,
+        digest_value: &str,
+    ) -> PyResult<(String, String)> {
+        let operation_id = operation_id.to_string();
+        let digest_value = digest_value.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::recall_operation(conn, user_id, &operation_id, &digest_value)
+        })
+        .map(|outcome| match outcome {
+            flexweek_store::Recall::Missing => ("missing".to_string(), String::new()),
+            flexweek_store::Recall::Conflict => ("conflict".to_string(), String::new()),
+            flexweek_store::Recall::Hit(response) => ("ok".to_string(), response),
+        })
+    }
+
+    fn remember_operation(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        operation_id: &str,
+        digest_value: &str,
+        response: &str,
+        keep: i64,
+    ) -> PyResult<()> {
+        let operation_id = operation_id.to_string();
+        let digest_value = digest_value.to_string();
+        let response = response.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::remember_operation(
+                conn,
+                user_id,
+                &operation_id,
+                &digest_value,
+                &response,
+                keep,
+            )
+        })
+    }
+
+    fn replace_account(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        weeks: Vec<(String, String, i64)>,
+        assignments: Vec<(String, String, i64)>,
+    ) -> PyResult<()> {
+        self.store(py, move |conn| {
+            flexweek_store::replace_account(conn, user_id, &weeks, &assignments)
+        })
+    }
+
+    fn replace_recovery_codes(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        hashes: Vec<String>,
+    ) -> PyResult<()> {
+        self.store(py, move |conn| {
+            flexweek_store::replace_recovery_codes(conn, user_id, &hashes)
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn save_routine(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        routine_id: &str,
+        name: &str,
+        body: &str,
+        revision: i64,
+        stamp: &str,
+        max_count: i64,
+    ) -> PyResult<(String, String)> {
+        let routine_id = routine_id.to_string();
+        let name = name.to_string();
+        let body = body.to_string();
+        let stamp = stamp.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::save_routine(
+                conn,
+                user_id,
+                flexweek_store::RoutineWrite {
+                    id: &routine_id,
+                    name: &name,
+                    body: &body,
+                    revision,
+                    stamp: &stamp,
+                    max_count,
+                },
+            )
+        })
+        .map(|outcome| match outcome {
+            flexweek_store::RoutineSave::Stored(payload) => ("ok".to_string(), payload),
+            flexweek_store::RoutineSave::Conflict => ("conflict".to_string(), String::new()),
+            flexweek_store::RoutineSave::OverLimit => ("limit".to_string(), String::new()),
+        })
+    }
+
+    fn delete_routine(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        routine_id: &str,
+        revision: &Bound<'_, PyInt>,
+    ) -> PyResult<String> {
+        let routine_id = routine_id.to_string();
+        let revision = revision_in_range(revision);
+        self.store(py, move |conn| {
+            flexweek_store::delete_routine(conn, user_id, &routine_id, revision)
+        })
+        .map(|outcome| match outcome {
+            flexweek_store::RoutineDelete::Missing => "missing".to_string(),
+            flexweek_store::RoutineDelete::Conflict => "conflict".to_string(),
+            flexweek_store::RoutineDelete::Deleted => "ok".to_string(),
+        })
+    }
+
+    fn list_routines(&self, py: Python<'_>, user_id: i64) -> PyResult<String> {
+        self.store(py, move |conn| flexweek_store::list_routines(conn, user_id))
+    }
+
+    fn replace_routines(&self, py: Python<'_>, user_id: i64, rows_json: &str) -> PyResult<()> {
+        let rows_json = rows_json.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::replace_routines(conn, user_id, &rows_json)
+        })
+    }
+
+    fn preference_row(&self, py: Python<'_>, user_id: i64) -> PyResult<Option<String>> {
+        self.store(py, move |conn| {
+            flexweek_store::preference_row(conn, user_id)
+        })
+    }
+
+    fn write_preferences(&self, py: Python<'_>, user_id: i64, fields_json: &str) -> PyResult<()> {
+        let fields_json = fields_json.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::write_preferences(conn, user_id, &fields_json)
+        })
+    }
+
+    fn insert_preferences(&self, py: Python<'_>, user_id: i64, prefs_version: i64) -> PyResult<()> {
+        self.store(py, move |conn| {
+            flexweek_store::insert_preferences(conn, user_id, prefs_version)
+        })
+    }
+
+    fn delete_account(&self, py: Python<'_>, user_id: i64) -> PyResult<()> {
+        self.store(py, move |conn| {
+            flexweek_store::delete_account(conn, user_id)
+        })
+    }
+
+    fn create_session_row(
+        &self,
+        py: Python<'_>,
+        token_hash: &str,
+        user_id: i64,
+        expires: i64,
+        now: i64,
+    ) -> PyResult<()> {
+        let token_hash = token_hash.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::create_session_row(conn, &token_hash, user_id, expires, now)
+        })
+    }
+}
+
+/// Python compared revisions as unbounded integers; one past `i64` simply matches no row.
+fn revision_in_range(revision: &Bound<'_, PyInt>) -> Option<i64> {
+    revision.extract::<i64>().ok()
 }
 
 impl PyConn {
-    fn check(&self, py: Python<'_>) -> PyResult<()> {
+    pub(crate) fn check(&self, py: Python<'_>) -> PyResult<()> {
         let here = thread_ident(py)?;
         if here != self.owner || std::thread::current().id() != self.thread {
             return Err(sqlite_kind(
@@ -200,7 +561,18 @@ impl PyConn {
         Ok(())
     }
 
-    fn with_conn<T: Send>(
+    pub(crate) fn store<T: Send>(
+        &self,
+        py: Python<'_>,
+        body: impl FnOnce(&rusqlite::Connection) -> flexweek_store::StoreResult<T> + Send,
+    ) -> PyResult<T> {
+        guard(|| {
+            self.check(py)?;
+            self.with_conn(py, |conn| body(conn).map_err(Failure::Store))
+        })
+    }
+
+    pub(crate) fn with_conn<T: Send>(
         &self,
         py: Python<'_>,
         body: impl FnOnce(&mut SqlConn) -> Result<T, Failure> + Send,
@@ -221,6 +593,7 @@ impl PyConn {
         outcome.map_err(|failure| match failure {
             Failure::Sql(error) => sqlite_py(py, &error),
             Failure::Bind(error) => error,
+            Failure::Store(error) => crate::rest::store_py(py, error),
         })
     }
 }
