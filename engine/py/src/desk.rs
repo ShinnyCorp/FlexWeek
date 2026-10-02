@@ -288,6 +288,11 @@ fn tokens_fit_lightness(colour: &str, grounds: Vec<String>, floor: f64) -> PyRes
 }
 
 #[pyfunction]
+fn tokens_channels(colour: &str) -> PyResult<(i64, i64, i64)> {
+    guard(|| tokens::channels(colour).map_err(raise))
+}
+
+#[pyfunction]
 fn tokens_mix_oklab(top: &str, bottom: &str, amount: f64) -> PyResult<String> {
     guard(|| Ok(tokens::mix_oklab(top, bottom, amount)))
 }
@@ -662,6 +667,7 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         tokens_contrast,
         tokens_oklch_of,
         tokens_fit_lightness,
+        tokens_channels,
         tokens_mix_oklab,
         tokens_family_colours,
         pomo_timers,

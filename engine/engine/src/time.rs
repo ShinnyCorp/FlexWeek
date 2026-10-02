@@ -92,7 +92,7 @@ const DIGIT_BLOCKS: &[u32] = &[
     0x1D7E2, 0x1D7EC, 0x1D7F6, 0x1E140, 0x1E2F0, 0x1E4F0, 0x1E5F1, 0x1E950, 0x1FBF0,
 ];
 
-fn decimal_digit(ch: char) -> Option<u8> {
+pub(crate) fn decimal_digit(ch: char) -> Option<u8> {
     let cp = ch as u32;
     let idx = DIGIT_BLOCKS.partition_point(|start| *start <= cp);
     if idx == 0 {

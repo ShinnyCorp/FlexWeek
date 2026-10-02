@@ -1656,3 +1656,35 @@ def test_referenced_assignments_on_generated_weeks(blocks, assignments):
 def test_referenced_assignments_names_each_homework_once(blocks):
     assignments = {"essay": assignment(), "lab": assignment(id="lab", title="Lab")}
     same(live_files.referenced_assignments, ref_files.referenced_assignments, blocks, assignments)
+
+
+CHANNEL_TEXT = st.one_of(
+    st.from_regex(r"#[0-9a-fA-F]{6}", fullmatch=True),
+    st.text(alphabet="#0123456789abcdefABCDEFxX_+-  ٣g", max_size=9),
+    maybe(
+        "",
+        "#",
+        "#12",
+        "#1234",
+        "#12345",
+        "#ff",
+        "#0x0x0x",
+        "#_f_f_f",
+        "#-1-1-1",
+        "#+f+f+f",
+        "# f f f ",
+        "#٣٤٥",
+    ),
+)
+
+
+@CHECK
+@given(CHANNEL_TEXT)
+def test_channels_read_each_pair_as_python_does(colour):
+    same(live_tokens._channels, ref_tokens._channels, colour)
+
+
+@WIDE
+@given(st.text(alphabet="#0123456789abcdefABCDEFxX_+- \tg", max_size=8))
+def test_channels_of_odd_text(colour):
+    same(live_tokens._channels, ref_tokens._channels, colour)
