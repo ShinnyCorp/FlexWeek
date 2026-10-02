@@ -56,13 +56,14 @@ On Debian or Ubuntu without a full desktop, such as a container or a minimal ins
 
 ## Run from source
 
-Requires Python 3.14.
+Requires Python 3.14 and Rust (install it with [rustup](https://rustup.rs); the version is pinned in `rust-toolchain.toml`). The planner and the storage are written in Rust and built into a Python module the app imports.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 pip install -r requirements-desktop.txt
+pip install ./engine/py     # builds the Rust engine; run it again after pulling changes to engine/
 python -m desktop.main
 ```
 
@@ -130,12 +131,18 @@ backup API or with the app stopped; protect backups as private account data.
 ## Checks
 
 The checks run through `fwtest`, a small Rust program in `tools/fwtest`. Build
-it once, and again after it changes:
+it once, and again after it changes. The tests also need the engine built with
+its test-only functions (`--features audit`), and again after `engine/` changes:
 
 ```bash
 (cd tools/fwtest && cargo build --release)
+pip install -r requirements-dev.txt
+maturin develop --release --manifest-path engine/py/Cargo.toml --features audit
 tools/fwtest/target/release/fwtest gate
 ```
+
+The engine has its own checks, run in `engine/`: `cargo fmt --check`,
+`cargo clippy --workspace -- -D warnings` and `cargo test --workspace`.
 
 `fwtest gate` runs the backend and desktop source checks at low priority, one
 suite at a time on the machine, and stops everything it started when it ends.
