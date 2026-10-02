@@ -33,7 +33,7 @@ This file is the contract. The implementation is built and reviewed against it.
 ```text
 fwtest gate [--backend-only] [--workers N]
 fwtest mutate [SPEC.json ...] [--case NAME]
-fwtest rig [ARGS FOR scripts/rig/drive.py ...]
+fwtest rig [--server kwin|xvfb|auto] [ARGS FOR scripts/rig/drive.py ...]
 fwtest run [--timeout SECONDS] -- COMMAND [ARGS ...]
 fwtest clean
 ```
@@ -49,13 +49,19 @@ fwtest clean
   name. It prints one line per case (`RED`, `GREEN` or `PATTERN`, then the spec, the case name and
   the first failing assertion) and ends with `every mutation was caught` or `N mutation(s)
   SURVIVED`. It exits 1 if any case survived or any pattern was not found exactly once.
-- `rig` runs `scripts/rig/drive.py` as a job with `FLEXWEEK_RIG_KEEP` unset. When the job ends it
-  runs `scripts/rig/hidden_session.py stop` and then stops anything left in the job's tree.
+- `rig` starts this checkout's hidden session, then runs `scripts/rig/drive.py` as one job.
+  `--server` is `kwin`, `xvfb`, or `auto` (the default: KWin when `kwin_wayland` is on `PATH`,
+  otherwise Xvfb). That flag is not forwarded to the driver. The driver receives the display, the
+  private D-Bus address, and the runs-folder key in its environment. `FLEXWEEK_RIG_KEEP` is removed
+  before the driver starts, so the run always stops the session afterwards by the PIDs recorded in
+  its state file, then stops anything the job itself left behind.
 - `run` runs any command as a job, with the guarantees above. It exists for the picture tours and
   the one-off scripts that currently go through `run-alone.sh`.
-- `clean` stops every process recorded by a job that is no longer running, restores any source
-  file left edited by a mutation run, and removes the stale records. It is safe to run at any time
-  and does nothing when there is nothing to clean. Every other command runs it first.
+- `clean` stops every process recorded by a job that is no longer running. For a stale rig job,
+  with no live rig job in that checkout, it also stops the hidden session by the PIDs in its state
+  file. It restores any source file left edited by a mutation run and removes the stale records. It
+  is safe to run at any time and does nothing when there is nothing to clean. Every other command
+  runs it first.
 
 Every command that runs Python uses `--python PATH` if given, then `$FWTEST_PYTHON`, then
 `<checkout>/.venv/bin/python`, where `<checkout>` is the git top level of the working directory. A

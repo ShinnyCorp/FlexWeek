@@ -37,8 +37,9 @@ The other `fwtest` commands:
   `scripts/mutations/` (all of them when none is named) and prints `RED`,
   `GREEN` or `PATTERN` per case. It exits 1 if any break survived or a pattern
   was not found exactly once.
-- `fwtest rig ...` runs `scripts/rig/drive.py` with the same arguments, then
-  stops the hidden session.
+- `fwtest rig ...` starts the hidden session (`--server kwin`, `xvfb`, or `auto`),
+  runs `scripts/rig/drive.py` with the remaining arguments, then stops that
+  session by the PIDs it recorded.
 - `fwtest run -- CMD` runs any other suite, picture tour or script with the same
   limits and cleanup.
 - `fwtest clean` stops processes and restores source files that a killed run
