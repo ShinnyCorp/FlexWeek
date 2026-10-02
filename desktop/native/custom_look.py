@@ -12,26 +12,23 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+import flexweek_engine  # type: ignore[import-untyped]
+
 from desktop.native.calendar import CATEGORIES
 from desktop.native.look import (
-    AA_GRAPHIC,
-    AA_TEXT,
     BASE_LABELS,
     LOOK_BASES,
     LOOK_PRESET_LABELS,
-    MID_GREY,
     NAME_MAX,
     PACK_LABELS,
     block_paint,
     category_paint,
-    contrast,
     effective_look,
     known_pack,
     resolved_palette,
     sanitize_custom,
     sanitize_look,
 )
-from desktop.native.tokens import fit_lightness, luminance, mix
 
 # Shown when a student has not named the look yet.
 UNNAMED = "My look"
@@ -80,12 +77,10 @@ def wear(look: dict | None, custom: dict) -> dict:
     return sanitize_look({**selected, "custom": custom})
 
 
+
 def reset_look(custom: dict) -> dict:
     """Back to its base, as it was before anything was changed; the name stays."""
-    return {key: custom[key] for key in ("name", "base") if key in custom}
-
-
-# Saved looks.
+    return json.loads(flexweek_engine.look_reset(json.dumps(custom)))
 
 
 def _name(name: object) -> str:
@@ -125,65 +120,58 @@ def sanitize_saved(raw: object) -> list[dict]:
     return kept
 
 
+
 def save_look(saved: list[dict], custom: dict, name: object) -> list[dict]:
     """`custom` kept as `name`, in place of a saved look of that name or after the others."""
-    clean = _name(name)
-    kept = [dict(look) for look in saved]
-    look = {**custom, "name": clean}
-    at = _find(kept, clean)
-    if at >= 0:
-        kept[at] = look
-    else:
-        kept.append(look)
-    return kept
+    try:
+        return json.loads(
+            flexweek_engine.look_save(
+                json.dumps(saved),
+                json.dumps(custom),
+                name if isinstance(name, str) else "",
+            )
+        )
+    except ValueError as err:
+        raise LookNameError(str(err)) from err
+
 
 
 def free_name(saved: list[dict], name: object) -> str:
     """`name` as a new saved look can have it: tidied, and numbered ("My look 2") past the saved looks
     that have it already, since `save_look` puts a look of the same name in their place."""
-    clean = _name(name)
-    stem = clean[: NAME_MAX - 3]
-    free, count = clean, 2
-    while _find(saved, free) >= 0:
-        free, count = f"{stem} {count}", count + 1
-    return free
+    try:
+        return str(flexweek_engine.free_name(json.dumps(saved), name if isinstance(name, str) else ""))
+    except ValueError as err:
+        raise LookNameError(str(err)) from err
+
 
 
 def rename_look(saved: list[dict], old: str, new: object) -> list[dict]:
-    at = _find(saved, old)
-    if at < 0:
-        raise LookNameError(f"No saved look is called {old}.")
-    clean = _name(new)
-    other = _find(saved, clean)
-    if other >= 0 and other != at:
-        raise LookNameError(f"There is already a look called {clean}.")
-    kept = [dict(look) for look in saved]
-    kept[at]["name"] = clean
-    return kept
+    try:
+        return json.loads(
+            flexweek_engine.rename_look(json.dumps(saved), old, new if isinstance(new, str) else "")
+        )
+    except ValueError as err:
+        raise LookNameError(str(err)) from err
+
 
 
 def duplicate_look(saved: list[dict], name: str) -> tuple[list[dict], str]:
     """A copy of the saved look `name` after it, as "<name> copy" (then "copy 2" and on), and its name."""
-    at = _find(saved, name)
-    if at < 0:
-        raise LookNameError(f"No saved look is called {name}.")
-    original = saved[at]["name"]
-    stem = f"{original[: NAME_MAX - 8]} copy"
-    copy, count = stem, 2
-    while _find(saved, copy) >= 0:
-        copy, count = f"{stem} {count}", count + 1
-    kept = [dict(look) for look in saved]
-    kept.insert(at + 1, {**saved[at], "name": copy})
-    return kept, copy
+    try:
+        kept, copy = flexweek_engine.duplicate_look(json.dumps(saved), name)
+    except ValueError as err:
+        raise LookNameError(str(err)) from err
+    return json.loads(kept), copy
+
 
 
 def delete_look(saved: list[dict], name: str) -> list[dict]:
-    if _find(saved, name) < 0:
-        raise LookNameError(f"No saved look is called {name}.")
-    return [dict(look) for look in saved if look["name"].casefold() != name.casefold()]
+    try:
+        return json.loads(flexweek_engine.delete_look(json.dumps(saved), name))
+    except ValueError as err:
+        raise LookNameError(str(err)) from err
 
-
-# Export and import.
 
 
 def export_look(custom: dict) -> str:
@@ -199,6 +187,7 @@ class Imported:
 
     look: dict | None
     problems: tuple[str, ...]
+
 
 
 def import_look(text: str | bytes) -> Imported:
@@ -222,9 +211,6 @@ def import_look(text: str | bytes) -> Imported:
     return Imported(custom, tuple(problems))
 
 
-# The readability check.
-
-
 @dataclass(frozen=True)
 class Problem:
     """A pair of colours that reads under 4.5 to 1, and the fix: `field` set to `fixed`, the colour the
@@ -238,74 +224,57 @@ class Problem:
     fixed: str
 
 
+
 def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
-    """Every pair that reads under 4.5 to 1, named as the Customise mock-up names them: text and muted
-    text on the page, cards and the calendar, accent text on cards, text on accent buttons, and each
-    block's words on its category's fill; the now line is held to 3 to 1, as a line. Text and muted text
-    are moved to read on every surface at once, and the text on the blocks too, but for a block on the
-    other side of mid-grey from the page: no one text reads on both, so that block keeps its own Fix.
-    An outlined block is the text on the calendar."""
+    """Every pair that reads under 4.5 to 1, named as the Customise mock-up names them."""
     look = {"preset": "default", "knobs": {}, "custom": custom}
     palette = resolved_palette("system", system_dark, look)
-    surfaces = (palette["window"], palette["panel"], palette["grid"])
-    text, muted, accent = palette["text"], palette["muted"], palette["accent"]
-    own_accent = str(custom.get("accent", "")).startswith("#")
-    tint = mix(accent, palette["window"], 0.10)
     blocks = []
     for key, info in CATEGORIES.items():
         fill, mark = category_paint(key, palette)
         drawn = block_paint(look, palette, fill, info["kind"], mark)
         if drawn["fill"] == fill:
-            blocks.append((key, info["label"], fill, drawn["ink"]))
-    dark_page = luminance(palette["window"]) < MID_GREY
-    alike = tuple(fill for _key, _label, fill, _ink in blocks if (luminance(fill) < MID_GREY) == dark_page)
-    under = surfaces + alike
-    text_fixed = fit_lightness(text, under, AA_TEXT)
-    if min(contrast(text_fixed, ground) for ground in under) < AA_TEXT:
-        text_fixed = fit_lightness(text, surfaces, AA_TEXT)
-    found: list[Problem] = []
-    for words, ink, ground, field in (
-        ("Text on the page", text, palette["window"], "text"),
-        ("Text on cards", text, palette["panel"], "text"),
-        ("Text on the calendar", text, palette["grid"], "text"),
-        ("Muted text on the page", muted, palette["window"], "muted"),
-        ("Muted text on cards", muted, palette["panel"], "muted"),
-        ("Accent text on cards", accent, palette["panel"], "accent"),
-        ("Plan button words", accent, tint, "accent"),
-        ("Today's day name", accent, palette["grid"], "accent"),
-        ("Now line", palette["text"] if custom.get("now_line") == "text" else accent,
-         palette["grid"], "accent"),
-        ("Text on accent buttons", palette["accent_ink"], accent, "accent"),
-    ):
-        if field == "accent" and not own_accent:
-            continue
-        # The now line is a line, fitted to 3 to 1 as the look draws it; the rest is text.
-        need = AA_GRAPHIC if words == "Now line" else AA_TEXT
-        ratio = contrast(ink, ground)
-        if ratio < need:
-            if field == "accent":
-                # Its words on the page and cards, and white or black on it, which any colour reads.
-                fixed = fit_lightness(accent, surfaces + (tint,), need)
-                found.append(Problem(words, ink, ground, ratio, ("accent",), fixed))
-                continue
-            fixed = text_fixed if field == "text" else fit_lightness(ink, surfaces, AA_TEXT)
-            found.append(Problem(words, ink, ground, ratio, ("colours", field), fixed))
-    for key, label, fill, ink in blocks:
-        ratio = contrast(ink, fill)
-        if ratio < AA_TEXT:
-            fixed = fit_lightness(fill, (ink,), AA_TEXT)
-            found.append(Problem(f"Text on {label} blocks", ink, fill, ratio, ("categories", key), fixed))
-    return found
+            blocks.append({"key": key, "label": info["label"], "fill": fill, "ink": drawn["ink"]})
+    found = json.loads(
+        flexweek_engine.look_readability(
+            json.dumps(custom),
+            json.dumps(
+                {
+                    name: palette[name]
+                    for name in ("window", "panel", "grid", "text", "muted", "accent", "accent_ink")
+                }
+            ),
+            json.dumps(blocks),
+        )
+    )
+    return [
+        Problem(
+            item["words"],
+            item["ink"],
+            item["ground"],
+            item["ratio"],
+            tuple(item["field"]),
+            item["fixed"],
+        )
+        for item in found
+    ]
+
 
 
 def apply_fix(custom: dict, problem: Problem) -> dict:
     """`custom` with the problem's colour moved. A category given as a hue becomes the exact colour."""
-    fixed = dict(custom)
-    group, key = (*problem.field, "")[:2]
-    if group == "accent":
-        fixed["accent"] = problem.fixed
-    elif group == "colours":
-        fixed["colours"] = {**custom.get("colours", {}), key: problem.fixed}
-    else:
-        fixed["categories"] = {**custom.get("categories", {}), key: {"colour": problem.fixed}}
-    return fixed
+    return json.loads(
+        flexweek_engine.look_apply_fix(
+            json.dumps(custom),
+            json.dumps(
+                {
+                    "words": problem.words,
+                    "ink": problem.ink,
+                    "ground": problem.ground,
+                    "ratio": problem.ratio,
+                    "field": list(problem.field),
+                    "fixed": problem.fixed,
+                }
+            ),
+        )
+    )

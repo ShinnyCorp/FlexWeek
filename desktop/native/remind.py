@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import datetime
 
+import flexweek_engine  # type: ignore[import-untyped]
+
 from backend.slots import hhmm_to_minutes
-from desktop.native.calendar import DAYS, date_for_day, monday_of
+from desktop.native.calendar import date_for_day, monday_of
 from desktop.native.reuse import occurrence_days
-from desktop.native.weekmodel import hhmm_text
 
 REMINDER_WINDOW_MIN = 2
 REMINDER_POLL_MS = 30_000
@@ -17,9 +19,24 @@ ALARM_SNOOZE_MS = ALARM_SNOOZE_MIN * 60_000
 
 
 def reminder_lead_min(prefs: dict | None, default: int = 5) -> int:
-    if not prefs or prefs.get("reminder_lead_min") is None:
-        return default
-    return int(prefs["reminder_lead_min"])
+    return int(flexweek_engine.remind_lead_min(None if prefs is None else json.dumps(prefs), default))
+
+
+def start_alert_due(start_min: int, now_min: int, lead: int) -> bool:
+    """From the minute the lead begins to the start minute itself."""
+    return bool(flexweek_engine.remind_start_alert_due(start_min, now_min, lead))
+
+
+def song_due(start_min: int, now_min: int) -> bool:
+    return bool(flexweek_engine.remind_song_due(start_min, now_min))
+
+
+def reminder_key(week_start: str, block_id: str, day: int, start: str) -> str:
+    return str(flexweek_engine.remind_key(week_start, block_id, day, start))
+
+
+def alarm_key(iso_date: str, alarm: dict) -> str:
+    return str(flexweek_engine.remind_alarm_key(iso_date, json.dumps(alarm)))
 
 
 def clock_parts(now_ms: int) -> dict:
@@ -34,48 +51,46 @@ def clock_parts(now_ms: int) -> dict:
     }
 
 
-def start_alert_due(start_min: int, now_min: int, lead: int) -> bool:
-    """From the minute the lead begins to the start minute itself. A block saved after its lead
-    began, or found when the app opens, is still reminded of before it starts, and the start minute
-    is in because the poll may first look during it."""
-    start = int(start_min)
-    return start - max(0, int(lead)) <= int(now_min) <= start
-
-
-def song_due(start_min: int, now_min: int) -> bool:
-    return int(start_min) <= int(now_min) <= int(start_min) + REMINDER_WINDOW_MIN
-
-
-def reminder_key(week_start: str, block_id: str, day: int, start: str) -> str:
-    return "|".join((week_start, block_id, str(day), start))
-
-
-def alarm_key(iso_date: str, alarm: dict) -> str:
-    return "|".join((iso_date, str(alarm.get("id") or ""), str(alarm.get("time") or "")))
-
-
 def reminder_blocks(blocks: list[dict], trace: dict | None) -> list[dict]:
-    sources = {item["id"]: item for item in blocks}
-    if not trace:
-        return list(blocks)
-    locked = [item for item in blocks if item.get("kind") == "locked"]
-    placed = []
-    for item in trace.get("placed") or []:
-        if item.get("kind") != "flexible":
-            continue
-        source = sources.get(item["id"])
-        if source is None:
-            placed.append(item)
-            continue
-        placed.append(
-            {
-                **item,
-                "completed": source.get("completed"),
-                "missed_days": list(source.get("missed_days") or []),
-                "title": source.get("title") or item.get("title"),
-            }
+    return json.loads(
+        flexweek_engine.remind_blocks(json.dumps(blocks), None if trace is None else json.dumps(trace))
+    )
+
+
+def due_reminders(
+    *,
+    blocks: list[dict],
+    trace: dict | None,
+    today_iso: str,
+    now_min: int,
+    lead_min: int,
+    fired: set[str],
+) -> list[dict]:
+    return json.loads(
+        flexweek_engine.remind_due(
+            json.dumps(blocks),
+            None if trace is None else json.dumps(trace),
+            today_iso,
+            now_min,
+            lead_min,
+            json.dumps(sorted(fired)),
         )
-    return locked + placed
+    )
+
+
+def due_songs(
+    *, blocks: list[dict], trace: dict | None, today_iso: str, now_min: int, played: set[str]
+) -> list[dict]:
+    """Blocks with a Spotify link that are starting, as alarms."""
+    return json.loads(
+        flexweek_engine.remind_songs(
+            json.dumps(blocks),
+            None if trace is None else json.dumps(trace),
+            today_iso,
+            now_min,
+            json.dumps(sorted(played)),
+        )
+    )
 
 
 def todays_starts(
@@ -91,58 +106,6 @@ def todays_starts(
             if day in (block.get("missed_days") or []) or date_for_day(week_start, day) != today_iso:
                 continue
             yield block, day, hhmm_to_minutes(start), reminder_key(week_start, block["id"], day, start)
-
-
-def due_reminders(
-    *,
-    blocks: list[dict],
-    trace: dict | None,
-    today_iso: str,
-    now_min: int,
-    lead_min: int,
-    fired: set[str],
-) -> list[dict]:
-    due = []
-    for block, day, start_min, key in todays_starts(blocks, trace, today_iso):
-        if key in fired or not start_alert_due(start_min, now_min, lead_min):
-            continue
-        started = now_min >= start_min
-        if started and block.get("spotify_url"):
-            # Its song is its notice at the start, so it gets one, not two.
-            continue
-        due.append(
-            {
-                "key": key,
-                "title": f"{block['title']} {'starts now' if started else 'starts soon'}",
-                "body": f"{hhmm_text(block['start'])} · {DAYS[day]}",
-            }
-        )
-    return due
-
-
-def due_songs(
-    *, blocks: list[dict], trace: dict | None, today_iso: str, now_min: int, played: set[str]
-) -> list[dict]:
-    """Blocks with a Spotify link that are starting, as alarms: the song plays until it is dismissed
-    or snoozed. An alarm with no days never rings on its own, only when it is snoozed."""
-    due = []
-    for block, _day, start_min, key in todays_starts(blocks, trace, today_iso):
-        link = block.get("spotify_url")
-        if not link or key in played or not song_due(start_min, now_min):
-            continue
-        due.append(
-            {
-                "id": key,
-                "name": block["title"],
-                "time": block["start"],
-                "days": [],
-                "enabled": True,
-                "sound": "spotify",
-                "spotify_url": link,
-                "block": True,
-            }
-        )
-    return due
 
 
 def due_alarms(
@@ -180,4 +143,4 @@ def due_alarms(
 
 
 def snooze_until(now_ms: int) -> int:
-    return now_ms + ALARM_SNOOZE_MS
+    return int(flexweek_engine.remind_snooze_until(now_ms))

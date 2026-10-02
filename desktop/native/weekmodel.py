@@ -9,11 +9,11 @@ never a threshold invented by a view.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from backend.models import due_is_timed, due_sort_key
-from desktop.native.calendar import DAY_FULL, DAYS, _is_work_session, is_series
+import flexweek_engine  # type: ignore[import-untyped]
 
 SLACK_WORDS = {"danger": "Cutting it close", "tight": "Tight", "ok": "Plenty of time"}
 _SLACK_ORDER = {"danger": 0, "tight": 1, None: 2, "ok": 3}
@@ -21,7 +21,6 @@ NOT_PLANNED = "Not planned yet."
 # A homework session is saved with no category unless the student picked one. It is still homework.
 HOMEWORK = "assignments"
 END_OF_DAY = 24 * 60
-_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 LEFTOVER = {
     "needs_time": "Not placed yet",
     "no_homework": "No homework added",
@@ -31,128 +30,69 @@ LEFTOVER = {
 
 
 def minute_of(hhmm: str) -> int:
-    hours, minutes = hhmm.split(":")[:2]
-    return int(hours) * 60 + int(minutes)
-
-
-# Settings > This computer > Clock, set by the window from the account's preferences. Every time on
-# screen is written by clock_text, so one switch changes them all; what is saved stays HH:MM.
-_clock = {"24h": True}
+    return int(flexweek_engine.week_minute_of(hhmm))
 
 
 def set_clock_24h(on: bool) -> bool:
     """Whether this changed the clock, so the caller knows to redraw."""
-    changed = _clock["24h"] != on
-    _clock["24h"] = on
-    return changed
+    return bool(flexweek_engine.week_set_clock_24h(on))
 
 
 def clock_text(minute: int) -> str:
     """16:00, or 4:00 PM on the 12-hour clock. The end of the day, 24:00, is 12:00 AM."""
-    hours, minutes = divmod(minute, 60)
-    if _clock["24h"]:
-        return f"{hours:02d}:{minutes:02d}"
-    half = "AM" if hours % 24 < 12 else "PM"
-    return f"{hours % 12 or 12}:{minutes:02d} {half}"
+    return str(flexweek_engine.week_clock_text(minute))
 
 
 def hhmm_text(hhmm: str) -> str:
     """A saved "16:00" as the clock writes it."""
-    return clock_text(minute_of(hhmm))
+    return str(flexweek_engine.week_hhmm_text(hhmm))
 
 
 def time_format() -> str:
     """For a QTimeEdit, which draws its own time rather than asking clock_text."""
-    return "HH:mm" if _clock["24h"] else "h:mm AP"
+    return str(flexweek_engine.week_time_format())
 
 
 def clock_label(minute: int) -> str:
-    return clock_text(minute)
-
-
-def _twelve(minute: int) -> tuple[str, str]:
-    """4 or 5:30, and its half of the day, as a short 12-hour time is written."""
-    hours, minutes = divmod(minute, 60)
-    shown = f"{hours % 12 or 12}" + (f":{minutes:02d}" if minutes else "")
-    return shown, "AM" if hours % 24 < 12 else "PM"
+    return str(flexweek_engine.week_clock_label(minute))
 
 
 def short_clock(minute: int) -> str:
     """16:00, or 4 PM on the 12-hour clock: a time on a block, where room is short."""
-    if _clock["24h"]:
-        return clock_text(minute)
-    shown, half = _twelve(minute)
-    return f"{shown} {half}"
+    return str(flexweek_engine.week_short_clock(minute))
 
 
 def range_label(start: int, end: int) -> str:
     """16:00–17:30, or on the 12-hour clock as short as it still reads: 4–5:30 PM, 11 AM–12:30 PM."""
-    if _clock["24h"]:
-        return f"{clock_text(start)}–{clock_text(end)}"
-    first, first_half = _twelve(start)
-    last, last_half = _twelve(end)
-    if first_half == last_half:
-        return f"{first}–{last} {last_half}"
-    return f"{first} {first_half}–{last} {last_half}"
+    return str(flexweek_engine.week_range_label(start, end))
 
 
 def length_label(minutes: int) -> str:
-    hours, rest = divmod(max(minutes, 0), 60)
-    if not hours:
-        return f"{rest} min"
-    return f"{hours} h {rest} min" if rest else f"{hours} h"
+    return str(flexweek_engine.week_length_label(minutes))
 
 
 def planned_line(planned_min: int, done_min: int) -> str:
-    if planned_min <= 0:
-        return "Nothing planned yet"
-    done = "0 done" if done_min <= 0 else f"{length_label(done_min)} done"
-    return f"{length_label(planned_min)} planned · {done}"
+    return str(flexweek_engine.week_planned_line(planned_min, done_min))
 
 
 def due_label(due: str | None, week_start: str) -> str:
     """A deadline as a student says it: Sun 27 Sep, or Sun 27 Sep, 09:00 when a time is set."""
-    if not due:
-        return ""
-    day = date.fromisoformat(due[:10])
-    words = f"{DAYS[day.weekday()]} {day.day} {_MONTHS[day.month - 1]}"
-    if due_is_timed(due):
-        words += f", {hhmm_text(due[11:16])}"
-    return words
+    return str(flexweek_engine.week_due_label(due, week_start))
 
 
 def moved_words(block: dict, from_day: int, day: int, start: int, end: int) -> str:
-    """What a drag did to `block`, as it was before, now that it is on `day` from `start` to `end`:
-    "Moved History essay to Fri 18:00.", "History essay now ends at 20:30.", "Placed Math worksheet
-    on Thu 17:45." A block that repeats moved only the day it was picked up from, so that day is
-    named."""
-    title = block.get("title") or "the block"
-    if not block.get("start"):
-        return f"Placed {title} on {DAYS[day]} {clock_label(start)}."
-    if is_series(block):
-        title = f"{DAY_FULL[from_day]}'s {title}"
-    was = minute_of(block["start"])
-    was_end = was + int(block["duration_min"])
-    if day == from_day and start == was and end != was_end:
-        return f"{title} now ends at {clock_label(end)}."
-    if day == from_day and end == was_end and start != was:
-        return f"{title} now starts at {clock_label(start)}."
-    return f"Moved {title} to {DAYS[day]} {clock_label(start)}."
+    """What a drag did to `block`, as it was before, now that it is on `day` from `start` to `end`."""
+    return str(flexweek_engine.week_moved_words(json.dumps(block), from_day, day, start, end))
 
 
 def added_words(block: dict) -> str:
-    """A block just made: "Added Club on Thu 16:00.", or without a day and time when it has several
-    days or no time yet."""
-    title = block.get("title") or "a block"
-    days = block.get("days") or []
-    if block.get("start") and len(days) == 1:
-        return f"Added {title} on {DAYS[days[0]]} {hhmm_text(block['start'])}."
-    return f"Added {title}."
+    """A block just made: "Added Club on Thu 16:00.", or without a day and time when it has several days."""
+    return str(flexweek_engine.week_added_words(json.dumps(block)))
 
 
 def dated_words(title: str, iso: str) -> str:
     """What carrying a block to another date on Month did, such as "Moved History essay to Fri 25 Sep"."""
-    return f"Moved {title} to {due_label(iso, '')}."
+    return str(flexweek_engine.week_dated_words(title, iso))
 
 
 @dataclass(frozen=True)
@@ -293,60 +233,17 @@ def build_week(
     assignments: dict[str, dict] | None = None,
     trace: dict | None = None,
 ) -> WeekModel:
-    homework = assignments or {}
-    placed = {item["id"]: item for item in (trace or {}).get("placed") or []}
-    notes = {item["block_id"]: item for item in (trace or {}).get("explanations") or []}
-    occurrences: list[Occurrence] = []
-    waiting: list[Waiting] = []
-    for original in blocks:
-        block = original if original.get("completed") else placed.get(original["id"], original)
-        assignment = homework.get(original.get("assignment_id") or "") or {}
-        work = _is_work_session(original)
-        done = bool(block.get("completed") or assignment.get("completed"))
-        note = notes.get(original["id"]) or {}
-        if not block.get("start"):
-            if work and not done:
-                waiting.append(
-                    Waiting(
-                        block_id=original["id"],
-                        title=original.get("title") or "Untitled",
-                        category=original.get("category") or HOMEWORK,
-                        minutes=int(original.get("duration_min") or 0),
-                        assignment_id=original.get("assignment_id"),
-                        due=assignment.get("due"),
-                        reason=note.get("message") or NOT_PLANNED,
-                    )
-                )
-            continue
-        days = block.get("days") or []
-        if block.get("completed") and block.get("completed_day") is not None:
-            days = [block["completed_day"]]
-        start = minute_of(block["start"])
-        end = min(start + int(block.get("duration_min") or 0), END_OF_DAY)
-        for day in days:
-            occurrences.append(
-                Occurrence(
-                    block_id=original["id"],
-                    title=block.get("title") or "Untitled",
-                    category=block.get("category") or (HOMEWORK if work else ""),
-                    day=day,
-                    start=start,
-                    end=end,
-                    work=work,
-                    done=done,
-                    missed=day in (original.get("missed_days") or []),
-                    assignment_id=original.get("assignment_id"),
-                    due=assignment.get("due"),
-                    slack=note.get("slack_status"),
-                    pinned=bool(block.get("pinned")),
-                )
-            )
-    occurrences.sort(key=lambda item: (item.day, item.start, item.block_id))
-    # Session ids are random, so an id alone leaves same-due homework in a different order each run.
-    waiting.sort(key=lambda item: (*due_sort_key(item.due, item.title), item.block_id))
-    # The timer adds its minutes to the homework, or to a block with none (focus.credit_target). A
-    # homework's are all of its own, from whichever week they were timed in.
-    worked = {block.get("assignment_id") for block in blocks} - {None}
-    focus = sum(int((homework.get(key) or {}).get("focus_minutes") or 0) for key in worked)
-    focus += sum(int(block.get("focus_minutes") or 0) for block in blocks if not block.get("assignment_id"))
-    return WeekModel(week_start, tuple(occurrences), tuple(waiting), focus)
+    raw = json.loads(
+        flexweek_engine.week_build(
+            week_start,
+            json.dumps(blocks),
+            json.dumps(assignments or {}),
+            None if trace is None else json.dumps(trace),
+        )
+    )
+    return WeekModel(
+        raw["week_start"],
+        tuple(Occurrence(**item) for item in raw["occurrences"]),
+        tuple(Waiting(**item) for item in raw["waiting"]),
+        int(raw["focus_min"]),
+    )

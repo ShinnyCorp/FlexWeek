@@ -6,10 +6,11 @@ import json
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 
-from backend.models import due_sort_key, parse_due
-from backend.slots import DAY_END_MIN, DAY_START_MIN, SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm
-from desktop.native.calendar import DAY_FULL
-from desktop.native.weekmodel import clock_text, hhmm_text, length_label
+import flexweek_engine  # type: ignore[import-untyped]
+
+from backend.models import due_sort_key
+from backend.slots import SLOT_MIN
+from desktop.native.weekmodel import length_label
 
 MAX_WEEK_BLOCKS = 100
 AVAILABILITY_LIMIT = 21
@@ -29,53 +30,40 @@ ROUTINE_FIELDS = (
 
 
 def restore_point_label(text: str) -> str:
-    characters = list(text)
-    if len(characters) <= 80:
-        return text
-    return "".join(characters[:79]) + "…"
+    return str(flexweek_engine.reuse_restore_label(text))
 
 
 def week_label(week_start: str) -> str:
-    return "Week of " + week_start
+    return str(flexweek_engine.reuse_week_label(week_start))
 
 
 def floor_slot(minutes: int) -> int:
-    return max(0, minutes) // SLOT_MIN * SLOT_MIN
+    return int(flexweek_engine.reuse_floor_slot(minutes))
 
 
 def is_homework_session(block: dict) -> bool:
-    return bool(block.get("assignment_id"))
+    return bool(flexweek_engine.reuse_homework(json.dumps(block)))
 
 
 def session_days(week_start: str, due: str) -> list[int]:
-    monday = date.fromisoformat(week_start)
-    due_day = date.fromisoformat(due[:10])
-    last = monday + timedelta(days=6)
-    if due_day < monday:
-        return [0]
-    if due_day > last:
-        return [0, 1, 2, 3, 4]
-    return list(range(due_day.weekday() + 1))
+    return [int(day) for day in flexweek_engine.reuse_session_days(week_start, due)]
 
 
 def is_planned(block: dict) -> bool:
     """Unfinished homework with its own time: one day and a start. Such a block is the student's plan,
     not a request to be planned, so nothing moves it unless its time stops working or they ask."""
-    return (
-        block.get("kind") == "flexible"
-        and bool(block.get("start"))
-        and not block.get("completed")
-        and len(block.get("days") or []) == 1
-    )
+    return bool(flexweek_engine.reuse_planned(json.dumps(block)))
 
 
 def planning_days(block: dict, assignments: dict, week_start: str) -> list[int]:
     """The days homework may go on when it needs a new time. A plan narrows a session to the day it
     chose, so the days up to the deadline come back from the assignment rather than from the block."""
-    assignment = assignments.get(block.get("assignment_id") or "")
-    if assignment and assignment.get("due"):
-        return session_days(week_start, assignment["due"])
-    return list(block.get("days") or [0])
+    return [
+        int(day)
+        for day in flexweek_engine.reuse_planning_days(
+            json.dumps(block), json.dumps(assignments), week_start
+        )
+    ]
 
 
 def apply_plan(
@@ -97,76 +85,39 @@ def apply_plan(
     copying that back left Monday missed on a block that no longer ran on Monday, which no save
     accepts; a finished session keeps the time it was done in.
     """
-    placed = {item["id"]: item for item in (trace or {}).get("placed") or []}
-    unplaced_ids = {item["id"] for item in (trace or {}).get("unplaced") or []}
-    out = []
-    for block in blocks:
-        copy = dict(block)
-        unplanned_work = copy.get("kind") == "flexible" and not copy.get("completed")
-        if not unplanned_work or (targets is not None and copy["id"] not in targets):
-            out.append(copy)
-            continue
-        winner = placed.get(copy["id"])
-        if winner and winner.get("start"):
-            copy["start"] = winner["start"]
-            if winner.get("days"):
-                copy["days"] = list(winner["days"])
-        elif copy["id"] in unplaced_ids:
-            copy.pop("pinned", None)
-            if copy.pop("start", None) and assignments is not None and week_start is not None:
-                copy["days"] = planning_days(copy, assignments, week_start)
-        out.append(copy)
-    return out
+    return json.loads(
+        flexweek_engine.reuse_apply_plan(
+            json.dumps(blocks),
+            None if trace is None else json.dumps(trace),
+            None if targets is None else json.dumps(sorted(targets)),
+            None if assignments is None else json.dumps(assignments),
+            week_start,
+        )
+    )
 
 
 def clear_stale_pins(blocks: list[dict]) -> list[dict]:
     """Drop `pinned` from any session that no longer has one time on one day. The server refuses a
     week with such a pin, so every save would fail after the first edit that took the time away."""
-    return [
-        {key: value for key, value in block.items() if key != "pinned"}
-        if block.get("pinned") and not (block.get("start") and len(block.get("days") or []) == 1)
-        else block
-        for block in blocks
-    ]
+    return json.loads(flexweek_engine.reuse_clear_pins(json.dumps(blocks)))
 
 
 def held_in_place(block: dict) -> dict:
     """Planned homework as the solver should see it while other work is placed: time already taken.
     A work session cannot be sent as a fixed block with its assignment, so only its time goes."""
-    return {
-        "id": block["id"],
-        "title": block.get("title") or "Homework",
-        "kind": "locked",
-        "duration_min": block["duration_min"],
-        "days": list(block["days"]),
-        "start": block["start"],
-    }
+    return json.loads(flexweek_engine.reuse_held(json.dumps(block)))
 
 
 def plan_start(week_start: str, now: datetime) -> tuple[int, int] | None:
     """The first time a plan may use in this week, as (day, minute): now, rounded up to the next
     quarter hour. None while the whole week is still ahead; a day past Sunday once it is over."""
-    day = (now.date() - date.fromisoformat(week_start)).days
-    if day < 0:
-        return None
-    minute = now.hour * 60 + now.minute + (1 if now.second or now.microsecond else 0)
-    minute = -(-minute // SLOT_MIN) * SLOT_MIN
-    if minute >= DAY_END_MIN:
-        return day + 1, DAY_START_MIN
-    return day, minute
-
-
-def _begun(block: dict, not_before: tuple[int, int] | None) -> bool:
-    return not_before is not None and (block["days"][0], hhmm_to_minutes(block["start"])) < not_before
-
-
-def _from(session: dict, not_before: tuple[int, int]) -> dict:
-    """A session the solver may place no earlier than `not_before`, said as the earliest start the
-    model already has, so the reasons it gives stay true. The days already gone come off; with none
-    left it keeps today, so the solver says it is too late for it rather than that it does not fit."""
-    day, minute = not_before
-    days = [item for item in session["days"] if item >= day] or [day]
-    return {**session, "days": days, "earliest": f"{DAY_FULL[day]} {minutes_to_hhmm(minute)}"}
+    point = flexweek_engine.reuse_plan_start(
+        week_start,
+        now.date().isoformat(),
+        now.hour * 60 + now.minute,
+        bool(now.second or now.microsecond),
+    )
+    return None if point is None else (int(point[0]), int(point[1]))
 
 
 def solve_request(
@@ -185,38 +136,31 @@ def solve_request(
     `only` places just those sessions around everything else, for work whose time stopped working.
     `not_before` (from `plan_start`) keeps every placement at or after now.
     """
-    payload: list[dict] = []
-    targets: set[str] = set()
-    for block in blocks:
-        if block.get("kind") != "flexible" or block.get("completed"):
-            payload.append(block)
-            continue
-        planned = is_planned(block)
-        # Homework the student placed by hand stays put in Replan all, like a fixed block, and so does
-        # homework whose time has already come: a plan does not reach back into the past.
-        kept = planned and (bool(block.get("pinned")) or _begun(block, not_before))
-        wanted = block["id"] in only if only is not None else (everything and not kept) or not planned
-        if wanted:
-            session = dict(block)
-            if planned:
-                session.pop("start")
-                session["days"] = planning_days(block, assignments, week_start)
-            payload.append(session if not_before is None else _from(session, not_before))
-            targets.add(block["id"])
-        elif planned:
-            payload.append(held_in_place(block))
-    return payload, targets
+    day = minute = None
+    if not_before is not None:
+        day, minute = not_before
+    payload, targets = flexweek_engine.solve_request(
+        json.dumps(blocks),
+        json.dumps(assignments),
+        week_start,
+        everything,
+        None if only is None else sorted(only),
+        day,
+        minute,
+    )
+    return json.loads(payload), set(targets)
+
+
+
 
 
 def due_point(due: str | None, week_start: str) -> tuple[int, int] | None:
     """A deadline as (day index, minute) in this week: negative before it, None when it is later."""
     if not due:
         return None
-    due_day, minutes = parse_due(due)
-    offset = (due_day - date.fromisoformat(week_start)).days
-    if offset > 6:
-        return None
-    return offset, minutes
+    point = flexweek_engine.reuse_due_point(due, week_start)
+    return None if point is None else (int(point[0]), int(point[1]))
+
 
 
 def settle_placements(
@@ -235,84 +179,21 @@ def settle_placements(
     Homework the student placed by hand, pinned, is theirs: nothing sitting on it takes its time, and
     it takes time from nothing, since the student chose to put the two side by side.
     """
-    taken: dict[int, list[tuple[int, int, str]]] = {day: [] for day in range(7)}
-    for block in blocks:
-        if not block.get("start"):
-            continue
-        start = hhmm_to_minutes(block["start"])
-        end = start + int(block.get("duration_min") or 0)
-        if block.get("kind") == "locked":
-            for day in block.get("days") or []:
-                if day not in (block.get("missed_days") or []):
-                    taken[day].append((start, end, block.get("title") or "a fixed block"))
-        elif block.get("completed"):
-            days = block.get("days") or []
-            day = block.get("completed_day", days[0] if len(days) == 1 else None)
-            if day is not None:
-                taken[day].append((start, end, block.get("title") or "finished work"))
-    sessions = sorted(
-        (block for block in blocks if is_planned(block)),
-        key=lambda block: (block["id"] not in keep, block["days"][0], block["start"], block["id"]),
+    kept, lost = flexweek_engine.settle_placements(
+        json.dumps(blocks), json.dumps(assignments), week_start, sorted(keep)
     )
-    lost: dict[str, dict] = {}
-    for block in sessions:
-        day = block["days"][0]
-        start = hhmm_to_minutes(block["start"])
-        end = start + int(block.get("duration_min") or 0)
-        assignment = assignments.get(block.get("assignment_id") or "") or {}
-        due = due_point(assignment.get("due"), week_start)
-        pinned = bool(block.get("pinned"))
-        clashes = (title for low, high, title in taken[day] if start < high and low < end)
-        clash = None if pinned else next(clashes, None)
-        why = None
-        if start < DAY_START_MIN or end > DAY_END_MIN:
-            why = "that is outside the hours FlexWeek plans in"
-        elif due is not None and (day, end) > due:
-            why = "that is after it is due"
-        elif clash is not None:
-            why = f"{clash} is there now"
-        if why is None:
-            if not pinned:
-                taken[day].append((start, end, block.get("title") or "homework"))
-            continue
-        title = block.get("title") or "Homework"
-        lost[block["id"]] = {
-            "block_id": block["id"],
-            "assignment_id": block.get("assignment_id"),
-            "title": title,
-            "day": day,
-            "start": block["start"],
-            "message": f"{title} no longer fits {DAY_FULL[day]} at {hhmm_text(block['start'])}: {why}.",
-        }
-    if not lost:
-        return blocks, []
-    out = []
-    for block in blocks:
-        if block["id"] in lost:
-            block = dict(block)
-            block.pop("start")
-            block.pop("pinned", None)
-            block["days"] = planning_days(block, assignments, week_start)
-        out.append(block)
-    return out, [lost[block["id"]] for block in sessions if block["id"] in lost]
+    return json.loads(kept), json.loads(lost)
+
 
 
 def occurrence_days(block: dict) -> list[int]:
-    if block and block.get("kind") == "flexible" and block.get("completed"):
-        completed_day = block.get("completed_day")
-        if isinstance(completed_day, int):
-            return [completed_day]
-        if isinstance(block.get("days"), list) and len(block["days"]) > 1:
-            return []
-    return list((block or {}).get("days") or [])
+    return [int(day) for day in flexweek_engine.reuse_occurrence_days(json.dumps(block or {}))]
+
 
 
 def session_minutes(blocks: list[dict], assignment_id: str) -> int:
-    total = 0
-    for block in blocks:
-        if block.get("assignment_id") == assignment_id and not block.get("completed"):
-            total += int(block["duration_min"])
-    return total
+    return int(flexweek_engine.reuse_session_minutes(json.dumps(blocks), assignment_id))
+
 
 
 def available_homework_minutes(
@@ -320,115 +201,59 @@ def available_homework_minutes(
     blocks: list[dict],
     committed_blocks: list[dict] | None = None,
 ) -> int:
-    if not assignment or assignment.get("completed"):
-        return 0
-    here = session_minutes(blocks, assignment["id"])
-    committed = session_minutes(committed_blocks or [], assignment["id"])
-    server = assignment.get("unplanned_min")
-    if server is None:
-        remaining = max(0, int(assignment["estimate_min"]) - int(assignment.get("focus_minutes") or 0))
-        return floor_slot(remaining - here)
-    return floor_slot(int(server) + committed - here)
+    return int(
+        flexweek_engine.reuse_available_minutes(
+            None if assignment is None else json.dumps(assignment),
+            json.dumps(blocks),
+            None if committed_blocks is None else json.dumps(committed_blocks),
+        )
+    )
+
 
 
 def copied_fixed_block(source: dict, days: list[int], block_id: str) -> dict:
-    copy = deepcopy(source)
-    copy["id"] = block_id
-    copy["kind"] = "locked"
-    copy["days"] = list(days)
-    copy["completed"] = False
-    copy["completed_day"] = None
-    copy["missed_days"] = []
-    copy["focus_minutes"] = 0
-    copy["focus_sessions"] = 0
-    for key in ("assignment_id", "pomodoro_parent_id", "pomodoro_role", "pomodoro_index", "template_id"):
-        copy.pop(key, None)
-    return copy
+    return json.loads(flexweek_engine.reuse_copied_fixed(json.dumps(source), json.dumps(days), block_id))
+
 
 
 def copied_homework_block(assignment: dict, day: int, duration: int, block_id: str) -> dict:
-    return {
-        "id": block_id,
-        "kind": "flexible",
-        "title": assignment["title"],
-        "duration_min": duration,
-        "days": [day],
-        "start": None,
-        "earliest": None,
-        "latest": None,
-        "priority": assignment.get("priority") or 3,
-        "energy": assignment.get("energy") or "medium",
-        "course": assignment.get("course"),
-        "category": assignment.get("category"),
-        "spotify_url": assignment.get("spotify_url"),
-        "completed": False,
-        "completed_day": None,
-        "missed_days": [],
-        "assignment_id": assignment["id"],
-    }
+    return json.loads(
+        flexweek_engine.reuse_copied_homework(json.dumps(assignment), day, duration, block_id)
+    )
+
 
 
 def clipboard_item(block: dict, source_day: int, scope: str, group_id: str) -> dict:
-    return {
-        "block": deepcopy(block),
-        "source_day": source_day,
-        "scope": scope,
-        "group_id": group_id,
-    }
+    return json.loads(
+        flexweek_engine.reuse_clipboard_item(json.dumps(block), source_day, scope, group_id)
+    )
+
 
 
 def clipboard_fingerprint(items: list[dict]) -> str:
-    payload = [
-        {"block": item["block"], "source_day": item["source_day"], "scope": item["scope"]} for item in items
-    ]
-    return json.dumps(payload, sort_keys=True, default=str)
+    return str(flexweek_engine.reuse_fingerprint(json.dumps(items)))
+
 
 
 def block_occurs_on_day(block: dict, day: int, placed: list[dict] | None = None) -> bool:
-    if is_homework_session(block) or block.get("kind") == "flexible":
-        source = block if block.get("start") else None
-        if source is None and placed:
-            source = next(
-                (
-                    item
-                    for item in placed
-                    if item.get("id") == block.get("id") and day in occurrence_days(item)
-                ),
-                None,
-            )
-        return bool(source and source.get("start") and day in occurrence_days(source))
-    return day in occurrence_days(block)
+    return bool(
+        flexweek_engine.reuse_occurs(
+            json.dumps(block), day, None if placed is None else json.dumps(placed)
+        )
+    )
+
 
 
 def intervals_overlap(start_a: int, end_a: int, start_b: int, end_b: int) -> bool:
-    return start_a < end_b and start_b < end_a
+    return bool(flexweek_engine.reuse_overlap(start_a, end_a, start_b, end_b))
+
 
 
 def row_conflict(row: dict, rows: list[dict], existing: list[dict]) -> str | None:
-    if not row.get("fixed") or not row["block"].get("start"):
-        return None
-    start = hhmm_to_minutes(row["block"]["start"])
-    end = start + int(row["block"]["duration_min"])
-    for block in existing:
-        if not block.get("start") or row["day"] not in occurrence_days(block):
-            continue
-        other = hhmm_to_minutes(block["start"])
-        if intervals_overlap(start, end, other, other + int(block["duration_min"])):
-            return block["title"]
-    for candidate in rows:
-        if (
-            candidate is row
-            or not candidate.get("checked")
-            or not candidate.get("fixed")
-            or candidate["day"] != row["day"]
-            or candidate.get("week_start") != row.get("week_start")
-            or not candidate["block"].get("start")
-        ):
-            continue
-        other = hhmm_to_minutes(candidate["block"]["start"])
-        if intervals_overlap(start, end, other, other + int(candidate["block"]["duration_min"])):
-            return candidate["block"]["title"]
-    return None
+    skip = next((index for index, item in enumerate(rows) if item is row), None)
+    return flexweek_engine.reuse_row_conflict(
+        json.dumps(row), json.dumps(rows), json.dumps(existing), skip
+    )
 
 
 def proposals_from_clipboard(
@@ -529,10 +354,9 @@ def merge_preview_rows(rows: list[dict], operation_id: str) -> list[dict]:
     return result
 
 
+
 def capacity_problem(existing_count: int, added_count: int, label: str) -> str:
-    if existing_count + added_count > MAX_WEEK_BLOCKS:
-        return f"{label} would exceed 100 blocks. Uncheck an item or remove a block first."
-    return ""
+    return str(flexweek_engine.reuse_capacity(existing_count, added_count, label))
 
 
 def preview_conflict_message(row: dict, rows: list[dict], existing: list[dict]) -> str:
@@ -610,28 +434,15 @@ def unfinished_items(
     return sorted(items, key=lambda item: due_sort_key(item.get("due"), item["id"]))
 
 
+
 def late_from_start(minute: int) -> str:
-    snapped = minute // SLOT_MIN * SLOT_MIN
-    snapped = max(DAY_START_MIN, min(DAY_END_MIN - SLOT_MIN, snapped))
-    return minutes_to_hhmm(snapped)
+    return str(flexweek_engine.reuse_late_from(minute))
+
 
 
 def running_late_block(day: int, from_start: str, minutes: int, block_id: str) -> dict:
-    start = hhmm_to_minutes(from_start)
-    duration = min(minutes, DAY_END_MIN - start)
-    return {
-        "id": block_id,
-        "kind": "locked",
-        "title": "Running late",
-        "duration_min": duration,
-        "days": [day],
-        "start": from_start,
-        "priority": 1,
-        "energy": "medium",
-        "category": "downtime",
-        "completed": False,
-        "missed_days": [],
-    }
+    return json.loads(flexweek_engine.reuse_late_block(day, from_start, minutes, block_id))
+
 
 
 def running_late_refusal(
@@ -642,38 +453,24 @@ def running_late_refusal(
     conflict: bool,
     block_count: int,
 ) -> str | None:
-    today = now.date()
-    this_week = (today - timedelta(days=today.weekday())).isoformat()
-    if week_start != this_week:
-        return "Open this week before using Running late."
-    if conflict:
-        return "This week was changed somewhere else. Reload it first."
-    if dirty:
-        return "Your last change is still saving. Try again in a moment."
-    if block_count >= MAX_WEEK_BLOCKS:
-        return "This week already has 100 blocks. Remove one before recording a late start."
-    return None
+    return flexweek_engine.reuse_late_refusal(
+        week_start, now.date().isoformat(), dirty, conflict, block_count
+    )
+
 
 
 def late_locked_line(block: dict, moved: int) -> str:
-    start = hhmm_to_minutes(str(block["start"]))
-    end = start + int(block["duration_min"])
-    extra = f"{moved} moved." if moved else "Nothing had to move."
-    return f"Running late: {clock_text(start)}–{clock_text(end)} is now locked. {extra}"
+    return str(flexweek_engine.reuse_late_line(json.dumps(block), moved))
+
 
 
 def late_id(operation_id: str) -> str:
-    return "b-late-" + operation_id.replace("-", "")[:24]
+    return str(flexweek_engine.reuse_late_id(operation_id))
+
 
 
 def copy_label(block: dict, source_day: int, scope: str) -> str:
-    title = block["title"]
-    series = block.get("kind") == "locked" and len(block.get("days") or []) > 1
-    if scope == "series":
-        return f"{title} (all days)"
-    if series:
-        return f"{title} ({DAY_FULL[source_day]} only)"
-    return title
+    return str(flexweek_engine.reuse_copy_label(json.dumps(block), source_day, scope))
 
 
 DAYS_LONG = (
@@ -711,7 +508,6 @@ def planner_title(
     The top bar used to say none of this. It had two buttons reading "Previous week" and "Next week"
     and no statement of which week you were on at all.
     """
-    from datetime import date, datetime, timedelta
 
     def name(names: tuple[str, ...], index: int) -> str:
         return names[index][:3] if short else names[index]
