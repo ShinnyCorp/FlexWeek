@@ -530,6 +530,157 @@ impl PyConn {
             flexweek_store::create_session_row(conn, &token_hash, user_id, expires, now)
         })
     }
+
+    fn begin_immediate(&self, py: Python<'_>) -> PyResult<()> {
+        self.store(py, flexweek_store::begin_immediate)
+    }
+
+    fn begin(&self, py: Python<'_>) -> PyResult<()> {
+        self.store(py, flexweek_store::begin)
+    }
+
+    fn enforce_foreign_keys(&self, py: Python<'_>) -> PyResult<()> {
+        self.store(py, flexweek_store::enforce_foreign_keys)
+    }
+
+    fn session_user(
+        &self,
+        py: Python<'_>,
+        token_hash: &str,
+        now: i64,
+    ) -> PyResult<Option<(i64, String)>> {
+        let token_hash = token_hash.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::session_user(conn, &token_hash, now)
+        })
+    }
+
+    fn insert_user(&self, py: Python<'_>, username: &str, password_hash: &str) -> PyResult<i64> {
+        let username = username.to_string();
+        let password_hash = password_hash.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::insert_user(conn, &username, &password_hash)
+        })
+    }
+
+    fn find_user(&self, py: Python<'_>, username: &str) -> PyResult<Option<(i64, String, String)>> {
+        let username = username.to_string();
+        self.store(py, move |conn| flexweek_store::find_user(conn, &username))
+    }
+
+    fn password_hash_of(&self, py: Python<'_>, user_id: i64) -> PyResult<Option<String>> {
+        self.store(py, move |conn| {
+            flexweek_store::password_hash_of(conn, user_id)
+        })
+    }
+
+    fn delete_session(&self, py: Python<'_>, token_hash: &str) -> PyResult<()> {
+        let token_hash = token_hash.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::delete_session(conn, &token_hash)
+        })
+    }
+
+    fn recovery_hashes(&self, py: Python<'_>, user_id: i64) -> PyResult<Vec<String>> {
+        self.store(py, move |conn| {
+            flexweek_store::recovery_hashes(conn, user_id)
+        })
+    }
+
+    fn count_recovery_codes(&self, py: Python<'_>, user_id: i64) -> PyResult<i64> {
+        self.store(py, move |conn| {
+            flexweek_store::count_recovery_codes(conn, user_id)
+        })
+    }
+
+    fn use_recovery_code(&self, py: Python<'_>, user_id: i64, code_hash: &str) -> PyResult<()> {
+        let code_hash = code_hash.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::use_recovery_code(conn, user_id, &code_hash)
+        })
+    }
+
+    fn rotate_password(&self, py: Python<'_>, user_id: i64, new_hash: &str) -> PyResult<()> {
+        let new_hash = new_hash.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::rotate_password(conn, user_id, &new_hash)
+        })
+    }
+
+    fn read_week(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        week_start: &str,
+    ) -> PyResult<Option<(String, i64)>> {
+        let week_start = week_start.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::read_week(conn, user_id, &week_start)
+        })
+    }
+
+    fn week_blocks(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        week_start: &str,
+    ) -> PyResult<Option<String>> {
+        let week_start = week_start.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::week_blocks(conn, user_id, &week_start)
+        })
+    }
+
+    fn week_starts(&self, py: Python<'_>, user_id: i64) -> PyResult<Vec<String>> {
+        self.store(py, move |conn| flexweek_store::week_starts(conn, user_id))
+    }
+
+    fn assignment_body(&self, py: Python<'_>, user_id: i64, id: &str) -> PyResult<Option<String>> {
+        let id = id.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::assignment_body(conn, user_id, &id)
+        })
+    }
+
+    fn assignment_bodies(&self, py: Python<'_>, user_id: i64) -> PyResult<Vec<(String, i64)>> {
+        self.store(py, move |conn| {
+            flexweek_store::assignment_bodies(conn, user_id)
+        })
+    }
+
+    fn list_assignment_rows(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+    ) -> PyResult<Vec<(String, String, i64)>> {
+        self.store(py, move |conn| {
+            flexweek_store::list_assignment_rows(conn, user_id)
+        })
+    }
+
+    fn list_restore_points(&self, py: Python<'_>, user_id: i64) -> PyResult<String> {
+        self.store(py, move |conn| {
+            flexweek_store::list_restore_points(conn, user_id)
+        })
+    }
+
+    fn restore_point_body(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        point_id: &str,
+    ) -> PyResult<Option<(String, String)>> {
+        let point_id = point_id.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::restore_point_body(conn, user_id, &point_id)
+        })
+    }
+
+    fn availability_json(&self, py: Python<'_>, user_id: i64) -> PyResult<Option<String>> {
+        self.store(py, move |conn| {
+            flexweek_store::availability_json(conn, user_id)
+        })
+    }
 }
 
 /// Python compared revisions as unbounded integers; one past `i64` simply matches no row.
