@@ -25,7 +25,18 @@ pub fn clean(root: &Path) -> io::Result<CleanReport> {
     let mut report = CleanReport::default();
     // Stale jobs are removed below. Restore edits first only when nothing live
     // still owns a file; `restore_finished` checks that itself.
-    crate::edits::restore_finished(root)?;
+    let restored = crate::edits::restore_finished(root)?;
+    // A live mutate still owns the module. The next clean rebuilds it.
+    if !restored.held_by_live_job
+        && let Some(mark) = crate::edits::engine_rebuild(root)?
+    {
+        eprintln!(
+            "rebuilding the engine module in {}",
+            mark.checkout.display()
+        );
+        crate::rebuild::run_marked(&mark)?;
+        crate::edits::clear_engine_rebuild(root)?;
+    }
     let mut jobs = Vec::new();
     for path in job::list_job_files(root)? {
         if let Some(job) = job::load_or_set_aside(&path)? {
