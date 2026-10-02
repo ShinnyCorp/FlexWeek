@@ -1207,18 +1207,19 @@ fn look_readability(custom: &str, palette: &str, blocks: &str) -> PyResult<Strin
         accent: text_of("accent"),
         accent_ink: text_of("accent_ink"),
     };
-    let filled = objects(blocks)?
+    let painted = objects(blocks)?
         .into_iter()
         .filter_map(|item| {
             let obj = item.as_object()?;
-            Some(custom_look::BlockInk {
+            Some(custom_look::PaintedCategory {
                 key: obj.get("key")?.as_str()?.to_string(),
-                label: obj.get("label")?.as_str()?.to_string(),
                 fill: obj.get("fill")?.as_str()?.to_string(),
+                drawn_fill: obj.get("drawn_fill")?.as_str()?.to_string(),
                 ink: obj.get("ink")?.as_str()?.to_string(),
             })
         })
         .collect::<Vec<_>>();
+    let filled = custom_look::filled_blocks(&painted);
     guard(|| {
         let found = custom_look::readability(&custom, &palette, &filled).map_err(crate::raise)?;
         Ok(array(
@@ -1398,6 +1399,10 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         files_export_finish,
         files_import_start,
         files_import_finish,
+        look_sanitize_custom,
+        look_sanitize_look,
+        look_effective_look,
+        look_known_pack,
     );
     Ok(())
 }
@@ -1477,5 +1482,40 @@ fn files_import_finish(
         let payload =
             files::import_finish(&head, &blocks, &assignments, failure).map_err(crate::raise)?;
         Ok(dump(&payload))
+    })
+}
+
+/// `(custom, problems)` as one JSON pair: the cleaned look or null, and a sentence for each setting
+/// dropped. The three look functions below read a NaN or Infinity as `import_look` does.
+#[pyfunction]
+fn look_sanitize_custom(raw: &str) -> PyResult<String> {
+    let raw = custom_look::readable(&parse(raw)?);
+    guard(|| {
+        let (custom, problems) = custom_look::sanitize_custom(&raw);
+        Ok(dump(&json!([custom.map(Value::Object), problems])))
+    })
+}
+
+#[pyfunction]
+fn look_sanitize_look(raw: &str) -> PyResult<String> {
+    let raw = custom_look::readable(&parse(raw)?);
+    guard(|| Ok(dump(&Value::Object(custom_look::sanitize_look(&raw)))))
+}
+
+#[pyfunction]
+fn look_effective_look(choice: &str) -> PyResult<String> {
+    let choice = custom_look::readable(&parse(choice)?);
+    guard(|| Ok(dump(&Value::Object(custom_look::effective_look(&choice)))))
+}
+
+/// Takes the caller's own object: anything that is not text is no pack.
+#[pyfunction]
+fn look_known_pack(pack: &Bound<'_, PyAny>) -> PyResult<String> {
+    let pack = pack.extract::<String>().map_or(Value::Null, Value::from);
+    guard(|| {
+        Ok(custom_look::known_pack(&pack)
+            .as_str()
+            .unwrap_or("system")
+            .to_string())
     })
 }

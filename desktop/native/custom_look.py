@@ -10,7 +10,6 @@ file's "saved_looks" (plan, "Customise"). Settings builds its screen on these fu
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass
 
 import flexweek_engine  # type: ignore[import-untyped]
@@ -144,32 +143,12 @@ class Imported:
     problems: tuple[str, ...]
 
 
-def _finite(value: object) -> object:
-    """`value` with each NaN and Infinity turned into an empty list: no look setting takes either, and
-    a list is turned away, with the same sentence, wherever a number is."""
-    if isinstance(value, float) and not math.isfinite(value):
-        return []
-    if isinstance(value, list):
-        return [_finite(item) for item in value]
-    if isinstance(value, dict):
-        return {key: _finite(item) for key, item in value.items()}
-    return value
-
-
-def _readable(raw: object) -> object:
-    """What the engine reads: `base` is the one setting whose value is printed back, so it keeps its NaN
-    and Infinity to be printed as Python prints them."""
-    if isinstance(raw, dict) and "base" in raw:
-        return {**{key: _finite(item) for key, item in raw.items()}, "base": raw["base"]}
-    return _finite(raw)
-
-
 def import_look(text: str | bytes) -> Imported:
     size = len(text)
     raw = None
     if size <= FILE_MAX_BYTES:
         try:
-            raw = plain(_readable(json.loads(text)))
+            raw = plain(json.loads(text))
         except ValueError:
             raw = None
     look, problems = flexweek_engine.look_import(size, raw)
@@ -196,23 +175,13 @@ def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
     """Every pair that reads under 4.5 to 1, named as the Customise mock-up names them."""
     look = {"preset": "default", "knobs": {}, "custom": custom}
     palette = resolved_palette("system", system_dark, look)
-    blocks = []
+    painted = []
     for key, info in CATEGORIES.items():
         fill, mark = category_paint(key, palette)
         drawn = block_paint(look, palette, fill, info["kind"], mark)
-        if drawn["fill"] == fill:
-            blocks.append({"key": key, "label": info["label"], "fill": fill, "ink": drawn["ink"]})
+        painted.append({"key": key, "fill": fill, "drawn_fill": drawn["fill"], "ink": drawn["ink"]})
     found = json.loads(
-        flexweek_engine.look_readability(
-            json.dumps(custom),
-            json.dumps(
-                {
-                    name: palette[name]
-                    for name in ("window", "panel", "grid", "text", "muted", "accent", "accent_ink")
-                }
-            ),
-            json.dumps(blocks),
-        )
+        flexweek_engine.look_readability(json.dumps(custom), json.dumps(palette), json.dumps(painted))
     )
     return [
         Problem(
