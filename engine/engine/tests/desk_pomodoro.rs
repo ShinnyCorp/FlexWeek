@@ -58,7 +58,7 @@ fn role(child: &Value) -> &str {
 #[test]
 fn test_a_plan_alternates_work_and_breaks() {
     let plan = plan_for(90, Some(&prefs()));
-    assert_eq!(plan["error"], Value::Null);
+    assert_eq!(plan.get("error"), Some(&Value::Null));
     let segments: Vec<(&str, i64)> = plan["segments"]
         .as_array()
         .expect("segments")
@@ -209,11 +209,9 @@ fn test_a_break_carries_none_of_the_work_details() {
         essay(json!({"course": "English", "spotify_url": "https://open.spotify.com/track/a"}));
     let children = children_of(&source, &placed_at("16:00", 3), 90);
     let breaks: Vec<&Value> = children.iter().filter(|c| role(c) == "break").collect();
-    assert!(
-        breaks
-            .iter()
-            .all(|c| c["course"].is_null() && c["spotify_url"].is_null())
-    );
+    assert!(breaks.iter().all(
+        |c| c.get("course") == Some(&Value::Null) && c.get("spotify_url") == Some(&Value::Null)
+    ));
     assert!(breaks.iter().all(|c| c["category"] == "free"));
 }
 
