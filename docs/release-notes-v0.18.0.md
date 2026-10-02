@@ -10,7 +10,7 @@ Places homework around school and sports. Download, open a window, create an acc
 
 ## What changed
 - **A new engine underneath.** The part of FlexWeek that places homework, works out your day and month, and saves your account is rewritten in Rust. Nothing looks or reads differently: the same plans, the same words, the same designs.
-- **Faster.** Placing a week takes about a tenth of the time it did, and the hours draw in a little over half the time, so dragging and scrolling stay smooth on slower laptops.
+- **Faster planning.** Placing a week takes about a third of the time it did, and less still while the app is busy drawing. Drawing and scrolling are as they were.
 - **Your account carries over.** Your homework, weeks, routines, looks and password are untouched. There is nothing to export or sign in to again.
 
 ## For people building from source

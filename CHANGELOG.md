@@ -10,8 +10,10 @@ All notable changes to FlexWeek are documented here. Format follows
   that does not draw are rewritten in Rust (`engine/`, contract in
   `docs/engine/contract.md`) and built into the app as the `flexweek_engine`
   module. Nothing a student sees changes: the same plans, the same words, the
-  same files. A week that took the old planner 2.9 ms to place takes 0.3 ms,
-  and drawing a frame of the hours takes about 5.5 ms where it took 9.1.
+  same files. A week that took the old planner 2.9 ms to place takes about
+  1 ms, and while the window is busy on its own thread, as it is in the
+  running app, 1 ms where it took 8. Drawing a frame of the hours takes about
+  as long as before: about 10 ms, where 0.17.2 took 9.
 - An existing account opens as it is. The database keeps its format, and
   passwords, sessions and recovery codes made by earlier versions still work.
 - Storage has one owner: only the engine opens the database. The server's
