@@ -27,6 +27,9 @@ All notable changes to FlexWeek are documented here. Format follows
 - Startup and request connections use the same database settings and treat `file:` as a literal filename.
 - Theme migration stops on an unreadable column instead of silently omitting it.
 - A database operation's crash keeps its original error through cleanup and rolls back pending writes.
+- A homework session saved with an empty start counts as not placed yet, so its Day page opens and Month lists it as unscheduled.
+- A custom look's Fix for the accent checks the calendar grid as well as the page and cards.
+- A study window whose start uses digits from another script, such as Arabic-Indic, is read at its real time.
 - Tests draw text the same way in every worker, so the date picker's test no
   longer fails on machines with subpixel text.
 
