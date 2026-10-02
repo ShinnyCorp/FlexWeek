@@ -14,24 +14,15 @@ pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QTimeEdit, QWidget
 
 from desktop.native import settings
-from desktop.native.focus import now_and_next, now_next_line
 from desktop.native.hours.canvas import Drawn
 from desktop.native.hours.geometry import Span
 from desktop.native.hours.hand import span_words
 from desktop.native.hours.month import MonthChip
-from desktop.native.remind import due_reminders
-from desktop.native.reuse import late_locked_line
 from desktop.native.setup import QuarterTime, span_label
 from desktop.native.weekmodel import (
-    added_words,
-    clock_label,
     clock_text,
-    due_label,
-    hhmm_text,
-    moved_words,
     range_label,
     set_clock_24h,
-    time_format,
 )
 from desktop.native.widgets import BlockDialog, LateDialog, PreviewDialog, Segmented
 from desktop.native.window import NativeWindow
@@ -54,26 +45,6 @@ def twelve() -> None:
     set_clock_24h(TWELVE)
 
 
-@pytest.mark.parametrize(
-    ("minute", "on_24", "on_12"),
-    [
-        (16 * 60, "16:00", "4:00 PM"),
-        (5, "00:05", "12:05 AM"),
-        (12 * 60, "12:00", "12:00 PM"),
-        (12 * 60 + 30, "12:30", "12:30 PM"),
-        (9 * 60 + 15, "09:15", "9:15 AM"),
-        (23 * 60 + 45, "23:45", "11:45 PM"),
-        (24 * 60, "24:00", "12:00 AM"),
-    ],
-)
-def test_clock_text_on_both_clocks(minute: int, on_24: str, on_12: str) -> None:
-    assert clock_text(minute) == on_24
-    assert clock_label(minute) == on_24
-    set_clock_24h(TWELVE)
-    assert clock_text(minute) == on_12
-    assert clock_label(minute) == on_12
-
-
 def test_set_clock_says_whether_it_changed() -> None:
     assert set_clock_24h(True) is False
     assert set_clock_24h(TWELVE) is True
@@ -81,22 +52,7 @@ def test_set_clock_says_whether_it_changed() -> None:
     assert set_clock_24h(True) is True
 
 
-def test_time_boxes_take_the_12_hour_form() -> None:
-    assert time_format() == "HH:mm"
-    set_clock_24h(TWELVE)
-    assert time_format() == "h:mm AP"
-
-
 BLOCK = {"id": "soccer", "title": "Soccer practice", "start": "16:00", "duration_min": 90, "days": [3]}
-
-
-def test_the_week_model_words(twelve: None) -> None:
-    assert hhmm_text("16:00") == "4:00 PM"
-    assert due_label("2026-09-24T21:00", "2026-09-21") == "Thu 24 Sep, 9:00 PM"
-    assert due_label("2026-09-24", "2026-09-21") == "Thu 24 Sep"
-    assert added_words(BLOCK) == "Added Soccer practice on Thu 4:00 PM."
-    assert moved_words(BLOCK, 3, 4, 17 * 60, 18 * 60 + 30) == "Moved Soccer practice to Fri 5:00 PM."
-    assert moved_words(BLOCK, 3, 3, 16 * 60, 18 * 60) == "Soccer practice now ends at 6:00 PM."
 
 
 def test_the_hours_words(twelve: None) -> None:
@@ -110,25 +66,6 @@ def test_the_hours_words(twelve: None) -> None:
         "4:00 PM Soccer practice"
     )
     assert MonthChip("d", "Essay", "assignments", due=True, due_time="21:00").words == "Due 9:00 PM Essay"
-
-
-def test_the_next_line_a_reminder_and_running_late(twelve: None) -> None:
-    blocks = [{**BLOCK, "completed": False}]
-    assert now_next_line(now_and_next(blocks, 3, 15 * 60 + 40), 15 * 60 + 40) == (
-        "Next: Soccer practice at 4:00 PM (in 20 min)"
-    )
-    due = due_reminders(
-        blocks=[{**BLOCK, "kind": "locked"}],
-        trace=None,
-        today_iso="2026-09-24",
-        now_min=15 * 60 + 56,
-        lead_min=5,
-        fired=set(),
-    )
-    assert [item["body"] for item in due] == ["4:00 PM · Thu"]
-    assert late_locked_line({"start": "16:00", "duration_min": 30}, 0) == (
-        "Running late: 4:00 PM–4:30 PM is now locked. Nothing had to move."
-    )
 
 
 def test_running_late_rows_on_the_12_hour_clock(qapp: QApplication, twelve: None) -> None:  # noqa: F811

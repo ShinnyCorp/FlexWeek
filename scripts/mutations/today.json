@@ -102,7 +102,7 @@
   "name": "the Next line says min",
   "old": "            format!(\" (in {})\", length_words(wait))\n",
   "new": "            format!(\" (in {}m)\", wait)\n",
-  "test": "desktop/tests/test_words_on_screen.py::test_the_next_line_says_min_like_every_design"
+  "test": "cargo:flexweek-engine:desk_words_on_screen:test_the_next_line_says_min_like_every_design"
  },
  {
   "file": "desktop/native/window.py",

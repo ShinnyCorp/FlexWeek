@@ -16,7 +16,6 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
-from desktop.native.focus import now_and_next, now_next_line
 from desktop.native.hours.canvas import Drawn
 from desktop.native.hours.geometry import Span
 from desktop.native.layouts.registry import sanitize_layout
@@ -31,21 +30,6 @@ from desktop.tests.window_support import (  # noqa: F401
     wait_until,
     window,
 )
-
-
-def test_the_next_line_says_min_like_every_design() -> None:
-    blocks = [
-        {"title": "Soccer practice", "start": "16:00", "duration_min": 90, "days": [3], "completed": False}
-    ]
-    assert now_next_line(now_and_next(blocks, 3, 15 * 60 + 40), 15 * 60 + 40) == (
-        "Next: Soccer practice at 16:00 (in 20 min)"
-    )
-    assert now_next_line(now_and_next(blocks, 3, 14 * 60 + 30), 14 * 60 + 30) == (
-        "Next: Soccer practice at 16:00 (in 1 h 30 min)"
-    )
-    assert now_next_line(now_and_next(blocks, 3, 16 * 60 + 10), 16 * 60 + 10) == (
-        "Now: Soccer practice · 1 h 20 min left"
-    )
 
 
 def test_running_late_says_where_each_block_goes_in_words(qapp: QApplication) -> None:  # noqa: F811
