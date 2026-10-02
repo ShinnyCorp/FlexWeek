@@ -293,3 +293,20 @@ def test_errors_map_to_the_same_classes_as_python(tmp_path, prepare, sql, kind):
     got, want = outcome(live, live_path, sql), outcome(ref, ref_path, sql)
     assert want[0] == kind, want
     assert got == want
+
+
+def test_a_path_that_starts_with_file_colon_is_a_plain_file_name(tmp_path, monkeypatch):
+    name = "file:planner.db?mode=memory"
+    found = {}
+    for label, module in (("live", live), ("ref", ref)):
+        folder = tmp_path / label
+        folder.mkdir()
+        monkeypatch.chdir(folder)
+        with module.connect(Path(name)) as db:
+            db.execute("CREATE TABLE t(a)")
+            db.execute("INSERT INTO t VALUES (1)")
+        with module.connect(Path(name)) as db:
+            rows = [list(row) for row in db.execute("SELECT a FROM t")]
+        found[label] = (sorted(path.name for path in folder.iterdir()), rows)
+    assert found["ref"] == ([name], [[1]])
+    assert found["live"] == found["ref"]
