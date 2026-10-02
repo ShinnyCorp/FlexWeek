@@ -18,6 +18,11 @@ import pytest
 # home of its own. The cache stays the real one, so fonts are not indexed again for every worker.
 # Alarms and reminders the tests ring are played at no volume (sound.SILENT).
 os.environ["FLEXWEEK_SILENT"] = "1"
+# Text is drawn in grey shades, never in coloured subpixel stripes, however the computer sets it. The
+# system's fontconfig turned stripes on and the developer's own turned them off, so a worker, with a
+# home of its own, drew the date picker's 10 in stripes no pixel of which was the text's colour, and
+# the same file run alone drew it in the text's colour.
+os.environ["FONTCONFIG_FILE"] = str(Path(__file__).with_name("fontconfig.conf"))
 if os.environ.get("PYTEST_XDIST_WORKER"):
     os.environ.setdefault("XDG_CACHE_HOME", str(Path.home() / ".cache"))
     os.environ["HOME"] = tempfile.mkdtemp(prefix=f"flexweek-{os.environ['PYTEST_XDIST_WORKER']}-")
