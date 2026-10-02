@@ -57,3 +57,22 @@ pub fn py_title(text: &str) -> String {
     }
     out
 }
+
+/// Tests that switch the engine's one global clock (24-hour or 12-hour) share this lock, so two of
+/// them never run side by side, and each starts and ends on the 24-hour clock Python's tests expect.
+pub struct ClockGuard(std::sync::MutexGuard<'static, ()>);
+
+pub fn clock_lock() -> ClockGuard {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let held = LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    flexweek_engine::desk::weekmodel::set_clock_24h(true);
+    ClockGuard(held)
+}
+
+impl Drop for ClockGuard {
+    fn drop(&mut self) {
+        flexweek_engine::desk::weekmodel::set_clock_24h(true);
+    }
+}
