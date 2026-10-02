@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 import desk_ref.calendar as ref_calendar
 import desk_ref.focus as ref_focus
+import desk_ref.look as ref_look
 import desktop.native.calendar as live_calendar
 import desktop.native.focus as live_focus
+import desktop.native.look as live_look
 import desktop.tests.test_engine_desk_parity as base
 
 
@@ -24,3 +28,11 @@ def test_deleting_a_whole_block_does_not_read_its_days():
     blocks = [{"id": "x", "title": "t"}, {"id": "y"}]
     assert ref_calendar.delete_occurrence(blocks, "x", None) == [{"id": "y"}]
     base.same(live_calendar.delete_occurrence, ref_calendar.delete_occurrence, blocks, "x", None)
+
+
+@pytest.mark.parametrize("hue", [-0.0, -360.0, 0.0, 360.0])
+def test_category_hue_serializes_zero_without_a_sign(hue):
+    raw = {"base": "light", "categories": {"class": {"hue": hue}}}
+    expected = ref_look.sanitize_custom(raw)
+    assert expected[0]["categories"]["class"]["hue"] == 0.0
+    assert json.dumps(live_look.sanitize_custom(raw)) == json.dumps(expected)

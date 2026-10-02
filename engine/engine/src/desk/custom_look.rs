@@ -305,7 +305,8 @@ fn category_spec(value: &Value) -> Option<(&'static str, Value)> {
     if let Some(hue) = number(spec.get("hue"))
         && hue.is_finite()
     {
-        return Some(("hue", json!(hue.rem_euclid(360.0))));
+        let hue = hue.rem_euclid(360.0);
+        return Some(("hue", json!(if hue == 0.0 { 0.0 } else { hue })));
     }
     hex(spec.get("colour")).map(|colour| ("colour", json!(colour)))
 }
@@ -1234,6 +1235,14 @@ pub fn readability(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn category_hue_serializes_zero_without_a_sign() {
+        for hue in [-0.0, -360.0, 0.0, 360.0] {
+            let (_, value) = category_spec(&json!({"hue": hue})).unwrap();
+            assert_eq!(value.to_string(), "0.0");
+        }
+    }
 
     fn knobs(choice: Value) -> Vec<(String, String)> {
         effective_look(&choice)
