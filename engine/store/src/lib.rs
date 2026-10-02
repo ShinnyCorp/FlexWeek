@@ -172,7 +172,8 @@ pub use routines::{
     save_routine,
 };
 pub use rules::{
-    Relay, SolveAvailability, assignment_view, payload_digest, preferences_fields, rewrite_blocks,
+    Adopted, AssignmentRow, Relay, SolveAvailability, adopt_legacy_deadlines, assignment_view,
+    create_restore_point, own_assignment_rows, payload_digest, preferences_fields, rewrite_blocks,
     rewrite_stored_blocks, solve_availability,
 };
 pub use weeks::{WeekSave, list_account_weeks, read_week, save_week, week_blocks, week_starts};

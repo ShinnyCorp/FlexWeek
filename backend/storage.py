@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol
@@ -70,6 +70,20 @@ class Connection(Protocol):
         self, user_id: int, assignment_id: str, revision: int, /
     ) -> tuple[str, str]: ...
 
+    def adopt_legacy_deadlines(
+        self,
+        user_id: int,
+        week_start: str,
+        blocks: str,
+        max_assignments: int,
+        encode: Callable[[str], str],
+        /,
+    ) -> tuple[bool, str]: ...
+
+    def require_own_assignments(
+        self, user_id: int, ids: Sequence[str], /
+    ) -> tuple[bool, Sequence[tuple[str, str, int]]]: ...
+
     def list_account_weeks(self, user_id: int, /) -> Sequence[tuple[str, str]]: ...
 
     def save_week(
@@ -103,6 +117,17 @@ class Connection(Protocol):
         keep: int,
         /,
     ) -> None: ...
+
+    def create_restore_point(
+        self,
+        user_id: int,
+        token: str,
+        label: str,
+        created_at: str,
+        keep_ids: Sequence[str],
+        limit: int,
+        /,
+    ) -> str: ...
 
     def replace_account(
         self,

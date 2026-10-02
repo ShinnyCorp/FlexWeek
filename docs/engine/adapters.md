@@ -115,6 +115,9 @@ A backend wrapper is one of three classes.
 | storage | Connection.list_restore_points | STAYS | Forwards to the Rust connection. |
 | storage | Connection.restore_point_body | STAYS | Forwards to the Rust connection. |
 | storage | Connection.availability_json | STAYS | Forwards to the Rust connection. |
+| storage | Connection.adopt_legacy_deadlines | STAYS | Forwards to the Rust connection. |
+| storage | Connection.require_own_assignments | STAYS | Forwards to the Rust connection. |
+| storage | Connection.create_restore_point | STAYS | Forwards to the Rust connection. |
 | storage | connect | ADAPTER | Opens one engine connection and yields it. Foreign keys are already on. |
 | storage | new_preferences | ADAPTER | One `insert_preferences` call at `PREFS_VERSION`. |
 | storage | initialize | ADAPTER | One `store_initialize_today` call. The binding reads the clock. |
@@ -131,11 +134,15 @@ A backend wrapper is one of three classes.
 
 | Module | Function | Class | Reason |
 | --- | --- | --- | --- |
+| app | adopt_legacy_deadlines | ADAPTER | One connection call. `adopt_legacy_deadlines` in the engine picks the blocks and enforces the cap. Python maps "over the cap" to the 422 and revalidates the blocks. |
+| app | encode_new_assignment | ADAPTER | The pydantic check the engine calls for each new assignment, then the stored text. |
 | app | rewrite_blocks | ADAPTER | One engine call; the engine picks which blocks take their assignment's fields. |
 | app | normalize_stored_block | ADAPTER | The pydantic check the engine calls for each rewritten stored block. |
 | app | rewrite_stored_blocks | ADAPTER | One engine call; the engine picks which stored blocks are rewritten. |
 | app | assignment_view | ADAPTER | One engine call; the engine adds `planned_min` and `unplanned_min`. |
+| app | require_own_assignments | ADAPTER | One connection call; the engine says whether the account holds every id. Python maps "no" to the 422. |
 | app | payload_digest | ADAPTER | One engine call; the engine hashes the canonical text. |
+| app | insert_restore_point | ADAPTER | One connection call. Python reads `secrets` and the clock and passes both in; the engine names the point, counts, snapshots, protects and prunes. |
 | app | preferences_from_row | ADAPTER | One engine call fills every default; `Preferences` is the pydantic check. |
 | app | validate_windows | ADAPTER | The pydantic check the engine calls for each window list. |
 | app | solve_availability | ADAPTER | One engine call splits the stored text and builds the occupancy; Python revalidates the study and work windows. |

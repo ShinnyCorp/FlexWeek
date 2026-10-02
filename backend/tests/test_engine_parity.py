@@ -11,8 +11,10 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import textwrap
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from hypothesis import HealthCheck, assume, given, settings
@@ -34,6 +36,7 @@ from backend import solver as live_solver
 from backend import storage as live_storage
 from backend import transfer as live_transfer
 from backend import weeks as live_weeks
+from backend.tests.engine_ref import app_helpers as ref_app_helpers
 from backend.tests.engine_ref import assignments as ref_assignments
 from backend.tests.engine_ref import availability as ref_availability
 from backend.tests.engine_ref import comfort as ref_comfort
@@ -1311,6 +1314,14 @@ def ref_rewrite_stored_blocks(blocks, assignments):
     return rewritten
 
 
+def ref_require_own_assignments(db, user_id, ids):
+    loaded = ref_app_helpers.load_assignment_rows(db, user_id, ids)
+    found = {key: json.loads(body) for key, (body, _revision) in loaded.items()}
+    if found.keys() != ids:
+        raise ref_app_helpers.HTTPException(422, live_app.ASSIGNMENT_UNKNOWN)
+    return found
+
+
 def ref_solve_availability(stored):
     if stored is None:
         return [0] * 7, [], []
@@ -1479,6 +1490,183 @@ def test_rewrite_stored_blocks_on_a_list_of_nothing_in_particular():
             lambda blocks=blocks: ref_rewrite_stored_blocks(blocks, {}),
             repr(blocks),
         )
+
+
+class TwoDatabases:
+    """The same account in the engine's connection and in the original's sqlite3 connection."""
+
+    def __init__(self, folder):
+        self.live_path = Path(folder) / "live.sqlite"
+        self.ref_path = Path(folder) / "ref.sqlite"
+        live_storage.initialize(self.live_path)
+        ref_storage.initialize(self.ref_path)
+
+    def __enter__(self):
+        self.live_cm = live_storage.connect(self.live_path)
+        self.ref_cm = ref_storage.connect(self.ref_path)
+        self.live = self.live_cm.__enter__()
+        self.ref = self.ref_cm.__enter__()
+        self.live.insert_user("ada", "hash")
+        self.ref.execute("INSERT INTO users(username, password_hash) VALUES (?, ?)", ("ada", "hash"))
+        return self
+
+    def __exit__(self, *exc):
+        self.ref_cm.__exit__(*exc)
+        return self.live_cm.__exit__(*exc)
+
+    def add_assignment(self, user, ident, body):
+        self.live.insert_assignment(user, ident, body)
+        self.ref.execute("INSERT INTO assignments(user_id, id, body, revision) VALUES (?, ?, ?, 1)", (user, ident, body))
+
+    def rows(self, table):
+        sql = f"SELECT * FROM {table} ORDER BY 1, 2"
+        return (
+            [tuple(row) for row in self.live.execute(sql).fetchall()],
+            [tuple(row) for row in self.ref.execute(sql).fetchall()],
+        )
+
+
+@COMMON
+@given(st.sets(st.sampled_from(["a1", "a2", "a3", "zz", ""]), max_size=5), st.sets(st.sampled_from(["a1", "a2"])))
+def test_require_own_assignments(wanted, stored):
+    with tempfile.TemporaryDirectory() as folder, TwoDatabases(folder) as pair:
+        live_storage_user = pair.live.insert_user("bob", "hash")
+        pair.ref.execute("INSERT INTO users(username, password_hash) VALUES (?, ?)", ("bob", "hash"))
+        for ident in sorted(stored):
+            pair.add_assignment(1, ident, json.dumps({"id": ident, "n": 1}))
+        pair.add_assignment(live_storage_user, "a3", json.dumps({"id": "a3"}))
+        same(
+            lambda: live_app.require_own_assignments(pair.live, 1, set(wanted)),
+            lambda: ref_require_own_assignments(pair.ref, 1, set(wanted)),
+            f"{wanted!r} {stored!r}",
+        )
+
+
+def test_require_own_assignments_reads_the_bodies_before_it_compares():
+    with tempfile.TemporaryDirectory() as folder, TwoDatabases(folder) as pair:
+        pair.add_assignment(1, "a1", "{not json")
+        for ids in ({"a1"}, {"a1", "zz"}, {"zz"}, set()):
+            same(
+                lambda ids=ids: live_app.require_own_assignments(pair.live, 1, set(ids)),
+                lambda ids=ids: ref_require_own_assignments(pair.ref, 1, set(ids)),
+                repr(ids),
+            )
+
+
+@COMMON
+@given(
+    st.lists(block_dict(kinds=("flexible", "locked")), max_size=5, unique_by=lambda body: body["id"]),
+    st.integers(0, 4),
+    st.integers(1, 6),
+    monday,
+    st.booleans(),
+)
+def test_adopt_legacy_deadlines(bodies, existing, cap, week_start, twice):
+    for body in bodies:
+        try:
+            ref_models.TimeBlock.model_validate(body)
+        except ValidationError:
+            assume(False)
+    with (
+        tempfile.TemporaryDirectory() as folder,
+        TwoDatabases(folder) as pair,
+        mock.patch.object(live_app, "MAX_ASSIGNMENTS", cap),
+        mock.patch.object(ref_app_helpers, "MAX_ASSIGNMENTS", cap),
+    ):
+        for index in range(existing):
+            pair.add_assignment(1, f"old{index}", json.dumps({"id": f"old{index}"}))
+        runs = 2 if twice else 1
+        for run in range(runs):
+            same(
+                lambda: live_app.adopt_legacy_deadlines(pair.live, 1, week_start, models_of(live_models, "TimeBlock", bodies)),
+                lambda: ref_app_helpers.adopt_legacy_deadlines(pair.ref, 1, week_start, models_of(ref_models, "TimeBlock", bodies)),
+                f"run {run} {bodies!r} {existing} {cap}",
+            )
+            got, want = pair.rows("assignments")
+            assert got == want, f"run {run} {bodies!r}"
+
+
+def test_adopt_legacy_deadlines_when_a_new_body_fails_its_model():
+    block = {
+        "id": "essay",
+        "title": "Draft",
+        "kind": "flexible",
+        "duration_min": 100,
+        "days": [0],
+        "latest": "Thursday 21:00",
+    }
+    with tempfile.TemporaryDirectory() as folder, TwoDatabases(folder) as pair:
+        same(
+            lambda: live_app.adopt_legacy_deadlines(pair.live, 1, "2026-09-07", models_of(live_models, "TimeBlock", [block])),
+            lambda: ref_app_helpers.adopt_legacy_deadlines(pair.ref, 1, "2026-09-07", models_of(ref_models, "TimeBlock", [block])),
+            "a duration that is not a multiple of 15",
+        )
+        got, want = pair.rows("assignments")
+        assert got == want
+
+
+@COMMON
+@given(
+    st.lists(
+        st.tuples(
+            st.text(alphabet="abc é\"", max_size=6),
+            st.sets(st.sampled_from(["rp-t1", "rp-t2", "rp-t3", "rp-t4", "unknown", ""]), max_size=3),
+        ),
+        min_size=1,
+        max_size=6,
+    ),
+    st.integers(1, 4),
+    st.lists(st.tuples(monday, week_blocks(max_size=2)), max_size=2, unique_by=lambda item: item[0]),
+    assignment_rows(),
+)
+def test_insert_restore_point(steps, limit, weeks, assignments):
+    tokens = iter(f"t{index}" for index in range(1, 40))
+    stamps = iter(f"2026-10-02T10:{index:02d}" for index in range(0, 60))
+    with (
+        tempfile.TemporaryDirectory() as folder,
+        TwoDatabases(folder) as pair,
+        mock.patch.object(live_app, "MAX_RESTORE_POINTS", limit),
+        mock.patch.object(ref_app_helpers, "MAX_RESTORE_POINTS", limit),
+    ):
+        for start, blocks in weeks:
+            encoded = json.dumps(blocks, sort_keys=True, separators=(",", ":"))
+            pair.live.save_week(1, start, encoded, 0)
+            pair.ref.execute("INSERT INTO weeks(user_id, week_start, blocks, revision) VALUES (1, ?, ?, 1)", (start, encoded))
+        for body, _revision in assignments:
+            encoded = live_app.encode_assignment(live_models.AssignmentContent.model_validate(body))
+            pair.add_assignment(1, body["id"], encoded)
+        for label, keep in steps:
+            token, stamp = next(tokens), next(stamps)
+            with (
+                mock.patch("secrets.token_hex", lambda _size, token=token: token),
+                mock.patch.object(live_app, "naive_now", lambda stamp=stamp: stamp),
+                mock.patch.object(ref_app_helpers, "naive_now", lambda stamp=stamp: stamp),
+            ):
+                same(
+                    lambda label=label, keep=keep: live_app.insert_restore_point(pair.live, 1, label, set(keep)),
+                    lambda label=label, keep=keep: ref_app_helpers.insert_restore_point(
+                        pair.ref, 1, label, set(keep)
+                    ),
+                    f"{label!r} {keep!r}",
+                )
+            got, want = pair.rows("restore_points")
+            assert got == want, f"{label!r} {keep!r}"
+
+
+def test_insert_restore_point_without_a_keep_set():
+    with tempfile.TemporaryDirectory() as folder, TwoDatabases(folder) as pair:
+        with (
+            mock.patch("secrets.token_hex", lambda _size: "t0"),
+            mock.patch.object(live_app, "naive_now", lambda: "2026-10-02T10:00"),
+            mock.patch.object(ref_app_helpers, "naive_now", lambda: "2026-10-02T10:00"),
+        ):
+            same(
+                lambda: live_app.insert_restore_point(pair.live, 1, "Before"),
+                lambda: ref_app_helpers.insert_restore_point(pair.ref, 1, "Before"),
+                "no keep set",
+            )
+        got, want = pair.rows("restore_points")
+        assert got == want
 
 
 BASE_ROW = {

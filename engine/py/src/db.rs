@@ -353,6 +353,90 @@ impl PyConn {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn adopt_legacy_deadlines(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        week_start: &str,
+        blocks: &str,
+        max_assignments: i64,
+        encode: Py<PyAny>,
+    ) -> PyResult<(bool, String)> {
+        let week_start = week_start.to_string();
+        let blocks = blocks.to_string();
+        guard(|| {
+            self.check(py)?;
+            let blocks: serde_json::Value = serde_json::from_str(&blocks)
+                .map_err(|error| pyo3::exceptions::PyValueError::new_err(error.to_string()))?;
+            let adopted = self.with_conn(py, move |conn| {
+                flexweek_store::adopt_legacy_deadlines(
+                    conn,
+                    user_id,
+                    &week_start,
+                    &blocks,
+                    max_assignments,
+                    |body| {
+                        Python::attach(|py| {
+                            encode
+                                .call1(py, (body.to_string(),))
+                                .and_then(|text| text.extract::<String>(py))
+                        })
+                    },
+                )
+                .map_err(|relay| match relay {
+                    flexweek_store::Relay::Store(error) => Failure::Store(error),
+                    flexweek_store::Relay::Caller(error) => Failure::Bind(error),
+                })
+            })?;
+            Ok(match adopted {
+                flexweek_store::Adopted::OverLimit => (false, "[]".to_string()),
+                flexweek_store::Adopted::Blocks(blocks) => {
+                    (true, serde_json::Value::Array(blocks).to_string())
+                }
+            })
+        })
+    }
+
+    fn require_own_assignments(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        ids: Vec<String>,
+    ) -> PyResult<(bool, Vec<flexweek_store::AssignmentRow>)> {
+        self.store(py, move |conn| {
+            flexweek_store::own_assignment_rows(conn, user_id, &ids)
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn create_restore_point(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        token: &str,
+        label: &str,
+        created_at: &str,
+        keep_ids: Vec<String>,
+        limit: i64,
+    ) -> PyResult<String> {
+        let token = token.to_string();
+        let label = label.to_string();
+        let created_at = created_at.to_string();
+        let view = self.store(py, move |conn| {
+            flexweek_store::create_restore_point(
+                conn,
+                user_id,
+                &token,
+                &label,
+                &created_at,
+                &keep_ids,
+                limit,
+            )
+        })?;
+        Ok(view.to_string())
+    }
+
     fn prune_operations(&self, py: Python<'_>, user_id: i64, keep: i64) -> PyResult<()> {
         self.store(py, move |conn| {
             flexweek_store::prune_operations(conn, user_id, keep)

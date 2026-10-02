@@ -4,11 +4,15 @@
 
 use flexweek_engine::plan;
 use flexweek_engine::snapshot::canonical;
-use flexweek_engine::stored;
+use flexweek_engine::stored::{self, Dict};
 use flexweek_engine::{EngineError, EngineResult, ErrorKind};
+use rusqlite::Connection;
 use serde_json::{Map, Value, json};
 
-use crate::{StoreError, StoreResult, digest};
+use crate::{
+    StoreError, StoreResult, assignment_exists, capture_account, count_assignments, digest,
+    insert_assignment, insert_restore_point, load_assignment_rows,
+};
 
 /// Either the rule failed, or the function it called did, and that failure goes back untouched.
 pub enum Relay<E> {
@@ -307,9 +311,152 @@ pub fn solve_availability<E>(
     })
 }
 
+pub enum Adopted {
+    OverLimit,
+    Blocks(Vec<Value>),
+}
+
+fn is_legacy_deadline(block: &Dict) -> bool {
+    block.get("kind").and_then(Value::as_str) == Some("flexible")
+        && !stored::truthy(block.get("assignment_id"))
+        && stored::truthy(block.get("latest"))
+}
+
+/// A flexible block with a deadline text and no assignment becomes a session of a new
+/// assignment, unless the account already holds that assignment. The new rows are counted
+/// against `max_assignments` before any is written. `encode` turns a new body into the text
+/// that is stored.
+pub fn adopt_legacy_deadlines<E>(
+    conn: &Connection,
+    user_id: i64,
+    week_start: &str,
+    blocks: &Value,
+    max_assignments: i64,
+    mut encode: impl FnMut(&Value) -> Result<String, E>,
+) -> Result<Adopted, Relay<E>> {
+    let mut adopted = Vec::new();
+    let mut created: Vec<Value> = Vec::new();
+    for block in stored::rows(blocks)? {
+        if !is_legacy_deadline(&block) {
+            adopted.push(Value::Object(block));
+            continue;
+        }
+        let (session, body) = plan::legacy_session(week_start, &Value::Object(block))?;
+        let id = stored::py_str(stored::item(stored::dict(&body)?, "id")?);
+        if !assignment_exists(conn, user_id, &id)? {
+            created.push(body);
+        }
+        adopted.push(session);
+    }
+    if !created.is_empty() {
+        let count = count_assignments(conn, user_id)?;
+        if count + created.len() as i64 > max_assignments {
+            return Ok(Adopted::OverLimit);
+        }
+        for body in &created {
+            let id = stored::py_str(&body["id"]);
+            let encoded = encode(body).map_err(Relay::Caller)?;
+            insert_assignment(conn, user_id, &id, &encoded)?;
+        }
+    }
+    Ok(Adopted::Blocks(adopted))
+}
+
+/// `(id, body, revision)` of an assignment row.
+pub type AssignmentRow = (String, String, i64);
+
+/// The rows of `ids`, and whether the account holds every one of them and nothing else was
+/// asked for.
+pub fn own_assignment_rows(
+    conn: &Connection,
+    user_id: i64,
+    ids: &[String],
+) -> StoreResult<(bool, Vec<AssignmentRow>)> {
+    let rows = load_assignment_rows(conn, user_id, ids)?;
+    let found: std::collections::BTreeSet<&str> = rows.iter().map(|row| row.0.as_str()).collect();
+    let wanted: std::collections::BTreeSet<&str> = ids.iter().map(String::as_str).collect();
+    Ok((found == wanted, rows))
+}
+
+/// Snapshots the account into a restore point named `rp-<token>` and returns the row the list
+/// shows. The point being written is never pruned, nor is any id in `keep_ids`.
+pub fn create_restore_point(
+    conn: &Connection,
+    user_id: i64,
+    token: &str,
+    label: &str,
+    created_at: &str,
+    keep_ids: &[String],
+    limit: i64,
+) -> StoreResult<Value> {
+    let captured = parse_stored(&capture_account(conn, user_id)?)?;
+    let mut weeks = Vec::new();
+    for week in captured["weeks"].as_array().into_iter().flatten() {
+        let blocks = parse_stored(week["blocks"].as_str().unwrap_or(""))?;
+        weeks.push(json!({
+            "week_start": week["week_start"],
+            "blocks": blocks,
+            "revision": week["revision"],
+        }));
+    }
+    let mut assignments = Vec::new();
+    for item in captured["assignments"].as_array().into_iter().flatten() {
+        let body = parse_stored(item["body"].as_str().unwrap_or(""))?;
+        assignments.push(json!({
+            "id": item["id"],
+            "body": body,
+            "revision": item["revision"],
+        }));
+    }
+    let point_id = format!("rp-{token}");
+    let (week_count, assignment_count) = (weeks.len() as i64, assignments.len() as i64);
+    let snapshot = json!({"weeks": weeks, "assignments": assignments});
+    let mut protected: Vec<String> = keep_ids.to_vec();
+    if !protected.contains(&point_id) {
+        protected.push(point_id.clone());
+    }
+    insert_restore_point(
+        conn,
+        user_id,
+        &point_id,
+        label,
+        created_at,
+        week_count,
+        assignment_count,
+        &canonical(&snapshot),
+        &protected,
+        limit,
+    )?;
+    Ok(json!({
+        "id": point_id,
+        "label": label,
+        "created_at": created_at,
+        "weeks": week_count,
+        "assignments": assignment_count,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{initialize, open_connection};
+    use std::path::Path;
+
+    fn account(name: &str) -> Connection {
+        let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/store-tests");
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join(format!("rules-{}-{name}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        initialize(&path, "2026-09-14").unwrap();
+        let conn = open_connection(&path).unwrap();
+        conn.execute("PRAGMA foreign_keys = ON", []).unwrap();
+        conn.execute(
+            "INSERT INTO users(username, password_hash) VALUES ('ada', 'x')",
+            [],
+        )
+        .unwrap();
+        conn
+    }
 
     fn text(value: &str) -> Value {
         serde_json::from_str(value).unwrap()
@@ -557,5 +704,153 @@ mod tests {
             }
         });
         assert!(matches!(failed, Err(Relay::Caller("invalid"))));
+    }
+
+    const ESSAY: &str = r#"{"id": "essay", "title": "Draft", "kind": "flexible", "duration_min": 90,
+        "days": [0, 1], "priority": 2, "energy": "low", "course": "History",
+        "assignment_id": null, "latest": "Thursday 21:00"}"#;
+    const ESSAY_ID: &str = "a-4c3275a3fa104726ed3f39fbfb7dcdbf";
+
+    fn blocks_with_essay() -> Value {
+        json!([
+            {"id": "lock", "kind": "locked", "assignment_id": null, "latest": null},
+            {"id": "plain", "kind": "flexible", "assignment_id": null, "latest": ""},
+            {"id": "session", "kind": "flexible", "assignment_id": "hw", "latest": "Friday 10:00"},
+            text(ESSAY),
+        ])
+    }
+
+    fn adopt(conn: &Connection, max: i64, seen: &mut Vec<Value>) -> Result<Adopted, Relay<String>> {
+        adopt_legacy_deadlines(conn, 1, "2026-09-07", &blocks_with_essay(), max, |body| {
+            seen.push(body.clone());
+            Ok(format!("encoded:{}", body["id"].as_str().unwrap()))
+        })
+    }
+
+    #[test]
+    fn a_legacy_deadline_becomes_a_session_of_a_new_assignment_once() {
+        let conn = account("adopt");
+        let mut seen = Vec::new();
+        let Ok(Adopted::Blocks(blocks)) = adopt(&conn, 1000, &mut seen) else {
+            panic!("the first adoption must succeed");
+        };
+        assert_eq!(blocks.len(), 4);
+        assert_eq!(blocks[..3], blocks_with_essay().as_array().unwrap()[..3]);
+        assert_eq!(blocks[3]["assignment_id"], json!(ESSAY_ID));
+        assert_eq!(blocks[3]["latest"], Value::Null);
+        // The body the original Python built (legacy_session of the same block).
+        assert_eq!(
+            seen,
+            [json!({
+                "id": ESSAY_ID, "title": "Draft", "course": "History", "category": null,
+                "priority": 2, "energy": "low", "spotify_url": null, "due": "2026-09-10T21:00",
+                "estimate_min": 90, "focus_minutes": 0, "focus_sessions": 0,
+                "completed": false, "completed_at": null,
+            })]
+        );
+        let stored: (String, i64) = conn
+            .query_row("SELECT body, revision FROM assignments", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(stored, (format!("encoded:{ESSAY_ID}"), 1));
+        let mut again = Vec::new();
+        assert!(matches!(
+            adopt(&conn, 1000, &mut again),
+            Ok(Adopted::Blocks(_))
+        ));
+        assert!(again.is_empty());
+        assert_eq!(count_assignments(&conn, 1).unwrap(), 1);
+    }
+
+    #[test]
+    fn adoption_refuses_a_batch_that_passes_the_cap_and_writes_nothing() {
+        let conn = account("cap");
+        insert_assignment(&conn, 1, "other", "x").unwrap();
+        let mut seen = Vec::new();
+        assert!(matches!(adopt(&conn, 1, &mut seen), Ok(Adopted::OverLimit)));
+        assert!(seen.is_empty());
+        assert_eq!(count_assignments(&conn, 1).unwrap(), 1);
+        assert!(matches!(adopt(&conn, 2, &mut seen), Ok(Adopted::Blocks(_))));
+        assert_eq!(count_assignments(&conn, 1).unwrap(), 2);
+    }
+
+    #[test]
+    fn a_failing_encode_is_given_back_and_writes_no_row() {
+        let conn = account("encode");
+        let failed =
+            adopt_legacy_deadlines(&conn, 1, "2026-09-07", &blocks_with_essay(), 10, |_| {
+                Err("not valid")
+            });
+        assert!(matches!(failed, Err(Relay::Caller("not valid"))));
+        assert_eq!(count_assignments(&conn, 1).unwrap(), 0);
+    }
+
+    #[test]
+    fn own_assignment_rows_say_whether_every_id_belongs_to_the_account() {
+        let conn = account("own");
+        insert_assignment(&conn, 1, "hw", "one").unwrap();
+        insert_assignment(&conn, 1, "hw2", "two").unwrap();
+        let ask = |ids: &[&str]| {
+            let ids: Vec<String> = ids.iter().map(|id| id.to_string()).collect();
+            own_assignment_rows(&conn, 1, &ids).unwrap()
+        };
+        assert_eq!(ask(&["hw"]), (true, vec![("hw".into(), "one".into(), 1)]));
+        assert!(!ask(&["hw", "missing"]).0);
+        assert_eq!(ask(&["hw", "missing"]).1.len(), 1);
+        assert_eq!(ask(&[]), (true, Vec::new()));
+        assert!(!ask(&["not-mine"]).0);
+        assert!(ask(&["hw", "hw"]).0);
+    }
+
+    #[test]
+    fn a_restore_point_snapshots_the_account_and_protects_what_it_was_told_to() {
+        let conn = account("restore");
+        conn.execute(
+            "INSERT INTO weeks(user_id, week_start, blocks, revision) VALUES (1, '2026-09-07', '[{\"id\": \"a\"}]', 2)",
+            [],
+        )
+        .unwrap();
+        insert_assignment(&conn, 1, "hw", r#"{"title": "T"}"#).unwrap();
+        let view =
+            create_restore_point(&conn, 1, "one", "Label", "2026-10-02T10:00", &[], 2).unwrap();
+        assert_eq!(
+            view.to_string(),
+            r#"{"id":"rp-one","label":"Label","created_at":"2026-10-02T10:00","weeks":1,"assignments":1}"#
+        );
+        let body: String = conn
+            .query_row(
+                "SELECT body FROM restore_points WHERE id = 'rp-one'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            body,
+            r#"{"assignments":[{"body":{"title":"T"},"id":"hw","revision":1}],"weeks":[{"blocks":[{"id":"a"}],"revision":2,"week_start":"2026-09-07"}]}"#
+        );
+        let keep = ["rp-one".to_string()];
+        create_restore_point(&conn, 1, "two", "Two", "2026-10-02T10:01", &[], 2).unwrap();
+        create_restore_point(&conn, 1, "three", "Three", "2026-10-02T10:02", &keep, 2).unwrap();
+        let mut stmt = conn
+            .prepare("SELECT id FROM restore_points ORDER BY seq")
+            .unwrap();
+        let ids: Vec<String> = stmt
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(ids, ["rp-one", "rp-three"]);
+        // Past the cap with every older point protected, only the new point could go: it stays.
+        let both = ["rp-one".to_string(), "rp-three".to_string()];
+        create_restore_point(&conn, 1, "four", "Four", "2026-10-02T10:03", &both, 2).unwrap();
+        let kept: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM restore_points WHERE id = 'rp-four'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(kept, 1);
     }
 }

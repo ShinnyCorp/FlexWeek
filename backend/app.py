@@ -17,7 +17,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.assignments import (
-    legacy_session,
     planned_minutes_by_id,
     prepare_solve,
 )
@@ -117,36 +116,30 @@ def load_assignment_bodies(db: Connection, user_id: int, ids: set[str]) -> dict[
 
 
 def require_own_assignments(db: Connection, user_id: int, ids: set[str]) -> dict[str, dict]:
-    found = load_assignment_bodies(db, user_id, ids)
-    if found.keys() != ids:
+    owned, rows = db.require_own_assignments(user_id, list(ids))
+    found = {row[0]: json.loads(row[1]) for row in rows}
+    if not owned:
         raise HTTPException(422, ASSIGNMENT_UNKNOWN)
     return found
+
+
+def encode_new_assignment(text: str) -> str:
+    return encode_assignment(AssignmentContent.model_validate(json.loads(text)))
 
 
 def adopt_legacy_deadlines(
     db: Connection, user_id: int, week_start: str, blocks: list[TimeBlock]
 ) -> list[TimeBlock]:
-    adopted: list[TimeBlock] = []
-    created: list[dict] = []
-    for block in blocks:
-        if block.kind != "flexible" or block.assignment_id or not block.latest:
-            adopted.append(block)
-            continue
-        session, body = legacy_session(week_start, block)
-        if not db.assignment_exists(user_id, body["id"]):
-            created.append(body)
-        adopted.append(session)
-    if created:
-        count = db.count_assignments(user_id)
-        if count + len(created) > MAX_ASSIGNMENTS:
-            raise HTTPException(422, ASSIGNMENT_LIMIT)
-        for body in created:
-            db.insert_assignment(
-                user_id,
-                body["id"],
-                encode_assignment(AssignmentContent.model_validate(body)),
-            )
-    return adopted
+    fits, adopted = db.adopt_legacy_deadlines(
+        user_id,
+        week_start,
+        json.dumps([block.model_dump() for block in blocks]),
+        MAX_ASSIGNMENTS,
+        encode_new_assignment,
+    )
+    if not fits:
+        raise HTTPException(422, ASSIGNMENT_LIMIT)
+    return [TimeBlock.model_validate(item) for item in json.loads(adopted)]
 
 
 def rewrite_blocks(blocks: list[TimeBlock], assignments: dict[str, dict]) -> list[TimeBlock]:
@@ -270,29 +263,17 @@ def restore_point_view(row: Row) -> dict:
 
 
 def insert_restore_point(db: Connection, user_id: int, label: str, keep_ids: set[str] | None = None) -> dict:
-    snapshot = capture_account(db, user_id)
-    point_id = "rp-" + secrets.token_hex(8)
-    created_at = naive_now()
-    protected = set(keep_ids or ())
-    protected.add(point_id)
-    db.insert_restore_point(
-        user_id,
-        point_id,
-        label,
-        created_at,
-        len(snapshot["weeks"]),
-        len(snapshot["assignments"]),
-        canonical(snapshot),
-        list(protected),
-        MAX_RESTORE_POINTS,
+    created: dict = json.loads(
+        db.create_restore_point(
+            user_id,
+            secrets.token_hex(8),
+            label,
+            naive_now(),
+            list(keep_ids or ()),
+            MAX_RESTORE_POINTS,
+        )
     )
-    return {
-        "id": point_id,
-        "label": label,
-        "created_at": created_at,
-        "weeks": len(snapshot["weeks"]),
-        "assignments": len(snapshot["assignments"]),
-    }
+    return created
 
 
 def replace_account(db: Connection, user_id: int, snapshot: dict) -> dict:

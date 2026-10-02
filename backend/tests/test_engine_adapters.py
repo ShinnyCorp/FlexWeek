@@ -26,11 +26,15 @@ APP_MODULES = ("app",)
 # The helper functions of backend/app.py that hold no HTTP: route handlers and the functions that
 # map an engine status onto an HTTP error are not listed and are not checked.
 APP_HELPERS = (
+    "adopt_legacy_deadlines",
+    "encode_new_assignment",
     "rewrite_blocks",
     "normalize_stored_block",
     "rewrite_stored_blocks",
     "assignment_view",
+    "require_own_assignments",
     "payload_digest",
+    "insert_restore_point",
     "preferences_from_row",
     "validate_windows",
     "solve_availability",
