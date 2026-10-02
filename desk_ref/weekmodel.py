@@ -12,9 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from backend.tests.engine_ref.calendar import DAY_FULL, DAYS, _is_work_session, is_series
-
 from backend.tests.engine_ref.models import due_is_timed, due_sort_key
+from desk_ref.calendar import DAY_FULL, DAYS, _is_work_session, is_series
 
 SLACK_WORDS = {"danger": "Cutting it close", "tight": "Tight", "ok": "Plenty of time"}
 _SLACK_ORDER = {"danger": 0, "tight": 1, None: 2, "ok": 3}

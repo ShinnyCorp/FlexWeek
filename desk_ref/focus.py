@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from backend.tests.engine_ref.reuse import occurrence_days
-from backend.tests.engine_ref.weekmodel import hhmm_text, length_label
-
 from backend.tests.engine_ref.models import ESTIMATE_MAX_MIN
 from backend.tests.engine_ref.slots import hhmm_to_minutes
 from backend.tests.engine_ref.weeks import is_week_start
+from desk_ref.reuse import occurrence_days
+from desk_ref.weekmodel import hhmm_text, length_label
 
 FOCUS_PHASES = ("work", "break", "long_break", "ended")
 FOCUS_PHASE_LABEL = {

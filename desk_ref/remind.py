@@ -5,11 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import datetime
 
-from backend.tests.engine_ref.calendar import DAYS, date_for_day, monday_of
-from backend.tests.engine_ref.reuse import occurrence_days
-from backend.tests.engine_ref.weekmodel import hhmm_text
-
 from backend.tests.engine_ref.slots import hhmm_to_minutes
+from desk_ref.calendar import DAYS, date_for_day, monday_of
+from desk_ref.reuse import occurrence_days
+from desk_ref.weekmodel import hhmm_text
 
 REMINDER_WINDOW_MIN = 2
 REMINDER_POLL_MS = 30_000

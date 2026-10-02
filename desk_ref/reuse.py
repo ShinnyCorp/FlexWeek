@@ -6,9 +6,6 @@ import json
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 
-from backend.tests.engine_ref.calendar import DAY_FULL
-from backend.tests.engine_ref.weekmodel import clock_text, hhmm_text, length_label
-
 from backend.tests.engine_ref.models import due_sort_key, parse_due
 from backend.tests.engine_ref.slots import (
     DAY_END_MIN,
@@ -17,6 +14,8 @@ from backend.tests.engine_ref.slots import (
     hhmm_to_minutes,
     minutes_to_hhmm,
 )
+from desk_ref.calendar import DAY_FULL
+from desk_ref.weekmodel import clock_text, hhmm_text, length_label
 
 MAX_WEEK_BLOCKS = 100
 AVAILABILITY_LIMIT = 21

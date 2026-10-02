@@ -12,9 +12,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from backend.tests.engine_ref.calendar import CATEGORIES
-from backend.tests.engine_ref.tokens import fit_lightness, luminance, mix
-
+from desk_ref.calendar import CATEGORIES
+from desk_ref.tokens import fit_lightness, luminance, mix
 from desktop.native.look import (
     AA_GRAPHIC,
     AA_TEXT,

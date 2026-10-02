@@ -5,12 +5,11 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 
-from backend.tests.engine_ref.calendar import date_for_day, is_series
-from backend.tests.engine_ref.reuse import MAX_WEEK_BLOCKS, occurrence_days
-
 from backend.tests.engine_ref.assignments import migrated_assignment_id
 from backend.tests.engine_ref.models import AssignmentContent, TimeBlock
 from backend.tests.engine_ref.weeks import is_week_start
+from desk_ref.calendar import date_for_day, is_series
+from desk_ref.reuse import MAX_WEEK_BLOCKS, occurrence_days
 
 EXPORT_FORMAT = "flexweek-week"
 DAY_FORMAT = "flexweek-day"
