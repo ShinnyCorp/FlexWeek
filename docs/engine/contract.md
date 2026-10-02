@@ -127,9 +127,15 @@ the new differential tests green, and the Rust checks passing.
   is measured before and after (the 2026-09-28 figures were 1 to 9.5 ms) and must stay under 16 ms.
   Staying in Python: `look.py` (it writes Qt stylesheets), `layouts/registry.py`, `autostart.py`,
   `kept.py`, `tones.py`, and every module that imports Qt.
-- **E6, the switch.** The Python bodies that now only call the engine are removed, and their
-  callers in `backend/app.py` and `desktop/` import from `flexweek_engine` directly; only import
-  lines change in `desktop/`. The pydantic classes stay in `backend/models.py`.
+- **E6, adapters only.** Data crosses the boundary as JSON text (see Shape), so the Python modules
+  cannot simply be deleted: something has to encode the arguments and decode the answer. E6 makes
+  each of them that and nothing more. A function in a moved module encodes, calls one engine
+  function, and decodes; it does not branch on its data, default, clamp, sort or validate. Whatever
+  logic the 2026-10-02 inventory found still in them (289 functions in 25 modules, 72 that never
+  called the engine, 53 with branching) moves into the engine, and a test fails when a wrapper
+  grows logic again. The pydantic classes stay in `backend/models.py`. Decided by Claude on
+  2026-10-02 under Jonathan's overnight grant; to go back to the first wording, say "delete the
+  wrappers".
 - **E7, the map of logic left in the interface.** `docs/engine/interface-logic.md` lists the
   decisions made inside Qt code (`window.py`, `hours/canvas.py`, `hours/zoom.py`, the layouts, the
   sheets): what is decided, where (file and function), and which tests cover it. Nothing moves; it is
@@ -141,20 +147,23 @@ Jonathan decided on 2026-09-30 that the overhaul covers everything but the inter
 and that the interface's own tests are tidied, in Python, once the ported tests are verified. The
 reason is the full rewrite: whatever moves now stops growing in Python, so there is less to rewrite
 later. The Python tests stay the check while code moves: a test is ported only once the code it
-tests has been switched (E6), so at no point are the code and its check rewritten together.
+tests runs in the engine, so at no point are the code and its check rewritten together.
 
-- **T1, the engine's tests, after E6.** The backend tests of logic and storage (not of HTTP routes),
+- **T1, the engine's tests.** The backend tests of logic and storage (not of HTTP routes),
   and the desktop tests that test E5's modules without Qt, become Rust tests in `engine/`, case for
   case; desktop tests that drive widgets stay Python. Each keeps the Python test's expected values;
   none is re-derived from what the Rust code returns. A Python test is deleted only when its Rust version
   passes and catches the same faults: the mutation cases for moved code (backend and E5's modules)
-  move to `cargo mutants` for the engine, and every case the Python tests caught must still be caught. The differential tests are
-  deleted last, since by then there is one implementation.
+  are pointed at the Rust source and run by `fwtest mutate`, which rebuilds the module for each
+  one (no new tool; `cargo mutants` was the first idea), and every case the Python tests caught must
+  still be caught. The differential tests are deleted last, since by then there is one
+  implementation.
 - **T2, the API tests, stay Python.** They test `backend/app.py`'s routes, which stay Python, and
   move with the server in the full rewrite.
-- **T3, the rig.** `scripts/rig/drive.py` and `hidden_session.py` move into `fwtest` in Rust with the
-  same scenarios, `results.json`, screenshots and videos, on the same hidden KWin with its private
-  D-Bus. Each design's rig gives the same pass count before and after the move.
+- **T3, the rig.** `hidden_session.py` moved into `fwtest` in Rust (PRs 37 and 38): the hidden KWin,
+  its private D-Bus, and stopping everything it started. `scripts/rig/drive.py` stays Python until
+  the full rewrite, because it drives the PySide6 app from inside its process (Jonathan, 2026-10-01).
+  Each design's rig gives the same pass count before and after the move.
 - **T4, the interface's tests, tidied in Python, last.** It starts only once T1 to T3 are verified:
   the ported tests pass, catch every fault their Python versions caught, and the rig's counts match.
   Then shared helpers are merged, overlapping and slow tests cut, and the known flaky tests fixed
