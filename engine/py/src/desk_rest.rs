@@ -978,65 +978,6 @@ fn files_assignment_input(item: &str, fields: Vec<String>) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn files_day_copy(copy: &str, day: &str) -> PyResult<String> {
-    let (copy, day) = (parse(copy)?, parse(day)?);
-    guard(|| Ok(dump(&files::day_copy(&copy, &day).map_err(crate::raise)?)))
-}
-
-#[pyfunction]
-fn files_export_week(week_start: &str, blocks: &str, assignments: &str) -> PyResult<String> {
-    let (week_start, blocks, assignments) =
-        (parse(week_start)?, parse(blocks)?, parse(assignments)?);
-    guard(|| {
-        Ok(dump(&files::export_week(
-            &week_start,
-            &blocks,
-            &assignments,
-        )))
-    })
-}
-
-#[pyfunction]
-fn files_export_day(
-    week_start: &str,
-    date: &str,
-    day: &str,
-    blocks: &str,
-    assignments: &str,
-) -> PyResult<String> {
-    let (week_start, date, day) = (parse(week_start)?, parse(date)?, parse(day)?);
-    let (blocks, assignments) = (parse(blocks)?, parse(assignments)?);
-    guard(|| {
-        Ok(dump(&files::export_day(
-            &week_start,
-            &date,
-            &day,
-            &blocks,
-            &assignments,
-        )))
-    })
-}
-
-#[pyfunction]
-fn files_import_head(empty: bool, readable: bool, data: Option<&str>) -> PyResult<String> {
-    let data = data.map(parse).transpose()?;
-    guard(|| {
-        let head = files::import_head(empty, readable, data.as_ref()).map_err(crate::raise)?;
-        Ok(dump(&head))
-    })
-}
-
-#[pyfunction]
-fn files_import_tail(head: &str, blocks: &str, assignments: &str) -> PyResult<String> {
-    let head = parse(head)?;
-    let (blocks, assignments) = (objects(blocks)?, objects(assignments)?);
-    guard(|| {
-        let payload = files::import_tail(&head, &blocks, &assignments).map_err(crate::raise)?;
-        Ok(dump(&payload))
-    })
-}
-
-#[pyfunction]
 fn files_occurrence_id(day: &str, block_id: &str) -> PyResult<String> {
     let (day, block_id) = (parse(day)?, parse(block_id)?);
     guard(|| files::occurrence_import_id(&day, &block_id).map_err(crate::raise))
@@ -1369,11 +1310,6 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         files_export_input,
         files_referenced_ids,
         files_assignment_input,
-        files_day_copy,
-        files_import_head,
-        files_import_tail,
-        files_export_week,
-        files_export_day,
         files_occurrence_id,
         files_plan_homework,
         files_merge,
