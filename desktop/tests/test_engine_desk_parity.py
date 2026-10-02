@@ -7,7 +7,11 @@ call; the rest pin each difference the shadow run found once it was fixed.
 
 from __future__ import annotations
 
+import contextlib
+import copy
 import json
+import os
+import time
 from datetime import datetime
 
 from hypothesis import given, settings
@@ -37,6 +41,7 @@ import desktop.native.update as live_update
 import desktop.native.weekmodel as live_weekmodel
 
 CHECK = settings(max_examples=30, deadline=None)
+WIDE = settings(max_examples=300, deadline=None)
 WEEK = "2026-09-21"
 TAG = "https://github.com/j0nsh1n/FlexWeek/releases/tag/"
 HEX = st.from_regex(r"#[0-9a-f]{6}", fullmatch=True)
@@ -614,3 +619,353 @@ def test_solve_request_from_now(day, minute):
         everything=True,
         not_before=(day, minute),
     )
+
+
+# The functions that stayed in Python until the last step of E5. Each test hands the live function and
+# the reference one their own deep copy of generated arguments, and requires the same result (by
+# `repr`), the same raised error (type and message) and the same arguments afterwards.
+
+
+def produced(func, args, kwargs, listed=False):
+    try:
+        value = func(*args, **kwargs)
+        return ("ok", repr(list(value) if listed else value))
+    except Exception as error:  # noqa: BLE001
+        return ("raise", type(error).__name__, str(error))
+
+
+def same(live, ref, *args, listed=False, **kwargs):
+    live_call, ref_call = copy.deepcopy((args, kwargs)), copy.deepcopy((args, kwargs))
+    assert produced(live, live_call[0], live_call[1], listed) == produced(
+        ref, ref_call[0], ref_call[1], listed
+    )
+    assert repr(live_call) == repr(ref_call)
+
+
+@contextlib.contextmanager
+def local_zone(name):
+    was = os.environ.get("TZ")
+    os.environ["TZ"] = name
+    time.tzset()
+    try:
+        yield
+    finally:
+        if was is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = was
+        time.tzset()
+
+
+ZONES = st.sampled_from(["UTC", "America/New_York", "Europe/Berlin", "Australia/Lord_Howe", "Asia/Kolkata"])
+TODAYS = st.sampled_from(["2026-09-21", "2026-09-22", "2026-09-24", "2026-09-27", "2026-10-04"])
+BAD_TODAYS = st.sampled_from(
+    [
+        "x",
+        "2026-13-01",
+        "2026-02-30",
+        "2026-04-31",
+        "20260924",
+        "2026-W39-4",
+        "2026W394",
+        "2026W39",
+        "2026-W39",
+        "2026W39-4",
+        "2026-W394",
+        "2026-W00-1",
+        "2026-W54-1",
+        "2026-W53-7",
+        "2025-W53-1",
+        "2026-W39-8",
+        "",
+        "2026-9-4",
+        "0000-01-01",
+        "2026-00-10",
+        "2026-01-00",
+        "9999-12-31",
+        "２０２６-09-21",
+        "2026-09-24T10:00",
+        " 2026-09-24",
+    ]
+)
+
+
+def maybe(*values):
+    return st.sampled_from(values)
+
+
+def remind_block(clean):
+    """A block as the week holds them; with `clean` off, ids, starts and flags of the wrong kind too."""
+    return st.fixed_dictionaries(
+        {"id": maybe("a", "b", "c") if clean else maybe("a", "b", 7, None, "")},
+        optional={
+            "kind": maybe("locked", "flexible") if clean else maybe("locked", "flexible", None),
+            "title": maybe("Study", "Ünï", "") if clean else maybe("Study", "", None, 5),
+            "start": maybe("08:30", "16:00", "09:05", "7:05")
+            if clean
+            else maybe(None, "", "x", "25:00", 830, "9:5"),
+            "days": st.lists(DAY, max_size=3),
+            "completed": maybe(None, False, True),
+            "completed_day": maybe(None, 0, 1, 2, 3),
+            "missed_days": st.lists(DAY, max_size=2),
+            "spotify_url": maybe(None, "", "https://open.spotify.com/track/x"),
+        },
+    )
+
+
+REMIND_BLOCK = remind_block(True)
+REMIND_TRACE = st.one_of(
+    st.none(),
+    st.just({}),
+    st.fixed_dictionaries({"placed": st.lists(REMIND_BLOCK, max_size=3)}),
+)
+
+
+@CHECK
+@given(st.integers(min_value=-2_000_000_000_000, max_value=4_100_000_000_000), ZONES)
+def test_clock_parts_reads_the_local_clock(now_ms, zone):
+    with local_zone(zone):
+        same(live_remind.clock_parts, ref_remind.clock_parts, now_ms)
+
+
+def test_clock_parts_in_a_zone_with_daylight_saving():
+    # 2026-03-08 07:30 UTC is 03:30 in New York, the morning the clocks went forward.
+    stamp = 1_772_955_000_000
+    with local_zone("America/New_York"):
+        assert live_remind.clock_parts(stamp) == {
+            "iso": "2026-03-08",
+            "day": 6,
+            "minute": 3 * 60 + 30,
+            "midnight_ms": 1_772_946_000_000,
+            "now_ms": stamp,
+        }
+        same(live_remind.clock_parts, ref_remind.clock_parts, stamp)
+
+
+@st.composite
+def week_with_a_start_today(draw):
+    """Blocks whose days mostly include today's weekday, so the missed-day and completed rules bite."""
+    today = draw(TODAYS)
+    weekday = datetime.fromisoformat(today).weekday()
+    block_today = remind_block(True).map(lambda body: body)
+    blocks = []
+    for _ in range(draw(st.integers(1, 4))):
+        body = draw(block_today)
+        body["days"] = draw(
+            st.sampled_from([[weekday], [weekday, (weekday + 1) % 7], [(weekday + 3) % 7], []])
+        )
+        body["missed_days"] = draw(st.sampled_from([[], [weekday], [(weekday + 1) % 7]]))
+        blocks.append(body)
+    trace = draw(
+        st.one_of(st.none(), st.just({"placed": [dict(body, kind="flexible") for body in blocks[:2]]}))
+    )
+    return blocks, trace, today
+
+
+@WIDE
+@given(week_with_a_start_today())
+def test_todays_starts_on_generated_weeks(week):
+    same(live_remind.todays_starts, ref_remind.todays_starts, *week, listed=True)
+
+
+@CHECK
+@given(
+    st.lists(remind_block(False), min_size=1, max_size=3),
+    st.one_of(st.none(), st.fixed_dictionaries({"placed": st.lists(remind_block(False), max_size=2)})),
+    st.one_of(TODAYS, BAD_TODAYS),
+)
+def test_todays_starts_on_malformed_weeks(blocks, trace, today):
+    same(live_remind.todays_starts, ref_remind.todays_starts, blocks, trace, today, listed=True)
+
+
+ALARM_TIMES = [
+    "",
+    "07:30",
+    "7:30",
+    "00:00",
+    "23:59",
+    "x",
+    "25:00",
+    "08:60",
+    "5",
+    "1:2:3",
+    "1:2:x",
+    "10:30",
+    730,
+    None,
+]
+
+
+def alarm_on(weekday):
+    """An alarm that mostly rings on `weekday` and is mostly on, so the time rules are reached."""
+    return st.fixed_dictionaries(
+        {"time": st.one_of(maybe("07:30", "10:30", "23:59", "00:00"), maybe(*ALARM_TIMES))},
+        optional={
+            "id": maybe("a", "b", 3, "", None),
+            "name": maybe("Wake", None),
+            "enabled": maybe(True, True, True, False, None),
+            "days": maybe([weekday], [weekday, (weekday + 2) % 7], [(weekday + 1) % 7], []),
+        },
+    )
+
+
+@WIDE
+@given(
+    TODAYS,
+    st.sets(st.sampled_from(["2026-09-24|a|07:30", "2026-09-24|b|10:30", "2026-09-24|3|23:59"]), max_size=2),
+    ZONES,
+    st.data(),
+)
+def test_due_alarms_on_generated_alarms(today, fired, zone, data):
+    base = 1_790_000_000_000
+    weekday = datetime.fromisoformat(today).weekday()
+    alarms = data.draw(st.lists(alarm_on(weekday), max_size=4))
+    with local_zone(zone):
+        # Edges as well as the middle: a time found on the minute, a millisecond either side of it.
+        edges = [base]
+        for alarm in alarms:
+            parts = str(alarm.get("time")).split(":")
+            if (
+                len(parts) == 2
+                and all(part.isdigit() for part in parts)
+                and int(parts[0]) < 24
+                and int(parts[1]) < 60
+            ):
+                moment = datetime.fromisoformat(today).replace(hour=int(parts[0]), minute=int(parts[1]))
+                edges += [int(moment.timestamp() * 1000) + step for step in (-1, 0, 1)]
+        times = st.one_of(
+            st.sampled_from(edges),
+            st.integers(min_value=base - 3 * 24 * 3_600_000, max_value=base + 3 * 24 * 3_600_000),
+        )
+        now_ms = data.draw(times)
+        last_check = data.draw(st.one_of(st.none(), times))
+        snoozed = data.draw(st.dictionaries(st.sampled_from(["a", "b", "c"]), times, max_size=3))
+        same(
+            live_remind.due_alarms,
+            ref_remind.due_alarms,
+            alarms=alarms,
+            today_iso=today,
+            weekday=data.draw(st.one_of(st.just(weekday), DAY)),
+            now_ms=now_ms,
+            midnight_ms=base,
+            last_check_ms=last_check,
+            fired=fired,
+            snoozed=snoozed,
+        )
+
+
+@CHECK
+@given(BAD_TODAYS, st.lists(alarm_on(0), min_size=1, max_size=2))
+def test_due_alarms_on_a_bad_date(today, alarms):
+    same(
+        live_remind.due_alarms,
+        ref_remind.due_alarms,
+        alarms=alarms,
+        today_iso=today,
+        weekday=0,
+        now_ms=1_790_000_000_000,
+        midnight_ms=0,
+        last_check_ms=1_700_000_000_000,
+        fired=set(),
+        snoozed={},
+    )
+
+
+@CHECK
+@given(
+    st.one_of(
+        st.none(),
+        st.dictionaries(
+            st.sampled_from(["reminder_lead_min", "other"]),
+            st.one_of(st.none(), st.integers(-5, 90), st.sampled_from(["7", "x", 7.9, True, ""])),
+            max_size=2,
+        ),
+    ),
+    st.integers(0, 30),
+)
+def test_reminder_lead_min_on_generated_prefs(prefs, default):
+    same(live_remind.reminder_lead_min, ref_remind.reminder_lead_min, prefs, default)
+
+
+@CHECK
+@given(
+    st.dictionaries(
+        st.sampled_from(["id", "time"]),
+        st.one_of(
+            st.none(), st.integers(-3, 3), st.sampled_from(["", "a", "07:30", "é"]), st.just(1.5), st.just(0)
+        ),
+    )
+)
+def test_alarm_key_prints_what_the_original_prints(alarm):
+    same(live_remind.alarm_key, ref_remind.alarm_key, "2026-09-24", alarm)
+
+
+@CHECK
+@given(
+    st.lists(remind_block(False), max_size=3),
+    st.one_of(
+        st.none(),
+        st.just({}),
+        st.fixed_dictionaries(
+            {"placed": st.lists(remind_block(False), max_size=3)},
+            optional={"other": maybe(1, None)},
+        ),
+    ),
+)
+def test_reminder_blocks_on_generated_weeks(blocks, trace):
+    same(live_remind.reminder_blocks, ref_remind.reminder_blocks, blocks, trace)
+
+
+@CHECK
+@given(
+    st.lists(REMIND_BLOCK, max_size=4),
+    REMIND_TRACE,
+    TODAYS,
+    st.integers(7 * 60, 18 * 60),
+    st.integers(0, 15),
+    st.sets(st.sampled_from(["2026-09-21|a|0|08:30", "2026-09-21|b|0|16:00"]), max_size=2),
+)
+def test_due_reminders_and_songs_on_generated_weeks(blocks, trace, today, now_min, lead, fired):
+    same(
+        live_remind.due_reminders,
+        ref_remind.due_reminders,
+        blocks=blocks,
+        trace=trace,
+        today_iso=today,
+        now_min=now_min,
+        lead_min=lead,
+        fired=fired,
+    )
+    same(
+        live_remind.due_songs,
+        ref_remind.due_songs,
+        blocks=blocks,
+        trace=trace,
+        today_iso=today,
+        now_min=now_min,
+        played=fired,
+    )
+
+
+def test_an_alarm_is_due_after_the_last_look_up_to_and_including_now():
+    # 07:30 on 2026-09-24 in UTC is 1_790_235_000_000 ms.
+    due = 1_790_235_000_000
+    alarm = {"id": "wake", "time": "07:30", "enabled": True, "days": [3]}
+
+    def poll(now_ms, last_check_ms):
+        return live_remind.due_alarms(
+            alarms=[alarm],
+            today_iso="2026-09-24",
+            weekday=3,
+            now_ms=now_ms,
+            midnight_ms=0,
+            last_check_ms=last_check_ms,
+            fired=set(),
+            snoozed={},
+        )[0]
+
+    with local_zone("UTC"):
+        assert poll(due, due - 1) == [alarm]
+        assert poll(due, due) == []
+        assert poll(due - 1, due - 2) == []
+        assert poll(due + 5, due - 1) == [alarm]

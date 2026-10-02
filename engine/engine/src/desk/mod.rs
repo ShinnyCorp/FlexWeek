@@ -5,6 +5,7 @@ pub mod files;
 pub mod focus;
 pub mod history;
 pub mod pomodoro;
+pub(crate) mod pydate;
 pub mod remind;
 pub mod reuse;
 pub mod tokens;
