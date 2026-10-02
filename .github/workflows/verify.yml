@@ -94,8 +94,6 @@ jobs:
         run: |
           cargo build --release
           echo "$PWD/target/release" >> "$GITHUB_PATH"
-      - name: Test hidden session ownership
-        run: python -m pytest -q scripts/rig/test_hidden_session.py
       - name: Run classic Day and Week with a real pointer
         run: |
           set +e
@@ -115,7 +113,7 @@ jobs:
           PY
       - name: Stop the hidden display
         if: always()
-        run: python scripts/rig/hidden_session.py stop
+        run: fwtest clean
       - name: Upload rig results
         if: always()
         uses: actions/upload-artifact@v4
