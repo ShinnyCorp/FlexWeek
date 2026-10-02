@@ -164,8 +164,6 @@ fn supervise(
     let before = children_of(std::process::id() as i32);
     let id = job_id(std::process::id());
     let scope_name = format!("fwtest-{id}.scope");
-    let (mut child, scope) = spawn_job(argv, &cpus, &scope_name, cwd)?;
-    let mut cgroup_procs = scope.as_deref().and_then(resolve_cgroup_procs);
     let owner = identity::read_identity(std::process::id() as i32)?
         .ok_or_else(|| io::Error::other("cannot read fwtest's own process identity"))?;
     let mut job = JobRecord {
@@ -187,8 +185,23 @@ fn supervise(
             cpus: cpus.clone(),
             timeout: timeout_secs.unwrap_or(0),
         },
-        scope,
+        scope: None,
     };
+    // The record exists before the command starts, so a session that command
+    // spawns is already named by a live job.
+    job::save_job(root, &job)?;
+    let (mut child, scope) = match spawn_job(argv, &cpus, &scope_name, cwd) {
+        Ok(started) => started,
+        Err(error) => {
+            if let Ok(path) = job::job_path(root, &job.id) {
+                let _ = fs::remove_file(path);
+            }
+            return Err(error);
+        }
+    };
+    job.scope = scope;
+    let _ = job::save_job(root, &job);
+    let mut cgroup_procs = job.scope.as_deref().and_then(resolve_cgroup_procs);
     let (log, log_path) = open_log(root, &id)?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -370,6 +383,13 @@ fn spawn_direct(argv: &[String], cpus: &[usize], cwd: Option<&Path>) -> io::Resu
         nix::libc::setpgid(child.id() as i32, child.id() as i32);
     }
     Ok(child)
+}
+
+/// I/O scheduling class of `pid`. Idle is 3. Used to check a session inherited the job's limit.
+pub fn io_class(pid: i32) -> i64 {
+    // SAFETY: ioprio_get reads one integer. who=1 is IOPRIO_WHO_PROCESS.
+    let value = unsafe { nix::libc::syscall(nix::libc::SYS_ioprio_get, 1, pid) };
+    value >> 13
 }
 
 fn apply_limits(cpus: &[usize]) -> io::Result<()> {

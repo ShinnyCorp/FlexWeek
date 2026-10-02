@@ -36,7 +36,7 @@ enum Command {
         /// Spec files. Default is every scripts/mutations/*.json in the checkout.
         specs: Vec<std::path::PathBuf>,
     },
-    /// Run the rig driver, then stop the hidden session and anything left.
+    /// Start the hidden session, run the rig driver, then stop that session.
     Rig {
         /// Python interpreter. Overrides FWTEST_PYTHON and .venv/bin/python.
         #[arg(long)]
@@ -57,6 +57,12 @@ enum Command {
 }
 
 fn main() {
+    let mut args = std::env::args();
+    let _argv0 = args.next();
+    if args.next().as_deref() == Some("--inside-rig") {
+        let rest: Vec<String> = args.collect();
+        std::process::exit(fwtest::rig::inside(&rest));
+    }
     let cli = Cli::parse();
     let code = match cli.command {
         Command::Clean => fwtest::clean::run().0,

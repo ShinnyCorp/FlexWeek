@@ -7,15 +7,11 @@
 use std::collections::HashSet;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
 
 use crate::ExitCode;
+use crate::hidden;
 use crate::identity::{self, StopResult};
 use crate::job::{self, JobRecord};
-use crate::state;
-
-const HIDDEN_STOP_LIMIT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CleanReport {
@@ -74,7 +70,30 @@ pub fn clean(root: &Path) -> io::Result<CleanReport> {
         std::fs::remove_file(&path)?;
         report.removed += 1;
     }
+    stop_state_files(&live_rig_checkouts);
     Ok(report)
+}
+
+/// A state file is enough. A live rig in that checkout is left alone.
+fn stop_state_files(live_rig_checkouts: &HashSet<PathBuf>) {
+    let mut protected = HashSet::new();
+    for checkout in live_rig_checkouts {
+        if let Ok(place) = hidden::place(checkout) {
+            protected.insert(place.state);
+        }
+    }
+    let Ok(entries) = std::fs::read_dir(hidden::state_root()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let state = entry.path().join("session.json");
+        if !state.is_file() || protected.contains(&state) {
+            continue;
+        }
+        if let Err(message) = hidden::stop_state(&state) {
+            eprintln!("hidden session stop for {}: {message}", state.display());
+        }
+    }
 }
 
 fn ran_rig_driver(job: &JobRecord) -> bool {
@@ -83,55 +102,15 @@ fn ran_rig_driver(job: &JobRecord) -> bool {
         .any(|arg| Path::new(arg).ends_with("scripts/rig/drive.py"))
 }
 
-/// A SIGKILLed rig leaves its `session.json` behind; the rig's own stop script removes it.
+/// A SIGKILLed rig leaves its `session.json` behind. Stop signals the recorded PIDs.
 fn stop_hidden_session(checkout: &Path) {
-    if let Err(message) = run_hidden_stop(checkout) {
+    if let Err(message) = hidden::stop(checkout) {
         eprintln!("hidden session stop for {}: {message}", checkout.display());
     }
 }
 
-fn run_hidden_stop(checkout: &Path) -> Result<(), String> {
-    let script: PathBuf = checkout.join("scripts/rig/hidden_session.py");
-    if !script.is_file() {
-        return Err(format!("{} is missing", script.display()));
-    }
-    let python = state::resolve_python(None, checkout)?;
-    let mut child = Command::new(&python)
-        .arg(&script)
-        .arg("stop")
-        .current_dir(checkout)
-        .env_remove("FLEXWEEK_RIG_KEEP")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|error| {
-            format!(
-                "could not run {} {}: {error}",
-                python.display(),
-                script.display()
-            )
-        })?;
-    let started = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) if status.success() => return Ok(()),
-            Ok(Some(status)) => return Err(format!("hidden_session.py stop exited with {status}")),
-            Ok(None) if started.elapsed() >= HIDDEN_STOP_LIMIT => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(
-                    "hidden_session.py stop took over 30 seconds and was stopped".to_string(),
-                );
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
-            Err(error) => return Err(format!("hidden_session.py stop: {error}")),
-        }
-    }
-}
-
 pub fn run() -> ExitCode {
-    let root = match state::harness_root() {
+    let root = match crate::state::harness_root() {
         Ok(root) => root,
         Err(message) => {
             eprintln!("{message}");
