@@ -136,7 +136,6 @@ pub fn preview_conflict_message(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn proposals_from_clipboard(
     items: &[Value],
     kind: &str,

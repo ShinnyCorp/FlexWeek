@@ -280,7 +280,6 @@ fn hour_and_minute(time: &str) -> EngineResult<(i64, i64)> {
 /// The alarms that rang since the last look. `due_ms_of` turns an hour and minute of today into
 /// milliseconds on the caller's local clock, as `datetime.timestamp()` does, so no zone is known
 /// here. `fired` is changed as it goes, as the caller's set was.
-#[allow(clippy::too_many_arguments)]
 pub fn due_alarms(
     alarms: &[Value],
     today_iso: &str,

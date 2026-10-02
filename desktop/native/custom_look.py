@@ -27,8 +27,6 @@ UNNAMED = "My look"
 FILE_KIND = "FlexWeek look"
 FILE_VERSION = 1
 FILE_MAX_BYTES = 64 * 1024
-# A knob of the look on screen and the custom setting that carries it on.
-KNOB_FIELDS = {"density": "spacing", "depth": "shadows", "blocks": "blocks"}
 
 
 class LookNameError(ValueError):
