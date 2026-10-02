@@ -7,11 +7,93 @@ mod common;
 
 use common::desk::{object, py_title, with};
 use flexweek_engine::desk::weekmodel::{
-    Occurrence, WeekModel, build_week, build_week_json, clock_label, due_label, length_label,
-    planned_line,
+    build_week, clock_label, due_label, length_label, planned_line,
 };
 use flexweek_engine::desk::weekview::{Week, slack_words};
 use serde_json::{Map, Value, json};
+
+/// `Occurrence` and `Waiting` in the wrapper: the engine's JSON for one block on one day, and for
+/// one piece of waiting homework, read into fields.
+#[derive(Debug)]
+struct Occurrence {
+    block_id: String,
+    category: String,
+    day: i64,
+    start: i64,
+    end: i64,
+    done: bool,
+    missed: bool,
+    slack: Option<String>,
+}
+
+#[derive(Debug)]
+struct Waiting {
+    block_id: String,
+    title: String,
+    category: String,
+    minutes: i64,
+    reason: String,
+}
+
+struct WeekModel {
+    occurrences: Vec<Occurrence>,
+    waiting: Vec<Waiting>,
+    focus_min: i64,
+}
+
+fn text(item: &Value, key: &str) -> String {
+    item[key]
+        .as_str()
+        .unwrap_or_else(|| panic!("{key} in {item}"))
+        .to_string()
+}
+
+fn number(item: &Value, key: &str) -> i64 {
+    item[key]
+        .as_i64()
+        .unwrap_or_else(|| panic!("{key} in {item}"))
+}
+
+fn flag(item: &Value, key: &str) -> bool {
+    item[key]
+        .as_bool()
+        .unwrap_or_else(|| panic!("{key} in {item}"))
+}
+
+fn read(raw: &Value) -> WeekModel {
+    let rows = |key: &str| {
+        raw[key]
+            .as_array()
+            .unwrap_or_else(|| panic!("{key}"))
+            .clone()
+    };
+    WeekModel {
+        occurrences: rows("occurrences")
+            .iter()
+            .map(|item| Occurrence {
+                block_id: text(item, "block_id"),
+                category: text(item, "category"),
+                day: number(item, "day"),
+                start: number(item, "start"),
+                end: number(item, "end"),
+                done: flag(item, "done"),
+                missed: flag(item, "missed"),
+                slack: item["slack"].as_str().map(str::to_string),
+            })
+            .collect(),
+        waiting: rows("waiting")
+            .iter()
+            .map(|item| Waiting {
+                block_id: text(item, "block_id"),
+                title: text(item, "title"),
+                category: text(item, "category"),
+                minutes: number(item, "minutes"),
+                reason: text(item, "reason"),
+            })
+            .collect(),
+        focus_min: number(raw, "focus_min"),
+    }
+}
 
 const WEEK: &str = "2026-09-14";
 
@@ -138,21 +220,31 @@ fn trace() -> Value {
     })
 }
 
-fn model(blocks: &[Value], homework: &Map<String, Value>, trace: Option<&Value>) -> WeekModel {
-    build_week(WEEK, blocks, Some(homework), trace)
+fn engine_week(blocks: &[Value], homework: &Map<String, Value>, trace: Option<&Value>) -> Value {
+    build_week(
+        &json!(WEEK),
+        &json!(blocks),
+        &Value::Object(homework.clone()),
+        trace.unwrap_or(&Value::Null),
+    )
+    .expect("a week")
 }
 
-/// The week model together with the engine's queries over it, built from the same blocks the way
-/// `build_week` hands the model to `WeekHandle`.
+fn model(blocks: &[Value], homework: &Map<String, Value>, trace: Option<&Value>) -> WeekModel {
+    read(&engine_week(blocks, homework, trace))
+}
+
+/// The week model together with the engine's queries over it, which the wrapper builds from the
+/// same occurrences and waiting homework.
 fn view(
     blocks: &[Value],
     homework: &Map<String, Value>,
     trace: Option<&Value>,
 ) -> (WeekModel, Week) {
-    let text = build_week_json(WEEK, blocks, Some(homework), trace).to_string();
+    let raw = engine_week(blocks, homework, trace);
     (
-        model(blocks, homework, trace),
-        Week::read(&text).expect("a readable week"),
+        read(&raw),
+        Week::read(&raw.to_string()).expect("a readable week"),
     )
 }
 
@@ -619,18 +711,27 @@ fn test_a_block_cannot_run_past_midnight() {
 fn test_labels_read_the_way_a_student_says_them() {
     let lengths: Vec<String> = [30, 60, 90, 0].into_iter().map(length_label).collect();
     assert_eq!(lengths, ["30 min", "1 h", "1 h 30 min", "0 min"]);
-    assert_eq!(due_label(Some("2026-09-17T23:59"), WEEK), "Thu 17 Sep");
-    assert_eq!(due_label(Some("2026-09-27"), WEEK), "Sun 27 Sep");
     assert_eq!(
-        due_label(Some("2026-09-27T09:00"), WEEK),
+        due_label(&json!("2026-09-17T23:59")).expect("words"),
+        "Thu 17 Sep"
+    );
+    assert_eq!(
+        due_label(&json!("2026-09-27")).expect("words"),
+        "Sun 27 Sep"
+    );
+    assert_eq!(
+        due_label(&json!("2026-09-27T09:00")).expect("words"),
         "Sun 27 Sep, 09:00"
     );
     assert_eq!(
-        due_label(Some("2026-09-28T08:00"), WEEK),
+        due_label(&json!("2026-09-28T08:00")).expect("words"),
         "Mon 28 Sep, 08:00"
     );
-    assert_eq!(due_label(Some("2026-09-20"), WEEK), "Sun 20 Sep");
-    assert_eq!(due_label(None, WEEK), "");
+    assert_eq!(
+        due_label(&json!("2026-09-20")).expect("words"),
+        "Sun 20 Sep"
+    );
+    assert_eq!(due_label(&Value::Null).expect("words"), "");
 }
 
 #[test]
