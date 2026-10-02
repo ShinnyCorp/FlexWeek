@@ -9,6 +9,7 @@ import pytest
 
 import desk_ref.calendar as ref_calendar
 import desk_ref.custom_look as ref_custom
+import desk_ref.files as ref_files
 import desk_ref.focus as ref_focus
 import desk_ref.history as ref_history
 import desk_ref.look as ref_look
@@ -17,6 +18,7 @@ import desk_ref.update as ref_update
 import desk_ref.weekmodel as ref_week
 import desktop.native.calendar as live_calendar
 import desktop.native.custom_look as live_custom
+import desktop.native.files as live_files
 import desktop.native.focus as live_focus
 import desktop.native.history as live_history
 import desktop.native.look as live_look
@@ -179,3 +181,14 @@ def test_raw_look_name_adapters_preserve_results_and_errors(name, operation):
         return base.produced(function, args, {})
 
     base.same(lambda: observed(live_custom), lambda: observed(ref_custom))
+
+
+@pytest.mark.parametrize("depth", [127, 128, 129, 200, 900])
+def test_a_file_nested_past_serdes_limit_reads_as_the_original_read_it(depth):
+    deep = "[" * depth + "]" * depth
+    look = '{"kind": "FlexWeek look", "version": 1, "base": "light", "x": ' + deep + "}"
+    assert ref_custom.import_look(look).look == {"base": "light", "name": "My look"}
+    base.same(live_custom.import_look, ref_custom.import_look, look)
+    week = '{"format": "flexweek-week", "x": ' + deep + "}"
+    assert ref_files.parse_import_payload(week) == {"error": "Export has no version."}
+    base.same(live_files.parse_import_payload, ref_files.parse_import_payload, week)

@@ -102,8 +102,10 @@ whose values are Python's own types, as `sqlite3` did.
 - Crates approved by Jonathan on 2026-10-01, where the code uses them: chrono, regex, sha2, hex and
   scrypt, beside PyO3, serde, serde_json and rusqlite. hmac and base64 stay only if still used once
   the storage slice is done. Approved on 2026-10-01 for E5: serde_json's `preserve_order` feature
-  (it adds indexmap), so dicts keep the key order Python gave them. Any other crate is asked for
-  first.
+  (it adds indexmap), so dicts keep the key order Python gave them. Approved on 2026-10-02:
+  serde_json's `unbounded_depth`, used only where the binding reads text Python has already
+  parsed, so a file nested past 128 levels reads as the original read it. Any other crate is
+  asked for first.
 
 ## Slices
 

@@ -13,8 +13,14 @@ use serde_json::{Map, Value};
 
 use crate::{guard, raise};
 
+/// The text has already been through Python's `json.loads`, which stops at about 1,000 levels of
+/// nesting, so serde's own limit of 128 is lifted: a look or week file nested past it must read as
+/// the original read it, not raise.
 pub(crate) fn parse(text: &str) -> PyResult<Value> {
-    serde_json::from_str(text).map_err(|error| PyValueError::new_err(error.to_string()))
+    let mut reader = serde_json::Deserializer::from_str(text);
+    reader.disable_recursion_limit();
+    serde::Deserialize::deserialize(&mut reader)
+        .map_err(|error: serde_json::Error| PyValueError::new_err(error.to_string()))
 }
 
 pub(crate) fn dump(value: &Value) -> String {
