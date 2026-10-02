@@ -1288,6 +1288,45 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         look_tables,
         look_readability,
         look_apply_fix,
+        look_sanitize_custom,
+        look_sanitize_look,
+        look_effective_look,
+        look_known_pack,
     );
     Ok(())
+}
+
+/// `(custom, problems)` as one JSON pair: the cleaned look or null, and a sentence for each setting
+/// dropped. The three look functions below read a NaN or Infinity as `import_look` does.
+#[pyfunction]
+fn look_sanitize_custom(raw: &str) -> PyResult<String> {
+    let raw = custom_look::readable(&parse(raw)?);
+    guard(|| {
+        let (custom, problems) = custom_look::sanitize_custom(&raw);
+        Ok(dump(&json!([custom.map(Value::Object), problems])))
+    })
+}
+
+#[pyfunction]
+fn look_sanitize_look(raw: &str) -> PyResult<String> {
+    let raw = custom_look::readable(&parse(raw)?);
+    guard(|| Ok(dump(&Value::Object(custom_look::sanitize_look(&raw)))))
+}
+
+#[pyfunction]
+fn look_effective_look(choice: &str) -> PyResult<String> {
+    let choice = custom_look::readable(&parse(choice)?);
+    guard(|| Ok(dump(&Value::Object(custom_look::effective_look(&choice)))))
+}
+
+/// Takes the caller's own object: anything that is not text is no pack.
+#[pyfunction]
+fn look_known_pack(pack: &Bound<'_, PyAny>) -> PyResult<String> {
+    let pack = pack.extract::<String>().map_or(Value::Null, Value::from);
+    guard(|| {
+        Ok(custom_look::known_pack(&pack)
+            .as_str()
+            .unwrap_or("system")
+            .to_string())
+    })
 }

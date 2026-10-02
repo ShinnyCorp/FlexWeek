@@ -61,3 +61,25 @@ Nothing moved. Every function was an adapter already.
 
 The module's tables (`SPACING`, `RADIUS_*`, `SHADOW_*`, `TYPE_PT`, `TEXT_SCALE`, `FILL`, `MARK` and the
 rest) are data, not functions. The engine holds its own copies of some of them (`tokens.rs`).
+
+## `desktop/native/look.py`: the four duplicates
+
+`look.py` builds Qt stylesheets and stays Python. These four held a second copy of rules the engine's
+custom look code already had; they are adapters now, with the same names and signatures. The originals
+are frozen in `desk_ref/look.py`.
+
+| module | function | class | reason |
+|---|---|---|---|
+| look | `known_pack` | ADAPTER | one call, `look_known_pack`, on the caller's own object |
+| look | `sanitize_custom` | ADAPTER | one call, `look_sanitize_custom`; the pair comes back as one JSON list |
+| look | `sanitize_look` | ADAPTER | one call, `look_sanitize_look` |
+| look | `effective_look` | ADAPTER | one call, `look_effective_look`; the engine's new `effective_look` is the port (the nearest-knob rule and the font rule) |
+
+Removed with them because nothing else used them: `_category_spec`, `_said`, `_nearest`.
+
+Other pairs searched for (a Python function outside the eleven wrappers that repeats engine logic):
+
+- `desktop/native/version.py` `is_newer` and `parse` repeat `update.rs` `is_newer`. No Qt, so it could move;
+  left alone because the file is outside this part's edit list. `update.py` no longer calls it (only `VERSION` is read from the file); tests do.
+- `desktop/native/layouts/bento.py` `due_soon` sorts and groups what `WeekModel` already reads; Qt file.
+- `desktop/native/widgets.py` `_span_problem`: one sentence on `End must be after Start`; Qt file.
