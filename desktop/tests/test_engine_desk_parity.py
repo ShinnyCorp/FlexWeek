@@ -3176,3 +3176,31 @@ def test_solve_request_reads_only_and_not_before_as_it_is_given(only, not_before
 def test_settle_placements_reads_keep_as_it_is_given(keep):
     late = [session(start="23:30", pinned=None), session(id="two", start="23:30", pinned=None)]
     same(live_reuse.settle_placements, ref_reuse.settle_placements, late, {"essay": homework()}, WEEK, keep)
+
+
+@CHECK
+@given(st.lists(maybe(True, False, 1, 0, None, "x", 1.0, 0.0, ""), min_size=1, max_size=6))
+def test_set_clock_24h_compares_the_object_the_window_passed(values):
+    was = dict(live_weekmodel._clock), dict(ref_weekmodel._clock)
+    try:
+        for module in (live_weekmodel, ref_weekmodel):
+            module._clock["24h"] = True
+        for value in values:
+            got = live_weekmodel.set_clock_24h(value)
+            want = ref_weekmodel.set_clock_24h(value)
+            assert repr(got) == repr(want)
+            assert repr(live_weekmodel._clock) == repr(ref_weekmodel._clock)
+            assert live_weekmodel.time_format() == ref_weekmodel.time_format()
+    finally:
+        live_weekmodel._clock.update(was[0])
+        ref_weekmodel._clock.update(was[1])
+        flexweek_engine.week_set_clock_24h(bool(was[0]["24h"]))
+
+
+def test_a_week_model_keeps_its_engine_week_only_while_its_tuples_cannot_change():
+    held = live_weekmodel.Occurrence("y", "Y", "assignments", 0, 60, 90, True, False, False, None, None, None)
+    fixed = live_weekmodel.WeekModel("2026-09-21", (held,), (), 0)
+    assert fixed._engine() is fixed._engine()
+    listed = live_weekmodel.WeekModel("2026-09-21", [held], (), 0)
+    assert listed._engine() is not listed._engine()
+    assert "_engine_week" not in vars(listed)

@@ -41,10 +41,7 @@ _clock = {"24h": True}
 
 def set_clock_24h(on: bool) -> bool:
     """Whether this changed the clock, so the caller knows to redraw."""
-    changed = _clock["24h"] != on
-    _clock["24h"] = on
-    flexweek_engine.week_set_clock_24h(bool(on))
-    return changed
+    return flexweek_engine.week_set_clock(on, _clock)
 
 
 def clock_text(minute: int) -> str:
@@ -166,21 +163,7 @@ class WeekModel:
 
     def _engine(self) -> Any:
         """The week as the engine holds it, read once for a model whose tuples cannot change."""
-        held = self.__dict__.get("_engine_week")
-        if held is not None:
-            return held
-        held = flexweek_engine.WeekHandle(
-            json.dumps(
-                {
-                    "week_start": self.week_start,
-                    "occurrences": [vars(item) for item in self.occurrences],
-                    "waiting": [vars(item) for item in self.waiting],
-                }
-            )
-        )
-        if isinstance(self.occurrences, tuple) and isinstance(self.waiting, tuple):
-            object.__setattr__(self, "_engine_week", held)
-        return held
+        return flexweek_engine.week_handle_of(self)
 
     def date_of(self, day: int) -> date:
         return date(*flexweek_engine.week_date_of(self.week_start, day))

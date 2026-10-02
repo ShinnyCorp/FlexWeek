@@ -838,6 +838,8 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         update_asset_name,
         update_available,
         update_verified,
+        week_handle_of,
+        week_set_clock,
     );
     Ok(())
 }
@@ -873,4 +875,54 @@ pub(crate) fn attr_or_none<'py>(
         }
         found => found,
     }
+}
+
+/// The week a `WeekModel` holds, read once and kept on the model when its tuples cannot change, so
+/// the methods of a week on screen do not read it again. A model whose occurrences or waiting are
+/// lists is read each time, since they can.
+#[pyfunction]
+fn week_handle_of(model: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+    guard(|| {
+        let py = model.py();
+        let kept = model.getattr("__dict__")?;
+        let held = kept.call_method1("get", ("_engine_week",))?;
+        if !held.is_none() {
+            return Ok(held.unbind());
+        }
+        let vars = py.import("builtins")?.getattr("vars")?;
+        let week_start = model.getattr("week_start")?;
+        let occurrences = model.getattr("occurrences")?;
+        let occupied = PyList::empty(py);
+        for item in occurrences.try_iter()? {
+            occupied.append(vars.call1((item?,))?)?;
+        }
+        let waiting = model.getattr("waiting")?;
+        let queued = PyList::empty(py);
+        for item in waiting.try_iter()? {
+            queued.append(vars.call1((item?,))?)?;
+        }
+        let body = PyDict::new(py);
+        body.set_item("week_start", week_start)?;
+        body.set_item("occurrences", occupied)?;
+        body.set_item("waiting", queued)?;
+        let handle = Py::new(py, WeekHandle::new(dumps_of(&body)?)?)?;
+        if occurrences.is_instance_of::<pyo3::types::PyTuple>()
+            && waiting.is_instance_of::<pyo3::types::PyTuple>()
+        {
+            kept.set_item("_engine_week", &handle)?;
+        }
+        Ok(handle.into_any())
+    })
+}
+
+/// Records what the window last passed for the 24-hour clock in `state` (the caller's own record,
+/// compared as the object it was, not its truth), tells the engine, and says whether it changed.
+#[pyfunction]
+fn week_set_clock(on: &Bound<'_, PyAny>, state: &Bound<'_, PyAny>) -> PyResult<bool> {
+    guard(|| {
+        let changed = state.get_item("24h")?.ne(on)?;
+        state.set_item("24h", on)?;
+        weekmodel::set_clock_24h(on.is_truthy()?);
+        Ok(changed)
+    })
 }
