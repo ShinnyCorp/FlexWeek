@@ -469,6 +469,35 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         build_day,
         build_month,
         is_work_session,
+        generate_recovery_codes,
+        recovery_code_matches,
     );
     Ok(())
+}
+
+#[pyfunction]
+fn generate_recovery_codes(
+    count: &Bound<'_, PyAny>,
+    draw: &Bound<'_, PyAny>,
+) -> PyResult<Vec<String>> {
+    guard(|| {
+        let mut seen = std::collections::BTreeSet::new();
+        let mut codes = Vec::new();
+        loop {
+            let more: bool = count.gt(codes.len())?;
+            if !more {
+                break;
+            }
+            let raw: Vec<u8> = draw.call0()?.extract()?;
+            if let Some(code) = snapshot::accept_recovery_draw(&raw, &mut seen) {
+                codes.push(code);
+            }
+        }
+        Ok(codes)
+    })
+}
+
+#[pyfunction]
+fn recovery_code_matches(presented: &str, stored_hash: &str) -> PyResult<bool> {
+    guard(|| snapshot::recovery_code_matches(presented, stored_hash).map_err(crate::raise))
 }

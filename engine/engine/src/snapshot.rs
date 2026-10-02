@@ -497,6 +497,56 @@ pub fn hash_recovery_code(value: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// One `secrets.token_bytes` draw. `None` when the code is a repeat or not four hex groups.
+pub fn accept_recovery_draw(
+    raw: &[u8],
+    seen: &mut std::collections::BTreeSet<String>,
+) -> Option<String> {
+    let code = format_recovery_code(&hex::encode(raw));
+    let digest = hash_recovery_code(&code);
+    if seen.contains(&digest) || !recovery_code_well_formed(&code) {
+        return None;
+    }
+    seen.insert(digest);
+    Some(code)
+}
+
+pub fn recovery_codes_from_draws(count: usize, draws: &[&[u8]]) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut codes = Vec::new();
+    for raw in draws {
+        if codes.len() >= count {
+            break;
+        }
+        if let Some(code) = accept_recovery_draw(raw, &mut seen) {
+            codes.push(code);
+        }
+    }
+    codes
+}
+
+pub fn recovery_code_matches(presented: &str, stored_hash: &str) -> crate::EngineResult<bool> {
+    let digest = hash_recovery_code(presented);
+    if !digest.is_ascii() || !stored_hash.is_ascii() {
+        return Err(crate::EngineError {
+            kind: crate::ErrorKind::Type,
+            message: "comparing strings with non-ASCII characters is not supported".into(),
+        });
+    }
+    Ok(eq_ascii(digest.as_bytes(), stored_hash.as_bytes()))
+}
+
+fn eq_ascii(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (left, right) in left.iter().zip(right.iter()) {
+        diff |= left ^ right;
+    }
+    diff == 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -520,5 +570,44 @@ mod tests {
             let value: Value = serde_json::from_str(input).unwrap();
             assert_eq!(canonical_value(&value), want, "{input} -> {value}");
         }
+    }
+
+    #[test]
+    fn draws_skip_a_duplicate_and_a_short_code() {
+        let draws: &[&[u8]] = &[
+            &[0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77],
+            &[0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77],
+            &[0xab],
+            &[0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11],
+        ];
+        assert_eq!(
+            recovery_codes_from_draws(2, draws),
+            vec![
+                "0011-2233-4455-6677".to_string(),
+                "aabb-ccdd-eeff-0011".to_string(),
+            ]
+        );
+        assert!(recovery_codes_from_draws(0, draws).is_empty());
+    }
+
+    #[test]
+    fn compare_matches_hmac_on_ascii_and_rejects_non_ascii() {
+        let digest = "2115f4faa2798a135efc96595d802aa15ef8a2e8099efa8483b6ee97296c45e2";
+        assert_eq!(hash_recovery_code("0011-2233-4455-6677"), digest);
+        assert!(recovery_code_matches("0011-2233-4455-6677", digest).unwrap());
+        assert!(!recovery_code_matches("0011-2233-4455-6677", "abcd").unwrap());
+        assert!(!recovery_code_matches("0011-2233-4455-6677", &"\u{7f}".repeat(64)).unwrap());
+        let err = recovery_code_matches("0011-2233-4455-6677", "é").unwrap_err();
+        assert_eq!(err.kind, crate::ErrorKind::Type);
+        assert_eq!(
+            err.message,
+            "comparing strings with non-ASCII characters is not supported"
+        );
+        let err = recovery_code_matches("0011-2233-4455-6677", "\u{80}").unwrap_err();
+        assert_eq!(err.kind, crate::ErrorKind::Type);
+        assert_eq!(
+            err.message,
+            "comparing strings with non-ASCII characters is not supported"
+        );
     }
 }
