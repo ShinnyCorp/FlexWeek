@@ -483,7 +483,7 @@ fn python_int(py: Python<'_>, decimal: &str) -> PyResult<Py<PyAny>> {
         .unbind())
 }
 
-/// Integers that fit in i64 keep `plan::snap_minutes`. A wider one uses Python's formula.
+/// Integers f64 holds exactly keep `plan::snap_minutes`. Past 2^53, Python's formula.
 #[pyfunction]
 fn snap_minutes_wide(
     py: Python<'_>,
@@ -496,7 +496,13 @@ fn snap_minutes_wide(
         let mut fitted = [None, None, None];
         for (index, obj) in [value, minimum, maximum].into_iter().enumerate() {
             match obj.extract::<i64>() {
-                Ok(number) => fitted[index] = Some(number),
+                Ok(number) => {
+                    fitted[index] = Some(number);
+                    // f64 cannot hold every integer past 2^53; `plan::snap_minutes` would drift.
+                    if number.unsigned_abs() > (1u64 << 53) {
+                        overflow = true;
+                    }
+                }
                 Err(err) if is_overflow(py, &err) => overflow = true,
                 Err(err) if !overflow => return Err(err),
                 Err(_) => {}
