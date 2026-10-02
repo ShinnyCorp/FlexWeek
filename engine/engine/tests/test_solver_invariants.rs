@@ -2,7 +2,7 @@ mod common;
 
 use std::cell::Cell;
 
-use common::{Dump, solve_legacy, solve_with, windows_legacy, windows_open};
+use common::{Dump, real_clock, solve_legacy, solve_with, windows_legacy, windows_open};
 use flexweek_engine::solver::TimeBlock;
 
 /// Seeded LCG, not Python's `random.Random`: this crate cannot add a property-testing crate.
@@ -95,7 +95,7 @@ fn test_generated_weeks_preserve_grid_bounds_occupancy_and_input() {
             } else {
                 windows_legacy()
             };
-            let trace = solve_with(&blocks, None, None, Some(&windows), &|| 0.0);
+            let trace = solve_with(&blocks, None, None, Some(&windows), &real_clock());
             assert_eq!(blocks, before, "seed {seed} {mode} input");
             let school = trace
                 .placed

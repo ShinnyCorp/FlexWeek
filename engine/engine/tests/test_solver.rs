@@ -3,8 +3,8 @@ mod common;
 use std::path::Path;
 
 use common::{
-    Dump, by_id, ids, miss_legacy, no_overlaps, placed_interval, solve_legacy, solve_open,
-    solve_with, work_span,
+    Dump, by_id, ids, miss_legacy, no_overlaps, placed_interval, real_clock, solve_legacy,
+    solve_open, solve_with, work_span,
 };
 use flexweek_engine::solver::{SOLVE_BUDGET_MS, TimeBlock, block_from_value};
 use flexweek_engine::time::hhmm_to_minutes;
@@ -657,7 +657,7 @@ fn test_homework_is_never_planned_in_a_quarter_hour_a_block_at_any_minute_touche
         ));
     }
     let evening = vec![work_span(&[0], "17:30", "18:45", None)];
-    let trace = solve_with(&blocks, None, None, Some(&evening), &|| 0.0);
+    let trace = solve_with(&blocks, None, None, Some(&evening), &real_clock());
     let starts: Vec<_> = trace
         .placed
         .iter()

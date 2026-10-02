@@ -47,7 +47,13 @@ fn test_protected_hours_leave_locked_blocks_and_unplace_overflow() {
     let window = protected("downtime", &[0], "06:00", 60);
     let occ = occupancy_from_windows(&[window], None).unwrap();
     let work = common::windows_legacy();
-    let trace = common::solve_with(&[wind, homework], Some(&occ), None, Some(&work), &|| 0.0);
+    let trace = common::solve_with(
+        &[wind, homework],
+        Some(&occ),
+        None,
+        Some(&work),
+        &common::real_clock(),
+    );
     assert_eq!(by_id(&trace.placed, "wind").start.as_deref(), Some("07:00"));
     assert_eq!(by_id(&trace.placed, "wind").days, vec![0]);
     assert_eq!(ids(&trace.unplaced), ["hw"]);
@@ -188,7 +194,13 @@ fn test_cutoff_occupancy_blocks_starts_that_would_finish_after_it() {
     let homework = flex("hw", 60, &[0], "high", None);
     let occ = occupancy_from_windows(&[], Some("06:15")).unwrap();
     let work = common::windows_legacy();
-    let trace = common::solve_with(&[homework], Some(&occ), None, Some(&work), &|| 0.0);
+    let trace = common::solve_with(
+        &[homework],
+        Some(&occ),
+        None,
+        Some(&work),
+        &common::real_clock(),
+    );
     assert_eq!(ids(&trace.unplaced), ["hw"]);
 }
 

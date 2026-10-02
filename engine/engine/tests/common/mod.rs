@@ -147,6 +147,13 @@ pub fn study_span(
     study_window_from_value(&value)
 }
 
+/// The solver wants milliseconds since its own start, so build one per call. A clock that
+/// never moves makes `solve_ms` always 0 and the budget can never expire.
+pub fn real_clock() -> impl Fn() -> f64 {
+    let started = std::time::Instant::now();
+    move || started.elapsed().as_secs_f64() * 1000.0
+}
+
 pub fn solve_with(
     blocks: &[TimeBlock],
     extra_occ: Option<&[u128]>,
@@ -169,12 +176,12 @@ pub fn solve_with(
 /// `solve()` in the Python tests fills in legacy 06:00–23:00 windows.
 pub fn solve_legacy(blocks: &[TimeBlock]) -> SolveTrace {
     let work = windows_legacy();
-    solve_with(blocks, None, None, Some(&work), &|| 0.0)
+    solve_with(blocks, None, None, Some(&work), &real_clock())
 }
 
 /// `run_solve()` leaves work windows unset. The binding passes None.
 pub fn solve_open(blocks: &[TimeBlock]) -> SolveTrace {
-    solve_with(blocks, None, None, None, &|| 0.0)
+    solve_with(blocks, None, None, None, &real_clock())
 }
 
 pub fn solve_studied(
@@ -183,7 +190,7 @@ pub fn solve_studied(
     study: &[StudyWindow],
 ) -> SolveTrace {
     let work = windows_legacy();
-    solve_with(blocks, extra_occ, Some(study), Some(&work), &|| 0.0)
+    solve_with(blocks, extra_occ, Some(study), Some(&work), &real_clock())
 }
 
 pub fn miss_legacy(
@@ -203,7 +210,7 @@ pub fn miss_legacy(
         Some(&work),
         Some(&DeadlineOverrides::default()),
         SOLVE_BUDGET_MS,
-        &|| 0.0,
+        &real_clock(),
     )
     .expect("reschedule after miss")
 }
@@ -225,7 +232,7 @@ pub fn miss_open(
         None,
         Some(&DeadlineOverrides::default()),
         SOLVE_BUDGET_MS,
-        &|| 0.0,
+        &real_clock(),
     )
     .expect("reschedule after miss")
 }
@@ -249,7 +256,7 @@ pub fn late_legacy(
         Some(&work),
         Some(&DeadlineOverrides::default()),
         SOLVE_BUDGET_MS,
-        &|| 0.0,
+        &real_clock(),
     )
     .expect("reschedule running late")
 }
