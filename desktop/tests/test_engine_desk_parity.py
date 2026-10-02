@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import dataclasses
 import json
 import os
 import time
@@ -1688,3 +1689,172 @@ def test_channels_read_each_pair_as_python_does(colour):
 @given(st.text(alphabet="#0123456789abcdefABCDEFxX_+- \tg", max_size=8))
 def test_channels_of_odd_text(colour):
     same(live_tokens._channels, ref_tokens._channels, colour)
+
+
+@st.composite
+def week_models(draw, rough=False):
+    """The same week as the live classes and the reference ones hold it."""
+    week_start = draw(
+        maybe("2026-09-21", "2026-09-21", "2026-09-23", "2099-12-29") if rough else maybe("2026-09-21")
+    )
+    slacks = [None, "danger", "tight", "ok"] + (["weird"] if rough else [])
+    occurrences = []
+    for index in range(draw(st.integers(0, 6))):
+        start = draw(st.integers(0, 1380))
+        occurrences.append(
+            {
+                "block_id": f"b{index}",
+                "title": draw(maybe("Study", "Class", "")),
+                "category": draw(maybe("assignments", "class", "free")),
+                "day": draw(DAY),
+                "start": start,
+                "end": start + draw(st.integers(0, 120)),
+                "work": draw(st.booleans()),
+                "done": draw(st.booleans()),
+                "missed": draw(st.booleans()),
+                "assignment_id": draw(maybe(None, "essay")),
+                "due": draw(maybe(None, "2026-09-24")),
+                "slack": draw(st.sampled_from(slacks)),
+                "pinned": draw(st.booleans()),
+            }
+        )
+    waiting = []
+    for index in range(draw(st.integers(0, 3))):
+        waiting.append(
+            {
+                "block_id": f"w{index}",
+                "title": draw(maybe("Poster", "Essay", "Ünï")),
+                "category": "assignments",
+                "minutes": draw(st.integers(0, 180)),
+                "assignment_id": draw(maybe(None, "poster")),
+                "due": draw(
+                    maybe(
+                        None,
+                        "",
+                        "2026-09-21",
+                        "2026-09-22T17:00",
+                        "2026-09-23",
+                        "2026-09-24T09:30",
+                        "2026-09-27",
+                    )
+                ),
+                "reason": draw(maybe("", "No room")),
+            }
+        )
+    focus = draw(st.integers(0, 90))
+
+    def build(module):
+        return module.WeekModel(
+            week_start,
+            tuple(module.Occurrence(**row) for row in occurrences),
+            tuple(module.Waiting(**row) for row in waiting),
+            focus,
+        )
+
+    return build(live_weekmodel), build(ref_weekmodel)
+
+
+def same_on(models, name, *args, listed=False):
+    live, ref = models
+    live_out = produced(getattr(live, name), args, {}, listed)
+    ref_out = produced(getattr(ref, name), args, {}, listed)
+    assert live_out == ref_out
+
+
+TODAY = st.one_of(st.none(), DAY)
+
+
+@CHECK
+@given(week_models(), DAY, MINUTE, TODAY)
+def test_week_model_methods_on_generated_weeks(models, day, minute, today):
+    same_on(models, "on_day", day)
+    same_on(models, "load_min", day)
+    same_on(models, "open_work")
+    same_on(models, "due_today_unplaced", today)
+    same_on(models, "leftover_kind", today)
+    same_on(models, "leftover_words", today)
+    same_on(models, "leftover_parts", today)
+    same_on(models, "minutes_left_today", today, minute)
+    same_on(models, "day_queue", day, minute)
+    same_on(models, "date_of", day)
+
+
+@WIDE
+@given(week_models(), DAY, st.integers(0, 24 * 60), TODAY)
+def test_week_model_methods_on_wide_generated_weeks(models, day, minute, today):
+    same_on(models, "day_queue", day, minute)
+    same_on(models, "minutes_left_today", today, minute)
+    same_on(models, "leftover_parts", today)
+    same_on(models, "open_work")
+
+
+@CHECK
+@given(
+    week_models(rough=True),
+    st.integers(-9, 9),
+    st.integers(-5, 1500),
+    st.one_of(st.none(), st.integers(-9, 9)),
+)
+def test_week_model_methods_on_rough_weeks_and_days(models, day, minute, today):
+    for name, args in (
+        ("on_day", (day,)),
+        ("load_min", (day,)),
+        ("open_work", ()),
+        ("due_today_unplaced", (today,)),
+        ("leftover_kind", (today,)),
+        ("leftover_parts", (today,)),
+        ("minutes_left_today", (today, minute)),
+        ("day_queue", (day, minute)),
+        ("date_of", (day,)),
+    ):
+        same_on(models, name, *args)
+
+
+@CHECK
+@given(week_models(), DAY)
+def test_week_model_hands_back_the_objects_it_holds(models, day):
+    live, _ref = models
+    assert all(
+        item is held
+        for item, held in zip(live.on_day(day), [i for i in live.occurrences if i.day == day], strict=True)
+    )
+    queue = live.day_queue(day, 600)
+    assert all(any(item is held for held in live.occurrences) for item in queue.queue)
+    assert all(any(item is held for held in live.occurrences) for item in live.open_work())
+    assert all(any(item is held for held in live.waiting) for item in live.due_today_unplaced(day))
+
+
+@CHECK
+@given(week_models())
+def test_occurrence_properties_on_generated_weeks(models):
+    live, ref = models
+    for live_item, ref_item in zip(live.occurrences, ref.occurrences, strict=True):
+        assert (live_item.minutes, live_item.live, live_item.slack_words) == (
+            ref_item.minutes,
+            ref_item.live,
+            ref_item.slack_words,
+        )
+
+
+def test_the_week_the_engine_holds_follows_a_changed_week():
+    held = live_weekmodel.Occurrence("y", "Y", "assignments", 0, 60, 90, True, False, False, None, None, None)
+    live = live_weekmodel.WeekModel("2026-09-21", (held,), (), 0)
+    assert live.on_day(0) == (held,)
+    assert dataclasses.replace(live, occurrences=()).on_day(0) == ()
+    listed = live_weekmodel.WeekModel("2026-09-21", [], (), 0)
+    first = listed.load_min(0)
+    listed.occurrences.append(
+        live_weekmodel.Occurrence("x", "X", "assignments", 0, 60, 120, True, False, False, None, None, None)
+    )
+    assert (first, listed.load_min(0)) == (0, 60)
+
+
+def test_a_week_model_copies_and_pickles_with_the_engine_week_it_holds():
+    import pickle
+
+    held = live_weekmodel.Occurrence("y", "Y", "assignments", 0, 60, 90, True, False, False, None, None, None)
+    model = live_weekmodel.WeekModel("2026-09-21", (held,), (), 0)
+    model.on_day(0)
+    for twin in (copy.copy(model), copy.deepcopy(model), pickle.loads(pickle.dumps(model))):
+        assert twin == model
+        assert twin.load_min(0) == 30 and twin.on_day(0) == (twin.occurrences[0],)

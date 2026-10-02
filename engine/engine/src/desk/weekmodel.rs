@@ -1,6 +1,6 @@
 //! Week reading model from `desktop/native/weekmodel.py`.
 
-use chrono::{Datelike, Duration, NaiveDate};
+use chrono::{Datelike, NaiveDate};
 use serde_json::{Value, json};
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,7 +16,6 @@ pub const SLACK_WORDS: [(&str, &str); 3] = [
     ("tight", "Tight"),
     ("ok", "Plenty of time"),
 ];
-const SLACK_ORDER: [(&str, i64); 4] = [("danger", 0), ("tight", 1), ("", 2), ("ok", 3)];
 pub const NOT_PLANNED: &str = "Not planned yet.";
 pub const HOMEWORK: &str = "assignments";
 pub const END_OF_DAY: i64 = 24 * 60;
@@ -239,24 +238,6 @@ pub struct Occurrence {
     pub pinned: bool,
 }
 
-impl Occurrence {
-    pub fn minutes(&self) -> i64 {
-        self.end - self.start
-    }
-
-    pub fn live(&self) -> bool {
-        !(self.work && (self.done || self.missed))
-    }
-
-    pub fn slack_words(&self) -> &'static str {
-        SLACK_WORDS
-            .iter()
-            .find(|(key, _)| Some(*key) == self.slack.as_deref())
-            .map(|(_, words)| *words)
-            .unwrap_or("")
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Waiting {
     pub block_id: String,
@@ -269,167 +250,11 @@ pub struct Waiting {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct DayQueue {
-    pub current: Option<Occurrence>,
-    pub queue: Vec<Occurrence>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct WeekModel {
     pub week_start: String,
     pub occurrences: Vec<Occurrence>,
     pub waiting: Vec<Waiting>,
     pub focus_min: i64,
-}
-
-impl WeekModel {
-    pub fn date_of(&self, day: i64) -> NaiveDate {
-        NaiveDate::parse_from_str(&self.week_start, "%Y-%m-%d").expect("week") + Duration::days(day)
-    }
-
-    pub fn on_day(&self, day: i64) -> Vec<Occurrence> {
-        self.occurrences
-            .iter()
-            .filter(|item| item.day == day)
-            .cloned()
-            .collect()
-    }
-
-    pub fn load_min(&self, day: i64) -> i64 {
-        self.on_day(day)
-            .iter()
-            .filter(|item| item.work)
-            .map(|item| item.minutes())
-            .sum()
-    }
-
-    pub fn open_work(&self) -> Vec<Occurrence> {
-        let mut items: Vec<Occurrence> = self
-            .occurrences
-            .iter()
-            .filter(|item| item.work && item.live())
-            .cloned()
-            .collect();
-        items.sort_by(|a, b| {
-            let order = |slack: &Option<String>| {
-                SLACK_ORDER
-                    .iter()
-                    .find(|(key, _)| slack.as_deref() == Some(*key))
-                    .map(|(_, v)| *v)
-                    .unwrap_or(2)
-            };
-            (order(&a.slack), a.day, a.start, &a.block_id).cmp(&(
-                order(&b.slack),
-                b.day,
-                b.start,
-                &b.block_id,
-            ))
-        });
-        items
-    }
-
-    pub fn due_today_unplaced(&self, today: Option<i64>) -> Vec<Waiting> {
-        let Some(today) = today else {
-            return Vec::new();
-        };
-        let day_date = self.date_of(today);
-        let iso = format!(
-            "{:04}-{:02}-{:02}",
-            day_date.year(),
-            day_date.month(),
-            day_date.day()
-        );
-        self.waiting
-            .iter()
-            .filter(|item| item.due.as_deref().is_some_and(|d| d.starts_with(&iso)))
-            .cloned()
-            .collect()
-    }
-
-    pub fn leftover_kind(&self, today: Option<i64>) -> &'static str {
-        if today.is_some() && !self.due_today_unplaced(today).is_empty() {
-            return "needs_time";
-        }
-        let homework: Vec<_> = self.occurrences.iter().filter(|item| item.work).collect();
-        if homework.is_empty() && self.waiting.is_empty() {
-            return if self.occurrences.is_empty() {
-                "no_homework"
-            } else {
-                "calendar_only"
-            };
-        }
-        if !homework.iter().any(|item| item.live()) && self.waiting.is_empty() {
-            return "all_finished";
-        }
-        "calendar_only"
-    }
-
-    pub fn leftover_words(&self, today: Option<i64>) -> &'static str {
-        LEFTOVER
-            .iter()
-            .find(|(k, _)| *k == self.leftover_kind(today))
-            .map(|(_, w)| *w)
-            .unwrap_or("")
-    }
-
-    pub fn leftover_parts(&self, today: Option<i64>) -> (String, String, String) {
-        let kind = self.leftover_kind(today);
-        let heading = self.leftover_words(today).to_string();
-        if kind == "needs_time" {
-            let first = &self.due_today_unplaced(today)[0];
-            let due = due_label(first.due.as_deref(), &self.week_start);
-            let line = if due.is_empty() {
-                "Due today".to_string()
-            } else {
-                format!("Due {due}")
-            };
-            return (heading.clone(), first.title.clone(), line);
-        }
-        (heading.clone(), heading, String::new())
-    }
-
-    pub fn minutes_left_today(&self, today: Option<i64>, minute: i64) -> i64 {
-        let Some(today) = today else {
-            return 0;
-        };
-        let mut total = 0i64;
-        for item in self.on_day(today) {
-            if item.work && item.live() && item.end > minute {
-                total += item.end - item.start.max(minute);
-            }
-        }
-        total += self
-            .due_today_unplaced(Some(today))
-            .iter()
-            .map(|item| item.minutes)
-            .sum::<i64>();
-        total
-    }
-
-    pub fn day_queue(&self, day: i64, minute: i64) -> DayQueue {
-        let live: Vec<_> = self
-            .on_day(day)
-            .into_iter()
-            .filter(|item| item.live())
-            .collect();
-        let mut running: Vec<_> = live
-            .iter()
-            .filter(|item| item.start <= minute && minute < item.end)
-            .cloned()
-            .collect();
-        running.sort_by(|a, b| (!a.work).cmp(&!b.work).then(a.start.cmp(&b.start)));
-        let current = running.first().cloned();
-        let later: Vec<_> = live
-            .into_iter()
-            .filter(|item| item.start > minute)
-            .collect();
-        let mut queue = Vec::new();
-        if let Some(ref c) = current {
-            queue.push(c.clone());
-        }
-        queue.extend(later);
-        DayQueue { current, queue }
-    }
 }
 
 pub fn build_week(

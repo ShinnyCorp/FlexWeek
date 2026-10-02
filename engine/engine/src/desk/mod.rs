@@ -13,6 +13,7 @@ pub mod reuse;
 pub mod tokens;
 pub mod update;
 pub mod weekmodel;
+pub mod weekview;
 
 use serde_json::Value;
 

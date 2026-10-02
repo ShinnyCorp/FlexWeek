@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 
 use ::flexweek_engine::desk::tokens::TextScale;
+use ::flexweek_engine::desk::weekview::{self, Week};
 use ::flexweek_engine::desk::{history, pomodoro, remind, tokens, update, weekmodel};
 use std::cell::RefCell;
 
@@ -218,6 +219,92 @@ fn week_build(
             trace.as_ref(),
         )))
     })
+}
+
+#[pyfunction]
+fn week_slack_words(slack: Option<&str>) -> PyResult<&'static str> {
+    guard(|| Ok(weekview::slack_words(slack)))
+}
+
+#[pyfunction]
+fn week_occurrence_minutes(start: i64, end: i64) -> PyResult<i64> {
+    guard(|| Ok(weekview::minutes(start, end)))
+}
+
+#[pyfunction]
+fn week_occurrence_live(work: bool, done: bool, missed: bool) -> PyResult<bool> {
+    guard(|| Ok(weekview::live(work, done, missed)))
+}
+
+#[pyfunction]
+fn week_date_of(week_start: &str, day: i64) -> PyResult<(i32, u32, u32)> {
+    guard(|| weekview::date_of(week_start, day).map_err(raise))
+}
+
+/// A week read once, so the model's methods do not parse it on every call. It never changes, so a
+/// copy is itself, and it pickles as the text it was made from.
+#[pyclass(name = "WeekHandle", frozen, module = "flexweek_engine")]
+#[derive(Clone)]
+struct WeekHandle {
+    week: Week,
+    text: String,
+}
+
+#[pymethods]
+impl WeekHandle {
+    #[new]
+    fn new(text: String) -> PyResult<Self> {
+        let week = Week::read(&text).map_err(raise)?;
+        Ok(Self { week, text })
+    }
+
+    fn on_day(&self, day: i64) -> Vec<usize> {
+        self.week.on_day(day)
+    }
+
+    fn load_min(&self, day: i64) -> i64 {
+        self.week.load_min(day)
+    }
+
+    fn open_work(&self) -> PyResult<Vec<usize>> {
+        self.week.open_work().map_err(raise)
+    }
+
+    fn due_today_unplaced(&self, today: Option<i64>) -> PyResult<Vec<usize>> {
+        self.week.due_today_unplaced(today).map_err(raise)
+    }
+
+    fn leftover_kind(&self, today: Option<i64>) -> PyResult<&'static str> {
+        self.week.leftover_kind(today).map_err(raise)
+    }
+
+    fn leftover_words(&self, today: Option<i64>) -> PyResult<&'static str> {
+        self.week.leftover_words(today).map_err(raise)
+    }
+
+    fn leftover_parts(&self, today: Option<i64>) -> PyResult<(String, String, String)> {
+        self.week.leftover_parts(today).map_err(raise)
+    }
+
+    fn minutes_left_today(&self, today: Option<i64>, minute: i64) -> PyResult<i64> {
+        self.week.minutes_left_today(today, minute).map_err(raise)
+    }
+
+    fn day_queue(&self, day: i64, minute: i64) -> (Option<usize>, Vec<usize>) {
+        self.week.day_queue(day, minute)
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+
+    fn __reduce__<'py>(&self, py: Python<'py>) -> (Bound<'py, pyo3::types::PyType>, (String,)) {
+        (py.get_type::<Self>(), (self.text.clone(),))
+    }
 }
 
 #[pyfunction]
@@ -632,6 +719,7 @@ fn update_verified(payload: &[u8], digest: Option<&str>) -> PyResult<bool> {
 }
 
 pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_class::<WeekHandle>()?;
     crate::export!(
         module,
         history_same_value,
@@ -654,6 +742,10 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         week_added_words,
         week_dated_words,
         week_build,
+        week_slack_words,
+        week_occurrence_minutes,
+        week_occurrence_live,
+        week_date_of,
         tokens_type_pt,
         tokens_text_knob,
         tokens_linear_rgb,
