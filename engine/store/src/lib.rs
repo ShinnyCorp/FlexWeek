@@ -390,20 +390,14 @@ pub fn migrate_assignments(db: &Connection) -> StoreResult<()> {
 
 #[cfg(unix)]
 fn prepare_db_path(path: &Path) -> StoreResult<()> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     if let Some(parent) = path.parent() {
         std::fs::DirBuilder::new()
             .recursive(true)
             .mode(0o700)
             .create(parent)?;
     }
-    if !path.exists() {
-        std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(path)?;
-    }
+    touch(path)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     Ok(())
 }
@@ -413,9 +407,17 @@ fn prepare_db_path(path: &Path) -> StoreResult<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    if !path.exists() {
-        std::fs::File::create(path)?;
-    }
+    touch(path)
+}
+
+/// `path.touch(mode=0o600, exist_ok=True)`: a start that finds the file already made, even by
+/// another start a moment earlier, opens it as it is.
+fn touch(path: &Path) -> StoreResult<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)?;
     Ok(())
 }
 
@@ -520,5 +522,16 @@ mod tests {
         initialize(&path, "2026-09-29").unwrap();
         assert!(path.exists());
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn creating_a_file_another_start_just_made_keeps_it() {
+        let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/store-tests");
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join(format!("touch-{}.sqlite", std::process::id()));
+        std::fs::write(&path, b"made by the first start").unwrap();
+        touch(&path).expect("a file that already exists is fine");
+        assert_eq!(std::fs::read(&path).unwrap(), b"made by the first start");
+        std::fs::remove_file(path).unwrap();
     }
 }
