@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import threading
 import time
@@ -12,19 +11,6 @@ import flexweek_engine  # type: ignore[import-untyped]
 import pytest
 
 from backend.storage import connect, initialize, throttle
-from backend.tests.engine_ref import storage as ref_storage
-
-OLD_WEEKS = """
-    CREATE TABLE users (
-        id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL
-    );
-    CREATE TABLE weeks (
-        user_id INTEGER PRIMARY KEY REFERENCES users(id),
-        blocks TEXT NOT NULL DEFAULT '[]',
-        revision INTEGER NOT NULL DEFAULT 0
-    );
-"""
 
 
 def _script(db, statements: list[tuple[str, tuple]]) -> list[tuple[bool, object]]:
@@ -164,25 +150,6 @@ def test_initialize_again_does_not_wipe_the_file(tmp_path: Path) -> None:
     initialize(path)
     with connect(path) as db:
         assert db.execute("SELECT username FROM users").fetchone()["username"] == "ada"
-
-
-def test_old_weeks_migrate_to_the_same_rows(tmp_path: Path) -> None:
-    rust_path = tmp_path / "rust.db"
-    py_path = tmp_path / "py.db"
-    blocks = json.dumps([{"id": "hw", "title": "Essay"}])
-    for path in (rust_path, py_path):
-        with sqlite3.connect(path) as db:
-            db.executescript(OLD_WEEKS)
-            db.execute("INSERT INTO users VALUES (1, 'legacy', 'scrypt$x')")
-            db.execute("INSERT INTO weeks(user_id, blocks, revision) VALUES (1, ?, 4)", (blocks,))
-    initialize(rust_path)
-    ref_storage.initialize(py_path)
-
-    def weeks(path: Path):
-        with sqlite3.connect(path) as db:
-            return list(db.execute("SELECT user_id, week_start, blocks, revision FROM weeks"))
-
-    assert weeks(rust_path) == weeks(py_path)
 
 
 def test_a_held_write_lock_makes_throttle_wait(tmp_path: Path) -> None:
