@@ -2,26 +2,26 @@
 
 mod common;
 
-use common::desk::{fresh_ids, object, with};
+use common::desk::{fresh_ids, with};
 use flexweek_engine::desk::pomodoro::{
     BREAK_TITLE, MAX_BLOCKS, TITLE_MAX, child_title, inflate_for_solve, plan_for, split_children,
     split_solved, splittable,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
-fn prefs() -> Map<String, Value> {
-    object(json!({
+fn prefs() -> Value {
+    json!({
         "auto_split_pomodoro": true,
         "timer_work_min": 30,
         "timer_break_min": 15,
         "timer_long_break_min": 30,
         "timer_long_break_every": 4,
-    }))
+    })
 }
 
-fn prefs_with(over: Value) -> Map<String, Value> {
-    object(with(Value::Object(prefs()), over))
+fn prefs_with(over: Value) -> Value {
+    with(prefs(), over)
 }
 
 fn essay(fields: Value) -> Value {
@@ -42,22 +42,32 @@ fn placed_at(start: &str, day: i64) -> Value {
     json!({"id": "essay", "start": start, "days": [day], "kind": "flexible"})
 }
 
+fn plan(duration_min: i64, prefs: &Value) -> Value {
+    plan_for(duration_min, prefs).expect("a plan")
+}
+
 fn children_of(source: &Value, placed: &Value, duration_min: i64) -> Vec<Value> {
-    split_children(
-        source,
-        placed,
-        &plan_for(duration_min, Some(&prefs())),
-        fresh_ids(),
-    )
+    split_children(source, placed, &plan(duration_min, &prefs()), fresh_ids()).expect("children")
 }
 
 fn role(child: &Value) -> &str {
     child["pomodoro_role"].as_str().expect("pomodoro_role")
 }
 
+/// `split_solved` as the wrapper calls it: the new week as a list, and how many were split.
+fn solved(blocks: &[Value], trace: Value, prefs: &Value) -> (Vec<Value>, i64) {
+    let (out, count) = split_solved(&json!(blocks), &trace, prefs, fresh_ids()).expect("a week");
+    (out.as_array().expect("blocks").clone(), count)
+}
+
+fn inflated(blocks: &[Value], prefs: &Value) -> Vec<Value> {
+    let out = inflate_for_solve(&json!(blocks), prefs).expect("blocks");
+    out.as_array().expect("blocks").clone()
+}
+
 #[test]
 fn test_a_plan_alternates_work_and_breaks() {
-    let plan = plan_for(90, Some(&prefs()));
+    let plan = plan(90, &prefs());
     assert_eq!(plan.get("error"), Some(&Value::Null));
     let segments: Vec<(&str, i64)> = plan["segments"]
         .as_array()
@@ -85,14 +95,14 @@ fn test_a_plan_alternates_work_and_breaks() {
 
 #[test]
 fn test_off_grid_lengths_are_refused_rather_than_making_starts_the_server_rejects() {
-    let plan = plan_for(90, Some(&prefs_with(json!({"timer_work_min": 25}))));
+    let plan = plan(90, &prefs_with(json!({"timer_work_min": 25})));
     assert!(plan["error"].as_str().is_some_and(|text| !text.is_empty()));
     assert_eq!(plan["segments"], json!([]));
 }
 
 #[test]
 fn test_a_long_break_arrives_on_the_cadence() {
-    let plan = plan_for(300, Some(&prefs_with(json!({"timer_long_break_every": 2}))));
+    let plan = plan(300, &prefs_with(json!({"timer_long_break_every": 2})));
     let breaks: Vec<i64> = plan["segments"]
         .as_array()
         .expect("segments")
@@ -170,7 +180,8 @@ fn test_a_chunk_is_numbered_and_a_break_is_named() {
 #[test]
 fn test_a_title_at_the_limit_still_produces_one_the_server_accepts() {
     // The week is changed before it is saved, so a title the save rejects strands the split.
-    assert!(child_title(&"x".repeat(TITLE_MAX), 2, 9).chars().count() <= TITLE_MAX);
+    let limit = usize::try_from(TITLE_MAX).expect("a length");
+    assert!(child_title(&"x".repeat(limit), 2, 9).chars().count() <= limit);
 }
 
 #[test]
@@ -209,9 +220,9 @@ fn test_a_break_carries_none_of_the_work_details() {
         essay(json!({"course": "English", "spotify_url": "https://open.spotify.com/track/a"}));
     let children = children_of(&source, &placed_at("16:00", 3), 90);
     let breaks: Vec<&Value> = children.iter().filter(|c| role(c) == "break").collect();
-    assert!(breaks.iter().all(
-        |c| c.get("course") == Some(&Value::Null) && c.get("spotify_url") == Some(&Value::Null)
-    ));
+    assert!(breaks.iter().all(|c| {
+        c.get("course") == Some(&Value::Null) && c.get("spotify_url") == Some(&Value::Null)
+    }));
     assert!(breaks.iter().all(|c| c["category"] == "free"));
 }
 
@@ -220,7 +231,7 @@ fn test_the_solver_is_asked_for_the_time_the_breaks_need_as_well() {
     // Without this the solver reserves 90 minutes and the 120 minutes of chunks land on top of
     // whatever it put next.
     assert_eq!(
-        inflate_for_solve(&[essay(json!({}))], Some(&prefs()))[0]["duration_min"],
+        inflated(&[essay(json!({}))], &prefs())[0]["duration_min"],
         120
     );
 }
@@ -228,20 +239,14 @@ fn test_the_solver_is_asked_for_the_time_the_breaks_need_as_well() {
 #[test]
 fn test_nothing_is_inflated_when_the_setting_is_off() {
     let off = prefs_with(json!({"auto_split_pomodoro": false}));
-    assert_eq!(
-        inflate_for_solve(&[essay(json!({}))], Some(&off))[0]["duration_min"],
-        90
-    );
+    assert_eq!(inflated(&[essay(json!({}))], &off)[0]["duration_min"], 90);
 }
 
 #[test]
 fn test_a_block_no_longer_than_one_chunk_is_left_alone() {
     let short = essay(json!({"duration_min": 30}));
-    assert!(!splittable(&short, Some(&prefs())));
-    assert_eq!(
-        inflate_for_solve(&[short], Some(&prefs()))[0]["duration_min"],
-        30
-    );
+    assert!(!splittable(&short, &prefs()).expect("a verdict"));
+    assert_eq!(inflated(&[short], &prefs())[0]["duration_min"], 30);
 }
 
 #[test]
@@ -252,7 +257,7 @@ fn test_finished_already_split_and_fixed_blocks_are_left_alone() {
         json!({"kind": "locked"}),
     ] {
         assert!(
-            !splittable(&essay(fields.clone()), Some(&prefs())),
+            !splittable(&essay(fields.clone()), &prefs()).expect("a verdict"),
             "{fields}"
         );
     }
@@ -262,11 +267,10 @@ fn test_finished_already_split_and_fixed_blocks_are_left_alone() {
 fn test_the_week_is_rebuilt_with_the_chunks_in_place_of_the_block() {
     let other = json!({"id": "dinner", "title": "Dinner", "kind": "locked", "duration_min": 60, "days": [3]});
     let blocks = [essay(json!({})), other];
-    let (split, count) = split_solved(
+    let (split, count) = solved(
         &blocks,
-        Some(&json!({"placed": [placed_at("16:00", 3)]})),
-        Some(&prefs()),
-        fresh_ids(),
+        json!({"placed": [placed_at("16:00", 3)]}),
+        &prefs(),
     );
     assert_eq!(count, 1);
     assert_eq!(split[split.len() - 1]["id"], "dinner");
@@ -275,11 +279,10 @@ fn test_the_week_is_rebuilt_with_the_chunks_in_place_of_the_block() {
 
 #[test]
 fn test_a_block_the_solver_could_not_place_is_not_split() {
-    let (split, count) = split_solved(
+    let (split, count) = solved(
         &[essay(json!({}))],
-        Some(&json!({"placed": [], "unplaced": [{"id": "essay"}]})),
-        Some(&prefs()),
-        fresh_ids(),
+        json!({"placed": [], "unplaced": [{"id": "essay"}]}),
+        &prefs(),
     );
     assert_eq!(count, 0);
     assert_eq!(split[0]["id"], "essay");
@@ -287,11 +290,10 @@ fn test_a_block_the_solver_could_not_place_is_not_split() {
 
 #[test]
 fn test_chunks_that_would_run_past_the_end_of_the_day_leave_the_block_whole() {
-    let (split, count) = split_solved(
+    let (split, count) = solved(
         &[essay(json!({}))],
-        Some(&json!({"placed": [placed_at("23:00", 3)]})),
-        Some(&prefs()),
-        fresh_ids(),
+        json!({"placed": [placed_at("23:00", 3)]}),
+        &prefs(),
     );
     assert_eq!(count, 0);
     assert_eq!(split.len(), 1);
@@ -300,28 +302,27 @@ fn test_chunks_that_would_run_past_the_end_of_the_day_leave_the_block_whole() {
 #[test]
 fn test_a_split_that_would_break_the_week_limit_is_skipped_whole() {
     // The server caps a week at 100 blocks, and a partial split is worse than none.
+    let limit = usize::try_from(MAX_BLOCKS).expect("a count");
     let mut blocks = vec![essay(json!({}))];
-    blocks.extend((0..MAX_BLOCKS - 2).map(|i| {
+    blocks.extend((0..limit - 2).map(|i| {
         json!({"id": format!("f{i}"), "title": "x", "kind": "locked", "duration_min": 30, "days": [0]})
     }));
-    let (split, count) = split_solved(
+    let (split, count) = solved(
         &blocks,
-        Some(&json!({"placed": [placed_at("16:00", 3)]})),
-        Some(&prefs()),
-        fresh_ids(),
+        json!({"placed": [placed_at("16:00", 3)]}),
+        &prefs(),
     );
     assert_eq!(count, 0);
-    assert_eq!(split.len(), MAX_BLOCKS - 1);
+    assert_eq!(split.len(), limit - 1);
 }
 
 #[test]
 fn test_nothing_is_split_when_the_setting_is_off() {
     let off = prefs_with(json!({"auto_split_pomodoro": false}));
-    let (split, count) = split_solved(
+    let (split, count) = solved(
         &[essay(json!({}))],
-        Some(&json!({"placed": [placed_at("16:00", 3)]})),
-        Some(&off),
-        fresh_ids(),
+        json!({"placed": [placed_at("16:00", 3)]}),
+        &off,
     );
     assert_eq!(count, 0);
     assert_eq!(split.len(), 1);
