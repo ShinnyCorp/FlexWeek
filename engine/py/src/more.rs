@@ -151,14 +151,24 @@ fn solve_request(
 }
 
 #[pyfunction]
+#[pyo3(signature = (blocks, assignments, week_start, keep, keep_is_set=false))]
 fn settle_placements(
+    py: Python<'_>,
     blocks: &str,
     assignments: &str,
     week_start: &str,
-    keep: &str,
+    keep: &Bound<'_, PyAny>,
     keep_is_set: bool,
 ) -> PyResult<(String, String)> {
-    let (blocks, assignments, keep) = (parse(blocks)?, parse(assignments)?, parse(keep)?);
+    let keep_text: String = match keep.extract::<String>() {
+        Ok(text) => text,
+        Err(_) => py
+            .import("json")?
+            .getattr("dumps")?
+            .call1((keep,))?
+            .extract()?,
+    };
+    let (blocks, assignments, keep) = (parse(blocks)?, parse(assignments)?, parse(&keep_text)?);
     guard(|| {
         let (out, lost) =
             planning::settle_placements(&blocks, &assignments, week_start, &keep, keep_is_set)
@@ -483,7 +493,7 @@ fn python_int(py: Python<'_>, decimal: &str) -> PyResult<Py<PyAny>> {
         .unbind())
 }
 
-/// Integers that fit in i64 keep `plan::snap_minutes`. A wider one uses Python's formula.
+/// Integers f64 holds exactly keep `plan::snap_minutes`. Past 2^53, Python's formula.
 #[pyfunction]
 fn snap_minutes_wide(
     py: Python<'_>,
@@ -496,7 +506,13 @@ fn snap_minutes_wide(
         let mut fitted = [None, None, None];
         for (index, obj) in [value, minimum, maximum].into_iter().enumerate() {
             match obj.extract::<i64>() {
-                Ok(number) => fitted[index] = Some(number),
+                Ok(number) => {
+                    fitted[index] = Some(number);
+                    // f64 cannot hold every integer past 2^53; `plan::snap_minutes` would drift.
+                    if number.unsigned_abs() > (1u64 << 53) {
+                        overflow = true;
+                    }
+                }
                 Err(err) if is_overflow(py, &err) => overflow = true,
                 Err(err) if !overflow => return Err(err),
                 Err(_) => {}

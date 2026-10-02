@@ -1049,8 +1049,8 @@ def test_a_fake_clock_does_not_outlast_its_test(tmp_path):
 
 # ---------- adapters: logic that moved in this slice
 
-# One argument has to miss i64. Values that fit stay on plan::snap_minutes, and that path's
-# f64::round is not Python's round for every large integer.
+# One argument has to miss i64 so the wide path always runs. Integers past 2^53 also take it,
+# even when they fit in i64, because f64 cannot hold them exactly.
 _WIDE_INT = st.one_of(
     st.integers(min_value=2**63, max_value=2**400),
     st.integers(min_value=-(2**400), max_value=-(2**63) - 1),
@@ -1518,6 +1518,18 @@ class TwoDatabases:
         self.live.insert_assignment(user, ident, body)
         self.ref.execute("INSERT INTO assignments(user_id, id, body, revision) VALUES (?, ?, ?, 1)", (user, ident, body))
 
+    def add_week(self, user, start, encoded):
+        # `save_week` skips a missing week whose body is already `[]`, so an empty-block week
+        # would never land in the live database. Insert the row on both sides the same way.
+        self.live.execute(
+            "INSERT INTO weeks(user_id, week_start, blocks, revision) VALUES (?, ?, ?, 1)",
+            (user, start, encoded),
+        )
+        self.ref.execute(
+            "INSERT INTO weeks(user_id, week_start, blocks, revision) VALUES (?, ?, ?, 1)",
+            (user, start, encoded),
+        )
+
     def rows(self, table):
         sql = f"SELECT * FROM {table} ORDER BY 1, 2"
         return (
@@ -1630,8 +1642,7 @@ def test_insert_restore_point(steps, limit, weeks, assignments):
     ):
         for start, blocks in weeks:
             encoded = json.dumps(blocks, sort_keys=True, separators=(",", ":"))
-            pair.live.save_week(1, start, encoded, 0)
-            pair.ref.execute("INSERT INTO weeks(user_id, week_start, blocks, revision) VALUES (1, ?, ?, 1)", (start, encoded))
+            pair.add_week(1, start, encoded)
         for body, _revision in assignments:
             encoded = live_app.encode_assignment(live_models.AssignmentContent.model_validate(body))
             pair.add_assignment(1, body["id"], encoded)

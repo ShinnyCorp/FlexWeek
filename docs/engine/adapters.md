@@ -33,7 +33,7 @@ A backend wrapper is one of three classes.
 | availability | session_inside_work_windows | ADAPTER | Encodes the windows, one call. |
 | availability | merge_occupancy | ADAPTER | One engine call, list out. |
 | availability | spread_sessions | ADAPTER | One engine call; the session text is decoded and the remainder is returned beside it. |
-| comfort | snap_minutes | ADAPTER | One `snap_minutes_wide` call. Values that fit in 64 bits keep the old engine rounding; a wider int uses Python's formula in the engine. |
+| comfort | snap_minutes | ADAPTER | One `snap_minutes_wide` call. Integers f64 holds exactly keep `plan::snap_minutes`; past 2^53 the engine uses Python's formula. |
 | comfort | split_plan | ADAPTER | One engine call, JSON decoded. |
 | comfort | preview_split | ADAPTER | One engine call, JSON decoded. |
 | day | is_work_session | ADAPTER | Encodes the block, one call, `bool` of the result. |

@@ -9,6 +9,8 @@ from typing import Any, Protocol
 
 import flexweek_engine  # type: ignore[import-untyped]
 
+from backend.weeks import current_week_start as current_week_start
+
 SESSION_SECONDS = 7 * 24 * 60 * 60
 # Each account's preferences row records the last of these one-time changes it has had, so a change
 # reaches every account once and a choice made after it is never undone by it.

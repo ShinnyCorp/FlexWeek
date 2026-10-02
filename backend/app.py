@@ -216,7 +216,7 @@ def naive_now() -> str:
 
 
 def payload_digest(value: object) -> str:
-    return flexweek_engine.payload_digest(json.dumps(value))
+    return flexweek_engine.payload_digest(value)
 
 
 def capture_account(db: Connection, user_id: int) -> dict:
