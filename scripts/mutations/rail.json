@@ -28,10 +28,10 @@
   "test": "desktop/tests/test_look_widgets.py::test_an_edge_block_is_its_category_fill_with_the_strong_colour_down_its_left"
  },
  {
-  "file": "desktop/native/weekmodel.py",
+  "file": "engine/engine/src/desk/weekmodel.rs",
   "name": "a 12-hour range says PM twice",
-  "old": "    if first_half == last_half:\n",
-  "new": "    if False:\n",
+  "old": "    if first_half == last_half {\n",
+  "new": "    if false && first_half == last_half {\n",
   "test": "desktop/tests/test_clock.py::test_the_hours_words"
  },
  {

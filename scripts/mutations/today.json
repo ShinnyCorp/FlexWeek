@@ -21,24 +21,24 @@
   "test": "desktop/tests/test_classic_hours.py::test_a_tray_chip_in_a_row_says_it_all_again_once_the_row_has_room"
  },
  {
-  "file": "desktop/native/remind.py",
+  "file": "engine/engine/src/desk/remind.rs",
   "name": "a block saved inside its lead reminds at once",
-  "old": "    return start - max(0, int(lead)) <= int(now_min) <= start\n",
-  "new": "    return int(now_min) - REMINDER_WINDOW_MIN <= start - max(0, int(lead)) <= int(now_min)\n",
+  "old": "    start - lead <= now_min && now_min <= start\n",
+  "new": "    now_min - REMINDER_WINDOW_MIN <= start - lead && start - lead <= now_min\n",
   "test": "desktop/tests/test_reminders_window.py::test_a_block_saved_inside_its_lead_reminds_at_once_and_only_once"
  },
  {
-  "file": "desktop/native/remind.py",
+  "file": "engine/engine/src/desk/remind.rs",
   "name": "a block reminds once",
-  "old": "        if key in fired or not start_alert_due(start_min, now_min, lead_min):\n",
-  "new": "        if not start_alert_due(start_min, now_min, lead_min):\n",
+  "old": "        if fired.contains(&key) || !start_alert_due(start_min, now_min, lead_min) {\n",
+  "new": "        let _ = &fired;\n        if !start_alert_due(start_min, now_min, lead_min) {\n",
   "test": "desktop/tests/test_reminders_window.py::test_a_block_saved_inside_its_lead_reminds_at_once_and_only_once"
  },
  {
-  "file": "desktop/native/remind.py",
+  "file": "engine/engine/src/desk/remind.rs",
   "name": "a block with a song has one notice at its start",
-  "old": "            # Its song is its notice at the start, so it gets one, not two.\n            continue\n",
-  "new": "            pass\n",
+  "old": "        if started && truthy(fields.get(\"spotify_url\")) {\n            continue;\n        }\n",
+  "new": "        if started && truthy(fields.get(\"spotify_url\")) {\n        }\n",
   "test": "desktop/tests/test_remind.py::test_a_block_with_a_song_is_announced_by_the_song_at_its_start"
  },
  {
@@ -70,17 +70,17 @@
   "test": "desktop/tests/test_reminders_window.py::test_a_snoozed_block_song_plays_again_five_minutes_later"
  },
  {
-  "file": "backend/storage.py",
+  "file": "engine/store/src/lib.rs",
   "name": "accounts from 0.14 get reminders on",
-  "old": "        upgrade_preferences(db)\n",
+  "old": "    upgrade_preferences(&db)?;\n",
   "new": "",
   "test": "desktop/tests/test_reminders_window.py::test_an_account_from_0_14_with_reminders_off_reminds_after_the_update"
  },
  {
-  "file": "backend/storage.py",
+  "file": "engine/store/src/lib.rs",
   "name": "reminders turned off after the update stay off",
-  "old": " WHERE prefs_version < 1\")\n",
-  "new": "\")\n",
+  "old": "        \"UPDATE preferences SET reminders_enabled = 1, prefs_version = 1 WHERE prefs_version < 1\",\n",
+  "new": "        \"UPDATE preferences SET reminders_enabled = 1, prefs_version = 1\",\n",
   "test": "desktop/tests/test_reminders_window.py::test_reminders_turned_off_after_the_update_stay_off"
  },
  {
@@ -98,10 +98,10 @@
   "test": "desktop/tests/test_wheel_guard.py::test_the_wheel_over_a_box_the_student_is_not_in_scrolls_the_page"
  },
  {
-  "file": "desktop/native/focus.py",
+  "file": "engine/engine/src/desk/focus.rs",
   "name": "the Next line says min",
-  "old": "f\" (in {length_label(wait)})\"",
-  "new": "f\" (in {wait}m)\"",
+  "old": "            format!(\" (in {})\", length_label(wait))\n",
+  "new": "            format!(\" (in {}m)\", wait)\n",
   "test": "desktop/tests/test_words_on_screen.py::test_the_next_line_says_min_like_every_design"
  },
  {
@@ -329,10 +329,10 @@
   "test": "desktop/tests/test_drag_results.py::test_a_chip_carried_on_month_says_what_it_did"
  },
  {
-  "file": "desktop/native/weekmodel.py",
+  "file": "engine/engine/src/desk/weekmodel.rs",
   "name": "a resize said as a move",
-  "old": "    if day == from_day and start == was and end != was_end:\n",
-  "new": "    if False:\n",
+  "old": "    if day == from_day && start == was && end != was_end {\n",
+  "new": "    if false && day == from_day && start == was && end != was_end {\n",
   "test": "desktop/tests/test_drag_results.py::test_a_move_a_resize_a_create_and_a_placing_each_say_what_they_did_with_undo"
  },
  {

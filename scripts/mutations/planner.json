@@ -1,30 +1,30 @@
 [
  {
-  "file": "backend/solver.py",
+  "file": "engine/engine/src/solver.rs",
   "name": "night not ranked last",
-  "old": "        return (night, study, match, day, slot)\n",
-  "new": "        return (study, match, day, slot)\n",
+  "old": "        keyed.push((night, study, match_energy, day, slot));\n    }\n    keyed.sort();\n    Ok(keyed.into_iter().map(|k| (k.3, k.4)).collect())\n",
+  "new": "        keyed.push((study, match_energy, day, slot, night));\n    }\n    keyed.sort();\n    Ok(keyed.into_iter().map(|k| (k.2, k.3)).collect())\n",
   "test": "backend/tests/test_solver.py::test_a_low_session_skips_midnight_when_the_morning_is_free"
  },
  {
-  "file": "desktop/native/calendar.py",
+  "file": "engine/engine/src/desk/calendar.rs",
   "name": "a repeating block's day wipes the other week",
-  "old": "        return source_out, [deepcopy(item) for item in dest] + [for_date(occurrence)], made\n",
-  "new": "        return source_out, [for_date(occurrence)], made\n",
+  "old": "        let mut dest_vec: Vec<Value> = dest.unwrap().iter().map(deep_copy).collect();\n        dest_vec.push(for_date(&occurrence, from_day, to_day));\n        return Some((source_out, Some(dest_vec), made));\n",
+  "new": "        let dest_vec = vec![for_date(&occurrence, from_day, to_day)];\n        return Some((source_out, Some(dest_vec), made));\n",
   "test": "desktop/tests/test_logic_move_date.py::test_a_move_into_a_week_that_already_has_blocks_keeps_them"
  },
  {
-  "file": "desktop/native/calendar.py",
+  "file": "engine/engine/src/desk/calendar.rs",
   "name": "a plain block wipes the other week",
-  "old": "    return source_out, [deepcopy(item) for item in dest] + [for_date(block)], block_id\n",
-  "new": "    return source_out, [for_date(block)], block_id\n",
+  "old": "    let mut dest_vec: Vec<Value> = dest.unwrap().iter().map(deep_copy).collect();\n    dest_vec.push(for_date(block, from_day, to_day));\n    Some((source_out, Some(dest_vec), block_id.to_string()))\n",
+  "new": "    let dest_vec = vec![for_date(block, from_day, to_day)];\n    Some((source_out, Some(dest_vec), block_id.to_string()))\n",
   "test": "desktop/tests/test_logic_move_date.py::test_a_move_into_a_week_that_already_has_blocks_keeps_them"
  },
  {
-  "file": "backend/slots.py",
+  "file": "engine/engine/src/time.rs",
   "name": "the planner floors a block's end",
-  "old": "    last = -(-(end_min - DAY_START_MIN) // SLOT_MIN)\n",
-  "new": "    last = (end_min - DAY_START_MIN) // SLOT_MIN\n",
+  "old": "    let last = -(-(end_min - DAY_START_MIN)).div_euclid(SLOT_MIN);\n",
+  "new": "    let last = (end_min - DAY_START_MIN).div_euclid(SLOT_MIN);\n",
   "test": "backend/tests/test_solver.py::test_homework_is_never_planned_in_a_quarter_hour_a_block_at_any_minute_touches"
  },
  {
@@ -35,31 +35,31 @@
   "test": "backend/tests/test_stage4_api.py::test_estimates_and_the_planners_windows_stay_on_the_quarter_hour"
  },
  {
-  "file": "desktop/native/reuse.py",
+  "file": "engine/engine/src/desk/reuse.rs",
   "name": "a plan is not told when now is",
-  "old": "    return {**session, \"days\": days, \"earliest\": f\"{DAY_FULL[day]} {minutes_to_hhmm(minute)}\"}\n",
-  "new": "    return {**session, \"days\": days}\n",
+  "old": "                session.insert(\n                    \"earliest\".into(),\n                    json!(format!(\n                        \"{} {}\",\n                        DAY_FULL[day as usize],\n                        minutes_to_hhmm(bound.1)\n                    )),\n                );\n",
+  "new": "",
   "test": "desktop/tests/test_homework_plan.py::test_plan_on_a_thursday_leaves_monday_to_wednesday_and_the_hours_before_now_alone"
  },
  {
-  "file": "desktop/native/reuse.py",
+  "file": "engine/engine/src/desk/reuse.rs",
   "name": "days already gone stay open, so the reason is wrong",
-  "old": "    days = [item for item in session[\"days\"] if item >= day] or [day]\n",
-  "new": "    days = session[\"days\"]\n",
+  "old": "                let days: Vec<i64> = session\n                    .get(\"days\")\n                    .and_then(Value::as_array)\n                    .map(|items| {\n                        items\n                            .iter()\n                            .filter_map(Value::as_i64)\n                            .filter(|item| *item >= day)\n                            .collect()\n                    })\n                    .unwrap_or_default();\n                let days = if days.is_empty() { vec![day] } else { days };\n",
+  "new": "                let days: Vec<i64> = session\n                    .get(\"days\")\n                    .and_then(Value::as_array)\n                    .map(|items| items.iter().filter_map(Value::as_i64).collect())\n                    .unwrap_or_default();\n",
   "test": "desktop/tests/test_homework_plan.py::test_plan_on_a_thursday_leaves_monday_to_wednesday_and_the_hours_before_now_alone"
  },
  {
-  "file": "desktop/native/reuse.py",
+  "file": "engine/engine/src/desk/reuse.rs",
   "name": "Replan all moves homework whose time has come",
-  "old": "        kept = planned and (bool(block.get(\"pinned\")) or _begun(block, not_before))\n",
-  "new": "        kept = planned and bool(block.get(\"pinned\"))\n",
+  "old": "        let kept = planned\n            && (block.get(\"pinned\").and_then(Value::as_bool) == Some(true)\n                || begun(block, not_before));\n",
+  "new": "        let _ = begun(block, not_before);\n        let kept = planned\n            && block.get(\"pinned\").and_then(Value::as_bool) == Some(true);\n",
   "test": "desktop/tests/test_homework_plan.py::test_replan_all_leaves_homework_whose_time_has_passed"
  },
  {
-  "file": "desktop/native/reuse.py",
+  "file": "engine/engine/src/desk/reuse.rs",
   "name": "now rounded down to the quarter hour",
-  "old": "    minute = -(-minute // SLOT_MIN) * SLOT_MIN\n",
-  "new": "    minute = minute // SLOT_MIN * SLOT_MIN\n",
+  "old": "    minute = -(-minute).div_euclid(SLOT_MIN) * SLOT_MIN;\n",
+  "new": "    minute = minute.div_euclid(SLOT_MIN) * SLOT_MIN;\n",
   "test": "desktop/tests/test_homework_plan.py::test_a_plan_starts_at_now_rounded_up_to_the_next_quarter_hour"
  },
  {
