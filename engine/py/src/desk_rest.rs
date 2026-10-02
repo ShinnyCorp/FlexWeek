@@ -10,7 +10,7 @@ use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use serde_json::{Map, Value, json};
 
-use crate::desk::{dump, fresh_id, object_map, objects, parse};
+use crate::desk::{dump, dumps_of, fresh_id, object_map, objects, parse};
 use crate::guard;
 
 fn opt_value(text: Option<&str>) -> PyResult<Option<Value>> {
@@ -975,9 +975,15 @@ fn update_expected_digest(checksum_text: &str, asset: &str) -> PyResult<Option<S
     guard(|| Ok(update::expected_digest(checksum_text, asset)))
 }
 
+/// A value `json.dumps` cannot write is read as none was given.
 #[pyfunction]
-fn update_sanitize(raw: &str) -> PyResult<String> {
-    let raw = parse(raw)?;
+fn update_sanitize(raw: &Bound<'_, PyAny>) -> PyResult<String> {
+    let text = match dumps_of(raw) {
+        Ok(text) => text,
+        Err(error) if error.is_instance_of::<PyTypeError>(raw.py()) => "null".to_string(),
+        Err(error) => return Err(error),
+    };
+    let raw = parse(&text)?;
     guard(|| Ok(dump(&Value::Object(update::sanitize_updates(&raw)))))
 }
 

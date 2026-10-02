@@ -61,10 +61,7 @@ def install_kind(
 
 
 def asset_name(kind: str) -> str:
-    name = flexweek_engine.update_asset_name(kind)
-    if name is None:
-        raise KeyError(kind)
-    return str(name)
+    return str(flexweek_engine.update_asset_name(kind))
 
 
 def available(release: object, kind: str, current: str = VERSION) -> Update | None:
@@ -74,9 +71,7 @@ def available(release: object, kind: str, current: str = VERSION) -> Update | No
     read, a release no newer than what is running, and a release that has no file for this platform
     because its build failed.
     """
-    if not isinstance(release, dict):
-        return None
-    raw = flexweek_engine.update_available(json.dumps(release), kind, current)
+    raw = flexweek_engine.update_available(release, kind, current)
     return None if raw is None else json.loads(raw)
 
 
@@ -115,11 +110,7 @@ def sanitize_updates(raw: object) -> dict:
     checks for updates is a property of this computer, and an account field would need the owner's
     approval to add.
     """
-    try:
-        text = json.dumps(raw)
-    except TypeError:
-        text = "null"
-    return json.loads(flexweek_engine.update_sanitize(text))
+    return json.loads(flexweek_engine.update_sanitize(raw))
 
 
 def due_for_check(settings: dict, now_ms: int) -> bool:

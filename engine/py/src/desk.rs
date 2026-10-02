@@ -6,9 +6,9 @@ use ::flexweek_engine::desk::{history, pomodoro, remind, tokens, update, weekmod
 use std::cell::RefCell;
 
 use ::flexweek_engine::{EngineError, EngineResult};
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyFloat, PyInt, PySet, PySetMethods};
+use pyo3::types::{PyAnyMethods, PyDict, PyFloat, PyInt, PySet, PySetMethods};
 use serde_json::{Map, Value};
 
 use crate::{guard, raise};
@@ -675,13 +675,26 @@ fn update_install_kind(
 }
 
 #[pyfunction]
-fn update_asset_name(kind: &str) -> PyResult<Option<String>> {
-    guard(|| Ok(update::asset_name(kind).map(str::to_string)))
+fn update_asset_name(kind: &str) -> PyResult<String> {
+    guard(|| {
+        update::asset_name(kind)
+            .map(str::to_string)
+            .ok_or_else(|| PyKeyError::new_err((kind.to_string(),)))
+    })
 }
 
+/// `release` is whatever the network handed back; only a dict is a release, anything else is
+/// none.
 #[pyfunction]
-fn update_available(release: &str, kind: &str, current: &str) -> PyResult<Option<String>> {
-    let release = parse(release)?;
+fn update_available(
+    release: &Bound<'_, PyAny>,
+    kind: &str,
+    current: &str,
+) -> PyResult<Option<String>> {
+    if !release.is_instance_of::<PyDict>() {
+        return Ok(None);
+    }
+    let release = parse(&dumps_of(release)?)?;
     guard(|| {
         let found = update::available(&release, kind, current).map_err(raise)?;
         Ok(found.map(|item| {

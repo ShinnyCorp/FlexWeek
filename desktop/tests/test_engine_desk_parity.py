@@ -2939,3 +2939,61 @@ def test_a_push_past_the_limit_drops_one_step_from_the_front(held):
 )
 def test_capture_step_lists_assignments_in_sorted_order(before, after, old, new, changed):
     same(live_history.capture_step, ref_history.capture_step, "x", WEEK, before, after, old, new, changed)
+
+
+def a_release(**extra):
+    base = "https://github.com/j0nsh1n/FlexWeek/releases/download/v9.0.0/"
+    names = (live_update.WINDOWS_SETUP, live_update.LINUX_TARBALL, live_update.LINUX_APPIMAGE)
+    assets = [
+        {"name": name + suffix, "browser_download_url": base + name + suffix}
+        for name in names
+        for suffix in ("", ".sha256")
+    ]
+    return {"tag_name": "v9.0.0", "assets": assets, "body": "Notes", **extra}
+
+
+@CHECK
+@given(
+    st.one_of(
+        maybe(None, 5, 1.5, True, "x", "", [], [1], {}, (), b"x", types.SimpleNamespace()),
+        maybe(
+            a_release(),
+            a_release(draft=True),
+            a_release(prerelease=1),
+            a_release(tag_name="v0.0.1"),
+            a_release(tag_name=7),
+            a_release(assets="x"),
+            a_release(body=None),
+        ),
+    ),
+    maybe("windows", "appimage", "tarball"),
+)
+def test_available_reads_only_a_dict_as_a_release(release, kind):
+    same(live_update.available, ref_update.available, release, kind, "0.17.2")
+
+
+@CHECK
+@given(
+    maybe(
+        None,
+        5,
+        "x",
+        [],
+        b"x",
+        (),
+        types.SimpleNamespace(),
+        {},
+        {"check": False},
+        {"check": 0, "last_ms": True, "skip": "x" * 33},
+        {"last_ms": 4_102_444_800_001, "skip": "x" * 32},
+        {"last_ms": 4_102_444_800_000, "check": False, "skip": ""},
+        {"last_ms": 1.5, "skip": 3},
+    )
+)
+def test_sanitize_updates_reads_what_json_cannot_write_as_nothing(raw):
+    same(live_update.sanitize_updates, ref_update.sanitize_updates, raw)
+
+
+@pytest.mark.parametrize("kind", ["windows", "appimage", "tarball", "", "x", "Windows"])
+def test_asset_name_of_a_kind_nobody_installs_is_a_key_error(kind):
+    same(live_update.asset_name, ref_update.asset_name, kind)
