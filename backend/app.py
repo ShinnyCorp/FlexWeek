@@ -54,6 +54,8 @@ from backend.slots import DAY_END_MIN, SLOT_MIN
 from backend.solver import reschedule_after_miss, reschedule_running_late, solve
 from backend.storage import (
     SESSION_SECONDS,
+    Connection,
+    Row,
     connect,
     create_session,
     delete_account,
@@ -106,7 +108,7 @@ def assignment_ids_of(blocks: list[TimeBlock]) -> set[str]:
     return {block.assignment_id for block in blocks if block.assignment_id}
 
 
-def load_assignment_rows(db: sqlite3.Connection, user_id: int, ids: set[str]) -> dict[str, tuple[str, int]]:
+def load_assignment_rows(db: Connection, user_id: int, ids: set[str]) -> dict[str, tuple[str, int]]:
     if not ids:
         return {}
     placeholders = ",".join("?" * len(ids))
@@ -117,12 +119,12 @@ def load_assignment_rows(db: sqlite3.Connection, user_id: int, ids: set[str]) ->
     return {row["id"]: (row["body"], row["revision"]) for row in rows}
 
 
-def load_assignment_bodies(db: sqlite3.Connection, user_id: int, ids: set[str]) -> dict[str, dict]:
+def load_assignment_bodies(db: Connection, user_id: int, ids: set[str]) -> dict[str, dict]:
     loaded = load_assignment_rows(db, user_id, ids)
     return {key: json.loads(body) for key, (body, _revision) in loaded.items()}
 
 
-def require_own_assignments(db: sqlite3.Connection, user_id: int, ids: set[str]) -> dict[str, dict]:
+def require_own_assignments(db: Connection, user_id: int, ids: set[str]) -> dict[str, dict]:
     found = load_assignment_bodies(db, user_id, ids)
     if found.keys() != ids:
         raise HTTPException(422, ASSIGNMENT_UNKNOWN)
@@ -130,7 +132,7 @@ def require_own_assignments(db: sqlite3.Connection, user_id: int, ids: set[str])
 
 
 def adopt_legacy_deadlines(
-    db: sqlite3.Connection, user_id: int, week_start: str, blocks: list[TimeBlock]
+    db: Connection, user_id: int, week_start: str, blocks: list[TimeBlock]
 ) -> list[TimeBlock]:
     adopted: list[TimeBlock] = []
     created: list[dict] = []
@@ -182,7 +184,7 @@ def dump_blocks(blocks: list[TimeBlock]) -> list[dict]:
     return [block.model_dump() for block in blocks]
 
 
-def list_account_weeks(db: sqlite3.Connection, user_id: int) -> list[tuple[str, list[dict]]]:
+def list_account_weeks(db: Connection, user_id: int) -> list[tuple[str, list[dict]]]:
     rows = db.execute("SELECT week_start, blocks FROM weeks WHERE user_id = ?", (user_id,)).fetchall()
     return [(row["week_start"], json.loads(row["blocks"])) for row in rows]
 
@@ -196,9 +198,7 @@ def assignment_view(body: dict, revision: int, planned: int) -> dict:
     }
 
 
-def upsert_assignment(
-    db: sqlite3.Connection, user_id: int, content: AssignmentContent, revision: int
-) -> dict:
+def upsert_assignment(db: Connection, user_id: int, content: AssignmentContent, revision: int) -> dict:
     encoded = encode_assignment(content)
     row = db.execute(
         "SELECT body, revision FROM assignments WHERE user_id = ? AND id = ?", (user_id, content.id)
@@ -224,7 +224,7 @@ def upsert_assignment(
     return {**content.model_dump(), "revision": revision + 1}
 
 
-def delete_assignment(db: sqlite3.Connection, user_id: int, assignment_id: str, revision: int) -> dict:
+def delete_assignment(db: Connection, user_id: int, assignment_id: str, revision: int) -> dict:
     row = db.execute(
         "SELECT revision FROM assignments WHERE user_id = ? AND id = ?", (user_id, assignment_id)
     ).fetchone()
@@ -261,7 +261,7 @@ def delete_assignment(db: sqlite3.Connection, user_id: int, assignment_id: str, 
 
 
 def save_week_row(
-    db: sqlite3.Connection,
+    db: Connection,
     user_id: int,
     week_start: str,
     blocks: list[dict],
@@ -294,7 +294,7 @@ def payload_digest(value: object) -> str:
     return hashlib.sha256(canonical(value).encode()).hexdigest()
 
 
-def capture_account(db: sqlite3.Connection, user_id: int) -> dict:
+def capture_account(db: Connection, user_id: int) -> dict:
     weeks = [
         {
             "week_start": row["week_start"],
@@ -316,7 +316,7 @@ def capture_account(db: sqlite3.Connection, user_id: int) -> dict:
     return {"weeks": weeks, "assignments": assignments}
 
 
-def prune_restore_points(db: sqlite3.Connection, user_id: int, keep_ids: set[str]) -> None:
+def prune_restore_points(db: Connection, user_id: int, keep_ids: set[str]) -> None:
     rows = db.execute(
         "SELECT seq, id FROM restore_points WHERE user_id = ? ORDER BY seq ASC",
         (user_id,),
@@ -329,7 +329,7 @@ def prune_restore_points(db: sqlite3.Connection, user_id: int, keep_ids: set[str
         db.execute("DELETE FROM restore_points WHERE seq = ?", (row["seq"],))
 
 
-def prune_operations(db: sqlite3.Connection, user_id: int) -> None:
+def prune_operations(db: Connection, user_id: int) -> None:
     count = db.execute("SELECT COUNT(*) AS n FROM operations WHERE user_id = ?", (user_id,)).fetchone()
     extra = int(count["n"]) - MAX_OPERATIONS
     if extra <= 0:
@@ -342,9 +342,7 @@ def prune_operations(db: sqlite3.Connection, user_id: int) -> None:
     )
 
 
-def recall_operation(
-    db: sqlite3.Connection, user_id: int, operation_id: str, digest_value: str
-) -> dict | None:
+def recall_operation(db: Connection, user_id: int, operation_id: str, digest_value: str) -> dict | None:
     row = db.execute(
         """SELECT payload_hash, response FROM operations
         WHERE user_id = ? AND operation_id = ?""",
@@ -358,7 +356,7 @@ def recall_operation(
 
 
 def remember_operation(
-    db: sqlite3.Connection, user_id: int, operation_id: str, digest_value: str, response: dict
+    db: Connection, user_id: int, operation_id: str, digest_value: str, response: dict
 ) -> None:
     db.execute(
         """INSERT INTO operations(user_id, operation_id, payload_hash, response)
@@ -368,7 +366,7 @@ def remember_operation(
     prune_operations(db, user_id)
 
 
-def restore_point_view(row: sqlite3.Row) -> dict:
+def restore_point_view(row: Row) -> dict:
     return {
         "id": row["id"],
         "label": row["label"],
@@ -378,9 +376,7 @@ def restore_point_view(row: sqlite3.Row) -> dict:
     }
 
 
-def insert_restore_point(
-    db: sqlite3.Connection, user_id: int, label: str, keep_ids: set[str] | None = None
-) -> dict:
+def insert_restore_point(db: Connection, user_id: int, label: str, keep_ids: set[str] | None = None) -> dict:
     snapshot = capture_account(db, user_id)
     point_id = "rp-" + secrets.token_hex(8)
     created_at = naive_now()
@@ -410,7 +406,7 @@ def insert_restore_point(
     }
 
 
-def replace_account(db: sqlite3.Connection, user_id: int, snapshot: dict) -> dict:
+def replace_account(db: Connection, user_id: int, snapshot: dict) -> dict:
     db.execute("DELETE FROM weeks WHERE user_id = ?", (user_id,))
     db.execute("DELETE FROM assignments WHERE user_id = ?", (user_id,))
     weeks = []
@@ -430,7 +426,7 @@ def replace_account(db: sqlite3.Connection, user_id: int, snapshot: dict) -> dic
     return {"weeks": weeks, "assignments": assignments}
 
 
-def replace_recovery_codes(db: sqlite3.Connection, user_id: int, codes: list[str]) -> None:
+def replace_recovery_codes(db: Connection, user_id: int, codes: list[str]) -> None:
     db.execute("DELETE FROM recovery_codes WHERE user_id = ?", (user_id,))
     for code in codes:
         db.execute(
@@ -443,7 +439,7 @@ def encode_routine(routine: Routine) -> str:
     return canonical([block.model_dump() for block in routine.blocks])
 
 
-def routine_view(row: sqlite3.Row) -> dict:
+def routine_view(row: Row) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -454,7 +450,7 @@ def routine_view(row: sqlite3.Row) -> dict:
     }
 
 
-def upsert_routine(db: sqlite3.Connection, user_id: int, routine: Routine) -> dict:
+def upsert_routine(db: Connection, user_id: int, routine: Routine) -> dict:
     encoded = encode_routine(routine)
     row = db.execute(
         """SELECT id, name, body, revision, created_at, updated_at FROM routines
@@ -497,7 +493,7 @@ def upsert_routine(db: sqlite3.Connection, user_id: int, routine: Routine) -> di
     return routine_view(stored)
 
 
-def delete_routine(db: sqlite3.Connection, user_id: int, routine_id: str, revision: int) -> dict:
+def delete_routine(db: Connection, user_id: int, routine_id: str, revision: int) -> dict:
     row = db.execute(
         "SELECT revision FROM routines WHERE user_id = ? AND id = ?", (user_id, routine_id)
     ).fetchone()
@@ -804,7 +800,7 @@ class TransferApplyRequest(BaseModel):
     operation_id: str = Field(min_length=1, max_length=80)
 
 
-def apply_transfer(db: sqlite3.Connection, user_id: int, snapshot: TransferSnapshot) -> dict:
+def apply_transfer(db: Connection, user_id: int, snapshot: TransferSnapshot) -> dict:
     write_preferences(db, user_id, snapshot.preferences)
     db.execute("DELETE FROM routines WHERE user_id = ?", (user_id,))
     for routine in snapshot.routines:
@@ -898,7 +894,7 @@ def encode_comfort(preferences: Preferences) -> str:
     )
 
 
-def preferences_from_row(row: sqlite3.Row) -> dict:
+def preferences_from_row(row: Row) -> dict:
     availability = json.loads(row["availability_json"] or "{}")
     comfort = json.loads(row["comfort_json"] or "{}")
     return Preferences(
@@ -937,7 +933,7 @@ def preferences_from_row(row: sqlite3.Row) -> dict:
     ).model_dump()
 
 
-def capture_transfer(db: sqlite3.Connection, user_id: int) -> dict:
+def capture_transfer(db: Connection, user_id: int) -> dict:
     snapshot = capture_account(db, user_id)
     prefs = db.execute("SELECT * FROM preferences WHERE user_id = ?", (user_id,)).fetchone()
     assert prefs is not None
@@ -956,7 +952,7 @@ def capture_transfer(db: sqlite3.Connection, user_id: int) -> dict:
     }
 
 
-def write_preferences(db: sqlite3.Connection, user_id: int, preferences: Preferences) -> dict:
+def write_preferences(db: Connection, user_id: int, preferences: Preferences) -> dict:
     db.execute(
         """UPDATE preferences
         SET theme = ?, reminders_enabled = ?, reminder_lead_min = ?, reminder_sound = ?,
@@ -986,7 +982,7 @@ def write_preferences(db: sqlite3.Connection, user_id: int, preferences: Prefere
 
 
 def solve_availability(
-    row: sqlite3.Row | None,
+    row: Row | None,
 ) -> tuple[list[int], list[StudyWindow], list[WorkWindow]]:
     if row is None:
         return [0] * 7, [], []
@@ -1144,7 +1140,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 429, "Too many attempts. Try again in five minutes.", headers={"Retry-After": "300"}
             )
 
-    def require_password(db: sqlite3.Connection, user_id: int, password: str) -> None:
+    def require_password(db: Connection, user_id: int, password: str) -> None:
         # Called inside the caller's transaction so a password rotated by another
         # session between the check and the write cannot still authorize the write.
         row = db.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()

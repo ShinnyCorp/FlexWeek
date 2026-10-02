@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
 
+import pytest
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 from pydantic import ValidationError
@@ -291,6 +296,14 @@ class StepClock:
 class StillClock:
     def perf_counter(self):
         return 0.0
+
+
+@pytest.fixture(autouse=True)
+def restore_solver_clocks():
+    """Tests here replace the solvers' `time`; a later test in the worker must see the real one."""
+    live, ref = live_solver.time, ref_solver.time
+    yield
+    live_solver.time, ref_solver.time = live, ref
 
 
 READINGS = 4000
@@ -993,3 +1006,37 @@ def test_subject_windows_fold_case_as_python_does():
         blocks = [{**homework, "course": course_name}]
         both_solvers("solve", blocks, {"work_windows": [{"days": [0], "start": "16:00", "end": "18:00", "subject": subject}]})
         both_solvers("solve", blocks, {"study_windows": [{"days": [0], "start": "20:00", "duration_min": 60, "subject": subject}]})
+
+
+def test_a_fake_clock_does_not_outlast_its_test(tmp_path):
+    """Two tests in a fresh pytest run: the first fakes both clocks, the second must find the real ones."""
+    (tmp_path / "test_leak.py").write_text(
+        textwrap.dedent(
+            """
+            import time
+
+            from backend import solver as live_solver
+            from backend.tests.engine_ref import solver as ref_solver
+            from backend.tests.test_engine_parity import restore_solver_clocks  # noqa: F401
+
+
+            def test_one_fakes_the_clocks():
+                live_solver.time = ref_solver.time = object()
+
+
+            def test_two_sees_the_real_clocks():
+                assert live_solver.time is time
+                assert ref_solver.time is time
+            """
+        )
+    )
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--rootdir", str(tmp_path), str(tmp_path)],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(Path(__file__).parents[2])},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "2 passed" in run.stdout, run.stdout

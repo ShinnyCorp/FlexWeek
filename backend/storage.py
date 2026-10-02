@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import secrets
-import sqlite3
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import flexweek_engine  # type: ignore[import-untyped]
 
@@ -45,8 +44,32 @@ def password_matches(password: str, encoded: str) -> bool:
     return flexweek_engine.password_matches(password, encoded)
 
 
+class Row(Protocol):
+    def __getitem__(self, key: Any, /) -> Any: ...
+
+    def __iter__(self) -> Iterator[Any]: ...
+
+    def keys(self) -> list[str]: ...
+
+
+class Cursor(Protocol):
+    @property
+    def lastrowid(self) -> int: ...
+
+    # Any, as in typeshed: callers index the row of a query that cannot come back empty.
+    def fetchone(self) -> Any: ...
+
+    def fetchall(self) -> list[Row]: ...
+
+    def __iter__(self) -> Iterator[Row]: ...
+
+
+class Connection(Protocol):
+    def execute(self, sql: str, parameters: Sequence[Any] = (), /) -> Cursor: ...
+
+
 @contextmanager
-def connect(path: Path) -> Iterator[Any]:
+def connect(path: Path) -> Iterator[Connection]:
     """The Rust store's connection. Python's sqlite3 is not opened on this file."""
     db = flexweek_engine.open_connection(str(path))
     db.execute("PRAGMA foreign_keys = ON")
@@ -57,7 +80,7 @@ def connect(path: Path) -> Iterator[Any]:
         db.close()
 
 
-def new_preferences(db: sqlite3.Connection, user_id: int) -> None:
+def new_preferences(db: Connection, user_id: int) -> None:
     """A new account's preferences, already past every one-time change. A table 0.14 created still
     defaults reminders to off, so they are set here rather than left to the column."""
     db.execute(
@@ -70,13 +93,13 @@ def initialize(path: Path) -> None:
     flexweek_engine.store_initialize(str(path), current_week_start())
 
 
-def delete_account(db: sqlite3.Connection, user_id: int) -> None:
+def delete_account(db: Connection, user_id: int) -> None:
     for table in ACCOUNT_TABLES:
         db.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
     db.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
 
-def create_session(db: sqlite3.Connection, user_id: int) -> str:
+def create_session(db: Connection, user_id: int) -> str:
     token = secrets.token_urlsafe(32)
     now = int(time.time())
     db.execute("DELETE FROM sessions WHERE expires <= ?", (now,))
