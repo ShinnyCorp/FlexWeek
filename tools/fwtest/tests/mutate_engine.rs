@@ -5,7 +5,17 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+/// Each test's `fwtest mutate` runs pytest, and fwtest waits for any pytest it did not start. Tests in
+/// this file run on parallel threads, so on a slow machine one waited past FWTEST_QUEUE_WAIT_SECS for
+/// another's pytest. They take turns instead, as the rig tests do.
+fn mutate_tests_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let lock = LOCK.get_or_init(|| Mutex::new(()));
+    lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 fn scratch() -> PathBuf {
     let path = std::env::temp_dir().join(format!(
@@ -89,6 +99,7 @@ fn rule(repo: &Path) -> String {
 
 #[test]
 fn an_engine_mutation_is_caught_only_after_the_rebuild() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
@@ -134,6 +145,7 @@ fn an_engine_mutation_is_caught_only_after_the_rebuild() {
 
 #[test]
 fn a_skipped_rebuild_leaves_the_engine_mutation_uncaught() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
@@ -169,6 +181,7 @@ fn a_skipped_rebuild_leaves_the_engine_mutation_uncaught() {
 
 #[test]
 fn a_noop_engine_mutation_is_not_caught() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
@@ -207,6 +220,7 @@ fn a_noop_engine_mutation_is_not_caught() {
 
 #[test]
 fn a_failed_engine_build_is_not_caught_unless_the_case_expects_it() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
@@ -270,6 +284,7 @@ fn a_failed_engine_build_is_not_caught_unless_the_case_expects_it() {
 
 #[test]
 fn clean_restores_the_file_and_rebuilds_after_a_killed_engine_mutate() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
@@ -408,6 +423,7 @@ fn builds_with_default_command(module_source: &str) -> (String, String, String) 
 
 #[test]
 fn a_module_with_audit_is_rebuilt_with_audit() {
+    let _guard = mutate_tests_lock();
     let (recorded, stdout, stderr) =
         builds_with_default_command("def panic_probe():\n    return None\n");
     let lines: Vec<&str> = recorded.lines().collect();
@@ -423,6 +439,7 @@ fn a_module_with_audit_is_rebuilt_with_audit() {
 
 #[test]
 fn a_module_without_audit_is_left_without_it() {
+    let _guard = mutate_tests_lock();
     let (recorded, _stdout, stderr) = builds_with_default_command("VALUE = 1\n");
     let lines: Vec<&str> = recorded.lines().collect();
     assert_eq!(lines.len(), 2, "{recorded}");
@@ -436,6 +453,7 @@ fn a_module_without_audit_is_left_without_it() {
 
 #[test]
 fn a_cargo_test_catches_the_mutation_and_a_compile_failure_is_its_own_outcome() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(repo.join("engine/src")).unwrap();
@@ -510,6 +528,7 @@ fn a_cargo_test_catches_the_mutation_and_a_compile_failure_is_its_own_outcome() 
 
 #[test]
 fn an_unreadable_module_keeps_the_audit_default() {
+    let _guard = mutate_tests_lock();
     let (recorded, _stdout, stderr) = builds_with_default_command("raise RuntimeError('unread')\n");
     let lines: Vec<&str> = recorded.lines().collect();
     assert_eq!(lines.len(), 2, "{recorded}");

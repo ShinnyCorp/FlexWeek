@@ -3,7 +3,17 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+/// Each test's `fwtest mutate` runs pytest, and fwtest waits for any pytest it did not start. Tests in
+/// this file run on parallel threads, so on a slow machine one waited past FWTEST_QUEUE_WAIT_SECS for
+/// another's pytest. They take turns instead, as the rig tests do.
+fn mutate_tests_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let lock = LOCK.get_or_init(|| Mutex::new(()));
+    lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 fn scratch() -> PathBuf {
     let path = std::env::temp_dir().join(format!(
@@ -61,6 +71,7 @@ fn fwtest(home: &Path, repo: &Path) -> Command {
 
 #[test]
 fn the_toy_spec_reports_caught_survived_and_missing() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
@@ -102,6 +113,7 @@ fn the_toy_spec_reports_caught_survived_and_missing() {
 
 #[test]
 fn mutate_prints_one_line_per_case_and_keeps_pytest_output_in_the_job_log() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
@@ -149,6 +161,7 @@ fn mutate_prints_one_line_per_case_and_keeps_pytest_output_in_the_job_log() {
 
 #[test]
 fn one_caught_case_exits_clean() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
@@ -171,6 +184,7 @@ fn one_caught_case_exits_clean() {
 
 #[test]
 fn an_unknown_case_name_exits_2() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
@@ -197,6 +211,7 @@ fn an_unknown_case_name_exits_2() {
 
 #[test]
 fn mutate_from_a_subdirectory_runs_the_comment_case() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
@@ -231,6 +246,7 @@ fn mutate_from_a_subdirectory_runs_the_comment_case() {
 
 #[test]
 fn clean_restores_a_file_left_by_a_killed_mutate() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
@@ -290,6 +306,7 @@ fn clean_restores_a_file_left_by_a_killed_mutate() {
 
 #[test]
 fn a_case_whose_test_is_red_before_any_mutation_is_base_and_edits_nothing() {
+    let _guard = mutate_tests_lock();
     let home = scratch();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
