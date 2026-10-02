@@ -1683,6 +1683,17 @@ mod tests {
         let root = temp_dir();
         let mut child = Command::new("sleep").arg("30").spawn().unwrap();
         let pid = child.id() as i32;
+        // On the CI runner the child was not yet named "sleep" in /proc when stop looked a moment
+        // after spawn, so stop took it for someone else's process and left it. Wait for the name.
+        let named = (0..200).any(|_| {
+            let ready = fs::read_to_string(format!("/proc/{pid}/comm"))
+                .is_ok_and(|text| text.trim() == "sleep");
+            if !ready {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            ready
+        });
+        assert!(named, "the child never showed as sleep in /proc");
         let owned = owned(Path::new("/proc"), pid, "sleep").unwrap();
         let state = root.join("session.json");
         save_session(
