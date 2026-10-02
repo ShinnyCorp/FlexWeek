@@ -11,7 +11,9 @@ const DOWNLOADS: &str = "https://github.com/j0nsh1n/FlexWeek/releases/download/v
 #[test]
 fn test_the_release_page_s_redirect_names_the_newest_release() {
     let release = release_from_page(TAG_PAGE).expect("a release");
-    let update = available(&release, "appimage", "0.14.0").expect("an update");
+    let update = available(&release, "appimage", "0.14.0")
+        .expect("a verdict")
+        .expect("an update");
     assert_eq!(update.version, "9.9.9");
     assert_eq!(update.url, format!("{DOWNLOADS}FlexWeek-x86_64.AppImage"));
     assert_eq!(
