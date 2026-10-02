@@ -3,7 +3,9 @@
 //! The stand-ins are copies of one small binary. A shell script would show up
 //! in `/proc` as `sh`, and stop would then refuse to signal it.
 
+use std::ffi::OsStr;
 use std::fs;
+use std::ops::Deref;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -44,16 +46,18 @@ fn note(program: &str) {
     let _ = writeln!(file, "{program} pid={} bus={bus}", process::id());
 }
 
-fn parent_gone() -> bool {
+fn ppid() -> i32 {
     let text = fs::read_to_string("/proc/self/status").unwrap_or_default();
-    let mut ppid = 1;
     for line in text.lines() {
         if let Some(rest) = line.strip_prefix("PPid:") {
-            ppid = rest.trim().parse().unwrap_or(1);
-            break;
+            return rest.trim().parse().unwrap_or(1);
         }
     }
-    let Ok(stat) = fs::read_to_string(format!("/proc/{ppid}/stat")) else {
+    1
+}
+
+fn process_dead(pid: i32) -> bool {
+    let Ok(stat) = fs::read_to_string(format!("/proc/{pid}/stat")) else {
         return true;
     };
     match stat.rsplit_once(") ") {
@@ -87,7 +91,9 @@ fn main() {
             sleep_until_signaled();
         }
         "Xwayland" => {
-            while !parent_gone() {
+            // Once. Killing kwin reparents this process to init, which stays alive.
+            let parent = ppid();
+            while !process_dead(parent) {
                 thread::sleep(Duration::from_millis(50));
             }
         }
@@ -111,6 +117,7 @@ const PRIVATE_BUS: &str = "unix:path=/fwtest-standin-bus";
 
 unsafe extern "C" {
     fn kill(pid: i32, sig: i32) -> i32;
+    fn atexit(cb: extern "C" fn()) -> i32;
 }
 
 fn signal(pid: i32, sig: i32) {
@@ -119,7 +126,35 @@ fn signal(pid: i32, sig: i32) {
     }
 }
 
-fn scratch() -> PathBuf {
+struct ScratchDir(PathBuf);
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+impl Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for ScratchDir {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<OsStr> for ScratchDir {
+    fn as_ref(&self) -> &OsStr {
+        self.0.as_os_str()
+    }
+}
+
+fn scratch() -> ScratchDir {
     let path = std::env::temp_dir().join(format!(
         "fwtest-rig-{}-{}",
         std::process::id(),
@@ -129,7 +164,34 @@ fn scratch() -> PathBuf {
             .as_nanos()
     ));
     fs::create_dir_all(path.join("no-systemd")).unwrap();
-    path
+    ScratchDir(path)
+}
+
+/// Removes this checkout's state file when the test ends, including after a panic.
+/// `place` names that file from the checkout's device and inode.
+struct Sweep {
+    state: PathBuf,
+}
+
+impl Sweep {
+    fn new(repo: &Path) -> Self {
+        Self {
+            state: hidden::place(repo).unwrap().state,
+        }
+    }
+}
+
+impl Drop for Sweep {
+    fn drop(&mut self) {
+        if self.state.is_dir() {
+            let _ = fs::remove_dir_all(&self.state);
+        } else {
+            let _ = fs::remove_file(&self.state);
+        }
+        if let Some(dir) = self.state.parent() {
+            let _ = fs::remove_dir(dir);
+        }
+    }
 }
 
 /// One directory for every test in this process, so `fwtest clean` here does not
@@ -162,43 +224,96 @@ fn write_script(path: &Path, body: &str) {
     fs::set_permissions(path, perms).unwrap();
 }
 
-fn standin_dir() -> &'static Path {
-    static DIR: OnceLock<PathBuf> = OnceLock::new();
-    DIR.get_or_init(|| {
-        let root = std::env::temp_dir().join(format!("fwtest-standin-{}", std::process::id()));
-        let bin = root.join("bin");
-        fs::create_dir_all(&bin).unwrap();
-        let source = root.join("standin.rs");
-        fs::write(&source, STANDIN_SOURCE).unwrap();
-        let compiled = root.join("standin");
-        let output = Command::new("rustc")
-            .args(["--edition", "2024", "-O", "-o"])
-            .arg(&compiled)
-            .arg(&source)
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "rustc stand-in failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        for name in [
-            "dbus-daemon",
-            "kwin_wayland",
-            "Xwayland",
-            "xdotool",
-            "Xvfb",
-            "openbox",
-            "xprop",
-        ] {
-            let dest = bin.join(name);
-            fs::copy(&compiled, &dest).unwrap();
-            let mut perms = fs::metadata(&dest).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&dest, perms).unwrap();
+struct StandinPaths {
+    root: PathBuf,
+    bin: PathBuf,
+}
+
+static STANDIN: OnceLock<StandinPaths> = OnceLock::new();
+
+fn is_standin_pid(pid: i32) -> bool {
+    STANDIN
+        .get()
+        .is_some_and(|paths| exe_under(pid, &paths.root))
+}
+
+fn exe_under(pid: i32, root: &Path) -> bool {
+    fs::read_link(format!("/proc/{pid}/exe"))
+        .ok()
+        .is_some_and(|exe| exe.starts_with(root))
+}
+
+fn signal_standins(root: &Path, sig: i32) {
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return;
+    };
+    let me = std::process::id() as i32;
+    for entry in entries.flatten() {
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<i32>() else {
+            continue;
+        };
+        if pid == me || pid <= 1 {
+            continue;
         }
-        bin
-    })
+        if exe_under(pid, root) {
+            signal(pid, sig);
+        }
+    }
+}
+
+extern "C" fn reap_standin_at_exit() {
+    let Some(paths) = STANDIN.get() else {
+        return;
+    };
+    signal_standins(&paths.root, 15);
+    std::thread::sleep(Duration::from_millis(50));
+    signal_standins(&paths.root, 9);
+    let _ = fs::remove_dir_all(&paths.root);
+}
+
+fn standin_dir() -> &'static Path {
+    &STANDIN
+        .get_or_init(|| {
+            let root = std::env::temp_dir().join(format!("fwtest-standin-{}", std::process::id()));
+            let bin = root.join("bin");
+            fs::create_dir_all(&bin).unwrap();
+            let source = root.join("standin.rs");
+            fs::write(&source, STANDIN_SOURCE).unwrap();
+            let compiled = root.join("standin");
+            let output = Command::new("rustc")
+                .args(["--edition", "2024", "-O", "-o"])
+                .arg(&compiled)
+                .arg(&source)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "rustc stand-in failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            for name in [
+                "dbus-daemon",
+                "kwin_wayland",
+                "Xwayland",
+                "xdotool",
+                "Xvfb",
+                "openbox",
+                "xprop",
+            ] {
+                let dest = bin.join(name);
+                fs::copy(&compiled, &dest).unwrap();
+                let mut perms = fs::metadata(&dest).unwrap().permissions();
+                perms.set_mode(0o755);
+                fs::set_permissions(&dest, perms).unwrap();
+            }
+            // SAFETY: reap_standin_at_exit only signals processes whose executable
+            // is inside this process's stand-in directory, then removes that directory.
+            unsafe {
+                atexit(reap_standin_at_exit);
+            }
+            StandinPaths { root, bin }
+        })
+        .bin
 }
 
 fn prepend_standin(path: &str) -> String {
@@ -225,8 +340,17 @@ impl Drop for StopLogged {
         let Ok(text) = fs::read_to_string(&self.log) else {
             return;
         };
-        for pid in logged_pids(&text) {
-            signal(pid, 15);
+        let pids = logged_pids(&text);
+        for pid in &pids {
+            if is_standin_pid(*pid) {
+                signal(*pid, 15);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        for pid in pids {
+            if is_standin_pid(pid) {
+                signal(pid, 9);
+            }
         }
     }
 }
@@ -306,9 +430,11 @@ fn dead(pid: i32) {
 fn rig_drops_keep_stops_the_hidden_session_and_leaves_no_child() {
     let _guard = rig_tests_lock();
     rig_state();
+    let caller_display = std::env::var("DISPLAY").unwrap_or_default();
     let home = scratch();
     let repo = home.join("repo");
     init_repo(&repo);
+    let _sweep = Sweep::new(&repo);
     let log = home.join("rig.log");
     let standin_log = home.join("standin.log");
     let _stop = StopLogged {
@@ -323,6 +449,9 @@ printf 'display=%s\n' "${{FLEXWEEK_RIG_DISPLAY-}}" >> "{log}"
 printf 'bus=%s\n' "${{FLEXWEEK_RIG_BUS-}}" >> "{log}"
 printf 'runs=%s\n' "${{FLEXWEEK_RIG_RUNS_KEY-}}" >> "{log}"
 printf 'args=%s\n' "$*" >> "{log}"
+printf 'live_display=%s\n' "${{DISPLAY-}}" >> "{log}"
+printf 'caller_display=%s\n' "${{FLEXWEEK_CALLER_DISPLAY-}}" >> "{log}"
+printf 'caller_bus=%s\n' "${{FLEXWEEK_CALLER_BUS-}}" >> "{log}"
 sleep 120 &
 echo $! >> "{log}"
 "#,
@@ -345,10 +474,28 @@ echo $! >> "{log}"
     assert!(!text.contains("keep=1"), "{text}");
     assert!(text.contains("display=:71\n"), "{text}");
     assert!(text.contains(&format!("bus={PRIVATE_BUS}\n")), "{text}");
-    assert!(!text.contains(CALLER_BUS), "{text}");
+    assert!(
+        !text.lines().any(|line| line == format!("bus={CALLER_BUS}")),
+        "{text}"
+    );
     let runs = hidden::place(&repo).unwrap().runs_key;
     assert!(text.contains(&format!("runs={runs}\n")), "{text}");
     assert!(text.contains("--design"), "{text}");
+    assert!(
+        text.lines()
+            .any(|line| line == format!("live_display={caller_display}")),
+        "{text}"
+    );
+    assert!(
+        text.lines()
+            .any(|line| line == format!("caller_display={caller_display}")),
+        "{text}"
+    );
+    assert!(
+        text.lines()
+            .any(|line| line == format!("caller_bus={CALLER_BUS}")),
+        "{text}"
+    );
     let pid = text
         .lines()
         .find_map(|line| line.parse::<i32>().ok())
@@ -377,6 +524,7 @@ fn rig_from_a_subdirectory_runs_at_the_checkout() {
     let home = scratch();
     let repo = home.join("repo");
     init_repo(&repo);
+    let _sweep = Sweep::new(&repo);
     let log = home.join("rig.log");
     let standin_log = home.join("standin.log");
     let _stop = StopLogged {
@@ -499,6 +647,7 @@ fn clean_stops_the_hidden_session_of_a_stale_rig_job() {
     rig_state();
     let home = scratch();
     let repo = rig_repo(&home);
+    let _sweep = Sweep::new(&repo);
     let mut sleep = spawn_sleep();
     let child = sleep.0.as_ref().unwrap();
     let pid = child.id() as i32;
@@ -534,6 +683,7 @@ fn clean_stops_a_session_named_only_by_its_state_file() {
     rig_state();
     let home = scratch();
     let repo = rig_repo(&home);
+    let _sweep = Sweep::new(&repo);
     let mut sleep = spawn_sleep();
     let child = sleep.0.as_ref().unwrap();
     let pid = child.id() as i32;
@@ -555,6 +705,7 @@ fn clean_stops_a_session_named_only_by_its_job_record() {
     rig_state();
     let home = scratch();
     let repo = rig_repo(&home);
+    let _sweep = Sweep::new(&repo);
     let mut sleep = spawn_sleep();
     let child = sleep.0.as_ref().unwrap();
     let pid = child.id() as i32;
@@ -571,7 +722,20 @@ fn clean_stops_a_session_named_only_by_its_job_record() {
             comm: identity.comm,
         }],
     );
-    assert!(!hidden::place(&repo).unwrap().state.exists());
+    let state = hidden::place(&repo).unwrap().state;
+    // place() names the state file from the checkout's device and inode. The
+    // runner reuses that inode as soon as the previous test deletes its checkout,
+    // so a state file that test left behind is found at this path.
+    if state.is_dir() {
+        fs::remove_dir_all(&state).unwrap();
+    } else if state.exists() {
+        fs::remove_file(&state).unwrap();
+    }
+    assert!(
+        !state.exists(),
+        "state file still present at {}",
+        state.display()
+    );
     let output = clean_command(&home).output().unwrap();
     assert_ran(&output);
     assert!(
@@ -587,6 +751,7 @@ fn clean_leaves_the_hidden_session_alone_while_a_rig_job_is_live_in_that_checkou
     rig_state();
     let home = scratch();
     let repo = rig_repo(&home);
+    let _sweep = Sweep::new(&repo);
     let mut sleep = spawn_sleep();
     let child = sleep.0.as_ref().unwrap();
     let pid = child.id() as i32;
@@ -633,6 +798,7 @@ fn a_failing_hidden_session_stop_is_logged_and_the_record_still_goes() {
     rig_state();
     let home = scratch();
     let repo = rig_repo(&home);
+    let _sweep = Sweep::new(&repo);
     let state = hidden::place(&repo).unwrap().state;
     fs::create_dir_all(&state).unwrap();
     stale_record(
@@ -761,6 +927,7 @@ fn a_signal_during_startup_leaves_no_recorded_process_alive() {
     rig_state();
     let home = scratch();
     let repo = rig_repo(&home);
+    let _sweep = Sweep::new(&repo);
     let standin_log = home.join("standin.log");
     let _stop = StopLogged {
         log: standin_log.clone(),
@@ -805,6 +972,7 @@ fn session_processes_are_in_the_job_record_and_the_scope() {
     let systemd = systemd_scope_works();
     let home = scratch();
     let repo = rig_repo(&home);
+    let _sweep = Sweep::new(&repo);
     let standin_log = home.join("standin.log");
     let _stop = StopLogged {
         log: standin_log.clone(),
@@ -882,6 +1050,7 @@ fn rig_list_does_not_start_a_session() {
     let home = scratch();
     let repo = home.join("repo");
     init_repo(&repo);
+    let _sweep = Sweep::new(&repo);
     let log = home.join("drive.log");
     let standin_log = home.join("standin.log");
     let _stop = StopLogged {
