@@ -239,10 +239,7 @@ fn title_of(row: &Value) -> String {
         body = serde_json::from_str(text).unwrap_or(Value::Null);
     }
     body.get("title")
-        .map(|item| match item {
-            Value::String(text) => text.clone(),
-            other => canonical_value(other).trim_matches('"').to_string(),
-        })
+        .map(crate::stored::py_str)
         .unwrap_or_default()
 }
 
@@ -550,6 +547,32 @@ fn eq_ascii(left: &[u8], right: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restore_preview_titles_use_python_text_for_non_strings() {
+        for (title, expected) in [
+            (serde_json::json!(true), "True"),
+            (serde_json::json!(false), "False"),
+            (Value::Null, "None"),
+            (
+                serde_json::json!([true, null, "Math"]),
+                "[True, None, 'Math']",
+            ),
+            (serde_json::json!({"done": true}), "{'done': True}"),
+            (serde_json::json!("Math"), "Math"),
+        ] {
+            for body in [
+                serde_json::json!({"title": title}),
+                serde_json::json!({"title": title}).to_string().into(),
+            ] {
+                let snapshot = serde_json::json!({"assignments": [{"id": "math", "body": body}]});
+                let added = diff_snapshots(&serde_json::json!({}), &snapshot);
+                let removed = diff_snapshots(&snapshot, &serde_json::json!({}));
+                assert_eq!(added["assignments"]["added"][0]["title"], expected);
+                assert_eq!(removed["assignments"]["removed"][0]["title"], expected);
+            }
+        }
+    }
 
     #[test]
     fn floats_match_python_json() {

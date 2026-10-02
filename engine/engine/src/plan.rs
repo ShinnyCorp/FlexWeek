@@ -147,7 +147,20 @@ const FIELD_LABEL: &[(&str, &str)] = &[
 ];
 
 pub fn snap_minutes(value: i64, minimum: i64, maximum: i64) -> i64 {
-    let mut snapped = ((value as f64 / SLOT_MIN as f64).round() * SLOT_MIN as f64) as i64;
+    if [value, minimum, maximum]
+        .iter()
+        .any(|number| number.unsigned_abs() > (1_u64 << 53))
+    {
+        return crate::wide_snap::snap_minutes_wide(
+            &value.to_string(),
+            &minimum.to_string(),
+            &maximum.to_string(),
+        )
+        .expect("i64 inputs have a finite quotient and valid integer bounds")
+        .parse()
+        .expect("the clamped result fits in i64");
+    }
+    let mut snapped = (value as f64 / SLOT_MIN as f64).round_ties_even() as i64 * SLOT_MIN;
     if snapped < minimum {
         snapped = minimum + ((SLOT_MIN - minimum.rem_euclid(SLOT_MIN)) % SLOT_MIN);
     }
@@ -1681,6 +1694,28 @@ mod tests {
         assert_eq!(snap_minutes(17, 1, 180), 15);
         assert_eq!(snap_minutes(7, 1, 180), 15);
         assert_eq!(snap_minutes(185, 1, 180), 180);
+    }
+
+    #[test]
+    fn snap_minutes_keeps_python_half_even_and_integer_grid_at_large_values() {
+        assert_eq!(
+            snap_minutes(9_007_199_254_740_968, 1, 9_007_199_254_740_980),
+            9_007_199_254_740_960
+        );
+        for (value, expected) in [
+            (9_007_199_254_740_968, 9_007_199_254_740_960),
+            (9_007_199_254_740_982, 9_007_199_254_740_990),
+            (9_007_199_254_740_998, 9_007_199_254_740_990),
+            (9_007_199_254_741_012, 9_007_199_254_741_020),
+            (i64::MAX, 9_223_372_036_854_775_680),
+        ] {
+            assert_eq!(snap_minutes(value, 1, i64::MAX), expected, "{value}");
+        }
+        assert_eq!(
+            snap_minutes(30, i64::MAX, i64::MAX),
+            9_223_372_036_854_775_800
+        );
+        assert_eq!(snap_minutes(i64::MIN, i64::MIN, i64::MAX), 15);
     }
 
     #[test]
