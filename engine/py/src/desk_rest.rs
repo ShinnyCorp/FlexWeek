@@ -1287,6 +1287,89 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         look_tables,
         look_readability,
         look_apply_fix,
+        files_block_inputs,
+        files_export_rest,
+        files_export_finish,
+        files_import_start,
+        files_import_finish,
     );
     Ok(())
+}
+
+/// The model inputs of a week export (`day` absent) or a day export, and the failure that stopped
+/// them, as an exception for Python to raise once the model has run on the inputs before it.
+#[pyfunction]
+fn files_block_inputs(
+    py: Python<'_>,
+    blocks: &str,
+    assignments: &str,
+    day: Option<&str>,
+) -> PyResult<(String, Option<Py<PyAny>>)> {
+    let (blocks, assignments) = (parse(blocks)?, parse(assignments)?);
+    let day = opt_value(day)?;
+    guard(|| {
+        let (inputs, failure) = files::block_inputs(&blocks, &assignments, day.as_ref());
+        Ok((
+            array(inputs),
+            failure.map(|error| crate::raise(error).into_value(py).into_any()),
+        ))
+    })
+}
+
+#[pyfunction]
+fn files_export_rest(
+    py: Python<'_>,
+    week_start: &str,
+    day: Option<&str>,
+    blocks: &str,
+    assignments: &str,
+) -> PyResult<(String, String, Option<Py<PyAny>>)> {
+    let (week_start, blocks, assignments) =
+        (parse(week_start)?, parse(blocks)?, parse(assignments)?);
+    let day = opt_value(day)?;
+    guard(|| {
+        let rest = files::export_rest(&week_start, day.as_ref(), &blocks, &assignments);
+        Ok((
+            dump(&rest.payload),
+            array(rest.ids),
+            rest.failure
+                .map(|error| crate::raise(error).into_value(py).into_any()),
+        ))
+    })
+}
+
+#[pyfunction]
+fn files_export_finish(payload: &str, bodies: &str) -> PyResult<String> {
+    let (payload, bodies) = (parse(payload)?, parse(bodies)?);
+    guard(|| Ok(dump(&files::export_finish(&payload, &bodies))))
+}
+
+#[pyfunction]
+fn files_import_start(
+    empty: bool,
+    readable: bool,
+    data: Option<&str>,
+) -> PyResult<(String, String, String)> {
+    let data = opt_value(data)?;
+    guard(|| {
+        let (head, blocks, homework) =
+            files::import_start(empty, readable, data.as_ref()).map_err(crate::raise)?;
+        Ok((dump(&head), array(blocks), array(homework)))
+    })
+}
+
+#[pyfunction]
+fn files_import_finish(
+    head: &str,
+    blocks: &str,
+    assignments: &str,
+    failure: Option<&str>,
+) -> PyResult<String> {
+    let head = parse(head)?;
+    let (blocks, assignments) = (objects(blocks)?, objects(assignments)?);
+    guard(|| {
+        let payload =
+            files::import_finish(&head, &blocks, &assignments, failure).map_err(crate::raise)?;
+        Ok(dump(&payload))
+    })
 }
