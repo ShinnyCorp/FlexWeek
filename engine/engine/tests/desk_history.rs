@@ -1,52 +1,68 @@
 //! Rust twin of `desktop/tests/test_history.py`: undo snapshots for the native week.
 
-mod common;
+use flexweek_engine::desk::history::{HISTORY_LIMIT, capture_step, over_limit, touches};
+use serde_json::{Value, json};
 
-use common::desk::object;
-use flexweek_engine::desk::history::{HISTORY_LIMIT, capture_step, mark_stale, push_step};
-use serde_json::{Map, Value, json};
-use std::collections::HashSet;
-
-fn ids(names: &[&str]) -> HashSet<String> {
+fn ids(names: &[&str]) -> Vec<String> {
     names.iter().map(|name| (*name).to_string()).collect()
+}
+
+/// `history_push` in the binding: the step goes on the end, and the engine says when the stack is
+/// over its limit, which drops the oldest. The binding owns the list, so this loop is its.
+fn push_step(stack: &mut Vec<Value>, step: Value) {
+    stack.push(step);
+    if over_limit(stack.len()) {
+        stack.remove(0);
+    }
+}
+
+/// `history_mark_stale` in the binding: the engine says which steps hold the week.
+fn mark_stale(steps: &mut [Value], week_start: &str) {
+    for step in steps.iter_mut() {
+        if touches(step, &json!(week_start)).expect("a verdict") {
+            step["stale"] = json!(true);
+        }
+    }
 }
 
 #[test]
 fn test_capture_step_records_only_what_changed() {
-    let before = [json!({"id": "soccer", "title": "Soccer"})];
-    let after = [
-        json!({"id": "soccer", "title": "Soccer"}),
-        json!({"id": "piano", "title": "Piano"}),
-    ];
+    let before = json!([{"id": "soccer", "title": "Soccer"}]);
+    let after = json!([
+        {"id": "soccer", "title": "Soccer"},
+        {"id": "piano", "title": "Piano"},
+    ]);
     let step = capture_step(
         "editing Piano",
         "2026-09-07",
         &before,
         &after,
-        &Map::new(),
-        &Map::new(),
+        &json!({}),
+        &json!({}),
         &ids(&[]),
     )
+    .expect("a verdict")
     .expect("a step");
     assert_eq!(step["label"], "editing Piano");
-    assert_eq!(step["weeks"][0]["before"], json!(before));
-    assert_eq!(step["weeks"][0]["after"], json!(after));
+    assert_eq!(step["weeks"][0]["before"], before);
+    assert_eq!(step["weeks"][0]["after"], after);
     assert_eq!(step["assignments"], json!([]));
 }
 
 #[test]
 fn test_capture_step_skips_an_unchanged_week() {
-    let blocks = [json!({"id": "soccer", "title": "Soccer"})];
+    let blocks = json!([{"id": "soccer", "title": "Soccer"}]);
     assert_eq!(
         capture_step(
             "editing",
             "2026-09-07",
             &blocks,
             &blocks,
-            &Map::new(),
-            &Map::new(),
+            &json!({}),
+            &json!({}),
             &ids(&[]),
-        ),
+        )
+        .expect("a verdict"),
         None
     );
 }
@@ -57,12 +73,13 @@ fn test_capture_step_records_a_new_assignment() {
     let step = capture_step(
         "editing Lab",
         "2026-09-07",
-        &[],
-        &[],
-        &Map::new(),
-        &object(json!({"lab": homework})),
+        &json!([]),
+        &json!([]),
+        &json!({}),
+        &json!({"lab": homework}),
         &ids(&["lab"]),
     )
+    .expect("a verdict")
     .expect("a step");
     assert_eq!(
         step["assignments"],
@@ -72,13 +89,11 @@ fn test_capture_step_records_a_new_assignment() {
 
 #[test]
 fn test_push_step_drops_the_oldest_past_the_limit() {
-    let mut stack: Vec<Map<String, Value>> = Vec::new();
+    let mut stack: Vec<Value> = Vec::new();
     for index in 0..HISTORY_LIMIT + 2 {
         push_step(
             &mut stack,
-            object(
-                json!({"label": index.to_string(), "weeks": [], "assignments": [], "stale": false}),
-            ),
+            json!({"label": index.to_string(), "weeks": [], "assignments": [], "stale": false}),
         );
     }
     assert_eq!(stack.len(), HISTORY_LIMIT);
@@ -92,8 +107,8 @@ fn test_push_step_drops_the_oldest_past_the_limit() {
 #[test]
 fn test_mark_stale_only_touches_steps_for_that_week() {
     let mut steps = vec![
-        object(json!({"weeks": [{"week_start": "2026-09-07"}], "stale": false})),
-        object(json!({"weeks": [{"week_start": "2026-09-14"}], "stale": false})),
+        json!({"weeks": [{"week_start": "2026-09-07"}], "stale": false}),
+        json!({"weeks": [{"week_start": "2026-09-14"}], "stale": false}),
     ];
     mark_stale(&mut steps, "2026-09-07");
     assert_eq!(steps[0]["stale"], json!(true));
