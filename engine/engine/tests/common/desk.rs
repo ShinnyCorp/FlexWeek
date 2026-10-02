@@ -18,3 +18,12 @@ pub fn with(base: Value, over: Value) -> Value {
     }
     Value::Object(merged)
 }
+
+/// Ids "id-1", "id-2", ... in place of the wrapper's `uuid4()`; no test depends on their form.
+pub fn fresh_ids() -> impl FnMut() -> String {
+    let mut count = 0;
+    move || {
+        count += 1;
+        format!("id-{count}")
+    }
+}
