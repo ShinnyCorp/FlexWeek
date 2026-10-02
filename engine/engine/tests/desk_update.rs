@@ -9,10 +9,19 @@ mod common;
 
 use common::desk::{object, with};
 use flexweek_engine::desk::update::{
-    LINUX_APPIMAGE, LINUX_TARBALL, WINDOWS_SETUP, available, due_for_check, expected_digest,
-    install_kind, is_newer, parse_version, sanitize_updates, verified,
+    LINUX_APPIMAGE, LINUX_TARBALL, Update, WINDOWS_SETUP, expected_digest, install_kind, is_newer,
+    parse_version, sanitize_updates, verified,
 };
+use flexweek_engine::desk::update::{available as engine_available, due_for_check as engine_due};
 use serde_json::{Value, json};
+
+fn available(release: &Value, kind: &str, current: &str) -> Option<Update> {
+    engine_available(release, kind, current).expect("a verdict")
+}
+
+fn due_for_check(settings: &serde_json::Map<String, Value>, now_ms: i64) -> bool {
+    engine_due(&Value::Object(settings.clone()), now_ms).expect("a verdict")
+}
 
 // What `version.py` says; `available` takes the running version as an argument.
 const VERSION: &str = "0.17.2";
