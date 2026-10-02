@@ -12,6 +12,7 @@ import copy
 import json
 import os
 import time
+import types
 from datetime import datetime
 
 from hypothesis import given, settings
@@ -969,3 +970,288 @@ def test_an_alarm_is_due_after_the_last_look_up_to_and_including_now():
         assert poll(due, due) == []
         assert poll(due - 1, due - 2) == []
         assert poll(due + 5, due - 1) == [alarm]
+
+
+@st.composite
+def fixed_block(draw, **extra):
+    body = {
+        "id": draw(maybe("b1", "b2", "b3")),
+        "title": draw(maybe("Soccer", "Lunch", "Ünï", "")),
+        "kind": "locked",
+        "duration_min": draw(maybe(15, 30, 45, 60, 90, 120)),
+        "days": draw(st.lists(DAY, min_size=1, max_size=3, unique=True)),
+        "start": draw(maybe("08:00", "09:30", "16:00", "09:45", None)),
+        "category": draw(maybe("class", "exercise", None)),
+    }
+    for name, values in {
+        "course": ("Maths", None),
+        "priority": (1, 3, None),
+        "energy": ("low", "high", None),
+        "spotify_url": ("https://open.spotify.com/track/x", None),
+        "assignment_id": (None,),
+        "pomodoro_role": (None, "work"),
+        "template_id": (None, "t1"),
+        "missed_days": ([], [0]),
+        "completed": (False, True),
+    }.items():
+        if draw(st.booleans()):
+            body[name] = draw(st.sampled_from(values))
+    body.update(extra)
+    return body
+
+
+@st.composite
+def homework_block(draw):
+    return draw(fixed_block(kind="flexible", assignment_id=draw(maybe("essay", "lab", "ghost"))))
+
+
+def assignment(**extra):
+    body = {
+        "id": "essay",
+        "title": "Essay",
+        "due": "2026-09-24T21:00",
+        "estimate_min": 120,
+        "priority": 2,
+        "energy": "high",
+        "course": "English",
+        "category": "assignments",
+        "spotify_url": None,
+        "completed": False,
+        "focus_minutes": 15,
+        "unplanned_min": 60,
+    }
+    body.update(extra)
+    return body
+
+
+ASSIGNMENTS = st.fixed_dictionaries(
+    {},
+    optional={
+        "essay": st.builds(assignment, priority=maybe(None, 0, 4), energy=maybe(None, "", "low")),
+        "lab": st.builds(
+            assignment,
+            id=st.just("lab"),
+            title=maybe("Lab", "Ünï"),
+            due=maybe("2026-09-22", "2026-09-30T08:00", None, ""),
+            unplanned_min=maybe(None, 0, 30, 45, 120),
+            completed=maybe(False, True, None),
+            estimate_min=maybe(30, 90),
+        ),
+    },
+)
+AVAILABLE = st.dictionaries(maybe("essay", "lab", "other"), st.integers(0, 120), max_size=3)
+CLIP_ITEM = st.builds(
+    lambda block, scope, group, source_day: {
+        "block": block,
+        "source_day": source_day,
+        "scope": scope,
+        "group_id": group,
+    },
+    st.one_of(fixed_block(), homework_block()),
+    maybe("block", "series", "day"),
+    maybe("g1", "g2", "g-3"),
+    DAY,
+)
+
+
+@CHECK
+@given(
+    st.lists(CLIP_ITEM, max_size=4),
+    maybe("block", "day", "week"),
+    maybe("2026-09-21", "2026-09-28"),
+    DAY,
+    maybe("10:00", None, ""),
+    ASSIGNMENTS,
+    AVAILABLE,
+)
+def test_proposals_from_clipboard_on_generated_items(items, kind, week, day, start, assignments, available):
+    same(
+        live_reuse.proposals_from_clipboard,
+        ref_reuse.proposals_from_clipboard,
+        items,
+        kind=kind,
+        week_start=week,
+        target_day=day,
+        target_start=start,
+        assignments=assignments,
+        available=available,
+    )
+
+
+@CHECK
+@given(
+    st.lists(st.one_of(fixed_block().map(lambda body: {"block": body}), st.just({})), max_size=2),
+    maybe("block", "series"),
+)
+def test_proposals_from_clipboard_on_malformed_items(items, scope):
+    for item in items:
+        item.update(source_day=0, scope=scope)
+    same(
+        live_reuse.proposals_from_clipboard,
+        ref_reuse.proposals_from_clipboard,
+        items,
+        kind="block",
+        week_start="2026-09-21",
+        target_day=1,
+        target_start=None,
+        assignments={},
+        available={},
+    )
+
+
+@st.composite
+def preview_rows(draw, edited=True):
+    """Rows as the paste preview holds them: made by the reference, then ticked and edited."""
+    rows = ref_reuse.proposals_from_clipboard(
+        draw(st.lists(CLIP_ITEM, min_size=1, max_size=4)),
+        kind=draw(maybe("block", "day")),
+        week_start="2026-09-21",
+        target_day=draw(DAY),
+        target_start=draw(maybe("10:00", None)),
+        assignments=draw(ASSIGNMENTS),
+        available=draw(AVAILABLE),
+    )
+    rows = copy.deepcopy(rows)
+    for row in rows if edited else []:
+        row["checked"] = draw(st.booleans())
+        row["week_start"] = draw(maybe("2026-09-21", "2026-09-28"))
+        if draw(st.booleans()):
+            row["day"] = draw(DAY)
+        if draw(st.booleans()):
+            row["block"]["start"] = draw(maybe("08:30", "09:00", "16:00", None))
+    return rows
+
+
+@CHECK
+@given(preview_rows(), maybe("op-1", "0123456789-abcdef-0123456789-xyz", ""))
+def test_merge_preview_rows_on_generated_rows(rows, operation_id):
+    same(live_reuse.merge_preview_rows, ref_reuse.merge_preview_rows, rows, operation_id)
+
+
+@CHECK
+@given(preview_rows(edited=False), maybe("op-1", "0123456789-abcdef-0123456789-xyz"))
+def test_merge_preview_rows_on_untouched_rows(rows, operation_id):
+    same(live_reuse.merge_preview_rows, ref_reuse.merge_preview_rows, rows, operation_id)
+
+
+def test_a_series_pasted_on_days_out_of_order_merges_into_one_sorted_block():
+    series = {
+        "block": block(days=[4, 1, 4, 2], start="16:00"),
+        "source_day": 1,
+        "scope": "series",
+        "group_id": "g",
+    }
+    rows = live_reuse.proposals_from_clipboard(
+        [series],
+        kind="block",
+        week_start=WEEK,
+        target_day=0,
+        target_start=None,
+        assignments={},
+        available={},
+    )
+    merged = live_reuse.merge_preview_rows(rows, "ab-cd")
+    assert [item["block"]["days"] for item in merged] == [[1, 2, 4]]
+    assert [item["block"]["id"] for item in merged] == ["b-stage3-abcd-0"]
+
+
+@CHECK
+@given(preview_rows(), st.lists(fixed_block(), max_size=3))
+def test_preview_conflict_message_on_generated_rows(rows, existing):
+    for row in rows:
+        same(live_reuse.preview_conflict_message, ref_reuse.preview_conflict_message, row, rows, existing)
+
+
+@CHECK
+@given(preview_rows())
+def test_preview_conflict_message_of_a_row_among_its_copies(rows):
+    for row in rows:
+        same(live_reuse.row_conflict, ref_reuse.row_conflict, row, rows + [dict(row)], [])
+
+
+@CHECK
+@given(st.lists(st.one_of(fixed_block(), homework_block()), max_size=5))
+def test_routine_source_blocks_on_generated_weeks(blocks):
+    same(live_reuse.routine_source_blocks, ref_reuse.routine_source_blocks, blocks)
+
+
+@CHECK
+@given(fixed_block(), maybe("t1", "", "ünï"))
+def test_routine_template_on_generated_blocks(body, template_id):
+    same(live_reuse.routine_template, ref_reuse.routine_template, body, template_id)
+
+
+@CHECK
+@given(
+    maybe(
+        {}, {"title": "x"}, {"title": "x", "start": "08:00", "days": [0]}, {"title": "x", "duration_min": 5}
+    ),
+    maybe("t1"),
+)
+def test_routine_template_on_incomplete_blocks(body, template_id):
+    same(live_reuse.routine_template, ref_reuse.routine_template, body, template_id)
+
+
+@st.composite
+def routines(draw):
+    templates = [
+        ref_reuse.routine_template(draw(fixed_block()), draw(maybe("t1", "t2")))
+        for _ in range(draw(st.integers(0, 3)))
+    ]
+    return draw(maybe({"blocks": templates}, {}, {"blocks": None}, {"name": "x", "blocks": templates}))
+
+
+@CHECK
+@given(routines(), maybe("2026-09-21", "2026-09-28"), st.lists(DAY, max_size=7))
+def test_routine_rows_on_generated_routines(routine, week, allowed):
+    same(live_reuse.routine_rows, ref_reuse.routine_rows, routine, week, allowed)
+
+
+@CHECK
+@given(
+    ASSIGNMENTS,
+    st.lists(maybe("2026-09-14", "2026-09-21", "2026-09-28"), max_size=3),
+    maybe("2026-09-21", "2026-09-07"),
+    st.lists(homework_block(), max_size=4),
+    st.lists(homework_block(), max_size=4),
+)
+def test_unfinished_items_on_generated_weeks(assignments, saved, week, blocks, committed):
+    same(live_reuse.unfinished_items, ref_reuse.unfinished_items, assignments, saved, week, blocks, committed)
+
+
+@CHECK
+@given(
+    maybe("2026-09-21", "2026-09-28", "2026-10-26", "2026-12-28", "2026-09-23", "x", "2026-13-01"),
+    maybe(None, "", "2026-09-23", "2026-10-02", "bad", "2026-9-3"),
+    maybe(None, "", "2026-10", "2026-11-15", "bad", "2026-0"),
+    maybe("week", "day", "myday", "month", "other"),
+    st.booleans(),
+    maybe(None, "", "2026-09-30", "2026-12-31", "bad"),
+    st.integers(min_value=1_700_000_000_000, max_value=1_800_000_000_000),
+    ZONES,
+)
+def test_planner_title_on_generated_sessions(
+    week, session_day, session_month, view, short, selected, now_ms, zone
+):
+    session = types.SimpleNamespace(
+        week_start=week, selected_day=session_day, selected_month=session_month, now_ms=lambda: now_ms
+    )
+    with local_zone(zone):
+        same(
+            live_reuse.planner_title,
+            ref_reuse.planner_title,
+            session,
+            view,
+            short=short,
+            selected_day=selected,
+        )
+
+
+def test_planner_title_of_my_day_reads_the_local_date():
+    # 2026-09-30 23:30 UTC is already 1 October in Berlin, and still 30 September in New York.
+    stamp = 1_790_811_000_000
+    session = types.SimpleNamespace(week_start="2026-09-28", now_ms=lambda: stamp)
+    with local_zone("Europe/Berlin"):
+        assert live_reuse.planner_title(session, "myday") == "Thursday 1 October"
+    with local_zone("America/New_York"):
+        assert live_reuse.planner_title(session, "myday") == "Wednesday 30 September"

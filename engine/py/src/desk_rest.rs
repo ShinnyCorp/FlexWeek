@@ -2,7 +2,10 @@
 
 use std::collections::HashSet;
 
-use ::flexweek_engine::desk::{calendar, custom_look, files, focus, reuse, update};
+use std::cell::RefCell;
+
+use ::flexweek_engine::desk::{calendar, clipboard, custom_look, files, focus, reuse, update};
+use ::flexweek_engine::{EngineError, EngineResult};
 use pyo3::prelude::*;
 use serde_json::{Map, Value};
 
@@ -530,7 +533,7 @@ fn reuse_occurrence_days(block: &str) -> PyResult<Vec<i64>> {
 #[pyfunction]
 fn reuse_session_minutes(blocks: &str, assignment_id: &str) -> PyResult<i64> {
     let blocks = objects(blocks)?;
-    guard(|| Ok(reuse::session_minutes(&blocks, assignment_id)))
+    guard(|| reuse::session_minutes(&blocks, &Value::from(assignment_id)).map_err(crate::raise))
 }
 
 #[pyfunction]
@@ -543,11 +546,8 @@ fn reuse_available_minutes(
     let blocks = objects(blocks)?;
     let committed = committed.map(objects).transpose()?;
     guard(|| {
-        Ok(reuse::available_homework_minutes(
-            assignment.as_ref(),
-            &blocks,
-            committed.as_deref(),
-        ))
+        reuse::available_homework_minutes(assignment.as_ref(), &blocks, committed.as_deref())
+            .map_err(crate::raise)
     })
 }
 
@@ -623,7 +623,10 @@ fn reuse_copied_fixed(source: &str, days: &str, block_id: &str) -> PyResult<Stri
     let source = parse(source)?;
     let days = objects(days)?;
     let days: Vec<i64> = days.into_iter().filter_map(|item| item.as_i64()).collect();
-    guard(|| Ok(dump(&reuse::copied_fixed_block(&source, &days, block_id))))
+    guard(|| {
+        let block = reuse::copied_fixed_block(&source, &days, block_id).map_err(crate::raise)?;
+        Ok(dump(&block))
+    })
 }
 
 #[pyfunction]
@@ -635,12 +638,9 @@ fn reuse_copied_homework(
 ) -> PyResult<String> {
     let assignment = parse(assignment)?;
     guard(|| {
-        Ok(dump(&reuse::copied_homework_block(
-            &assignment,
-            day,
-            duration,
-            block_id,
-        )))
+        let block = reuse::copied_homework_block(&assignment, day, duration, block_id)
+            .map_err(crate::raise)?;
+        Ok(dump(&block))
     })
 }
 
@@ -683,7 +683,156 @@ fn reuse_row_conflict(
     let rows = objects(rows)?;
     let existing = objects(existing)?;
     let skip = skip.and_then(|index| usize::try_from(index).ok());
-    guard(|| Ok(reuse::row_conflict(&row, &rows, &existing, skip)))
+    guard(|| {
+        let conflict =
+            clipboard::row_conflict(&row, &rows, &existing, skip).map_err(crate::raise)?;
+        Ok(conflict.map(|title| match title {
+            Value::String(text) => text,
+            other => other.to_string(),
+        }))
+    })
+}
+
+#[pyfunction]
+fn reuse_preview_message(
+    row: &str,
+    rows: &str,
+    existing: &str,
+    skip: Option<i64>,
+) -> PyResult<String> {
+    let row = parse(row)?;
+    let rows = objects(rows)?;
+    let existing = objects(existing)?;
+    let skip = skip.and_then(|index| usize::try_from(index).ok());
+    guard(|| {
+        clipboard::preview_conflict_message(&row, &rows, &existing, skip).map_err(crate::raise)
+    })
+}
+
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn reuse_proposals(
+    items: &str,
+    kind: &str,
+    week_start: &str,
+    target_day: i64,
+    target_start: Option<&str>,
+    assignments: &str,
+    available: &str,
+) -> PyResult<String> {
+    let items = objects(items)?;
+    let assignments = object_map(assignments)?;
+    let available = object_map(available)?;
+    guard(|| {
+        let rows = clipboard::proposals_from_clipboard(
+            &items,
+            kind,
+            week_start,
+            target_day,
+            target_start,
+            &assignments,
+            &available,
+        )
+        .map_err(crate::raise)?;
+        Ok(dump(&Value::Array(rows)))
+    })
+}
+
+#[pyfunction]
+fn reuse_merge_rows(rows: &str, operation_id: &str) -> PyResult<String> {
+    let rows = objects(rows)?;
+    guard(|| {
+        let merged = clipboard::merge_preview_rows(&rows, operation_id).map_err(crate::raise)?;
+        Ok(dump(&Value::Array(merged)))
+    })
+}
+
+#[pyfunction]
+fn reuse_routine_sources(blocks: &str) -> PyResult<String> {
+    let blocks = objects(blocks)?;
+    guard(|| {
+        let kept = clipboard::routine_source_blocks(&blocks).map_err(crate::raise)?;
+        Ok(dump(&Value::Array(kept)))
+    })
+}
+
+#[pyfunction]
+fn reuse_routine_template(block: &str, template_id: &str) -> PyResult<String> {
+    let block = parse(block)?;
+    guard(|| {
+        let body = clipboard::routine_template(&block, template_id).map_err(crate::raise)?;
+        Ok(dump(&body))
+    })
+}
+
+#[pyfunction]
+fn reuse_routine_rows(routine: &str, week_start: &str, allowed_days: &str) -> PyResult<String> {
+    let routine = parse(routine)?;
+    let allowed = objects(allowed_days)?;
+    guard(|| {
+        let rows = clipboard::routine_rows(&routine, week_start, &allowed).map_err(crate::raise)?;
+        Ok(dump(&Value::Array(rows)))
+    })
+}
+
+#[pyfunction]
+fn reuse_unfinished(
+    assignments: &str,
+    saved_weeks: &str,
+    week_start: &str,
+    blocks: &str,
+    committed: &str,
+) -> PyResult<String> {
+    let assignments = object_map(assignments)?;
+    let saved = objects(saved_weeks)?;
+    let blocks = objects(blocks)?;
+    let committed = objects(committed)?;
+    guard(|| {
+        let items =
+            clipboard::unfinished_items(&assignments, &saved, week_start, &blocks, &committed)
+                .map_err(crate::raise)?;
+        Ok(dump(&Value::Array(items)))
+    })
+}
+
+/// `today()` is the caller's local date as an ISO string; a Python error from it is raised as it
+/// came.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn reuse_planner_title(
+    week_start: &str,
+    session_day: Option<&str>,
+    session_month: Option<&str>,
+    view: &str,
+    short: bool,
+    selected_day: Option<&str>,
+    today: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    let failure: RefCell<Option<PyErr>> = RefCell::new(None);
+    let mut local_date = || -> EngineResult<String> {
+        today
+            .call0()
+            .and_then(|value| value.extract::<String>())
+            .map_err(|error| {
+                *failure.borrow_mut() = Some(error);
+                EngineError::value("local date")
+            })
+    };
+    let outcome = guard(|| {
+        Ok(reuse::planner_title(
+            week_start,
+            session_day,
+            session_month,
+            view,
+            short,
+            selected_day,
+            &mut local_date,
+        ))
+    })?;
+    match failure.into_inner() {
+        Some(error) => Err(error),
+        None => outcome.map_err(crate::raise),
+    }
 }
 
 #[pyfunction]
@@ -997,6 +1146,14 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         reuse_fingerprint,
         reuse_occurs,
         reuse_row_conflict,
+        reuse_preview_message,
+        reuse_proposals,
+        reuse_merge_rows,
+        reuse_routine_sources,
+        reuse_routine_template,
+        reuse_routine_rows,
+        reuse_unfinished,
+        reuse_planner_title,
         files_export_week,
         files_export_day,
         files_parse_import,

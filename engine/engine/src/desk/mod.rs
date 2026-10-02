@@ -1,4 +1,5 @@
 pub mod calendar;
+pub mod clipboard;
 mod cmath;
 pub mod custom_look;
 pub mod files;
@@ -6,6 +7,7 @@ pub mod focus;
 pub mod history;
 pub mod pomodoro;
 pub(crate) mod pydate;
+pub(crate) mod pyval;
 pub mod remind;
 pub mod reuse;
 pub mod tokens;
