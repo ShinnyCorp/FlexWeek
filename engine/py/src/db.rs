@@ -5,11 +5,11 @@ use std::sync::Mutex;
 use std::thread::ThreadId;
 use std::time::Duration;
 
-use pyo3::exceptions::{PyIndexError, PyOverflowError};
+use pyo3::exceptions::{PyIndexError, PyMemoryError, PyOverflowError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDict, PyFloat, PyInt, PyString};
 use rusqlite::types::Value;
-use rusqlite::{Connection as SqlConn, Error as SqlError, ErrorCode, params_from_iter};
+use rusqlite::{Connection as SqlConn, Error as SqlError, ffi, params_from_iter};
 
 use crate::guard;
 
@@ -474,32 +474,42 @@ pub(crate) fn sqlite_py(py: Python<'_>, error: &SqlError) -> PyErr {
                 "Incorrect number of bindings supplied. The current statement uses {needed}, and there are {got} supplied."
             ),
         ),
-        SqlError::SqliteFailure(sqlite, message)
-            if sqlite.code == ErrorCode::ConstraintViolation =>
-        {
-            sqlite_kind(
-                py,
-                "IntegrityError",
-                message.clone().unwrap_or_else(|| error.to_string()),
-            )
-        }
-        SqlError::SqliteFailure(_, message) => sqlite_kind(
+        SqlError::SqliteFailure(sqlite, message) => sqlite_code(
             py,
-            "OperationalError",
+            sqlite.extended_code,
             message.clone().unwrap_or_else(|| error.to_string()),
         ),
         SqlError::SqlInputError {
             error: sqlite, msg, ..
-        } => {
-            let kind = if sqlite.code == ErrorCode::ConstraintViolation {
-                "IntegrityError"
-            } else {
-                "OperationalError"
-            };
-            sqlite_kind(py, kind, msg.clone())
-        }
+        } => sqlite_code(py, sqlite.extended_code, msg.clone()),
         other => sqlite_kind(py, "DatabaseError", other.to_string()),
     }
+}
+
+/// CPython's table from a SQLite result code to an exception class.
+fn sqlite_code(py: Python<'_>, code: i32, message: String) -> PyErr {
+    let kind = match code & 0xff {
+        ffi::SQLITE_NOMEM => return PyMemoryError::new_err(message),
+        ffi::SQLITE_CONSTRAINT | ffi::SQLITE_MISMATCH => "IntegrityError",
+        ffi::SQLITE_TOOBIG => "DataError",
+        ffi::SQLITE_INTERNAL | ffi::SQLITE_NOTFOUND => "InternalError",
+        ffi::SQLITE_MISUSE | ffi::SQLITE_RANGE => "InterfaceError",
+        ffi::SQLITE_ERROR
+        | ffi::SQLITE_PERM
+        | ffi::SQLITE_ABORT
+        | ffi::SQLITE_BUSY
+        | ffi::SQLITE_LOCKED
+        | ffi::SQLITE_READONLY
+        | ffi::SQLITE_INTERRUPT
+        | ffi::SQLITE_IOERR
+        | ffi::SQLITE_FULL
+        | ffi::SQLITE_CANTOPEN
+        | ffi::SQLITE_PROTOCOL
+        | ffi::SQLITE_EMPTY
+        | ffi::SQLITE_SCHEMA => "OperationalError",
+        _ => "DatabaseError",
+    };
+    sqlite_kind(py, kind, message)
 }
 
 fn sqlite_kind(py: Python<'_>, kind: &str, message: impl Into<String>) -> PyErr {
