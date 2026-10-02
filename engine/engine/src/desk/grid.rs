@@ -268,8 +268,11 @@ pub fn delete_occurrence(
             result.push(item);
             continue;
         }
+        if day.is_null() {
+            continue;
+        }
         let days = subscript(&item, "days")?;
-        if day.is_null() || length(days)? <= 1 || !contains(days, day)? {
+        if length(days)? <= 1 || !contains(days, day)? {
             continue;
         }
         let mut kept = item.clone();
@@ -821,6 +824,21 @@ pub fn category_icon(category: Option<&str>) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deleting_a_whole_block_does_not_read_its_days() {
+        let result = delete_occurrence(
+            &json!([{"id": "x", "title": "t"}, {"id": "y"}]),
+            &json!("x"),
+            &Value::Null,
+        );
+        assert!(
+            result
+                .as_ref()
+                .is_ok_and(|rows| rows == &vec![json!({"id": "y"})]),
+            "{result:?}"
+        );
+    }
 
     #[test]
     fn a_deadline_is_counted_in_days_from_the_week_start() {
