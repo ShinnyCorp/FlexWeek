@@ -6,8 +6,9 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
-use std::sync::OnceLock;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use fwtest::hidden;
 use fwtest::identity;
@@ -77,6 +78,9 @@ fn main() {
             sleep_until_signaled();
         }
         "kwin_wayland" => {
+            if env::var("FWTEST_STANDIN_HOLD").ok().as_deref() == Some("1") {
+                thread::sleep(Duration::from_secs(30));
+            }
             let exe = env::current_exe().expect("current exe");
             let xwayland = exe.parent().expect("bin").join("Xwayland");
             let _child = process::Command::new(xwayland).arg(":71").spawn();
@@ -126,6 +130,26 @@ fn scratch() -> PathBuf {
     ));
     fs::create_dir_all(path.join("no-systemd")).unwrap();
     path
+}
+
+/// One directory for every test in this process, so `fwtest clean` here does not
+/// see a session another process recorded under `/tmp/flexweek-rig`.
+fn rig_state() -> &'static Path {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let path = std::env::temp_dir().join(format!("fwtest-rig-state-{}", std::process::id()));
+        fs::create_dir_all(&path).unwrap();
+        unsafe {
+            std::env::set_var("FWTEST_RIG_STATE", &path);
+        }
+        path
+    })
+}
+
+fn rig_tests_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let lock = LOCK.get_or_init(|| Mutex::new(()));
+    lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn write_script(path: &Path, body: &str) {
@@ -239,12 +263,15 @@ fn init_repo(repo: &Path) {
 }
 
 fn fwtest(home: &Path, cwd: &Path) -> Command {
+    fwtest_command(home, cwd, true)
+}
+
+fn fwtest_command(home: &Path, cwd: &Path, isolate_systemd: bool) -> Command {
+    rig_state();
     let mut command = Command::new(env!("CARGO_BIN_EXE_fwtest"));
     command
         .current_dir(cwd)
         .env("HOME", home)
-        .env("XDG_RUNTIME_DIR", home.join("no-systemd"))
-        .env("DBUS_SESSION_BUS_ADDRESS", CALLER_BUS)
         .env("FWTEST_QUEUE_POLL_SECS", "1")
         .env("FWTEST_QUEUE_WAIT_SECS", "60")
         .env("FWTEST_PYTHON", home.join("python"))
@@ -252,6 +279,11 @@ fn fwtest(home: &Path, cwd: &Path) -> Command {
             "PATH",
             prepend_standin(&std::env::var("PATH").unwrap_or_default()),
         );
+    if isolate_systemd {
+        command
+            .env("XDG_RUNTIME_DIR", home.join("no-systemd"))
+            .env("DBUS_SESSION_BUS_ADDRESS", CALLER_BUS);
+    }
     command
 }
 
@@ -272,6 +304,8 @@ fn dead(pid: i32) {
 
 #[test]
 fn rig_drops_keep_stops_the_hidden_session_and_leaves_no_child() {
+    let _guard = rig_tests_lock();
+    rig_state();
     let home = scratch();
     let repo = home.join("repo");
     init_repo(&repo);
@@ -338,6 +372,8 @@ echo $! >> "{log}"
 
 #[test]
 fn rig_from_a_subdirectory_runs_at_the_checkout() {
+    let _guard = rig_tests_lock();
+    rig_state();
     let home = scratch();
     let repo = home.join("repo");
     init_repo(&repo);
@@ -387,14 +423,21 @@ fn rig_repo(home: &Path) -> PathBuf {
     repo
 }
 
-fn stale_record(home: &Path, id: &str, repo: &Path, argv: Vec<String>, owner: ProcRef) {
+fn stale_record(
+    home: &Path,
+    id: &str,
+    repo: &Path,
+    argv: Vec<String>,
+    owner: ProcRef,
+    processes: Vec<ProcRef>,
+) {
     let job = JobRecord {
         id: id.to_string(),
         checkout: repo.to_path_buf(),
         argv,
         started: "2026-09-29T06:15:00Z".to_string(),
         owner,
-        processes: Vec::new(),
+        processes,
         limits: JobLimits {
             nice: 19,
             io: "idle".to_string(),
@@ -422,6 +465,7 @@ fn rig_argv(home: &Path, repo: &Path) -> Vec<String> {
 }
 
 fn clean_command(home: &Path) -> Command {
+    rig_state();
     let mut command = Command::new(env!("CARGO_BIN_EXE_fwtest"));
     command
         .current_dir(home)
@@ -434,6 +478,7 @@ fn clean_command(home: &Path) -> Command {
 }
 
 fn write_sleep_session(repo: &Path, pid: i32, started: u64) {
+    rig_state();
     let place = hidden::place(repo).unwrap();
     if let Some(parent) = place.state.parent() {
         fs::create_dir_all(parent).unwrap();
@@ -450,6 +495,8 @@ fn spawn_sleep() -> Reap {
 
 #[test]
 fn clean_stops_the_hidden_session_of_a_stale_rig_job() {
+    let _guard = rig_tests_lock();
+    rig_state();
     let home = scratch();
     let repo = rig_repo(&home);
     let mut sleep = spawn_sleep();
@@ -464,6 +511,7 @@ fn clean_stops_the_hidden_session_of_a_stale_rig_job() {
         &repo,
         rig_argv(&home, &repo),
         dead_owner(),
+        Vec::new(),
     );
     let output = clean_command(&home).output().unwrap();
     assert_ran(&output);
@@ -481,7 +529,9 @@ fn clean_stops_the_hidden_session_of_a_stale_rig_job() {
 }
 
 #[test]
-fn clean_leaves_the_hidden_session_alone_for_other_stale_jobs() {
+fn clean_stops_a_session_named_only_by_its_state_file() {
+    let _guard = rig_tests_lock();
+    rig_state();
     let home = scratch();
     let repo = rig_repo(&home);
     let mut sleep = spawn_sleep();
@@ -489,20 +539,52 @@ fn clean_leaves_the_hidden_session_alone_for_other_stale_jobs() {
     let pid = child.id() as i32;
     let identity = identity::read_identity(pid).unwrap().unwrap();
     write_sleep_session(&repo, pid, identity.start_ticks);
-    let argv = vec!["sleep".to_string(), "1".to_string()];
-    stale_record(&home, "stale-sleep", &repo, argv, dead_owner());
     let output = clean_command(&home).output().unwrap();
     assert_ran(&output);
     assert!(
-        sleep.0.as_mut().unwrap().try_wait().unwrap().is_none(),
-        "sleep {pid} was stopped"
+        sleep.0.as_mut().unwrap().try_wait().unwrap().is_some(),
+        "sleep {pid} still running"
     );
-    assert!(hidden::place(&repo).unwrap().state.exists());
+    assert!(!hidden::place(&repo).unwrap().state.exists());
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn clean_stops_a_session_named_only_by_its_job_record() {
+    let _guard = rig_tests_lock();
+    rig_state();
+    let home = scratch();
+    let repo = rig_repo(&home);
+    let mut sleep = spawn_sleep();
+    let child = sleep.0.as_ref().unwrap();
+    let pid = child.id() as i32;
+    let identity = identity::read_identity(pid).unwrap().unwrap();
+    stale_record(
+        &home,
+        "stale-rig",
+        &repo,
+        rig_argv(&home, &repo),
+        dead_owner(),
+        vec![ProcRef {
+            pid,
+            start_ticks: identity.start_ticks,
+            comm: identity.comm,
+        }],
+    );
+    assert!(!hidden::place(&repo).unwrap().state.exists());
+    let output = clean_command(&home).output().unwrap();
+    assert_ran(&output);
+    assert!(
+        sleep.0.as_mut().unwrap().try_wait().unwrap().is_some(),
+        "sleep {pid} still running"
+    );
     let _ = fs::remove_dir_all(home);
 }
 
 #[test]
 fn clean_leaves_the_hidden_session_alone_while_a_rig_job_is_live_in_that_checkout() {
+    let _guard = rig_tests_lock();
+    rig_state();
     let home = scratch();
     let repo = rig_repo(&home);
     let mut sleep = spawn_sleep();
@@ -517,13 +599,21 @@ fn clean_leaves_the_hidden_session_alone_while_a_rig_job_is_live_in_that_checkou
         start_ticks: owner_identity.start_ticks,
         comm: owner_identity.comm,
     };
-    stale_record(&home, "live-rig", &repo, rig_argv(&home, &repo), live);
+    stale_record(
+        &home,
+        "live-rig",
+        &repo,
+        rig_argv(&home, &repo),
+        live,
+        Vec::new(),
+    );
     stale_record(
         &home,
         "stale-rig",
         &repo,
         rig_argv(&home, &repo),
         dead_owner(),
+        Vec::new(),
     );
     let output = clean_command(&home).output().unwrap();
     let _ = owner.kill();
@@ -539,6 +629,8 @@ fn clean_leaves_the_hidden_session_alone_while_a_rig_job_is_live_in_that_checkou
 
 #[test]
 fn a_failing_hidden_session_stop_is_logged_and_the_record_still_goes() {
+    let _guard = rig_tests_lock();
+    rig_state();
     let home = scratch();
     let repo = rig_repo(&home);
     let state = hidden::place(&repo).unwrap().state;
@@ -549,6 +641,7 @@ fn a_failing_hidden_session_stop_is_logged_and_the_record_still_goes() {
         &repo,
         rig_argv(&home, &repo),
         dead_owner(),
+        Vec::new(),
     );
     let output = clean_command(&home).output().unwrap();
     assert_ran(&output);
@@ -568,5 +661,253 @@ fn a_failing_hidden_session_stop_is_logged_and_the_record_still_goes() {
             .is_empty()
     );
     let _ = fs::remove_dir_all(&state);
+    let _ = fs::remove_dir_all(home);
+}
+
+fn session_processes(path: &Path) -> Vec<(String, i32)> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for part in text.split("\"pid\":").skip(1) {
+        let Some((pid_text, rest)) = part.split_once(',') else {
+            continue;
+        };
+        let Ok(pid) = pid_text.trim().parse::<i32>() else {
+            continue;
+        };
+        let Some(after) = rest.split("\"name\":\"").nth(1) else {
+            continue;
+        };
+        let Some(name) = after.split('"').next() else {
+            continue;
+        };
+        found.push((name.to_string(), pid));
+    }
+    found
+}
+
+fn wait_for_names(path: &Path, names: &[&str]) -> Vec<(String, i32)> {
+    let started = Instant::now();
+    loop {
+        let found = session_processes(path);
+        let have: Vec<&str> = found.iter().map(|(name, _)| name.as_str()).collect();
+        if names.iter().all(|name| have.contains(name)) {
+            return found;
+        }
+        if started.elapsed() > Duration::from_secs(15) {
+            panic!(
+                "state file never recorded {names:?}: {found:?} in {}",
+                path.display()
+            );
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn wait_for_job(root: &Path, names: &[&str]) -> fwtest::job::JobRecord {
+    let started = Instant::now();
+    loop {
+        if let Ok(files) = job::list_job_files(root) {
+            for path in files {
+                if let Ok(job) = job::load_job_file(&path) {
+                    let comms: Vec<&str> = job
+                        .processes
+                        .iter()
+                        .map(|process| process.comm.as_str())
+                        .collect();
+                    if names.iter().all(|name| comms.contains(name)) {
+                        return job;
+                    }
+                }
+            }
+        }
+        if started.elapsed() > Duration::from_secs(15) {
+            panic!("job record never listed {names:?}");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn wait_child(child: &mut Child) -> std::process::ExitStatus {
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status,
+            Ok(None) if started.elapsed() > Duration::from_secs(20) => {
+                let _ = child.kill();
+                panic!("fwtest did not exit");
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+            Err(error) => panic!("wait failed: {error}"),
+        }
+    }
+}
+
+fn systemd_scope_works() -> bool {
+    Command::new("systemd-run")
+        .args(["--user", "--scope", "--collect", "--quiet", "--", "true"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+#[test]
+fn a_signal_during_startup_leaves_no_recorded_process_alive() {
+    let _guard = rig_tests_lock();
+    rig_state();
+    let home = scratch();
+    let repo = rig_repo(&home);
+    let standin_log = home.join("standin.log");
+    let _stop = StopLogged {
+        log: standin_log.clone(),
+    };
+    let mut child = fwtest(&home, &repo)
+        .env("FWTEST_STANDIN_LOG", &standin_log)
+        .env("FWTEST_STANDIN_HOLD", "1")
+        .args(["rig", "--server", "kwin"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let state = hidden::place(&repo).unwrap().state;
+    let recorded = wait_for_names(&state, &["dbus-daemon", "kwin_wayland"]);
+    let job = wait_for_job(
+        &home.join(".flexweek-ui-harness/fwtest"),
+        &["dbus-daemon", "kwin_wayland"],
+    );
+    assert!(
+        job.argv
+            .iter()
+            .any(|arg| arg.ends_with("scripts/rig/drive.py"))
+    );
+    let standin = fs::read_to_string(&standin_log).unwrap_or_default();
+    assert!(
+        !standin.contains("Xwayland"),
+        "display was ready before the signal: {standin}"
+    );
+    signal(child.id() as i32, 15);
+    let status = wait_child(&mut child);
+    assert_eq!(status.code(), Some(143), "status={status:?}");
+    for (_, pid) in &recorded {
+        dead(*pid);
+    }
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn session_processes_are_in_the_job_record_and_the_scope() {
+    let _guard = rig_tests_lock();
+    rig_state();
+    let systemd = systemd_scope_works();
+    let home = scratch();
+    let repo = rig_repo(&home);
+    let standin_log = home.join("standin.log");
+    let _stop = StopLogged {
+        log: standin_log.clone(),
+    };
+    let mut child = fwtest_command(&home, &repo, false)
+        .env("FWTEST_STANDIN_LOG", &standin_log)
+        .env("FWTEST_STANDIN_HOLD", "1")
+        .args(["rig", "--server", "kwin"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let state = hidden::place(&repo).unwrap().state;
+    let recorded = wait_for_names(&state, &["dbus-daemon", "kwin_wayland"]);
+    let job = wait_for_job(
+        &home.join(".flexweek-ui-harness/fwtest"),
+        &["dbus-daemon", "kwin_wayland"],
+    );
+    let dbus_pid = recorded
+        .iter()
+        .find(|(name, _)| name == "dbus-daemon")
+        .unwrap()
+        .1;
+    let identity = identity::read_identity(dbus_pid).unwrap().unwrap();
+    assert_eq!(identity.nice, 19, "session was not niced with the job");
+    if systemd {
+        let scope = job
+            .scope
+            .as_deref()
+            .unwrap_or_else(|| panic!("session was not in a scope: {job:?}"));
+        let cgroup = fs::read_to_string(format!("/proc/{dbus_pid}/cgroup")).unwrap();
+        assert!(
+            cgroup.contains(scope),
+            "dbus-daemon was not in {scope}:\n{cgroup}"
+        );
+        let status = fs::read_to_string(format!("/proc/{dbus_pid}/status")).unwrap();
+        let allowed = status
+            .lines()
+            .find_map(|line| line.strip_prefix("Cpus_allowed_list:"))
+            .unwrap_or("")
+            .trim();
+        let cpus = fwtest::contain::half_cpus();
+        let expected = if cpus.len() > 1 && cpus.windows(2).all(|pair| pair[1] == pair[0] + 1) {
+            format!("{}-{}", cpus[0], cpus[cpus.len() - 1])
+        } else {
+            cpus.iter()
+                .map(|cpu| cpu.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        assert_eq!(allowed, expected, "{status}");
+        assert_eq!(
+            fwtest::contain::io_class(dbus_pid),
+            3,
+            "session did not inherit idle disk priority"
+        );
+    } else {
+        assert!(job.scope.is_none());
+    }
+    let standin = fs::read_to_string(&standin_log).unwrap_or_default();
+    assert!(standin.contains(&format!("bus={PRIVATE_BUS}")), "{standin}");
+    signal(child.id() as i32, 15);
+    let status = wait_child(&mut child);
+    assert_eq!(status.code(), Some(143), "status={status:?}");
+    for (_, pid) in &recorded {
+        dead(*pid);
+    }
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn rig_list_does_not_start_a_session() {
+    let _guard = rig_tests_lock();
+    rig_state();
+    let home = scratch();
+    let repo = home.join("repo");
+    init_repo(&repo);
+    let log = home.join("drive.log");
+    let standin_log = home.join("standin.log");
+    let _stop = StopLogged {
+        log: standin_log.clone(),
+    };
+    write_script(
+        &repo.join("scripts/rig/drive.py"),
+        &format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"{log}\"\n",
+            log = log.display()
+        ),
+    );
+    write_script(&home.join("python"), "#!/bin/sh\nexec \"$@\"\n");
+    let output = fwtest(&home, &repo)
+        .env("FWTEST_STANDIN_LOG", &standin_log)
+        .args(["rig", "--list"])
+        .output()
+        .unwrap();
+    assert_ran(&output);
+    let text = fs::read_to_string(&log).unwrap();
+    assert!(text.contains("--list"), "{text}");
+    let standin = fs::read_to_string(&standin_log).unwrap_or_default();
+    assert!(
+        !standin.contains("dbus-daemon"),
+        "list started a session: {standin}"
+    );
+    assert!(!hidden::place(&repo).unwrap().state.exists());
     let _ = fs::remove_dir_all(home);
 }

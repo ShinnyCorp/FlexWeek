@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::ExitCode;
 use crate::hidden;
@@ -70,7 +70,30 @@ pub fn clean(root: &Path) -> io::Result<CleanReport> {
         std::fs::remove_file(&path)?;
         report.removed += 1;
     }
+    stop_state_files(&live_rig_checkouts);
     Ok(report)
+}
+
+/// A state file is enough. A live rig in that checkout is left alone.
+fn stop_state_files(live_rig_checkouts: &HashSet<PathBuf>) {
+    let mut protected = HashSet::new();
+    for checkout in live_rig_checkouts {
+        if let Ok(place) = hidden::place(checkout) {
+            protected.insert(place.state);
+        }
+    }
+    let Ok(entries) = std::fs::read_dir(hidden::state_root()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let state = entry.path().join("session.json");
+        if !state.is_file() || protected.contains(&state) {
+            continue;
+        }
+        if let Err(message) = hidden::stop_state(&state) {
+            eprintln!("hidden session stop for {}: {message}", state.display());
+        }
+    }
 }
 
 fn ran_rig_driver(job: &JobRecord) -> bool {

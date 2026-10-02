@@ -57,6 +57,12 @@ enum Command {
 }
 
 fn main() {
+    let mut args = std::env::args();
+    let _argv0 = args.next();
+    if args.next().as_deref() == Some("--inside-rig") {
+        let rest: Vec<String> = args.collect();
+        std::process::exit(fwtest::rig::inside(&rest));
+    }
     let cli = Cli::parse();
     let code = match cli.command {
         Command::Clean => fwtest::clean::run().0,

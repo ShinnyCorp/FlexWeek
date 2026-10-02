@@ -57,3 +57,34 @@ def test_drive_without_a_session_says_to_use_fwtest(monkeypatch):
     with pytest.raises(SystemExit) as refused:
         drive.session_from_fwtest()
     assert str(refused.value) == "Use fwtest rig."
+
+
+def test_drive_refuses_display_zero(monkeypatch):
+    monkeypatch.setenv("FLEXWEEK_RIG_DISPLAY", ":0")
+    monkeypatch.setenv("FLEXWEEK_RIG_BUS", "unix:path=/private")
+    monkeypatch.setenv("FLEXWEEK_RIG_RUNS_KEY", "abc-1")
+    monkeypatch.setenv("DISPLAY", ":1")
+    with pytest.raises(SystemExit) as refused:
+        drive.session_from_fwtest()
+    assert str(refused.value) == "Refusing display :0, which belongs to the real desktop."
+
+
+def test_drive_refuses_the_caller_display(monkeypatch):
+    monkeypatch.setenv("FLEXWEEK_RIG_DISPLAY", ":1")
+    monkeypatch.setenv("FLEXWEEK_RIG_BUS", "unix:path=/private")
+    monkeypatch.setenv("FLEXWEEK_RIG_RUNS_KEY", "abc-1")
+    monkeypatch.setenv("DISPLAY", ":1")
+    with pytest.raises(SystemExit) as refused:
+        drive.session_from_fwtest()
+    assert str(refused.value) == "Refusing display :1, which is this process's own DISPLAY."
+
+
+def test_drive_refuses_the_caller_bus(monkeypatch):
+    monkeypatch.setenv("FLEXWEEK_RIG_DISPLAY", ":71")
+    monkeypatch.setenv("FLEXWEEK_RIG_BUS", "unix:path=/caller")
+    monkeypatch.setenv("FLEXWEEK_RIG_RUNS_KEY", "abc-1")
+    monkeypatch.setenv("DISPLAY", ":1")
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/caller")
+    with pytest.raises(SystemExit) as refused:
+        drive.session_from_fwtest()
+    assert str(refused.value) == "Refusing the caller's own D-Bus session bus."

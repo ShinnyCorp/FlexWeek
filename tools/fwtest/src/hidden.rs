@@ -124,15 +124,22 @@ enum PipePoll {
     Pending,
 }
 
+/// Directory that holds one `session.json` per checkout. `FWTEST_RIG_STATE` moves
+/// it for tests so one test process does not stop a session another process recorded.
+pub(crate) fn state_root() -> PathBuf {
+    match std::env::var_os("FWTEST_RIG_STATE") {
+        Some(path) if !path.is_empty() => PathBuf::from(path),
+        _ => PathBuf::from("/tmp/flexweek-rig"),
+    }
+}
+
 pub fn place(checkout: &Path) -> Result<Place, String> {
     let resolved = fs::canonicalize(checkout)
         .map_err(|error| format!("cannot identify checkout {}: {error}", checkout.display()))?;
     let meta = fs::metadata(&resolved).map_err(|error| error.to_string())?;
     let key = format!("{:x}-{:x}", meta.dev(), meta.ino());
     Ok(Place {
-        state: PathBuf::from("/tmp/flexweek-rig")
-            .join(&key)
-            .join("session.json"),
+        state: state_root().join(&key).join("session.json"),
         socket: format!("flexweek-rig-{key}"),
         runs_key: key,
     })
@@ -151,13 +158,51 @@ pub fn start(checkout: &Path, server: &str) -> Result<Started, String> {
 
 pub fn stop(checkout: &Path) -> Result<(), String> {
     let located = place(checkout)?;
-    stop_at(&located.state, Path::new("/proc"), &mut real_kill)
+    stop_state(&located.state)
+}
+
+/// Stop the session recorded at `state`, whether or not a job file still names it.
+pub fn stop_state(state: &Path) -> Result<(), String> {
+    stop_at(state, Path::new("/proc"), &mut real_kill)
 }
 
 #[derive(Debug)]
 struct StartedInner {
     display: String,
     bus: String,
+}
+
+/// Processes started so far. Drop stops them unless start finished.
+struct Armed<'a> {
+    host: &'a mut dyn Host,
+    pids: Vec<i32>,
+    armed: bool,
+}
+
+impl Drop for Armed<'_> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        for pid in self.pids.drain(..).rev() {
+            self.host.terminate(pid);
+        }
+    }
+}
+
+fn remember(
+    armed: &mut Armed<'_>,
+    server: Server,
+    display: &str,
+    processes: &[OwnedProcess],
+    bus: &str,
+) -> Result<(), String> {
+    armed.host.save(&Session {
+        server,
+        display: display.to_string(),
+        processes: processes.to_vec(),
+        bus: bus.to_string(),
+    })
 }
 
 fn start_on(host: &mut dyn Host, server: &str) -> Result<StartedInner, String> {
@@ -171,40 +216,55 @@ fn start_on(host: &mut dyn Host, server: &str) -> Result<StartedInner, String> {
         server
     };
     let server = Server::parse(server).ok_or_else(|| format!("Unknown server '{server}'"))?;
-    if let Some(current) = host.read_state() {
-        if host.running().is_some() && current.server == server {
-            return Ok(StartedInner {
-                display: current.display,
-                bus: current.bus,
-            });
-        }
+    if let Some(current) = host.read_state()
+        && host.running().is_some()
+        && current.server == server
+    {
+        return Ok(StartedInner {
+            display: current.display,
+            bus: current.bus,
+        });
+    }
+    if host.has_record() {
         host.stop()?;
     }
-    let base = host.base_env();
-    let (bus_pid, address) = host.start_bus(&base)?;
-    let started = (|| {
-        let mut env = base.clone();
-        env.insert("DBUS_SESSION_BUS_ADDRESS".to_string(), address.clone());
-        let daemon = host.owned(bus_pid, "dbus-daemon")?;
-        match server {
-            Server::Kwin => start_kwin(host, &env, &daemon, &address),
-            Server::Xvfb => start_xvfb(host, &env, &daemon, &address),
-        }
-    })();
-    if started.is_err() {
-        host.terminate(bus_pid);
+    let mut armed = Armed {
+        host,
+        pids: Vec::new(),
+        armed: true,
+    };
+    let started = start_children(&mut armed, server);
+    if started.is_ok() {
+        armed.armed = false;
     }
-    host.close_stdout(bus_pid);
     started
 }
 
+fn start_children(armed: &mut Armed<'_>, server: Server) -> Result<StartedInner, String> {
+    let base = armed.host.base_env();
+    let (bus_pid, address) = armed.host.start_bus(&base)?;
+    armed.pids.push(bus_pid);
+    let result = (|| {
+        let daemon = armed.host.owned(bus_pid, "dbus-daemon")?;
+        remember(armed, server, "", std::slice::from_ref(&daemon), &address)?;
+        let mut env = base.clone();
+        env.insert("DBUS_SESSION_BUS_ADDRESS".to_string(), address.clone());
+        match server {
+            Server::Kwin => start_kwin(armed, &env, &daemon, &address),
+            Server::Xvfb => start_xvfb(armed, &env, &daemon, &address),
+        }
+    })();
+    armed.host.close_stdout(bus_pid);
+    result
+}
+
 fn start_kwin(
-    host: &mut dyn Host,
+    armed: &mut Armed<'_>,
     env: &Env,
     daemon: &OwnedProcess,
     address: &str,
 ) -> Result<StartedInner, String> {
-    let socket = host.socket_name();
+    let socket = armed.host.socket_name();
     let command = vec![
         "kwin_wayland".to_string(),
         "--virtual".to_string(),
@@ -218,41 +278,46 @@ fn start_kwin(
         "--height".to_string(),
         HEIGHT.to_string(),
     ];
-    let pid = host.launch(&command, "kwin.log", env, false)?;
+    let pid = armed.host.launch(&command, "kwin.log", env, false)?;
+    armed.pids.push(pid);
+    let owned = armed.host.owned(pid, "kwin_wayland")?;
+    remember(
+        armed,
+        Server::Kwin,
+        "",
+        &[daemon.clone(), owned.clone()],
+        address,
+    )?;
     let begun = Instant::now();
-    let result = (|| {
-        while host.before_deadline(begun, 20) {
-            if host.exited(pid) {
-                return Err(format!("KWin exited; see {}", host.log_path("kwin.log")));
-            }
-            if let Some(display) = host.kwin_display_of(pid)
-                && host.connects(&display, env)?
-            {
-                let owned = host.owned(pid, "kwin_wayland")?;
-                let session = Session {
-                    server: Server::Kwin,
-                    display: display.clone(),
-                    processes: vec![daemon.clone(), owned],
-                    bus: address.to_string(),
-                };
-                host.save(&session)?;
-                return Ok(StartedInner {
-                    display,
-                    bus: address.to_string(),
-                });
-            }
-            host.pause();
+    while armed.host.before_deadline(begun, 20) {
+        if armed.host.exited(pid) {
+            return Err(format!(
+                "KWin exited; see {}",
+                armed.host.log_path("kwin.log")
+            ));
         }
-        Err("The hidden session's Xwayland never came up".to_string())
-    })();
-    if result.is_err() {
-        host.terminate(pid);
+        if let Some(display) = armed.host.kwin_display_of(pid)
+            && armed.host.connects(&display, env)?
+        {
+            remember(
+                armed,
+                Server::Kwin,
+                &display,
+                &[daemon.clone(), owned],
+                address,
+            )?;
+            return Ok(StartedInner {
+                display,
+                bus: address.to_string(),
+            });
+        }
+        armed.host.pause();
     }
-    result
+    Err("The hidden session's Xwayland never came up".to_string())
 }
 
 fn start_xvfb(
-    host: &mut dyn Host,
+    armed: &mut Armed<'_>,
     env: &Env,
     daemon: &OwnedProcess,
     address: &str,
@@ -268,39 +333,45 @@ fn start_xvfb(
         "tcp".to_string(),
         "-ac".to_string(),
     ];
-    let pid = host.launch(&command, "xvfb.log", env, true)?;
-    let mut openbox_pid = None;
-    let result = (|| {
-        let display = display_from_pipe(host, pid)?;
-        wait_for_display(host, &display, env, pid)?;
-        let mut display_env = env.clone();
-        display_env.insert("DISPLAY".to_string(), display.clone());
-        let openbox = host.launch(&["openbox".to_string()], "openbox.log", &display_env, false)?;
-        openbox_pid = Some(openbox);
-        wait_for_openbox(host, &display_env, openbox)?;
-        let session = Session {
-            server: Server::Xvfb,
-            display: display.clone(),
-            processes: vec![
-                daemon.clone(),
-                host.owned(pid, "Xvfb")?,
-                host.owned(openbox, "openbox")?,
-            ],
-            bus: address.to_string(),
-        };
-        host.save(&session)?;
-        Ok(StartedInner {
-            display,
-            bus: address.to_string(),
-        })
-    })();
-    if result.is_err() {
-        if let Some(openbox) = openbox_pid {
-            host.terminate(openbox);
-        }
-        host.terminate(pid);
-    }
-    result
+    let pid = armed.host.launch(&command, "xvfb.log", env, true)?;
+    armed.pids.push(pid);
+    let xvfb = armed.host.owned(pid, "Xvfb")?;
+    remember(
+        armed,
+        Server::Xvfb,
+        "",
+        &[daemon.clone(), xvfb.clone()],
+        address,
+    )?;
+    let display = display_from_pipe(armed.host, pid)?;
+    wait_for_display(armed.host, &display, env, pid)?;
+    let mut display_env = env.clone();
+    display_env.insert("DISPLAY".to_string(), display.clone());
+    let openbox =
+        armed
+            .host
+            .launch(&["openbox".to_string()], "openbox.log", &display_env, false)?;
+    armed.pids.push(openbox);
+    let window = armed.host.owned(openbox, "openbox")?;
+    remember(
+        armed,
+        Server::Xvfb,
+        "",
+        &[daemon.clone(), xvfb.clone(), window.clone()],
+        address,
+    )?;
+    wait_for_openbox(armed.host, &display_env, openbox)?;
+    remember(
+        armed,
+        Server::Xvfb,
+        &display,
+        &[daemon.clone(), xvfb, window],
+        address,
+    )?;
+    Ok(StartedInner {
+        display,
+        bus: address.to_string(),
+    })
 }
 
 fn display_from_pipe(host: &mut dyn Host, pid: i32) -> Result<String, String> {
@@ -516,17 +587,28 @@ fn session_running(session: &Session, proc_root: &Path, x11: &Path) -> Option<St
         .then(|| session.display.clone())
 }
 
+fn read_recorded(path: &Path) -> Vec<OwnedProcess> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(file) = serde_json::from_str::<SessionFile>(&text) else {
+        return Vec::new();
+    };
+    if Server::parse(&file.server).is_none() {
+        return Vec::new();
+    }
+    file.processes
+}
+
 fn stop_at(
     state: &Path,
     proc_root: &Path,
     kill: &mut dyn FnMut(i32, i32) -> io::Result<()>,
 ) -> Result<(), String> {
-    if let Some(session) = read_session(state) {
-        for process in session.processes.iter().rev() {
-            signal_until_dead(proc_root, process, kill)?;
-            // fwtest is the parent. A stopped child stays a zombie until waited.
-            crate::identity::reap_pids([process.pid]);
-        }
+    for process in read_recorded(state).iter().rev() {
+        signal_until_dead(proc_root, process, kill)?;
+        // fwtest is the parent. A stopped child stays a zombie until waited.
+        crate::identity::reap_pids([process.pid]);
     }
     match fs::remove_file(state) {
         Ok(()) => Ok(()),
@@ -580,6 +662,7 @@ mod libc_signal {
 trait Host {
     fn which(&self, name: &str) -> bool;
     fn read_state(&self) -> Option<Session>;
+    fn has_record(&self) -> bool;
     fn save(&mut self, session: &Session) -> Result<(), String>;
     fn stop(&mut self) -> Result<(), String>;
     fn running(&mut self) -> Option<String>;
@@ -641,6 +724,10 @@ impl Host for RealHost {
         read_session(&self.place.state)
     }
 
+    fn has_record(&self) -> bool {
+        self.place.state.is_file()
+    }
+
     fn save(&mut self, session: &Session) -> Result<(), String> {
         save_session(&self.place.state, session)
     }
@@ -698,13 +785,7 @@ impl Host for RealHost {
             env,
             true,
         )?;
-        let address = match self.poll_stdout(pid, Duration::from_secs(10))? {
-            PipePoll::Line(line) if !line.is_empty() && !self.exited(pid) => line,
-            _ => {
-                self.terminate(pid);
-                return Err("The hidden session's D-Bus never gave its address".to_string());
-            }
-        };
+        let address = finish_bus(self, pid)?;
         Ok((pid, address))
     }
 
@@ -937,6 +1018,46 @@ fn take_line(pending: &mut Vec<u8>) -> Option<String> {
     Some(String::from_utf8_lossy(&line).trim().to_string())
 }
 
+/// Stops `pid` on drop unless disarmed. A panic while reading the bus uses this.
+struct StopPid<'a> {
+    host: &'a mut dyn Host,
+    pid: Option<i32>,
+}
+
+impl Drop for StopPid<'_> {
+    fn drop(&mut self) {
+        if let Some(pid) = self.pid.take() {
+            self.host.terminate(pid);
+        }
+    }
+}
+
+fn read_bus_line(host: &mut dyn Host, pid: i32) -> Result<String, String> {
+    let begun = Instant::now();
+    while host.before_deadline(begun, 10) {
+        match host.poll_stdout(pid, Duration::from_millis(200))? {
+            PipePoll::Line(line) if !line.is_empty() && !host.exited(pid) => return Ok(line),
+            PipePoll::Line(_) => break,
+            PipePoll::Pending => {
+                if host.exited(pid) {
+                    break;
+                }
+            }
+        }
+    }
+    Err("The hidden session's D-Bus never gave its address".to_string())
+}
+
+fn finish_bus(host: &mut dyn Host, pid: i32) -> Result<String, String> {
+    let mut stop = StopPid {
+        host,
+        pid: Some(pid),
+    };
+    let line = read_bus_line(stop.host, pid)?;
+    stop.pid = None;
+    Ok(line)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -990,6 +1111,9 @@ mod tests {
         socket: String,
         caller_bus: String,
         terminated: Vec<i32>,
+        poll_error: bool,
+        withhold_polls: u32,
+        panic_in_connect: bool,
     }
 
     impl Fake {
@@ -1016,6 +1140,9 @@ mod tests {
                 socket: "flexweek-rig-test".to_string(),
                 caller_bus: "unix:path=/tmp/caller".to_string(),
                 terminated: Vec::new(),
+                poll_error: false,
+                withhold_polls: 0,
+                panic_in_connect: false,
             }
         }
     }
@@ -1027,6 +1154,10 @@ mod tests {
 
         fn read_state(&self) -> Option<Session> {
             self.state.clone()
+        }
+
+        fn has_record(&self) -> bool {
+            self.state.is_some()
         }
 
         fn save(&mut self, session: &Session) -> Result<(), String> {
@@ -1107,6 +1238,9 @@ mod tests {
         }
 
         fn connects(&mut self, _display: &str, _env: &Env) -> Result<bool, String> {
+            if self.panic_in_connect {
+                panic!("start blew up");
+            }
             let answer = self
                 .connects_answers
                 .get(self.connects_calls)
@@ -1117,6 +1251,13 @@ mod tests {
         }
 
         fn poll_stdout(&mut self, _pid: i32, _timeout: Duration) -> Result<PipePoll, String> {
+            if self.poll_error {
+                return Err("poll failed".to_string());
+            }
+            if self.withhold_polls > 0 {
+                self.withhold_polls -= 1;
+                return Ok(PipePoll::Pending);
+            }
             if let Some(line) = self.pipe_line.take() {
                 return Ok(PipePoll::Line(line));
             }
@@ -1254,9 +1395,19 @@ mod tests {
                 .iter()
                 .all(|(command, _, _)| command[0] != "kwin_wayland")
         );
-        assert_eq!(fake.saved[0].server, Server::Xvfb);
+        assert!(
+            fake.saved.len() >= 2,
+            "state must be written before the display is ready"
+        );
+        assert!(
+            fake.saved
+                .iter()
+                .any(|session| session.display.is_empty() && !session.processes.is_empty())
+        );
+        let saved = fake.saved.last().unwrap();
+        assert_eq!(saved.server, Server::Xvfb);
         assert_eq!(
-            fake.saved[0]
+            saved
                 .processes
                 .iter()
                 .map(|process| process.name.as_str())
@@ -1369,9 +1520,18 @@ mod tests {
                 "900",
             ]
         );
-        assert_eq!(fake.saved[0].bus, "unix:path=/tmp/private");
+        assert!(fake.saved.iter().any(|session| {
+            session.display.is_empty()
+                && session
+                    .processes
+                    .iter()
+                    .any(|process| process.name == "dbus-daemon")
+        }));
+        let saved = fake.saved.last().unwrap();
+        assert_eq!(saved.display, ":71");
+        assert_eq!(saved.bus, "unix:path=/tmp/private");
         assert_eq!(
-            fake.saved[0]
+            saved
                 .processes
                 .iter()
                 .map(|process| process.name.as_str())
@@ -1445,9 +1605,113 @@ mod tests {
     }
 
     #[test]
+    fn an_error_after_the_bus_starts_stops_what_was_started() {
+        let mut fake = Fake::new();
+        fake.kwin_on_path = true;
+        fake.force_timeout = true;
+        let error = start_on(&mut fake, "kwin").unwrap_err();
+        assert!(error.contains("Xwayland never came up"), "{error}");
+        assert!(
+            fake.terminated.contains(&fake.bus_pid),
+            "{:?}",
+            fake.terminated
+        );
+        assert!(fake.terminated.contains(&100), "{:?}", fake.terminated);
+    }
+
+    #[test]
+    fn a_panic_during_start_stops_what_was_started() {
+        let mut fake = Fake::new();
+        fake.kwin_on_path = true;
+        fake.panic_in_connect = true;
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = start_on(&mut fake, "kwin");
+        }));
+        assert!(caught.is_err());
+        assert!(
+            fake.terminated.contains(&fake.bus_pid),
+            "{:?}",
+            fake.terminated
+        );
+        assert!(fake.terminated.contains(&100), "{:?}", fake.terminated);
+    }
+
+    #[test]
+    fn a_bus_error_stops_the_daemon() {
+        let mut timed_out = Fake::new();
+        timed_out.force_timeout = true;
+        let timed_out_pid = timed_out.bus_pid;
+        let error = finish_bus(&mut timed_out, timed_out_pid).unwrap_err();
+        assert!(error.contains("never gave its address"), "{error}");
+        assert_eq!(timed_out.terminated, vec![42]);
+
+        let mut died = Fake::new();
+        died.exited = true;
+        let died_pid = died.bus_pid;
+        let error = finish_bus(&mut died, died_pid).unwrap_err();
+        assert!(error.contains("never gave its address"), "{error}");
+        assert_eq!(died.terminated, vec![42]);
+
+        let mut broken = Fake::new();
+        broken.poll_error = true;
+        let broken_pid = broken.bus_pid;
+        let error = finish_bus(&mut broken, broken_pid).unwrap_err();
+        assert_eq!(error, "poll failed");
+        assert_eq!(broken.terminated, vec![42]);
+    }
+
+    #[test]
+    fn the_bus_address_waits_for_a_whole_line() {
+        let mut pending = b"unix:path=/tmp/part".to_vec();
+        assert!(take_line(&mut pending).is_none());
+        pending.extend_from_slice(b"ial\n");
+        assert_eq!(
+            take_line(&mut pending).as_deref(),
+            Some("unix:path=/tmp/partial")
+        );
+
+        let mut fake = Fake::new();
+        fake.withhold_polls = 2;
+        fake.pipe_line = Some("unix:path=/tmp/private".to_string());
+        let line = finish_bus(&mut fake, 42).unwrap();
+        assert_eq!(line, "unix:path=/tmp/private");
+        assert!(fake.terminated.is_empty(), "{:?}", fake.terminated);
+    }
+
+    #[test]
+    fn stop_reads_a_session_saved_before_the_display_is_ready() {
+        let root = temp_dir();
+        let mut child = Command::new("sleep").arg("30").spawn().unwrap();
+        let pid = child.id() as i32;
+        let owned = owned(Path::new("/proc"), pid, "sleep").unwrap();
+        let state = root.join("session.json");
+        save_session(
+            &state,
+            &Session {
+                server: Server::Kwin,
+                display: String::new(),
+                processes: vec![owned],
+                bus: "unix:path=/tmp/private".to_string(),
+            },
+        )
+        .unwrap();
+        assert!(read_session(&state).is_none());
+        stop_at(&state, Path::new("/proc"), &mut real_kill).unwrap();
+        assert!(
+            crate::identity::read_identity(pid).unwrap().is_none(),
+            "pid {pid} still running"
+        );
+        assert!(!state.exists());
+        let _ = child.wait();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn private_bus_has_no_activatable_services() {
         if !which("dbus-daemon") || !which("busctl") {
-            return;
+            panic!(
+                "dbus-daemon and busctl must be on PATH to check the private bus has no activatable services"
+            );
         }
         let root = temp_dir();
         let mut host = RealHost::new(Place {

@@ -96,6 +96,14 @@ def session_from_fwtest() -> tuple[str, str, str]:
     runs_key = os.environ.get("FLEXWEEK_RIG_RUNS_KEY", "")
     if not display or not bus or not runs_key:
         raise SystemExit("Use fwtest rig.")
+    if display == ":0":
+        raise SystemExit("Refusing display :0, which belongs to the real desktop.")
+    own_display = os.environ.get("DISPLAY", "")
+    if own_display and display == own_display:
+        raise SystemExit(f"Refusing display {display}, which is this process's own DISPLAY.")
+    own_bus = os.environ.get("DBUS_SESSION_BUS_ADDRESS", "")
+    if own_bus and bus == own_bus:
+        raise SystemExit("Refusing the caller's own D-Bus session bus.")
     return display, bus, runs_key
 
 
