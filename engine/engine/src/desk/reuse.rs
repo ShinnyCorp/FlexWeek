@@ -27,7 +27,7 @@ pub fn floor_slot(minutes: i64) -> i64 {
 }
 
 pub fn is_homework_session(block: &Value) -> bool {
-    block.get("assignment_id").is_some()
+    crate::stored::truthy(block.get("assignment_id"))
 }
 
 pub fn session_days(week_start: &str, due: &str) -> Vec<i64> {
@@ -45,7 +45,10 @@ pub fn session_days(week_start: &str, due: &str) -> Vec<i64> {
 
 pub fn is_planned(block: &Value) -> bool {
     block.get("kind").and_then(Value::as_str) == Some("flexible")
-        && block.get("start").is_some()
+        && block
+            .get("start")
+            .and_then(Value::as_str)
+            .is_some_and(|start| !start.is_empty())
         && block.get("completed").and_then(Value::as_bool) != Some(true)
         && block.get("days").and_then(Value::as_array).map(|d| d.len()) == Some(1)
 }
@@ -106,7 +109,7 @@ pub fn apply_plan(
             continue;
         }
         if let Some(winner) = placed.get(id) {
-            if winner.get("start").is_some() {
+            if super::has_start(winner) {
                 copy.insert(
                     "start".into(),
                     winner.get("start").cloned().unwrap_or(Value::Null),
@@ -116,8 +119,8 @@ pub fn apply_plan(
                 }
             }
         } else if unplaced_ids.contains(id) {
-            copy.remove("pinned");
-            if copy.remove("start").is_some()
+            copy.shift_remove("pinned");
+            if copy.shift_remove("start").is_some()
                 && let (Some(assignments), Some(week_start)) = (assignments, week_start)
             {
                 copy.insert(
@@ -141,10 +144,13 @@ pub fn clear_stale_pins(blocks: &[Value]) -> Vec<Value> {
         .map(|block| {
             let mut copy = block.as_object().cloned().unwrap_or_default();
             if copy.get("pinned").and_then(Value::as_bool) == Some(true)
-                && !(copy.get("start").is_some()
+                && !(copy
+                    .get("start")
+                    .and_then(Value::as_str)
+                    .is_some_and(|start| !start.is_empty())
                     && copy.get("days").and_then(Value::as_array).map(|d| d.len()) == Some(1))
             {
-                copy.remove("pinned");
+                copy.shift_remove("pinned");
             }
             Value::Object(copy)
         })
@@ -175,7 +181,9 @@ pub fn plan_start(
         return None;
     }
     let mut minute = now_minute + if now_has_subminute { 1 } else { 0 };
-    minute = (-(-minute / SLOT_MIN)) * SLOT_MIN;
+    // Python `-(-minute // SLOT_MIN)` floors the negative quotient. Rust `/` truncates
+    // toward zero, which leaves 10:00:30 at 600 instead of 615.
+    minute = -(-minute).div_euclid(SLOT_MIN) * SLOT_MIN;
     if minute >= DAY_END_MIN {
         return Some((day + 1, DAY_START_MIN));
     }
@@ -231,7 +239,7 @@ pub fn available_homework_minutes(
     let id = assignment.get("id").and_then(Value::as_str).unwrap_or("");
     let here = session_minutes(blocks, id);
     let committed = session_minutes(committed_blocks.unwrap_or(&[]), id);
-    if assignment.get("unplanned_min").is_none() {
+    if assignment.get("unplanned_min").is_none_or(Value::is_null) {
         let remaining = (assignment
             .get("estimate_min")
             .and_then(Value::as_i64)
@@ -370,7 +378,7 @@ pub fn copy_label(block: &Value, source_day: i64, scope: &str) -> String {
         return format!("{title} (all days)");
     }
     if series {
-        return format!("{title} ({})", DAY_FULL[source_day as usize]);
+        return format!("{title} ({} only)", DAY_FULL[source_day as usize]);
     }
     title.to_string()
 }
@@ -514,7 +522,7 @@ pub fn copied_fixed_block(source: &Value, days: &[i64], block_id: &str) -> Value
         "pomodoro_index",
         "template_id",
     ] {
-        copy.remove(key);
+        copy.shift_remove(key);
     }
     Value::Object(copy)
 }
@@ -561,14 +569,14 @@ pub fn clipboard_fingerprint(items: &[Value]) -> String {
             })
         })
         .collect();
-    crate::snapshot::canonical(&Value::Array(payload))
+    crate::snapshot::dumps_sorted(&Value::Array(payload))
 }
 
 pub fn block_occurs_on_day(block: &Value, day: i64, placed: Option<&[Value]>) -> bool {
     let flexible =
         is_homework_session(block) || block.get("kind").and_then(Value::as_str) == Some("flexible");
     if flexible {
-        let mut source = if block.get("start").is_some() {
+        let mut source = if super::has_start(block) {
             Some(block.clone())
         } else {
             None
@@ -583,25 +591,32 @@ pub fn block_occurs_on_day(block: &Value, day: i64, placed: Option<&[Value]>) ->
                 })
                 .cloned();
         }
-        return source.is_some_and(|item| {
-            item.get("start").is_some() && occurrence_days(&item).contains(&day)
-        });
+        return source
+            .is_some_and(|item| super::has_start(&item) && occurrence_days(&item).contains(&day));
     }
     occurrence_days(block).contains(&day)
 }
 
-pub fn row_conflict(row: &Value, rows: &[Value], existing: &[Value]) -> Option<String> {
+pub fn row_conflict(
+    row: &Value,
+    rows: &[Value],
+    existing: &[Value],
+    skip: Option<usize>,
+) -> Option<String> {
     if row.get("fixed").and_then(Value::as_bool) != Some(true) {
         return None;
     }
     let block = row.get("block")?;
-    block.get("start")?;
+    block
+        .get("start")
+        .and_then(Value::as_str)
+        .filter(|start| !start.is_empty())?;
     let start =
         hhmm_to_minutes(block.get("start").and_then(Value::as_str).unwrap_or("")).unwrap_or(0);
     let end = start + i64_of(block, "duration_min");
     let day = i64_of(row, "day");
     for other in existing {
-        if other.get("start").is_none() || !occurrence_days(other).contains(&day) {
+        if !super::has_start(other) || !occurrence_days(other).contains(&day) {
             continue;
         }
         let other_start =
@@ -613,8 +628,8 @@ pub fn row_conflict(row: &Value, rows: &[Value], existing: &[Value]) -> Option<S
                 .map(str::to_string);
         }
     }
-    for candidate in rows {
-        if std::ptr::eq(candidate, row) {
+    for (index, candidate) in rows.iter().enumerate() {
+        if Some(index) == skip {
             continue;
         }
         if candidate.get("checked").and_then(Value::as_bool) != Some(true)
@@ -625,7 +640,7 @@ pub fn row_conflict(row: &Value, rows: &[Value], existing: &[Value]) -> Option<S
             continue;
         }
         let candidate_block = candidate.get("block").cloned().unwrap_or(Value::Null);
-        if candidate_block.get("start").is_none() {
+        if !super::has_start(&candidate_block) {
             continue;
         }
         let other_start = hhmm_to_minutes(
@@ -696,7 +711,7 @@ pub fn solve_request(
         if wanted {
             let mut session = object(block);
             if planned {
-                session.remove("start");
+                session.shift_remove("start");
                 session.insert(
                     "days".into(),
                     json!(planning_days(
@@ -750,7 +765,7 @@ pub fn settle_placements(
 ) -> (Vec<Value>, Vec<Value>) {
     let mut taken: Vec<Vec<(i64, i64, String)>> = vec![Vec::new(); 7];
     for block in blocks {
-        if block.get("start").is_none() {
+        if !super::has_start(block) {
             continue;
         }
         let start =
@@ -891,8 +906,8 @@ pub fn settle_placements(
         let id = block.get("id").and_then(Value::as_str).unwrap_or("");
         if lost_ids.iter().any(|lost_id| lost_id == id) {
             let mut copy = object(block);
-            copy.remove("start");
-            copy.remove("pinned");
+            copy.shift_remove("start");
+            copy.shift_remove("pinned");
             copy.insert(
                 "days".into(),
                 json!(planning_days(

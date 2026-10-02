@@ -1,7 +1,7 @@
 //! Week reading model from `desktop/native/weekmodel.py`.
 
 use chrono::{Datelike, Duration, NaiveDate};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -38,6 +38,14 @@ pub fn set_clock_24h(on: bool) -> bool {
 
 fn clock_24h() -> bool {
     CLOCK_24H.load(Ordering::Relaxed)
+}
+
+fn no_start(block: &Value) -> bool {
+    match block.get("start") {
+        None | Some(Value::Null) => true,
+        Some(Value::String(text)) => text.is_empty(),
+        _ => false,
+    }
 }
 
 pub fn minute_of(hhmm: &str) -> i64 {
@@ -153,7 +161,7 @@ pub fn moved_words(block: &Value, from_day: i64, day: i64, start: i64, end: i64)
         .get("title")
         .and_then(Value::as_str)
         .unwrap_or("the block");
-    if block.get("start").is_none() {
+    if no_start(block) {
         return format!(
             "Placed {title} on {} {}.",
             DAYS[day as usize],
@@ -194,7 +202,7 @@ pub fn added_words(block: &Value) -> String {
         .and_then(Value::as_str)
         .unwrap_or("a block");
     let days = block.get("days").and_then(Value::as_array);
-    if block.get("start").is_some() && days.map(|d| d.len()) == Some(1) {
+    if !no_start(block) && days.map(|d| d.len()) == Some(1) {
         let day = days.unwrap()[0].as_i64().unwrap_or(0) as usize;
         return format!(
             "Added {title} on {} {}.",
@@ -480,7 +488,7 @@ pub fn build_week(
             .get("id")
             .and_then(Value::as_str)
             .and_then(|id| notes.get(id));
-        if block.get("start").is_none() {
+        if no_start(&block) {
             if work && !done {
                 waiting.push(Waiting {
                     block_id: original
@@ -616,7 +624,7 @@ pub fn build_week(
     }
     focus += blocks
         .iter()
-        .filter(|b| b.get("assignment_id").is_none())
+        .filter(|b| !crate::stored::truthy(b.get("assignment_id")))
         .map(|b| b.get("focus_minutes").and_then(Value::as_i64).unwrap_or(0))
         .sum::<i64>();
     WeekModel {
@@ -625,4 +633,41 @@ pub fn build_week(
         waiting,
         focus_min: focus,
     }
+}
+
+pub fn build_week_json(
+    week_start: &str,
+    blocks: &[Value],
+    assignments: Option<&serde_json::Map<String, Value>>,
+    trace: Option<&Value>,
+) -> Value {
+    let week = build_week(week_start, blocks, assignments, trace);
+    json!({
+        "week_start": week.week_start,
+        "focus_min": week.focus_min,
+        "occurrences": week.occurrences.iter().map(|item| json!({
+            "block_id": item.block_id,
+            "title": item.title,
+            "category": item.category,
+            "day": item.day,
+            "start": item.start,
+            "end": item.end,
+            "work": item.work,
+            "done": item.done,
+            "missed": item.missed,
+            "assignment_id": item.assignment_id,
+            "due": item.due,
+            "slack": item.slack,
+            "pinned": item.pinned,
+        })).collect::<Vec<_>>(),
+        "waiting": week.waiting.iter().map(|item| json!({
+            "block_id": item.block_id,
+            "title": item.title,
+            "category": item.category,
+            "minutes": item.minutes,
+            "assignment_id": item.assignment_id,
+            "due": item.due,
+            "reason": item.reason,
+        })).collect::<Vec<_>>(),
+    })
 }

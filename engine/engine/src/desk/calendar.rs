@@ -75,7 +75,7 @@ pub fn local_stamp(now_iso_minute: Option<&str>) -> String {
 pub fn occupied_intervals(blocks: &[Value], day: i64) -> Vec<(i64, i64)> {
     let mut intervals = Vec::new();
     for block in blocks {
-        if block.get("start").is_none() {
+        if !super::has_start(block) {
             continue;
         }
         let days = block.get("days").and_then(Value::as_array);
@@ -121,7 +121,7 @@ pub fn apply_block_times(
     end_min: i64,
     day: Option<i64>,
 ) -> Option<Value> {
-    if block.get("start").is_none() || is_series(block) {
+    if !super::has_start(block) || is_series(block) {
         return None;
     }
     let duration = end_min - start_min;
@@ -136,7 +136,10 @@ pub fn apply_block_times(
         let days = block.get("days").and_then(Value::as_array);
         if days.map(|d| d.as_slice()) != Some(&[json!(day)]) {
             obj.insert("days".into(), json!([day]));
-            if obj.contains_key("completed_day") {
+            if obj
+                .get("completed_day")
+                .is_some_and(|value| !value.is_null())
+            {
                 obj.insert("completed_day".into(), json!(day));
             }
         }
@@ -332,7 +335,7 @@ pub fn relocate_block(
         .get("days")
         .and_then(Value::as_array)
         .is_some_and(|d| d.iter().any(|v| v.as_i64() == Some(from_day)))
-        || block.get("start").is_none()
+        || !super::has_start(block)
     {
         return None;
     }
@@ -341,7 +344,7 @@ pub fn relocate_block(
         let mut out = deep_copy(item);
         if let Some(obj) = out.as_object_mut() {
             obj.insert("days".into(), json!([to_day]));
-            if obj.get("assignment_id").is_some()
+            if crate::stored::truthy(obj.get("assignment_id"))
                 && obj.get("kind").and_then(Value::as_str) == Some("flexible")
                 && obj.get("completed").and_then(Value::as_bool) != Some(true)
             {
@@ -532,7 +535,7 @@ pub fn is_work_session(block: &Value) -> bool {
     block.get("kind").and_then(Value::as_str) == Some("flexible")
         || (block.get("kind").and_then(Value::as_str) == Some("locked")
             && block.get("pomodoro_role").and_then(Value::as_str) == Some("work")
-            && block.get("assignment_id").is_some())
+            && crate::stored::truthy(block.get("assignment_id")))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -552,7 +555,7 @@ pub fn placement_on(block: &Value, day: i64, trace: Option<&Value>) -> Placement
             })
         });
     if let Some(placed) = placed
-        && placed.get("start").is_some()
+        && super::has_start(placed)
     {
         if placed
             .get("days")
@@ -569,7 +572,7 @@ pub fn placement_on(block: &Value, day: i64, trace: Option<&Value>) -> Placement
         }
         return PlacementOn::NotToday;
     }
-    if block.get("start").is_some() {
+    if super::has_start(block) {
         if block
             .get("days")
             .and_then(Value::as_array)
@@ -673,7 +676,10 @@ pub fn next_action_for(
             .and_then(Value::as_str)
             .unwrap_or("");
         let assignment = assignments.get(assignment_id);
-        if row.get("start").is_some()
+        if row
+            .get("start")
+            .and_then(Value::as_str)
+            .is_some_and(|start| !start.is_empty())
             && block.get("completed").and_then(Value::as_bool) != Some(true)
             && assignment
                 .and_then(|a| a.get("completed"))
@@ -744,8 +750,7 @@ pub fn span_clash(
     end_min: i64,
 ) -> Option<String> {
     for other in blocks {
-        if other.get("id").and_then(Value::as_str) == Some(block_id) || other.get("start").is_none()
-        {
+        if other.get("id").and_then(Value::as_str) == Some(block_id) || !super::has_start(other) {
             continue;
         }
         if !other

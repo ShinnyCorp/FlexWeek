@@ -80,6 +80,14 @@ pub fn reminder_blocks(blocks: &[Value], trace: Option<&Value>) -> Vec<Value> {
         .iter()
         .filter_map(|b| Some((b.get("id")?.as_str()?.to_string(), b.clone())))
         .collect();
+    // Python treats None and an empty trace as "there is no plan", so the saved blocks stand.
+    let trace = trace.filter(|value| match value {
+        Value::Null | Value::Bool(false) => false,
+        Value::Object(map) if map.is_empty() => false,
+        Value::Array(items) if items.is_empty() => false,
+        Value::String(text) if text.is_empty() => false,
+        _ => true,
+    });
     let Some(trace) = trace else {
         return blocks.to_vec();
     };
@@ -146,7 +154,11 @@ pub fn todays_starts(
     let week_start = monday_of(today_iso);
     let mut rows = Vec::new();
     for block in reminder_blocks(blocks, trace) {
-        let Some(start) = block.get("start").and_then(Value::as_str) else {
+        let Some(start) = block
+            .get("start")
+            .and_then(Value::as_str)
+            .filter(|start| !start.is_empty())
+        else {
             continue;
         };
         if block.get("completed").and_then(Value::as_bool) == Some(true) {
@@ -190,7 +202,11 @@ pub fn due_reminders(
             continue;
         }
         let started = now_min >= start_min;
-        if started && block.get("spotify_url").is_some() {
+        let has_song = block
+            .get("spotify_url")
+            .and_then(Value::as_str)
+            .is_some_and(|link| !link.is_empty());
+        if started && has_song {
             continue;
         }
         let title = block.get("title").and_then(Value::as_str).unwrap_or("");
@@ -212,7 +228,11 @@ pub fn due_songs(
 ) -> Vec<Value> {
     let mut due = Vec::new();
     for (block, _day, start_min, key) in todays_starts(blocks, trace, today_iso) {
-        let Some(link) = block.get("spotify_url").and_then(Value::as_str) else {
+        let Some(link) = block
+            .get("spotify_url")
+            .and_then(Value::as_str)
+            .filter(|link| !link.is_empty())
+        else {
             continue;
         };
         if played.contains(&key) || !song_due(start_min, now_min) {

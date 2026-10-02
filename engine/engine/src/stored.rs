@@ -91,7 +91,7 @@ pub fn item<'a>(block: &'a Dict, key: &str) -> EngineResult<&'a Value> {
     block.get(key).ok_or_else(|| EngineError::key(key))
 }
 
-/// `str(value)`. A dict prints its keys sorted, where Python kept the order they were written in.
+/// `str(value)`. A dict prints its keys in the order they were written.
 pub fn py_str(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
@@ -165,7 +165,7 @@ pub fn int_or_zero(value: Option<&Value>) -> EngineResult<i64> {
     }
 }
 
-/// `list(value or [])`. A dict lists its keys sorted, where Python kept their written order.
+/// `list(value or [])`. A dict lists its keys in the order they were written.
 pub fn py_list(value: Option<&Value>) -> EngineResult<Vec<Value>> {
     let Some(value) = value.filter(|value| truthy(Some(value))) else {
         return Ok(Vec::new());

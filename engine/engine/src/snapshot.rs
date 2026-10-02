@@ -145,7 +145,7 @@ fn fixed_from_scientific(raw: &str) -> String {
     }
 }
 
-fn canonical_value(value: &Value) -> String {
+fn json_text(value: &Value, comma: &str, colon: &str) -> String {
     match value {
         Value::Null => "null".to_string(),
         Value::Bool(true) => "true".to_string(),
@@ -153,23 +153,41 @@ fn canonical_value(value: &Value) -> String {
         Value::Number(number) => py_number(number),
         Value::String(text) => py_string(text),
         Value::Array(items) => {
-            let parts: Vec<String> = items.iter().map(canonical_value).collect();
-            format!("[{}]", parts.join(","))
+            let parts: Vec<String> = items
+                .iter()
+                .map(|item| json_text(item, comma, colon))
+                .collect();
+            format!("[{}]", parts.join(comma))
         }
         Value::Object(map) => {
             let mut keys: Vec<&String> = map.keys().collect();
             keys.sort();
             let parts: Vec<String> = keys
                 .into_iter()
-                .map(|key| format!("{}:{}", py_string(key), canonical_value(&map[key])))
+                .map(|key| {
+                    format!(
+                        "{}{colon}{}",
+                        py_string(key),
+                        json_text(&map[key], comma, colon)
+                    )
+                })
                 .collect();
-            format!("{{{}}}", parts.join(","))
+            format!("{{{}}}", parts.join(comma))
         }
     }
 }
 
+fn canonical_value(value: &Value) -> String {
+    json_text(value, ",", ":")
+}
+
 pub fn canonical(value: &Value) -> String {
     canonical_value(value)
+}
+
+/// `json.dumps(value, sort_keys=True)` with Python's default `", "` and `": "` separators.
+pub fn dumps_sorted(value: &Value) -> String {
+    json_text(value, ", ", ": ")
 }
 
 pub fn state_token(snapshot: &Value) -> String {

@@ -284,9 +284,16 @@ pub fn credit_target(
     block: Option<&Value>,
     work_min: i64,
 ) -> Option<Value> {
-    state.get("blockId")?;
+    state
+        .get("blockId")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())?;
     let amount = work_min.min(MAX_FOCUS_MINUTES);
-    if state.get("assignmentId").is_some() {
+    if state
+        .get("assignmentId")
+        .and_then(Value::as_str)
+        .is_some_and(|id| !id.is_empty())
+    {
         let assignment = assignment?;
         let mut updated = deep_copy(assignment);
         if let Some(obj) = updated.as_object_mut() {
@@ -379,7 +386,7 @@ pub fn focus_candidates(
             .and_then(|id| placed.get(id))
             .cloned()
             .or_else(|| {
-                if block.get("start").is_some() {
+                if super::has_start(block) {
                     Some(deep_copy(block))
                 } else {
                     None
@@ -388,7 +395,7 @@ pub fn focus_candidates(
         let Some(placement) = placement else {
             continue;
         };
-        if placement.get("start").is_none() {
+        if !super::has_start(&placement) {
             continue;
         }
         let source = assignment.unwrap_or(block);
@@ -407,8 +414,7 @@ pub fn focus_candidates(
 pub fn now_and_next(blocks: &[Value], day: i64, minute: i64) -> Map<String, Value> {
     let mut active = Vec::new();
     for block in blocks {
-        if block.get("start").is_none()
-            || block.get("completed").and_then(Value::as_bool) == Some(true)
+        if !super::has_start(block) || block.get("completed").and_then(Value::as_bool) == Some(true)
         {
             continue;
         }
@@ -456,7 +462,8 @@ pub fn now_and_next(blocks: &[Value], day: i64, minute: i64) -> Map<String, Valu
 
 pub fn now_next_line(result: &Map<String, Value>, minute: i64) -> String {
     let mut parts = Vec::new();
-    if let Some(current) = result.get("current").and_then(Value::as_object) {
+    let current_block = result.get("current").and_then(Value::as_object);
+    if let Some(current) = current_block {
         let end = hhmm_to_minutes(current.get("start").and_then(Value::as_str).unwrap_or(""))
             .unwrap_or(0)
             + current
@@ -473,7 +480,8 @@ pub fn now_next_line(result: &Map<String, Value>, minute: i64) -> String {
         let wait = hhmm_to_minutes(following.get("start").and_then(Value::as_str).unwrap_or(""))
             .unwrap_or(0)
             - minute;
-        let suffix = if result.get("current").is_some() {
+        // A JSON null is present and still falsy, the same as Python `if current`.
+        let suffix = if current_block.is_some() {
             String::new()
         } else {
             format!(" (in {})", length_label(wait))

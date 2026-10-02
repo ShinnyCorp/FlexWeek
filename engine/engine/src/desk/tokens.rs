@@ -1,5 +1,7 @@
 //! Colour maths and design tokens from `desktop/native/tokens.py`.
 
+use super::cmath;
+
 pub const SPACING: [i64; 6] = [4, 8, 12, 16, 24, 32];
 pub const RADIUS_CONTROL: i64 = 6;
 pub const RADIUS_CARD: i64 = 10;
@@ -38,6 +40,11 @@ pub const WEIGHT_REGULAR: i64 = 400;
 pub const WEIGHT_STRONG: i64 = 600;
 pub const WEIGHT_NUMBER: i64 = 700;
 
+/// Python 3 `round`: half goes to the even integer.
+fn py_round(value: f64) -> f64 {
+    value.round_ties_even()
+}
+
 pub fn type_pt(role: &str, scale: TextScale) -> f64 {
     let factor = match scale {
         TextScale::Named(name) => TEXT_SCALE
@@ -52,7 +59,7 @@ pub fn type_pt(role: &str, scale: TextScale) -> f64 {
         .find(|(key, _)| *key == role)
         .map(|(_, v)| *v)
         .unwrap_or(13.0);
-    (base * factor * 2.0).round() / 2.0
+    py_round(base * factor * 2.0) / 2.0
 }
 
 pub enum TextScale<'a> {
@@ -86,7 +93,7 @@ fn decode(channel: f64) -> f64 {
     if channel <= 0.04045 {
         channel / 12.92
     } else {
-        ((channel + 0.055) / 1.055).powf(2.4)
+        cmath::pow((channel + 0.055) / 1.055, 2.4)
     }
 }
 
@@ -94,7 +101,7 @@ fn encode(channel: f64) -> f64 {
     if channel <= 0.0031308 {
         channel * 12.92
     } else {
-        1.055 * channel.powf(1.0 / 2.4) - 0.055
+        1.055 * cmath::pow(channel, 1.0 / 2.4) - 0.055
     }
 }
 
@@ -105,7 +112,7 @@ pub fn linear_rgb(colour: &str) -> (f64, f64, f64) {
 }
 
 pub fn hex_from_linear(red: f64, green: f64, blue: f64) -> String {
-    let channel = |value: f64| -> i64 { (encode(value.clamp(0.0, 1.0)) * 255.0).round() as i64 };
+    let channel = |value: f64| -> i64 { py_round(encode(value.clamp(0.0, 1.0)) * 255.0) as i64 };
     format!(
         "#{:02x}{:02x}{:02x}",
         channel(red),
@@ -115,9 +122,9 @@ pub fn hex_from_linear(red: f64, green: f64, blue: f64) -> String {
 }
 
 pub fn oklab_from_linear(red: f64, green: f64, blue: f64) -> (f64, f64, f64) {
-    let long = (0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue).cbrt();
-    let medium = (0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue).cbrt();
-    let short = (0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue).cbrt();
+    let long = cmath::cbrt(0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue);
+    let medium = cmath::cbrt(0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue);
+    let short = cmath::cbrt(0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue);
     (
         0.2104542553 * long + 0.7936177850 * medium - 0.0040720468 * short,
         1.9779984951 * long - 2.4285922050 * medium + 0.4505937099 * short,
@@ -126,9 +133,9 @@ pub fn oklab_from_linear(red: f64, green: f64, blue: f64) -> (f64, f64, f64) {
 }
 
 pub fn linear_from_oklab(light: f64, a: f64, b: f64) -> (f64, f64, f64) {
-    let long = (light + 0.3963377774 * a + 0.2158037573 * b).powi(3);
-    let medium = (light - 0.1055613458 * a - 0.0638541728 * b).powi(3);
-    let short = (light - 0.0894841775 * a - 1.2914855480 * b).powi(3);
+    let long = cmath::pow(light + 0.3963377774 * a + 0.2158037573 * b, 3.0);
+    let medium = cmath::pow(light - 0.1055613458 * a - 0.0638541728 * b, 3.0);
+    let short = cmath::pow(light - 0.0894841775 * a - 1.2914855480 * b, 3.0);
     (
         4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short,
         -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short,
@@ -143,7 +150,11 @@ pub fn oklab(colour: &str) -> (f64, f64, f64) {
 
 pub fn oklch(light: f64, chroma: f64, hue: f64) -> String {
     let angle = hue.to_radians();
-    let (r, g, b) = linear_from_oklab(light, chroma * angle.cos(), chroma * angle.sin());
+    let (r, g, b) = linear_from_oklab(
+        light,
+        chroma * cmath::cos(angle),
+        chroma * cmath::sin(angle),
+    );
     hex_from_linear(r, g, b)
 }
 
@@ -159,7 +170,7 @@ pub fn mix(top: &str, bottom: &str, alpha: f64) -> String {
     let (tr, tg, tb) = channels(top);
     let (br, bg, bb) = channels(bottom);
     let blend = |over: i64, under: i64| -> i64 {
-        (over as f64 * alpha + under as f64 * (1.0 - alpha)).round() as i64
+        py_round(over as f64 * alpha + under as f64 * (1.0 - alpha)) as i64
     };
     format!(
         "#{:02x}{:02x}{:02x}",
@@ -187,8 +198,8 @@ pub fn oklch_of(colour: &str) -> (f64, f64, f64) {
     let (light, a, b) = oklab(colour);
     (
         light,
-        (a * a + b * b).sqrt(),
-        b.atan2(a).to_degrees().rem_euclid(360.0),
+        cmath::hypot(a, b),
+        cmath::atan2(b, a).to_degrees().rem_euclid(360.0),
     )
 }
 
@@ -224,16 +235,28 @@ pub fn fit_lightness(colour: &str, grounds: &[&str], floor: f64) -> String {
         found.push(((passes - light).abs(), oklch(passes, chroma, hue)));
     }
     if found.is_empty() {
-        let black = "#000000";
-        let white = "#ffffff";
-        if contrast(black, grounds[0]) >= contrast(white, grounds[0]) {
-            return black.to_string();
-        }
-        return white.to_string();
+        // Python's `max` keeps the first of equals, so black wins a tie.
+        let worst = |ink: &str| {
+            grounds
+                .iter()
+                .map(|ground| contrast(ink, ground))
+                .fold(f64::INFINITY, f64::min)
+        };
+        let ink = if worst("#000000") >= worst("#ffffff") {
+            "#000000"
+        } else {
+            "#ffffff"
+        };
+        return ink.to_string();
     }
+    // Python's `min` over (distance, colour) tuples: equal distances go to the smaller colour text.
     found
         .into_iter()
-        .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
+        .min_by(|a, b| {
+            a.0.partial_cmp(&b.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.1.cmp(&b.1))
+        })
         .map(|(_, c)| c)
         .unwrap_or_else(|| colour.to_string())
 }

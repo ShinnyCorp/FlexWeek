@@ -74,9 +74,73 @@ fn exportable_block(block: &Value, assignments: &Map<String, Value>) -> Value {
         && !assignments.contains_key(id)
         && let Some(obj) = copy.as_object_mut()
     {
-        obj.remove("assignment_id");
+        obj.shift_remove("assignment_id");
     }
-    copy
+    dump_time_block(&copy)
+}
+
+/// `TimeBlock.model_dump(mode="json")`: field order, defaults, and `exclude_if`.
+fn dump_time_block(block: &Value) -> Value {
+    let Some(obj) = block.as_object() else {
+        return block.clone();
+    };
+    let mut out = Map::new();
+    for key in ["id", "title", "kind", "duration_min", "days"] {
+        if let Some(value) = obj.get(key) {
+            out.insert(key.to_string(), value.clone());
+        }
+    }
+    out.insert(
+        "priority".to_string(),
+        obj.get("priority").cloned().unwrap_or(json!(3)),
+    );
+    out.insert(
+        "energy".to_string(),
+        obj.get("energy").cloned().unwrap_or(json!("medium")),
+    );
+    for key in ["earliest", "latest", "start", "course"] {
+        out.insert(
+            key.to_string(),
+            obj.get(key).cloned().unwrap_or(Value::Null),
+        );
+    }
+    if let Some(value) = obj.get("category").filter(|value| !value.is_null()) {
+        out.insert("category".to_string(), value.clone());
+    }
+    if obj.get("completed").and_then(Value::as_bool) == Some(true) {
+        out.insert("completed".to_string(), json!(true));
+    }
+    if let Some(value) = obj.get("completed_day").filter(|value| !value.is_null()) {
+        out.insert("completed_day".to_string(), value.clone());
+    }
+    if let Some(missed) = obj.get("missed_days").and_then(Value::as_array)
+        && !missed.is_empty()
+    {
+        out.insert("missed_days".to_string(), Value::Array(missed.clone()));
+    }
+    if let Some(value) = obj.get("spotify_url").filter(|value| !value.is_null()) {
+        out.insert("spotify_url".to_string(), value.clone());
+    }
+    for key in ["focus_sessions", "focus_minutes"] {
+        if obj.get(key).and_then(Value::as_i64).is_some_and(|n| n != 0) {
+            out.insert(
+                key.to_string(),
+                obj.get(key).cloned().unwrap_or(Value::Null),
+            );
+        }
+    }
+    for key in ["pomodoro_parent_id", "pomodoro_role", "pomodoro_index"] {
+        if let Some(value) = obj.get(key).filter(|value| !value.is_null()) {
+            out.insert(key.to_string(), value.clone());
+        }
+    }
+    if obj.get("pinned").and_then(Value::as_bool) == Some(true) {
+        out.insert("pinned".to_string(), json!(true));
+    }
+    if let Some(value) = obj.get("assignment_id").filter(|value| !value.is_null()) {
+        out.insert("assignment_id".to_string(), value.clone());
+    }
+    Value::Object(out)
 }
 
 fn referenced_assignments(blocks: &[Value], assignments: &Map<String, Value>) -> Vec<Value> {
@@ -96,32 +160,72 @@ fn referenced_assignments(blocks: &[Value], assignments: &Map<String, Value>) ->
 }
 
 fn assignment_body(item: &Value) -> Value {
-    // Caller is expected to pass assignment objects already validated; keep known fields only.
-    let keep = [
-        "id",
-        "title",
-        "course",
-        "category",
-        "priority",
-        "energy",
-        "spotify_url",
-        "due",
-        "estimate_min",
-        "focus_minutes",
-        "focus_sessions",
-        "completed",
-        "completed_at",
-        "notes",
-        "links",
-        "checklist",
-    ];
+    // `AssignmentContent.model_dump(mode="json")`, including defaults the input left out.
+    let Some(obj) = item.as_object() else {
+        return json!({});
+    };
     let mut out = Map::new();
-    if let Some(obj) = item.as_object() {
-        for key in keep {
-            if let Some(value) = obj.get(key) {
-                out.insert(key.to_string(), value.clone());
-            }
+    for key in ["id", "title"] {
+        if let Some(value) = obj.get(key) {
+            out.insert(key.to_string(), value.clone());
         }
+    }
+    out.insert(
+        "course".to_string(),
+        obj.get("course").cloned().unwrap_or(Value::Null),
+    );
+    out.insert(
+        "category".to_string(),
+        obj.get("category").cloned().unwrap_or(Value::Null),
+    );
+    out.insert(
+        "priority".to_string(),
+        obj.get("priority").cloned().unwrap_or(json!(3)),
+    );
+    out.insert(
+        "energy".to_string(),
+        obj.get("energy").cloned().unwrap_or(json!("medium")),
+    );
+    out.insert(
+        "spotify_url".to_string(),
+        obj.get("spotify_url").cloned().unwrap_or(Value::Null),
+    );
+    if let Some(value) = obj.get("due") {
+        out.insert("due".to_string(), value.clone());
+    }
+    if let Some(value) = obj.get("estimate_min") {
+        out.insert("estimate_min".to_string(), value.clone());
+    }
+    out.insert(
+        "focus_minutes".to_string(),
+        obj.get("focus_minutes").cloned().unwrap_or(json!(0)),
+    );
+    out.insert(
+        "focus_sessions".to_string(),
+        obj.get("focus_sessions").cloned().unwrap_or(json!(0)),
+    );
+    out.insert(
+        "completed".to_string(),
+        obj.get("completed").cloned().unwrap_or(json!(false)),
+    );
+    out.insert(
+        "completed_at".to_string(),
+        obj.get("completed_at").cloned().unwrap_or(Value::Null),
+    );
+    if let Some(notes) = obj.get("notes").and_then(Value::as_str)
+        && !notes.is_empty()
+    {
+        out.insert("notes".to_string(), json!(notes));
+    }
+    if let Some(links) = obj.get("links").and_then(Value::as_array)
+        && !links.is_empty()
+    {
+        out.insert("links".to_string(), Value::Array(links.clone()));
+    }
+    if let Some(checklist) = obj.get("checklist").and_then(Value::as_array)
+        && !checklist.is_empty()
+    {
+        out.insert("checklist".to_string(), Value::Array(checklist.clone()));
     }
     Value::Object(out)
 }
@@ -214,7 +318,7 @@ pub fn parse_import_payload(raw: &str) -> Value {
         let mut hseen = std::collections::HashSet::new();
         for id in &homework_ids {
             if !hseen.insert(id.clone()) {
-                return json!({"error": format!("Export repeats the homework id {id}.")});
+                return json!({"error": format!("Export repeats the homework id {id}. Nothing was imported.")});
             }
         }
         for (index, block) in blocks.iter().enumerate() {
@@ -228,12 +332,20 @@ pub fn parse_import_payload(raw: &str) -> Value {
             }
         }
     }
+    let week_value = match week_start {
+        Some(text) if !text.is_empty() => Value::from(text),
+        _ => Value::Null,
+    };
+    let day_value = data
+        .get("day")
+        .and_then(Value::as_i64)
+        .map_or(Value::Null, |day| json!(day));
     json!({
         "format": format,
-        "week_start": week_start,
-        "day": data.get("day"),
-        "blocks": blocks,
-        "assignments": assignments,
+        "week_start": week_value,
+        "day": day_value,
+        "blocks": blocks.iter().map(dump_time_block).collect::<Vec<_>>(),
+        "assignments": assignments.iter().map(assignment_body).collect::<Vec<_>>(),
         "error": Value::Null,
     })
 }
@@ -317,12 +429,16 @@ pub fn merge_imported_blocks(
     if mode == "replace" {
         return Ok(incoming.iter().map(deep_copy).collect());
     }
-    let mut by_id: std::collections::BTreeMap<String, Value> = existing
-        .iter()
-        .filter_map(|b| Some((b.get("id")?.as_str()?.to_string(), deep_copy(b))))
-        .collect();
+    // Insertion order, as Python's dict keeps the existing blocks and appends a split.
+    let mut by_id: Map<String, Value> = Map::new();
+    for block in existing {
+        let Some(id) = block.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        by_id.insert(id.to_string(), deep_copy(block));
+    }
     for block in incoming {
-        if block.is_null() || block.get("id").is_none() {
+        if !crate::stored::truthy(Some(block)) || !crate::stored::truthy(block.get("id")) {
             continue;
         }
         let block_id = block.get("id").and_then(Value::as_str).unwrap_or("");
@@ -408,7 +524,7 @@ pub fn merge_imported_blocks(
                     }
                     by_id.insert(block_id.to_string(), kept);
                 } else {
-                    by_id.remove(block_id);
+                    by_id.shift_remove(block_id);
                 }
                 by_id.insert(split_id, split);
                 continue;

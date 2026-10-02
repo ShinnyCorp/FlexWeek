@@ -487,9 +487,9 @@ fn assignment_body(
 
 fn as_session(block: &mut Dict, assignment_id: &str) {
     block.insert("assignment_id".into(), json!(assignment_id));
-    block.remove("latest");
-    block.remove("focus_minutes");
-    block.remove("focus_sessions");
+    block.shift_remove("latest");
+    block.shift_remove("focus_minutes");
+    block.shift_remove("focus_sessions");
 }
 
 pub fn due_placement_bound(week_start: &str, due: &str) -> EngineResult<Option<(i64, i64)>> {

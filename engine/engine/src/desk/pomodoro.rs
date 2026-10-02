@@ -83,13 +83,9 @@ pub fn plan_for(duration_min: i64, prefs: Option<&serde_json::Map<String, Value>
 
 pub fn child_title(title: &str, index: i64, total: i64) -> String {
     let suffix = format!(" · focus {index}/{total}");
-    let room = TITLE_MAX.saturating_sub(suffix.len());
-    let head = title;
-    let head = if head.len() > room {
-        &head[..room]
-    } else {
-        head
-    };
+    // Python `len` counts code points. The middle dot is one character and two bytes.
+    let room = TITLE_MAX.saturating_sub(suffix.chars().count());
+    let head: String = title.chars().take(room).collect();
     format!("{head}{suffix}")
 }
 
@@ -212,14 +208,14 @@ pub fn split_children(
             );
             obj.insert("earliest".into(), Value::Null);
             obj.insert("latest".into(), Value::Null);
-            if source.get("assignment_id").is_some() {
+            if crate::stored::truthy(source.get("assignment_id")) {
                 obj.insert("focus_sessions".into(), json!(0));
                 obj.insert("focus_minutes".into(), json!(0));
                 if !work {
-                    obj.remove("assignment_id");
+                    obj.shift_remove("assignment_id");
                 }
             }
-            obj.remove("completed_day");
+            obj.shift_remove("completed_day");
         }
         if work {
             first_work = false;
@@ -237,7 +233,7 @@ pub fn splittable(block: &Value, prefs: Option<&serde_json::Map<String, Value>>)
     let work = timers(prefs).0;
     block.get("kind").and_then(Value::as_str) == Some("flexible")
         && block.get("completed").and_then(Value::as_bool) != Some(true)
-        && block.get("pomodoro_role").is_none()
+        && !crate::stored::truthy(block.get("pomodoro_role"))
         && block
             .get("duration_min")
             .and_then(Value::as_i64)
@@ -305,7 +301,7 @@ pub fn split_solved(
         .map(|items| {
             items
                 .iter()
-                .filter(|item| item.get("start").is_some())
+                .filter(|item| super::has_start(item))
                 .filter_map(|item| Some((item.get("id")?.as_str()?.to_string(), item.clone())))
                 .collect()
         })

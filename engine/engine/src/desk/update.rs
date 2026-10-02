@@ -15,8 +15,9 @@ pub const LINUX_TARBALL: &str = "FlexWeek-Linux-x86_64.tar.gz";
 pub const LINUX_APPIMAGE: &str = "FlexWeek-x86_64.AppImage";
 
 fn tag_pattern() -> &'static Regex {
+    // Python `re.fullmatch`: the whole tag, not a version buried in `v9.9.9/../../evil`.
     static PATTERN: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"v?[0-9]+(\.[0-9]+){1,3}").expect("tag pattern"));
+        LazyLock::new(|| Regex::new(r"\Av?[0-9]+(?:\.[0-9]+){1,3}\z").expect("tag pattern"));
     &PATTERN
 }
 
@@ -78,8 +79,24 @@ fn path_is_relative_to(path: &str, base: &str) -> bool {
     let base = std::path::Path::new(base);
     match (path.canonicalize(), base.canonicalize()) {
         (Ok(path), Ok(base)) => path.starts_with(base),
-        _ => false,
+        // A path that is not on disk yet still counts. Python's Path.resolve
+        // does not require the file to exist.
+        _ => logical_path(path).starts_with(logical_path(base)),
     }
+}
+
+fn logical_path(path: &std::path::Path) -> std::path::PathBuf {
+    let mut out = std::path::PathBuf::new();
+    for part in path.components() {
+        match part {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
 }
 
 pub fn asset_name(kind: &str) -> Option<&'static str> {
