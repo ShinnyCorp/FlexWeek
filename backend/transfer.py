@@ -14,8 +14,6 @@ from flexweek_engine import (
     transfer_fits as _transfer_fits,
 )
 
-from backend.limits import MAX_BODY
-
 TRANSFER_TOO_LARGE = "This account is larger than the 256 KiB transfer limit."
 
 
@@ -28,6 +26,4 @@ def transfer_apply_bytes(snapshot: dict) -> int:
 
 
 def transfer_fits(snapshot: dict) -> bool:
-    measured = _transfer_fits(json.dumps(snapshot))
-    # The cap stays the same constant the routes already import.
-    return measured and transfer_apply_bytes(snapshot) <= MAX_BODY
+    return _transfer_fits(json.dumps(snapshot))
