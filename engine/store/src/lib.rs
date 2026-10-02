@@ -577,9 +577,8 @@ mod tests {
 
     #[test]
     fn initialize_uses_temp_path() {
-        let scratch = Path::new("/home/jonathans/.flexweek-ui-harness/scratch/engine-grok");
-        std::fs::create_dir_all(scratch).unwrap();
-        let path = scratch.join(format!("store-test-{}.sqlite", std::process::id()));
+        let scratch = std::env::temp_dir();
+        let path = scratch.join(format!("flexweek-store-test-{}.sqlite", std::process::id()));
         let _ = std::fs::remove_file(&path);
         initialize(&path, "2026-09-29").unwrap();
         assert!(path.exists());
