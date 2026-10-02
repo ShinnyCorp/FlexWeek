@@ -108,6 +108,18 @@ def is_sort(node: ast.Call) -> bool:
     return isinstance(func, ast.Attribute) and func.attr == "sort"
 
 
+def is_type_test(node: ast.Call) -> bool:
+    func = node.func
+    return isinstance(func, ast.Name) and func.id in {"isinstance", "type"}
+
+
+def is_truth_test(node: ast.expr) -> bool:
+    """`if name` or `if obj.attr`: the value's own truth, not a comparison."""
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        node = node.operand
+    return isinstance(node, (ast.Name, ast.Attribute))
+
+
 def logic_in(node: ast.AST, qual: str, stays: set[str]) -> list[str]:
     problems: list[str] = []
 
@@ -133,6 +145,14 @@ def logic_in(node: ast.AST, qual: str, stays: set[str]) -> list[str]:
             kind = "comparison"
         elif isinstance(item, ast.Call) and is_sort(item):
             kind = "sort"
+        elif isinstance(item, ast.Call) and is_type_test(item):
+            kind = "type test"
+        elif isinstance(item, ast.BoolOp):
+            kind = "default"
+        elif isinstance(item, ast.IfExp):
+            kind = "branch"
+        elif isinstance(item, (ast.If, ast.While)) and is_truth_test(item.test):
+            kind = "truth test"
         if kind is not None:
             problems.append(
                 f"{qual}: logic belongs in the engine: see docs/engine/adapters.md ({kind})"
@@ -163,6 +183,60 @@ def functions_of(tree: ast.AST, stays: set[str]) -> list[str]:
     return problems
 
 
+# The stricter shapes (a type test, `x or default`, a conditional expression, a truth test) already
+# sit in these wrappers. Each line names the shape. A new shape, or an older one (a loop, arithmetic,
+# a comparison, a sort), is not listed and still fails.
+ALLOWED_FOR_NOW = {
+    ("assignments.prepare_solve", "branch"),  # a missing deadline stays None while decoding
+    ("availability.resolve_work_windows", "branch"),  # None windows stay None on the way in
+    ("solver._points", "branch"),  # a missing point stays None while encoding
+    ("calendar.apply_block_times", "branch"),  # the engine's None answer stays None
+    ("calendar.relocate_block", "branch"),  # None dest in, None answer out
+    ("calendar.placement_on", "branch"),  # None trace in; the engine's flag becomes NOT_TODAY
+    ("calendar.agenda_for", "branch"),  # None trace and day data stay None on the way in
+    ("calendar.next_action_for", "branch"),  # None day data stays None on the way in
+    ("calendar.span_problem", "type test"),  # the engine is told the due value's Python type
+    ("custom_look._text_or_none", "branch"),  # text stays, anything else becomes None
+    ("custom_look._text_or_none", "type test"),
+    ("custom_look._name", "branch"),  # a non-text name is none for the engine
+    ("custom_look._name", "type test"),
+    ("custom_look.sanitize_saved", "branch"),  # a non-list file is an empty list
+    ("custom_look.sanitize_saved", "type test"),
+    ("custom_look.save_look", "branch"),  # a non-text name is an empty string
+    ("custom_look.save_look", "type test"),
+    ("custom_look.free_name", "branch"),  # a non-text name is an empty string
+    ("custom_look.free_name", "type test"),
+    ("custom_look.rename_look", "branch"),  # a non-text name is an empty string
+    ("custom_look.rename_look", "type test"),
+    ("focus.persist_payload", "branch"),  # the engine's None answer stays None
+    ("focus.restore_state", "branch"),  # the engine's None answer stays None
+    ("focus.credit_target", "branch"),  # the engine's None answer stays None
+    ("history.capture_step", "branch"),  # the engine's None answer stays None
+    ("reuse.apply_plan", "branch"),  # None targets and assignments stay None on the way in
+    ("reuse.due_point", "branch"),  # the engine's None answer stays None
+    ("reuse.block_occurs_on_day", "branch"),  # None placed blocks stay None on the way in
+    ("reuse.row_conflict", "branch"),  # the engine's None answer stays None
+    ("update.available", "branch"),  # the engine's None answer stays None
+    ("update.release_from_page", "branch"),  # the engine's None answer stays None
+    ("weekmodel.WeekModel._engine", "default"),  # either tuple missing skips the handle cache
+    ("weekmodel.WeekModel._engine", "type test"),
+    ("weekmodel.WeekModel.on_day", "default"),  # either tuple missing skips the day cache
+    ("weekmodel.WeekModel.on_day", "type test"),
+    ("weekmodel.WeekModel.load_min", "default"),  # either tuple missing skips the load cache
+    ("weekmodel.WeekModel.load_min", "type test"),
+    ("weekmodel.WeekModel.day_queue", "branch"),  # no current block stays None
+    ("app.adopt_legacy_deadlines", "truth test"),  # the engine's "over the cap" becomes the 422
+    ("app.require_own_assignments", "truth test"),  # the engine's "not owned" becomes the 422
+    ("app.insert_restore_point", "default"),  # a missing keep-set is an empty list
+}
+
+
+def problem_key(problem: str) -> tuple[str, str]:
+    name = problem.split(":", 1)[0]
+    kind = problem.rsplit("(", 1)[-1].removesuffix(")")
+    return name, kind
+
+
 def test_wrappers_keep_no_engine_logic() -> None:
     # LOGIC is a leftover the table names (custom_look.readability). LOGIC, moved is not exempt.
     exempt = names_from_doc("STAYS", "LOGIC")
@@ -186,6 +260,7 @@ def test_wrappers_keep_no_engine_logic() -> None:
     for name in LOOK_HELPERS:
         for problem in logic_in(listed[name], name, set()):
             problems.append(f"look.{problem}")
+    problems = [problem for problem in problems if problem_key(problem) not in ALLOWED_FOR_NOW]
     assert not problems, "\n".join(problems)
 
 
@@ -203,4 +278,5 @@ def test_app_helpers_keep_no_engine_logic() -> None:
     problems: list[str] = []
     for name in APP_HELPERS:
         problems.extend(f"app.{problem}" for problem in logic_in(listed[name], name, set()))
+    problems = [problem for problem in problems if problem_key(problem) not in ALLOWED_FOR_NOW]
     assert not problems, "\n".join(problems)
