@@ -1,6 +1,15 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-02, `engine/full-port` (from 6e5ba72): the review's remaining fixes. An empty `start` is
+  not placed in Day and Month (`plan.rs` `has_start`); a custom accent's Fix fits against the grid
+  too; a study window's start is read with `int()`'s rules; `install_kind` resolves paths in the
+  Python adapter, so the core reads no files; the Replan all mutation case compiles and is caught;
+  solver tests use a real clock, and `engine/Cargo.toml` builds the engine crate at opt-level 2 in
+  debug so the 150 ms budget holds under load (Jonathan's choice). Each new test was seen to fail
+  without its fix. Engine fmt, clippy and tests (380) pass. Gate in a cloud container: ruff and mypy
+  clean, 3926 passed; 5 layout and menu-text tests and the alarm cleanup error fail there on
+  6e5ba72 as well (container fonts), and 4 others failed only under load and passed alone.
 - 2026-10-02, `fix/engine-review-parity`, based on PR 35 at `aa9f875`: five review fixes restore
   large-minute rounding, Python text for unusual restore titles, one database opener with explicit
   foreign keys and literal paths, migration read-error propagation, and panic-safe connection
@@ -804,6 +813,10 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-10-02, `engine/full-port`: review fixes above pushed for PR 35's CI (Jonathan's word). Next:
+  CI on Linux and Windows, then the alarm-test cleanup error and the release steps. Not done here:
+  the intermittent parity failure where an assignment estimate past 2^63 raises an OverflowError in
+  the engine while Python returns a number (seen once under hypothesis, not reproduced).
 - 2026-10-02, `fix/engine-review-parity`: the five engine review repairs and their regression
   proofs are implemented. Logs are in `~/.flexweek-ui-harness/scratch/engine-review-fixes/`.
   The full gate has an outside-scope alarm-test cleanup error. Jonathan requested these fixes on
