@@ -49,6 +49,13 @@
   Desktop Qt-free modules are Rust in `engine::desk` and are not switched. spec.md was not edited.
 - 2026-09-30, `engine/full-port` (from `engine/contract` at 6e86802, main d5dfcd6 / v0.17.2): Rust engine
   started. `slots` and `weeks` call `flexweek_engine`. Gate at 025adb9: 2952 passed.
+- 2026-10-01, `fix/test-isolation` (from d5dfcd6): three flaky tests fixed, all test-only. The sign-in hover tests
+  failed because `test_hours_zoom` and `test_layout_mission` left Qt holding the left button, so later moves were
+  drags (both release now; conftest's `no_mouse_button_is_left_held` fails any test that leaves one down), and
+  because the offscreen pointer kept the view Clay's arrow test left it over (conftest puts it at (10, 10) before
+  each test; `test_windows_between_tests` runs that order in a pytest of its own). The Clay free-time menu test
+  failed before about 09:00: Clay's neighbouring cards show the stretch of the day the front card has scrolled
+  to, and that opens at now, so Tuesday had no track at 17:00; the test now runs under Wednesday noon.
 - 2026-09-30, `feat/0.17.2`: 0.17.2 prepared (version, dated changelog, `docs/release-notes-v0.17.2.md`).
   It is Grok Bot's 0.17.0 audit (T1 to T37, A1 to A12, X1 to X9), split between Claude and GPT 6.1 Sol;
   every lane and unit below is merged. Last two: the 12-hour clock unit (above) and Retry save showing
@@ -57,8 +64,7 @@
   short on Jonathan's word: the last full gate (f0b2baf) had 2608 passed and 1 flaky failure, and the
   clock unit's own gate 2658 passed; after the last two merges only their touched test files (461
   passed) and `fwtest rig --design retro --tab month` (9/9) ran. No full rig or mutation pass on the
-  final tree. Known flaky: `test_sign_in_card.py::test_a_link_in_reach_keeps_the_accent_darker_and_underlined[pointer-*]`
-  fails now and then in the gate and passes alone (two fixes failed; left for 0.17.3).
+  final tree.
 - 2026-09-30, `claude/0172-w5-mission` (from 4bca099): two of Jonathan's calls after reviewing Mission and
   Timeline. Mission's lanes (Week and Day) open with now always in view when now is in what shows: the
   evening's end (22:00 or the last block's end, plus 30 min) at the right edge when both fit, else now
@@ -787,9 +793,10 @@ Recorded `operation_id` values make a retried write return the first result.
 - 2026-10-01, `engine/full-port`: Part C step 1 committed (`c5c1aa2`, `f9d1362`, `907def4`).
   Gate before those commits: 3040 passed. Part D is the unused-store removal and the
   environment read in `install_kind`. Nothing pushed.
+- 2026-10-01, `fix/sign-in-hover-flake`: the hover-flake fix is committed locally, not merged or pushed.
+  Next: Jonathan reviews and merges; the Clay free-time menu flake above is open.
 - 2026-09-30, `feat/0.17.2`: ready to push, PR to main, merge after CI and release v0.17.2 as latest
-  (Jonathan's word). Then Grok Bot reviews 0.17.2 and Jonathan decides on 0.17.3. Open for 0.17.3: the
-  sign-in hover flake; Bento's now pill inside today's column; Mission's beside-block names crossed by
+  (Jonathan's word). Then Grok Bot reviews 0.17.2 and Jonathan decides on 0.17.3. Open for 0.17.3: Bento's now pill inside today's column; Mission's beside-block names crossed by
   the now line; Clay's Day card with no hours for ~100 ms while it slides in; Clay's Day summary and
   Retro's deadlines cutting 12-hour times at Large 810; Bento's header "F 2" at Large 810; Mission's
   00:00 label 6 px left of the canvas; Help's other book icons not fitted to 3:1; dead `open_again` in
