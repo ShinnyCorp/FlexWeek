@@ -140,6 +140,7 @@ mod assignments;
 mod ledger;
 mod prefs;
 mod routines;
+mod rules;
 mod weeks;
 
 pub use accounts::{
@@ -164,6 +165,7 @@ pub use routines::{
     RoutineDelete, RoutineSave, RoutineWrite, delete_routine, list_routines, replace_routines,
     save_routine,
 };
+pub use rules::{Relay, assignment_view, payload_digest, rewrite_blocks, rewrite_stored_blocks};
 pub use weeks::{WeekSave, list_account_weeks, read_week, save_week, week_blocks, week_starts};
 
 /// A write joins the caller's transaction. The first one begins it, as `Connection.execute` does,

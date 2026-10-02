@@ -6,6 +6,7 @@ Run from the engine worktree's root, so `backend` is the live (engine-backed) pa
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -18,6 +19,7 @@ from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
+from backend import app as live_app
 from backend import assignments as live_assignments
 from backend import availability as live_availability
 from backend import comfort as live_comfort
@@ -1262,3 +1264,169 @@ def test_transfer_fits_on_non_dicts(value):
         lambda: ref_transfer.transfer_fits(value),
         repr(value),
     )
+
+
+# ---------- the helpers of backend/app.py
+#
+# The `ref_*` functions are the helper bodies as they were in Python before their rules moved into
+# the engine (backend/tests/engine_ref/app_helpers.py has the ones that read the database; the rest
+# are copied from the pre-port server, with the imports pointed at engine_ref).
+
+
+def ref_payload_digest(value):
+    return hashlib.sha256(ref_restore.canonical(value).encode()).hexdigest()
+
+
+def ref_assignment_view(body, revision, planned):
+    return {
+        **body,
+        "revision": revision,
+        "planned_min": planned,
+        "unplanned_min": ref_assignments.unplanned_minutes(
+            int(body["estimate_min"]), int(body["focus_minutes"]), planned
+        ),
+    }
+
+
+def ref_rewrite_blocks(blocks, assignments):
+    rewritten = []
+    for block in blocks:
+        if block.assignment_id:
+            rewritten.append(ref_assignments.rewrite_session(block, assignments[block.assignment_id]))
+        else:
+            rewritten.append(block)
+    return rewritten
+
+
+def ref_rewrite_stored_blocks(blocks, assignments):
+    rewritten = []
+    for raw in blocks:
+        aid = raw.get("assignment_id")
+        if not aid or aid not in assignments:
+            rewritten.append(raw)
+            continue
+        rewritten.append(
+            ref_assignments.rewrite_session(ref_models.TimeBlock.model_validate(raw), assignments[aid]).model_dump()
+        )
+    return rewritten
+
+
+@COMMON
+@given(json_value)
+def test_payload_digest(value):
+    same(lambda: live_app.payload_digest(value), lambda: ref_payload_digest(value), f"{value!r}")
+
+
+def test_payload_digest_on_what_json_cannot_write():
+    for value in ([object()], {1, 2}, {"a": float("nan")}, {1: "a", "b": 2}, "lone \ud800"):
+        same(lambda value=value: live_app.payload_digest(value), lambda value=value: ref_payload_digest(value), repr(value))
+
+
+estimate_value = st.one_of(
+    st.sampled_from([15, 30, 60, 90, 600]),
+    st.sampled_from([None, "45", "x", "", " 7 ", 4.5, -2.5, True, False, [1], {"a": 1}]),
+    st.integers(-300, 3000),
+)
+
+
+@COMMON
+@given(
+    st.fixed_dictionaries(
+        {"estimate_min": estimate_value, "focus_minutes": estimate_value},
+        optional={
+            "id": st.just("a1"),
+            "revision": st.integers(0, 9),
+            "planned_min": st.integers(0, 9),
+            "unplanned_min": st.integers(0, 9),
+            "notes": st.just("n"),
+        },
+    ),
+    st.integers(0, 10**6),
+    st.integers(-500, 3000),
+    st.sets(st.sampled_from(["estimate_min", "focus_minutes"]), max_size=2),
+)
+def test_assignment_view(body, revision, planned, dropped):
+    body = {key: value for key, value in body.items() if key not in dropped}
+    same(
+        lambda: live_app.assignment_view(body, revision, planned),
+        lambda: ref_assignment_view(body, revision, planned),
+        f"{body!r} {revision} {planned}",
+    )
+
+
+@COMMON
+@given(st.one_of(st.none(), st.integers(), st.lists(st.integers(), max_size=2), st.text(max_size=3)))
+def test_assignment_view_on_a_body_that_is_not_a_dict(body):
+    same(
+        lambda: live_app.assignment_view(body, 1, 0),
+        lambda: ref_assignment_view(body, 1, 0),
+        repr(body),
+    )
+
+
+assignments_by_id = st.fixed_dictionaries({"a1": assignment_body("a1"), "a2": assignment_body("a2")})
+
+
+@st.composite
+def blocks_naming_assignments(draw, ids):
+    bodies = draw(week_blocks(max_size=6))
+    named = []
+    for body in bodies:
+        aid = draw(st.sampled_from(ids))
+        named.append({**body, "assignment_id": aid} if aid is not None else {k: v for k, v in body.items() if k != "assignment_id"})
+    for body in named:
+        try:
+            ref_models.TimeBlock.model_validate(body)
+        except ValidationError:
+            assume(False)
+    return named
+
+
+@COMMON
+@given(blocks_naming_assignments([None, None, "a1", "a2", "zz", ""]), assignments_by_id)
+def test_rewrite_blocks(bodies, assignments):
+    same(
+        lambda: live_app.rewrite_blocks(models_of(live_models, "TimeBlock", bodies), assignments),
+        lambda: ref_rewrite_blocks(models_of(ref_models, "TimeBlock", bodies), assignments),
+        f"{bodies!r}",
+    )
+
+
+@COMMON
+@given(blocks_naming_assignments([None, "a1", "a2", "zz"]), assignments_by_id)
+def test_rewrite_stored_blocks(bodies, assignments):
+    same(
+        lambda: live_app.rewrite_stored_blocks(bodies, assignments),
+        lambda: ref_rewrite_stored_blocks(bodies, assignments),
+        f"{bodies!r}",
+    )
+
+
+@COMMON
+@given(
+    st.lists(
+        st.one_of(
+            block_dict(),
+            st.fixed_dictionaries({"id": st.just("x"), "assignment_id": st.sampled_from(["a1", "zz", "", None, 7, 0, 1.5, [1], {"k": 1}, True])}),
+            st.just("not a dict"),
+            st.just(None),
+        ),
+        max_size=4,
+    ),
+    assignments_by_id,
+)
+def test_rewrite_stored_blocks_on_rows_that_do_not_fit(blocks, assignments):
+    same(
+        lambda: live_app.rewrite_stored_blocks(blocks, assignments),
+        lambda: ref_rewrite_stored_blocks(blocks, assignments),
+        f"{blocks!r}",
+    )
+
+
+def test_rewrite_stored_blocks_on_a_list_of_nothing_in_particular():
+    for blocks in ([], {}, "", {"a": 1}, "abc", 5, None):
+        same(
+            lambda blocks=blocks: live_app.rewrite_stored_blocks(blocks, {}),
+            lambda blocks=blocks: ref_rewrite_stored_blocks(blocks, {}),
+            repr(blocks),
+        )

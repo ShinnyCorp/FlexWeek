@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import re
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
+import flexweek_engine  # type: ignore[import-untyped]
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -20,8 +20,6 @@ from backend.assignments import (
     legacy_session,
     planned_minutes_by_id,
     prepare_solve,
-    rewrite_session,
-    unplanned_minutes,
 )
 from backend.availability import occupancy_from_windows, spread_sessions
 from backend.comfort import REMINDER_LIMITS, TIMER_PRESETS, preview_split
@@ -152,24 +150,22 @@ def adopt_legacy_deadlines(
 
 
 def rewrite_blocks(blocks: list[TimeBlock], assignments: dict[str, dict]) -> list[TimeBlock]:
-    rewritten: list[TimeBlock] = []
-    for block in blocks:
-        if block.assignment_id:
-            rewritten.append(rewrite_session(block, assignments[block.assignment_id]))
-        else:
-            rewritten.append(block)
-    return rewritten
+    rewritten = flexweek_engine.rewrite_blocks(
+        json.dumps([block.model_dump() for block in blocks]), json.dumps(assignments)
+    )
+    return [TimeBlock.model_validate(item) for item in json.loads(rewritten)]
+
+
+def normalize_stored_block(text: str) -> str:
+    return json.dumps(TimeBlock.model_validate(json.loads(text)).model_dump())
 
 
 def rewrite_stored_blocks(blocks: list[dict], assignments: dict[str, dict]) -> list[dict]:
-    rewritten: list[dict] = []
-    for raw in blocks:
-        aid = raw.get("assignment_id")
-        if not aid or aid not in assignments:
-            rewritten.append(raw)
-            continue
-        rewritten.append(rewrite_session(TimeBlock.model_validate(raw), assignments[aid]).model_dump())
-    return rewritten
+    rewritten = flexweek_engine.rewrite_stored_blocks(
+        json.dumps(blocks), json.dumps(assignments), normalize_stored_block
+    )
+    loaded: list[dict] = json.loads(rewritten)
+    return loaded
 
 
 def dump_blocks(blocks: list[TimeBlock]) -> list[dict]:
@@ -182,12 +178,8 @@ def list_account_weeks(db: Connection, user_id: int) -> list[tuple[str, list[dic
 
 
 def assignment_view(body: dict, revision: int, planned: int) -> dict:
-    return {
-        **body,
-        "revision": revision,
-        "planned_min": planned,
-        "unplanned_min": unplanned_minutes(int(body["estimate_min"]), int(body["focus_minutes"]), planned),
-    }
+    view: dict = json.loads(flexweek_engine.assignment_view(json.dumps(body), revision, planned))
+    return view
 
 
 def upsert_assignment(db: Connection, user_id: int, content: AssignmentContent, revision: int) -> dict:
@@ -231,7 +223,7 @@ def naive_now() -> str:
 
 
 def payload_digest(value: object) -> str:
-    return hashlib.sha256(canonical(value).encode()).hexdigest()
+    return flexweek_engine.payload_digest(json.dumps(value))
 
 
 def capture_account(db: Connection, user_id: int) -> dict:

@@ -22,6 +22,16 @@ BACKEND_MODULES = (
     "weeks",
 )
 DESKTOP_MODULES: tuple[str, ...] = ()
+APP_MODULES = ("app",)
+# The helper functions of backend/app.py that hold no HTTP: route handlers and the functions that
+# map an engine status onto an HTTP error are not listed and are not checked.
+APP_HELPERS = (
+    "rewrite_blocks",
+    "normalize_stored_block",
+    "rewrite_stored_blocks",
+    "assignment_view",
+    "payload_digest",
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 ADAPTERS = ROOT / "docs" / "engine" / "adapters.md"
@@ -122,4 +132,21 @@ def test_wrappers_keep_no_engine_logic() -> None:
         tree = ast.parse(path.read_text(), filename=str(path))
         for problem in functions_of(tree, stays.get(name, set())):
             problems.append(f"{name}.{problem}")
+    assert not problems, "\n".join(problems)
+
+
+def test_app_helpers_keep_no_engine_logic() -> None:
+    path = ROOT / "backend" / f"{APP_MODULES[0]}.py"
+    tree = ast.parse(path.read_text(), filename=str(path))
+    assert isinstance(tree, ast.Module)
+    listed = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in APP_HELPERS
+    }
+    missing = set(APP_HELPERS) - listed.keys()
+    assert not missing, f"app.py no longer defines: {sorted(missing)}"
+    problems: list[str] = []
+    for name in APP_HELPERS:
+        problems.extend(f"app.{problem}" for problem in logic_in(listed[name], name, set()))
     assert not problems, "\n".join(problems)

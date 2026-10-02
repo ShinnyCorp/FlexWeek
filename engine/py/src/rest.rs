@@ -413,6 +413,10 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         store_initialize,
         store_throttle,
         store_initialize_today,
+        payload_digest,
+        assignment_view,
+        rewrite_blocks,
+        rewrite_stored_blocks,
     );
     Ok(())
 }
@@ -430,5 +434,53 @@ fn store_initialize_today(py: Python<'_>, path: &str) -> PyResult<()> {
         let week = ::flexweek_engine::time::monday_of(&today).map_err(crate::raise)?;
         py.detach(|| store::initialize(Path::new(&path), &week))
             .map_err(|error| store_py(py, error))
+    })
+}
+
+fn relay_py(py: Python<'_>, relay: store::Relay<PyErr>) -> PyErr {
+    match relay {
+        store::Relay::Store(error) => store_py(py, error),
+        store::Relay::Caller(error) => error,
+    }
+}
+
+#[pyfunction]
+fn payload_digest(text: &str) -> PyResult<String> {
+    guard(|| Ok(store::payload_digest(&parse(text)?)))
+}
+
+#[pyfunction]
+fn assignment_view(body: &str, revision: i64, planned: i64) -> PyResult<String> {
+    guard(|| {
+        let view =
+            store::assignment_view(&parse(body)?, revision, planned).map_err(crate::raise)?;
+        Ok(dump(&view))
+    })
+}
+
+#[pyfunction]
+fn rewrite_blocks(blocks: &str, assignments: &str) -> PyResult<String> {
+    guard(|| {
+        let rewritten =
+            store::rewrite_blocks(&parse(blocks)?, &parse(assignments)?).map_err(crate::raise)?;
+        Ok(dump(&Value::Array(rewritten)))
+    })
+}
+
+#[pyfunction]
+fn rewrite_stored_blocks(
+    py: Python<'_>,
+    blocks: &str,
+    assignments: &str,
+    normalize: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    guard(|| {
+        let rewritten =
+            store::rewrite_stored_blocks(&parse(blocks)?, &parse(assignments)?, |block| {
+                let text: String = normalize.call1((dump(block),))?.extract()?;
+                parse(&text)
+            })
+            .map_err(|relay| relay_py(py, relay))?;
+        Ok(dump(&Value::Array(rewritten)))
     })
 }

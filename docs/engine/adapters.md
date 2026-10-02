@@ -125,6 +125,21 @@ A backend wrapper is one of three classes.
 | transfer | transfer_apply_bytes | ADAPTER | Encodes the snapshot, one call. |
 | transfer | transfer_fits | ADAPTER | Encodes the snapshot, one call. The size cap is the engine's. |
 
+## backend/app.py helpers
+
+`backend/app.py` is the HTTP layer: routes, dependencies, status codes, the pydantic request and response models, and the mapping of an engine status onto an HTTP error stay in Python. The rows below are the helper functions whose decisions moved into the engine (`engine/store/src/rules.rs`); `test_app_helpers_keep_no_engine_logic` checks them with the same rule as the modules above. Route handlers are not checked.
+
+| Module | Function | Class | Reason |
+| --- | --- | --- | --- |
+| app | rewrite_blocks | ADAPTER | One engine call; the engine picks which blocks take their assignment's fields. |
+| app | normalize_stored_block | ADAPTER | The pydantic check the engine calls for each rewritten stored block. |
+| app | rewrite_stored_blocks | ADAPTER | One engine call; the engine picks which stored blocks are rewritten. |
+| app | assignment_view | ADAPTER | One engine call; the engine adds `planned_min` and `unplanned_min`. |
+| app | payload_digest | ADAPTER | One engine call; the engine hashes the canonical text. |
+| app | naive_now | STAYS | Reads the clock. |
+
+`upsert_assignment`, `delete_assignment`, `save_week_row`, `upsert_routine`, and `delete_routine` are not in the table and the test does not check them. Each makes one store call and turns the status it gets back into an HTTP error (409, 422, 404) by comparing it with a status word. The store decides the status; the comparison only picks the error. None of the five holds a rule beyond that mapping: the revision check, the cap, and the identical-body shortcut are all in the store.
+
 ## Desktop
 
 The desktop's eleven modules are classified in a later run.
