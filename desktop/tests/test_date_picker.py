@@ -9,7 +9,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QDate, QModelIndex, QPoint, QRect
 from PySide6.QtGui import QColor, QImage
-from PySide6.QtWidgets import QApplication, QTableView, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QTableView, QWidget
 
 from desktop.native.fields import LookCalendar
 from desktop.native.look import pack_stylesheet, resolved_palette
@@ -95,6 +95,21 @@ def accent_pixels(picture: QImage, rect: QRect, accent: str) -> int:
 
     across, down = range(rect.left(), rect.right()), range(rect.top(), rect.bottom())
     return sum(close(x, y) for x in across for y in down)
+
+
+def test_numbers_are_drawn_in_grey_shades(qapp: QApplication) -> None:  # noqa: F811
+    """`ink` reads a number's colour off its darkest pixel. Drawn in coloured subpixel stripes, a 10 had
+    no pixel in the text's colour, so the weekend test failed in a worker on a day whose first
+    Saturday was the 10th; conftest keeps text in grey shades on every computer."""
+    number = QLabel("10")
+    number.setStyleSheet("background: white; color: black; font: 13pt 'Inter'")
+    number.resize(60, 30)
+    picture = number.grab().toImage()
+    across, down = range(picture.width()), range(picture.height())
+    shades = {picture.pixelColor(x, y).getRgb()[:3] for x in across for y in down}
+    assert len(shades) > 2, "the number was drawn"
+    assert all(red == green == blue for red, green, blue in shades), "coloured subpixel stripes"
+    free(number)
 
 
 @pytest.mark.parametrize("pack", ["light-frost", "dark-frost"])
