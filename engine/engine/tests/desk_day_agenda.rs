@@ -2,8 +2,8 @@
 //!
 //! The rest of that file fills a `DayAgenda` widget or a `MonthGrid` and stays Python.
 
-use flexweek_engine::desk::calendar::agenda_for;
-use serde_json::{Map, Value, json};
+use flexweek_engine::desk::grid::agenda_for;
+use serde_json::{Value, json};
 
 fn ids(rows: &Value) -> Vec<&str> {
     rows.as_array()
@@ -31,11 +31,12 @@ fn test_a_block_that_is_not_on_this_day_is_left_out_rather_than_breaking_the_day
     let tuesday = agenda_for(
         "2026-09-14",
         "2026-09-15",
-        &blocks,
-        &Map::new(),
+        &json!(blocks),
+        &json!({}),
         Some(&trace),
         None,
-    );
+    )
+    .expect("an agenda");
     assert_eq!(ids(&tuesday["sessions"]), Vec::<&str>::new());
     assert!(
         tuesday["fixed"]
@@ -49,11 +50,12 @@ fn test_a_block_that_is_not_on_this_day_is_left_out_rather_than_breaking_the_day
     let monday = agenda_for(
         "2026-09-14",
         "2026-09-14",
-        &blocks,
-        &Map::new(),
+        &json!(blocks),
+        &json!({}),
         Some(&trace),
         None,
-    );
+    )
+    .expect("an agenda");
     assert_eq!(ids(&monday["sessions"]), ["essay"]);
 }
 
@@ -63,6 +65,14 @@ fn test_the_day_stays_in_clock_order_when_something_has_no_time() {
         json!({"id": "late", "title": "Late", "kind": "locked", "start": "18:00", "days": [0]}),
         json!({"id": "early", "title": "Early", "kind": "locked", "start": "07:00", "days": [0]}),
     ];
-    let agenda = agenda_for("2026-09-14", "2026-09-14", &blocks, &Map::new(), None, None);
+    let agenda = agenda_for(
+        "2026-09-14",
+        "2026-09-14",
+        &json!(blocks),
+        &json!({}),
+        None,
+        None,
+    )
+    .expect("an agenda");
     assert_eq!(ids(&agenda["fixed"]), ["early", "late"]);
 }
