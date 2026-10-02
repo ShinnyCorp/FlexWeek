@@ -87,6 +87,7 @@ fn test_the_category_colours_are_the_family_worked_out_from_their_hues() {
     for (key, hue, color, mark, dark, contrast) in CATEGORIES {
         let worked: BTreeMap<String, (String, String)> =
             family_colours(hue, key == "free", key == "assignments", key == "sleep")
+                .expect("colours")
                 .into_iter()
                 .collect();
         let held = BTreeMap::from([
@@ -102,9 +103,8 @@ fn test_the_category_colours_are_the_family_worked_out_from_their_hues() {
 fn test_the_text_knob_scales_all_five_sizes() {
     // Small and Large move every size together, so a heading stays a heading at any text size.
     for (role, _) in TYPE_PT {
-        let small = type_pt(role, TextScale::Named("small"));
-        let normal = type_pt(role, TextScale::Named("normal"));
-        let large = type_pt(role, TextScale::Named("large"));
+        let size = |name: &str| type_pt(role, &TextScale::Named(name.to_string())).expect("a size");
+        let (small, normal, large) = (size("small"), size("normal"), size("large"));
         assert!(
             small < normal && normal < large,
             "{role}: {small} {normal} {large}"
@@ -112,7 +112,7 @@ fn test_the_text_knob_scales_all_five_sizes() {
     }
     let normal: Vec<f64> = TYPE_PT
         .iter()
-        .map(|(role, _)| type_pt(role, TextScale::Named("normal")))
+        .map(|(role, _)| type_pt(role, &TextScale::Named("normal".to_string())).expect("a size"))
         .collect();
     assert_eq!(normal, [11.0, 13.0, 15.0, 20.0, 28.0]);
 }
