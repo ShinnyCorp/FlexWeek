@@ -54,7 +54,9 @@ fwtest clean
   same scope and limits as the driver. The state file is written as each session process starts.
   `--server` is `kwin`, `xvfb`, or `auto` (the default: KWin when `kwin_wayland` is on `PATH`,
   otherwise Xvfb). That flag is not forwarded to the driver. The driver receives the display, the
-  private D-Bus address, and the runs-folder key in its environment. `FLEXWEEK_RIG_KEEP` is removed
+  private D-Bus address, and the runs-folder key in its environment. The driver refuses that display
+  or that bus when it is the one `fwtest rig` was started with. A display the session itself
+  allocated is allowed, including `:0`. `FLEXWEEK_RIG_KEEP` is removed
   before the driver starts, and the run always stops the session afterwards by the PIDs recorded in
   its state file. `fwtest rig --list` does not start a session.
 - `run` runs any command as a job, with the guarantees above. It exists for the picture tours and

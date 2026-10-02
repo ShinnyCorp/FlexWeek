@@ -9,7 +9,28 @@ use std::path::Path;
 use crate::contain;
 use crate::hidden;
 
+/// Remember the display and bus this process was started with.
+///
+/// The driver compares the hidden session with these values. A later change to
+/// `DISPLAY` or `DBUS_SESSION_BUS_ADDRESS` must not change that comparison. An
+/// empty value means the caller had none. The child inherits what the parent
+/// stored and does not record them again.
+fn freeze_caller_env() {
+    // SAFETY: the main thread, before this process spawns a child.
+    unsafe {
+        if std::env::var_os("FLEXWEEK_CALLER_DISPLAY").is_none() {
+            let value = std::env::var_os("DISPLAY").unwrap_or_default();
+            std::env::set_var("FLEXWEEK_CALLER_DISPLAY", value);
+        }
+        if std::env::var_os("FLEXWEEK_CALLER_BUS").is_none() {
+            let value = std::env::var_os("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
+            std::env::set_var("FLEXWEEK_CALLER_BUS", value);
+        }
+    }
+}
+
 pub fn run(extra: &[String], python: Option<&Path>) -> u8 {
+    freeze_caller_env();
     let checkout = match crate::state::git_toplevel() {
         Ok(path) => path,
         Err(message) => {
@@ -175,6 +196,7 @@ pub fn inside(args: &[String]) -> i32 {
     unsafe {
         std::env::remove_var("FLEXWEEK_RIG_KEEP");
     }
+    freeze_caller_env();
     let started = match hidden::start(&checkout, server) {
         Ok(started) => started,
         Err(message) => {

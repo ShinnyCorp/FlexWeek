@@ -89,6 +89,13 @@ def default_runs_folder(runs_key: str) -> Path:
     return base / runs_key
 
 
+def caller_env(frozen: str, live: str) -> str:
+    """Environment `fwtest rig` started with. An empty stored value means the caller had none."""
+    if frozen in os.environ:
+        return os.environ[frozen]
+    return os.environ.get(live, "")
+
+
 def session_from_fwtest() -> tuple[str, str, str]:
     """Display, private bus, and runs-folder key passed in by `fwtest rig`."""
     display = os.environ.get("FLEXWEEK_RIG_DISPLAY", "")
@@ -96,12 +103,10 @@ def session_from_fwtest() -> tuple[str, str, str]:
     runs_key = os.environ.get("FLEXWEEK_RIG_RUNS_KEY", "")
     if not display or not bus or not runs_key:
         raise SystemExit("Use fwtest rig.")
-    if display == ":0":
-        raise SystemExit("Refusing display :0, which belongs to the real desktop.")
-    own_display = os.environ.get("DISPLAY", "")
+    own_display = caller_env("FLEXWEEK_CALLER_DISPLAY", "DISPLAY")
     if own_display and display == own_display:
         raise SystemExit(f"Refusing display {display}, which is this process's own DISPLAY.")
-    own_bus = os.environ.get("DBUS_SESSION_BUS_ADDRESS", "")
+    own_bus = caller_env("FLEXWEEK_CALLER_BUS", "DBUS_SESSION_BUS_ADDRESS")
     if own_bus and bus == own_bus:
         raise SystemExit("Refusing the caller's own D-Bus session bus.")
     return display, bus, runs_key
