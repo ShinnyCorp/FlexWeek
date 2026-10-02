@@ -73,6 +73,30 @@ def test_import_look_reads_a_non_finite_number_as_the_whole_file(number, shape):
 
 
 @base.CHECK
+@given(
+    st.sampled_from(sorted(live_rules.LOOK_BASES)),
+    st.one_of(
+        st.none(),
+        st.fixed_dictionaries({}, optional={"page": base.HEX, "card": base.HEX, "text": base.HEX}),
+    ),
+    base.HEX,
+    st.booleans(),
+)
+def test_readability_over_base_colours_and_accent(base_name, colours, accent, system_dark):
+    custom = {"base": base_name, "accent": accent}
+    if colours is not None:
+        custom["colours"] = colours
+
+    def rows(module):
+        return [
+            (item.words, item.ink, item.ground, item.ratio, item.field, item.fixed)
+            for item in module.readability(custom, system_dark)
+        ]
+
+    assert repr(rows(live_look)) == repr(rows(ref_look))
+
+
+@base.CHECK
 @given(base.raw_look(), st.booleans())
 def test_readability_on_generated_looks(raw, system_dark):
     custom, _problems = ref_rules.sanitize_custom(raw)
