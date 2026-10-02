@@ -7,10 +7,13 @@ use serde_json::json;
 
 #[test]
 fn test_the_next_line_says_min_like_every_design() {
-    let blocks = [
-        json!({"title": "Soccer practice", "start": "16:00", "duration_min": 90, "days": [3], "completed": false}),
-    ];
-    let line = |minute: i64| now_next_line(&now_and_next(&blocks, 3, minute), minute);
+    let blocks = json!([
+        {"title": "Soccer practice", "start": "16:00", "duration_min": 90, "days": [3], "completed": false},
+    ]);
+    let line = |minute: i64| {
+        let result = now_and_next(&blocks, &json!(3), minute).expect("a result");
+        now_next_line(&result, minute).expect("a line")
+    };
     assert_eq!(
         line(15 * 60 + 40),
         "Next: Soccer practice at 16:00 (in 20 min)"
