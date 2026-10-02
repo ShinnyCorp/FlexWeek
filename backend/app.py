@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import re
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
+import flexweek_engine  # type: ignore[import-untyped]
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -17,13 +17,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.assignments import (
-    legacy_session,
     planned_minutes_by_id,
     prepare_solve,
-    rewrite_session,
-    unplanned_minutes,
 )
-from backend.availability import occupancy_from_windows, spread_sessions
+from backend.availability import spread_sessions
 from backend.comfort import REMINDER_LIMITS, TIMER_PRESETS, preview_split
 from backend.day import build_day
 from backend.limits import MAX_BODY
@@ -119,57 +116,49 @@ def load_assignment_bodies(db: Connection, user_id: int, ids: set[str]) -> dict[
 
 
 def require_own_assignments(db: Connection, user_id: int, ids: set[str]) -> dict[str, dict]:
-    found = load_assignment_bodies(db, user_id, ids)
-    if found.keys() != ids:
+    owned, rows = db.require_own_assignments(user_id, list(ids))
+    found = {row[0]: json.loads(row[1]) for row in rows}
+    if not owned:
         raise HTTPException(422, ASSIGNMENT_UNKNOWN)
     return found
+
+
+def encode_new_assignment(text: str) -> str:
+    return encode_assignment(AssignmentContent.model_validate(json.loads(text)))
 
 
 def adopt_legacy_deadlines(
     db: Connection, user_id: int, week_start: str, blocks: list[TimeBlock]
 ) -> list[TimeBlock]:
-    adopted: list[TimeBlock] = []
-    created: list[dict] = []
-    for block in blocks:
-        if block.kind != "flexible" or block.assignment_id or not block.latest:
-            adopted.append(block)
-            continue
-        session, body = legacy_session(week_start, block)
-        if not db.assignment_exists(user_id, body["id"]):
-            created.append(body)
-        adopted.append(session)
-    if created:
-        count = db.count_assignments(user_id)
-        if count + len(created) > MAX_ASSIGNMENTS:
-            raise HTTPException(422, ASSIGNMENT_LIMIT)
-        for body in created:
-            db.insert_assignment(
-                user_id,
-                body["id"],
-                encode_assignment(AssignmentContent.model_validate(body)),
-            )
-    return adopted
+    fits, adopted = db.adopt_legacy_deadlines(
+        user_id,
+        week_start,
+        json.dumps([block.model_dump() for block in blocks]),
+        MAX_ASSIGNMENTS,
+        encode_new_assignment,
+    )
+    if not fits:
+        raise HTTPException(422, ASSIGNMENT_LIMIT)
+    return [TimeBlock.model_validate(item) for item in json.loads(adopted)]
 
 
 def rewrite_blocks(blocks: list[TimeBlock], assignments: dict[str, dict]) -> list[TimeBlock]:
-    rewritten: list[TimeBlock] = []
-    for block in blocks:
-        if block.assignment_id:
-            rewritten.append(rewrite_session(block, assignments[block.assignment_id]))
-        else:
-            rewritten.append(block)
-    return rewritten
+    rewritten = flexweek_engine.rewrite_blocks(
+        json.dumps([block.model_dump() for block in blocks]), json.dumps(assignments)
+    )
+    return [TimeBlock.model_validate(item) for item in json.loads(rewritten)]
+
+
+def normalize_stored_block(text: str) -> str:
+    return json.dumps(TimeBlock.model_validate(json.loads(text)).model_dump())
 
 
 def rewrite_stored_blocks(blocks: list[dict], assignments: dict[str, dict]) -> list[dict]:
-    rewritten: list[dict] = []
-    for raw in blocks:
-        aid = raw.get("assignment_id")
-        if not aid or aid not in assignments:
-            rewritten.append(raw)
-            continue
-        rewritten.append(rewrite_session(TimeBlock.model_validate(raw), assignments[aid]).model_dump())
-    return rewritten
+    rewritten = flexweek_engine.rewrite_stored_blocks(
+        json.dumps(blocks), json.dumps(assignments), normalize_stored_block
+    )
+    loaded: list[dict] = json.loads(rewritten)
+    return loaded
 
 
 def dump_blocks(blocks: list[TimeBlock]) -> list[dict]:
@@ -182,12 +171,8 @@ def list_account_weeks(db: Connection, user_id: int) -> list[tuple[str, list[dic
 
 
 def assignment_view(body: dict, revision: int, planned: int) -> dict:
-    return {
-        **body,
-        "revision": revision,
-        "planned_min": planned,
-        "unplanned_min": unplanned_minutes(int(body["estimate_min"]), int(body["focus_minutes"]), planned),
-    }
+    view: dict = json.loads(flexweek_engine.assignment_view(json.dumps(body), revision, planned))
+    return view
 
 
 def upsert_assignment(db: Connection, user_id: int, content: AssignmentContent, revision: int) -> dict:
@@ -231,7 +216,7 @@ def naive_now() -> str:
 
 
 def payload_digest(value: object) -> str:
-    return hashlib.sha256(canonical(value).encode()).hexdigest()
+    return flexweek_engine.payload_digest(json.dumps(value))
 
 
 def capture_account(db: Connection, user_id: int) -> dict:
@@ -278,29 +263,17 @@ def restore_point_view(row: Row) -> dict:
 
 
 def insert_restore_point(db: Connection, user_id: int, label: str, keep_ids: set[str] | None = None) -> dict:
-    snapshot = capture_account(db, user_id)
-    point_id = "rp-" + secrets.token_hex(8)
-    created_at = naive_now()
-    protected = set(keep_ids or ())
-    protected.add(point_id)
-    db.insert_restore_point(
-        user_id,
-        point_id,
-        label,
-        created_at,
-        len(snapshot["weeks"]),
-        len(snapshot["assignments"]),
-        canonical(snapshot),
-        list(protected),
-        MAX_RESTORE_POINTS,
+    created: dict = json.loads(
+        db.create_restore_point(
+            user_id,
+            secrets.token_hex(8),
+            label,
+            naive_now(),
+            list(keep_ids or ()),
+            MAX_RESTORE_POINTS,
+        )
     )
-    return {
-        "id": point_id,
-        "label": label,
-        "created_at": created_at,
-        "weeks": len(snapshot["weeks"]),
-        "assignments": len(snapshot["assignments"]),
-    }
+    return created
 
 
 def replace_account(db: Connection, user_id: int, snapshot: dict) -> dict:
@@ -751,42 +724,8 @@ def encode_comfort(preferences: Preferences) -> str:
 
 
 def preferences_from_row(row: Row) -> dict:
-    availability = json.loads(row["availability_json"] or "{}")
-    comfort = json.loads(row["comfort_json"] or "{}")
-    return Preferences(
-        theme=row["theme"],
-        reminders_enabled=bool(row["reminders_enabled"]),
-        reminder_lead_min=int(row["reminder_lead_min"]),
-        reminder_sound=bool(row["reminder_sound"]),
-        reminder_dnd_override=bool(row["reminder_dnd_override"]),
-        timer_work_min=int(row["timer_work_min"]),
-        timer_break_min=int(row["timer_break_min"]),
-        timer_long_break_min=int(row["timer_long_break_min"]),
-        timer_long_break_every=int(row["timer_long_break_every"]),
-        auto_split_pomodoro=bool(row["auto_split_pomodoro"]),
-        default_spotify_url=row["default_spotify_url"],
-        alarms=json.loads(row["alarms_json"]),
-        protected=availability.get("protected") or [],
-        study_windows=availability.get("study_windows") or [],
-        work_windows=availability.get("work_windows") or [],
-        day_cutoff=availability.get("day_cutoff"),
-        alert_volume=comfort.get("alert_volume", 80),
-        end_chime=bool(comfort.get("end_chime", False)),
-        tray_notifications=bool(comfort.get("tray_notifications", True)),
-        start_at_login=bool(comfort.get("start_at_login", False)),
-        preferred_view=comfort.get("preferred_view"),
-        sidebar_collapsed=bool(comfort.get("sidebar_collapsed", False)),
-        sidebar_width_px=comfort.get("sidebar_width_px"),
-        theme_pack=comfort.get("theme_pack", "system"),
-        accent=comfort.get("accent", "default"),
-        accent_chips=bool(comfort.get("accent_chips", False)),
-        motion=comfort.get("motion"),
-        alarm_tone=comfort.get("alarm_tone", "chime"),
-        planning_style=comfort.get("planning_style", "suggest"),
-        drag_step_min=comfort.get("drag_step_min", 5),
-        clock_24h=bool(comfort.get("clock_24h", True)),
-        setup=comfort.get("setup"),
-    ).model_dump()
+    fields = json.loads(flexweek_engine.preferences_fields(json.dumps(dict(row))))
+    return Preferences(**fields).model_dump()
 
 
 def capture_transfer(db: Connection, user_id: int) -> dict:
@@ -828,16 +767,27 @@ def write_preferences(db: Connection, user_id: int, preferences: Preferences) ->
     return preferences.model_dump()
 
 
+WINDOW_MODELS: dict[str, type[BaseModel]] = {
+    "protected": ProtectedWindow,
+    "study": StudyWindow,
+    "work": WorkWindow,
+}
+
+
+def validate_windows(kind: str, text: str) -> str:
+    model = WINDOW_MODELS[kind]
+    return json.dumps([model.model_validate(item).model_dump() for item in json.loads(text)])
+
+
 def solve_availability(
     stored: str | None,
 ) -> tuple[list[int], list[StudyWindow], list[WorkWindow]]:
-    if stored is None:
-        return [0] * 7, [], []
-    availability = json.loads(stored or "{}")
-    protected = [ProtectedWindow.model_validate(item) for item in availability.get("protected") or []]
-    study = [StudyWindow.model_validate(item) for item in availability.get("study_windows") or []]
-    work = [WorkWindow.model_validate(item) for item in availability.get("work_windows") or []]
-    return occupancy_from_windows(protected, availability.get("day_cutoff")), study, work
+    occupancy, study, work = flexweek_engine.solve_availability(stored, validate_windows)
+    return (
+        list(occupancy),
+        [StudyWindow.model_validate(item) for item in json.loads(study)],
+        [WorkWindow.model_validate(item) for item in json.loads(work)],
+    )
 
 
 def create_app(database: Path | None = None, origin: str | None = None) -> FastAPI:

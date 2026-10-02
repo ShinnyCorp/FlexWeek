@@ -59,7 +59,7 @@ def study_rank(
 
 def resolve_work_windows(windows: list[WorkWindow] | None) -> tuple[list[WorkWindow], bool]:
     raw, defaulted = flexweek_engine.resolve_work_windows(
-        None if not windows else json.dumps([window.model_dump() for window in windows])
+        None if windows is None else json.dumps([window.model_dump() for window in windows])
     )
     return [WorkWindow.model_validate(item) for item in json.loads(raw)], defaulted
 

@@ -453,6 +453,138 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         build_day,
         build_month,
         is_work_session,
+        snap_minutes_wide,
+        generate_recovery_codes,
+        recovery_code_matches,
     );
     Ok(())
+}
+
+fn is_overflow(py: Python<'_>, err: &PyErr) -> bool {
+    err.is_instance(py, &py.get_type::<pyo3::exceptions::PyOverflowError>())
+}
+
+fn decimal_of_int(obj: &Bound<'_, PyAny>) -> PyResult<Option<String>> {
+    if !obj.is_instance_of::<pyo3::types::PyInt>() {
+        return Ok(None);
+    }
+    match obj.extract::<i64>() {
+        Ok(value) => Ok(Some(value.to_string())),
+        Err(err) if is_overflow(obj.py(), &err) => Ok(Some(obj.str()?.extract()?)),
+        Err(err) => Err(err),
+    }
+}
+
+fn python_int(py: Python<'_>, decimal: &str) -> PyResult<Py<PyAny>> {
+    Ok(py
+        .import("builtins")?
+        .getattr("int")?
+        .call1((decimal,))?
+        .unbind())
+}
+
+/// Integers that fit in i64 keep `plan::snap_minutes`. A wider one uses Python's formula.
+#[pyfunction]
+fn snap_minutes_wide(
+    py: Python<'_>,
+    value: &Bound<'_, PyAny>,
+    minimum: &Bound<'_, PyAny>,
+    maximum: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    guard(|| {
+        let mut overflow = false;
+        let mut fitted = [None, None, None];
+        for (index, obj) in [value, minimum, maximum].into_iter().enumerate() {
+            match obj.extract::<i64>() {
+                Ok(number) => fitted[index] = Some(number),
+                Err(err) if is_overflow(py, &err) => overflow = true,
+                Err(err) if !overflow => return Err(err),
+                Err(_) => {}
+            }
+        }
+        if !overflow {
+            let snapped =
+                plan::snap_minutes(fitted[0].unwrap(), fitted[1].unwrap(), fitted[2].unwrap());
+            return Ok(snapped.into_pyobject(py)?.unbind().into_any());
+        }
+        let args = [value, minimum, maximum];
+        let mut decimals = Vec::with_capacity(3);
+        for obj in args {
+            match decimal_of_int(obj)? {
+                Some(text) => decimals.push(text),
+                None => return snap_via_python(py, value, minimum, maximum),
+            }
+        }
+        let snapped = ::flexweek_engine::wide_snap::snap_minutes_wide(
+            &decimals[0],
+            &decimals[1],
+            &decimals[2],
+        )
+        .map_err(crate::raise)?;
+        python_int(py, &snapped)
+    })
+}
+
+fn snap_via_python(
+    py: Python<'_>,
+    value: &Bound<'_, PyAny>,
+    minimum: &Bound<'_, PyAny>,
+    maximum: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let decimal = decimal_of_int(value)?.ok_or_else(|| {
+        pyo3::exceptions::PyTypeError::new_err(
+            "unsupported operand type(s) for /: 'object' and 'int'",
+        )
+    })?;
+    let number = python_int(py, &decimal)?;
+    let quotient = number.bind(py).call_method1("__truediv__", (15,))?;
+    let rounded = py
+        .import("builtins")?
+        .getattr("round")?
+        .call1((quotient,))?;
+    let product = rounded.call_method1("__mul__", (15,))?;
+    let mut snapped = py.import("builtins")?.getattr("int")?.call1((product,))?;
+    if snapped.lt(minimum)? {
+        let rem = minimum.call_method1("__mod__", (15,))?;
+        let fifteen = pyo3::types::PyInt::new(py, 15);
+        let gap = fifteen.call_method1("__sub__", (rem,))?;
+        let gap = gap.call_method1("__mod__", (15,))?;
+        snapped = minimum.call_method1("__add__", (gap,))?;
+    }
+    if snapped.gt(maximum)? {
+        let rem = maximum.call_method1("__mod__", (15,))?;
+        snapped = maximum.call_method1("__sub__", (rem,))?;
+    }
+    let fifteen = pyo3::types::PyInt::new(py, 15);
+    if snapped.lt(&fifteen)? {
+        return Ok(fifteen.unbind().into_any());
+    }
+    Ok(snapped.unbind())
+}
+
+#[pyfunction]
+fn generate_recovery_codes(
+    count: &Bound<'_, PyAny>,
+    draw: &Bound<'_, PyAny>,
+) -> PyResult<Vec<String>> {
+    guard(|| {
+        let mut seen = std::collections::BTreeSet::new();
+        let mut codes = Vec::new();
+        loop {
+            let more: bool = count.gt(codes.len())?;
+            if !more {
+                break;
+            }
+            let raw: Vec<u8> = draw.call0()?.extract()?;
+            if let Some(code) = snapshot::accept_recovery_draw(&raw, &mut seen) {
+                codes.push(code);
+            }
+        }
+        Ok(codes)
+    })
+}
+
+#[pyfunction]
+fn recovery_code_matches(presented: &str, stored_hash: &str) -> PyResult<bool> {
+    guard(|| snapshot::recovery_code_matches(presented, stored_hash).map_err(crate::raise))
 }

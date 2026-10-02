@@ -6,18 +6,22 @@ Run from the engine worktree's root, so `backend` is the live (engine-backed) pa
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
+import tempfile
 import textwrap
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
+from backend import app as live_app
 from backend import assignments as live_assignments
 from backend import availability as live_availability
 from backend import comfort as live_comfort
@@ -32,6 +36,7 @@ from backend import solver as live_solver
 from backend import storage as live_storage
 from backend import transfer as live_transfer
 from backend import weeks as live_weeks
+from backend.tests.engine_ref import app_helpers as ref_app_helpers
 from backend.tests.engine_ref import assignments as ref_assignments
 from backend.tests.engine_ref import availability as ref_availability
 from backend.tests.engine_ref import comfort as ref_comfort
@@ -1040,3 +1045,742 @@ def test_a_fake_clock_does_not_outlast_its_test(tmp_path):
     )
     assert run.returncode == 0, run.stdout + run.stderr
     assert "2 passed" in run.stdout, run.stdout
+
+
+# ---------- adapters: logic that moved in this slice
+
+# One argument has to miss i64. Values that fit stay on plan::snap_minutes, and that path's
+# f64::round is not Python's round for every large integer.
+_WIDE_INT = st.one_of(
+    st.integers(min_value=2**63, max_value=2**400),
+    st.integers(min_value=-(2**400), max_value=-(2**63) - 1),
+)
+_ANY_INT = st.integers(min_value=-(2**400), max_value=2**400)
+
+
+@COMMON
+@given(_WIDE_INT, _ANY_INT, _ANY_INT, st.integers(0, 2))
+def test_snap_minutes_wide_integers(wide, other_a, other_b, slot):
+    args = [other_a, other_b]
+    args.insert(slot, wide)
+    value, low, high = args
+    same(
+        lambda: live_comfort.snap_minutes(value, low, high),
+        lambda: ref_comfort.snap_minutes(value, low, high),
+        f"{value} {low} {high}",
+    )
+
+
+def test_snap_minutes_past_i64_and_overflow():
+    cases = [
+        (10**19, 1, 10**20),
+        (10**19, 1, 180),
+        (-(10**19), 1, 180),
+        (10**20, 0, 10**21),
+        (2**63, 1, 2**63),
+        (2**63, 1, 180),
+        (-(2**63), -100, 180),
+        (10**18, 10**18, 10**18 + 50),
+        (2**100, 1, 2**100),
+        (2**80 + 7, 1, 2**100),
+        (10**6, -40, 50),
+        (-(10**19), -(10**19), -1),
+        (2**53 + 3, 1, 2**60),
+        (2**1027, 1, 2**1027),
+        (2**64, 1, 10**20),
+        (2**64 - 1, 1, 10**20),
+    ]
+    for value, low, high in cases:
+        same(
+            lambda value=value, low=low, high=high: live_comfort.snap_minutes(value, low, high),
+            lambda value=value, low=low, high=high: ref_comfort.snap_minutes(value, low, high),
+            f"{value} {low} {high}",
+        )
+    same(
+        lambda: live_comfort.snap_minutes(10**400, 1, 10**400),
+        lambda: ref_comfort.snap_minutes(10**400, 1, 10**400),
+        "overflow",
+    )
+
+
+def test_resolve_work_windows_empty_matches_missing():
+    same(
+        lambda: live_availability.resolve_work_windows(None),
+        lambda: ref_availability.resolve_work_windows(None),
+        "none",
+    )
+    same(
+        lambda: live_availability.resolve_work_windows([]),
+        lambda: ref_availability.resolve_work_windows([]),
+        "empty",
+    )
+
+
+def test_empty_solver_windows_default_like_the_original():
+    block = {"id": "hw", "title": "Essay", "kind": "flexible", "days": [0], "duration_min": 60}
+    both_solvers("solve", [block], {})
+    both_solvers("solve", [block], {"work_windows": [], "study_windows": []})
+
+
+def test_recovery_codes_follow_the_same_draws():
+    import secrets
+
+    sequence = [
+        bytes.fromhex("0011223344556677"),
+        bytes.fromhex("0011223344556677"),
+        bytes.fromhex("ab"),
+        bytes.fromhex("aabbccddeeff0011"),
+    ]
+    live_draws = iter(sequence)
+    ref_draws = iter(sequence)
+    token_bytes, token_hex = secrets.token_bytes, secrets.token_hex
+
+    def live_draw(_n: int) -> bytes:
+        return next(live_draws)
+
+    def ref_draw(_n: int) -> str:
+        return next(ref_draws).hex()
+
+    secrets.token_bytes = live_draw
+    secrets.token_hex = ref_draw
+    try:
+        same(
+            lambda: live_recovery.generate_recovery_codes(2),
+            lambda: ref_recovery.generate_recovery_codes(2),
+            "draws",
+        )
+        same(
+            lambda: live_recovery.generate_recovery_codes(0),
+            lambda: ref_recovery.generate_recovery_codes(0),
+            "zero",
+        )
+        same(
+            lambda: live_recovery.generate_recovery_codes(-3),
+            lambda: ref_recovery.generate_recovery_codes(-3),
+            "negative",
+        )
+    finally:
+        secrets.token_bytes = token_bytes
+        secrets.token_hex = token_hex
+
+
+def test_recovery_code_matches_ascii_length_and_non_ascii():
+    code = "0011-2233-4455-6677"
+    stored = ref_recovery.hash_recovery_code(code)
+    same(
+        lambda: live_recovery.recovery_code_matches(code, stored),
+        lambda: ref_recovery.recovery_code_matches(code, stored),
+        "equal",
+    )
+    same(
+        lambda: live_recovery.recovery_code_matches(code, stored[:-1]),
+        lambda: ref_recovery.recovery_code_matches(code, stored[:-1]),
+        "short",
+    )
+    same(
+        lambda: live_recovery.recovery_code_matches(code, "é"),
+        lambda: ref_recovery.recovery_code_matches(code, "é"),
+        "non-ascii",
+    )
+    same(
+        lambda: live_recovery.recovery_code_matches(code, "\x7f" * 64),
+        lambda: ref_recovery.recovery_code_matches(code, "\x7f" * 64),
+        "del",
+    )
+    same(
+        lambda: live_recovery.recovery_code_matches("nope", stored),
+        lambda: ref_recovery.recovery_code_matches("nope", stored),
+        "presented",
+    )
+
+
+def test_password_matches_without_a_salt_is_index_error():
+    for encoded in ("", "nosalt", "scrypt"):
+        same(
+            lambda encoded=encoded: live_storage.password_matches("secret", encoded),
+            lambda encoded=encoded: ref_storage.password_matches("secret", encoded),
+            encoded,
+        )
+
+
+def test_create_session_stores_digest_and_week_expiry(tmp_path, monkeypatch):
+    token = "fixed-session-token"
+    now = 1_700_000_000
+    monkeypatch.setattr(live_storage.secrets, "token_urlsafe", lambda _n: token)
+    monkeypatch.setattr(live_storage.time, "time", lambda: now)
+    live_path = tmp_path / "live.sqlite"
+    ref_path = tmp_path / "ref.sqlite"
+    live_storage.initialize(live_path)
+    ref_storage.initialize(ref_path)
+    with live_storage.connect(live_path) as db:
+        user = db.insert_user("ada", "hash")
+        db.execute("INSERT INTO sessions VALUES (?, ?, ?)", ("old", user, 100))
+        got = live_storage.create_session(db, user)
+        row = db.execute("SELECT token_hash, user_id, expires FROM sessions").fetchall()
+    with ref_storage.connect(ref_path) as db:
+        db.execute("INSERT INTO users(username, password_hash) VALUES (?, ?)", ("ada", "hash"))
+        user_ref = db.execute("SELECT id FROM users").fetchone()[0]
+        db.execute("INSERT INTO sessions VALUES (?, ?, ?)", ("old", user_ref, 100))
+        want = ref_storage.create_session(db, user_ref)
+        row_ref = db.execute("SELECT token_hash, user_id, expires FROM sessions").fetchall()
+    assert got == want == token
+    assert [(item[0], item[1], item[2]) for item in row] == [(item[0], item[1], item[2]) for item in row_ref]
+    assert row[0][2] == now + 7 * 24 * 60 * 60
+
+
+def test_initialize_dates_a_legacy_week_with_the_same_monday(tmp_path):
+    def legacy(path):
+        import sqlite3
+
+        db = sqlite3.connect(path)
+        db.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL)"
+        )
+        db.execute("INSERT INTO users(username, password_hash) VALUES ('ada', 'x')")
+        db.execute("CREATE TABLE weeks (user_id INTEGER, blocks TEXT, revision INTEGER)")
+        db.execute("INSERT INTO weeks VALUES (1, '[]', 0)")
+        db.commit()
+        db.close()
+
+    live_path = tmp_path / "live.sqlite"
+    ref_path = tmp_path / "ref.sqlite"
+    legacy(live_path)
+    legacy(ref_path)
+    live_storage.initialize(live_path)
+    ref_storage.initialize(ref_path)
+    import sqlite3
+
+    def week_start(path):
+        db = sqlite3.connect(path)
+        row = db.execute("SELECT week_start FROM weeks").fetchone()
+        db.close()
+        return row[0]
+
+    assert week_start(live_path) == week_start(ref_path)
+
+
+@COMMON
+@given(st.one_of(st.none(), st.integers(-5, 5), st.lists(st.integers(-3, 3), max_size=3), st.text(max_size=12)))
+def test_transfer_fits_on_non_dicts(value):
+    same(
+        lambda: live_transfer.transfer_fits(value),
+        lambda: ref_transfer.transfer_fits(value),
+        repr(value),
+    )
+
+
+# ---------- the helpers of backend/app.py
+#
+# The `ref_*` functions are the helper bodies as they were in Python before their rules moved into
+# the engine (backend/tests/engine_ref/app_helpers.py has the ones that read the database; the rest
+# are copied from the pre-port server, with the imports pointed at engine_ref).
+
+
+def ref_payload_digest(value):
+    return hashlib.sha256(ref_restore.canonical(value).encode()).hexdigest()
+
+
+def ref_assignment_view(body, revision, planned):
+    return {
+        **body,
+        "revision": revision,
+        "planned_min": planned,
+        "unplanned_min": ref_assignments.unplanned_minutes(
+            int(body["estimate_min"]), int(body["focus_minutes"]), planned
+        ),
+    }
+
+
+def ref_rewrite_blocks(blocks, assignments):
+    rewritten = []
+    for block in blocks:
+        if block.assignment_id:
+            rewritten.append(ref_assignments.rewrite_session(block, assignments[block.assignment_id]))
+        else:
+            rewritten.append(block)
+    return rewritten
+
+
+def ref_rewrite_stored_blocks(blocks, assignments):
+    rewritten = []
+    for raw in blocks:
+        aid = raw.get("assignment_id")
+        if not aid or aid not in assignments:
+            rewritten.append(raw)
+            continue
+        rewritten.append(
+            ref_assignments.rewrite_session(ref_models.TimeBlock.model_validate(raw), assignments[aid]).model_dump()
+        )
+    return rewritten
+
+
+def ref_require_own_assignments(db, user_id, ids):
+    loaded = ref_app_helpers.load_assignment_rows(db, user_id, ids)
+    found = {key: json.loads(body) for key, (body, _revision) in loaded.items()}
+    if found.keys() != ids:
+        raise ref_app_helpers.HTTPException(422, live_app.ASSIGNMENT_UNKNOWN)
+    return found
+
+
+def ref_solve_availability(stored):
+    if stored is None:
+        return [0] * 7, [], []
+    availability = json.loads(stored or "{}")
+    protected = [ref_models.ProtectedWindow.model_validate(item) for item in availability.get("protected") or []]
+    study = [ref_models.StudyWindow.model_validate(item) for item in availability.get("study_windows") or []]
+    work = [ref_models.WorkWindow.model_validate(item) for item in availability.get("work_windows") or []]
+    return ref_availability.occupancy_from_windows(protected, availability.get("day_cutoff")), study, work
+
+
+def ref_preferences_from_row(row):
+    availability = json.loads(row["availability_json"] or "{}")
+    comfort = json.loads(row["comfort_json"] or "{}")
+    return live_app.Preferences(
+        theme=row["theme"],
+        reminders_enabled=bool(row["reminders_enabled"]),
+        reminder_lead_min=int(row["reminder_lead_min"]),
+        reminder_sound=bool(row["reminder_sound"]),
+        reminder_dnd_override=bool(row["reminder_dnd_override"]),
+        timer_work_min=int(row["timer_work_min"]),
+        timer_break_min=int(row["timer_break_min"]),
+        timer_long_break_min=int(row["timer_long_break_min"]),
+        timer_long_break_every=int(row["timer_long_break_every"]),
+        auto_split_pomodoro=bool(row["auto_split_pomodoro"]),
+        default_spotify_url=row["default_spotify_url"],
+        alarms=json.loads(row["alarms_json"]),
+        protected=availability.get("protected") or [],
+        study_windows=availability.get("study_windows") or [],
+        work_windows=availability.get("work_windows") or [],
+        day_cutoff=availability.get("day_cutoff"),
+        alert_volume=comfort.get("alert_volume", 80),
+        end_chime=bool(comfort.get("end_chime", False)),
+        tray_notifications=bool(comfort.get("tray_notifications", True)),
+        start_at_login=bool(comfort.get("start_at_login", False)),
+        preferred_view=comfort.get("preferred_view"),
+        sidebar_collapsed=bool(comfort.get("sidebar_collapsed", False)),
+        sidebar_width_px=comfort.get("sidebar_width_px"),
+        theme_pack=comfort.get("theme_pack", "system"),
+        accent=comfort.get("accent", "default"),
+        accent_chips=bool(comfort.get("accent_chips", False)),
+        motion=comfort.get("motion"),
+        alarm_tone=comfort.get("alarm_tone", "chime"),
+        planning_style=comfort.get("planning_style", "suggest"),
+        drag_step_min=comfort.get("drag_step_min", 5),
+        clock_24h=bool(comfort.get("clock_24h", True)),
+        setup=comfort.get("setup"),
+    ).model_dump()
+
+
+@COMMON
+@given(json_value)
+def test_payload_digest(value):
+    same(lambda: live_app.payload_digest(value), lambda: ref_payload_digest(value), f"{value!r}")
+
+
+def test_payload_digest_on_what_json_cannot_write():
+    for value in ([object()], {1, 2}, {"a": float("nan")}, {1: "a", "b": 2}, "lone \ud800"):
+        same(lambda value=value: live_app.payload_digest(value), lambda value=value: ref_payload_digest(value), repr(value))
+
+
+estimate_value = st.one_of(
+    st.sampled_from([15, 30, 60, 90, 600]),
+    st.sampled_from([None, "45", "x", "", " 7 ", 4.5, -2.5, True, False, [1], {"a": 1}]),
+    st.integers(-300, 3000),
+)
+
+
+@COMMON
+@given(
+    st.fixed_dictionaries(
+        {"estimate_min": estimate_value, "focus_minutes": estimate_value},
+        optional={
+            "id": st.just("a1"),
+            "revision": st.integers(0, 9),
+            "planned_min": st.integers(0, 9),
+            "unplanned_min": st.integers(0, 9),
+            "notes": st.just("n"),
+        },
+    ),
+    st.integers(0, 10**6),
+    st.integers(-500, 3000),
+    st.sets(st.sampled_from(["estimate_min", "focus_minutes"]), max_size=2),
+)
+def test_assignment_view(body, revision, planned, dropped):
+    body = {key: value for key, value in body.items() if key not in dropped}
+    same(
+        lambda: live_app.assignment_view(body, revision, planned),
+        lambda: ref_assignment_view(body, revision, planned),
+        f"{body!r} {revision} {planned}",
+    )
+
+
+@COMMON
+@given(st.one_of(st.none(), st.integers(), st.lists(st.integers(), max_size=2), st.text(max_size=3)))
+def test_assignment_view_on_a_body_that_is_not_a_dict(body):
+    same(
+        lambda: live_app.assignment_view(body, 1, 0),
+        lambda: ref_assignment_view(body, 1, 0),
+        repr(body),
+    )
+
+
+assignments_by_id = st.fixed_dictionaries({"a1": assignment_body("a1"), "a2": assignment_body("a2")})
+
+
+@st.composite
+def blocks_naming_assignments(draw, ids):
+    bodies = draw(week_blocks(max_size=6))
+    named = []
+    for body in bodies:
+        aid = draw(st.sampled_from(ids))
+        named.append({**body, "assignment_id": aid} if aid is not None else {k: v for k, v in body.items() if k != "assignment_id"})
+    for body in named:
+        try:
+            ref_models.TimeBlock.model_validate(body)
+        except ValidationError:
+            assume(False)
+    return named
+
+
+@COMMON
+@given(blocks_naming_assignments([None, None, "a1", "a2", "zz", ""]), assignments_by_id)
+def test_rewrite_blocks(bodies, assignments):
+    same(
+        lambda: live_app.rewrite_blocks(models_of(live_models, "TimeBlock", bodies), assignments),
+        lambda: ref_rewrite_blocks(models_of(ref_models, "TimeBlock", bodies), assignments),
+        f"{bodies!r}",
+    )
+
+
+@COMMON
+@given(blocks_naming_assignments([None, "a1", "a2", "zz"]), assignments_by_id)
+def test_rewrite_stored_blocks(bodies, assignments):
+    same(
+        lambda: live_app.rewrite_stored_blocks(bodies, assignments),
+        lambda: ref_rewrite_stored_blocks(bodies, assignments),
+        f"{bodies!r}",
+    )
+
+
+@COMMON
+@given(
+    st.lists(
+        st.one_of(
+            block_dict(),
+            st.fixed_dictionaries({"id": st.just("x"), "assignment_id": st.sampled_from(["a1", "zz", "", None, 7, 0, 1.5, [1], {"k": 1}, True])}),
+            st.just("not a dict"),
+            st.just(None),
+        ),
+        max_size=4,
+    ),
+    assignments_by_id,
+)
+def test_rewrite_stored_blocks_on_rows_that_do_not_fit(blocks, assignments):
+    same(
+        lambda: live_app.rewrite_stored_blocks(blocks, assignments),
+        lambda: ref_rewrite_stored_blocks(blocks, assignments),
+        f"{blocks!r}",
+    )
+
+
+def test_rewrite_stored_blocks_on_a_list_of_nothing_in_particular():
+    for blocks in ([], {}, "", {"a": 1}, "abc", 5, None):
+        same(
+            lambda blocks=blocks: live_app.rewrite_stored_blocks(blocks, {}),
+            lambda blocks=blocks: ref_rewrite_stored_blocks(blocks, {}),
+            repr(blocks),
+        )
+
+
+class TwoDatabases:
+    """The same account in the engine's connection and in the original's sqlite3 connection."""
+
+    def __init__(self, folder):
+        self.live_path = Path(folder) / "live.sqlite"
+        self.ref_path = Path(folder) / "ref.sqlite"
+        live_storage.initialize(self.live_path)
+        ref_storage.initialize(self.ref_path)
+
+    def __enter__(self):
+        self.live_cm = live_storage.connect(self.live_path)
+        self.ref_cm = ref_storage.connect(self.ref_path)
+        self.live = self.live_cm.__enter__()
+        self.ref = self.ref_cm.__enter__()
+        self.live.insert_user("ada", "hash")
+        self.ref.execute("INSERT INTO users(username, password_hash) VALUES (?, ?)", ("ada", "hash"))
+        return self
+
+    def __exit__(self, *exc):
+        self.ref_cm.__exit__(*exc)
+        return self.live_cm.__exit__(*exc)
+
+    def add_assignment(self, user, ident, body):
+        self.live.insert_assignment(user, ident, body)
+        self.ref.execute("INSERT INTO assignments(user_id, id, body, revision) VALUES (?, ?, ?, 1)", (user, ident, body))
+
+    def rows(self, table):
+        sql = f"SELECT * FROM {table} ORDER BY 1, 2"
+        return (
+            [tuple(row) for row in self.live.execute(sql).fetchall()],
+            [tuple(row) for row in self.ref.execute(sql).fetchall()],
+        )
+
+
+@COMMON
+@given(st.sets(st.sampled_from(["a1", "a2", "a3", "zz", ""]), max_size=5), st.sets(st.sampled_from(["a1", "a2"])))
+def test_require_own_assignments(wanted, stored):
+    with tempfile.TemporaryDirectory() as folder, TwoDatabases(folder) as pair:
+        live_storage_user = pair.live.insert_user("bob", "hash")
+        pair.ref.execute("INSERT INTO users(username, password_hash) VALUES (?, ?)", ("bob", "hash"))
+        for ident in sorted(stored):
+            pair.add_assignment(1, ident, json.dumps({"id": ident, "n": 1}))
+        pair.add_assignment(live_storage_user, "a3", json.dumps({"id": "a3"}))
+        same(
+            lambda: live_app.require_own_assignments(pair.live, 1, set(wanted)),
+            lambda: ref_require_own_assignments(pair.ref, 1, set(wanted)),
+            f"{wanted!r} {stored!r}",
+        )
+
+
+def test_require_own_assignments_reads_the_bodies_before_it_compares():
+    with tempfile.TemporaryDirectory() as folder, TwoDatabases(folder) as pair:
+        pair.add_assignment(1, "a1", "{not json")
+        for ids in ({"a1"}, {"a1", "zz"}, {"zz"}, set()):
+            same(
+                lambda ids=ids: live_app.require_own_assignments(pair.live, 1, set(ids)),
+                lambda ids=ids: ref_require_own_assignments(pair.ref, 1, set(ids)),
+                repr(ids),
+            )
+
+
+@COMMON
+@given(
+    st.lists(block_dict(kinds=("flexible", "locked")), max_size=5, unique_by=lambda body: body["id"]),
+    st.integers(0, 4),
+    st.integers(1, 6),
+    monday,
+    st.booleans(),
+)
+def test_adopt_legacy_deadlines(bodies, existing, cap, week_start, twice):
+    for body in bodies:
+        try:
+            ref_models.TimeBlock.model_validate(body)
+        except ValidationError:
+            assume(False)
+    with (
+        tempfile.TemporaryDirectory() as folder,
+        TwoDatabases(folder) as pair,
+        mock.patch.object(live_app, "MAX_ASSIGNMENTS", cap),
+        mock.patch.object(ref_app_helpers, "MAX_ASSIGNMENTS", cap),
+    ):
+        for index in range(existing):
+            pair.add_assignment(1, f"old{index}", json.dumps({"id": f"old{index}"}))
+        runs = 2 if twice else 1
+        for run in range(runs):
+            same(
+                lambda: live_app.adopt_legacy_deadlines(pair.live, 1, week_start, models_of(live_models, "TimeBlock", bodies)),
+                lambda: ref_app_helpers.adopt_legacy_deadlines(pair.ref, 1, week_start, models_of(ref_models, "TimeBlock", bodies)),
+                f"run {run} {bodies!r} {existing} {cap}",
+            )
+            got, want = pair.rows("assignments")
+            assert got == want, f"run {run} {bodies!r}"
+
+
+def test_adopt_legacy_deadlines_when_a_new_body_fails_its_model():
+    block = {
+        "id": "essay",
+        "title": "Draft",
+        "kind": "flexible",
+        "duration_min": 100,
+        "days": [0],
+        "latest": "Thursday 21:00",
+    }
+    with tempfile.TemporaryDirectory() as folder, TwoDatabases(folder) as pair:
+        same(
+            lambda: live_app.adopt_legacy_deadlines(pair.live, 1, "2026-09-07", models_of(live_models, "TimeBlock", [block])),
+            lambda: ref_app_helpers.adopt_legacy_deadlines(pair.ref, 1, "2026-09-07", models_of(ref_models, "TimeBlock", [block])),
+            "a duration that is not a multiple of 15",
+        )
+        got, want = pair.rows("assignments")
+        assert got == want
+
+
+@COMMON
+@given(
+    st.lists(
+        st.tuples(
+            st.text(alphabet="abc é\"", max_size=6),
+            st.sets(st.sampled_from(["rp-t1", "rp-t2", "rp-t3", "rp-t4", "unknown", ""]), max_size=3),
+        ),
+        min_size=1,
+        max_size=6,
+    ),
+    st.integers(1, 4),
+    st.lists(st.tuples(monday, week_blocks(max_size=2)), max_size=2, unique_by=lambda item: item[0]),
+    assignment_rows(),
+)
+def test_insert_restore_point(steps, limit, weeks, assignments):
+    tokens = iter(f"t{index}" for index in range(1, 40))
+    stamps = iter(f"2026-10-02T10:{index:02d}" for index in range(0, 60))
+    with (
+        tempfile.TemporaryDirectory() as folder,
+        TwoDatabases(folder) as pair,
+        mock.patch.object(live_app, "MAX_RESTORE_POINTS", limit),
+        mock.patch.object(ref_app_helpers, "MAX_RESTORE_POINTS", limit),
+    ):
+        for start, blocks in weeks:
+            encoded = json.dumps(blocks, sort_keys=True, separators=(",", ":"))
+            pair.live.save_week(1, start, encoded, 0)
+            pair.ref.execute("INSERT INTO weeks(user_id, week_start, blocks, revision) VALUES (1, ?, ?, 1)", (start, encoded))
+        for body, _revision in assignments:
+            encoded = live_app.encode_assignment(live_models.AssignmentContent.model_validate(body))
+            pair.add_assignment(1, body["id"], encoded)
+        for label, keep in steps:
+            token, stamp = next(tokens), next(stamps)
+            with (
+                mock.patch("secrets.token_hex", lambda _size, token=token: token),
+                mock.patch.object(live_app, "naive_now", lambda stamp=stamp: stamp),
+                mock.patch.object(ref_app_helpers, "naive_now", lambda stamp=stamp: stamp),
+            ):
+                same(
+                    lambda label=label, keep=keep: live_app.insert_restore_point(pair.live, 1, label, set(keep)),
+                    lambda label=label, keep=keep: ref_app_helpers.insert_restore_point(
+                        pair.ref, 1, label, set(keep)
+                    ),
+                    f"{label!r} {keep!r}",
+                )
+            got, want = pair.rows("restore_points")
+            assert got == want, f"{label!r} {keep!r}"
+
+
+def test_insert_restore_point_without_a_keep_set():
+    with tempfile.TemporaryDirectory() as folder, TwoDatabases(folder) as pair:
+        with (
+            mock.patch("secrets.token_hex", lambda _size: "t0"),
+            mock.patch.object(live_app, "naive_now", lambda: "2026-10-02T10:00"),
+            mock.patch.object(ref_app_helpers, "naive_now", lambda: "2026-10-02T10:00"),
+        ):
+            same(
+                lambda: live_app.insert_restore_point(pair.live, 1, "Before"),
+                lambda: ref_app_helpers.insert_restore_point(pair.ref, 1, "Before"),
+                "no keep set",
+            )
+        got, want = pair.rows("restore_points")
+        assert got == want
+
+
+BASE_ROW = {
+    "theme": "dark",
+    "reminders_enabled": 1,
+    "reminder_lead_min": 10,
+    "reminder_sound": 0,
+    "reminder_dnd_override": 0,
+    "timer_work_min": 25,
+    "timer_break_min": 5,
+    "timer_long_break_min": 15,
+    "timer_long_break_every": 4,
+    "auto_split_pomodoro": 1,
+    "default_spotify_url": None,
+    "alarms_json": "[]",
+    "availability_json": "{}",
+    "comfort_json": "{}",
+}
+COMFORT_VALUES: dict[str, list] = {
+    "alert_volume": [0, 55, 100, 101, None, "x"],
+    "end_chime": [True, False, 0, 1, None],
+    "tray_notifications": [True, False, 0, 1, None],
+    "start_at_login": [True, False, 0, 1],
+    "preferred_view": [None, "week", "day", "bogus"],
+    "sidebar_collapsed": [True, False, 0],
+    "sidebar_width_px": [None, 240, 10, "x"],
+    "theme_pack": ["system", "paper", "bogus", None],
+    "accent": ["default", "teal", "bogus"],
+    "accent_chips": [True, False, 1],
+    "motion": [None, "full", "reduced", "bogus"],
+    "alarm_tone": ["chime", "bell", "bogus"],
+    "planning_style": ["suggest", "auto", "bogus"],
+    "drag_step_min": [5, 15, 7, None],
+    "clock_24h": [True, False, 0],
+    "setup": [None, {"step": 1}, {"finished_at": "2026-10-02T09:00"}, 5],
+}
+comfort_json = st.one_of(
+    st.just("{}"),
+    st.just(""),
+    st.just("null"),
+    st.just("[]"),
+    st.just("{oops"),
+    st.sets(st.sampled_from(sorted(COMFORT_VALUES)), max_size=8).flatmap(
+        lambda picks: st.fixed_dictionaries(
+            {key: st.sampled_from(list(COMFORT_VALUES[key])) for key in picks}
+        ).map(json.dumps)
+    ),
+)
+availability_json = st.one_of(
+    st.just("{}"),
+    st.just(""),
+    st.just("[]"),
+    st.just("{oops"),
+    st.builds(
+        lambda protected, study, work, cutoff: json.dumps(
+            {
+                key: value
+                for key, value in (
+                    ("protected", protected),
+                    ("study_windows", study),
+                    ("work_windows", work),
+                    ("day_cutoff", cutoff),
+                )
+                if value is not ...
+            }
+        ),
+        st.one_of(st.just(...), st.lists(grid_window(extra="protected"), max_size=2), st.just([]), st.none()),
+        st.one_of(st.just(...), st.lists(grid_window(extra="study"), max_size=2), st.just([])),
+        st.one_of(st.just(...), st.lists(work_window(), max_size=2), st.just([])),
+        st.one_of(st.just(...), st.none(), st.sampled_from(["22:00", "21:30", "", "bogus"])),
+    ),
+)
+row_changes = st.fixed_dictionaries(
+    {},
+    optional={
+        "theme": st.sampled_from(["light", "dark", "system", "bogus"]),
+        "reminders_enabled": st.sampled_from([0, 1, 2, None, "yes"]),
+        "reminder_lead_min": st.sampled_from([0, 10, 120, 500, "15", 7.9, -1]),
+        "timer_work_min": st.sampled_from([25, 0, 200, "30"]),
+        "timer_long_break_every": st.sampled_from([4, 1, 13]),
+        "default_spotify_url": st.sampled_from([None, "https://open.spotify.com/playlist/abc", "https://example.com"]),
+        "alarms_json": st.sampled_from(["[]", "[", "null", '[{"id": "a", "time": "07:30", "days": [0], "label": "Up"}]']),
+    },
+)
+
+
+@COMMON
+@given(row_changes, availability_json, comfort_json, st.sets(st.sampled_from(sorted(BASE_ROW)), max_size=2))
+def test_preferences_from_row(changes, availability, comfort, dropped):
+    row = {**BASE_ROW, **changes, "availability_json": availability, "comfort_json": comfort}
+    row = {key: value for key, value in row.items() if key not in dropped}
+    same(lambda: live_app.preferences_from_row(row), lambda: ref_preferences_from_row(row), repr(row))
+
+
+@COMMON
+@given(st.sampled_from([None, "", "{}", "null", "[]", "{oops", '{"protected": null}', '{"day_cutoff": 5}']))
+def test_preferences_from_row_with_other_text_in_the_json_columns(text):
+    for column in ("availability_json", "comfort_json"):
+        row = {**BASE_ROW, column: text}
+        same(
+            lambda row=row: live_app.preferences_from_row(row),
+            lambda row=row: ref_preferences_from_row(row),
+            repr(row),
+        )
+
+
+@COMMON
+@given(availability_json, st.booleans())
+def test_solve_availability(stored, missing):
+    value = None if missing else stored
+    same(lambda: live_app.solve_availability(value), lambda: ref_solve_availability(value), repr(value))
+
+
+def test_solve_availability_on_text_that_is_not_a_dict_of_windows():
+    for stored in (None, "", "{}", "null", "[]", "5", '{"protected": 5}', '{"protected": {"a": 1}}',
+                   '{"study_windows": "ab"}', '{"work_windows": [1]}', '{"protected": [{"days": [9]}]}'):
+        same(lambda stored=stored: live_app.solve_availability(stored), lambda stored=stored: ref_solve_availability(stored), repr(stored))

@@ -13,5 +13,6 @@ pub mod snapshot;
 pub mod solver;
 pub mod stored;
 pub mod time;
+pub mod wide_snap;
 
 pub use error::{EngineError, EngineResult, ErrorKind};

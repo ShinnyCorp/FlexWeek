@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import secrets
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol
 
 import flexweek_engine  # type: ignore[import-untyped]
-
-from backend.weeks import current_week_start
 
 SESSION_SECONDS = 7 * 24 * 60 * 60
 # Each account's preferences row records the last of these one-time changes it has had, so a change
@@ -28,9 +26,6 @@ def password_hash(password: str, salt: str | None = None) -> str:
 
 
 def password_matches(password: str, encoded: str) -> bool:
-    parts = encoded.split("$")
-    if len(parts) < 2:
-        raise IndexError("list index out of range")
     return flexweek_engine.password_matches(password, encoded)
 
 
@@ -75,6 +70,20 @@ class Connection(Protocol):
         self, user_id: int, assignment_id: str, revision: int, /
     ) -> tuple[str, str]: ...
 
+    def adopt_legacy_deadlines(
+        self,
+        user_id: int,
+        week_start: str,
+        blocks: str,
+        max_assignments: int,
+        encode: Callable[[str], str],
+        /,
+    ) -> tuple[bool, str]: ...
+
+    def require_own_assignments(
+        self, user_id: int, ids: Sequence[str], /
+    ) -> tuple[bool, Sequence[tuple[str, str, int]]]: ...
+
     def list_account_weeks(self, user_id: int, /) -> Sequence[tuple[str, str]]: ...
 
     def save_week(
@@ -108,6 +117,17 @@ class Connection(Protocol):
         keep: int,
         /,
     ) -> None: ...
+
+    def create_restore_point(
+        self,
+        user_id: int,
+        token: str,
+        label: str,
+        created_at: str,
+        keep_ids: Sequence[str],
+        limit: int,
+        /,
+    ) -> str: ...
 
     def replace_account(
         self,
@@ -148,6 +168,8 @@ class Connection(Protocol):
     def create_session_row(
         self, token_hash: str, user_id: int, expires: int, now: int, /
     ) -> None: ...
+
+    def open_session(self, token: str, user_id: int, now: int, /) -> None: ...
 
     def begin_immediate(self, /) -> None: ...
 
@@ -196,7 +218,6 @@ class Connection(Protocol):
 def connect(path: Path) -> Iterator[Connection]:
     """The Rust store's connection. Python's sqlite3 is not opened on this file."""
     db = flexweek_engine.open_connection(str(path))
-    db.enforce_foreign_keys()
     try:
         with db:
             yield db
@@ -211,7 +232,7 @@ def new_preferences(db: Connection, user_id: int) -> None:
 
 
 def initialize(path: Path) -> None:
-    flexweek_engine.store_initialize(str(path), current_week_start())
+    flexweek_engine.store_initialize_today(str(path))
 
 
 def delete_account(db: Connection, user_id: int) -> None:
@@ -221,7 +242,7 @@ def delete_account(db: Connection, user_id: int) -> None:
 def create_session(db: Connection, user_id: int) -> str:
     token = secrets.token_urlsafe(32)
     now = int(time.time())
-    db.create_session_row(digest(token), user_id, now + SESSION_SECONDS, now)
+    db.open_session(token, user_id, now)
     return token
 
 

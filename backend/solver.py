@@ -30,7 +30,7 @@ def _points(points: dict | None) -> str | None:
 
 
 def _windows(windows: list | None) -> str | None:
-    if not windows:
+    if windows is None:
         return None
     return json.dumps([window.model_dump() for window in windows])
 
