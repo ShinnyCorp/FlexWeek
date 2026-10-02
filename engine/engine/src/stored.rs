@@ -11,7 +11,29 @@ pub type Dict = Map<String, Value>;
 
 const C_INT: &str = "Python int too large to convert to C int";
 
+/// How a NaN or infinity arrives from Python: JSON has none, so the caller writes this one-key dict
+/// (`{"\u0000float": "nan"}`) and the helpers here read it as the float.
+pub const NONFINITE: &str = "\u{0}float";
+
+pub fn nonfinite(value: &Value) -> Option<f64> {
+    let Value::Object(map) = value else {
+        return None;
+    };
+    if map.len() != 1 {
+        return None;
+    }
+    match map.get(NONFINITE)?.as_str()? {
+        "nan" => Some(f64::NAN),
+        "inf" => Some(f64::INFINITY),
+        "-inf" => Some(f64::NEG_INFINITY),
+        _ => None,
+    }
+}
+
 pub fn type_name(value: &Value) -> &'static str {
+    if nonfinite(value).is_some() {
+        return "float";
+    }
     match value {
         Value::Null => "NoneType",
         Value::Bool(_) => "bool",
@@ -99,7 +121,15 @@ pub fn py_str(value: &Value) -> String {
     }
 }
 
+/// `repr(value)`.
+pub fn py_repr_of(value: &Value) -> String {
+    py_repr_value(value)
+}
+
 fn py_repr_value(value: &Value) -> String {
+    if let Some(float) = nonfinite(value) {
+        return crate::snapshot::py_float_repr(float);
+    }
     match value {
         Value::Null => "None".into(),
         Value::Bool(true) => "True".into(),
@@ -129,6 +159,9 @@ fn py_repr_value(value: &Value) -> String {
 /// `int(value)`. Python's ints have no limit; past 64 bits this raises the error Python's
 /// `timedelta` would raise on the same number.
 pub fn py_int(value: &Value) -> EngineResult<i64> {
+    if let Some(float) = nonfinite(value) {
+        return float_to_int(float);
+    }
     match value {
         Value::Bool(flag) => Ok(i64::from(*flag)),
         Value::Number(number) if is_float(number) => float_to_int(float_of(number)),
@@ -192,6 +225,9 @@ enum Real {
 }
 
 fn real(value: &Value) -> Option<Real> {
+    if let Some(float) = nonfinite(value) {
+        return Some(Real::Float(float));
+    }
     match value {
         Value::Bool(flag) => Some(Real::Int(i64::from(*flag))),
         Value::Number(number) if is_float(number) => Some(Real::Float(float_of(number))),

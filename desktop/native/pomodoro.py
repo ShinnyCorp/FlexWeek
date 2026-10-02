@@ -24,12 +24,12 @@ BREAK_TITLE = "Pomodoro break"
 GRID_REFUSAL = "Grid splitting needs positive 15-minute work and break lengths."
 
 
-def _prefs(prefs: dict | None) -> str | None:
-    return None if prefs is None else json.dumps(prefs)
+def _prefs(prefs: dict | None) -> str:
+    return json.dumps(prefs)
 
 
 def timers(prefs: dict | None) -> tuple[int, int, int, int]:
-    work, rest, long, every = flexweek_engine.pomo_timers(_prefs(prefs))
+    work, rest, long, every = json.loads(flexweek_engine.pomo_timers(_prefs(prefs)))
     return int(work), int(rest), int(long), int(every)
 
 
@@ -61,9 +61,5 @@ def inflate_for_solve(blocks: list[dict], prefs: dict | None) -> list[dict]:
 
 def split_solved(blocks: list[dict], trace: dict | None, prefs: dict | None) -> tuple[list[dict], int]:
     """Replace each placed block with its chunks. Returns the new week and how many were split."""
-    raw, count = flexweek_engine.pomo_split_solved(
-        json.dumps(blocks),
-        None if trace is None else json.dumps(trace),
-        _prefs(prefs),
-    )
+    raw, count = flexweek_engine.pomo_split_solved(json.dumps(blocks), json.dumps(trace), _prefs(prefs))
     return json.loads(raw), int(count)

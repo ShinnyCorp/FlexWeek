@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 import flexweek_engine  # type: ignore[import-untyped]
 
+from desktop.native.wire import plain
+
 SPACING = (4, 8, 12, 16, 24, 32)
 RADIUS_CONTROL = 6
 RADIUS_CARD = 10
@@ -107,7 +109,7 @@ def oklch_of(colour: str) -> tuple[float, float, float]:
 
 def fit_lightness(colour: str, grounds: tuple[str, ...], floor: float) -> str:
     """`colour` with its OKLCH lightness moved the least it takes to read at `floor` on every ground."""
-    return str(flexweek_engine.tokens_fit_lightness(colour, list(grounds), floor))
+    return str(flexweek_engine.tokens_fit_lightness(colour, plain(list(grounds)), floor))
 
 
 def mix_oklab(top: str, bottom: str, amount: float) -> str:
@@ -132,5 +134,5 @@ def family_colours(
     hue: float, *, grey: bool = False, homework: bool = False, sleep: bool = False,
 ) -> dict[str, tuple[str, str]]:
     """A category's colours in each kind of look: (fill, mark) in light looks, (tone, mark) in dark ones."""
-    raw = json.loads(flexweek_engine.tokens_family_colours(hue, grey, homework, sleep))
+    raw = json.loads(flexweek_engine.tokens_family_colours(hue, bool(grey), bool(homework), bool(sleep)))
     return {key: (value[0], value[1]) for key, value in raw.items()}

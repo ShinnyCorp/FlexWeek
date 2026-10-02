@@ -1,18 +1,18 @@
 //! Copy and paste, collision previews and routines from `desktop/native/reuse.py`.
 
-use std::collections::HashSet;
-
 use serde_json::{Map, Value, json};
 
-use crate::desk::pyval::{list_of, lookup, subscript, type_error};
-use crate::desk::reuse::{
-    available_homework_minutes, copied_fixed_block_of, copied_homework_block_of, intervals_overlap,
-    occurrence_days,
+use crate::desk::planning::{available_homework_minutes, occurrence_days};
+use crate::desk::pyops::{
+    Cmp, PyDict, compare, contains, eq, get, hashable, in_set, iterate, or_default, order, py_dict,
+    sub,
 };
+use crate::desk::pyval::{list_of, subscript, type_error};
+use crate::desk::reuse::{copied_fixed_block_of, copied_homework_block_of, intervals_overlap};
 use crate::desk::weekmodel::length_label;
 use crate::error::EngineResult;
 use crate::snapshot::dumps_sorted;
-use crate::stored::{Dict, dict, py_int, py_str, truthy, type_name};
+use crate::stored::{attribute_error, py_int, py_str, text, truthy, type_name};
 use crate::time::{SLOT_MIN, hhmm_to_minutes};
 
 pub const ROUTINE_FIELDS: [&str; 9] = [
@@ -27,202 +27,206 @@ pub const ROUTINE_FIELDS: [&str; 9] = [
     "spotify_url",
 ];
 
-fn text_of<'a>(value: &'a Value, method: &str) -> EngineResult<&'a str> {
-    value
-        .as_str()
-        .ok_or_else(|| crate::stored::attribute_error(value, method))
+fn minutes_of(start: &Value) -> EngineResult<i64> {
+    hhmm_to_minutes(text(start, "split")?)
 }
 
-/// `block.get(key)`: a row of the wrong type has no `get`.
-fn field<'a>(row: &'a Value, key: &str) -> EngineResult<Option<&'a Value>> {
-    Ok(dict(row)?.get(key))
-}
-
-/// `row[key]` where the key is held as a string.
-fn require<'a>(row: &'a Value, key: &str) -> EngineResult<&'a Value> {
-    subscript(row, key)
+fn null() -> &'static Value {
+    static NULL: Value = Value::Null;
+    &NULL
 }
 
 fn whole(value: &Value) -> EngineResult<i64> {
     py_int(value)
 }
 
-fn minutes_of(start: &Value) -> EngineResult<i64> {
-    hhmm_to_minutes(text_of(start, "split")?)
+/// `table.get(key)` for a key of any kind.
+fn table_get<'a>(table: &'a Value, key: &Value) -> EngineResult<Option<&'a Value>> {
+    let Value::Object(map) = table else {
+        return Err(attribute_error(table, "get"));
+    };
+    hashable(key, "dict key")?;
+    Ok(key.as_str().and_then(|name| map.get(name)))
 }
 
-/// `if not row.get("fixed") or not row["block"].get("start"): return None`, then the first fixed
-/// block it overlaps among the saved ones, then among the other checked rows. `skip` is the row's
-/// own place in `rows`, which Python knew by identity.
+/// A tuple of values as a dict key or set element, which a list or dict inside makes unhashable.
+fn tuple_hashable(value: &Value) -> EngineResult<()> {
+    if matches!(value, Value::Array(_) | Value::Object(_)) {
+        return Err(type_error(format!(
+            "cannot use 'tuple' as a dict key (unhashable type: '{}')",
+            type_name(value)
+        )));
+    }
+    Ok(())
+}
+
+/// The first fixed block it overlaps among the saved ones, then among the other checked rows.
+/// `skip` is the row's own place in `rows`, which Python knew by identity.
 pub fn row_conflict(
     row: &Value,
-    rows: &[Value],
-    existing: &[Value],
+    rows: &Value,
+    existing: &Value,
     skip: Option<usize>,
 ) -> EngineResult<Option<Value>> {
-    if !truthy(field(row, "fixed")?) || !truthy(field(require(row, "block")?, "start")?) {
+    if !truthy(get(row, "fixed")?) || !truthy(get(subscript(row, "block")?, "start")?) {
         return Ok(None);
     }
-    let block = require(row, "block")?;
-    let start = minutes_of(require(block, "start")?)?;
-    let end = start + whole(require(block, "duration_min")?)?;
-    for saved in existing {
-        if !truthy(field(saved, "start")?) {
+    let block = subscript(row, "block")?;
+    let start = minutes_of(subscript(block, "start")?)?;
+    let end = start + whole(subscript(block, "duration_min")?)?;
+    for saved in iterate(existing)? {
+        if !truthy(get(&saved, "start")?) {
             continue;
         }
-        if !days_hold(&occurrence_days(saved), require(row, "day")?) {
+        if !contains(
+            &Value::Array(occurrence_days(&saved)?),
+            subscript(row, "day")?,
+        )? {
             continue;
         }
-        let other = minutes_of(require(saved, "start")?)?;
-        if intervals_overlap(
-            start,
-            end,
-            other,
-            other + whole(require(saved, "duration_min")?)?,
-        ) {
-            return Ok(Some(require(saved, "title")?.clone()));
+        let other = minutes_of(subscript(&saved, "start")?)?;
+        let other_end = other + whole(subscript(&saved, "duration_min")?)?;
+        if intervals_overlap(start, end, other, other_end) {
+            return Ok(Some(subscript(&saved, "title")?.clone()));
         }
     }
-    for (index, candidate) in rows.iter().enumerate() {
+    for (index, candidate) in iterate(rows)?.iter().enumerate() {
         if Some(index) == skip
-            || !truthy(field(candidate, "checked")?)
-            || !truthy(field(candidate, "fixed")?)
-            || require(candidate, "day")? != require(row, "day")?
-            || field(candidate, "week_start")? != field(row, "week_start")?
-            || !truthy(field(require(candidate, "block")?, "start")?)
+            || !truthy(get(candidate, "checked")?)
+            || !truthy(get(candidate, "fixed")?)
+            || !eq(subscript(candidate, "day")?, subscript(row, "day")?)
+            || !eq(
+                get(candidate, "week_start")?.unwrap_or(null()),
+                get(row, "week_start")?.unwrap_or(null()),
+            )
+            || !truthy(get(subscript(candidate, "block")?, "start")?)
         {
             continue;
         }
-        let other_block = require(candidate, "block")?;
-        let other = minutes_of(require(other_block, "start")?)?;
-        if intervals_overlap(
-            start,
-            end,
-            other,
-            other + whole(require(other_block, "duration_min")?)?,
-        ) {
-            return Ok(Some(require(other_block, "title")?.clone()));
+        let other_block = subscript(candidate, "block")?;
+        let other = minutes_of(subscript(other_block, "start")?)?;
+        let other_end = other + whole(subscript(other_block, "duration_min")?)?;
+        if intervals_overlap(start, end, other, other_end) {
+            return Ok(Some(subscript(other_block, "title")?.clone()));
         }
     }
     Ok(None)
 }
 
-fn days_hold(days: &[i64], day: &Value) -> bool {
-    day.as_i64().is_some_and(|day| days.contains(&day))
-}
-
 pub fn preview_conflict_message(
     row: &Value,
-    rows: &[Value],
-    existing: &[Value],
+    rows: &Value,
+    existing: &Value,
     skip: Option<usize>,
-) -> EngineResult<String> {
-    if truthy(field(row, "invalid")?) {
-        return Ok(py_str(require(row, "invalid")?));
+) -> EngineResult<Value> {
+    if truthy(get(row, "invalid")?) {
+        return Ok(subscript(row, "invalid")?.clone());
     }
     if let Some(conflict) = row_conflict(row, rows, existing, skip)?
         && truthy(Some(&conflict))
     {
-        return Ok(format!(
+        return Ok(json!(format!(
             "Conflicts with {}. Choose another time.",
             py_str(&conflict)
-        ));
+        )));
     }
-    let length = length_label(whole(require(require(row, "block")?, "duration_min")?)?);
-    Ok(if truthy(field(row, "fixed")?) {
+    let length = length_label(whole(subscript(subscript(row, "block")?, "duration_min")?)?);
+    Ok(json!(if truthy(get(row, "fixed")?) {
         format!("{length} · Only this week")
     } else {
         format!("{length} · Time chosen when you plan")
-    })
+    }))
 }
 
 pub fn proposals_from_clipboard(
-    items: &[Value],
+    items: &Value,
     kind: &str,
     week_start: &str,
     target_day: i64,
     target_start: Option<&str>,
-    assignments: &Dict,
-    available: &Dict,
+    assignments: &Value,
+    available: &Value,
 ) -> EngineResult<Vec<Value>> {
     let mut rows = Vec::new();
-    let mut left = available.clone();
-    for (item_index, entry) in items.iter().enumerate() {
-        let source = require(entry, "block")?;
-        if truthy(field(source, "assignment_id")?) {
-            let id = require(source, "assignment_id")?;
-            let assignment = lookup(assignments, id)?;
-            let remaining = match lookup(&left, id)? {
-                Some(value) => value
-                    .as_i64()
-                    .ok_or_else(|| type_error("unplanned minutes must be whole numbers"))?,
-                None => 0,
+    let mut left = PyDict::new();
+    for (key, value) in py_dict(available)? {
+        left.set(Value::from(key), value)?;
+    }
+    for (item_index, entry) in iterate(items)?.iter().enumerate() {
+        let source = subscript(entry, "block")?;
+        if truthy(get(source, "assignment_id")?) {
+            // `assignments.get(...)` finds `get` before it reads the id.
+            table_get(assignments, &Value::Null)?;
+            let id = subscript(source, "assignment_id")?;
+            let assignment = table_get(assignments, id)?;
+            let remaining = left.get(id)?.cloned().unwrap_or_else(|| json!(0));
+            let asked = Value::from(whole(subscript(source, "duration_min")?)?);
+            let duration = if compare(Cmp::Lt, &remaining, &asked)? {
+                remaining.clone()
+            } else {
+                asked
             };
-            let asked = whole(require(source, "duration_min")?)?;
-            let duration = asked.min(remaining);
-            let usable =
-                assignment.is_some_and(|found| truthy(Some(found))) && duration >= SLOT_MIN;
-            if usable && let Value::String(name) = id {
-                left.insert(name.clone(), json!(remaining - duration));
+            let found = assignment.filter(|value| truthy(Some(value)));
+            let usable = found.is_some() && compare(Cmp::Ge, &duration, &json!(SLOT_MIN))?;
+            if usable {
+                left.set(id.clone(), sub(&remaining, &duration)?)?;
             }
-            let (block, invalid) = if usable {
-                let assignment = assignment.unwrap_or(&Value::Null);
-                (
+            let (block, invalid) = match (usable, assignment) {
+                (true, Some(assignment)) => (
                     copied_homework_block_of(
                         assignment,
                         target_day,
-                        duration,
-                        require(entry, "group_id")?,
+                        &duration,
+                        subscript(entry, "group_id")?,
                     )?,
                     "",
-                )
-            } else {
-                (
+                ),
+                _ => (
                     source.clone(),
-                    if assignment.is_some_and(|found| truthy(Some(found))) {
+                    if found.is_some() {
                         "No unplanned time remains for this homework."
                     } else {
                         "This homework did not load."
                     },
-                )
+                ),
             };
             let mut row = Map::new();
             row.insert("week_start".into(), json!(week_start));
             row.insert("day".into(), json!(target_day));
             row.insert("fixed".into(), json!(false));
             row.insert("block".into(), block);
-            row.insert("group_id".into(), require(entry, "group_id")?.clone());
+            row.insert("group_id".into(), subscript(entry, "group_id")?.clone());
             row.insert("checked".into(), json!(usable));
             row.insert("invalid".into(), json!(invalid));
             row.insert(
                 "original_duration".into(),
-                json!(whole(require(source, "duration_min")?)?),
+                json!(whole(subscript(source, "duration_min")?)?),
             );
             rows.push(Value::Object(row));
             continue;
         }
-        let series = require(entry, "scope")? == &json!("series");
+        let series = eq(subscript(entry, "scope")?, &json!("series"));
         let days = if series {
-            list_of(require(source, "days")?)?
+            list_of(subscript(source, "days")?)?
         } else {
             vec![json!(target_day)]
         };
         for (day_index, day) in days.into_iter().enumerate() {
             let start = match target_start {
                 Some(start) if !start.is_empty() && kind == "block" && !series => json!(start),
-                _ => field(source, "start")?.cloned().unwrap_or(Value::Null),
+                _ => get(source, "start")?.cloned().unwrap_or(Value::Null),
             };
             let mut block =
-                copied_fixed_block_of(source, vec![day.clone()], require(entry, "group_id")?)?;
+                copied_fixed_block_of(source, vec![day.clone()], subscript(entry, "group_id")?)?;
             if let Value::Object(map) = &mut block {
                 map.insert("start".into(), start.clone());
             }
             let group_id = if series {
-                require(entry, "group_id")?.clone()
+                subscript(entry, "group_id")?.clone()
             } else {
                 json!(format!(
                     "{}-{item_index}-{day_index}",
-                    py_str(require(entry, "group_id")?)
+                    py_str(subscript(entry, "group_id")?)
                 ))
             };
             let mut row = Map::new();
@@ -233,7 +237,7 @@ pub fn proposals_from_clipboard(
             row.insert("group_id".into(), group_id);
             row.insert(
                 "original_duration".into(),
-                json!(whole(require(source, "duration_min")?)?),
+                json!(whole(subscript(source, "duration_min")?)?),
             );
             row.insert("checked".into(), json!(true));
             row.insert(
@@ -251,44 +255,48 @@ pub fn proposals_from_clipboard(
 }
 
 /// The rows ticked for paste, merged where one block lands on several days.
-pub fn merge_preview_rows(rows: &[Value], operation_id: &str) -> EngineResult<Vec<Value>> {
+pub fn merge_preview_rows(rows: &Value, operation_id: &str) -> EngineResult<Vec<Value>> {
     struct Group {
         week_start: Value,
         block: Value,
-        days: Vec<i64>,
+        days: Vec<Value>,
     }
     let mut groups: Vec<(String, Group)> = Vec::new();
-    for row in rows {
-        if !truthy(field(row, "checked")?) {
+    for row in iterate(rows)? {
+        if !truthy(get(&row, "checked")?) {
             continue;
         }
-        let mut block = require(row, "block")?.clone();
-        if truthy(field(row, "fixed")?) {
+        let mut block = subscript(&row, "block")?.clone();
+        if truthy(get(&row, "fixed")?) {
+            let day = subscript(&row, "day")?.clone();
             let Value::Object(map) = &mut block else {
-                return Err(crate::stored::attribute_error(&block, "items"));
+                return Err(crate::desk::pyops::item_assignment(&block));
             };
-            map.insert("days".into(), json!([require(row, "day")?]));
+            map.insert("days".into(), json!([day]));
         }
-        let shape: Dict = dict(&block)?
+        let Value::Object(fields) = &block else {
+            return Err(attribute_error(&block, "items"));
+        };
+        let shape: Map<String, Value> = fields
             .iter()
             .filter(|(key, _)| key.as_str() != "id" && key.as_str() != "days")
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
+        let week = subscript(&row, "week_start")?.clone();
+        let group = subscript(&row, "group_id")?.clone();
+        tuple_hashable(&week)?;
+        tuple_hashable(&group)?;
         let key = format!(
-            "{}\u{0}{}\u{0}{}",
-            require(row, "week_start")?,
-            require(row, "group_id")?,
+            "{week}\u{0}{group}\u{0}{}",
             dumps_sorted(&Value::Object(shape))
         );
-        let day = require(row, "day")?
-            .as_i64()
-            .ok_or_else(|| type_error("days must be whole numbers"))?;
+        let day = subscript(&row, "day")?.clone();
         match groups.iter_mut().find(|(known, _)| *known == key) {
-            Some((_, group)) => group.days.push(day),
+            Some((_, found)) => found.days.push(day),
             None => groups.push((
                 key,
                 Group {
-                    week_start: require(row, "week_start")?.clone(),
+                    week_start: week,
                     block,
                     days: vec![day],
                 },
@@ -300,26 +308,42 @@ pub fn merge_preview_rows(rows: &[Value], operation_id: &str) -> EngineResult<Ve
     for (index, (_, group)) in groups.into_iter().enumerate() {
         let mut block = group.block;
         let mut days = group.days;
-        days.sort_unstable();
-        days.dedup();
+        for day in &days {
+            hashable(day, "set element")?;
+        }
+        let mut unique: Vec<Value> = Vec::new();
+        for day in days.drain(..) {
+            if !unique.iter().any(|held| eq(held, &day)) {
+                unique.push(day);
+            }
+        }
+        let mut failure = None;
+        unique.sort_by(|left, right| {
+            order(left, right, Cmp::Lt).unwrap_or_else(|error| {
+                failure.get_or_insert(error);
+                std::cmp::Ordering::Equal
+            })
+        });
+        if let Some(error) = failure {
+            return Err(error);
+        }
         if let Value::Object(map) = &mut block {
             map.insert("id".into(), json!(format!("b-stage3-{stem}-{index:x}")));
-            map.insert("days".into(), json!(days));
+            map.insert("days".into(), Value::Array(unique));
         }
         result.push(json!({"week_start": group.week_start, "block": block}));
     }
     Ok(result)
 }
 
-pub fn routine_source_blocks(blocks: &[Value]) -> EngineResult<Vec<Value>> {
+pub fn routine_source_blocks(blocks: &Value) -> EngineResult<Vec<Value>> {
     let mut kept = Vec::new();
-    for block in blocks {
-        let fields = dict(block)?;
-        if fields.get("kind").and_then(Value::as_str) == Some("locked")
-            && !truthy(fields.get("assignment_id"))
-            && !truthy(fields.get("pomodoro_role"))
+    for block in iterate(blocks)? {
+        if eq(get(&block, "kind")?.unwrap_or(null()), &json!("locked"))
+            && !truthy(get(&block, "assignment_id")?)
+            && !truthy(get(&block, "pomodoro_role")?)
         {
-            kept.push(block.clone());
+            kept.push(block);
         }
     }
     Ok(kept)
@@ -328,21 +352,21 @@ pub fn routine_source_blocks(blocks: &[Value]) -> EngineResult<Vec<Value>> {
 pub fn routine_template(block: &Value, template_id: &str) -> EngineResult<Value> {
     let mut body = Map::new();
     body.insert("template_id".into(), json!(template_id));
-    body.insert("title".into(), require(block, "title")?.clone());
+    body.insert("title".into(), subscript(block, "title")?.clone());
     body.insert(
         "days".into(),
-        Value::Array(list_of(require(block, "days")?)?),
+        Value::Array(list_of(subscript(block, "days")?)?),
     );
-    body.insert("start".into(), require(block, "start")?.clone());
+    body.insert("start".into(), subscript(block, "start")?.clone());
     body.insert(
         "duration_min".into(),
-        require(block, "duration_min")?.clone(),
+        subscript(block, "duration_min")?.clone(),
     );
     for name in ROUTINE_FIELDS {
         if matches!(name, "title" | "days" | "start" | "duration_min") {
             continue;
         }
-        if let Some(value) = field(block, name)?
+        if let Some(value) = get(block, name)?
             && !value.is_null()
         {
             body.insert(name.into(), value.clone());
@@ -354,25 +378,31 @@ pub fn routine_template(block: &Value, template_id: &str) -> EngineResult<Value>
 pub fn routine_rows(
     routine: &Value,
     week_start: &str,
-    allowed_days: &[Value],
+    allowed_days: &Value,
 ) -> EngineResult<Vec<Value>> {
     let mut rows = Vec::new();
-    let allowed: HashSet<String> = allowed_days.iter().map(Value::to_string).collect();
-    let blocks = match field(routine, "blocks")? {
-        Some(value) if truthy(Some(value)) => list_of(value)?,
-        _ => Vec::new(),
-    };
-    for template in &blocks {
-        let group_id = require(template, "template_id")?;
-        let days = match field(template, "days")? {
-            Some(value) if truthy(Some(value)) => list_of(value)?,
-            _ => Vec::new(),
-        };
-        for day in days {
-            if !allowed.contains(&day.to_string()) {
+    let mut allowed: Vec<Value> = Vec::new();
+    for day in iterate(allowed_days)? {
+        hashable(&day, "set element")?;
+        allowed.push(day);
+    }
+    let blocks = or_default(get(routine, "blocks")?, json!([]));
+    for template in iterate(&blocks)? {
+        let group_id = subscript(&template, "template_id")?;
+        let days = or_default(get(&template, "days")?, json!([]));
+        for day in iterate(&days)? {
+            if !in_set(&allowed, &day)? {
                 continue;
             }
-            let mut source = dict(template)?.clone();
+            let mut source = match &template {
+                Value::Object(fields) => fields.clone(),
+                other => {
+                    return Err(type_error(format!(
+                        "'{}' object is not a mapping",
+                        type_name(other)
+                    )));
+                }
+            };
             source.insert("kind".into(), json!("locked"));
             let mut block =
                 copied_fixed_block_of(&Value::Object(source), vec![day.clone()], group_id)?;
@@ -385,7 +415,7 @@ pub fn routine_rows(
                 "fixed": true,
                 "block": block,
                 "group_id": group_id,
-                "original_duration": whole(require(template, "duration_min")?)?,
+                "original_duration": whole(subscript(&template, "duration_min")?)?,
                 "checked": true,
                 "invalid": "",
             }));
@@ -394,39 +424,17 @@ pub fn routine_rows(
     Ok(rows)
 }
 
-/// `due_sort_key(item.get("due"), item["id"])`, as the sort compares it.
-fn due_key(assignment: &Value) -> EngineResult<(chrono::NaiveDate, i64, String)> {
-    let due = field(assignment, "due")?;
-    let due_text = match due {
-        Some(Value::String(text)) if !text.is_empty() => Some(text.as_str()),
-        Some(value) if truthy(Some(value)) => {
-            return Err(type_error(format!(
-                "expected string or bytes-like object, got '{}'",
-                type_name(value)
-            )));
-        }
-        _ => None,
-    };
-    let id = require(assignment, "id")?;
-    crate::model::due_sort_key(due_text, &py_str(id))
-}
-
 pub fn unfinished_items(
-    assignments: &Dict,
-    saved_weeks: &[Value],
+    assignments: &Value,
+    saved_weeks: &Value,
     week_start: &str,
-    blocks: &[Value],
-    committed_blocks: &[Value],
+    blocks: &Value,
+    committed_blocks: &Value,
 ) -> EngineResult<Vec<Value>> {
+    let week = json!(week_start);
     let mut earlier = false;
-    for saved in saved_weeks {
-        let saved = saved.as_str().ok_or_else(|| {
-            type_error(format!(
-                "'<' not supported between instances of '{}' and 'str'",
-                type_name(saved)
-            ))
-        })?;
-        if saved < week_start {
+    for saved in iterate(saved_weeks)? {
+        if compare(Cmp::Lt, &saved, &week)? {
             earlier = true;
             break;
         }
@@ -434,18 +442,55 @@ pub fn unfinished_items(
     if !earlier {
         return Ok(Vec::new());
     }
-    let mut items: Vec<(Value, (chrono::NaiveDate, i64, String))> = Vec::new();
-    for assignment in assignments.values() {
-        let minutes = available_homework_minutes(Some(assignment), blocks, Some(committed_blocks))?;
-        if truthy(field(assignment, "completed")?) || minutes < SLOT_MIN {
+    let Value::Object(table) = assignments else {
+        return Err(attribute_error(assignments, "values"));
+    };
+    let mut items: Vec<Value> = Vec::new();
+    for assignment in table.values() {
+        let minutes = available_homework_minutes(assignment, blocks, committed_blocks)?;
+        if truthy(get(assignment, "completed")?) || minutes < SLOT_MIN {
             continue;
         }
-        let mut body = dict(assignment)?.clone();
+        let Value::Object(fields) = assignment else {
+            return Err(type_error(format!(
+                "'{}' object is not a mapping",
+                type_name(assignment)
+            )));
+        };
+        let mut body = fields.clone();
         body.insert("remaining_min".into(), json!(minutes));
-        let value = Value::Object(body);
-        let key = due_key(&value)?;
-        items.push((value, key));
+        items.push(Value::Object(body));
     }
-    items.sort_by(|left, right| left.1.cmp(&right.1));
-    Ok(items.into_iter().map(|(value, _)| value).collect())
+    let mut keyed: Vec<(((chrono::NaiveDate, i64), Value), Value)> = Vec::new();
+    for item in items {
+        let due = or_default(get(&item, "due")?, Value::Null);
+        let due_text = match &due {
+            Value::Null => None,
+            Value::String(found) if !found.is_empty() => Some(found.as_str()),
+            other if !truthy(Some(other)) => None,
+            other => {
+                return Err(type_error(format!(
+                    "expected string or bytes-like object, got '{}'",
+                    type_name(other)
+                )));
+            }
+        };
+        let identity = subscript(&item, "id")?.clone();
+        let (day, minute, _) = crate::model::due_sort_key(due_text, "")?;
+        keyed.push((((day, minute), identity), item));
+    }
+    let mut failure = None;
+    keyed.sort_by(|left, right| match left.0.0.cmp(&right.0.0) {
+        std::cmp::Ordering::Equal => {
+            order(&left.0.1, &right.0.1, Cmp::Lt).unwrap_or_else(|error| {
+                failure.get_or_insert(error);
+                std::cmp::Ordering::Equal
+            })
+        }
+        other => other,
+    });
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    Ok(keyed.into_iter().map(|(_, item)| item).collect())
 }
