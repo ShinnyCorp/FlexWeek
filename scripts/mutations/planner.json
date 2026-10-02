@@ -14,17 +14,17 @@
   "test": "cargo:flexweek-engine:test_solver:test_a_low_session_skips_midnight_when_the_morning_is_free"
  },
  {
-  "file": "engine/engine/src/desk/calendar.rs",
+  "file": "engine/engine/src/desk/grid.rs",
   "name": "a repeating block's day wipes the other week",
-  "old": "        let mut dest_vec: Vec<Value> = dest.unwrap().iter().map(deep_copy).collect();\n        dest_vec.push(for_date(&occurrence, from_day, to_day));\n        return Some((source_out, Some(dest_vec), made));\n",
-  "new": "        let dest_vec = vec![for_date(&occurrence, from_day, to_day)];\n        return Some((source_out, Some(dest_vec), made));\n",
+  "old": "        let mut dest_out = dest_items;\n        dest_out.push(for_date(&occurrence)?);\n        return Ok(Some((source_out, Some(dest_out), made)));\n",
+  "new": "        let dest_out = vec![for_date(&occurrence)?];\n        return Ok(Some((source_out, Some(dest_out), made)));\n",
   "test": "desktop/tests/test_logic_move_date.py::test_a_move_into_a_week_that_already_has_blocks_keeps_them"
  },
  {
-  "file": "engine/engine/src/desk/calendar.rs",
+  "file": "engine/engine/src/desk/grid.rs",
   "name": "a plain block wipes the other week",
-  "old": "    let mut dest_vec: Vec<Value> = dest.unwrap().iter().map(deep_copy).collect();\n    dest_vec.push(for_date(block, from_day, to_day));\n    Some((source_out, Some(dest_vec), block_id.to_string()))\n",
-  "new": "    let dest_vec = vec![for_date(block, from_day, to_day)];\n    Some((source_out, Some(dest_vec), block_id.to_string()))\n",
+  "old": "    let mut dest_out = dest_items;\n    dest_out.push(for_date(&block)?);\n    Ok(Some((source_out, Some(dest_out), block_id.clone())))\n",
+  "new": "    let dest_out = vec![for_date(&block)?];\n    Ok(Some((source_out, Some(dest_out), block_id.clone())))\n",
   "test": "desktop/tests/test_logic_move_date.py::test_a_move_into_a_week_that_already_has_blocks_keeps_them"
  },
  {
@@ -37,36 +37,36 @@
  {
   "file": "backend/models.py",
   "name": "a work window starts at any minute",
-  "old": "        if not (start_fits_day(start) and on_slot(start)):\n            raise ValueError(\"start must be on the 00:00–24:00 grid\")\n        return value\n\n    @field_validator(\"end\")\n",
-  "new": "        if not start_fits_day(start):\n            raise ValueError(\"start must be on the 00:00–24:00 grid\")\n        return value\n\n    @field_validator(\"end\")\n",
+  "old": "        if not (start_fits_day(start) and on_slot(start)):\n            raise ValueError(\"start must be on the 00:00\u201324:00 grid\")\n        return value\n\n    @field_validator(\"end\")\n",
+  "new": "        if not start_fits_day(start):\n            raise ValueError(\"start must be on the 00:00\u201324:00 grid\")\n        return value\n\n    @field_validator(\"end\")\n",
   "test": "backend/tests/test_stage4_api.py::test_estimates_and_the_planners_windows_stay_on_the_quarter_hour"
  },
  {
-  "file": "engine/engine/src/desk/reuse.rs",
+  "file": "engine/engine/src/desk/planning.rs",
   "name": "a plan is not told when now is",
-  "old": "                session.insert(\n                    \"earliest\".into(),\n                    json!(format!(\n                        \"{} {}\",\n                        DAY_FULL[day as usize],\n                        minutes_to_hhmm(bound.1)\n                    )),\n                );\n",
+  "old": "    out.insert(\"earliest\".into(), json!(earliest));\n",
   "new": "",
   "test": "desktop/tests/test_homework_plan.py::test_plan_on_a_thursday_leaves_monday_to_wednesday_and_the_hours_before_now_alone"
  },
  {
-  "file": "engine/engine/src/desk/reuse.rs",
+  "file": "engine/engine/src/desk/planning.rs",
   "name": "days already gone stay open, so the reason is wrong",
-  "old": "                let days: Vec<i64> = session\n                    .get(\"days\")\n                    .and_then(Value::as_array)\n                    .map(|items| {\n                        items\n                            .iter()\n                            .filter_map(Value::as_i64)\n                            .filter(|item| *item >= day)\n                            .collect()\n                    })\n                    .unwrap_or_default();\n                let days = if days.is_empty() { vec![day] } else { days };\n",
-  "new": "                let days: Vec<i64> = session\n                    .get(\"days\")\n                    .and_then(Value::as_array)\n                    .map(|items| items.iter().filter_map(Value::as_i64).collect())\n                    .unwrap_or_default();\n",
+  "old": "    let mut days = Vec::new();\n    for item in iterate(subscript(session, \"days\")?)? {\n        if compare(Cmp::Ge, &item, &day)? {\n            days.push(item);\n        }\n    }\n    if days.is_empty() {\n        days.push(day.clone());\n    }\n",
+  "new": "    let mut days = Vec::new();\n    for item in iterate(subscript(session, \"days\")?)? {\n        days.push(item);\n    }\n",
   "test": "desktop/tests/test_homework_plan.py::test_plan_on_a_thursday_leaves_monday_to_wednesday_and_the_hours_before_now_alone"
  },
  {
-  "file": "engine/engine/src/desk/reuse.rs",
+  "file": "engine/engine/src/desk/planning.rs",
   "name": "Replan all moves homework whose time has come",
-  "old": "        let kept = planned\n            && (block.get(\"pinned\").and_then(Value::as_bool) == Some(true)\n                || begun(block, not_before));\n",
-  "new": "        let _ = begun(block, not_before);\n        let kept = planned\n            && block.get(\"pinned\").and_then(Value::as_bool) == Some(true);\n",
+  "old": "        let kept = planned\n            && (truthy(get(&block, \"pinned\")?) || begun(&block, not_before, not_before_is_list)?);\n",
+  "new": "        let _ = begun(&block, not_before, not_before_is_list)?;\n        let kept = planned && truthy(get(&block, \"pinned\")?)?;\n",
   "test": "desktop/tests/test_homework_plan.py::test_replan_all_leaves_homework_whose_time_has_passed"
  },
  {
-  "file": "engine/engine/src/desk/reuse.rs",
+  "file": "engine/engine/src/desk/planning.rs",
   "name": "now rounded down to the quarter hour",
-  "old": "    minute = -(-minute).div_euclid(SLOT_MIN) * SLOT_MIN;\n",
-  "new": "    minute = minute.div_euclid(SLOT_MIN) * SLOT_MIN;\n",
+  "old": "    let minute = -((-minute).div_euclid(SLOT_MIN)) * SLOT_MIN;\n",
+  "new": "    let minute = minute.div_euclid(SLOT_MIN) * SLOT_MIN;\n",
   "test": "desktop/tests/test_homework_plan.py::test_a_plan_starts_at_now_rounded_up_to_the_next_quarter_hour"
  },
  {

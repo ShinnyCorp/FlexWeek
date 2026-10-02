@@ -93,8 +93,8 @@
  {
   "file": "engine/engine/src/desk/weekmodel.rs",
   "name": "focus counted from every homework on the account",
-  "old": "    let worked: std::collections::HashSet<String> = blocks\n        .iter()\n        .filter_map(|b| {\n            b.get(\"assignment_id\")\n                .and_then(Value::as_str)\n                .map(str::to_string)\n        })\n        .collect();\n    let mut focus = 0i64;\n    for key in &worked {\n        focus += homework\n            .get(key)\n            .and_then(|a| a.get(\"focus_minutes\"))\n            .and_then(Value::as_i64)\n            .unwrap_or(0);\n    }\n",
-  "new": "    let mut focus = 0i64;\n    for item in homework.values() {\n        focus += item\n            .get(\"focus_minutes\")\n            .and_then(Value::as_i64)\n            .unwrap_or(0);\n    }\n",
+  "old": "    let mut worked: Vec<Value> = Vec::new();\n    for block in iterate(blocks)? {\n        let key = field(&block, \"assignment_id\")?;\n        crate::desk::pyops::hashable(&key, \"set element\")?;\n        if !key.is_null() && !worked.iter().any(|held| eq(held, &key)) {\n            worked.push(key);\n        }\n    }\n    let mut focus: i128 = 0;\n    for key in &worked {\n        let entry = or_default(dict_get(&homework, key)?, json!({}));\n        focus += to_int(&or_default(get(&entry, \"focus_minutes\")?, json!(0)))?;\n    }\n",
+  "new": "    let mut focus: i128 = 0;\n    if let Value::Object(map) = &homework {\n        for item in map.values() {\n            focus += to_int(&or_default(get(item, \"focus_minutes\")?, json!(0)))?;\n        }\n    }\n",
   "test": "desktop/tests/test_weekmodel.py::test_focus_is_what_the_timer_credited_to_this_weeks_homework_and_blocks"
  },
  {

@@ -107,8 +107,8 @@
  {
   "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a new look replaces a saved look of its name",
-  "old": "    while find_index(saved, &free)?.is_some() {\n        free = format!(\"{stem} {count}\");\n        count += 1;\n    }\n    Ok(free)\n",
-  "new": "    while find_index(saved, &free)?.is_some() && count < 0 {\n        free = format!(\"{stem} {count}\");\n        count += 1;\n    }\n    Ok(free)\n",
+  "old": "    while find_index_of(saved, &free)?.is_some() {\n        free = format!(\"{stem} {count}\");\n        count += 1;\n    }\n    Ok(free)\n",
+  "new": "    while find_index_of(saved, &free)?.is_some() && count < 0 {\n        free = format!(\"{stem} {count}\");\n        count += 1;\n    }\n    Ok(free)\n",
   "test": "desktop/tests/test_custom_look.py::test_a_new_look_is_numbered_past_the_saved_looks_rather_than_replacing_one"
  },
  {

@@ -798,8 +798,9 @@ Recorded `operation_id` values make a retried write return the first result.
 - 2026-10-02, `engine/full-port` (pushed tip still fb290c8, draft PR 35; local is the docs merge plus
   backend-whole, e6-desktop and t1-desk-tests): the three stopped jobs finished and are merged.
   Backend suite 875 passed. Desk twins 161 passed inside `cargo test --workspace`. Adapter guard
-  covers the eleven desktop modules, `version.py`, and `look.py`'s four helpers. Next: repoint
-  mutation cases (`mutations_whole`), push, CI, then the review brief for Fable 5.1 on Cursor.
+  covers the eleven desktop modules, `version.py`, and `look.py`'s four helpers. The 18 mutation
+  cases that no longer matched are pointed at the current lines. Not pushed. Next when asked:
+  push, CI, then the review brief for Fable 5.1 on Cursor.
   After the review: full test run, fault checks, delete Python twins, interface tidy, 0.18.0.
   Step-by-step notes: `~/.flexweek-ui-harness/scratch/engine-run/handoff.md` (this machine only).
 - 2026-10-01, `engine/full-port`: E1 to E5 (minus the parts listed above as still Python), part C

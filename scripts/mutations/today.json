@@ -23,22 +23,22 @@
  {
   "file": "engine/engine/src/desk/remind.rs",
   "name": "a block saved inside its lead reminds at once",
-  "old": "    start - lead <= now_min && now_min <= start\n",
-  "new": "    now_min - REMINDER_WINDOW_MIN <= start - lead && start - lead <= now_min\n",
+  "old": "    start - lead <= i128::from(now_min) && i128::from(now_min) <= start\n",
+  "new": "    i128::from(now_min) - i128::from(REMINDER_WINDOW_MIN) <= start - lead && start - lead <= i128::from(now_min)\n",
   "test": "desktop/tests/test_reminders_window.py::test_a_block_saved_inside_its_lead_reminds_at_once_and_only_once"
  },
  {
   "file": "engine/engine/src/desk/remind.rs",
   "name": "a block reminds once",
-  "old": "        if fired.contains(&key) || !start_alert_due(start_min, now_min, lead_min) {\n",
-  "new": "        let _ = &fired;\n        if !start_alert_due(start_min, now_min, lead_min) {\n",
+  "old": "        if member(fired, fired_is_set, &key)? || !start_alert_due(start_min, now_min, lead_min) {\n",
+  "new": "        let _ = member(fired, fired_is_set, &key)?;\n        if !start_alert_due(start_min, now_min, lead_min) {\n",
   "test": "desktop/tests/test_reminders_window.py::test_a_block_saved_inside_its_lead_reminds_at_once_and_only_once"
  },
  {
   "file": "engine/engine/src/desk/remind.rs",
   "name": "a block with a song has one notice at its start",
-  "old": "        if started && truthy(fields.get(\"spotify_url\")) {\n            continue;\n        }\n",
-  "new": "        if started && truthy(fields.get(\"spotify_url\")) {\n        }\n",
+  "old": "        if started && truthy(get(&block, \"spotify_url\")?) {\n            continue;\n        }\n",
+  "new": "        if started && truthy(get(&block, \"spotify_url\")?) {\n        }\n",
   "test": "desktop/tests/test_remind.py::test_a_block_with_a_song_is_announced_by_the_song_at_its_start"
  },
  {
@@ -100,7 +100,7 @@
  {
   "file": "engine/engine/src/desk/focus.rs",
   "name": "the Next line says min",
-  "old": "            format!(\" (in {})\", length_label(wait))\n",
+  "old": "            format!(\" (in {})\", length_words(wait))\n",
   "new": "            format!(\" (in {}m)\", wait)\n",
   "test": "desktop/tests/test_words_on_screen.py::test_the_next_line_says_min_like_every_design"
  },
@@ -247,7 +247,7 @@
  {
   "file": "desktop/native/hours/chips.py",
   "name": "a tray chip shortens its length before its title",
-  "old": "            if title.strip(\"…\"):\n                fitted = title + self._length\n",
+  "old": "            if title.strip(\"\u2026\"):\n                fitted = title + self._length\n",
   "new": "",
   "test": "desktop/tests/test_classic_hours.py::test_a_tray_chip_shortens_its_title_and_keeps_its_length_whole"
  },
@@ -331,8 +331,8 @@
  {
   "file": "engine/engine/src/desk/weekmodel.rs",
   "name": "a resize said as a move",
-  "old": "    if day == from_day && start == was && end != was_end {\n",
-  "new": "    if false && day == from_day && start == was && end != was_end {\n",
+  "old": "    if day == from_day && start_at == was && end_at != was_end {\n",
+  "new": "    if false && day == from_day && start_at == was && end_at != was_end {\n",
   "test": "desktop/tests/test_drag_results.py::test_a_move_a_resize_a_create_and_a_placing_each_say_what_they_did_with_undo"
  },
  {
@@ -359,7 +359,7 @@
  {
   "file": "desktop/native/window.py",
   "name": "the toast says an action is still going, not what it did",
-  "old": "        if message.endswith(\"…\"):\n            return\n",
+  "old": "        if message.endswith(\"\u2026\"):\n            return\n",
   "new": "",
   "test": "desktop/tests/test_drag_results.py::test_every_advanced_action_says_what_it_did_when_it_is_done"
  },

@@ -63,10 +63,10 @@
   "test": "desktop/tests/test_custom_look.py::test_the_students_colours_replace_the_bases_and_the_rest_follows_from_them"
  },
  {
-  "file": "desktop/native/look.py",
+  "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a list as a base crashes",
-  "old": "    if not isinstance(raw.get(\"base\"), str) or raw[\"base\"] not in LOOK_BASES:",
-  "new": "    if raw.get(\"base\") not in LOOK_BASES:",
+  "old": "    let base = match raw.get(\"base\") {\n        Some(Value::String(base)) if LOOK_BASES.iter().any(|(known, _, _)| known == base) => base,\n",
+  "new": "    let base = match raw.get(\"base\") {\n        Some(Value::Array(_)) => panic!(\"list as a base\"),\n        Some(Value::String(base)) if LOOK_BASES.iter().any(|(known, _, _)| known == base) => base,\n",
   "test": "desktop/tests/test_custom_look.py::test_unknown_settings_and_bad_values_are_dropped_and_said_never_a_crash"
  },
  {
@@ -86,14 +86,14 @@
  {
   "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a readability fix that does not move the text",
-  "old": "            } else if field == \"text\" {\n                text_fixed.clone()\n            } else {\n                fit_lightness(ink, &surfaces, AA_TEXT)\n            };\n",
+  "old": "            } else if field == \"text\" {\n                text_fixed.clone()\n            } else {\n                fit_lightness(ink, &grounds_of(&surfaces), AA_TEXT)?\n            };\n",
   "new": "            } else if field == \"text\" {\n                let _ = &text_fixed;\n                ink.to_string()\n            } else {\n                ink.to_string()\n            };\n",
   "test": "desktop/tests/test_custom_look.py::test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_to_one"
  },
  {
   "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a pale accent's fix that does not move it",
-  "old": "                fit_lightness(\n                    &palette.accent,\n                    &[surfaces[0], surfaces[1], tint.as_str()],\n                    need,\n                )\n",
+  "old": "                fit_lightness(\n                    &palette.accent,\n                    &grounds_of(&[surfaces[0], surfaces[1], tint.as_str()]),\n                    need,\n                )?\n",
   "new": "                palette.accent.clone()\n",
   "test": "desktop/tests/test_custom_look.py::test_a_colour_of_the_students_own_as_the_accent"
  },
@@ -114,15 +114,15 @@
  {
   "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a saved look named Paper",
-  "old": "    if built_in {\n        return Err(EngineError::value(format!(\n            \"{clean} is one of FlexWeek's own looks. Choose another name.\"\n        )));\n    }\n",
-  "new": "    if built_in && clean.is_empty() {\n        return Err(EngineError::value(format!(\n            \"{clean} is one of FlexWeek's own looks. Choose another name.\"\n        )));\n    }\n",
+  "old": "    if built_in {\n        return Err(EngineError::look_name(format!(\n            \"{clean} is one of FlexWeek's own looks. Choose another name.\"\n        )));\n    }\n",
+  "new": "    if built_in && clean.is_empty() {\n        return Err(EngineError::look_name(format!(\n            \"{clean} is one of FlexWeek's own looks. Choose another name.\"\n        )));\n    }\n",
   "test": "desktop/tests/test_custom_look.py::test_saved_looks_are_named_saved_renamed_duplicated_deleted_and_reset"
  },
  {
   "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a newer file's look opened anyway",
-  "old": "    if version > FILE_VERSION {\n        return refused(\"This look was made by a newer FlexWeek. Update FlexWeek to open it.\");\n    }\n",
-  "new": "    if version > FILE_VERSION && version < 1 {\n        return refused(\"This look was made by a newer FlexWeek. Update FlexWeek to open it.\");\n    }\n",
+  "old": "    if version > i128::from(FILE_VERSION) {\n        return refused(\"This look was made by a newer FlexWeek. Update FlexWeek to open it.\");\n    }\n",
+  "new": "    if version > i128::from(FILE_VERSION) && version < 1 {\n        return refused(\"This look was made by a newer FlexWeek. Update FlexWeek to open it.\");\n    }\n",
   "test": "desktop/tests/test_custom_look.py::test_an_import_says_plainly_what_was_wrong"
  },
  {
