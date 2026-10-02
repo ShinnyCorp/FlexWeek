@@ -47,7 +47,7 @@ def focus_now(state: dict | None) -> str:
 
 
 def more_time_choices(estimate_min: int) -> list[int]:
-    return [int(minutes) for minutes in flexweek_engine.focus_more_time(estimate_min)]
+    return list(flexweek_engine.focus_more_time(estimate_min))
 
 
 def persist_payload(state: dict | None) -> dict | None:
