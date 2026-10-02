@@ -3070,3 +3070,109 @@ def test_due_alarms_mark_only_a_set_and_read_any_container(today, key, fired, zo
             fired=fired,
             snoozed={"a": now_ms - 1},
         )
+
+
+MOMENT = st.datetimes(min_value=datetime(2026, 9, 14), max_value=datetime(2026, 10, 12))
+
+
+@WIDE
+@given(maybe("2026-09-14", "2026-09-21", "2026-09-28", "x", ""), MOMENT)
+def test_plan_start_on_generated_moments(week, now):
+    same(live_reuse.plan_start, ref_reuse.plan_start, week, now)
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        datetime(2026, 9, 27, 23, 50),
+        datetime(2026, 9, 21, 23, 59, 30),
+        datetime(2026, 9, 21, 10, 0, 0, 1),
+        datetime(2026, 9, 21, 10, 0),
+        datetime(2026, 9, 20, 23, 59),
+        None,
+        "x",
+    ],
+)
+def test_plan_start_at_the_edges(now):
+    same(live_reuse.plan_start, ref_reuse.plan_start, WEEK, now)
+
+
+@WIDE
+@given(
+    maybe("2026-09-14", "2026-09-21", "2026-09-28", "x"),
+    maybe(*MOMENTS, None),
+    st.booleans(),
+    st.booleans(),
+    maybe(0, 99, 100, 101),
+)
+def test_running_late_refusal_on_generated_moments(week, now, dirty, conflict, count):
+    same(
+        live_reuse.running_late_refusal,
+        ref_reuse.running_late_refusal,
+        week_start=week,
+        now=now,
+        dirty=dirty,
+        conflict=conflict,
+        block_count=count,
+    )
+
+
+@CHECK
+@given(
+    maybe(
+        types.SimpleNamespace(week_start="2026-09-21", now_ms=lambda: 1_790_000_000_000),
+        types.SimpleNamespace(week_start="2026-09-21", selected_month=None),
+        types.SimpleNamespace(week_start="2026-09-21", now_ms=lambda: 1.79e12),
+        types.SimpleNamespace(now_ms=lambda: 0),
+        types.SimpleNamespace(week_start="2026-09-21", now_ms=5),
+        None,
+    ),
+    maybe("week", "day", "myday", "month"),
+    maybe(None, "2026-09-30"),
+    ZONES,
+)
+def test_planner_title_reads_the_session_as_it_finds_it(session, view, selected, zone):
+    with local_zone(zone):
+        same(live_reuse.planner_title, ref_reuse.planner_title, session, view, selected_day=selected)
+
+
+@CHECK
+@given(preview_rows(), maybe("rows", "tuple", "copies", "dict", "none"))
+def test_conflicts_find_their_own_row_in_any_container(rows, held):
+    for row in rows:
+        others = {
+            "rows": rows,
+            "tuple": tuple(rows),
+            "copies": [dict(item) for item in rows],
+            "dict": {"a": row},
+            "none": None,
+        }[held]
+        same(live_reuse.row_conflict, ref_reuse.row_conflict, row, others, [])
+        same(live_reuse.preview_conflict_message, ref_reuse.preview_conflict_message, row, others, [])
+
+
+@CHECK
+@given(
+    maybe(None, [], ["essay"], {"essay"}, frozenset({"essay"}), ("essay",), "essay", {"essay": 1}),
+    maybe(None, (1, 600), [1, 600], (9, 0), (), [], "x"),
+    maybe(True, False, 0, 1, None, "", "x"),
+)
+def test_solve_request_reads_only_and_not_before_as_it_is_given(only, not_before, everything):
+    blocks = [session(pinned=None), session(id="open", pinned=None, start=None, days=[0, 1, 2])]
+    same(
+        live_reuse.solve_request,
+        ref_reuse.solve_request,
+        blocks,
+        {"essay": homework()},
+        WEEK,
+        everything=everything,
+        only=only,
+        not_before=not_before,
+    )
+
+
+@CHECK
+@given(maybe(set(), {"sess"}, frozenset({"sess"}), ["sess"], ("sess",), "sess", {"sess": 1}, None))
+def test_settle_placements_reads_keep_as_it_is_given(keep):
+    late = [session(start="23:30", pinned=None), session(id="two", start="23:30", pinned=None)]
+    same(live_reuse.settle_placements, ref_reuse.settle_placements, late, {"essay": homework()}, WEEK, keep)

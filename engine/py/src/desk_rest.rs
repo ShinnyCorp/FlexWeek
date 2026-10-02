@@ -524,14 +524,22 @@ fn reuse_held(block: &str) -> PyResult<String> {
     })
 }
 
+/// `now` is a datetime: its date, hour, minute and seconds are read here, as the Python wrapper
+/// read them.
 #[pyfunction]
-fn reuse_plan_start(
-    week_start: &str,
-    today_iso: &str,
-    minutes: i64,
-    partial: bool,
-) -> PyResult<Option<(i64, i64)>> {
-    guard(|| planning::plan_start(week_start, today_iso, minutes, partial).map_err(crate::raise))
+fn reuse_plan_start(week_start: &str, now: &Bound<'_, PyAny>) -> PyResult<Option<(i64, i64)>> {
+    let today_iso = now
+        .call_method0("date")?
+        .call_method0("isoformat")?
+        .extract::<String>()?;
+    let hour = now.getattr("hour")?.extract::<i64>()?;
+    let minute = now.getattr("minute")?.extract::<i64>()?;
+    let second = now.getattr("second")?.extract::<i64>()?;
+    let microsecond = now.getattr("microsecond")?.extract::<i64>()?;
+    guard(|| {
+        planning::plan_start_at(week_start, &today_iso, hour, minute, second, microsecond)
+            .map_err(crate::raise)
+    })
 }
 
 #[pyfunction]
@@ -591,14 +599,18 @@ fn reuse_late_block(day: &str, from_start: &str, minutes: i64, block_id: &str) -
 #[pyfunction]
 fn reuse_late_refusal(
     week_start: &str,
-    today_iso: &str,
+    now: &Bound<'_, PyAny>,
     dirty: bool,
     conflict: bool,
     block_count: i64,
 ) -> PyResult<Option<String>> {
+    let today_iso = now
+        .call_method0("date")?
+        .call_method0("isoformat")?
+        .extract::<String>()?;
     guard(|| {
         Ok(
-            reuse::running_late_refusal(week_start, today_iso, dirty, conflict, block_count)
+            reuse::running_late_refusal(week_start, &today_iso, dirty, conflict, block_count)
                 .map(str::to_string),
         )
     })
@@ -684,15 +696,31 @@ fn reuse_occurs(block: &str, day: &str, placed: Option<&str>) -> PyResult<bool> 
     guard(|| planning::block_occurs_on_day(&block, &day, placed.as_ref()).map_err(crate::raise))
 }
 
+/// Where `row` sits in `rows`: the engine reads JSON, which has no identity, so the caller's own
+/// objects are searched here.
+fn own_place(row: &Bound<'_, PyAny>, rows: &Bound<'_, PyAny>) -> Option<usize> {
+    let items: Vec<Bound<'_, PyAny>> = if let Ok(list) = rows.cast::<pyo3::types::PyList>() {
+        list.iter().collect()
+    } else if let Ok(tuple) = rows.cast::<pyo3::types::PyTuple>() {
+        tuple.iter().collect()
+    } else {
+        return None;
+    };
+    items.iter().position(|item| item.is(row))
+}
+
 #[pyfunction]
 fn reuse_row_conflict(
-    row: &str,
-    rows: &str,
-    existing: &str,
-    skip: Option<i64>,
+    row: &Bound<'_, PyAny>,
+    rows: &Bound<'_, PyAny>,
+    existing: &Bound<'_, PyAny>,
 ) -> PyResult<Option<String>> {
-    let (row, rows, existing) = (parse(row)?, parse(rows)?, parse(existing)?);
-    let skip = skip.and_then(|index| usize::try_from(index).ok());
+    let skip = own_place(row, rows);
+    let (row, rows, existing) = (
+        parse(&dumps_of(row)?)?,
+        parse(&dumps_of(rows)?)?,
+        parse(&dumps_of(existing)?)?,
+    );
     guard(|| {
         let conflict =
             clipboard::row_conflict(&row, &rows, &existing, skip).map_err(crate::raise)?;
@@ -702,13 +730,16 @@ fn reuse_row_conflict(
 
 #[pyfunction]
 fn reuse_preview_message(
-    row: &str,
-    rows: &str,
-    existing: &str,
-    skip: Option<i64>,
+    row: &Bound<'_, PyAny>,
+    rows: &Bound<'_, PyAny>,
+    existing: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
-    let (row, rows, existing) = (parse(row)?, parse(rows)?, parse(existing)?);
-    let skip = skip.and_then(|index| usize::try_from(index).ok());
+    let skip = own_place(row, rows);
+    let (row, rows, existing) = (
+        parse(&dumps_of(row)?)?,
+        parse(&dumps_of(rows)?)?,
+        parse(&dumps_of(existing)?)?,
+    );
     guard(|| {
         let message = clipboard::preview_conflict_message(&row, &rows, &existing, skip)
             .map_err(crate::raise)?;
@@ -797,34 +828,46 @@ fn reuse_unfinished(
     })
 }
 
-/// `today()` is the caller's local date as an ISO string; a Python error from it is raised as it
-/// came.
+/// `session` is the caller's own, read here for its week, day and month, and asked for `now_ms()`
+/// only when My Day needs the local date; `moment_at` is `datetime.fromtimestamp`. A Python error
+/// from either is raised as it came.
 #[pyfunction]
-#[allow(clippy::too_many_arguments)]
 fn reuse_planner_title(
-    week_start: &str,
-    session_day: Option<&str>,
-    session_month: Option<&str>,
+    session: &Bound<'_, PyAny>,
     view: &str,
     short: bool,
     selected_day: Option<&str>,
-    today: &Bound<'_, PyAny>,
+    moment_at: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
+    let week_start = crate::desk::text_arg(&session.getattr("week_start")?, "week_start")?;
+    let session_day = crate::desk::opt_text_arg(
+        &crate::desk::attr_or_none(session, "selected_day")?,
+        "session_day",
+    )?;
+    let session_month = crate::desk::opt_text_arg(
+        &crate::desk::attr_or_none(session, "selected_month")?,
+        "session_month",
+    )?;
     let failure: RefCell<Option<PyErr>> = RefCell::new(None);
     let mut local_date = || -> EngineResult<String> {
-        today
-            .call0()
-            .and_then(|value| value.extract::<String>())
-            .map_err(|error| {
-                *failure.borrow_mut() = Some(error);
-                EngineError::value("local date")
-            })
+        let read = || -> PyResult<String> {
+            let millis = session.call_method0("now_ms")?.extract::<f64>()?;
+            moment_at
+                .call1((::flexweek_engine::desk::remind::seconds_of_millis(millis),))?
+                .call_method0("date")?
+                .call_method0("isoformat")?
+                .extract::<String>()
+        };
+        read().map_err(|error| {
+            *failure.borrow_mut() = Some(error);
+            EngineError::value("local date")
+        })
     };
     let outcome = guard(|| {
         Ok(reuse::planner_title(
-            week_start,
-            session_day,
-            session_month,
+            &week_start,
+            session_day.as_deref(),
+            session_month.as_deref(),
             view,
             short,
             selected_day,
@@ -835,6 +878,67 @@ fn reuse_planner_title(
         Some(error) => Err(error),
         None => outcome.map_err(crate::raise),
     }
+}
+
+/// What to send the solver, and which sessions its answer may place. `only` and `not_before` are
+/// read as the Python wrapper wrote them: `only` as the list of its members, `not_before` as it is,
+/// with a note of whether it was a list.
+#[pyfunction]
+fn reuse_solve_request(
+    blocks: &str,
+    assignments: &str,
+    week_start: &str,
+    everything: &Bound<'_, PyAny>,
+    only: &Bound<'_, PyAny>,
+    not_before: &Bound<'_, PyAny>,
+) -> PyResult<(String, String)> {
+    let (blocks, assignments) = (parse(blocks)?, parse(assignments)?);
+    let everything = everything.is_truthy()?;
+    let only = if only.is_none() {
+        None
+    } else {
+        let members = only.py().get_type::<pyo3::types::PyList>().call1((only,))?;
+        Some(parse(&dumps_of(&members)?)?)
+    };
+    let held_a_list = not_before.is_instance_of::<pyo3::types::PyList>();
+    let not_before = if not_before.is_none() {
+        None
+    } else {
+        Some(parse(&dumps_of(not_before)?)?)
+    };
+    guard(|| {
+        let (payload, targets) = planning::solve_request(
+            &blocks,
+            &assignments,
+            week_start,
+            everything,
+            only.as_ref(),
+            not_before.as_ref(),
+            held_a_list,
+        )
+        .map_err(crate::raise)?;
+        Ok((array(payload), array(targets)))
+    })
+}
+
+/// Takes the time away from planned homework whose slot no longer works. `keep` is read as the
+/// Python wrapper wrote it: a set or frozenset as the list of its members, anything else as it is.
+#[pyfunction]
+fn reuse_settle_placements(
+    blocks: &str,
+    assignments: &str,
+    week_start: &str,
+    keep: &Bound<'_, PyAny>,
+) -> PyResult<(String, String)> {
+    let (blocks, assignments) = (parse(blocks)?, parse(assignments)?);
+    let (keep, keep_is_set) = crate::desk::members_of(keep)?;
+    let keep = parse(&keep)?;
+    guard(|| {
+        let (kept, lost) =
+            planning::settle_placements(&blocks, &assignments, week_start, &keep, keep_is_set)
+                .map_err(crate::raise)?;
+        Ok((dump(&kept), array(lost)))
+    })
 }
 
 #[pyfunction]
@@ -1259,6 +1363,8 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         reuse_routine_rows,
         reuse_unfinished,
         reuse_planner_title,
+        reuse_solve_request,
+        reuse_settle_placements,
         files_export_input,
         files_referenced_ids,
         files_assignment_input,

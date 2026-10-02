@@ -350,6 +350,11 @@ pub fn seconds_of(now_ms: i64) -> f64 {
     now_ms as f64 / 1000.0
 }
 
+/// `millis / 1000` for milliseconds a caller reports as a number of either kind.
+pub fn seconds_of_millis(millis: f64) -> f64 {
+    millis / 1000.0
+}
+
 /// `int(seconds * 1000)`: whole milliseconds of a timestamp, cut towards zero.
 pub fn millis_of(seconds: f64) -> i64 {
     (seconds * 1000.0).trunc() as i64
@@ -364,6 +369,7 @@ mod tests {
         assert_eq!(seconds_of(1_790_000_000_000), 1_790_000_000.0);
         assert_eq!(seconds_of(1_500), 1.5);
         assert_eq!(seconds_of(-1_500), -1.5);
+        assert_eq!(seconds_of_millis(1_500.5), 1.5005);
     }
 
     #[test]

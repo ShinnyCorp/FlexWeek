@@ -219,6 +219,24 @@ pub fn plan_start(
     Ok(Some((day, minute)))
 }
 
+/// `plan_start` for a moment read off the clock: its hour and minute, and whether any seconds have
+/// gone past the minute.
+pub fn plan_start_at(
+    week_start: &str,
+    today_iso: &str,
+    hour: i64,
+    minute: i64,
+    second: i64,
+    microsecond: i64,
+) -> EngineResult<Option<(i64, i64)>> {
+    plan_start(
+        week_start,
+        today_iso,
+        hour * 60 + minute,
+        second != 0 || microsecond != 0,
+    )
+}
+
 /// `not_before` crosses as JSON, which cannot tell the tuple Python compares against from a list it
 /// refuses to, so the caller says which it held.
 fn begun(block: &Value, not_before: Option<&Value>, held_a_list: bool) -> EngineResult<bool> {
@@ -682,4 +700,53 @@ pub fn copy_label(block: &Value, source_day: &Value, scope: &Value) -> EngineRes
         return Ok(json!(format!("{} ({name} only)", py_str(&title))));
     }
     Ok(title)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_plan_starts_at_the_next_quarter_hour() {
+        assert_eq!(
+            plan_start_at("2026-09-21", "2026-09-21", 10, 30, 0, 0).unwrap(),
+            Some((0, 630))
+        );
+        assert_eq!(
+            plan_start_at("2026-09-21", "2026-09-21", 10, 31, 0, 0).unwrap(),
+            Some((0, 645))
+        );
+        assert_eq!(
+            plan_start_at("2026-09-21", "2026-09-24", 9, 0, 0, 1).unwrap(),
+            Some((3, 555))
+        );
+    }
+
+    #[test]
+    fn a_half_minute_counts_as_a_whole_one() {
+        assert_eq!(
+            plan_start_at("2026-09-21", "2026-09-21", 10, 30, 30, 0).unwrap(),
+            Some((0, 645))
+        );
+    }
+
+    #[test]
+    fn a_plan_that_starts_after_midnight_starts_the_next_day() {
+        assert_eq!(
+            plan_start_at("2026-09-21", "2026-09-21", 23, 59, 30, 0).unwrap(),
+            Some((1, 0))
+        );
+        assert_eq!(
+            plan_start_at("2026-09-21", "2026-09-27", 23, 50, 0, 0).unwrap(),
+            Some((7, 0))
+        );
+    }
+
+    #[test]
+    fn a_week_still_ahead_has_no_start() {
+        assert_eq!(
+            plan_start_at("2026-09-28", "2026-09-27", 10, 0, 0, 0).unwrap(),
+            None
+        );
+    }
 }

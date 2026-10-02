@@ -841,3 +841,36 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
     );
     Ok(())
 }
+
+/// `value` as text, refused as PyO3 refuses an argument of the wrong kind, for what the Python
+/// wrapper once passed as an argument and the binding now reads off an object.
+pub(crate) fn text_arg(value: &Bound<'_, PyAny>, name: &str) -> PyResult<String> {
+    value.extract::<String>().map_err(|error| {
+        if error.is_instance_of::<PyTypeError>(value.py()) {
+            PyTypeError::new_err(format!("argument '{name}': {error}"))
+        } else {
+            error
+        }
+    })
+}
+
+/// `text_arg`, with none allowed.
+pub(crate) fn opt_text_arg(value: &Bound<'_, PyAny>, name: &str) -> PyResult<Option<String>> {
+    if value.is_none() {
+        return Ok(None);
+    }
+    text_arg(value, name).map(Some)
+}
+
+/// `getattr(object, name, None)`.
+pub(crate) fn attr_or_none<'py>(
+    object: &Bound<'py, PyAny>,
+    name: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    match object.getattr(name) {
+        Err(error) if error.is_instance_of::<pyo3::exceptions::PyAttributeError>(object.py()) => {
+            Ok(object.py().None().into_bound(object.py()))
+        }
+        found => found,
+    }
+}
