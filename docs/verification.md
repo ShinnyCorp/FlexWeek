@@ -52,17 +52,17 @@ The other `fwtest` commands:
 | Behavior | Automated evidence | Useful next-feature cases |
 | --- | --- | --- |
 | Accounts, expiry, ownership, CSRF, revision conflicts and retries | `backend/tests/test_accounts.py`, `test_account_edges.py`, `test_week_api.py` | Another account, expired session, stale response and failed save |
-| Dated weeks and migration | `backend/tests/test_weeks.py`, `test_migration.py`, `test_week_api.py` | Monday validation, year/DST boundaries, repeat migration, unsaved week navigation |
-| Solver placement, priorities and explanations | `backend/tests/test_solver.py`, `test_completed.py`, `test_solver_invariants.py` | Contested capacity with unequal domains, completed work, deadline/earliest bounds, timeout partial results |
-| Missed occurrences and recovery | Solver tests; `desktop/tests/test_calendar.py`, `test_history.py` | One day of a series, cross-day movement, completed work, restore/save/reload |
-| Grid gestures and event wiring | `desktop/tests/test_calendar.py` | Snap boundaries, cancel, a second pointer, move/resize, double-click, context menu and persisted reload |
+| Dated weeks and migration | `engine/engine/tests/test_weeks.rs`, `engine/store/tests/test_migration.rs`; `backend/tests/test_week_api.py` | Monday validation, year/DST boundaries, repeat migration, unsaved week navigation |
+| Solver placement, priorities and explanations | `engine/engine/tests/test_solver.rs`, `test_completed.rs`, `test_solver_invariants.rs` | Contested capacity with unequal domains, completed work, deadline/earliest bounds, timeout partial results |
+| Missed occurrences and recovery | Solver tests; `engine/engine/tests/desk_calendar.rs`, `desk_history.rs` | One day of a series, cross-day movement, completed work, restore/save/reload |
+| Grid gestures and event wiring | `engine/engine/tests/desk_calendar.rs` | Snap boundaries, cancel, a second pointer, move/resize, double-click, context menu and persisted reload |
 | Imports, exports, drafts, categories and completion | `backend/tests/test_phase5.py` | Invalid input, repeat import, maximum merged size, unusual/maximum Unicode IDs, multi-day flexible tasks, completed placement round trip and exported draft reimport |
-| Reminder preferences and session cleanup | `backend/tests/test_phase5.py`; `desktop/tests/test_remind.py` | Lead window, solved flexible work, completed/missed filtering, account transition and alert cleanup |
-| Stage 6 recovery, identity and account transfer | `backend/tests/test_stage6_api.py`, `test_recovery.py`; `desktop/tests/test_files.py` | One-time code handling, wrong-password session preservation, local/hosted identity, malformed files, named removals, stale previews, replace/reload and deletion |
-| Stage 7 month navigation | `backend/tests/test_month_api.py`, `test_weeks.py`, `test_day_api.py`; `desktop/tests/test_calendar.py` | Deadlines, completed work, project indicators, overdue work, empty/error states, stale month/account replies, year and 2000/2099 boundaries, responsive date targets and date-to-Day handoff |
-| Stage 3 clipboard, routines, unfinished work and restore points | `backend/tests/test_routines_api.py`, `test_restore_api.py`; `desktop/tests/test_reuse.py`, `test_history.py` | Collision previews, a remaining-time cap shared across a batch, the 100-block limit, operation ids on retry and after 409, stale restore tokens, reload, a second account and a 390px dark-theme carry-forward |
-| Desktop origin, local server and native window | `desktop/tests/test_origin.py`, `test_server.py`, `test_native.py`, `test_files.py` | Loopback origin, offline draft download, native Save/Open |
-| Native Qt widgets | `desktop/tests/test_native.py`, `test_calendar.py`, `test_history.py`, `test_reuse.py`, `test_focus.py`, `test_look.py`, `test_remind.py`, `test_files.py`, `test_smoke.py`, `test_server.py` native-mode case | Packaging smoke on a real desktop |
+| Reminder preferences and session cleanup | `backend/tests/test_phase5.py`; `engine/engine/tests/desk_remind.rs` | Lead window, solved flexible work, completed/missed filtering, account transition and alert cleanup |
+| Stage 6 recovery, identity and account transfer | `backend/tests/test_stage6_api.py`; `engine/engine/tests/test_recovery.rs`, `desk_files.rs` | One-time code handling, wrong-password session preservation, local/hosted identity, malformed files, named removals, stale previews, replace/reload and deletion |
+| Stage 7 month navigation | `backend/tests/test_month_api.py`, `test_day_api.py`; `engine/engine/tests/test_weeks.rs`, `desk_calendar.rs` | Deadlines, completed work, project indicators, overdue work, empty/error states, stale month/account replies, year and 2000/2099 boundaries, responsive date targets and date-to-Day handoff |
+| Stage 3 clipboard, routines, unfinished work and restore points | `backend/tests/test_routines_api.py`, `test_restore_api.py`; `engine/engine/tests/desk_reuse.rs`, `desk_history.rs` | Collision previews, a remaining-time cap shared across a batch, the 100-block limit, operation ids on retry and after 409, stale restore tokens, reload, a second account and a 390px dark-theme carry-forward |
+| Desktop origin, local server and native window | `desktop/tests/test_origin.py`, `test_server.py`, `test_native.py`; `engine/engine/tests/desk_files.rs` | Loopback origin, offline draft download, native Save/Open |
+| Native Qt widgets | `desktop/tests/test_native.py`, `test_look.py`, `test_smoke.py`, `test_server.py` native-mode case | Packaging smoke on a real desktop |
 | A painted week after setup | Native `--smoke-test` in `desktop/tests/test_smoke.py` | Window grab after a saved week; hosted origin that cannot load |
 
 The generated solver cases use 20 fixed seeds and independent integer-minute
@@ -113,16 +113,15 @@ safety of every deployment.
 
 ## Stage 3 evidence
 
-`desktop/tests/test_reuse.py` covers fixed-block collision previews, occurrence and series scope,
+`engine/engine/tests/desk_reuse.rs` covers fixed-block collision previews, occurrence and series scope,
 day-copy exclusions, homework identity and a remaining-time cap shared across a
 batch, keyboard shortcuts that stay off in form fields and behind open dialogs,
 routine weekday selection and long routine names, restore-token refresh, the
 week kept after a restore, Clear week rollback, and operation ids that repeat
 after an unknown response but not after a 409.
 
-Native widget tests in `test_reuse.py` and `test_history.py` drive the same
-APIs from the Qt window: copy through a collision preview, routines, unfinished
-homework, and restore points. Backend isolation, limits and transactions are in
+`desk_reuse.rs` and `desk_history.rs` test the same helpers without the Qt window:
+copy through a collision preview, routines, unfinished homework, and restore points. Backend isolation, limits and transactions are in
 `test_routines_api.py` and `test_restore_api.py`.
 
 ## Findings from the September 8–9 pass
