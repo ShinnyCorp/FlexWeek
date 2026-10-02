@@ -12,6 +12,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDict, PyModule};
 
 mod db;
+mod desk;
+mod desk_rest;
 mod more;
 mod rest;
 
@@ -313,5 +315,7 @@ fn flexweek_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     more::add(m)?;
     rest::add(m)?;
     db::add(m)?;
+    desk::add(m)?;
+    desk_rest::add(m)?;
     Ok(())
 }
