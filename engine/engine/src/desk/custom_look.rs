@@ -6,10 +6,11 @@ use serde_json::{Map, Value, json};
 
 use crate::casefold::casefold;
 use crate::desk::calendar::CATEGORIES;
-use crate::desk::pyval::subscript;
+use crate::desk::pyops::{contains, eq, get, hashable, iterate, py_dict};
+use crate::desk::pyval::{subscript, type_error};
 use crate::desk::tokens::{contrast, fit_lightness, luminance, mix};
 use crate::error::{EngineError, EngineResult};
-use crate::stored::{Dict, attribute_error, py_str};
+use crate::stored::{Dict, attribute_error, py_str, type_name};
 use crate::time::{py_repr, py_space};
 
 pub const UNNAMED: &str = "My look";
@@ -622,12 +623,12 @@ pub fn wear(look: &Value, custom: &Value) -> Dict {
 /// `_name(name)`: the name tidied, or the sentence saying why it cannot be a saved look's.
 pub fn name_valid(name: Option<&str>) -> EngineResult<String> {
     let Some(name) = name.filter(|text| !text.trim_matches(py_space).is_empty()) else {
-        return Err(EngineError::value("A look needs a name."));
+        return Err(EngineError::look_name("A look needs a name."));
     };
     let clean = tidy(name);
     if clean.chars().count() > NAME_MAX {
-        return Err(EngineError::value(format!(
-            "A look's name can be {NAME_MAX} letters at most."
+        return Err(EngineError::look_name(format!(
+            "A look\'s name can be {NAME_MAX} letters at most."
         )));
     }
     let folded = casefold(&clean);
@@ -637,7 +638,7 @@ pub fn name_valid(name: Option<&str>) -> EngineResult<String> {
         .chain(PRESET_LABELS.iter())
         .any(|label| casefold(label) == folded);
     if built_in {
-        return Err(EngineError::value(format!(
+        return Err(EngineError::look_name(format!(
             "{clean} is one of FlexWeek's own looks. Choose another name."
         )));
     }
@@ -657,17 +658,6 @@ pub fn find_index(saved: &[Dict], name: &str) -> EngineResult<Option<usize>> {
     for (index, look) in saved.iter().enumerate() {
         let shown = look.get("name").ok_or_else(|| EngineError::key("name"))?;
         if same_name(shown, &wanted)? {
-            return Ok(Some(index));
-        }
-    }
-    Ok(None)
-}
-
-/// `_find` on the list as it came, so a saved look of the wrong type fails as Python's would.
-pub fn find_index_of(saved: &[Value], name: &str) -> EngineResult<Option<usize>> {
-    let wanted = casefold(name);
-    for (index, look) in saved.iter().enumerate() {
-        if same_name(subscript(look, "name")?, &wanted)? {
             return Ok(Some(index));
         }
     }
@@ -694,102 +684,175 @@ pub fn sanitize_saved(raw: &Value) -> EngineResult<Vec<Dict>> {
     Ok(kept)
 }
 
-pub fn save_look(saved: &[Dict], custom: &Dict, name: &str) -> EngineResult<Vec<Dict>> {
-    let clean = name_valid(Some(name))?;
-    let mut kept: Vec<Dict> = saved.to_vec();
-    let mut look = custom.clone();
-    look.insert("name".into(), json!(clean));
-    match find_index(&kept, &clean)? {
-        Some(at) => kept[at] = look,
-        None => kept.push(look),
+/// A small file to share a look: what kind of file it is, its version, and the look.
+/// `_find` on the list as it came, so a saved look of the wrong type fails as Python's would.
+pub fn find_index_of(saved: &Value, name: &str) -> EngineResult<Option<usize>> {
+    let wanted = casefold(name);
+    for (index, look) in iterate(saved)?.iter().enumerate() {
+        if same_name(subscript(look, "name")?, &wanted)? {
+            return Ok(Some(index));
+        }
+    }
+    Ok(None)
+}
+
+/// `{**value, ...}`: only a dict can be spread.
+fn spread(value: &Value) -> EngineResult<Dict> {
+    match value {
+        Value::Object(map) if crate::stored::nonfinite(value).is_none() => Ok(map.clone()),
+        other => Err(type_error(format!(
+            "'{}' object is not a mapping",
+            type_name(other)
+        ))),
+    }
+}
+
+/// `[dict(look) for look in saved]`.
+fn copies(saved: &Value) -> EngineResult<Vec<Value>> {
+    let mut kept = Vec::new();
+    for look in iterate(saved)? {
+        kept.push(Value::Object(py_dict(&look)?));
     }
     Ok(kept)
 }
 
-pub fn reset_look(custom: &Dict) -> Dict {
-    let mut out = Map::new();
-    for key in ["name", "base"] {
-        if let Some(value) = custom.get(key) {
-            out.insert(key.to_string(), value.clone());
-        }
+pub fn save_look(saved: &Value, custom: &Value, name: &str) -> EngineResult<Vec<Value>> {
+    let clean = name_valid(Some(name))?;
+    let mut kept = copies(saved)?;
+    let mut look = spread(custom)?;
+    look.insert("name".into(), json!(clean));
+    match find_index_of(&Value::Array(kept.clone()), &clean)? {
+        Some(at) => kept[at] = Value::Object(look),
+        None => kept.push(Value::Object(look)),
     }
-    out
+    Ok(kept)
 }
 
-pub fn free_name(saved: &[Dict], name: &str) -> EngineResult<String> {
+pub fn reset_look(custom: &Value) -> EngineResult<Dict> {
+    let mut out = Map::new();
+    for key in ["name", "base"] {
+        if contains(custom, &json!(key))? {
+            out.insert(key.to_string(), subscript(custom, key)?.clone());
+        }
+    }
+    Ok(out)
+}
+
+pub fn free_name(saved: &Value, name: &str) -> EngineResult<String> {
     let clean = name_valid(Some(name))?;
     let stem = first(&clean, NAME_MAX - 3);
     let mut free = clean;
     let mut count = 2i64;
-    while find_index(saved, &free)?.is_some() {
+    while find_index_of(saved, &free)?.is_some() {
         free = format!("{stem} {count}");
         count += 1;
     }
     Ok(free)
 }
 
-pub fn rename_look(saved: &[Dict], old: &str, new_name: &str) -> EngineResult<Vec<Dict>> {
-    let Some(at) = find_index(saved, old)? else {
-        return Err(EngineError::value(format!(
+pub fn rename_look(saved: &Value, old: &str, new_name: &str) -> EngineResult<Vec<Value>> {
+    let Some(at) = find_index_of(saved, old)? else {
+        return Err(EngineError::look_name(format!(
             "No saved look is called {old}."
         )));
     };
     let clean = name_valid(Some(new_name))?;
-    if let Some(other) = find_index(saved, &clean)?
+    if let Some(other) = find_index_of(saved, &clean)?
         && other != at
     {
-        return Err(EngineError::value(format!(
+        return Err(EngineError::look_name(format!(
             "There is already a look called {clean}."
         )));
     }
-    let mut kept = saved.to_vec();
-    kept[at].insert("name".into(), json!(clean));
+    let mut kept = copies(saved)?;
+    let Value::Object(fields) = &mut kept[at] else {
+        return Err(type_error("saved look is not a dict"));
+    };
+    fields.insert("name".into(), json!(clean));
     Ok(kept)
 }
 
-pub fn duplicate_look(saved: &[Dict], name: &str) -> EngineResult<(Vec<Dict>, String)> {
-    let Some(at) = find_index(saved, name)? else {
-        return Err(EngineError::value(format!(
+pub fn duplicate_look(saved: &Value, name: &str) -> EngineResult<(Vec<Value>, String)> {
+    let Some(at) = find_index_of(saved, name)? else {
+        return Err(EngineError::look_name(format!(
             "No saved look is called {name}."
         )));
     };
-    let original = saved[at]
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or(name);
-    let stem = format!("{} copy", first(original, NAME_MAX - 8));
+    let held = iterate(saved)?;
+    let original = py_str(subscript(&held[at], "name")?);
+    let stem = format!("{} copy", first(&original, NAME_MAX - 8));
     let mut copy = stem.clone();
     let mut count = 2i64;
-    while find_index(saved, &copy)?.is_some() {
+    while find_index_of(saved, &copy)?.is_some() {
         copy = format!("{stem} {count}");
         count += 1;
     }
-    let mut kept = saved.to_vec();
-    let mut twin = saved[at].clone();
+    let mut kept = copies(saved)?;
+    let mut twin = spread(&held[at])?;
     twin.insert("name".into(), json!(copy));
-    kept.insert(at + 1, twin);
+    kept.insert(at + 1, Value::Object(twin));
     Ok((kept, copy))
 }
 
-pub fn delete_look(saved: &[Dict], name: &str) -> EngineResult<Vec<Dict>> {
-    if find_index(saved, name)?.is_none() {
-        return Err(EngineError::value(format!(
+pub fn delete_look(saved: &Value, name: &str) -> EngineResult<Vec<Value>> {
+    if find_index_of(saved, name)?.is_none() {
+        return Err(EngineError::look_name(format!(
             "No saved look is called {name}."
         )));
     }
     let wanted = casefold(name);
-    Ok(saved
-        .iter()
-        .filter(|look| {
-            look.get("name")
-                .and_then(Value::as_str)
-                .is_none_or(|shown| casefold(shown) != wanted)
-        })
-        .cloned()
-        .collect())
+    let mut kept = Vec::new();
+    for look in iterate(saved)? {
+        if !same_name(subscript(&look, "name")?, &wanted)? {
+            kept.push(Value::Object(py_dict(&look)?));
+        }
+    }
+    Ok(kept)
 }
 
-/// A small file to share a look: what kind of file it is, its version, and the look.
+/// `custom` with the problem's colour moved. `field` and `fixed` are read from the problem only
+/// when the Python code read them, after `dict(custom)`.
+pub fn apply_fix(
+    custom: &Value,
+    field: &mut dyn FnMut() -> EngineResult<Value>,
+    fixed_colour: &mut dyn FnMut() -> EngineResult<Value>,
+) -> EngineResult<Dict> {
+    let mut fixed = py_dict(custom)?;
+    let mut pieces = iterate(&field()?)?;
+    pieces.push(json!(""));
+    pieces.truncate(2);
+    if pieces.len() < 2 {
+        return Err(EngineError::value(
+            "not enough values to unpack (expected 2, got 1)",
+        ));
+    }
+    let group = pieces[0].clone();
+    let key = pieces[1].clone();
+    let colour = fixed_colour()?;
+    if eq(&group, &json!("accent")) {
+        fixed.insert("accent".into(), colour);
+    } else if eq(&group, &json!("colours")) {
+        let mut colours = spread(
+            &get(custom, "colours")?
+                .cloned()
+                .unwrap_or_else(|| json!({})),
+        )?;
+        hashable(&key, "dict key")?;
+        colours.insert(py_str(&key), colour);
+        fixed.insert("colours".into(), Value::Object(colours));
+    } else {
+        let mut categories = spread(
+            &get(custom, "categories")?
+                .cloned()
+                .unwrap_or_else(|| json!({})),
+        )?;
+        hashable(&key, "dict key")?;
+        categories.insert(py_str(&key), json!({"colour": colour}));
+        fixed.insert("categories".into(), Value::Object(categories));
+    }
+    Ok(fixed)
+}
+
 pub fn export_look(custom: &Value) -> String {
     let mut body = Map::new();
     body.insert("kind".into(), json!(FILE_KIND));
@@ -1000,30 +1063,4 @@ pub fn readability(
         }
     }
     found
-}
-
-pub fn apply_fix(custom: &Map<String, Value>, problem: &ReadabilityProblem) -> Map<String, Value> {
-    let mut fixed = custom.clone();
-    let group = problem.field.first().map(String::as_str).unwrap_or("");
-    let key = problem.field.get(1).map(String::as_str).unwrap_or("");
-    if group == "accent" {
-        fixed.insert("accent".into(), json!(problem.fixed));
-    } else if group == "colours" {
-        let mut colours = custom
-            .get("colours")
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
-        colours.insert(key.to_string(), json!(problem.fixed));
-        fixed.insert("colours".into(), Value::Object(colours));
-    } else if group == "categories" {
-        let mut categories = custom
-            .get("categories")
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
-        categories.insert(key.to_string(), json!({"colour": problem.fixed}));
-        fixed.insert("categories".into(), Value::Object(categories));
-    }
-    fixed
 }

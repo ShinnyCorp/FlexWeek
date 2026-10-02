@@ -33,15 +33,24 @@ class LookNameError(ValueError):
     """A name a saved look cannot have, or one no saved look has. Its message is for the student."""
 
 
+def _text_or_none(value: object) -> str | None:
+    """A pack or an accent only matters when it is text; anything else is read as none was given."""
+    return value if isinstance(value, str) else None
+
+
 def base_of(pack: object, look: dict | None) -> str:
     """The id of the look on screen, as a custom look's base: its preset, or else its pack."""
-    return str(json.loads(flexweek_engine.look_base_of(json.dumps(pack), json.dumps(look))))
+    return str(json.loads(flexweek_engine.look_base_of(json.dumps(_text_or_none(pack)), json.dumps(look))))
 
 
 def start_custom(pack: object, look: dict | None, accent: object = "default") -> dict:
     """A custom look that draws as the look on screen does, to be changed from there: its base, the
     student's accent, and the knobs they had moved."""
-    return json.loads(flexweek_engine.look_start(json.dumps(pack), json.dumps(look), json.dumps(accent)))
+    return json.loads(
+        flexweek_engine.look_start(
+            json.dumps(_text_or_none(pack)), json.dumps(look), json.dumps(_text_or_none(accent))
+        )
+    )
 
 
 def wear(look: dict | None, custom: dict) -> dict:
@@ -57,7 +66,7 @@ def reset_look(custom: dict) -> dict:
 def _name(name: object) -> str:
     try:
         return str(flexweek_engine.look_name(name if isinstance(name, str) else None))
-    except ValueError as err:
+    except flexweek_engine.LookNameProblem as err:
         raise LookNameError(str(err)) from err
 
 
@@ -81,7 +90,7 @@ def save_look(saved: list[dict], custom: dict, name: object) -> list[dict]:
                 name if isinstance(name, str) else "",
             )
         )
-    except ValueError as err:
+    except flexweek_engine.LookNameProblem as err:
         raise LookNameError(str(err)) from err
 
 
@@ -90,7 +99,7 @@ def free_name(saved: list[dict], name: object) -> str:
     that have it already, since `save_look` puts a look of the same name in their place."""
     try:
         return str(flexweek_engine.free_name(json.dumps(saved), name if isinstance(name, str) else ""))
-    except ValueError as err:
+    except flexweek_engine.LookNameProblem as err:
         raise LookNameError(str(err)) from err
 
 
@@ -99,7 +108,7 @@ def rename_look(saved: list[dict], old: str, new: object) -> list[dict]:
         return json.loads(
             flexweek_engine.rename_look(json.dumps(saved), old, new if isinstance(new, str) else "")
         )
-    except ValueError as err:
+    except flexweek_engine.LookNameProblem as err:
         raise LookNameError(str(err)) from err
 
 
@@ -107,7 +116,7 @@ def duplicate_look(saved: list[dict], name: str) -> tuple[list[dict], str]:
     """A copy of the saved look `name` after it, as "<name> copy" (then "copy 2" and on), and its name."""
     try:
         kept, copy = flexweek_engine.duplicate_look(json.dumps(saved), name)
-    except ValueError as err:
+    except flexweek_engine.LookNameProblem as err:
         raise LookNameError(str(err)) from err
     return json.loads(kept), copy
 
@@ -115,7 +124,7 @@ def duplicate_look(saved: list[dict], name: str) -> tuple[list[dict], str]:
 def delete_look(saved: list[dict], name: str) -> list[dict]:
     try:
         return json.loads(flexweek_engine.delete_look(json.dumps(saved), name))
-    except ValueError as err:
+    except flexweek_engine.LookNameProblem as err:
         raise LookNameError(str(err)) from err
 
 
@@ -197,18 +206,4 @@ def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
 
 def apply_fix(custom: dict, problem: Problem) -> dict:
     """`custom` with the problem's colour moved. A category given as a hue becomes the exact colour."""
-    return json.loads(
-        flexweek_engine.look_apply_fix(
-            json.dumps(custom),
-            json.dumps(
-                {
-                    "words": problem.words,
-                    "ink": problem.ink,
-                    "ground": problem.ground,
-                    "ratio": problem.ratio,
-                    "field": list(problem.field),
-                    "fixed": problem.fixed,
-                }
-            ),
-        )
-    )
+    return json.loads(flexweek_engine.look_apply_fix(json.dumps(custom), problem))

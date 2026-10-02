@@ -6,7 +6,7 @@ use ::flexweek_engine::time;
 use ::flexweek_engine::{EngineError, ErrorKind};
 use pyo3::exceptions::{
     PyAttributeError, PyIndexError, PyKeyError, PyLookupError, PyOverflowError, PyRuntimeError,
-    PyTypeError, PyValueError, PyZeroDivisionError,
+    PyStopIteration, PyTypeError, PyValueError, PyZeroDivisionError,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDict, PyModule};
@@ -27,6 +27,18 @@ pub(crate) fn raise(err: EngineError) -> PyErr {
         ErrorKind::ZeroDivision => PyZeroDivisionError::new_err(err.message),
         ErrorKind::Type => PyTypeError::new_err(err.message),
         ErrorKind::Attribute => PyAttributeError::new_err(err.message),
+        ErrorKind::Stop => PyStopIteration::new_err(err.message),
+        ErrorKind::LookName => crate::desk::LookNameProblem::new_err(err.message),
+        ErrorKind::KeyRepr => Python::attach(|py| {
+            let key = py
+                .import("ast")
+                .and_then(|module| module.getattr("literal_eval"))
+                .and_then(|function| function.call1((err.message.clone(),)));
+            match key {
+                Ok(found) => PyKeyError::new_err((found.unbind(),)),
+                Err(_) => PyKeyError::new_err(err.message),
+            }
+        }),
     }
 }
 
@@ -247,6 +259,9 @@ fn int_one(text: &str) -> (String, String) {
                 ErrorKind::ZeroDivision => "ZeroDivisionError",
                 ErrorKind::Type => "TypeError",
                 ErrorKind::Attribute => "AttributeError",
+                ErrorKind::Stop => "StopIteration",
+                ErrorKind::LookName => "LookNameProblem",
+                ErrorKind::KeyRepr => "KeyError",
             };
             (kind.to_string(), err.message)
         }

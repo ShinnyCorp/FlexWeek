@@ -8,7 +8,7 @@ use ::flexweek_engine::desk::{history, pomodoro, remind, tokens, update, weekmod
 use std::cell::RefCell;
 
 use ::flexweek_engine::{EngineError, EngineResult};
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyFloat, PyInt, PySet, PySetMethods};
 use serde_json::{Map, Value};
@@ -419,7 +419,7 @@ fn pomo_child_title(title: &str, index: i64, total: i64) -> PyResult<String> {
     guard(|| Ok(pomodoro::child_title(title, index, total)))
 }
 
-fn fresh_id(py: Python<'_>) -> String {
+pub(crate) fn fresh_id(py: Python<'_>) -> String {
     py.import("uuid")
         .and_then(|module| module.call_method0("uuid4"))
         .and_then(|value| value.str())
@@ -476,20 +476,10 @@ fn pomo_split_solved(
     })
 }
 
-fn fresh_ids(text: &str) -> PyResult<HashSet<String>> {
-    Ok(parse(text)?
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|item| item.as_str().map(str::to_string))
-        .collect())
-}
-
 #[pyfunction]
-fn remind_lead_min(prefs: Option<&str>, default: i64) -> PyResult<i64> {
-    let prefs = pomo_prefs(prefs)?;
-    guard(|| remind::reminder_lead_min(prefs.as_ref(), default).map_err(raise))
+fn remind_lead_min(prefs: &str, default: i64) -> PyResult<i64> {
+    let prefs = parse(prefs)?;
+    guard(|| remind::reminder_lead_min(&prefs, default).map_err(raise))
 }
 
 #[pyfunction]
@@ -509,14 +499,15 @@ fn remind_key(week_start: &str, block_id: &str, day: i64, start: &str) -> PyResu
 
 #[pyfunction]
 fn remind_alarm_key(iso_date: &str, alarm: &str) -> PyResult<String> {
-    guard(|| Ok(remind::alarm_key(iso_date, &object_map(alarm)?)))
+    let alarm = parse(alarm)?;
+    guard(|| remind::alarm_key(iso_date, &alarm).map_err(raise))
 }
 
 #[pyfunction]
-fn remind_blocks(blocks: &str, trace: Option<&str>) -> PyResult<String> {
-    let trace = trace.map(parse).transpose()?;
+fn remind_blocks(blocks: &str, trace: &str) -> PyResult<String> {
+    let (blocks, trace) = (parse(blocks)?, parse(trace)?);
     guard(|| {
-        let rows = remind::reminder_blocks(&objects(blocks)?, trace.as_ref()).map_err(raise)?;
+        let rows = remind::reminder_blocks(&blocks, &trace).map_err(raise)?;
         Ok(dump(&Value::Array(rows)))
     })
 }
@@ -524,22 +515,23 @@ fn remind_blocks(blocks: &str, trace: Option<&str>) -> PyResult<String> {
 #[pyfunction]
 fn remind_due(
     blocks: &str,
-    trace: Option<&str>,
+    trace: &str,
     today_iso: &str,
     now_min: i64,
     lead_min: i64,
     fired: &str,
+    fired_is_set: bool,
 ) -> PyResult<String> {
-    let trace = trace.map(parse).transpose()?;
-    let fired = fresh_ids(fired)?;
+    let (blocks, trace, fired) = (parse(blocks)?, parse(trace)?, parse(fired)?);
     guard(|| {
         let rows = remind::due_reminders(
-            &objects(blocks)?,
-            trace.as_ref(),
+            &blocks,
+            &trace,
             today_iso,
             now_min,
             lead_min,
             &fired,
+            fired_is_set,
         )
         .map_err(raise)?;
         Ok(dump(&Value::Array(rows)))
@@ -549,22 +541,16 @@ fn remind_due(
 #[pyfunction]
 fn remind_songs(
     blocks: &str,
-    trace: Option<&str>,
+    trace: &str,
     today_iso: &str,
     now_min: i64,
     played: &str,
+    played_is_set: bool,
 ) -> PyResult<String> {
-    let trace = trace.map(parse).transpose()?;
-    let played = fresh_ids(played)?;
+    let (blocks, trace, played) = (parse(blocks)?, parse(trace)?, parse(played)?);
     guard(|| {
-        let rows = remind::due_songs(
-            &objects(blocks)?,
-            trace.as_ref(),
-            today_iso,
-            now_min,
-            &played,
-        )
-        .map_err(raise)?;
+        let rows = remind::due_songs(&blocks, &trace, today_iso, now_min, &played, played_is_set)
+            .map_err(raise)?;
         Ok(dump(&Value::Array(rows)))
     })
 }
@@ -587,11 +573,10 @@ fn remind_clock_parts(
 }
 
 #[pyfunction]
-fn remind_todays_starts(blocks: &str, trace: Option<&str>, today_iso: &str) -> PyResult<String> {
-    let trace = trace.map(parse).transpose()?;
+fn remind_todays_starts(blocks: &str, trace: &str, today_iso: &str) -> PyResult<String> {
+    let (blocks, trace) = (parse(blocks)?, parse(trace)?);
     guard(|| {
-        let rows =
-            remind::todays_starts(&objects(blocks)?, trace.as_ref(), today_iso).map_err(raise)?;
+        let rows = remind::todays_starts(&blocks, &trace, today_iso).map_err(raise)?;
         Ok(dump(&Value::Array(
             rows.into_iter()
                 .map(|(block, day, start, key)| serde_json::json!([block, day, start, key]))
@@ -601,7 +586,8 @@ fn remind_todays_starts(blocks: &str, trace: Option<&str>, today_iso: &str) -> P
 }
 
 /// `due_ms_of(hour, minute)` is the caller's own local-clock conversion; a Python error from it
-/// is raised as it came.
+/// is raised as it came. `fired_set` is the caller's set when it is one, which gets the keys the
+/// engine marks, whether or not the call goes on to fail.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn remind_due_alarms(
@@ -610,24 +596,13 @@ fn remind_due_alarms(
     weekday: i64,
     now_ms: i64,
     last_check_ms: Option<i64>,
-    fired: &Bound<'_, PySet>,
+    fired: &str,
+    fired_set: Option<&Bound<'_, PySet>>,
     snoozed: &str,
     due_ms_of: &Bound<'_, PyAny>,
 ) -> PyResult<(String, String, i64)> {
-    let alarms = objects(alarms)?;
-    let waiting: Vec<(String, i64)> = object_map(snoozed)?
-        .into_iter()
-        .map(|(id, due)| {
-            due.as_i64()
-                .map(|ms| (id, ms))
-                .ok_or_else(|| PyTypeError::new_err("snoozed times must be whole milliseconds"))
-        })
-        .collect::<PyResult<_>>()?;
-    let mut seen: HashSet<String> = fired
-        .iter()
-        .filter_map(|key| key.extract::<String>().ok())
-        .collect();
-    let before = seen.clone();
+    let (alarms, fired, snoozed) = (parse(alarms)?, parse(fired)?, parse(snoozed)?);
+    let mut added: Vec<String> = Vec::new();
     let failure: RefCell<Option<PyErr>> = RefCell::new(None);
     let mut convert = |hour: i64, minute: i64| -> EngineResult<i64> {
         due_ms_of
@@ -645,13 +620,17 @@ fn remind_due_alarms(
             weekday,
             now_ms,
             last_check_ms,
-            &mut seen,
-            &waiting,
+            &fired,
+            fired_set.is_some(),
+            &mut added,
+            &snoozed,
             &mut convert,
         ))
     })?;
-    for key in seen.difference(&before) {
-        fired.add(key)?;
+    if let Some(set) = fired_set {
+        for key in &added {
+            set.add(key)?;
+        }
     }
     if let Some(error) = failure.into_inner() {
         return Err(error);
@@ -659,7 +638,7 @@ fn remind_due_alarms(
     let (queued, remaining, last) = outcome.map_err(raise)?;
     let remaining: Map<String, Value> = remaining
         .into_iter()
-        .map(|(id, due)| (id, Value::from(due)))
+        .filter_map(|(id, due)| id.as_str().map(|name| (name.to_string(), due)))
         .collect();
     Ok((
         dump(&Value::Array(queued)),
@@ -718,8 +697,16 @@ fn update_verified(payload: &[u8], digest: Option<&str>) -> PyResult<bool> {
     guard(|| Ok(update::verified(payload, digest)))
 }
 
+pyo3::create_exception!(
+    flexweek_engine,
+    LookNameProblem,
+    PyValueError,
+    "A name a saved look cannot have, or one no saved look has."
+);
+
 pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<WeekHandle>()?;
+    module.add("LookNameProblem", module.py().get_type::<LookNameProblem>())?;
     crate::export!(
         module,
         history_same_value,

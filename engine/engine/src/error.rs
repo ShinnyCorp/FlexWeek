@@ -12,6 +12,12 @@ pub enum ErrorKind {
     /// `TypeError` and `AttributeError`: what Python raised on a stored value of the wrong type.
     Type,
     Attribute,
+    /// `KeyError` of a key that is not text; the message is its Python repr.
+    KeyRepr,
+    /// A name a saved look cannot have, or one no saved look has.
+    LookName,
+    /// `StopIteration`, from `next(...)` on nothing.
+    Stop,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -53,6 +59,28 @@ impl EngineError {
         Self {
             kind: ErrorKind::Overflow,
             message: message.into(),
+        }
+    }
+
+    /// A `KeyError` for any key, given as Python prints it (`7`, `None`, `1.5`).
+    pub fn key_repr(repr: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::KeyRepr,
+            message: repr.into(),
+        }
+    }
+
+    pub fn look_name(message: impl Into<String>) -> Self {
+        Self {
+            kind: ErrorKind::LookName,
+            message: message.into(),
+        }
+    }
+
+    pub fn stop() -> Self {
+        Self {
+            kind: ErrorKind::Stop,
+            message: String::new(),
         }
     }
 

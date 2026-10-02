@@ -1,15 +1,12 @@
 //! Planning and clipboard helpers from `desktop/native/reuse.py`.
 
 use chrono::{Datelike, Duration, NaiveDate};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
-use crate::desk::calendar::{DAY_FULL, parse_due};
 use crate::desk::pydate::from_iso;
 use crate::desk::pyval::{subscript, type_error};
-use crate::desk::weekmodel::clock_text;
 use crate::error::{EngineError, EngineResult};
-use crate::stored::{dict, int_or_zero, py_int, truthy, type_name};
-use crate::time::{DAY_END_MIN, DAY_START_MIN, SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm};
+use crate::stored::{truthy, type_name};
 
 pub const MAX_WEEK_BLOCKS: i64 = 100;
 pub const AVAILABILITY_LIMIT: i64 = 21;
@@ -26,276 +23,8 @@ pub fn week_label(week_start: &str) -> String {
     format!("Week of {week_start}")
 }
 
-pub fn floor_slot(minutes: i64) -> i64 {
-    (minutes.max(0) / SLOT_MIN) * SLOT_MIN
-}
-
-pub fn is_homework_session(block: &Value) -> bool {
-    crate::stored::truthy(block.get("assignment_id"))
-}
-
-pub fn session_days(week_start: &str, due: &str) -> Vec<i64> {
-    let monday = NaiveDate::parse_from_str(week_start, "%Y-%m-%d").expect("week");
-    let due_day = NaiveDate::parse_from_str(&due[..10], "%Y-%m-%d").expect("due");
-    let last = monday + Duration::days(6);
-    if due_day < monday {
-        return vec![0];
-    }
-    if due_day > last {
-        return vec![0, 1, 2, 3, 4];
-    }
-    (0..=due_day.weekday().num_days_from_monday() as i64).collect()
-}
-
-pub fn is_planned(block: &Value) -> bool {
-    block.get("kind").and_then(Value::as_str) == Some("flexible")
-        && block
-            .get("start")
-            .and_then(Value::as_str)
-            .is_some_and(|start| !start.is_empty())
-        && block.get("completed").and_then(Value::as_bool) != Some(true)
-        && block.get("days").and_then(Value::as_array).map(|d| d.len()) == Some(1)
-}
-
-pub fn planning_days(
-    block: &Value,
-    assignments: &Map<String, Value>,
-    week_start: &str,
-) -> Vec<i64> {
-    if let Some(id) = block.get("assignment_id").and_then(Value::as_str)
-        && let Some(assignment) = assignments.get(id)
-        && let Some(due) = assignment.get("due").and_then(Value::as_str)
-    {
-        return session_days(week_start, due);
-    }
-    block
-        .get("days")
-        .and_then(Value::as_array)
-        .map(|d| d.iter().filter_map(Value::as_i64).collect())
-        .unwrap_or_else(|| vec![0])
-}
-
-pub fn apply_plan(
-    blocks: &[Value],
-    trace: Option<&Value>,
-    targets: Option<&std::collections::HashSet<String>>,
-    assignments: Option<&Map<String, Value>>,
-    week_start: Option<&str>,
-) -> Vec<Value> {
-    let placed: std::collections::HashMap<String, Value> = trace
-        .and_then(|t| t.get("placed"))
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| Some((item.get("id")?.as_str()?.to_string(), item.clone())))
-                .collect()
-        })
-        .unwrap_or_default();
-    let unplaced_ids: std::collections::HashSet<String> = trace
-        .and_then(|t| t.get("unplaced"))
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.get("id").and_then(Value::as_str).map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    let mut out = Vec::new();
-    for block in blocks {
-        let mut copy = block.as_object().cloned().unwrap_or_default();
-        let unplanned_work = copy.get("kind").and_then(Value::as_str) == Some("flexible")
-            && copy.get("completed").and_then(Value::as_bool) != Some(true);
-        let id = copy.get("id").and_then(Value::as_str).unwrap_or("");
-        if !unplanned_work || targets.is_some_and(|t| !t.contains(id)) {
-            out.push(Value::Object(copy));
-            continue;
-        }
-        if let Some(winner) = placed.get(id) {
-            if super::has_start(winner) {
-                copy.insert(
-                    "start".into(),
-                    winner.get("start").cloned().unwrap_or(Value::Null),
-                );
-                if let Some(days) = winner.get("days").and_then(Value::as_array) {
-                    copy.insert("days".into(), Value::Array(days.clone()));
-                }
-            }
-        } else if unplaced_ids.contains(id) {
-            copy.shift_remove("pinned");
-            if copy.shift_remove("start").is_some()
-                && let (Some(assignments), Some(week_start)) = (assignments, week_start)
-            {
-                copy.insert(
-                    "days".into(),
-                    json!(planning_days(
-                        &Value::Object(copy.clone()),
-                        assignments,
-                        week_start
-                    )),
-                );
-            }
-        }
-        out.push(Value::Object(copy));
-    }
-    out
-}
-
-pub fn clear_stale_pins(blocks: &[Value]) -> Vec<Value> {
-    blocks
-        .iter()
-        .map(|block| {
-            let mut copy = block.as_object().cloned().unwrap_or_default();
-            if copy.get("pinned").and_then(Value::as_bool) == Some(true)
-                && !(copy
-                    .get("start")
-                    .and_then(Value::as_str)
-                    .is_some_and(|start| !start.is_empty())
-                    && copy.get("days").and_then(Value::as_array).map(|d| d.len()) == Some(1))
-            {
-                copy.shift_remove("pinned");
-            }
-            Value::Object(copy)
-        })
-        .collect()
-}
-
-pub fn held_in_place(block: &Value) -> Value {
-    json!({
-        "id": block.get("id"),
-        "title": block.get("title").cloned().unwrap_or(json!("Homework")),
-        "kind": "locked",
-        "duration_min": block.get("duration_min"),
-        "days": block.get("days"),
-        "start": block.get("start"),
-    })
-}
-
-pub fn plan_start(
-    week_start: &str,
-    now_iso: &str,
-    now_minute: i64,
-    now_has_subminute: bool,
-) -> Option<(i64, i64)> {
-    let week = NaiveDate::parse_from_str(week_start, "%Y-%m-%d").ok()?;
-    let today = NaiveDate::parse_from_str(now_iso, "%Y-%m-%d").ok()?;
-    let day = (today - week).num_days();
-    if day < 0 {
-        return None;
-    }
-    let mut minute = now_minute + if now_has_subminute { 1 } else { 0 };
-    // Python `-(-minute // SLOT_MIN)` floors the negative quotient. Rust `/` truncates
-    // toward zero, which leaves 10:00:30 at 600 instead of 615.
-    minute = -(-minute).div_euclid(SLOT_MIN) * SLOT_MIN;
-    if minute >= DAY_END_MIN {
-        return Some((day + 1, DAY_START_MIN));
-    }
-    Some((day, minute))
-}
-
-pub fn occurrence_days(block: &Value) -> Vec<i64> {
-    if block.get("kind").and_then(Value::as_str) == Some("flexible")
-        && block.get("completed").and_then(Value::as_bool) == Some(true)
-    {
-        if let Some(day) = block.get("completed_day").and_then(Value::as_i64) {
-            return vec![day];
-        }
-        if block
-            .get("days")
-            .and_then(Value::as_array)
-            .map(|d| d.len())
-            .unwrap_or(0)
-            > 1
-        {
-            return Vec::new();
-        }
-    }
-    block
-        .get("days")
-        .and_then(Value::as_array)
-        .map(|d| d.iter().filter_map(Value::as_i64).collect())
-        .unwrap_or_default()
-}
-
-pub fn session_minutes(blocks: &[Value], assignment_id: &Value) -> EngineResult<i64> {
-    let mut total = 0;
-    for block in blocks {
-        let fields = dict(block)?;
-        if fields.get("assignment_id").unwrap_or(&Value::Null) == assignment_id
-            && !truthy(fields.get("completed"))
-        {
-            total += py_int(subscript(block, "duration_min")?)?;
-        }
-    }
-    Ok(total)
-}
-
-pub fn available_homework_minutes(
-    assignment: Option<&Value>,
-    blocks: &[Value],
-    committed_blocks: Option<&[Value]>,
-) -> EngineResult<i64> {
-    let Some(assignment) = assignment.filter(|value| truthy(Some(value))) else {
-        return Ok(0);
-    };
-    if truthy(dict(assignment)?.get("completed")) {
-        return Ok(0);
-    }
-    let id = subscript(assignment, "id")?;
-    let here = session_minutes(blocks, id)?;
-    let committed = session_minutes(
-        committed_blocks
-            .filter(|list| !list.is_empty())
-            .unwrap_or(&[]),
-        id,
-    )?;
-    let fields = dict(assignment)?;
-    match fields.get("unplanned_min") {
-        None | Some(Value::Null) => {
-            let estimate = py_int(subscript(assignment, "estimate_min")?)?;
-            let focus = int_or_zero(fields.get("focus_minutes"))?;
-            Ok(floor_slot((estimate - focus).max(0) - here))
-        }
-        Some(server) => Ok(floor_slot(py_int(server)? + committed - here)),
-    }
-}
-
-pub fn capacity_problem(existing_count: i64, added_count: i64, label: &str) -> String {
-    if existing_count + added_count > MAX_WEEK_BLOCKS {
-        return format!(
-            "{label} would exceed 100 blocks. Uncheck an item or remove a block first."
-        );
-    }
-    String::new()
-}
-
 pub fn intervals_overlap(start_a: i64, end_a: i64, start_b: i64, end_b: i64) -> bool {
     start_a < end_b && start_b < end_a
-}
-
-pub fn late_from_start(minute: i64) -> String {
-    let mut snapped = (minute / SLOT_MIN) * SLOT_MIN;
-    snapped = snapped.clamp(DAY_START_MIN, DAY_END_MIN - SLOT_MIN);
-    minutes_to_hhmm(snapped)
-}
-
-pub fn running_late_block(day: i64, from_start: &str, minutes: i64, block_id: &str) -> Value {
-    let start = hhmm_to_minutes(from_start).unwrap_or(0);
-    let duration = minutes.min(DAY_END_MIN - start);
-    json!({
-        "id": block_id,
-        "kind": "locked",
-        "title": "Running late",
-        "duration_min": duration,
-        "days": [day],
-        "start": from_start,
-        "priority": 1,
-        "energy": "medium",
-        "category": "downtime",
-        "completed": false,
-        "missed_days": [],
-    })
 }
 
 pub fn running_late_refusal(
@@ -329,31 +58,6 @@ pub fn running_late_refusal(
     None
 }
 
-pub fn late_locked_line(block: &Value, moved: i64) -> String {
-    let start = hhmm_to_minutes(
-        block
-            .get("start")
-            .and_then(Value::as_str)
-            .unwrap_or("00:00"),
-    )
-    .unwrap_or(0);
-    let end = start
-        + block
-            .get("duration_min")
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-    let extra = if moved == 0 {
-        "Nothing had to move.".to_string()
-    } else {
-        format!("{moved} moved.")
-    };
-    format!(
-        "Running late: {}–{} is now locked. {extra}",
-        clock_text(start),
-        clock_text(end)
-    )
-}
-
 pub fn late_id(operation_id: &str) -> String {
     format!(
         "b-late-{}",
@@ -363,24 +67,6 @@ pub fn late_id(operation_id: &str) -> String {
             .take(24)
             .collect::<String>()
     )
-}
-
-pub fn copy_label(block: &Value, source_day: i64, scope: &str) -> String {
-    let title = block.get("title").and_then(Value::as_str).unwrap_or("");
-    let series = block.get("kind").and_then(Value::as_str) == Some("locked")
-        && block
-            .get("days")
-            .and_then(Value::as_array)
-            .map(|d| d.len())
-            .unwrap_or(0)
-            > 1;
-    if scope == "series" {
-        return format!("{title} (all days)");
-    }
-    if series {
-        return format!("{title} ({} only)", DAY_FULL[source_day as usize]);
-    }
-    title.to_string()
 }
 
 const DAYS_LONG: [&str; 7] = [
@@ -483,25 +169,6 @@ pub fn planner_title(
     })
 }
 
-pub fn due_point(due: Option<&str>, week_start: &str) -> Option<(i64, i64)> {
-    let due = due?;
-    let (due_day, minutes) = parse_due(due).ok()?;
-    let week = NaiveDate::parse_from_str(week_start, "%Y-%m-%d").ok()?;
-    let offset = (due_day - week).num_days();
-    if offset > 6 {
-        return None;
-    }
-    Some((offset, minutes))
-}
-
-fn object(value: &Value) -> Map<String, Value> {
-    value.as_object().cloned().unwrap_or_default()
-}
-
-fn i64_of(value: &Value, key: &str) -> i64 {
-    value.get(key).and_then(Value::as_i64).unwrap_or(0)
-}
-
 /// `copy[key] = value` on a value that is not a dict.
 fn item_assignment(value: &Value) -> EngineError {
     match value {
@@ -514,7 +181,7 @@ fn item_assignment(value: &Value) -> EngineError {
 }
 
 /// `copied_fixed_block` with the days and the id as the caller holds them.
-pub(crate) fn copied_fixed_block_of(
+pub fn copied_fixed_block_of(
     source: &Value,
     days: Vec<Value>,
     block_id: &Value,
@@ -543,6 +210,19 @@ pub(crate) fn copied_fixed_block_of(
     Ok(Value::Object(copy))
 }
 
+/// `copied_fixed_block(source, days, block_id)` with the days as the caller held them: the copy is
+/// made first, so a source that cannot be changed is refused before `list(days)` is read.
+pub fn copied_fixed_block_listing(
+    source: &Value,
+    days: &Value,
+    block_id: &Value,
+) -> EngineResult<Value> {
+    if !matches!(source, Value::Object(_)) {
+        return Err(item_assignment(source));
+    }
+    copied_fixed_block_of(source, crate::desk::pyval::list_of(days)?, block_id)
+}
+
 pub fn copied_fixed_block(source: &Value, days: &[i64], block_id: &str) -> EngineResult<Value> {
     copied_fixed_block_of(
         source,
@@ -551,10 +231,10 @@ pub fn copied_fixed_block(source: &Value, days: &[i64], block_id: &str) -> Engin
     )
 }
 
-pub(crate) fn copied_homework_block_of(
+pub fn copied_homework_block_of(
     assignment: &Value,
     day: i64,
-    duration: i64,
+    duration: &Value,
     block_id: &Value,
 ) -> EngineResult<Value> {
     let or = |name: &str, fallback: Value| match assignment.get(name) {
@@ -592,7 +272,7 @@ pub fn copied_homework_block(
     duration: i64,
     block_id: &str,
 ) -> EngineResult<Value> {
-    copied_homework_block_of(assignment, day, duration, &json!(block_id))
+    copied_homework_block_of(assignment, day, &json!(duration), &json!(block_id))
 }
 
 pub fn clipboard_item(block: &Value, source_day: i64, scope: &str, group_id: &str) -> Value {
@@ -602,379 +282,4 @@ pub fn clipboard_item(block: &Value, source_day: i64, scope: &str, group_id: &st
         "scope": scope,
         "group_id": group_id,
     })
-}
-
-pub fn clipboard_fingerprint(items: &[Value]) -> String {
-    let payload: Vec<Value> = items
-        .iter()
-        .map(|item| {
-            json!({
-                "block": item.get("block").cloned().unwrap_or(Value::Null),
-                "source_day": item.get("source_day").cloned().unwrap_or(Value::Null),
-                "scope": item.get("scope").cloned().unwrap_or(Value::Null),
-            })
-        })
-        .collect();
-    crate::snapshot::dumps_sorted(&Value::Array(payload))
-}
-
-pub fn block_occurs_on_day(block: &Value, day: i64, placed: Option<&[Value]>) -> bool {
-    let flexible =
-        is_homework_session(block) || block.get("kind").and_then(Value::as_str) == Some("flexible");
-    if flexible {
-        let mut source = if super::has_start(block) {
-            Some(block.clone())
-        } else {
-            None
-        };
-        if source.is_none()
-            && let Some(placed) = placed
-        {
-            source = placed
-                .iter()
-                .find(|item| {
-                    item.get("id") == block.get("id") && occurrence_days(item).contains(&day)
-                })
-                .cloned();
-        }
-        return source
-            .is_some_and(|item| super::has_start(&item) && occurrence_days(&item).contains(&day));
-    }
-    occurrence_days(block).contains(&day)
-}
-
-pub fn row_conflict(
-    row: &Value,
-    rows: &[Value],
-    existing: &[Value],
-    skip: Option<usize>,
-) -> Option<String> {
-    if row.get("fixed").and_then(Value::as_bool) != Some(true) {
-        return None;
-    }
-    let block = row.get("block")?;
-    block
-        .get("start")
-        .and_then(Value::as_str)
-        .filter(|start| !start.is_empty())?;
-    let start =
-        hhmm_to_minutes(block.get("start").and_then(Value::as_str).unwrap_or("")).unwrap_or(0);
-    let end = start + i64_of(block, "duration_min");
-    let day = i64_of(row, "day");
-    for other in existing {
-        if !super::has_start(other) || !occurrence_days(other).contains(&day) {
-            continue;
-        }
-        let other_start =
-            hhmm_to_minutes(other.get("start").and_then(Value::as_str).unwrap_or("")).unwrap_or(0);
-        if start < other_start + i64_of(other, "duration_min") && other_start < end {
-            return other
-                .get("title")
-                .and_then(Value::as_str)
-                .map(str::to_string);
-        }
-    }
-    for (index, candidate) in rows.iter().enumerate() {
-        if Some(index) == skip {
-            continue;
-        }
-        if candidate.get("checked").and_then(Value::as_bool) != Some(true)
-            || candidate.get("fixed").and_then(Value::as_bool) != Some(true)
-            || i64_of(candidate, "day") != day
-            || candidate.get("week_start") != row.get("week_start")
-        {
-            continue;
-        }
-        let candidate_block = candidate.get("block").cloned().unwrap_or(Value::Null);
-        if !super::has_start(&candidate_block) {
-            continue;
-        }
-        let other_start = hhmm_to_minutes(
-            candidate_block
-                .get("start")
-                .and_then(Value::as_str)
-                .unwrap_or(""),
-        )
-        .unwrap_or(0);
-        if start < other_start + i64_of(&candidate_block, "duration_min") && other_start < end {
-            return candidate_block
-                .get("title")
-                .and_then(Value::as_str)
-                .map(str::to_string);
-        }
-    }
-    None
-}
-
-fn begun(block: &Value, not_before: Option<(i64, i64)>) -> bool {
-    let Some((day, minute)) = not_before else {
-        return false;
-    };
-    let Some(start) = block.get("start").and_then(Value::as_str) else {
-        return false;
-    };
-    let block_day = block
-        .get("days")
-        .and_then(Value::as_array)
-        .and_then(|days| days.first())
-        .and_then(Value::as_i64)
-        .unwrap_or(0);
-    let start_min = hhmm_to_minutes(start).unwrap_or(0);
-    (block_day, start_min) < (day, minute)
-}
-
-pub fn solve_request(
-    blocks: &[Value],
-    assignments: &Map<String, Value>,
-    week_start: &str,
-    everything: bool,
-    only: Option<&[String]>,
-    not_before: Option<(i64, i64)>,
-) -> (Vec<Value>, Vec<String>) {
-    let mut payload = Vec::new();
-    let mut targets = Vec::new();
-    for block in blocks {
-        if block.get("kind").and_then(Value::as_str) != Some("flexible")
-            || block.get("completed").and_then(Value::as_bool) == Some(true)
-        {
-            payload.push(block.clone());
-            continue;
-        }
-        let planned = is_planned(block);
-        let kept = planned
-            && (block.get("pinned").and_then(Value::as_bool) == Some(true)
-                || begun(block, not_before));
-        let id = block
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        let wanted = if let Some(only) = only {
-            only.iter().any(|item| item == &id)
-        } else {
-            (everything && !kept) || !planned
-        };
-        if wanted {
-            let mut session = object(block);
-            if planned {
-                session.shift_remove("start");
-                session.insert(
-                    "days".into(),
-                    json!(planning_days(
-                        &Value::Object(session.clone()),
-                        assignments,
-                        week_start
-                    )),
-                );
-            }
-            let session = if let Some(bound) = not_before {
-                let day = bound.0;
-                let days: Vec<i64> = session
-                    .get("days")
-                    .and_then(Value::as_array)
-                    .map(|items| {
-                        items
-                            .iter()
-                            .filter_map(Value::as_i64)
-                            .filter(|item| *item >= day)
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let days = if days.is_empty() { vec![day] } else { days };
-                session.insert("days".into(), json!(days));
-                session.insert(
-                    "earliest".into(),
-                    json!(format!(
-                        "{} {}",
-                        DAY_FULL[day as usize],
-                        minutes_to_hhmm(bound.1)
-                    )),
-                );
-                session
-            } else {
-                session
-            };
-            targets.push(id);
-            payload.push(Value::Object(session));
-        } else if planned {
-            payload.push(held_in_place(block));
-        }
-    }
-    (payload, targets)
-}
-
-pub fn settle_placements(
-    blocks: &[Value],
-    assignments: &Map<String, Value>,
-    week_start: &str,
-    keep: &[String],
-) -> (Vec<Value>, Vec<Value>) {
-    let mut taken: Vec<Vec<(i64, i64, String)>> = vec![Vec::new(); 7];
-    for block in blocks {
-        if !super::has_start(block) {
-            continue;
-        }
-        let start =
-            hhmm_to_minutes(block.get("start").and_then(Value::as_str).unwrap_or("")).unwrap_or(0);
-        let end = start + i64_of(block, "duration_min");
-        let title = block
-            .get("title")
-            .and_then(Value::as_str)
-            .unwrap_or(
-                if block.get("kind").and_then(Value::as_str) == Some("locked") {
-                    "a fixed block"
-                } else {
-                    "finished work"
-                },
-            )
-            .to_string();
-        if block.get("kind").and_then(Value::as_str) == Some("locked") {
-            let missed = block
-                .get("missed_days")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            for day in occurrence_days(block) {
-                if !missed.iter().any(|item| item.as_i64() == Some(day))
-                    && let Some(slot) = taken.get_mut(day as usize)
-                {
-                    slot.push((start, end, title.clone()));
-                }
-            }
-        } else if block.get("completed").and_then(Value::as_bool) == Some(true) {
-            let days = occurrence_days(block);
-            let day = block
-                .get("completed_day")
-                .and_then(Value::as_i64)
-                .or_else(|| if days.len() == 1 { Some(days[0]) } else { None });
-            if let Some(day) = day
-                && let Some(slot) = taken.get_mut(day as usize)
-            {
-                slot.push((start, end, title));
-            }
-        }
-    }
-    let mut sessions: Vec<&Value> = blocks.iter().filter(|block| is_planned(block)).collect();
-    sessions.sort_by_key(|block| {
-        let id = block.get("id").and_then(Value::as_str).unwrap_or("");
-        let day = block
-            .get("days")
-            .and_then(Value::as_array)
-            .and_then(|d| d.first())
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        let start = block.get("start").and_then(Value::as_str).unwrap_or("");
-        (
-            !keep.iter().any(|item| item == id),
-            day,
-            start.to_string(),
-            id.to_string(),
-        )
-    });
-    let mut lost: Vec<(String, Value)> = Vec::new();
-    for block in &sessions {
-        let day = block
-            .get("days")
-            .and_then(Value::as_array)
-            .and_then(|d| d.first())
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        let start =
-            hhmm_to_minutes(block.get("start").and_then(Value::as_str).unwrap_or("")).unwrap_or(0);
-        let end = start + i64_of(block, "duration_min");
-        let assignment_id = block
-            .get("assignment_id")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let assignment = assignments.get(assignment_id);
-        let due = assignment
-            .and_then(|item| item.get("due").and_then(Value::as_str))
-            .and_then(|due| due_point(Some(due), week_start));
-        let pinned = block.get("pinned").and_then(Value::as_bool) == Some(true);
-        let clash = if pinned {
-            None
-        } else {
-            taken.get(day as usize).and_then(|slots| {
-                slots
-                    .iter()
-                    .find(|(low, high, _)| start < *high && *low < end)
-                    .map(|(_, _, title)| title.clone())
-            })
-        };
-        let why = if start < DAY_START_MIN || end > DAY_END_MIN {
-            Some("that is outside the hours FlexWeek plans in".to_string())
-        } else if due.is_some_and(|(due_day, due_min)| (day, end) > (due_day, due_min)) {
-            Some("that is after it is due".to_string())
-        } else {
-            clash.map(|clash| format!("{clash} is there now"))
-        };
-        let Some(why) = why else {
-            if !pinned {
-                let title = block
-                    .get("title")
-                    .and_then(Value::as_str)
-                    .unwrap_or("homework")
-                    .to_string();
-                if let Some(slot) = taken.get_mut(day as usize) {
-                    slot.push((start, end, title));
-                }
-            }
-            continue;
-        };
-        let title = block
-            .get("title")
-            .and_then(Value::as_str)
-            .unwrap_or("Homework");
-        let id = block
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        let start_text = block.get("start").and_then(Value::as_str).unwrap_or("");
-        lost.push((
-            id.clone(),
-            json!({
-                "block_id": id,
-                "assignment_id": block.get("assignment_id").cloned().unwrap_or(Value::Null),
-                "title": title,
-                "day": day,
-                "start": start_text,
-                "message": format!("{title} no longer fits {} at {}: {why}.", DAY_FULL[day as usize], crate::desk::weekmodel::hhmm_text(start_text)),
-            }),
-        ));
-    }
-    if lost.is_empty() {
-        return (blocks.to_vec(), Vec::new());
-    }
-    let lost_ids: Vec<String> = lost.iter().map(|(id, _)| id.clone()).collect();
-    let mut out = Vec::new();
-    for block in blocks {
-        let id = block.get("id").and_then(Value::as_str).unwrap_or("");
-        if lost_ids.iter().any(|lost_id| lost_id == id) {
-            let mut copy = object(block);
-            copy.shift_remove("start");
-            copy.shift_remove("pinned");
-            copy.insert(
-                "days".into(),
-                json!(planning_days(
-                    &Value::Object(copy.clone()),
-                    assignments,
-                    week_start
-                )),
-            );
-            out.push(Value::Object(copy));
-        } else {
-            out.push(block.clone());
-        }
-    }
-    let reports: Vec<Value> = sessions
-        .iter()
-        .filter_map(|block| {
-            let id = block.get("id").and_then(Value::as_str).unwrap_or("");
-            lost.iter()
-                .find(|(lost_id, _)| lost_id == id)
-                .map(|(_, report)| report.clone())
-        })
-        .collect();
-    (out, reports)
 }

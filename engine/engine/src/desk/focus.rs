@@ -3,7 +3,6 @@
 use serde_json::{Map, Value, json};
 
 use crate::desk::calendar::deep_copy;
-use crate::desk::reuse::occurrence_days;
 use crate::desk::weekmodel::{hhmm_text, length_label};
 use crate::time::{hhmm_to_minutes, is_week_start};
 
@@ -425,7 +424,8 @@ pub fn now_and_next(blocks: &[Value], day: i64, minute: i64) -> Map<String, Valu
         {
             continue;
         }
-        if !occurrence_days(block).contains(&day) {
+        let days = crate::desk::planning::occurrence_days(block).unwrap_or_default();
+        if !days.iter().any(|held| held.as_i64() == Some(day)) {
             continue;
         }
         active.push(block.clone());

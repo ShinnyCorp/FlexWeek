@@ -1,7 +1,7 @@
 //! Bindings for the slices after time. Dicts cross as JSON text.
 
 use ::flexweek_engine::desk::custom_look;
-use ::flexweek_engine::desk::reuse;
+use ::flexweek_engine::desk::planning;
 use ::flexweek_engine::plan;
 use ::flexweek_engine::snapshot;
 use pyo3::exceptions::PyValueError;
@@ -17,17 +17,6 @@ fn parse(text: &str) -> PyResult<Value> {
 
 fn dump(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "null".to_string())
-}
-
-fn maps(text: &str) -> PyResult<Vec<serde_json::Map<String, Value>>> {
-    let value = parse(text)?;
-    Ok(value
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|item| item.as_object().cloned())
-        .collect())
 }
 
 #[pyfunction]
@@ -102,38 +91,34 @@ fn normalize_recovery_code(value: &str) -> PyResult<String> {
 
 #[pyfunction]
 fn free_name(saved: &str, name: &str) -> PyResult<String> {
-    guard(|| custom_look::free_name(&maps(saved)?, name).map_err(crate::raise))
+    let saved = parse(saved)?;
+    guard(|| custom_look::free_name(&saved, name).map_err(crate::raise))
 }
 
 #[pyfunction]
 fn rename_look(saved: &str, old: &str, new_name: &str) -> PyResult<String> {
+    let saved = parse(saved)?;
     guard(|| {
-        let kept = custom_look::rename_look(&maps(saved)?, old, new_name).map_err(crate::raise)?;
-        Ok(dump(&Value::Array(
-            kept.into_iter().map(Value::Object).collect(),
-        )))
+        let kept = custom_look::rename_look(&saved, old, new_name).map_err(crate::raise)?;
+        Ok(dump(&Value::Array(kept)))
     })
 }
 
 #[pyfunction]
 fn duplicate_look(saved: &str, name: &str) -> PyResult<(String, String)> {
+    let saved = parse(saved)?;
     guard(|| {
-        let (kept, copy) =
-            custom_look::duplicate_look(&maps(saved)?, name).map_err(crate::raise)?;
-        Ok((
-            dump(&Value::Array(kept.into_iter().map(Value::Object).collect())),
-            copy,
-        ))
+        let (kept, copy) = custom_look::duplicate_look(&saved, name).map_err(crate::raise)?;
+        Ok((dump(&Value::Array(kept)), copy))
     })
 }
 
 #[pyfunction]
 fn delete_look(saved: &str, name: &str) -> PyResult<String> {
+    let saved = parse(saved)?;
     guard(|| {
-        let kept = custom_look::delete_look(&maps(saved)?, name).map_err(crate::raise)?;
-        Ok(dump(&Value::Array(
-            kept.into_iter().map(Value::Object).collect(),
-        )))
+        let kept = custom_look::delete_look(&saved, name).map_err(crate::raise)?;
+        Ok(dump(&Value::Array(kept)))
     })
 }
 
@@ -143,28 +128,23 @@ fn solve_request(
     assignments: &str,
     week_start: &str,
     everything: bool,
-    only: Option<Vec<String>>,
-    not_before_day: Option<i64>,
-    not_before_minute: Option<i64>,
-) -> PyResult<(String, Vec<String>)> {
+    only: Option<&str>,
+    not_before: Option<&str>,
+) -> PyResult<(String, String)> {
+    let (blocks, assignments) = (parse(blocks)?, parse(assignments)?);
+    let only = only.map(parse).transpose()?;
+    let not_before = not_before.map(parse).transpose()?;
     guard(|| {
-        let blocks = parse(blocks)?;
-        let assignments = parse(assignments)?;
-        let blocks = blocks.as_array().cloned().unwrap_or_default();
-        let assignments = assignments.as_object().cloned().unwrap_or_default();
-        let not_before = match (not_before_day, not_before_minute) {
-            (Some(day), Some(minute)) => Some((day, minute)),
-            _ => None,
-        };
-        let (payload, targets) = reuse::solve_request(
+        let (payload, targets) = planning::solve_request(
             &blocks,
             &assignments,
             week_start,
             everything,
-            only.as_deref(),
-            not_before,
-        );
-        Ok((dump(&Value::Array(payload)), targets))
+            only.as_ref(),
+            not_before.as_ref(),
+        )
+        .map_err(crate::raise)?;
+        Ok((dump(&Value::Array(payload)), dump(&Value::Array(targets))))
     })
 }
 
@@ -173,13 +153,15 @@ fn settle_placements(
     blocks: &str,
     assignments: &str,
     week_start: &str,
-    keep: Vec<String>,
+    keep: &str,
+    keep_is_set: bool,
 ) -> PyResult<(String, String)> {
+    let (blocks, assignments, keep) = (parse(blocks)?, parse(assignments)?, parse(keep)?);
     guard(|| {
-        let blocks = parse(blocks)?.as_array().cloned().unwrap_or_default();
-        let assignments = parse(assignments)?.as_object().cloned().unwrap_or_default();
-        let (out, lost) = reuse::settle_placements(&blocks, &assignments, week_start, &keep);
-        Ok((dump(&Value::Array(out)), dump(&Value::Array(lost))))
+        let (out, lost) =
+            planning::settle_placements(&blocks, &assignments, week_start, &keep, keep_is_set)
+                .map_err(crate::raise)?;
+        Ok((dump(&out), dump(&Value::Array(lost))))
     })
 }
 
