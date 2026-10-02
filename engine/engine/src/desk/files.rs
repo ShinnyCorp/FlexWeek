@@ -3,8 +3,10 @@
 use serde_json::{Map, Value, json};
 
 use crate::desk::calendar::{date_for_day, deep_copy, is_series};
+use crate::desk::pyval::unhashable;
 use crate::desk::reuse::{MAX_WEEK_BLOCKS, occurrence_days};
 use crate::error::{EngineError, EngineResult};
+use crate::stored::{dict, truthy};
 use crate::time::is_week_start;
 
 pub const EXPORT_FORMAT: &str = "flexweek-week";
@@ -66,6 +68,77 @@ pub fn export_day_payload(
         "blocks": day_blocks,
         "assignments": referenced_assignments(&day_blocks, assignments),
     })
+}
+
+/// The block as `exportable_block` hands it to the model: a link to homework the file does not
+/// carry is dropped first.
+pub fn export_input(block: &Value, assignments: &[String]) -> EngineResult<Value> {
+    let mut copy = deep_copy(block);
+    let fields = dict(&copy)?;
+    if let Some(id) = fields.get("assignment_id")
+        && truthy(Some(id))
+        && !listed(assignments, id)?
+        && let Some(obj) = copy.as_object_mut()
+    {
+        obj.shift_remove("assignment_id");
+    }
+    Ok(copy)
+}
+
+/// `id in assignments` for a dict keyed by strings.
+fn listed(keys: &[String], id: &Value) -> EngineResult<bool> {
+    match id {
+        Value::String(text) => Ok(keys.contains(text)),
+        Value::Array(_) | Value::Object(_) => Err(unhashable(id, "dict key")),
+        _ => Ok(false),
+    }
+}
+
+/// The ids of the homework `referenced_assignments` gives a body to: each once, in the order the
+/// blocks name them, and only those the account has. A later id may fail after earlier ones were
+/// taken; the ids so far come back with that failure, since Python had made their bodies by then.
+pub fn referenced_ids(
+    blocks: &[Value],
+    assignments: &[String],
+) -> EngineResult<(Vec<String>, Option<EngineError>)> {
+    let mut ids: Vec<&Value> = Vec::new();
+    for block in blocks {
+        if let Some(id) = dict(block)?.get("assignment_id")
+            && truthy(Some(id))
+        {
+            ids.push(id);
+        }
+    }
+    let mut unique: Vec<String> = Vec::new();
+    for id in ids {
+        match id {
+            Value::String(text) if unique.contains(text) => continue,
+            Value::Array(_) | Value::Object(_) => {
+                return Ok((unique, Some(unhashable(id, "set element"))));
+            }
+            _ => {}
+        }
+        if !listed(assignments, id)? {
+            continue;
+        }
+        if let Value::String(text) = id {
+            unique.push(text.clone());
+        }
+    }
+    Ok((unique, None))
+}
+
+/// What `assignment_body` hands the model: only the keys the model has.
+pub fn assignment_input(item: &Value, fields: &[String]) -> EngineResult<Value> {
+    let Value::Object(item) = item else {
+        return Err(crate::stored::attribute_error(item, "items"));
+    };
+    Ok(Value::Object(
+        item.iter()
+            .filter(|(key, _)| fields.contains(key))
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+    ))
 }
 
 fn exportable_block(block: &Value, assignments: &Map<String, Value>) -> Value {

@@ -41,6 +41,15 @@ pub(crate) fn list_of(value: &Value) -> EngineResult<Vec<Value>> {
     }
 }
 
+/// What Python says of a list or dict used as a dict key (`"dict key"`) or a set element
+/// (`"set element"`).
+pub(crate) fn unhashable(value: &Value, place: &str) -> EngineError {
+    type_error(format!(
+        "cannot use '{0}' as a {place} (unhashable type: '{0}')",
+        type_name(value)
+    ))
+}
+
 /// `table.get(key)` where the key is any value: a string finds its entry, a number or null finds
 /// none, and a list or dict cannot be a key.
 pub(crate) fn lookup<'a>(table: &'a Dict, key: &Value) -> EngineResult<Option<&'a Value>> {

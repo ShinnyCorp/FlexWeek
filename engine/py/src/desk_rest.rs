@@ -836,6 +836,42 @@ fn reuse_planner_title(
 }
 
 #[pyfunction]
+fn files_export_input(block: &str, assignments: Vec<String>) -> PyResult<String> {
+    let block = parse(block)?;
+    guard(|| {
+        let copy = files::export_input(&block, &assignments).map_err(crate::raise)?;
+        Ok(dump(&copy))
+    })
+}
+
+/// The ids, and the error that stopped the list, as an exception for Python to raise once it has
+/// made the bodies of the ids before it.
+#[pyfunction]
+fn files_referenced_ids(
+    py: Python<'_>,
+    blocks: &str,
+    assignments: Vec<String>,
+) -> PyResult<(Vec<String>, Option<Py<PyAny>>)> {
+    let blocks = objects(blocks)?;
+    guard(|| {
+        let (ids, failure) = files::referenced_ids(&blocks, &assignments).map_err(crate::raise)?;
+        Ok((
+            ids,
+            failure.map(|error| crate::raise(error).into_value(py).into_any()),
+        ))
+    })
+}
+
+#[pyfunction]
+fn files_assignment_input(item: &str, fields: Vec<String>) -> PyResult<String> {
+    let item = parse(item)?;
+    guard(|| {
+        let body = files::assignment_input(&item, &fields).map_err(crate::raise)?;
+        Ok(dump(&body))
+    })
+}
+
+#[pyfunction]
 fn files_export_week(week_start: &str, blocks: &str, assignments: &str) -> PyResult<String> {
     let blocks = objects(blocks)?;
     let assignments = object_map(assignments)?;
@@ -1195,6 +1231,9 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         reuse_routine_rows,
         reuse_unfinished,
         reuse_planner_title,
+        files_export_input,
+        files_referenced_ids,
+        files_assignment_input,
         files_export_week,
         files_export_day,
         files_parse_import,

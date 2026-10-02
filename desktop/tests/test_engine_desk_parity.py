@@ -1574,3 +1574,85 @@ def test_base_of_each_pack_and_preset():
     for pack in PACKS_AND_JUNK:
         for look in (None, {}, {"preset": "paper"}, {"preset": "default"}, {"custom": {"base": "slate"}}):
             same(live_look.base_of, ref_look.base_of, pack, look)
+
+
+EXPORT_ASSIGNMENT = st.fixed_dictionaries(
+    {"id": maybe("essay", "lab", "x"), "title": maybe("Essay", "Lab", "")},
+    optional={
+        "due": maybe("2026-09-24", "2026-09-24T21:00", "bad", None),
+        "estimate_min": maybe(15, 60, 0, -5, "x"),
+        "course": maybe("English", None),
+        "category": maybe("assignments", "study", "x", None),
+        "priority": maybe(1, 5, 9, None),
+        "energy": maybe("low", "medium", "high", "x"),
+        "notes": maybe("", "n", None),
+        "links": maybe([], ["https://example.com"], None),
+        "completed": maybe(True, False),
+        "focus_minutes": maybe(0, 30),
+        "unplanned_min": maybe(15, None),
+        "stray": maybe(1, "x"),
+    },
+)
+EXPORT_BLOCK = st.one_of(
+    fixed_block(),
+    homework_block(),
+    st.fixed_dictionaries(
+        {
+            "id": maybe("b1", ""),
+            "title": maybe("T", None),
+            "kind": maybe("locked", "x"),
+            "days": maybe([0], [], [7]),
+        },
+        optional={
+            "duration_min": maybe(15, 7, 0),
+            "start": maybe("08:00", "8:0", "25:00", None),
+            "assignment_id": maybe("essay", "lab", "gone", "", None, 5, ["essay"]),
+        },
+    ),
+)
+
+
+@CHECK
+@given(EXPORT_ASSIGNMENT)
+def test_assignment_body_on_generated_homework(item):
+    same(live_files.assignment_body, ref_files.assignment_body, item)
+
+
+@CHECK
+@given(maybe(None, 5, "x", []))
+def test_assignment_body_of_something_that_is_not_a_row(item):
+    same(live_files.assignment_body, ref_files.assignment_body, item)
+
+
+@CHECK
+@given(EXPORT_BLOCK, st.dictionaries(maybe("essay", "lab"), EXPORT_ASSIGNMENT, max_size=2))
+def test_exportable_block_on_generated_blocks(item, assignments):
+    same(live_files.exportable_block, ref_files.exportable_block, item, assignments)
+
+
+@CHECK
+@given(
+    st.lists(EXPORT_BLOCK, max_size=5),
+    st.dictionaries(maybe("essay", "lab", "x"), EXPORT_ASSIGNMENT, max_size=3),
+)
+def test_referenced_assignments_on_generated_weeks(blocks, assignments):
+    same(live_files.referenced_assignments, ref_files.referenced_assignments, blocks, assignments)
+
+
+@CHECK
+@given(
+    st.lists(
+        maybe(
+            {"assignment_id": "essay"},
+            {"assignment_id": "lab"},
+            {"assignment_id": "gone"},
+            {},
+            {"assignment_id": None},
+            {"assignment_id": ""},
+        ),
+        max_size=6,
+    )
+)
+def test_referenced_assignments_names_each_homework_once(blocks):
+    assignments = {"essay": assignment(), "lab": assignment(id="lab", title="Lab")}
+    same(live_files.referenced_assignments, ref_files.referenced_assignments, blocks, assignments)
