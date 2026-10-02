@@ -1,6 +1,25 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-01, `engine/full-port`: E5 is committed (`430d2c1`, `326c44c`, `13fd070`, `de1cf34`,
+  `c6c5b95`). The Qt-free desktop modules (calendar, custom_look, files, focus, history, pomodoro,
+  remind, reuse, tokens, update, weekmodel) call `engine::desk` through `engine/py/src/desk.rs` and
+  `desk_rest.rs`; `serde_json` `preserve_order` is on and `engine/clippy.toml` forbids the removes that
+  reorder keys. Still Python: `remind.clock_parts` and `due_alarms` and `reuse.planner_title`, because
+  the Rust copies treat a local timestamp as UTC; saving, exporting and importing custom looks
+  (`sanitize_saved`, `save_look`, `export_look`, `import_look` and their helpers), because the Rust
+  sanitize keeps only base, name and accent; clipboard proposals, routines and the small `files`
+  helpers, which have no engine function. Colour maths calls the C library's `cbrt`, `pow`, `atan2`,
+  `sin` and `cos`, looked up at run time (`desk/cmath.rs`: `dlopen` of `libm.so.6`, `ucrtbase.dll`
+  on Windows). The original modules are in `desk_ref/` (was `engine/oracle/`) and
+  `desktop/tests/test_engine_desk_parity.py` compares them by repr (61 tests). Shadow run over
+  `desktop/tests`: 2328 passed, 169 functions called, 0 value and 0 key-order differences.
+  Backend parity at 300 examples: 81 passed. Week view frame time, same week, 300 frames: model +
+  paint median 9.14 ms before and 7.25 ms after (worst 10.03 and 8.33 ms), paint only 6.84 and
+  4.81 ms. Gate before committing: lint, types and 3136 tests passed; the whitespace step caught
+  four blank lines at file ends, removed before commit. Not verified: the Windows build (the
+  `ucrtbase.dll` lookup has never run), CI, the packaged app, and Linux without glibc's
+  `libm.so.6`. Nothing pushed.
 - 2026-10-01, `engine/full-port`: the audit's last fix round is merged. The start-up migration reads
   stored rows as the Python store did (`engine/engine/src/stored.rs`, shared by `plan::migrate_blocks`
   and the store) and writes JSON with `snapshot::canonical`; the audit's probe gives 22 of 22 cases
@@ -761,9 +780,10 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
-- 2026-10-01, `engine/full-port` at the commit that adds this line: parts A to D and the fix round
-  are in and audited by Claude. Next: Jonathan's word to push for CI; then E5, part C step 2 and E6,
-  one slice at a time. Audit notes: `~/.flexweek-ui-harness/scratch/engine-audit/`.
+- 2026-10-01, `engine/full-port`, committed through the context commit after `c6c5b95`: E5 is in
+  and checked as Current State says. Next: the coordinator's merge of part C step 2, Jonathan's
+  word to push for CI, then E6. Audit notes: `~/.flexweek-ui-harness/scratch/engine-audit/`;
+  E5 fix logs: `~/.flexweek-ui-harness/scratch/engine-fix/e5/`. Nothing pushed.
 - 2026-10-01, `engine/full-port`: Part C step 1 committed (`c5c1aa2`, `f9d1362`, `907def4`).
   Gate before those commits: 3040 passed. Part D is the unused-store removal and the
   environment read in `install_kind`. Nothing pushed.
