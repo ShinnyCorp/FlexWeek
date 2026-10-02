@@ -333,7 +333,7 @@ fn password_matches(py: Python<'_>, password: &str, encoded: &str) -> PyResult<b
     let password = password.to_string();
     let encoded = encoded.to_string();
     guard(|| {
-        py.detach(|| store::password_matches(&password, &encoded))
+        py.detach(|| store::password_matches_index(&password, &encoded))
             .map_err(|error| store_py(py, error))
     })
 }
@@ -412,6 +412,23 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         transfer_apply_envelope,
         store_initialize,
         store_throttle,
+        store_initialize_today,
     );
     Ok(())
+}
+
+#[pyfunction]
+fn store_initialize_today(py: Python<'_>, path: &str) -> PyResult<()> {
+    let path = path.to_string();
+    guard(|| {
+        let today: String = py
+            .import("datetime")?
+            .getattr("date")?
+            .call_method0("today")?
+            .call_method0("isoformat")?
+            .extract()?;
+        let week = ::flexweek_engine::time::monday_of(&today).map_err(crate::raise)?;
+        py.detach(|| store::initialize(Path::new(&path), &week))
+            .map_err(|error| store_py(py, error))
+    })
 }

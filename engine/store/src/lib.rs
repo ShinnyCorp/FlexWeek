@@ -578,6 +578,27 @@ pub fn throttle(path: &Path, address: &str, username: &str, now_unix: i64) -> St
     Ok(true)
 }
 
+/// `encoded.split("$")[-2]` raises IndexError when the hash has fewer than two parts.
+pub fn password_matches_index(password: &str, encoded: &str) -> StoreResult<bool> {
+    if encoded.split('$').count() < 2 {
+        return Err(StoreError::Engine(flexweek_engine::EngineError::index(
+            "list index out of range",
+        )));
+    }
+    password_matches(password, encoded)
+}
+
+const SESSION_SECONDS: i64 = 7 * 24 * 60 * 60;
+
+pub fn open_session(conn: &Connection, token: &str, user_id: i64, now: i64) -> StoreResult<()> {
+    let expires = now.checked_add(SESSION_SECONDS).ok_or_else(|| {
+        StoreError::Engine(flexweek_engine::EngineError::overflow(
+            "int too big to convert",
+        ))
+    })?;
+    create_session_row(conn, &digest(token), user_id, expires, now)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -618,5 +639,52 @@ mod tests {
         touch(&path).expect("a file that already exists is fine");
         assert_eq!(std::fs::read(&path).unwrap(), b"made by the first start");
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn short_password_hash_is_an_index_error() {
+        let err = password_matches_index("secret", "nosalt").unwrap_err();
+        match err {
+            StoreError::Engine(inner) => {
+                assert_eq!(inner.kind, flexweek_engine::ErrorKind::Index);
+                assert_eq!(inner.message, "list index out of range");
+            }
+            other => panic!("expected IndexError, got {other}"),
+        }
+        let err = password_matches_index("secret", "").unwrap_err();
+        match err {
+            StoreError::Engine(inner) => assert_eq!(inner.message, "list index out of range"),
+            other => panic!("expected IndexError, got {other}"),
+        }
+    }
+
+    #[test]
+    fn password_matches_index_accepts_the_known_vector() {
+        let encoded = "scrypt$32768$8$3$00112233445566778899aabbccddeeff$acfa1ad8d5c639d068e6988715f03dd7b1acdb99c998707b1632762596fd2b16";
+        assert!(password_matches_index("secret", encoded).unwrap());
+        assert!(!password_matches_index("other", encoded).unwrap());
+    }
+
+    #[test]
+    fn open_session_expires_a_week_later_and_drops_an_expired_row() {
+        let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/store-tests");
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join(format!("session-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        initialize(&path, "2026-09-29").unwrap();
+        let conn = open_connection(&path).unwrap();
+        let user = insert_user(&conn, "ada", "hash").unwrap();
+        create_session_row(&conn, "old", user, 100, 100).unwrap();
+        open_session(&conn, "token-value", user, 1_700_000_000).unwrap();
+        let mut stmt = conn
+            .prepare("SELECT token_hash, user_id, expires FROM sessions")
+            .unwrap();
+        let rows: Vec<(String, i64, i64)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+        assert_eq!(rows, vec![(digest("token-value"), user, 1_700_604_800)]);
+        std::fs::remove_file(&path).unwrap();
     }
 }

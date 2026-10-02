@@ -681,6 +681,13 @@ impl PyConn {
             flexweek_store::availability_json(conn, user_id)
         })
     }
+
+    fn open_session(&self, py: Python<'_>, token: &str, user_id: i64, now: i64) -> PyResult<()> {
+        let token = token.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::open_session(conn, &token, user_id, now)
+        })
+    }
 }
 
 /// Python compared revisions as unbounded integers; one past `i64` simply matches no row.

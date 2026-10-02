@@ -9,8 +9,6 @@ from typing import Any, Protocol
 
 import flexweek_engine  # type: ignore[import-untyped]
 
-from backend.weeks import current_week_start
-
 SESSION_SECONDS = 7 * 24 * 60 * 60
 # Each account's preferences row records the last of these one-time changes it has had, so a change
 # reaches every account once and a choice made after it is never undone by it.
@@ -28,9 +26,6 @@ def password_hash(password: str, salt: str | None = None) -> str:
 
 
 def password_matches(password: str, encoded: str) -> bool:
-    parts = encoded.split("$")
-    if len(parts) < 2:
-        raise IndexError("list index out of range")
     return flexweek_engine.password_matches(password, encoded)
 
 
@@ -149,6 +144,8 @@ class Connection(Protocol):
         self, token_hash: str, user_id: int, expires: int, now: int, /
     ) -> None: ...
 
+    def open_session(self, token: str, user_id: int, now: int, /) -> None: ...
+
     def begin_immediate(self, /) -> None: ...
 
     def begin(self, /) -> None: ...
@@ -196,7 +193,6 @@ class Connection(Protocol):
 def connect(path: Path) -> Iterator[Connection]:
     """The Rust store's connection. Python's sqlite3 is not opened on this file."""
     db = flexweek_engine.open_connection(str(path))
-    db.enforce_foreign_keys()
     try:
         with db:
             yield db
@@ -211,7 +207,7 @@ def new_preferences(db: Connection, user_id: int) -> None:
 
 
 def initialize(path: Path) -> None:
-    flexweek_engine.store_initialize(str(path), current_week_start())
+    flexweek_engine.store_initialize_today(str(path))
 
 
 def delete_account(db: Connection, user_id: int) -> None:
@@ -221,7 +217,7 @@ def delete_account(db: Connection, user_id: int) -> None:
 def create_session(db: Connection, user_id: int) -> str:
     token = secrets.token_urlsafe(32)
     now = int(time.time())
-    db.create_session_row(digest(token), user_id, now + SESSION_SECONDS, now)
+    db.open_session(token, user_id, now)
     return token
 
 
