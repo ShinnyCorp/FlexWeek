@@ -2,6 +2,8 @@
 //! A case whose file is under `engine/` rebuilds the engine module before its test. The spec
 //! ends with one more rebuild from the restored tree, so the checkout's module is clean.
 
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -33,6 +35,8 @@ struct Job<'a> {
     python: &'a Path,
     root: &'a Path,
     build: &'a EngineBuild,
+    /// Tests already run once without a mutation this run and seen green.
+    passing: RefCell<HashSet<String>>,
 }
 
 pub fn run(
@@ -96,6 +100,7 @@ pub fn run(
         python: &python,
         root: &root,
         build: &build,
+        passing: RefCell::new(HashSet::new()),
     };
     let mut missed = 0u32;
     let mut saw_case = false;
@@ -127,9 +132,9 @@ pub fn run(
                 continue;
             }
             saw_case = true;
-            if !is_engine_source(&case.file)
-                && let Some(code) = settle_or_stop(&job)
-            {
+            // A clean module before each case: the test is run unmutated first, and a case that
+            // edits Rust leaves the mutated module installed until this.
+            if let Some(code) = settle_or_stop(&job) {
                 return code;
             }
             match run_case(&job, &stem, &case) {
@@ -299,6 +304,76 @@ fn cargo_test(test: &str) -> Result<Option<CargoTest>, String> {
     }))
 }
 
+enum Baseline {
+    Green,
+    Red(String),
+    Interrupted(u8),
+}
+
+fn pytest_command(job: &Job<'_>, test: &str) -> Vec<String> {
+    vec![
+        job.python.to_string_lossy().into_owned(),
+        "-m".into(),
+        "pytest".into(),
+        test.to_string(),
+        "-q".into(),
+        "-x".into(),
+        "-p".into(),
+        "no:cacheprovider".into(),
+    ]
+}
+
+fn cargo_command(cargo: &CargoTest) -> Vec<String> {
+    vec![
+        "cargo".to_string(),
+        "test".to_string(),
+        "-p".to_string(),
+        cargo.package.clone(),
+        "--test".to_string(),
+        cargo.target.clone(),
+        "--".to_string(),
+        cargo.name.clone(),
+        "--exact".to_string(),
+    ]
+}
+
+/// The case's test, run once per run without any mutation. A test that is red on its own cannot
+/// catch anything, so its case is `BASE`, not `RED`; without this a test that fails to import
+/// would count every mutation as caught.
+fn baseline(job: &Job<'_>, case: &Case, cargo: Option<&CargoTest>) -> Baseline {
+    if job.passing.borrow().contains(&case.test) {
+        return Baseline::Green;
+    }
+    let (command, cwd, timeout) = match cargo {
+        Some(cargo) => (
+            cargo_command(cargo),
+            job.checkout.join("engine"),
+            Some(rebuild::build_timeout()),
+        ),
+        None => (
+            pytest_command(job, &case.test),
+            job.checkout.to_path_buf(),
+            None,
+        ),
+    };
+    let ran = match job.session.run_logged_in(&command, timeout, &cwd) {
+        Ok(ran) => ran,
+        Err(error) => return Baseline::Red(format!("test did not run unmutated: {error}")),
+    };
+    if ran.code >= 128 {
+        return Baseline::Interrupted(ran.code);
+    }
+    if ran.code != 0 {
+        let line = match cargo {
+            Some(_) => cargo_failure_line(&ran.log),
+            None => failing_line(&ran.log),
+        };
+        return Baseline::Red(format!("test is red without the mutation: {line}"));
+    }
+    job.passing.borrow_mut().insert(case.test.clone());
+    Baseline::Green
+}
+
 fn run_case(job: &Job<'_>, stem: &str, case: &Case) -> CaseEnd {
     if let Some(detail) = reject_expect(case) {
         return done("PATTERN", detail);
@@ -320,6 +395,11 @@ fn run_case(job: &Job<'_>, stem: &str, case: &Case) -> CaseEnd {
             "PATTERN",
             format!("pattern found {found} times in {}", case.file),
         );
+    }
+    match baseline(job, case, cargo.as_ref()) {
+        Baseline::Green => {}
+        Baseline::Red(detail) => return done("BASE", detail),
+        Baseline::Interrupted(code) => return CaseEnd::Interrupted(code),
     }
     let guard = match Guard::arm(job.root, &source, &format!("{stem}/{}", case.name)) {
         Ok(guard) => guard,
@@ -360,16 +440,7 @@ fn run_case(job: &Job<'_>, stem: &str, case: &Case) -> CaseEnd {
     } else {
         String::new()
     };
-    let command = vec![
-        job.python.to_string_lossy().into_owned(),
-        "-m".into(),
-        "pytest".into(),
-        case.test.clone(),
-        "-q".into(),
-        "-x".into(),
-        "-p".into(),
-        "no:cacheprovider".into(),
-    ];
+    let command = pytest_command(job, &case.test);
     let ran = match job.session.run_logged_in(&command, None, job.checkout) {
         Ok(ran) => ran,
         Err(error) => {
@@ -396,17 +467,7 @@ fn run_case(job: &Job<'_>, stem: &str, case: &Case) -> CaseEnd {
 }
 
 fn run_cargo(job: &Job<'_>, guard: Guard, case: &Case, cargo: &CargoTest) -> CaseEnd {
-    let command = vec![
-        "cargo".to_string(),
-        "test".to_string(),
-        "-p".to_string(),
-        cargo.package.clone(),
-        "--test".to_string(),
-        cargo.target.clone(),
-        "--".to_string(),
-        cargo.name.clone(),
-        "--exact".to_string(),
-    ];
+    let command = cargo_command(cargo);
     let engine = job.checkout.join("engine");
     let ran = match job
         .session

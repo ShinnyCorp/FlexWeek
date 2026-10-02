@@ -48,9 +48,11 @@ fwtest clean
   need separate checks.` (or `VERIFIED: Backend.` with `--backend-only`) only when every step
   passed, as `verify.py` does. The per-step timeout is 900 seconds.
 - `mutate` runs every spec in `scripts/mutations/`, or the specs named. `--case` runs one case by
-  name. It prints one line per case (`RED`, `GREEN`, `PATTERN`, or `BUILD`, then the spec, the
+  name. It prints one line per case (`RED`, `GREEN`, `BASE`, `PATTERN`, or `BUILD`, then the spec, the
   case name, and a short detail) and ends with `every mutation was caught` or `N mutation(s)
-  SURVIVED`. `RED` is caught. `GREEN`, `PATTERN`, and `BUILD` each count as not caught. It exits 1
+  SURVIVED`. `RED` is caught. `GREEN`, `BASE`, `PATTERN`, and `BUILD` each count as not caught. `BASE`
+  means the case's test was red before any mutation (each test is run once unmutated per run, after
+  a clean engine rebuild when a case left a mutated module installed), so the case proves nothing. It exits 1
   if any case was not caught. A file under `engine/` is rebuilt before its test. See
   [Mutating a file under engine/](#mutating-a-file-under-engine).
 - `rig` runs `scripts/rig/drive.py` as one contained job. The job starts this checkout's hidden

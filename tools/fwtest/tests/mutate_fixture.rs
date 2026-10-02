@@ -242,9 +242,11 @@ fn clean_restores_a_file_left_by_a_killed_mutate() {
     )
     .unwrap();
     let python = home.join("python");
+    // The first pytest run is the unmutated baseline and must pass; the second, on the mutated
+    // file, hangs so the run can be killed mid-case.
     fs::write(
         &python,
-        "#!/bin/sh\nif [ \"$2\" = pytest ]; then sleep 30; fi\nexit 1\n",
+        "#!/bin/sh\nif [ \"$2\" = pytest ]; then if [ -e \"$HOME/baseline-ran\" ]; then sleep 30; else touch \"$HOME/baseline-ran\"; exit 0; fi; fi\nexit 1\n",
     )
     .unwrap();
     let mut perms = fs::metadata(&python).unwrap().permissions();
@@ -283,5 +285,44 @@ fn clean_restores_a_file_left_by_a_killed_mutate() {
     let restored = fs::read_to_string(&source).unwrap();
     assert!(restored.contains("a + b"), "{restored}");
     assert!(!restored.contains("a - b"), "{restored}");
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn a_case_whose_test_is_red_before_any_mutation_is_base_and_edits_nothing() {
+    let home = scratch();
+    let repo = home.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    git_init(&repo);
+    copy_fixture(&repo);
+    fs::write(
+        repo.join("mutations.json"),
+        r#"[{"name":"add subtracts","file":"toy/calc.py","old":"a + b","new":"a - b","test":"toy/test_calc.py::test_absent"}]"#,
+    )
+    .unwrap();
+    let output = fwtest(&home, &repo)
+        .args(["mutate", "mutations.json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stdout.contains("BASE") && stdout.contains("red without the mutation"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("RED "),
+        "a red test must not count as a catch: {stdout}"
+    );
+    let source = fs::read_to_string(repo.join("toy/calc.py")).unwrap();
+    assert!(
+        source.contains("a + b") && !source.contains("a - b"),
+        "{source}"
+    );
     let _ = fs::remove_dir_all(home);
 }
