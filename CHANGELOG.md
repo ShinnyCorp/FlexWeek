@@ -22,6 +22,11 @@ All notable changes to FlexWeek are documented here. Format follows
   script), and an interrupted run leaves nothing running.
 
 ### Fixed
+- Minute snapping preserves Python's rounding and the 15-minute grid at large values.
+- Restore previews display unusual stored titles as Python did, including `True` and `None`.
+- Startup and request connections use the same database settings and treat `file:` as a literal filename.
+- Theme migration stops on an unreadable column instead of silently omitting it.
+- A database operation's crash keeps its original error through cleanup and rolls back pending writes.
 - Tests draw text the same way in every worker, so the date picker's test no
   longer fails on machines with subpixel text.
 

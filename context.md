@@ -1,6 +1,15 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-02, `fix/engine-review-parity`, based on PR 35 at `aa9f875`: five review fixes restore
+  large-minute rounding, Python text for unusual restore titles, one database opener with explicit
+  foreign keys and literal paths, migration read-error propagation, and panic-safe connection
+  cleanup. Eight regression tests catch deliberately removed fixes. All 13 connection tests also
+  pass with SQLite's foreign-key default disabled. Engine formatting, clippy and workspace tests
+  pass, as do the harness's checks, Python lint and backend types. Full gate: 3934 passed, 1 skipped,
+  1 teardown error in `test_tests_ring_at_no_volume` (a Qt `Bell` left for garbage collection).
+  Prepared for cloud review on PR 35; the alarm-test cleanup error remains unresolved.
+  No app build was run.
 - 2026-10-02, `engine/full-port`: docs, backend-whole, desktop E6 and the desk twins are merged (local, not pushed). Desktop wrappers are in `docs/engine/adapters.md` and `test_engine_adapters.py`. `custom_look.readability` is the one LOGIC leftover. Frame time on the desktop branch after caches: the saved log says model + paint median 9.83 ms, worst 54.85 ms (the worker's report said 8.90 / 10.03). Contract limit is 16 ms. Next: repoint mutation cases, then push PR 35.
 - 2026-10-01, `engine/full-port`: part C step 2 and `main` (PR 34's test fixes) are merged in. The SQL
   of 22 helpers in `backend/app.py` and `backend/storage.py` runs in the Rust store
@@ -795,6 +804,11 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-10-02, `fix/engine-review-parity`: the five engine review repairs and their regression
+  proofs are implemented. Logs are in `~/.flexweek-ui-harness/scratch/engine-review-fixes/`.
+  The full gate has an outside-scope alarm-test cleanup error. Jonathan requested these fixes on
+  PR 35's `engine/full-port` branch for cloud review with that failure recorded.
+  Next: cloud review and the alarm-test cleanup repair. The existing engine rollout remains incomplete.
 - 2026-10-02, `engine/full-port` (pushed at 364eb5c, draft PR 35): the three stopped jobs, the
   adapter guard and the eighteen repointed mutation cases are in. Store tests in
   `engine/store/tests/test_account_bounds.rs` cover account isolation and a failed delete, account
