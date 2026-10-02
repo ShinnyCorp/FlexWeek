@@ -1,4 +1,4 @@
-"""Wrappers that are not listed as STAYS in docs/engine/adapters.md stay free of engine logic."""
+"""Wrappers that are not listed as STAYS or LOGIC in docs/engine/adapters.md stay free of engine logic."""
 
 from __future__ import annotations
 
@@ -21,7 +21,27 @@ BACKEND_MODULES = (
     "transfer",
     "weeks",
 )
-DESKTOP_MODULES: tuple[str, ...] = ()
+DESKTOP_MODULES = (
+    "calendar",
+    "custom_look",
+    "files",
+    "focus",
+    "history",
+    "pomodoro",
+    "remind",
+    "reuse",
+    "tokens",
+    "update",
+    "version",
+    "weekmodel",
+)
+# look.py still paints. Only the four helpers that call the engine are wrappers.
+LOOK_HELPERS = (
+    "known_pack",
+    "sanitize_custom",
+    "sanitize_look",
+    "effective_look",
+)
 APP_MODULES = ("app",)
 # The helper functions of backend/app.py that hold no HTTP: route handlers and the functions that
 # map an engine status onto an HTTP error are not listed and are not checked.
@@ -44,19 +64,32 @@ ROOT = Path(__file__).resolve().parents[2]
 ADAPTERS = ROOT / "docs" / "engine" / "adapters.md"
 
 
-def stays_from_doc() -> dict[str, set[str]]:
+def names_from_doc(*kinds: str) -> dict[str, set[str]]:
     found: dict[str, set[str]] = {}
     for line in ADAPTERS.read_text().splitlines():
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 3 or cells[2] != "STAYS":
+        if len(cells) < 3 or cells[2] not in kinds:
             continue
         found.setdefault(cells[0], set()).add(cells[1])
     return found
 
 
+def _is_class(name: str) -> bool:
+    return name.rsplit(".", 1)[-1][:1].isupper()
+
+
 def is_stays(names: set[str], qual: str) -> bool:
+    """A listed function, and functions nested inside it.
+
+    A class listed as STAYS is the definition. Its methods are classified on their own rows, so the
+    class name does not exempt them. Nested functions under a listed function still are.
+    """
     parts = qual.split(".")
-    return any(".".join(parts[:end]) in names for end in range(1, len(parts) + 1))
+    for end in range(1, len(parts) + 1):
+        prefix = ".".join(parts[:end])
+        if prefix in names and not _is_class(prefix):
+            return True
+    return False
 
 
 def is_none_check(node: ast.Compare) -> bool:
@@ -131,14 +164,28 @@ def functions_of(tree: ast.AST, stays: set[str]) -> list[str]:
 
 
 def test_wrappers_keep_no_engine_logic() -> None:
-    stays = stays_from_doc()
+    # LOGIC is a leftover the table names (custom_look.readability). LOGIC, moved is not exempt.
+    exempt = names_from_doc("STAYS", "LOGIC")
     problems: list[str] = []
     modules = [(name, ROOT / "backend" / f"{name}.py") for name in BACKEND_MODULES]
-    modules += [(name, ROOT / "desktop" / f"{name}.py") for name in DESKTOP_MODULES]
+    modules += [(name, ROOT / "desktop" / "native" / f"{name}.py") for name in DESKTOP_MODULES]
     for name, path in modules:
         tree = ast.parse(path.read_text(), filename=str(path))
-        for problem in functions_of(tree, stays.get(name, set())):
+        for problem in functions_of(tree, exempt.get(name, set())):
             problems.append(f"{name}.{problem}")
+    look_path = ROOT / "desktop" / "native" / "look.py"
+    look_tree = ast.parse(look_path.read_text(), filename=str(look_path))
+    assert isinstance(look_tree, ast.Module)
+    listed = {
+        node.name: node
+        for node in look_tree.body
+        if isinstance(node, ast.FunctionDef) and node.name in LOOK_HELPERS
+    }
+    missing = set(LOOK_HELPERS) - listed.keys()
+    assert not missing, f"look.py no longer defines: {sorted(missing)}"
+    for name in LOOK_HELPERS:
+        for problem in logic_in(listed[name], name, set()):
+            problems.append(f"look.{problem}")
     assert not problems, "\n".join(problems)
 
 

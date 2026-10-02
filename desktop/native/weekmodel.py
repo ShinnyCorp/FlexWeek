@@ -243,7 +243,8 @@ class WeekModel:
         )
 
 
-_BUILD_WEEK_CACHE: tuple[tuple[str, str, str, str], WeekModel] | None = None
+# One model for the last inputs. A dict lookup, so the wrapper does not compare keys itself.
+_BUILD_WEEK_CACHE: dict[tuple[str, str, str, str], WeekModel] = {}
 
 
 def build_week(
@@ -252,20 +253,17 @@ def build_week(
     assignments: dict[str, dict] | None = None,
     trace: dict | None = None,
 ) -> WeekModel:
-    global _BUILD_WEEK_CACHE
     key = (plain(week_start), plain(blocks), plain(assignments), plain(trace))
-    if _BUILD_WEEK_CACHE is not None and _BUILD_WEEK_CACHE[0] == key:
-        return _BUILD_WEEK_CACHE[1]
-    raw = restore(
-        json.loads(
-            flexweek_engine.week_build(key[0], key[1], key[2], key[3])
-        )
-    )
+    cached = _BUILD_WEEK_CACHE.get(key)
+    if cached is not None:
+        return cached
+    raw = restore(json.loads(flexweek_engine.week_build(key[0], key[1], key[2], key[3])))
     model = WeekModel(
         raw["week_start"],
         tuple(Occurrence(**item) for item in raw["occurrences"]),
         tuple(Waiting(**item) for item in raw["waiting"]),
         raw["focus_min"],
     )
-    _BUILD_WEEK_CACHE = (key, model)
+    _BUILD_WEEK_CACHE.clear()
+    _BUILD_WEEK_CACHE[key] = model
     return model
