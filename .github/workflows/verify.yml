@@ -65,6 +65,9 @@ jobs:
       - run: fwtest gate --backend-only
         env:
           VERIFY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          # The replay of recorded solves against the original Python solver takes about two
+          # minutes on one worker locally and over six here, which ran the default 480 s out.
+          FWTEST_STEP_TIMEOUT_SECS: "900"
 
   rig:
     runs-on: ubuntu-latest
