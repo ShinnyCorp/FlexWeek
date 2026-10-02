@@ -1131,10 +1131,15 @@ fn due_soon(
     Ok(items)
 }
 
+// Python tests `not block.get("start")`, so "" means not placed yet, like None.
+fn has_start(block: &Value) -> bool {
+    stored::truthy(block.get("start"))
+}
+
 fn available_min(blocks: &[Value], day_index: i64) -> EngineResult<i64> {
     let mut mask = 0u128;
     for raw in blocks {
-        if !day_on_day(raw, day_index) || raw.get("start").and_then(Value::as_str).is_none() {
+        if !day_on_day(raw, day_index) || !has_start(raw) {
             continue;
         }
         let days: Vec<i64> = raw
@@ -1156,7 +1161,7 @@ fn available_min(blocks: &[Value], day_index: i64) -> EngineResult<i64> {
 }
 
 fn planned(block: &Value) -> bool {
-    block.get("start").and_then(Value::as_str).is_some()
+    has_start(block)
         || block
             .get("completed")
             .and_then(Value::as_bool)
@@ -1208,10 +1213,7 @@ fn by_category(sessions: &[Value], locked: &[Value]) -> Vec<Value> {
 fn next_action(sessions: &[Value], due_soon: &[Value]) -> Value {
     let mut starters: Vec<&Value> = sessions
         .iter()
-        .filter(|b| {
-            b.get("start").and_then(Value::as_str).is_some()
-                && !b.get("completed").and_then(Value::as_bool).unwrap_or(false)
-        })
+        .filter(|b| has_start(b) && !b.get("completed").and_then(Value::as_bool).unwrap_or(false))
         .collect();
     starters.sort_by(|a, b| {
         a["start"]
@@ -1309,7 +1311,7 @@ fn month_on_day(block: &Value, day_index: i64) -> bool {
 }
 
 fn placed_on_day(block: &Value, day_index: i64) -> bool {
-    block.get("start").and_then(Value::as_str).is_some() && month_on_day(block, day_index)
+    has_start(block) && month_on_day(block, day_index)
 }
 
 fn date_block(block: &Value) -> Value {
@@ -1333,7 +1335,7 @@ fn date_block(block: &Value) -> Value {
 }
 
 fn is_planned_session(block: &Value) -> bool {
-    block.get("start").and_then(Value::as_str).is_some()
+    has_start(block)
         && block
             .get("days")
             .and_then(Value::as_array)

@@ -9,7 +9,9 @@ import flexweek_engine  # type: ignore[import-untyped]
 from backend import assignments as live_assignments
 from backend import availability as live_availability
 from backend import comfort as live_comfort
+from backend import day as live_day
 from backend import models as live_models
+from backend import month as live_month
 from backend import restore as live_restore
 from backend import slots as live_slots
 from backend import solver as live_solver
@@ -17,7 +19,9 @@ from backend import weeks as live_weeks
 from backend.tests.engine_ref import assignments as ref_assignments
 from backend.tests.engine_ref import availability as ref_availability
 from backend.tests.engine_ref import comfort as ref_comfort
+from backend.tests.engine_ref import day as ref_day
 from backend.tests.engine_ref import models as ref_models
+from backend.tests.engine_ref import month as ref_month
 from backend.tests.engine_ref import restore as ref_restore
 from backend.tests.engine_ref import slots as ref_slots
 from backend.tests.engine_ref import solver as ref_solver
@@ -192,3 +196,25 @@ def test_a_window_start_in_other_digits_is_read_as_int_reads_it():
     for start_min, rank in ((10 * 60, 1), (0, 2)):
         assert ref_availability.study_rank(ref, None, 0, start_min, 60) == rank
         assert live_availability.study_rank(live, None, 0, start_min, 60) == rank
+
+
+def test_an_empty_start_means_not_placed_yet_in_day_and_month():
+    # WeekRequest only checks a start when it is truthy, so "" is stored for a session with no time.
+    essay = {"id": "s1", "title": "Essay", "kind": "flexible", "days": [0], "duration_min": 60, "start": "", "assignment_id": "a1"}
+    read = {"id": "s0", "title": "Read", "kind": "flexible", "days": [0], "duration_min": 60, "start": "09:00", "assignment_id": "a1"}
+    for blocks in ([essay], [essay, read]):
+        same(
+            lambda blocks=blocks: live_day.build_day("2026-09-07", "2026-09-07", blocks, [], []),
+            lambda blocks=blocks: ref_day.build_day("2026-09-07", "2026-09-07", blocks, [], []),
+            f"day {len(blocks)}",
+        )
+        same(
+            lambda blocks=blocks: live_month.build_month("2026-09", [], [("2026-09-07", blocks)]),
+            lambda blocks=blocks: ref_month.build_month("2026-09", [], [("2026-09-07", blocks)]),
+            f"month {len(blocks)}",
+        )
+    day = live_day.build_day("2026-09-07", "2026-09-07", [essay], [], [])
+    assert day["next_action"] == {"kind": "add"}
+    assert day["workload"]["available_min"] == 1440
+    month = live_month.build_month("2026-09", [], [("2026-09-07", [essay])])
+    assert month["unscheduled"] == {"session_count": 1, "minutes": 60}

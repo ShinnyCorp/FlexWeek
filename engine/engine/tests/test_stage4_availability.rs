@@ -3,7 +3,9 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::{Dump, by_id, ids, late_legacy, solve_legacy, solve_studied, study_span};
-use flexweek_engine::plan::{occupancy_from_windows, prepare_solve, spread_sessions, study_rank};
+use flexweek_engine::plan::{
+    build_day, build_month, occupancy_from_windows, prepare_solve, spread_sessions, study_rank,
+};
 use flexweek_engine::solver::{SOLVE_BUDGET_MS, TimeBlock};
 use flexweek_engine::time::hhmm_to_minutes;
 use serde_json::json;
@@ -311,4 +313,88 @@ fn test_a_window_start_in_other_digits_is_read_as_python_reads_it() {
 fn test_a_window_start_that_is_not_a_time_is_an_error_not_midnight() {
     let windows = [json!({"days": [0], "start": "bad", "duration_min": 90})];
     assert!(study_rank(&windows, None, 0, 0, 60).is_err());
+}
+
+// Expected values below come from running the Python reference (backend/tests/engine_ref) on the
+// same blocks. Python tests `not block.get("start")`, so "" means not placed yet, like a missing start.
+fn unplaced_essay() -> serde_json::Value {
+    json!({
+        "id": "s1", "title": "Essay", "kind": "flexible", "days": [0],
+        "duration_min": 60, "start": "", "assignment_id": "a1",
+    })
+}
+
+fn read_at_nine() -> serde_json::Value {
+    json!({
+        "id": "s0", "title": "Read", "kind": "flexible", "days": [0],
+        "duration_min": 60, "start": "09:00", "assignment_id": "a1",
+    })
+}
+
+#[test]
+fn test_a_session_with_an_empty_start_is_not_placed_on_the_day_agenda() {
+    let day = build_day("2026-09-07", "2026-09-07", &[unplaced_essay()], &[], &[]).unwrap();
+    assert_eq!(day["next_action"], json!({"kind": "add"}));
+    assert_eq!(day["workload"]["available_min"], 1440);
+    assert_eq!(day["workload"]["scheduled_min"], 0);
+    assert_eq!(day["workload"]["by_category"], json!([]));
+    assert_eq!(day["sessions"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn test_an_empty_start_does_not_outrank_a_real_start_for_the_next_action() {
+    let blocks = [unplaced_essay(), read_at_nine()];
+    let day = build_day("2026-09-07", "2026-09-07", &blocks, &[], &[]).unwrap();
+    assert_eq!(
+        day["next_action"],
+        json!({"kind": "start", "block_id": "s0"})
+    );
+    assert_eq!(day["workload"]["scheduled_min"], 60);
+    assert_eq!(day["workload"]["available_min"], 1380);
+    assert_eq!(
+        day["workload"]["by_category"],
+        json!([{"category": null, "scheduled_min": 60, "focus_min": 0}])
+    );
+}
+
+#[test]
+fn test_a_session_with_an_empty_start_is_unscheduled_on_the_month_grid() {
+    let weeks = [("2026-09-07".to_string(), vec![unplaced_essay()])];
+    let month = build_month("2026-09", &[], &weeks).unwrap();
+    assert_eq!(
+        month["unscheduled"],
+        json!({"session_count": 1, "minutes": 60})
+    );
+    let day = month["days"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|day| day["date"] == "2026-09-07")
+        .unwrap();
+    assert_eq!(day["session_count"], 0);
+    assert_eq!(day["scheduled_min"], 0);
+    assert_eq!(day["blocks"], json!([]));
+}
+
+#[test]
+fn test_an_empty_start_is_not_a_plan_beside_a_placed_session_on_the_month_grid() {
+    let weeks = [(
+        "2026-09-07".to_string(),
+        vec![unplaced_essay(), read_at_nine()],
+    )];
+    let month = build_month("2026-09", &[], &weeks).unwrap();
+    assert_eq!(
+        month["unscheduled"],
+        json!({"session_count": 1, "minutes": 60})
+    );
+    let day = month["days"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|day| day["date"] == "2026-09-07")
+        .unwrap();
+    assert_eq!(day["session_count"], 1);
+    assert_eq!(day["scheduled_min"], 60);
+    assert_eq!(day["blocks"].as_array().unwrap().len(), 1);
+    assert_eq!(day["blocks"][0]["id"], "s0");
 }
