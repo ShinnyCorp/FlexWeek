@@ -795,12 +795,11 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
-- 2026-10-02, `engine/full-port` (pushed tip still fb290c8, draft PR 35; local is the docs merge plus
-  backend-whole, e6-desktop and t1-desk-tests): the three stopped jobs finished and are merged.
-  Backend suite 875 passed. Desk twins 161 passed inside `cargo test --workspace`. Adapter guard
-  covers the eleven desktop modules, `version.py`, and `look.py`'s four helpers. The 18 mutation
-  cases that no longer matched are pointed at the current lines. Not pushed. Next when asked:
-  push, CI, then the review brief for Fable 5.1 on Cursor.
+- 2026-10-02, `engine/full-port` (pushed at 364eb5c, draft PR 35): the three stopped jobs, the
+  adapter guard and the eighteen repointed mutation cases are in. Store tests in
+  `engine/store/tests/test_account_bounds.rs` cover account isolation and a failed delete, account
+  replace and routine replace rolling back. Not pushed after those tests. Next: finish the review
+  of `fb290c8..HEAD`, then the review brief.
   After the review: full test run, fault checks, delete Python twins, interface tidy, 0.18.0.
   Step-by-step notes: `~/.flexweek-ui-harness/scratch/engine-run/handoff.md` (this machine only).
 - 2026-10-01, `engine/full-port`: E1 to E5 (minus the parts listed above as still Python), part C
