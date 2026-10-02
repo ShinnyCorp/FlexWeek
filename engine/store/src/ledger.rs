@@ -235,3 +235,38 @@ pub fn replace_recovery_codes(
     }
     Ok(())
 }
+
+/// The account's restore points, newest first, as a JSON list of objects named by column.
+pub fn list_restore_points(conn: &Connection, user_id: i64) -> StoreResult<String> {
+    let mut stmt = conn.prepare(
+        "SELECT id, label, created_at, weeks_count, assignments_count
+        FROM restore_points WHERE user_id = ?1 ORDER BY seq DESC",
+    )?;
+    let rows = stmt
+        .query_map(params![user_id], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "label": row.get::<_, String>(1)?,
+                "created_at": row.get::<_, String>(2)?,
+                "weeks_count": row.get::<_, i64>(3)?,
+                "assignments_count": row.get::<_, i64>(4)?,
+            }))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(serde_json::Value::Array(rows).to_string())
+}
+
+/// `(id, body)` of one restore point of the account.
+pub fn restore_point_body(
+    conn: &Connection,
+    user_id: i64,
+    point_id: &str,
+) -> StoreResult<Option<(String, String)>> {
+    Ok(conn
+        .query_row(
+            "SELECT id, body FROM restore_points WHERE user_id = ?1 AND id = ?2",
+            params![user_id, point_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?)
+}

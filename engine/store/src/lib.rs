@@ -135,28 +135,36 @@ impl From<std::io::Error> for StoreError {
 
 pub type StoreResult<T> = Result<T, StoreError>;
 
+mod accounts;
 mod assignments;
 mod ledger;
 mod prefs;
 mod routines;
 mod weeks;
 
+pub use accounts::{
+    count_recovery_codes, delete_session, find_user, insert_user, password_hash_of,
+    recovery_hashes, rotate_password, session_user, use_recovery_code,
+};
 pub use assignments::{
-    AssignmentDelete, AssignmentSave, assignment_exists, count_assignments, delete_assignment,
-    insert_assignment, load_assignment_rows, save_assignment,
+    AssignmentDelete, AssignmentSave, assignment_bodies, assignment_body, assignment_exists,
+    count_assignments, delete_assignment, insert_assignment, list_assignment_rows,
+    load_assignment_rows, save_assignment,
 };
 pub use ledger::{
-    Recall, capture_account, insert_restore_point, prune_operations, prune_restore_points,
-    recall_operation, remember_operation, replace_account, replace_recovery_codes,
+    Recall, capture_account, insert_restore_point, list_restore_points, prune_operations,
+    prune_restore_points, recall_operation, remember_operation, replace_account,
+    replace_recovery_codes, restore_point_body,
 };
 pub use prefs::{
-    create_session_row, delete_account, insert_preferences, preference_row, write_preferences,
+    availability_json, create_session_row, delete_account, insert_preferences, preference_row,
+    write_preferences,
 };
 pub use routines::{
     RoutineDelete, RoutineSave, RoutineWrite, delete_routine, list_routines, replace_routines,
     save_routine,
 };
-pub use weeks::{WeekSave, list_account_weeks, save_week};
+pub use weeks::{WeekSave, list_account_weeks, read_week, save_week, week_blocks, week_starts};
 
 /// A write joins the caller's transaction. The first one begins it, as `Connection.execute` does,
 /// and leaves it open so the Python `with` block can commit or roll it back.
@@ -169,6 +177,22 @@ pub(crate) fn defer_write(
         conn.execute("BEGIN DEFERRED", [])?;
     }
     Ok(conn.execute(sql, params)?)
+}
+
+/// The routes' own `BEGIN IMMEDIATE` and `BEGIN`, run at the same point they were.
+pub fn begin_immediate(conn: &Connection) -> StoreResult<()> {
+    conn.execute("BEGIN IMMEDIATE", [])?;
+    Ok(())
+}
+
+pub fn begin(conn: &Connection) -> StoreResult<()> {
+    conn.execute("BEGIN", [])?;
+    Ok(())
+}
+
+pub fn enforce_foreign_keys(conn: &Connection) -> StoreResult<()> {
+    conn.execute("PRAGMA foreign_keys = ON", [])?;
+    Ok(())
 }
 
 pub(crate) fn json_str<'a>(value: &'a Value, key: &str) -> StoreResult<&'a str> {

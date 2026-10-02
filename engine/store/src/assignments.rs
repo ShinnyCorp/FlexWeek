@@ -367,3 +367,36 @@ mod tests {
         assert_eq!(count_assignments(&conn, 1).unwrap(), 0);
     }
 }
+
+pub fn assignment_body(conn: &Connection, user_id: i64, id: &str) -> StoreResult<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT body FROM assignments WHERE user_id = ?1 AND id = ?2",
+            params![user_id, id],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+/// `(body, revision)` of every assignment of the account, in the table's own order.
+pub fn assignment_bodies(conn: &Connection, user_id: i64) -> StoreResult<Vec<(String, i64)>> {
+    let mut stmt = conn.prepare("SELECT body, revision FROM assignments WHERE user_id = ?1")?;
+    let rows = stmt
+        .query_map(params![user_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// `(id, body, revision)` of every assignment of the account, in the table's own order.
+pub fn list_assignment_rows(
+    conn: &Connection,
+    user_id: i64,
+) -> StoreResult<Vec<(String, String, i64)>> {
+    let mut stmt = conn.prepare("SELECT id, body, revision FROM assignments WHERE user_id = ?1")?;
+    let rows = stmt
+        .query_map(params![user_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
