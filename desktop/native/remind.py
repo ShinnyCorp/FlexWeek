@@ -8,10 +8,6 @@ from datetime import datetime
 
 import flexweek_engine  # type: ignore[import-untyped]
 
-from backend.slots import hhmm_to_minutes
-from desktop.native.calendar import date_for_day, monday_of
-from desktop.native.reuse import occurrence_days
-
 REMINDER_WINDOW_MIN = 2
 REMINDER_POLL_MS = 30_000
 ALARM_SNOOZE_MIN = 5
@@ -42,13 +38,17 @@ def alarm_key(iso_date: str, alarm: dict) -> str:
 def clock_parts(now_ms: int) -> dict:
     moment = datetime.fromtimestamp(now_ms / 1000.0)
     midnight = datetime(moment.year, moment.month, moment.day)
-    return {
-        "iso": moment.date().isoformat(),
-        "day": moment.weekday(),
-        "minute": moment.hour * 60 + moment.minute,
-        "midnight_ms": int(midnight.timestamp() * 1000),
-        "now_ms": now_ms,
-    }
+    return json.loads(
+        flexweek_engine.remind_clock_parts(
+            now_ms,
+            moment.year,
+            moment.month,
+            moment.day,
+            moment.hour,
+            moment.minute,
+            int(midnight.timestamp() * 1000),
+        )
+    )
 
 
 def reminder_blocks(blocks: list[dict], trace: dict | None) -> list[dict]:
@@ -97,15 +97,12 @@ def todays_starts(
     blocks: list[dict], trace: dict | None, today_iso: str
 ) -> Iterator[tuple[dict, int, int, str]]:
     """Each block starting today: the block, its day, its start in minutes, and its reminder key."""
-    week_start = monday_of(today_iso)
-    for block in reminder_blocks(blocks, trace):
-        start = block.get("start")
-        if not start or block.get("completed"):
-            continue
-        for day in occurrence_days(block):
-            if day in (block.get("missed_days") or []) or date_for_day(week_start, day) != today_iso:
-                continue
-            yield block, day, hhmm_to_minutes(start), reminder_key(week_start, block["id"], day, start)
+    rows = json.loads(
+        flexweek_engine.remind_todays_starts(
+            json.dumps(blocks), None if trace is None else json.dumps(trace), today_iso
+        )
+    )
+    yield from (tuple(row) for row in rows)
 
 
 def due_alarms(
@@ -119,27 +116,14 @@ def due_alarms(
     fired: set[str],
     snoozed: dict[str, int],
 ) -> tuple[list[dict], dict[str, int], int]:
-    start_ms = now_ms - REMINDER_WINDOW_MIN * 60_000 if last_check_ms is None else last_check_ms
-    queued: list[dict] = []
-    remaining_snooze = dict(snoozed)
-    for alarm in alarms:
-        if not alarm.get("enabled") or weekday not in (alarm.get("days") or []):
-            continue
-        hour, minute = (int(part) for part in str(alarm["time"]).split(":"))
+    def due_ms_of(hour: int, minute: int) -> int:
         due_at = datetime.fromisoformat(today_iso).replace(hour=hour, minute=minute, second=0, microsecond=0)
-        due_ms = int(due_at.timestamp() * 1000)
-        key = alarm_key(today_iso, alarm)
-        if start_ms < due_ms <= now_ms and key not in fired:
-            fired.add(key)
-            queued.append(dict(alarm))
-    for alarm_id, due_ms in list(remaining_snooze.items()):
-        if not (start_ms < due_ms <= now_ms):
-            continue
-        remaining_snooze.pop(alarm_id)
-        alarm = next((item for item in alarms if item.get("id") == alarm_id), None)
-        if alarm and alarm.get("enabled"):
-            queued.append(dict(alarm))
-    return queued, remaining_snooze, now_ms
+        return int(due_at.timestamp() * 1000)
+
+    queued, remaining, last_ms = flexweek_engine.remind_due_alarms(
+        json.dumps(alarms), today_iso, weekday, now_ms, last_check_ms, fired, json.dumps(snoozed), due_ms_of
+    )
+    return json.loads(queued), json.loads(remaining), last_ms
 
 
 def snooze_until(now_ms: int) -> int:

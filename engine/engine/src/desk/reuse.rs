@@ -4,7 +4,11 @@ use chrono::{Datelike, Duration, NaiveDate};
 use serde_json::{Map, Value, json};
 
 use crate::desk::calendar::{DAY_FULL, parse_due};
+use crate::desk::pydate::from_iso;
+use crate::desk::pyval::{subscript, type_error};
 use crate::desk::weekmodel::clock_text;
+use crate::error::{EngineError, EngineResult};
+use crate::stored::{dict, int_or_zero, py_int, truthy, type_name};
 use crate::time::{DAY_END_MIN, DAY_START_MIN, SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm};
 
 pub const MAX_WEEK_BLOCKS: i64 = 100;
@@ -214,51 +218,47 @@ pub fn occurrence_days(block: &Value) -> Vec<i64> {
         .unwrap_or_default()
 }
 
-pub fn session_minutes(blocks: &[Value], assignment_id: &str) -> i64 {
-    blocks
-        .iter()
-        .filter(|b| {
-            b.get("assignment_id").and_then(Value::as_str) == Some(assignment_id)
-                && b.get("completed").and_then(Value::as_bool) != Some(true)
-        })
-        .map(|b| b.get("duration_min").and_then(Value::as_i64).unwrap_or(0))
-        .sum()
+pub fn session_minutes(blocks: &[Value], assignment_id: &Value) -> EngineResult<i64> {
+    let mut total = 0;
+    for block in blocks {
+        let fields = dict(block)?;
+        if fields.get("assignment_id").unwrap_or(&Value::Null) == assignment_id
+            && !truthy(fields.get("completed"))
+        {
+            total += py_int(subscript(block, "duration_min")?)?;
+        }
+    }
+    Ok(total)
 }
 
 pub fn available_homework_minutes(
     assignment: Option<&Value>,
     blocks: &[Value],
     committed_blocks: Option<&[Value]>,
-) -> i64 {
-    let Some(assignment) = assignment else {
-        return 0;
+) -> EngineResult<i64> {
+    let Some(assignment) = assignment.filter(|value| truthy(Some(value))) else {
+        return Ok(0);
     };
-    if assignment.get("completed").and_then(Value::as_bool) == Some(true) {
-        return 0;
+    if truthy(dict(assignment)?.get("completed")) {
+        return Ok(0);
     }
-    let id = assignment.get("id").and_then(Value::as_str).unwrap_or("");
-    let here = session_minutes(blocks, id);
-    let committed = session_minutes(committed_blocks.unwrap_or(&[]), id);
-    if assignment.get("unplanned_min").is_none_or(Value::is_null) {
-        let remaining = (assignment
-            .get("estimate_min")
-            .and_then(Value::as_i64)
-            .unwrap_or(0)
-            - assignment
-                .get("focus_minutes")
-                .and_then(Value::as_i64)
-                .unwrap_or(0))
-        .max(0);
-        return floor_slot(remaining - here);
+    let id = subscript(assignment, "id")?;
+    let here = session_minutes(blocks, id)?;
+    let committed = session_minutes(
+        committed_blocks
+            .filter(|list| !list.is_empty())
+            .unwrap_or(&[]),
+        id,
+    )?;
+    let fields = dict(assignment)?;
+    match fields.get("unplanned_min") {
+        None | Some(Value::Null) => {
+            let estimate = py_int(subscript(assignment, "estimate_min")?)?;
+            let focus = int_or_zero(fields.get("focus_minutes"))?;
+            Ok(floor_slot((estimate - focus).max(0) - here))
+        }
+        Some(server) => Ok(floor_slot(py_int(server)? + committed - here)),
     }
-    floor_slot(
-        assignment
-            .get("unplanned_min")
-            .and_then(Value::as_i64)
-            .unwrap_or(0)
-            + committed
-            - here,
-    )
 }
 
 pub fn capacity_problem(existing_count: i64, added_count: i64, label: &str) -> String {
@@ -408,54 +408,52 @@ const MONTHS: [&str; 12] = [
     "December",
 ];
 
-pub struct PlannerSession<'a> {
-    pub week_start: &'a str,
-    pub now_ms: i64,
-    pub selected_day: Option<&'a str>,
-    pub selected_month: Option<&'a str>,
-}
-
+/// Where you are, in words. The session's own `selected_day` and `selected_month` come in as
+/// they were read; `today` gives the caller's local date and is asked only for My Day.
 pub fn planner_title(
-    session: &PlannerSession<'_>,
+    week_start: &str,
+    session_day: Option<&str>,
+    session_month: Option<&str>,
     view: &str,
     short: bool,
     selected_day: Option<&str>,
-) -> String {
-    fn name(names: &[&str], index: usize, short: bool) -> String {
+    today: &mut dyn FnMut() -> EngineResult<String>,
+) -> EngineResult<String> {
+    let name = |names: &[&str], index: usize, short: bool| -> String {
         if short {
-            names[index][..3.min(names[index].len())].to_string()
+            names[index].chars().take(3).collect()
         } else {
             names[index].to_string()
         }
+    };
+    fn given(value: Option<&str>) -> Option<&str> {
+        value.filter(|text| !text.is_empty())
     }
-    let start = NaiveDate::parse_from_str(session.week_start, "%Y-%m-%d").expect("week");
-    let chosen_iso = selected_day
-        .or(session.selected_day)
-        .unwrap_or(session.week_start);
-    let chosen = NaiveDate::parse_from_str(chosen_iso, "%Y-%m-%d").unwrap_or(start);
+    let start = from_iso(week_start)?;
+    let chosen_iso = given(selected_day)
+        .or(given(session_day))
+        .unwrap_or(week_start);
+    let chosen = from_iso(chosen_iso).unwrap_or(start);
     if view == "month" {
-        let anchor_iso = session.selected_month.unwrap_or(chosen_iso);
-        let anchor = if anchor_iso.len() == 7 {
-            NaiveDate::parse_from_str(&format!("{anchor_iso}-01"), "%Y-%m-%d").unwrap_or(chosen)
+        let anchor_iso = given(session_month).unwrap_or(chosen_iso);
+        let anchor = if anchor_iso.chars().count() == 7 {
+            from_iso(&format!("{anchor_iso}-01"))
         } else {
-            NaiveDate::parse_from_str(anchor_iso, "%Y-%m-%d").unwrap_or(chosen)
-        };
-        return format!(
+            from_iso(anchor_iso)
+        }
+        .unwrap_or(chosen);
+        return Ok(format!(
             "{} {}",
-            name(&MONTHS, anchor.month() as usize - 1, short),
+            name(&MONTHS, anchor.month0() as usize, short),
             anchor.year()
-        );
+        ));
     }
     let mut chosen = chosen;
     if view == "myday" && selected_day.is_none() {
-        let secs = session.now_ms / 1000;
-        chosen = chrono::DateTime::from_timestamp(secs, 0)
-            .expect("now")
-            .naive_local()
-            .date();
+        chosen = from_iso(&today()?)?;
     }
     if view == "day" || view == "myday" {
-        return format!(
+        return Ok(format!(
             "{} {} {}",
             name(
                 &DAYS_LONG,
@@ -463,27 +461,26 @@ pub fn planner_title(
                 short
             ),
             chosen.day(),
-            name(&MONTHS, chosen.month() as usize - 1, short)
-        );
+            name(&MONTHS, chosen.month0() as usize, short)
+        ));
     }
-    let short = true;
-    let end = start + Duration::days(6);
-    if start.month() == end.month() {
+    let end = crate::stored::add_days(start, 6)?;
+    Ok(if start.month() == end.month() {
         format!(
             "{} – {} {}",
             start.day(),
             end.day(),
-            name(&MONTHS, start.month() as usize - 1, short)
+            name(&MONTHS, start.month0() as usize, true)
         )
     } else {
         format!(
             "{} {} – {} {}",
             start.day(),
-            name(&MONTHS, start.month() as usize - 1, short),
+            name(&MONTHS, start.month0() as usize, true),
             end.day(),
-            name(&MONTHS, end.month() as usize - 1, short)
+            name(&MONTHS, end.month0() as usize, true)
         )
-    }
+    })
 }
 
 pub fn due_point(due: Option<&str>, week_start: &str) -> Option<(i64, i64)> {
@@ -505,11 +502,30 @@ fn i64_of(value: &Value, key: &str) -> i64 {
     value.get(key).and_then(Value::as_i64).unwrap_or(0)
 }
 
-pub fn copied_fixed_block(source: &Value, days: &[i64], block_id: &str) -> Value {
-    let mut copy = object(source);
-    copy.insert("id".into(), json!(block_id));
+/// `copy[key] = value` on a value that is not a dict.
+fn item_assignment(value: &Value) -> EngineError {
+    match value {
+        Value::Array(_) => type_error("list indices must be integers or slices, not str"),
+        other => type_error(format!(
+            "'{}' object does not support item assignment",
+            type_name(other)
+        )),
+    }
+}
+
+/// `copied_fixed_block` with the days and the id as the caller holds them.
+pub(crate) fn copied_fixed_block_of(
+    source: &Value,
+    days: Vec<Value>,
+    block_id: &Value,
+) -> EngineResult<Value> {
+    let Value::Object(source) = source else {
+        return Err(item_assignment(source));
+    };
+    let mut copy = source.clone();
+    copy.insert("id".into(), block_id.clone());
     copy.insert("kind".into(), json!("locked"));
-    copy.insert("days".into(), json!(days));
+    copy.insert("days".into(), Value::Array(days));
     copy.insert("completed".into(), json!(false));
     copy.insert("completed_day".into(), Value::Null);
     copy.insert("missed_days".into(), json!([]));
@@ -524,29 +540,59 @@ pub fn copied_fixed_block(source: &Value, days: &[i64], block_id: &str) -> Value
     ] {
         copy.shift_remove(key);
     }
-    Value::Object(copy)
+    Ok(Value::Object(copy))
 }
 
-pub fn copied_homework_block(assignment: &Value, day: i64, duration: i64, block_id: &str) -> Value {
-    json!({
+pub fn copied_fixed_block(source: &Value, days: &[i64], block_id: &str) -> EngineResult<Value> {
+    copied_fixed_block_of(
+        source,
+        days.iter().map(|day| json!(day)).collect(),
+        &json!(block_id),
+    )
+}
+
+pub(crate) fn copied_homework_block_of(
+    assignment: &Value,
+    day: i64,
+    duration: i64,
+    block_id: &Value,
+) -> EngineResult<Value> {
+    let or = |name: &str, fallback: Value| match assignment.get(name) {
+        Some(value) if truthy(Some(value)) => value.clone(),
+        _ => fallback,
+    };
+    let field = |name: &str| assignment.get(name).cloned().unwrap_or(Value::Null);
+    let title = subscript(assignment, "title")?.clone();
+    let priority = or("priority", json!(3));
+    let energy = or("energy", json!("medium"));
+    Ok(json!({
         "id": block_id,
         "kind": "flexible",
-        "title": assignment.get("title").cloned().unwrap_or(Value::Null),
+        "title": title,
         "duration_min": duration,
         "days": [day],
         "start": Value::Null,
         "earliest": Value::Null,
         "latest": Value::Null,
-        "priority": assignment.get("priority").cloned().unwrap_or(json!(3)),
-        "energy": assignment.get("energy").cloned().unwrap_or(json!("medium")),
-        "course": assignment.get("course").cloned().unwrap_or(Value::Null),
-        "category": assignment.get("category").cloned().unwrap_or(Value::Null),
-        "spotify_url": assignment.get("spotify_url").cloned().unwrap_or(Value::Null),
+        "priority": priority,
+        "energy": energy,
+        "course": field("course"),
+        "category": field("category"),
+        "spotify_url": field("spotify_url"),
         "completed": false,
         "completed_day": Value::Null,
         "missed_days": [],
-        "assignment_id": assignment.get("id").cloned().unwrap_or(Value::Null),
-    })
+        "assignment_id": subscript(assignment, "id")?,
+    }))
+}
+
+pub fn copied_homework_block(
+    assignment: &Value,
+    day: i64,
+    duration: i64,
+    block_id: &str,
+) -> EngineResult<Value> {
+    copied_homework_block_of(assignment, day, duration, &json!(block_id))
 }
 
 pub fn clipboard_item(block: &Value, source_day: i64, scope: &str, group_id: &str) -> Value {

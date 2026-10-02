@@ -158,7 +158,7 @@ pub fn oklch(light: f64, chroma: f64, hue: f64) -> String {
     hex_from_linear(r, g, b)
 }
 
-fn channels(colour: &str) -> (i64, i64, i64) {
+fn colour_channels(colour: &str) -> (i64, i64, i64) {
     (
         i64::from_str_radix(&colour[1..3], 16).unwrap_or(0),
         i64::from_str_radix(&colour[3..5], 16).unwrap_or(0),
@@ -167,8 +167,8 @@ fn channels(colour: &str) -> (i64, i64, i64) {
 }
 
 pub fn mix(top: &str, bottom: &str, alpha: f64) -> String {
-    let (tr, tg, tb) = channels(top);
-    let (br, bg, bb) = channels(bottom);
+    let (tr, tg, tb) = colour_channels(top);
+    let (br, bg, bb) = colour_channels(bottom);
     let blend = |over: i64, under: i64| -> i64 {
         py_round(over as f64 * alpha + under as f64 * (1.0 - alpha)) as i64
     };
@@ -323,4 +323,69 @@ mod tests {
     fn hex_round_trip_matches_python_encode() {
         assert_eq!(hex_from_linear(0.5, 0.5, 0.5), "#bcbcbc");
     }
+}
+
+/// `int(text, 16)` as Python reads it: white space around, a sign, a `0x` prefix, single underscores
+/// between digits, and any script's decimal digits.
+fn hex_part(raw: &str) -> crate::error::EngineResult<i64> {
+    let fail = || {
+        crate::error::EngineError::value(format!(
+            "invalid literal for int() with base 16: {}",
+            crate::time::py_repr(raw)
+        ))
+    };
+    let trimmed = crate::time::py_strip(raw);
+    let (negative, unsigned) = match trimmed.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+    };
+    let (prefixed, digits) = match unsigned
+        .strip_prefix("0x")
+        .or_else(|| unsigned.strip_prefix("0X"))
+    {
+        Some(rest) => (true, rest),
+        None => (false, unsigned),
+    };
+    let digits = if prefixed {
+        digits.strip_prefix('_').unwrap_or(digits)
+    } else {
+        digits
+    };
+    let mut value: i64 = 0;
+    let mut seen = false;
+    let mut after_underscore = false;
+    for ch in digits.chars() {
+        if ch == '_' {
+            if !seen || after_underscore {
+                return Err(fail());
+            }
+            after_underscore = true;
+            continue;
+        }
+        let digit = ch
+            .to_digit(16)
+            .map(|found| found as i64)
+            .or_else(|| crate::time::decimal_digit(ch).map(i64::from))
+            .ok_or_else(fail)?;
+        value = value
+            .checked_mul(16)
+            .and_then(|v| v.checked_add(digit))
+            .ok_or_else(fail)?;
+        seen = true;
+        after_underscore = false;
+    }
+    if !seen || after_underscore {
+        return Err(fail());
+    }
+    Ok(if negative { -value } else { value })
+}
+
+/// `_channels(colour)`: the red, green and blue pairs of `#rrggbb`, each read as base-16 text.
+pub fn channels(colour: &str) -> crate::error::EngineResult<(i64, i64, i64)> {
+    let part = |from: usize| -> String { colour.chars().skip(from).take(2).collect() };
+    Ok((
+        hex_part(&part(1))?,
+        hex_part(&part(3))?,
+        hex_part(&part(5))?,
+    ))
 }

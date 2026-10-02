@@ -3,14 +3,9 @@
 from __future__ import annotations
 
 import json
-from copy import deepcopy
-from datetime import date, datetime, timedelta
+from datetime import datetime
 
 import flexweek_engine  # type: ignore[import-untyped]
-
-from backend.models import due_sort_key
-from backend.slots import SLOT_MIN
-from desktop.native.weekmodel import length_label
 
 MAX_WEEK_BLOCKS = 100
 AVAILABILITY_LIMIT = 21
@@ -60,9 +55,7 @@ def planning_days(block: dict, assignments: dict, week_start: str) -> list[int]:
     chose, so the days up to the deadline come back from the assignment rather than from the block."""
     return [
         int(day)
-        for day in flexweek_engine.reuse_planning_days(
-            json.dumps(block), json.dumps(assignments), week_start
-        )
+        for day in flexweek_engine.reuse_planning_days(json.dumps(block), json.dumps(assignments), week_start)
     ]
 
 
@@ -151,16 +144,12 @@ def solve_request(
     return json.loads(payload), set(targets)
 
 
-
-
-
 def due_point(due: str | None, week_start: str) -> tuple[int, int] | None:
     """A deadline as (day index, minute) in this week: negative before it, None when it is later."""
     if not due:
         return None
     point = flexweek_engine.reuse_due_point(due, week_start)
     return None if point is None else (int(point[0]), int(point[1]))
-
 
 
 def settle_placements(
@@ -185,15 +174,12 @@ def settle_placements(
     return json.loads(kept), json.loads(lost)
 
 
-
 def occurrence_days(block: dict) -> list[int]:
     return [int(day) for day in flexweek_engine.reuse_occurrence_days(json.dumps(block or {}))]
 
 
-
 def session_minutes(blocks: list[dict], assignment_id: str) -> int:
     return int(flexweek_engine.reuse_session_minutes(json.dumps(blocks), assignment_id))
-
 
 
 def available_homework_minutes(
@@ -210,50 +196,35 @@ def available_homework_minutes(
     )
 
 
-
 def copied_fixed_block(source: dict, days: list[int], block_id: str) -> dict:
     return json.loads(flexweek_engine.reuse_copied_fixed(json.dumps(source), json.dumps(days), block_id))
 
 
-
 def copied_homework_block(assignment: dict, day: int, duration: int, block_id: str) -> dict:
-    return json.loads(
-        flexweek_engine.reuse_copied_homework(json.dumps(assignment), day, duration, block_id)
-    )
-
+    return json.loads(flexweek_engine.reuse_copied_homework(json.dumps(assignment), day, duration, block_id))
 
 
 def clipboard_item(block: dict, source_day: int, scope: str, group_id: str) -> dict:
-    return json.loads(
-        flexweek_engine.reuse_clipboard_item(json.dumps(block), source_day, scope, group_id)
-    )
-
+    return json.loads(flexweek_engine.reuse_clipboard_item(json.dumps(block), source_day, scope, group_id))
 
 
 def clipboard_fingerprint(items: list[dict]) -> str:
     return str(flexweek_engine.reuse_fingerprint(json.dumps(items)))
 
 
-
 def block_occurs_on_day(block: dict, day: int, placed: list[dict] | None = None) -> bool:
     return bool(
-        flexweek_engine.reuse_occurs(
-            json.dumps(block), day, None if placed is None else json.dumps(placed)
-        )
+        flexweek_engine.reuse_occurs(json.dumps(block), day, None if placed is None else json.dumps(placed))
     )
-
 
 
 def intervals_overlap(start_a: int, end_a: int, start_b: int, end_b: int) -> bool:
     return bool(flexweek_engine.reuse_overlap(start_a, end_a, start_b, end_b))
 
 
-
 def row_conflict(row: dict, rows: list[dict], existing: list[dict]) -> str | None:
     skip = next((index for index, item in enumerate(rows) if item is row), None)
-    return flexweek_engine.reuse_row_conflict(
-        json.dumps(row), json.dumps(rows), json.dumps(existing), skip
-    )
+    return flexweek_engine.reuse_row_conflict(json.dumps(row), json.dumps(rows), json.dumps(existing), skip)
 
 
 def proposals_from_clipboard(
@@ -266,93 +237,21 @@ def proposals_from_clipboard(
     assignments: dict[str, dict],
     available: dict[str, int],
 ) -> list[dict]:
-    rows: list[dict] = []
-    left = dict(available)
-    for item_index, item in enumerate(items):
-        source = item["block"]
-        if is_homework_session(source):
-            assignment = assignments.get(source["assignment_id"])
-            remaining = left.get(source["assignment_id"], 0)
-            duration = min(int(source["duration_min"]), remaining)
-            usable = bool(assignment and duration >= SLOT_MIN)
-            if usable:
-                left[source["assignment_id"]] = remaining - duration
-            if usable and assignment is not None:
-                block = copied_homework_block(assignment, target_day, duration, item["group_id"])
-                invalid = ""
-            else:
-                block = deepcopy(source)
-                invalid = (
-                    "No unplanned time remains for this homework."
-                    if assignment
-                    else "This homework did not load."
-                )
-            rows.append(
-                {
-                    "week_start": week_start,
-                    "day": target_day,
-                    "fixed": False,
-                    "block": block,
-                    "group_id": item["group_id"],
-                    "checked": usable,
-                    "invalid": invalid,
-                    "original_duration": int(source["duration_min"]),
-                }
-            )
-            continue
-        days = list(source["days"]) if item["scope"] == "series" else [target_day]
-        for day_index, day in enumerate(days):
-            start = (
-                target_start
-                if target_start and kind == "block" and item["scope"] != "series"
-                else source.get("start")
-            )
-            block = copied_fixed_block(source, [day], item["group_id"])
-            block["start"] = start
-            group_id = (
-                item["group_id"]
-                if item["scope"] == "series"
-                else f"{item['group_id']}-{item_index}-{day_index}"
-            )
-            rows.append(
-                {
-                    "week_start": week_start,
-                    "day": day,
-                    "fixed": True,
-                    "block": block,
-                    "group_id": group_id,
-                    "original_duration": int(source["duration_min"]),
-                    "checked": True,
-                    "invalid": "" if start else "Choose a start time.",
-                }
-            )
-    return rows
+    return json.loads(
+        flexweek_engine.reuse_proposals(
+            json.dumps(items),
+            kind,
+            week_start,
+            target_day,
+            target_start,
+            json.dumps(assignments),
+            json.dumps(available),
+        )
+    )
 
 
 def merge_preview_rows(rows: list[dict], operation_id: str) -> list[dict]:
-    groups: dict[tuple, dict] = {}
-    order: list[tuple] = []
-    for row in rows:
-        if not row.get("checked"):
-            continue
-        block = deepcopy(row["block"])
-        if row.get("fixed"):
-            block["days"] = [row["day"]]
-        shape = {key: value for key, value in block.items() if key not in {"id", "days"}}
-        key = (row["week_start"], row["group_id"], json.dumps(shape, sort_keys=True, default=str))
-        if key not in groups:
-            groups[key] = {"week_start": row["week_start"], "block": block, "days": []}
-            order.append(key)
-        groups[key]["days"].append(row["day"])
-    stem = operation_id.replace("-", "")[:24]
-    result = []
-    for index, key in enumerate(order):
-        group = groups[key]
-        group["block"]["id"] = f"b-stage3-{stem}-{index:x}"
-        group["block"]["days"] = sorted(set(group["days"]))
-        result.append({"week_start": group["week_start"], "block": group["block"]})
-    return result
-
+    return json.loads(flexweek_engine.reuse_merge_rows(json.dumps(rows), operation_id))
 
 
 def capacity_problem(existing_count: int, added_count: int, label: str) -> str:
@@ -360,60 +259,24 @@ def capacity_problem(existing_count: int, added_count: int, label: str) -> str:
 
 
 def preview_conflict_message(row: dict, rows: list[dict], existing: list[dict]) -> str:
-    if row.get("invalid"):
-        return row["invalid"]
-    conflict = row_conflict(row, rows, existing)
-    if conflict:
-        return f"Conflicts with {conflict}. Choose another time."
-    if row.get("fixed"):
-        return length_label(int(row["block"]["duration_min"])) + " · Only this week"
-    return length_label(int(row["block"]["duration_min"])) + " · Time chosen when you plan"
+    skip = next((index for index, item in enumerate(rows) if item is row), None)
+    return str(
+        flexweek_engine.reuse_preview_message(json.dumps(row), json.dumps(rows), json.dumps(existing), skip)
+    )
 
 
 def routine_source_blocks(blocks: list[dict]) -> list[dict]:
-    return [
-        block
-        for block in blocks
-        if block.get("kind") == "locked" and not block.get("assignment_id") and not block.get("pomodoro_role")
-    ]
+    return json.loads(flexweek_engine.reuse_routine_sources(json.dumps(blocks)))
 
 
 def routine_template(block: dict, template_id: str) -> dict:
-    body: dict = {"template_id": template_id, "title": block["title"], "days": list(block["days"])}
-    body["start"] = block["start"]
-    body["duration_min"] = block["duration_min"]
-    for field in ROUTINE_FIELDS:
-        if field in {"template_id", "title", "days", "start", "duration_min"}:
-            continue
-        value = block.get(field)
-        if value is not None:
-            body[field] = value
-    return body
+    return json.loads(flexweek_engine.reuse_routine_template(json.dumps(block), template_id))
 
 
 def routine_rows(routine: dict, week_start: str, allowed_days: list[int]) -> list[dict]:
-    rows: list[dict] = []
-    allowed = set(allowed_days)
-    for template in routine.get("blocks") or []:
-        group_id = template["template_id"]
-        for day in template.get("days") or []:
-            if day not in allowed:
-                continue
-            block = copied_fixed_block({**template, "kind": "locked"}, [day], group_id)
-            block.pop("template_id", None)
-            rows.append(
-                {
-                    "week_start": week_start,
-                    "day": day,
-                    "fixed": True,
-                    "block": block,
-                    "group_id": group_id,
-                    "original_duration": int(template["duration_min"]),
-                    "checked": True,
-                    "invalid": "",
-                }
-            )
-    return rows
+    return json.loads(
+        flexweek_engine.reuse_routine_rows(json.dumps(routine), week_start, json.dumps(list(allowed_days)))
+    )
 
 
 def unfinished_items(
@@ -423,26 +286,23 @@ def unfinished_items(
     blocks: list[dict],
     committed_blocks: list[dict],
 ) -> list[dict]:
-    if not any(saved < week_start for saved in saved_weeks):
-        return []
-    items = []
-    for item in assignments.values():
-        minutes = available_homework_minutes(item, blocks, committed_blocks)
-        if item.get("completed") or minutes < SLOT_MIN:
-            continue
-        items.append({**item, "remaining_min": minutes})
-    return sorted(items, key=lambda item: due_sort_key(item.get("due"), item["id"]))
-
+    return json.loads(
+        flexweek_engine.reuse_unfinished(
+            json.dumps(assignments),
+            json.dumps(saved_weeks),
+            week_start,
+            json.dumps(blocks),
+            json.dumps(committed_blocks),
+        )
+    )
 
 
 def late_from_start(minute: int) -> str:
     return str(flexweek_engine.reuse_late_from(minute))
 
 
-
 def running_late_block(day: int, from_start: str, minutes: int, block_id: str) -> dict:
     return json.loads(flexweek_engine.reuse_late_block(day, from_start, minutes, block_id))
-
 
 
 def running_late_refusal(
@@ -458,15 +318,12 @@ def running_late_refusal(
     )
 
 
-
 def late_locked_line(block: dict, moved: int) -> str:
     return str(flexweek_engine.reuse_late_line(json.dumps(block), moved))
 
 
-
 def late_id(operation_id: str) -> str:
     return str(flexweek_engine.reuse_late_id(operation_id))
-
 
 
 def copy_label(block: dict, source_day: int, scope: str) -> str:
@@ -498,9 +355,7 @@ MONTHS = (
 )
 
 
-def planner_title(
-    session: object, view: str, *, short: bool = False, selected_day: str | None = None
-) -> str:
+def planner_title(session: object, view: str, *, short: bool = False, selected_day: str | None = None) -> str:
     """Where you are, in words: "15 – 21 September", "Thursday 18 September", "September 2026".
 
     Week always uses short month names. `short` also abbreviates Day and Month for a narrow bar.
@@ -508,34 +363,14 @@ def planner_title(
     The top bar used to say none of this. It had two buttons reading "Previous week" and "Next week"
     and no statement of which week you were on at all.
     """
-
-    def name(names: tuple[str, ...], index: int) -> str:
-        return names[index][:3] if short else names[index]
-
-    start = date.fromisoformat(session.week_start)
-    # selected_day is an ISO date, not an index into the week. Reading it as one raised on a real
-    # run and left the title blank.
-    chosen_iso = selected_day or getattr(session, "selected_day", None) or session.week_start
-    try:
-        chosen = date.fromisoformat(str(chosen_iso))
-    except ValueError:
-        chosen = start
-    if view == "month":
-        # Month has an anchor of its own, which is what the grid is showing.
-        anchor_iso = getattr(session, "selected_month", None) or chosen_iso
-        try:
-            anchor = date.fromisoformat(
-                str(anchor_iso) + "-01" if len(str(anchor_iso)) == 7 else str(anchor_iso)
-            )
-        except ValueError:
-            anchor = chosen
-        return f"{name(MONTHS, anchor.month - 1)} {anchor.year}"
-    if view == "myday" and selected_day is None:
-        chosen = datetime.fromtimestamp(session.now_ms() / 1000).date()
-    if view in {"day", "myday"}:
-        return f"{name(DAYS_LONG, chosen.weekday())} {chosen.day} {name(MONTHS, chosen.month - 1)}"
-    short = True
-    end = start + timedelta(days=6)
-    if start.month == end.month:
-        return f"{start.day} – {end.day} {name(MONTHS, start.month - 1)}"
-    return f"{start.day} {name(MONTHS, start.month - 1)} – {end.day} {name(MONTHS, end.month - 1)}"
+    return str(
+        flexweek_engine.reuse_planner_title(
+            session.week_start,
+            getattr(session, "selected_day", None),
+            getattr(session, "selected_month", None),
+            view,
+            short,
+            selected_day,
+            lambda: datetime.fromtimestamp(session.now_ms() / 1000).date().isoformat(),
+        )
+    )

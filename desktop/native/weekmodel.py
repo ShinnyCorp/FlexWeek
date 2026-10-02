@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
+from typing import Any
 
 import flexweek_engine  # type: ignore[import-untyped]
 
 SLACK_WORDS = {"danger": "Cutting it close", "tight": "Tight", "ok": "Plenty of time"}
-_SLACK_ORDER = {"danger": 0, "tight": 1, None: 2, "ok": 3}
 NOT_PLANNED = "Not planned yet."
 # A homework session is saved with no category unless the student picked one. It is still homework.
 HOMEWORK = "assignments"
@@ -116,16 +116,16 @@ class Occurrence:
 
     @property
     def minutes(self) -> int:
-        return self.end - self.start
+        return int(flexweek_engine.week_occurrence_minutes(self.start, self.end))
 
     @property
     def live(self) -> bool:
         """Still something to do: fixed blocks always, homework until it is done or missed."""
-        return not (self.work and (self.done or self.missed))
+        return bool(flexweek_engine.week_occurrence_live(self.work, self.done, self.missed))
 
     @property
     def slack_words(self) -> str:
-        return SLACK_WORDS.get(self.slack or "", "")
+        return str(flexweek_engine.week_slack_words(self.slack))
 
 
 @dataclass(frozen=True)
@@ -155,61 +155,56 @@ class WeekModel:
     # Minutes the focus timer has credited to this week's homework, and to its blocks without any.
     focus_min: int = 0
 
+    def _engine(self) -> Any:
+        """The week as the engine holds it, read once for a model whose tuples cannot change."""
+        held = self.__dict__.get("_engine_week")
+        if held is not None:
+            return held
+        held = flexweek_engine.WeekHandle(
+            json.dumps(
+                {
+                    "week_start": self.week_start,
+                    "occurrences": [vars(item) for item in self.occurrences],
+                    "waiting": [vars(item) for item in self.waiting],
+                }
+            )
+        )
+        if isinstance(self.occurrences, tuple) and isinstance(self.waiting, tuple):
+            object.__setattr__(self, "_engine_week", held)
+        return held
+
     def date_of(self, day: int) -> date:
-        return date.fromisoformat(self.week_start) + timedelta(days=day)
+        return date(*flexweek_engine.week_date_of(self.week_start, day))
 
     def on_day(self, day: int) -> tuple[Occurrence, ...]:
-        return tuple(item for item in self.occurrences if item.day == day)
+        return tuple(self.occurrences[at] for at in self._engine().on_day(day))
 
     def load_min(self, day: int) -> int:
-        return sum(item.minutes for item in self.on_day(day) if item.work)
+        return int(self._engine().load_min(day))
 
     def open_work(self) -> tuple[Occurrence, ...]:
         """Homework still to do, the most squeezed first."""
-        items = [item for item in self.occurrences if item.work and item.live]
-        return tuple(sorted(items, key=lambda item: (_SLACK_ORDER[item.slack], item.day, item.start)))
+        return tuple(self.occurrences[at] for at in self._engine().open_work())
 
     def due_today_unplaced(self, today: int | None) -> tuple[Waiting, ...]:
         """Homework due today that still needs a time. Every screen reads this, not its own filter."""
-        if today is None:
-            return ()
-        iso = self.date_of(today).isoformat()
-        return tuple(item for item in self.waiting if (item.due or "").startswith(iso))
+        return tuple(self.waiting[at] for at in self._engine().due_today_unplaced(today))
 
     def leftover_kind(self, today: int | None) -> str:
         """Which of the four empty-day states this week is in, once nothing placed is still ahead."""
-        if today is not None and self.due_today_unplaced(today):
-            return "needs_time"
-        homework = [item for item in self.occurrences if item.work]
-        if not homework and not self.waiting:
-            return "calendar_only" if self.occurrences else "no_homework"
-        if not any(item.live for item in homework) and not self.waiting:
-            return "all_finished"
-        return "calendar_only"
+        return str(self._engine().leftover_kind(today))
 
     def leftover_words(self, today: int | None) -> str:
-        return LEFTOVER[self.leftover_kind(today)]
+        return str(self._engine().leftover_words(today))
 
     def leftover_parts(self, today: int | None) -> tuple[str, str, str]:
         """Kicker, title, line. When homework needs a time, the title is its name."""
-        kind = self.leftover_kind(today)
-        heading = LEFTOVER[kind]
-        if kind == "needs_time":
-            first = self.due_today_unplaced(today)[0]
-            due = due_label(first.due, self.week_start)
-            return heading, first.title, f"Due {due}" if due else "Due today"
-        return heading, heading, ""
+        kicker, title, line = self._engine().leftover_parts(today)
+        return str(kicker), str(title), str(line)
 
     def minutes_left_today(self, today: int | None, minute: int) -> int:
         """Placed remaining homework today, plus unplaced homework due today."""
-        if today is None:
-            return 0
-        total = 0
-        for item in self.on_day(today):
-            if item.work and item.live and item.end > minute:
-                total += item.end - max(item.start, minute)
-        total += sum(item.minutes for item in self.due_today_unplaced(today))
-        return total
+        return int(self._engine().minutes_left_today(today, minute))
 
     def day_queue(self, day: int, minute: int) -> DayQueue:
         """What a day screen is about: the thing on now, then the rest of the day in order.
@@ -217,14 +212,11 @@ class WeekModel:
         Homework wins over the fixed block around it, because a study hall inside School is the part
         the student has to act on.
         """
-        live = [item for item in self.on_day(day) if item.live]
-        running = sorted(
-            (item for item in live if item.start <= minute < item.end),
-            key=lambda item: (not item.work, item.start),
+        current, queue = self._engine().day_queue(day, minute)
+        return DayQueue(
+            None if current is None else self.occurrences[current],
+            tuple(self.occurrences[at] for at in queue),
         )
-        current = running[0] if running else None
-        later = tuple(item for item in live if item.start > minute)
-        return DayQueue(current, ((current,) if current else ()) + later)
 
 
 def build_week(

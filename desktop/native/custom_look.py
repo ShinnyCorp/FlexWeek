@@ -16,18 +16,9 @@ import flexweek_engine  # type: ignore[import-untyped]
 
 from desktop.native.calendar import CATEGORIES
 from desktop.native.look import (
-    BASE_LABELS,
-    LOOK_BASES,
-    LOOK_PRESET_LABELS,
-    NAME_MAX,
-    PACK_LABELS,
     block_paint,
     category_paint,
-    effective_look,
-    known_pack,
     resolved_palette,
-    sanitize_custom,
-    sanitize_look,
 )
 
 # Shown when a student has not named the look yet.
@@ -36,8 +27,6 @@ UNNAMED = "My look"
 FILE_KIND = "FlexWeek look"
 FILE_VERSION = 1
 FILE_MAX_BYTES = 64 * 1024
-# A knob of the look on screen and the custom setting that carries it on.
-KNOB_FIELDS = {"density": "spacing", "depth": "shadows", "blocks": "blocks"}
 
 
 class LookNameError(ValueError):
@@ -46,36 +35,18 @@ class LookNameError(ValueError):
 
 def base_of(pack: object, look: dict | None) -> str:
     """The id of the look on screen, as a custom look's base: its preset, or else its pack."""
-    selected = sanitize_look(look)
-    if "custom" in selected:
-        return selected["custom"]["base"]
-    if selected["preset"] != "default":
-        return selected["preset"]
-    return {"light-frost": "light", "dark-frost": "dark"}.get(known_pack(pack), known_pack(pack))
+    return str(json.loads(flexweek_engine.look_base_of(json.dumps(pack), json.dumps(look))))
 
 
 def start_custom(pack: object, look: dict | None, accent: object = "default") -> dict:
     """A custom look that draws as the look on screen does, to be changed from there: its base, the
     student's accent, and the knobs they had moved."""
-    selected = sanitize_look(look)
-    if "custom" in selected:
-        return dict(selected["custom"])
-    custom: dict = {"name": UNNAMED, "base": base_of(pack, selected)}
-    if accent != "default":
-        custom["accent"] = accent
-    knobs = effective_look(selected)
-    base_knobs = effective_look({"preset": LOOK_BASES[custom["base"]][1], "knobs": {}})
-    for knob, field in KNOB_FIELDS.items():
-        if knobs[knob] != base_knobs[knob]:
-            custom[field] = knobs[knob]
-    return sanitize_custom(custom)[0] or custom
+    return json.loads(flexweek_engine.look_start(json.dumps(pack), json.dumps(look), json.dumps(accent)))
 
 
 def wear(look: dict | None, custom: dict) -> dict:
     """The device look with `custom` worn, its preset and knobs kept for when it is taken off."""
-    selected = sanitize_look(look)
-    return sanitize_look({**selected, "custom": custom})
-
+    return json.loads(flexweek_engine.look_wear(json.dumps(look), json.dumps(custom)))
 
 
 def reset_look(custom: dict) -> dict:
@@ -84,41 +55,20 @@ def reset_look(custom: dict) -> dict:
 
 
 def _name(name: object) -> str:
-    if not isinstance(name, str) or not name.strip():
-        raise LookNameError("A look needs a name.")
-    clean = " ".join(name.split())
-    if len(clean) > NAME_MAX:
-        raise LookNameError(f"A look's name can be {NAME_MAX} letters at most.")
-    built_in = {label.casefold() for label in (*BASE_LABELS.values(), *PACK_LABELS.values())}
-    built_in |= {label.casefold() for label in LOOK_PRESET_LABELS.values()}
-    if clean.casefold() in built_in:
-        raise LookNameError(f"{clean} is one of FlexWeek's own looks. Choose another name.")
-    return clean
+    try:
+        return str(flexweek_engine.look_name(name if isinstance(name, str) else None))
+    except ValueError as err:
+        raise LookNameError(str(err)) from err
 
 
 def _find(saved: list[dict], name: str) -> int:
-    for index, look in enumerate(saved):
-        if look["name"].casefold() == name.casefold():
-            return index
-    return -1
+    return int(flexweek_engine.look_find(json.dumps(saved), name))
 
 
 def sanitize_saved(raw: object) -> list[dict]:
     """The saved looks from the look file: each a custom look with a name of its own. One that is
     broken or named twice is left out; the rest load."""
-    kept: list[dict] = []
-    for item in raw if isinstance(raw, list) else []:
-        custom, _problems = sanitize_custom(item)
-        if custom is None:
-            continue
-        try:
-            custom["name"] = _name(custom.get("name"))
-        except LookNameError:
-            continue
-        if _find(kept, custom["name"]) < 0:
-            kept.append(custom)
-    return kept
-
+    return json.loads(flexweek_engine.look_saved(json.dumps(raw if isinstance(raw, list) else [])))
 
 
 def save_look(saved: list[dict], custom: dict, name: object) -> list[dict]:
@@ -135,7 +85,6 @@ def save_look(saved: list[dict], custom: dict, name: object) -> list[dict]:
         raise LookNameError(str(err)) from err
 
 
-
 def free_name(saved: list[dict], name: object) -> str:
     """`name` as a new saved look can have it: tidied, and numbered ("My look 2") past the saved looks
     that have it already, since `save_look` puts a look of the same name in their place."""
@@ -143,7 +92,6 @@ def free_name(saved: list[dict], name: object) -> str:
         return str(flexweek_engine.free_name(json.dumps(saved), name if isinstance(name, str) else ""))
     except ValueError as err:
         raise LookNameError(str(err)) from err
-
 
 
 def rename_look(saved: list[dict], old: str, new: object) -> list[dict]:
@@ -155,7 +103,6 @@ def rename_look(saved: list[dict], old: str, new: object) -> list[dict]:
         raise LookNameError(str(err)) from err
 
 
-
 def duplicate_look(saved: list[dict], name: str) -> tuple[list[dict], str]:
     """A copy of the saved look `name` after it, as "<name> copy" (then "copy 2" and on), and its name."""
     try:
@@ -165,7 +112,6 @@ def duplicate_look(saved: list[dict], name: str) -> tuple[list[dict], str]:
     return json.loads(kept), copy
 
 
-
 def delete_look(saved: list[dict], name: str) -> list[dict]:
     try:
         return json.loads(flexweek_engine.delete_look(json.dumps(saved), name))
@@ -173,11 +119,9 @@ def delete_look(saved: list[dict], name: str) -> list[dict]:
         raise LookNameError(str(err)) from err
 
 
-
 def export_look(custom: dict) -> str:
     """A small file to share a look: what kind of file it is, its version, and the look."""
-    clean = sanitize_custom(custom)[0] or {}
-    return json.dumps({"kind": FILE_KIND, "version": FILE_VERSION, **clean}, indent=2) + "\n"
+    return str(flexweek_engine.look_export(json.dumps(custom)))
 
 
 @dataclass(frozen=True)
@@ -189,26 +133,18 @@ class Imported:
     problems: tuple[str, ...]
 
 
-
 def import_look(text: str | bytes) -> Imported:
-    if len(text) > FILE_MAX_BYTES:
-        return Imported(None, ("This file is too large to be a FlexWeek look.",))
-    try:
-        raw = json.loads(text)
-    except ValueError:
-        return Imported(None, ("This file is not a FlexWeek look: it could not be read as one.",))
-    if not isinstance(raw, dict) or raw.get("kind") != FILE_KIND:
-        return Imported(None, ("This file is not a FlexWeek look.",))
-    version = raw.get("version")
-    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
-        return Imported(None, ("This look file has no version FlexWeek can read.",))
-    if version > FILE_VERSION:
-        return Imported(None, ("This look was made by a newer FlexWeek. Update FlexWeek to open it.",))
-    body = {key: value for key, value in raw.items() if key not in {"kind", "version"}}
-    custom, problems = sanitize_custom(body)
-    if custom is not None:
-        custom.setdefault("name", UNNAMED)
-    return Imported(custom, tuple(problems))
+    size = len(text)
+    raw = None
+    if size <= FILE_MAX_BYTES:
+        try:
+            # NaN and Infinity read as an empty list: no look setting takes either, and a list is
+            # turned away, with the same sentence, wherever a number is.
+            raw = json.dumps(json.loads(text, parse_constant=lambda _name: []))
+        except ValueError:
+            raw = None
+    look, problems = flexweek_engine.look_import(size, raw)
+    return Imported(None if look is None else json.loads(look), tuple(problems))
 
 
 @dataclass(frozen=True)
@@ -222,7 +158,6 @@ class Problem:
     ratio: float
     field: tuple[str, ...]
     fixed: str
-
 
 
 def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
@@ -258,7 +193,6 @@ def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
         )
         for item in found
     ]
-
 
 
 def apply_fix(custom: dict, problem: Problem) -> dict:

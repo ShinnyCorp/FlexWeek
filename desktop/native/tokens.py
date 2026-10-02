@@ -82,7 +82,8 @@ def oklch(light: float, chroma: float, hue: float) -> str:
 
 
 def _channels(colour: str) -> tuple[int, int, int]:
-    return int(colour[1:3], 16), int(colour[3:5], 16), int(colour[5:7], 16)
+    red, green, blue = flexweek_engine.tokens_channels(colour)
+    return int(red), int(green), int(blue)
 
 
 def mix(top: str, bottom: str, alpha: float) -> str:
