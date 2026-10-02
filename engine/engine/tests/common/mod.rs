@@ -3,6 +3,8 @@
 //! method sets them (completed, pinned, missed days, assignment id, focus).
 #![allow(dead_code)]
 
+pub mod desk;
+
 use flexweek_engine::solver::{
     DeadlineOverrides, SOLVE_BUDGET_MS, SolveTrace, StudyWindow, TimeBlock, WorkWindow,
     block_from_value, reschedule_after_miss, reschedule_running_late, solve,
