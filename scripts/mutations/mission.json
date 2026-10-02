@@ -91,10 +91,10 @@
   "test": "desktop/tests/test_layout_mission.py::test_in_a_short_window_the_lanes_and_not_the_tables_rows_set_the_pages_height"
  },
  {
-  "file": "desktop/native/weekmodel.py",
+  "file": "engine/engine/src/desk/weekmodel.rs",
   "name": "focus counted from every homework on the account",
-  "old": "    focus = sum(int((homework.get(key) or {}).get(\"focus_minutes\") or 0) for key in worked)\n",
-  "new": "    focus = sum(int(item.get(\"focus_minutes\") or 0) for item in homework.values())\n",
+  "old": "    let worked: std::collections::HashSet<String> = blocks\n        .iter()\n        .filter_map(|b| {\n            b.get(\"assignment_id\")\n                .and_then(Value::as_str)\n                .map(str::to_string)\n        })\n        .collect();\n    let mut focus = 0i64;\n    for key in &worked {\n        focus += homework\n            .get(key)\n            .and_then(|a| a.get(\"focus_minutes\"))\n            .and_then(Value::as_i64)\n            .unwrap_or(0);\n    }\n",
+  "new": "    let mut focus = 0i64;\n    for item in homework.values() {\n        focus += item\n            .get(\"focus_minutes\")\n            .and_then(Value::as_i64)\n            .unwrap_or(0);\n    }\n",
   "test": "desktop/tests/test_weekmodel.py::test_focus_is_what_the_timer_credited_to_this_weeks_homework_and_blocks"
  },
  {
