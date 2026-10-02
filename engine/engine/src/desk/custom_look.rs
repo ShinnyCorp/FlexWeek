@@ -6,10 +6,11 @@ use serde_json::{Map, Value, json};
 
 use crate::casefold::casefold;
 use crate::desk::calendar::CATEGORIES;
-use crate::desk::pyval::subscript;
-use crate::desk::tokens::{contrast, fit_lightness, luminance, mix};
+use crate::desk::pyops::{contains, eq, get, hashable, iterate, py_dict};
+use crate::desk::pyval::{subscript, type_error};
+use crate::desk::tokens::{TEXT_SCALE, contrast, fit_lightness, luminance, mix};
 use crate::error::{EngineError, EngineResult};
-use crate::stored::{Dict, attribute_error, py_str};
+use crate::stored::{Dict, attribute_error, nonfinite, py_str, type_name};
 use crate::time::{py_repr, py_space};
 
 pub const UNNAMED: &str = "My look";
@@ -622,12 +623,12 @@ pub fn wear(look: &Value, custom: &Value) -> Dict {
 /// `_name(name)`: the name tidied, or the sentence saying why it cannot be a saved look's.
 pub fn name_valid(name: Option<&str>) -> EngineResult<String> {
     let Some(name) = name.filter(|text| !text.trim_matches(py_space).is_empty()) else {
-        return Err(EngineError::value("A look needs a name."));
+        return Err(EngineError::look_name("A look needs a name."));
     };
     let clean = tidy(name);
     if clean.chars().count() > NAME_MAX {
-        return Err(EngineError::value(format!(
-            "A look's name can be {NAME_MAX} letters at most."
+        return Err(EngineError::look_name(format!(
+            "A look\'s name can be {NAME_MAX} letters at most."
         )));
     }
     let folded = casefold(&clean);
@@ -637,7 +638,7 @@ pub fn name_valid(name: Option<&str>) -> EngineResult<String> {
         .chain(PRESET_LABELS.iter())
         .any(|label| casefold(label) == folded);
     if built_in {
-        return Err(EngineError::value(format!(
+        return Err(EngineError::look_name(format!(
             "{clean} is one of FlexWeek's own looks. Choose another name."
         )));
     }
@@ -657,17 +658,6 @@ pub fn find_index(saved: &[Dict], name: &str) -> EngineResult<Option<usize>> {
     for (index, look) in saved.iter().enumerate() {
         let shown = look.get("name").ok_or_else(|| EngineError::key("name"))?;
         if same_name(shown, &wanted)? {
-            return Ok(Some(index));
-        }
-    }
-    Ok(None)
-}
-
-/// `_find` on the list as it came, so a saved look of the wrong type fails as Python's would.
-pub fn find_index_of(saved: &[Value], name: &str) -> EngineResult<Option<usize>> {
-    let wanted = casefold(name);
-    for (index, look) in saved.iter().enumerate() {
-        if same_name(subscript(look, "name")?, &wanted)? {
             return Ok(Some(index));
         }
     }
@@ -694,102 +684,175 @@ pub fn sanitize_saved(raw: &Value) -> EngineResult<Vec<Dict>> {
     Ok(kept)
 }
 
-pub fn save_look(saved: &[Dict], custom: &Dict, name: &str) -> EngineResult<Vec<Dict>> {
-    let clean = name_valid(Some(name))?;
-    let mut kept: Vec<Dict> = saved.to_vec();
-    let mut look = custom.clone();
-    look.insert("name".into(), json!(clean));
-    match find_index(&kept, &clean)? {
-        Some(at) => kept[at] = look,
-        None => kept.push(look),
+/// A small file to share a look: what kind of file it is, its version, and the look.
+/// `_find` on the list as it came, so a saved look of the wrong type fails as Python's would.
+pub fn find_index_of(saved: &Value, name: &str) -> EngineResult<Option<usize>> {
+    let wanted = casefold(name);
+    for (index, look) in iterate(saved)?.iter().enumerate() {
+        if same_name(subscript(look, "name")?, &wanted)? {
+            return Ok(Some(index));
+        }
+    }
+    Ok(None)
+}
+
+/// `{**value, ...}`: only a dict can be spread.
+fn spread(value: &Value) -> EngineResult<Dict> {
+    match value {
+        Value::Object(map) if crate::stored::nonfinite(value).is_none() => Ok(map.clone()),
+        other => Err(type_error(format!(
+            "'{}' object is not a mapping",
+            type_name(other)
+        ))),
+    }
+}
+
+/// `[dict(look) for look in saved]`.
+fn copies(saved: &Value) -> EngineResult<Vec<Value>> {
+    let mut kept = Vec::new();
+    for look in iterate(saved)? {
+        kept.push(Value::Object(py_dict(&look)?));
     }
     Ok(kept)
 }
 
-pub fn reset_look(custom: &Dict) -> Dict {
-    let mut out = Map::new();
-    for key in ["name", "base"] {
-        if let Some(value) = custom.get(key) {
-            out.insert(key.to_string(), value.clone());
-        }
+pub fn save_look(saved: &Value, custom: &Value, name: &str) -> EngineResult<Vec<Value>> {
+    let clean = name_valid(Some(name))?;
+    let mut kept = copies(saved)?;
+    let mut look = spread(custom)?;
+    look.insert("name".into(), json!(clean));
+    match find_index_of(&Value::Array(kept.clone()), &clean)? {
+        Some(at) => kept[at] = Value::Object(look),
+        None => kept.push(Value::Object(look)),
     }
-    out
+    Ok(kept)
 }
 
-pub fn free_name(saved: &[Dict], name: &str) -> EngineResult<String> {
+pub fn reset_look(custom: &Value) -> EngineResult<Dict> {
+    let mut out = Map::new();
+    for key in ["name", "base"] {
+        if contains(custom, &json!(key))? {
+            out.insert(key.to_string(), subscript(custom, key)?.clone());
+        }
+    }
+    Ok(out)
+}
+
+pub fn free_name(saved: &Value, name: &str) -> EngineResult<String> {
     let clean = name_valid(Some(name))?;
     let stem = first(&clean, NAME_MAX - 3);
     let mut free = clean;
     let mut count = 2i64;
-    while find_index(saved, &free)?.is_some() {
+    while find_index_of(saved, &free)?.is_some() {
         free = format!("{stem} {count}");
         count += 1;
     }
     Ok(free)
 }
 
-pub fn rename_look(saved: &[Dict], old: &str, new_name: &str) -> EngineResult<Vec<Dict>> {
-    let Some(at) = find_index(saved, old)? else {
-        return Err(EngineError::value(format!(
+pub fn rename_look(saved: &Value, old: &str, new_name: &str) -> EngineResult<Vec<Value>> {
+    let Some(at) = find_index_of(saved, old)? else {
+        return Err(EngineError::look_name(format!(
             "No saved look is called {old}."
         )));
     };
     let clean = name_valid(Some(new_name))?;
-    if let Some(other) = find_index(saved, &clean)?
+    if let Some(other) = find_index_of(saved, &clean)?
         && other != at
     {
-        return Err(EngineError::value(format!(
+        return Err(EngineError::look_name(format!(
             "There is already a look called {clean}."
         )));
     }
-    let mut kept = saved.to_vec();
-    kept[at].insert("name".into(), json!(clean));
+    let mut kept = copies(saved)?;
+    let Value::Object(fields) = &mut kept[at] else {
+        return Err(type_error("saved look is not a dict"));
+    };
+    fields.insert("name".into(), json!(clean));
     Ok(kept)
 }
 
-pub fn duplicate_look(saved: &[Dict], name: &str) -> EngineResult<(Vec<Dict>, String)> {
-    let Some(at) = find_index(saved, name)? else {
-        return Err(EngineError::value(format!(
+pub fn duplicate_look(saved: &Value, name: &str) -> EngineResult<(Vec<Value>, String)> {
+    let Some(at) = find_index_of(saved, name)? else {
+        return Err(EngineError::look_name(format!(
             "No saved look is called {name}."
         )));
     };
-    let original = saved[at]
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or(name);
-    let stem = format!("{} copy", first(original, NAME_MAX - 8));
+    let held = iterate(saved)?;
+    let original = py_str(subscript(&held[at], "name")?);
+    let stem = format!("{} copy", first(&original, NAME_MAX - 8));
     let mut copy = stem.clone();
     let mut count = 2i64;
-    while find_index(saved, &copy)?.is_some() {
+    while find_index_of(saved, &copy)?.is_some() {
         copy = format!("{stem} {count}");
         count += 1;
     }
-    let mut kept = saved.to_vec();
-    let mut twin = saved[at].clone();
+    let mut kept = copies(saved)?;
+    let mut twin = spread(&held[at])?;
     twin.insert("name".into(), json!(copy));
-    kept.insert(at + 1, twin);
+    kept.insert(at + 1, Value::Object(twin));
     Ok((kept, copy))
 }
 
-pub fn delete_look(saved: &[Dict], name: &str) -> EngineResult<Vec<Dict>> {
-    if find_index(saved, name)?.is_none() {
-        return Err(EngineError::value(format!(
+pub fn delete_look(saved: &Value, name: &str) -> EngineResult<Vec<Value>> {
+    if find_index_of(saved, name)?.is_none() {
+        return Err(EngineError::look_name(format!(
             "No saved look is called {name}."
         )));
     }
     let wanted = casefold(name);
-    Ok(saved
-        .iter()
-        .filter(|look| {
-            look.get("name")
-                .and_then(Value::as_str)
-                .is_none_or(|shown| casefold(shown) != wanted)
-        })
-        .cloned()
-        .collect())
+    let mut kept = Vec::new();
+    for look in iterate(saved)? {
+        if !same_name(subscript(&look, "name")?, &wanted)? {
+            kept.push(Value::Object(py_dict(&look)?));
+        }
+    }
+    Ok(kept)
 }
 
-/// A small file to share a look: what kind of file it is, its version, and the look.
+/// `custom` with the problem's colour moved. `field` and `fixed` are read from the problem only
+/// when the Python code read them, after `dict(custom)`.
+pub fn apply_fix(
+    custom: &Value,
+    field: &mut dyn FnMut() -> EngineResult<Value>,
+    fixed_colour: &mut dyn FnMut() -> EngineResult<Value>,
+) -> EngineResult<Dict> {
+    let mut fixed = py_dict(custom)?;
+    let mut pieces = iterate(&field()?)?;
+    pieces.push(json!(""));
+    pieces.truncate(2);
+    if pieces.len() < 2 {
+        return Err(EngineError::value(
+            "not enough values to unpack (expected 2, got 1)",
+        ));
+    }
+    let group = pieces[0].clone();
+    let key = pieces[1].clone();
+    let colour = fixed_colour()?;
+    if eq(&group, &json!("accent")) {
+        fixed.insert("accent".into(), colour);
+    } else if eq(&group, &json!("colours")) {
+        let mut colours = spread(
+            &get(custom, "colours")?
+                .cloned()
+                .unwrap_or_else(|| json!({})),
+        )?;
+        hashable(&key, "dict key")?;
+        colours.insert(py_str(&key), colour);
+        fixed.insert("colours".into(), Value::Object(colours));
+    } else {
+        let mut categories = spread(
+            &get(custom, "categories")?
+                .cloned()
+                .unwrap_or_else(|| json!({})),
+        )?;
+        hashable(&key, "dict key")?;
+        categories.insert(py_str(&key), json!({"colour": colour}));
+        fixed.insert("categories".into(), Value::Object(categories));
+    }
+    Ok(fixed)
+}
+
 pub fn export_look(custom: &Value) -> String {
     let mut body = Map::new();
     body.insert("kind".into(), json!(FILE_KIND));
@@ -808,6 +871,8 @@ pub fn export_look(custom: &Value) -> String {
 /// A look read from a file. `size` is the length of the text as Python counts it, and `raw` what
 /// `json.loads` made of it, or None when it could not be read.
 pub fn import_look(size: usize, raw: Option<&Value>) -> ImportedLook {
+    let raw = raw.map(readable);
+    let raw = raw.as_ref();
     let refused = |sentence: &str| ImportedLook {
         look: None,
         problems: vec![sentence.to_string()],
@@ -826,14 +891,24 @@ pub fn import_look(size: usize, raw: Option<&Value>) -> ImportedLook {
     }
     let version = match fields.get("version") {
         Some(Value::Number(found)) if !found.to_string().contains(['.', 'e', 'E']) => {
-            found.as_i64().or(Some(i64::MAX))
+            let digits = found.to_string();
+            // Past 128 bits only the sign still matters.
+            Some(
+                digits
+                    .parse::<i128>()
+                    .unwrap_or(if digits.starts_with('-') {
+                        i128::MIN
+                    } else {
+                        i128::MAX
+                    }),
+            )
         }
         _ => None,
     };
     let Some(version) = version.filter(|version| *version >= 1) else {
         return refused("This look file has no version FlexWeek can read.");
     };
-    if version > FILE_VERSION {
+    if version > i128::from(FILE_VERSION) {
         return refused("This look was made by a newer FlexWeek. Update FlexWeek to open it.");
     }
     let body: Map<String, Value> = fields
@@ -853,11 +928,160 @@ pub fn import_look(size: usize, raw: Option<&Value>) -> ImportedLook {
     }
 }
 
+/// `value` with each NaN and Infinity turned into an empty list: no look setting takes either, and
+/// a list is turned away, with the same sentence, wherever a number is.
+fn finite(value: &Value) -> Value {
+    if nonfinite(value).is_some() {
+        return json!([]);
+    }
+    match value {
+        Value::Array(items) => Value::Array(items.iter().map(finite).collect()),
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(key, item)| (key.clone(), finite(item)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// What the rest of the import reads: `base` is the one setting whose value is printed back, so it
+/// keeps its NaN and Infinity to be printed as Python prints them.
+pub fn readable(raw: &Value) -> Value {
+    match raw {
+        Value::Object(fields) if fields.contains_key("base") => Value::Object(
+            fields
+                .iter()
+                .map(|(key, item)| {
+                    let kept = if key == "base" {
+                        item.clone()
+                    } else {
+                        finite(item)
+                    };
+                    (key.clone(), kept)
+                })
+                .collect(),
+        ),
+        other => finite(other),
+    }
+}
+
+/// A category as the look on screen paints it: the fill its colour family gives it, the fill the
+/// block is drawn with, and the ink drawn on that.
+pub struct PaintedCategory {
+    pub key: String,
+    pub fill: String,
+    pub drawn_fill: String,
+    pub ink: String,
+}
+
+/// The blocks whose fill is the category's own (a block drawn outlined or in another fill is the
+/// text on the calendar), each named as the Customise mock-up names it.
+pub fn filled_blocks(painted: &[PaintedCategory]) -> Vec<BlockInk> {
+    painted
+        .iter()
+        .filter(|block| block.drawn_fill == block.fill)
+        .filter_map(|block| {
+            let (_, info) = CATEGORIES.iter().find(|(key, _)| *key == block.key)?;
+            Some(BlockInk {
+                key: block.key.clone(),
+                label: info.label.to_string(),
+                fill: block.fill.clone(),
+                ink: block.ink.clone(),
+            })
+        })
+        .collect()
+}
+
+/// A Font knob's (body, heading) faces.
+const FONT_PAIRS: [(&str, (&str, &str)); 3] = [
+    ("sans", ("sans", "sans")),
+    ("serif", ("sans", "serif")),
+    ("mono", ("mono", "mono")),
+];
+/// A card's corner in pixels at each Corners setting, in the order Settings offers them.
+const CORNER_CARDS: [(&str, f64); 3] = [("soft", 10.0), ("sharp", 2.0), ("rounded", 16.0)];
+
+/// The name whose number is nearest `value`; the first of them on a tie.
+fn nearest(value: f64, choices: &[(&'static str, f64)]) -> &'static str {
+    let mut best = choices[0];
+    for choice in &choices[1..] {
+        if (choice.1 - value).abs() < (best.1 - value).abs() {
+            best = *choice;
+        }
+    }
+    best.0
+}
+
+/// Every knob as it is drawn. A custom look's measures answer as the nearest knob, so what reads a
+/// knob, such as setup's chips, still reads something true.
+pub fn effective_look(choice: &Value) -> Dict {
+    let selected = sanitize_look(choice);
+    let Some(Value::Object(custom)) = selected.get("custom") else {
+        return effective_knobs(&selected);
+    };
+    let base_preset = custom
+        .get("base")
+        .and_then(Value::as_str)
+        .and_then(|base| LOOK_BASES.iter().find(|(name, _, _)| *name == base))
+        .map_or("default", |(_, _, preset)| preset);
+    let mut base_look = Map::new();
+    base_look.insert("preset".into(), json!(base_preset));
+    let mut knobs = effective_knobs(&base_look);
+    for (field, knob) in [
+        ("spacing", "density"),
+        ("shadows", "depth"),
+        ("blocks", "blocks"),
+    ] {
+        if let Some(value) = custom.get(field) {
+            knobs.insert(knob.into(), value.clone());
+        }
+    }
+    let font = knobs.get("font").and_then(Value::as_str).unwrap_or("sans");
+    let pair = FONT_PAIRS
+        .iter()
+        .find(|(name, _)| *name == font)
+        .map_or(("sans", "sans"), |(_, pair)| *pair);
+    let mut body = pair.0;
+    if selected.get("preset") == Some(&json!("paper")) && font == "serif" {
+        body = "serif";
+    }
+    let heading = pair.1;
+    let body = custom
+        .get("body_font")
+        .and_then(Value::as_str)
+        .unwrap_or(body);
+    let heading = custom
+        .get("heading_font")
+        .and_then(Value::as_str)
+        .unwrap_or(heading);
+    if (body, heading) != pair {
+        let font = if body == "mono" {
+            "mono"
+        } else if body == "serif" || heading == "serif" {
+            "serif"
+        } else {
+            "sans"
+        };
+        knobs.insert("font".into(), json!(font));
+    }
+    if let Some(scale) = number(custom.get("text_scale")) {
+        knobs.insert("text".into(), json!(nearest(scale, &TEXT_SCALE)));
+    }
+    if let Some(corners) = number(custom.get("corners")) {
+        knobs.insert("corners".into(), json!(nearest(corners, &CORNER_CARDS)));
+    }
+    knobs
+}
+
 pub fn readability(
     custom: &Map<String, Value>,
     palette: &ReadabilityPalette,
     filled_blocks: &[BlockInk],
-) -> Vec<ReadabilityProblem> {
+) -> EngineResult<Vec<ReadabilityProblem>> {
+    let grounds_of =
+        |names: &[&str]| -> Vec<Value> { names.iter().map(|name| json!(name)).collect() };
     let w = palette.window.as_str();
     let p = palette.panel.as_str();
     let g = palette.grid.as_str();
@@ -866,21 +1090,26 @@ pub fn readability(
         .get("accent")
         .and_then(Value::as_str)
         .is_some_and(|a| a.starts_with('#'));
-    let tint = mix(&palette.accent, &palette.window, 0.10);
-    let dark_page = luminance(&palette.window) < MID_GREY;
-    let alike: Vec<&str> = filled_blocks
-        .iter()
-        .filter(|b| (luminance(&b.fill) < MID_GREY) == dark_page)
-        .map(|b| b.fill.as_str())
-        .collect();
+    let tint = mix(&palette.accent, &palette.window, 0.10)?;
+    let dark_page = luminance(&palette.window)? < MID_GREY;
+    let mut alike: Vec<&str> = Vec::new();
+    for block in filled_blocks {
+        if (luminance(&block.fill)? < MID_GREY) == dark_page {
+            alike.push(block.fill.as_str());
+        }
+    }
     let mut under: Vec<&str> = surfaces.to_vec();
     under.extend(alike.iter().copied());
-    let mut text_fixed = fit_lightness(&palette.text, &under, AA_TEXT);
-    if under
-        .iter()
-        .any(|ground| contrast(&text_fixed, ground) < AA_TEXT)
-    {
-        text_fixed = fit_lightness(&palette.text, &surfaces, AA_TEXT);
+    let mut text_fixed = fit_lightness(&palette.text, &grounds_of(&under), AA_TEXT)?;
+    let mut unreadable = false;
+    for under_ground in &under {
+        if contrast(&text_fixed, under_ground)? < AA_TEXT {
+            unreadable = true;
+            break;
+        }
+    }
+    if unreadable {
+        text_fixed = fit_lightness(&palette.text, &grounds_of(&surfaces), AA_TEXT)?;
     }
     let mut found = Vec::new();
     let checks = [
@@ -958,18 +1187,18 @@ pub fn readability(
         } else {
             AA_TEXT
         };
-        let ratio = contrast(ink, ground);
+        let ratio = contrast(ink, ground)?;
         if ratio < need {
             let fixed = if field == "accent" {
                 fit_lightness(
                     &palette.accent,
-                    &[surfaces[0], surfaces[1], tint.as_str()],
+                    &grounds_of(&[surfaces[0], surfaces[1], tint.as_str()]),
                     need,
-                )
+                )?
             } else if field == "text" {
                 text_fixed.clone()
             } else {
-                fit_lightness(ink, &surfaces, AA_TEXT)
+                fit_lightness(ink, &grounds_of(&surfaces), AA_TEXT)?
             };
             let field_vec = if field == "accent" {
                 vec!["accent".to_string()]
@@ -987,7 +1216,7 @@ pub fn readability(
         }
     }
     for block in filled_blocks {
-        let ratio = contrast(&block.ink, &block.fill);
+        let ratio = contrast(&block.ink, &block.fill)?;
         if ratio < AA_TEXT {
             found.push(ReadabilityProblem {
                 words: format!("Text on {} blocks", block.label),
@@ -995,35 +1224,178 @@ pub fn readability(
                 ground: block.fill.clone(),
                 ratio,
                 field: vec!["categories".to_string(), block.key.clone()],
-                fixed: fit_lightness(&block.fill, &[block.ink.as_str()], AA_TEXT),
+                fixed: fit_lightness(&block.fill, &grounds_of(&[block.ink.as_str()]), AA_TEXT)?,
             });
         }
     }
-    found
+    Ok(found)
 }
 
-pub fn apply_fix(custom: &Map<String, Value>, problem: &ReadabilityProblem) -> Map<String, Value> {
-    let mut fixed = custom.clone();
-    let group = problem.field.first().map(String::as_str).unwrap_or("");
-    let key = problem.field.get(1).map(String::as_str).unwrap_or("");
-    if group == "accent" {
-        fixed.insert("accent".into(), json!(problem.fixed));
-    } else if group == "colours" {
-        let mut colours = custom
-            .get("colours")
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
-        colours.insert(key.to_string(), json!(problem.fixed));
-        fixed.insert("colours".into(), Value::Object(colours));
-    } else if group == "categories" {
-        let mut categories = custom
-            .get("categories")
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
-        categories.insert(key.to_string(), json!({"colour": problem.fixed}));
-        fixed.insert("categories".into(), Value::Object(categories));
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn knobs(choice: Value) -> Vec<(String, String)> {
+        effective_look(&choice)
+            .into_iter()
+            .map(|(knob, value)| (knob, value.as_str().unwrap_or("?").to_string()))
+            .collect()
     }
-    fixed
+
+    fn pairs(rows: &[(&str, &str)]) -> Vec<(String, String)> {
+        rows.iter()
+            .map(|(knob, value)| (knob.to_string(), value.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn effective_look_of_nothing_is_the_defaults() {
+        assert_eq!(
+            knobs(Value::Null),
+            pairs(&[
+                ("surface", "layered"),
+                ("corners", "soft"),
+                ("depth", "soft"),
+                ("font", "sans"),
+                ("blocks", "edge"),
+                ("density", "comfortable"),
+                ("text", "normal"),
+            ])
+        );
+    }
+
+    #[test]
+    fn effective_look_puts_the_moved_knobs_over_the_preset() {
+        assert_eq!(
+            knobs(json!({"preset": "paper", "knobs": {"text": "large"}})),
+            pairs(&[
+                ("surface", "layered"),
+                ("corners", "soft"),
+                ("depth", "none"),
+                ("font", "serif"),
+                ("blocks", "edge"),
+                ("density", "comfortable"),
+                ("text", "large"),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_custom_looks_measures_answer_as_the_nearest_knob() {
+        let worn = json!({"custom": {"base": "poster", "corners": 13, "text_scale": 1.3}});
+        assert_eq!(
+            knobs(worn),
+            pairs(&[
+                ("surface", "layered"),
+                ("corners", "soft"),
+                ("depth", "bold"),
+                ("font", "sans"),
+                ("blocks", "edge"),
+                ("density", "comfortable"),
+                ("text", "large"),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_custom_look_takes_its_spacing_shadows_and_blocks() {
+        let worn = json!({
+            "custom": {"base": "light", "spacing": "compact", "shadows": "bold", "blocks": "filled"}
+        });
+        let got = knobs(worn);
+        assert!(got.contains(&("density".to_string(), "compact".to_string())));
+        assert!(got.contains(&("depth".to_string(), "bold".to_string())));
+        assert!(got.contains(&("blocks".to_string(), "filled".to_string())));
+    }
+
+    #[test]
+    fn the_font_knob_follows_the_body_face_first_then_a_serif_heading() {
+        let font_of = |custom: Value| {
+            knobs(json!({ "custom": custom }))
+                .into_iter()
+                .find(|(knob, _)| knob == "font")
+                .map(|(_, value)| value)
+        };
+        assert_eq!(
+            font_of(json!({"base": "system", "body_font": "serif"})).as_deref(),
+            Some("serif")
+        );
+        assert_eq!(
+            font_of(json!({"base": "system", "body_font": "mono"})).as_deref(),
+            Some("mono")
+        );
+        // A mono heading over the sans body is neither mono nor serif, so it reads as sans.
+        assert_eq!(
+            font_of(json!({"base": "system", "heading_font": "mono"})).as_deref(),
+            Some("sans")
+        );
+        assert_eq!(
+            font_of(json!({"base": "system", "heading_font": "serif"})).as_deref(),
+            Some("serif")
+        );
+    }
+
+    #[test]
+    fn an_import_reads_a_nan_set_as_the_colours_as_not_a_set() {
+        let raw = json!({
+            "kind": FILE_KIND,
+            "version": 1,
+            "base": "poster",
+            "colours": {crate::stored::NONFINITE: "nan"},
+        });
+        let got = import_look(0, Some(&raw));
+        assert_eq!(
+            got.problems,
+            vec!["The colours were not a set of named colours, so they were left out."]
+        );
+        assert_eq!(
+            Value::Object(got.look.unwrap()),
+            json!({"base": "poster", "name": UNNAMED})
+        );
+    }
+
+    #[test]
+    fn an_import_prints_a_nan_base_as_python_does() {
+        let raw =
+            json!({"kind": FILE_KIND, "version": 1, "base": {crate::stored::NONFINITE: "nan"}});
+        let got = import_look(0, Some(&raw));
+        assert!(got.look.is_none());
+        assert_eq!(
+            got.problems,
+            vec!["It starts from a look FlexWeek does not have: 'nan'."]
+        );
+    }
+
+    #[test]
+    fn readable_empties_every_non_finite_number_but_the_one_under_base() {
+        let nan = json!({crate::stored::NONFINITE: "nan"});
+        let raw = json!({"base": nan, "corners": nan, "colours": {"text": [nan]}});
+        assert_eq!(
+            readable(&raw),
+            json!({"base": nan, "corners": [], "colours": {"text": [[]]}})
+        );
+        // Without a base the whole value is read, a bare NaN included.
+        assert_eq!(readable(&nan), json!([]));
+        assert_eq!(readable(&json!({"name": nan})), json!({"name": []}));
+    }
+
+    #[test]
+    fn only_blocks_drawn_in_their_own_fill_are_checked() {
+        let painted = |key: &str, drawn: &str| PaintedCategory {
+            key: key.to_string(),
+            fill: "#aaaaaa".to_string(),
+            drawn_fill: drawn.to_string(),
+            ink: "#000000".to_string(),
+        };
+        let kept = filled_blocks(&[
+            painted("class", "#aaaaaa"),
+            painted("assignments", "#bbbbbb"),
+            painted("nowhere", "#aaaaaa"),
+        ]);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(
+            (kept[0].key.as_str(), kept[0].label.as_str()),
+            ("class", "School")
+        );
+    }
 }

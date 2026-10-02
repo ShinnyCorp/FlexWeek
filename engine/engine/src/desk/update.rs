@@ -3,6 +3,8 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
+use crate::error::{EngineError, EngineResult};
+
 pub const RELEASES_URL: &str = "https://api.github.com/repos/j0nsh1n/FlexWeek/releases/latest";
 pub const RELEASE_PAGE: &str = "https://github.com/j0nsh1n/FlexWeek/releases/latest";
 pub const RELEASE_TAG_PAGE: &str = "https://github.com/j0nsh1n/FlexWeek/releases/tag/";
@@ -117,54 +119,79 @@ pub struct Update {
     pub notes: String,
 }
 
-pub fn available(release: &serde_json::Value, kind: &str, current: &str) -> Option<Update> {
-    let release = release.as_object()?;
-    if release.get("draft").and_then(|v| v.as_bool()) == Some(true)
-        || release.get("prerelease").and_then(|v| v.as_bool()) == Some(true)
-    {
-        return None;
+pub fn available(
+    release: &serde_json::Value,
+    kind: &str,
+    current: &str,
+) -> EngineResult<Option<Update>> {
+    use crate::desk::pyops::get;
+    use crate::stored::truthy;
+    if !matches!(release, serde_json::Value::Object(_)) {
+        return Ok(None);
     }
-    let tag = release.get("tag_name").and_then(|v| v.as_str())?;
+    if truthy(get(release, "draft")?) || truthy(get(release, "prerelease")?) {
+        return Ok(None);
+    }
+    let Some(tag) = get(release, "tag_name")?.and_then(|v| v.as_str()) else {
+        return Ok(None);
+    };
     if !is_newer(tag, current) {
-        return None;
+        return Ok(None);
     }
-    let assets = release.get("assets").and_then(|v| v.as_array())?;
-    let wanted = asset_name(kind)?;
-    let mut by_name: Vec<(String, String)> = Vec::new();
+    let Some(assets) = get(release, "assets")?.and_then(|v| v.as_array()) else {
+        return Ok(None);
+    };
+    let wanted = asset_name(kind).ok_or_else(|| EngineError::key(kind))?;
+    let mut by_name: Vec<(String, Option<serde_json::Value>)> = Vec::new();
     for item in assets {
-        let Some(obj) = item.as_object() else {
+        let serde_json::Value::Object(obj) = item else {
             continue;
         };
         let Some(name) = obj.get("name").and_then(|v| v.as_str()) else {
             continue;
         };
-        let url = obj
-            .get("browser_download_url")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        by_name.push((name.to_string(), url));
+        let url = obj.get("browser_download_url").cloned();
+        match by_name.iter_mut().find(|(known, _)| known == name) {
+            Some(entry) => entry.1 = url,
+            None => by_name.push((name.to_string(), url)),
+        }
     }
-    let url = by_name
-        .iter()
-        .find(|(name, _)| name == wanted)
-        .map(|(_, url)| url.clone())?;
-    let checksum_url = by_name
-        .iter()
-        .find(|(name, _)| name == &format!("{wanted}.sha256"))
-        .map(|(_, url)| url.clone())?;
-    let notes = release
-        .get("body")
+    let found = |name: &str| -> Option<String> {
+        by_name
+            .iter()
+            .find(|(known, _)| known == name)
+            .and_then(|(_, url)| url.as_ref())
+            .and_then(|url| url.as_str())
+            .map(str::to_string)
+    };
+    let (Some(url), Some(checksum_url)) = (found(wanted), found(&format!("{wanted}.sha256")))
+    else {
+        return Ok(None);
+    };
+    let notes = get(release, "body")?
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    Some(Update {
+    Ok(Some(Update {
         version: tag.strip_prefix('v').unwrap_or(tag).to_string(),
         asset: wanted.to_string(),
         url,
         checksum_url,
         notes,
-    })
+    }))
+}
+
+pub fn due_for_check(settings: &serde_json::Value, now_ms: i64) -> EngineResult<bool> {
+    use crate::desk::pyops::{get, or_default, to_int};
+    use crate::stored::truthy;
+    if let Some(check) = get(settings, "check")?
+        && !truthy(Some(check))
+    {
+        return Ok(false);
+    }
+    let last = to_int(&or_default(get(settings, "last_ms")?, serde_json::json!(0)))?;
+    let now = i128::from(now_ms);
+    Ok(last > now || now - last >= i128::from(CHECK_EVERY_HOURS) * 3_600_000)
 }
 
 pub fn release_from_page(location: &str) -> Option<serde_json::Value> {
@@ -206,13 +233,8 @@ pub fn expected_digest(checksum_text: &str, asset: &str) -> Option<String> {
 }
 
 pub fn verified(payload: &[u8], digest: Option<&str>) -> bool {
-    let Some(digest) = digest else {
-        return false;
-    };
-    if digest.len() != 64 {
-        return false;
-    }
-    sha256_hex(payload) == digest.to_lowercase()
+    !digest.is_none_or(|text| text.is_empty() || text.chars().count() != 64)
+        && digest.is_some_and(|text| sha256_hex(payload) == text.to_lowercase())
 }
 
 pub fn sha256_hex_for_migration(text: &str) -> String {
@@ -225,38 +247,31 @@ fn sha256_hex(data: &[u8]) -> String {
 }
 
 pub fn sanitize_updates(raw: &serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+    use crate::desk::pyops::is_int;
+    use serde_json::{Value, json};
     let mut clean = serde_json::Map::new();
-    clean.insert("check".into(), serde_json::Value::Bool(true));
-    clean.insert("last_ms".into(), serde_json::json!(0));
-    clean.insert("skip".into(), serde_json::json!(""));
-    let Some(raw) = raw.as_object() else {
+    clean.insert("check".into(), json!(true));
+    clean.insert("last_ms".into(), json!(0));
+    clean.insert("skip".into(), json!(""));
+    let Value::Object(raw) = raw else {
         return clean;
     };
-    if raw.get("check").and_then(|v| v.as_bool()) == Some(false) {
-        clean.insert("check".into(), serde_json::Value::Bool(false));
+    if raw.get("check") == Some(&json!(false)) {
+        clean.insert("check".into(), json!(false));
     }
-    if let Some(last) = raw.get("last_ms").and_then(|v| v.as_i64())
-        && (0..=4_102_444_800_000).contains(&last)
+    if let Some(last) = raw.get("last_ms")
+        && is_int(last)
+        && let Ok(found) = crate::desk::pyops::to_int(last)
+        && (0..=4_102_444_800_000).contains(&found)
     {
-        clean.insert("last_ms".into(), serde_json::json!(last));
+        clean.insert("last_ms".into(), last.clone());
     }
-    if let Some(skip) = raw.get("skip").and_then(|v| v.as_str())
-        && skip.len() <= 32
+    if let Some(Value::String(skip)) = raw.get("skip")
+        && skip.chars().count() <= 32
     {
-        clean.insert("skip".into(), serde_json::json!(skip));
+        clean.insert("skip".into(), json!(skip));
     }
     clean
-}
-
-pub fn due_for_check(settings: &serde_json::Map<String, serde_json::Value>, now_ms: i64) -> bool {
-    if settings.get("check").and_then(|v| v.as_bool()) == Some(false) {
-        return false;
-    }
-    let last = settings
-        .get("last_ms")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    last > now_ms || now_ms - last >= CHECK_EVERY_HOURS * 3_600_000
 }
 
 mod sha256 {

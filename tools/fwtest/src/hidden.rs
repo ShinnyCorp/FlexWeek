@@ -2,8 +2,10 @@
 //!
 //! KWin provides Xwayland on a virtual screen locally. Xvfb and Openbox provide
 //! the same X11 interface on Linux CI. The state file records the processes this
-//! module started, so stop signals those PIDs only when the start time and
-//! command name still match. Each checkout has its own state, logs and KWin
+//! module started. Stop signals those PIDs when the start time still matches.
+//! The recorded name is a label. A name that does not match yet is not a reason
+//! to skip, and nothing is looked up by name. A reused PID has a different start
+//! time and is left alone. Each checkout has its own state, logs and KWin
 //! socket. The display number is the one the server allocates.
 
 use std::collections::HashMap;
@@ -473,15 +475,25 @@ fn process_state(proc_root: &Path, pid: i32) -> Option<(String, u64)> {
     Some((state, started))
 }
 
-fn alive(proc_root: &Path, process: &OwnedProcess) -> bool {
-    let Some((state, started)) = process_state(proc_root, process.pid) else {
-        return false;
-    };
-    if state == "Z" || started != process.started {
-        return false;
+/// The recorded PID is still that process. The start time is the identity.
+/// The command name is not read: exec can still be pending, and a mismatch
+/// must not skip the stop.
+fn same_process(proc_root: &Path, process: &OwnedProcess) -> bool {
+    match process_state(proc_root, process.pid) {
+        Some((state, started)) => {
+            started == process.started && !matches!(state.as_str(), "Z" | "X" | "x")
+        }
+        None => false,
     }
-    fs::read_to_string(proc_root.join(process.pid.to_string()).join("comm"))
-        .is_ok_and(|text| text.trim() == process.name)
+}
+
+/// Still the recorded program. A session counts as already running only when
+/// the recorded names are the ones in those PIDs, so a half-started process is
+/// not reused as a finished session. Stop does not use this.
+fn alive(proc_root: &Path, process: &OwnedProcess) -> bool {
+    same_process(proc_root, process)
+        && fs::read_to_string(proc_root.join(process.pid.to_string()).join("comm"))
+            .is_ok_and(|text| text.trim() == process.name)
 }
 
 fn owned(proc_root: &Path, pid: i32, name: &str) -> Result<OwnedProcess, String> {
@@ -622,22 +634,31 @@ fn signal_until_dead(
     process: &OwnedProcess,
     kill: &mut dyn FnMut(i32, i32) -> io::Result<()>,
 ) -> Result<(), String> {
-    if !alive(proc_root, process) {
+    if !same_process(proc_root, process) {
         return Ok(());
     }
     kill(process.pid, libc_signal::TERM).map_err(|error| error.to_string())?;
-    let deadline = Instant::now() + Duration::from_secs(3);
-    while alive(proc_root, process) && Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(100));
-    }
-    if alive(proc_root, process) {
+    if still_running(proc_root, process, Duration::from_secs(3)) {
         kill(process.pid, libc_signal::KILL).map_err(|error| error.to_string())?;
-        let deadline = Instant::now() + Duration::from_secs(3);
-        while alive(proc_root, process) && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(100));
-        }
+        let _ = still_running(proc_root, process, Duration::from_secs(3));
     }
     Ok(())
+}
+
+/// True when `process` is still the recorded one at the end of `budget`.
+/// The first looks are close together so a process that dies at once is not
+/// charged a long pause. The budget itself is unchanged.
+fn still_running(proc_root: &Path, process: &OwnedProcess, budget: Duration) -> bool {
+    let deadline = Instant::now() + budget;
+    let mut pause = Duration::from_millis(1);
+    while same_process(proc_root, process) {
+        if Instant::now() >= deadline {
+            return true;
+        }
+        thread::sleep(pause);
+        pause = (pause * 2).min(Duration::from_millis(50));
+    }
+    false
 }
 
 fn real_kill(pid: i32, signal: i32) -> io::Result<()> {
@@ -1733,6 +1754,84 @@ mod tests {
     }
 
     #[test]
+    fn stopping_immediately_catches_every_child() {
+        let root = temp_dir();
+        struct Sweep(PathBuf);
+        impl Drop for Sweep {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _sweep = Sweep(root.clone());
+        let source = root.join("linger.rs");
+        fs::write(&source, "fn main() { loop { std::thread::park(); } }\n").unwrap();
+        let bin = root.join("linger");
+        let compiled = Command::new("rustc")
+            .args(["--edition", "2024", "-O", "-o"])
+            .arg(&bin)
+            .arg(&source)
+            .output()
+            .unwrap();
+        assert!(
+            compiled.status.success(),
+            "{}",
+            String::from_utf8_lossy(&compiled.stderr)
+        );
+
+        struct Reap(Option<Child>);
+        impl Drop for Reap {
+            fn drop(&mut self) {
+                if let Some(child) = self.0.as_mut() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+
+        for n in 0..300 {
+            let mut reap = Reap(Some(Command::new(&bin).spawn().unwrap()));
+            let child = reap.0.as_mut().unwrap();
+            let pid = child.id() as i32;
+            let owned = owned(Path::new("/proc"), pid, "linger").unwrap();
+            let state = root.join("session.json");
+            save_session(
+                &state,
+                &Session {
+                    server: Server::Kwin,
+                    display: String::new(),
+                    processes: vec![owned],
+                    bus: "unix:path=/tmp/private".to_string(),
+                },
+            )
+            .unwrap();
+            stop_at(&state, Path::new("/proc"), &mut real_kill).unwrap();
+            let started = Instant::now();
+            let mut gone = false;
+            while started.elapsed() < Duration::from_secs(2) {
+                match child.try_wait() {
+                    Ok(Some(_)) => {
+                        gone = true;
+                        break;
+                    }
+                    Ok(None) if !Path::new(&format!("/proc/{pid}")).exists() => {
+                        gone = true;
+                        break;
+                    }
+                    Ok(None) => thread::sleep(Duration::from_millis(5)),
+                    Err(_) => {
+                        gone = true;
+                        break;
+                    }
+                }
+            }
+            assert!(gone, "iteration {n} pid {pid} still running after stop");
+            // The child is already gone. Drop must not signal this PID later.
+            reap.0 = None;
+            assert!(!state.exists(), "iteration {n}");
+        }
+    }
+
+    #[test]
     fn private_bus_has_no_activatable_services() {
         if !which("dbus-daemon") || !which("busctl") {
             panic!(
@@ -1778,6 +1877,52 @@ mod tests {
             "as 1 \"org.freedesktop.DBus\""
         );
         assert!(!BUS_CONFIG.contains("standard_session_servicedirs"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn stop_signals_a_recorded_process_before_its_name_matches() {
+        let root = temp_dir();
+        let proc_root = root.join("proc");
+        let pid = 50;
+        let started = 77u64;
+        // Forked and recorded, exec still pending: the start time is ours, the
+        // name is still the parent's. A bystander with the recorded name and a
+        // different PID must not be found.
+        write_proc(&proc_root, pid, "fwtest", "S", started);
+        write_proc(&proc_root, 99, "kwin_wayland", "S", 5);
+        let state = root.join("session.json");
+        save_session(
+            &state,
+            &Session {
+                server: Server::Kwin,
+                display: String::new(),
+                processes: vec![OwnedProcess {
+                    pid,
+                    name: "kwin_wayland".to_string(),
+                    started,
+                }],
+                bus: "unix:path=/tmp/private".to_string(),
+            },
+        )
+        .unwrap();
+        let mut signals = Vec::new();
+        stop_at(&state, &proc_root, &mut |signaled, signal| {
+            signals.push((signaled, signal));
+            let stat = proc_root.join(signaled.to_string()).join("stat");
+            let text = fs::read_to_string(&stat).unwrap().replace(" S ", " Z ");
+            fs::write(stat, text).unwrap();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            signals,
+            vec![(pid, libc_signal::TERM)],
+            "stop left the recorded process running and the state file is gone"
+        );
+        assert!(!state.exists());
+        let bystander = fs::read_to_string(proc_root.join("99").join("comm")).unwrap();
+        assert_eq!(bystander.trim(), "kwin_wayland");
         let _ = fs::remove_dir_all(root);
     }
 

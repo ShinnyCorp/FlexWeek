@@ -34,25 +34,21 @@ def capture_step(
         json.dumps(after_blocks),
         json.dumps(before_assignments),
         json.dumps(after_assignments),
-        sorted(changed_ids),
+        changed_ids,
     )
     return None if raw is None else json.loads(raw)
 
 
 def push_step(stack: list[dict], step: dict) -> None:
-    updated = json.loads(flexweek_engine.history_push_step(json.dumps(stack), json.dumps(step)))
-    stack.clear()
-    stack.extend(updated)
+    flexweek_engine.history_push(stack, step)
 
 
 def join_step(stack: list[dict], step: dict) -> None:
-    """Fold `step` into the step before it, so one Undo takes both back."""
-    updated = json.loads(flexweek_engine.history_join_step(json.dumps(stack), json.dumps(step)))
-    stack.clear()
-    stack.extend(updated)
+    """Fold `step` into the step before it, so one Undo takes both back: homework added and the time
+    FlexWeek gave it straight after. Each week and assignment keeps the earlier before and the later
+    after."""
+    flexweek_engine.history_join(stack, step)
 
 
 def mark_stale(steps: list[dict], week_start: str) -> None:
-    updated = json.loads(flexweek_engine.history_mark_stale(json.dumps(steps), week_start))
-    steps.clear()
-    steps.extend(updated)
+    flexweek_engine.history_mark_stale(steps, week_start)

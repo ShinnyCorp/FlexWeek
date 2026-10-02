@@ -1,16 +1,18 @@
 //! Reminder due checks from `desktop/native/remind.py`.
 
-use std::collections::{HashMap, HashSet};
-
 use chrono::Datelike;
 use serde_json::{Map, Value, json};
 
 use crate::desk::calendar::DAYS;
-use crate::desk::pydate::{add_days_text, calendar_date, monday_text};
-use crate::desk::reuse::occurrence_days;
+use crate::desk::planning::occurrence_days;
+use crate::desk::pydate::{calendar_date, monday_text};
+use crate::desk::pyops::{
+    Cmp, PyDict, compare, contains, eq, get, iterate, or_default, py_dict, to_int, tuple_index,
+};
+use crate::desk::pyval::{list_of, subscript, type_error};
 use crate::desk::weekmodel::hhmm_text;
-use crate::error::{EngineError, EngineResult, ErrorKind};
-use crate::stored::{Dict, dict, item, py_int, py_list, py_str, text, truthy, type_name};
+use crate::error::{EngineError, EngineResult};
+use crate::stored::{Dict, attribute_error, py_str, text, truthy, type_name};
 use crate::time::{hhmm_to_minutes, py_int as text_int};
 
 pub const REMINDER_WINDOW_MIN: i64 = 2;
@@ -19,12 +21,13 @@ pub const ALARM_SNOOZE_MIN: i64 = 5;
 pub const ALARM_SNOOZE_MS: i64 = ALARM_SNOOZE_MIN * 60_000;
 
 /// `int(prefs["reminder_lead_min"])`, or the default when there are no prefs or the key is None.
-pub fn reminder_lead_min(prefs: Option<&Dict>, default: i64) -> EngineResult<i64> {
-    match prefs.and_then(|prefs| prefs.get("reminder_lead_min")) {
-        Some(value) if !value.is_null() && prefs.is_some_and(|prefs| !prefs.is_empty()) => {
-            py_int(value)
-        }
-        _ => Ok(default),
+pub fn reminder_lead_min(prefs: &Value, default: i64) -> EngineResult<i128> {
+    if !truthy(Some(prefs)) {
+        return Ok(i128::from(default));
+    }
+    match get(prefs, "reminder_lead_min")? {
+        None | Some(Value::Null) => Ok(i128::from(default)),
+        Some(_) => to_int(subscript(prefs, "reminder_lead_min")?),
     }
 }
 
@@ -52,106 +55,81 @@ pub fn clock_parts(
 }
 
 pub fn start_alert_due(start_min: i64, now_min: i64, lead: i64) -> bool {
-    let start = start_min;
-    let lead = lead.max(0);
-    start - lead <= now_min && now_min <= start
+    let start = i128::from(start_min);
+    let lead = i128::from(lead).max(0);
+    start - lead <= i128::from(now_min) && i128::from(now_min) <= start
 }
 
 pub fn song_due(start_min: i64, now_min: i64) -> bool {
-    start_min <= now_min && now_min <= start_min + REMINDER_WINDOW_MIN
+    i128::from(start_min) <= i128::from(now_min)
+        && i128::from(now_min) <= i128::from(start_min) + i128::from(REMINDER_WINDOW_MIN)
 }
 
 pub fn reminder_key(week_start: &str, block_id: &str, day: i64, start: &str) -> String {
     [week_start, block_id, &day.to_string(), start].join("|")
 }
 
-pub fn alarm_key(iso_date: &str, alarm: &Dict) -> String {
-    let shown = |name: &str| {
-        alarm
-            .get(name)
-            .filter(|value| truthy(Some(value)))
-            .map(py_str)
-            .unwrap_or_default()
+pub fn alarm_key(iso_date: &str, alarm: &Value) -> EngineResult<String> {
+    let shown = |name: &str| -> EngineResult<String> {
+        Ok(match get(alarm, name)? {
+            Some(value) if truthy(Some(value)) => py_str(value),
+            _ => String::new(),
+        })
     };
-    [iso_date, &shown("id"), &shown("time")].join("|")
+    Ok([iso_date, &shown("id")?, &shown("time")?].join("|"))
 }
 
-/// `item["id"]`, as Python reads a row of any type.
-fn type_error(message: impl Into<String>) -> EngineError {
-    EngineError {
-        kind: ErrorKind::Type,
-        message: message.into(),
+pub fn reminder_blocks(blocks: &Value, trace: &Value) -> EngineResult<Vec<Value>> {
+    let mut sources = PyDict::new();
+    for block in iterate(blocks)? {
+        sources.set(subscript(&block, "id")?.clone(), block.clone())?;
     }
-}
-
-fn row_id(row: &Value) -> EngineResult<&Value> {
-    match row {
-        Value::Object(map) => item(map, "id"),
-        Value::Array(_) => Err(type_error(
-            "list indices must be integers or slices, not str",
-        )),
-        other => Err(type_error(format!(
-            "'{}' object is not subscriptable",
-            type_name(other)
-        ))),
+    if !truthy(Some(trace)) {
+        return iterate(blocks);
     }
-}
-
-pub fn reminder_blocks(blocks: &[Value], trace: Option<&Value>) -> EngineResult<Vec<Value>> {
-    let mut sources: HashMap<String, &Value> = HashMap::new();
-    for block in blocks {
-        sources.insert(row_id(block)?.to_string(), block);
-    }
-    let Some(trace) = trace.filter(|value| truthy(Some(value))) else {
-        return Ok(blocks.to_vec());
-    };
-    let mut out = Vec::new();
-    for block in blocks {
-        if dict(block)?.get("kind").and_then(Value::as_str) == Some("locked") {
-            out.push(block.clone());
+    let mut locked = Vec::new();
+    for block in iterate(blocks)? {
+        if eq(
+            get(&block, "kind")?.unwrap_or(&Value::Null),
+            &json!("locked"),
+        ) {
+            locked.push(block);
         }
     }
-    let trace = dict(trace)?;
-    for placed in py_list(trace.get("placed"))? {
-        let fields = dict(&placed)?;
-        if fields.get("kind").and_then(Value::as_str) != Some("flexible") {
+    let mut placed = Vec::new();
+    for item in iterate(&or_default(get(trace, "placed")?, json!([])))? {
+        if !eq(
+            get(&item, "kind")?.unwrap_or(&Value::Null),
+            &json!("flexible"),
+        ) {
             continue;
         }
-        let Some(source) = sources.get(&item(fields, "id")?.to_string()) else {
-            out.push(placed.clone());
+        let Some(source) = sources.get(subscript(&item, "id")?)? else {
+            placed.push(item);
             continue;
         };
-        let source = dict(source)?;
-        let mut merged = fields.clone();
-        merged.insert(
-            "completed".into(),
-            source.get("completed").cloned().unwrap_or(Value::Null),
-        );
-        merged.insert(
-            "missed_days".into(),
-            Value::Array(py_list(source.get("missed_days"))?),
-        );
-        let title = match source.get("title") {
+        let completed = get(source, "completed")?.cloned().unwrap_or(Value::Null);
+        let missed = Value::Array(list_of(&or_default(
+            get(source, "missed_days")?,
+            json!([]),
+        ))?);
+        let title = match get(source, "title")? {
             Some(title) if truthy(Some(title)) => title.clone(),
-            _ => fields.get("title").cloned().unwrap_or(Value::Null),
+            _ => get(&item, "title")?.cloned().unwrap_or(Value::Null),
         };
+        let mut merged = py_dict(&item)?;
+        merged.insert("completed".into(), completed);
+        merged.insert("missed_days".into(), missed);
         merged.insert("title".into(), title);
-        out.push(Value::Object(merged));
+        placed.push(Value::Object(merged));
     }
-    Ok(out)
-}
-
-fn day_index(day: i64) -> EngineResult<usize> {
-    let shifted = if day < 0 { day + 7 } else { day };
-    usize::try_from(shifted)
-        .ok()
-        .filter(|at| *at < DAYS.len())
-        .ok_or_else(|| EngineError::index("tuple index out of range"))
+    locked.extend(placed);
+    Ok(locked)
 }
 
 /// A reminder key built from a block's id: `"|".join` takes strings only.
-fn key_part<'a>(block: &'a Dict, name: &str, position: usize) -> EngineResult<&'a str> {
-    match item(block, name)? {
+fn key_part<'a>(block: &'a Value, name: &str, position: usize) -> EngineResult<&'a str> {
+    match subscript(block, name)? {
         Value::String(text) => Ok(text),
         other => Err(type_error(format!(
             "sequence item {position}: expected str instance, {} found",
@@ -161,36 +139,34 @@ fn key_part<'a>(block: &'a Dict, name: &str, position: usize) -> EngineResult<&'
 }
 
 pub fn todays_starts(
-    blocks: &[Value],
-    trace: Option<&Value>,
+    blocks: &Value,
+    trace: &Value,
     today_iso: &str,
-) -> EngineResult<Vec<(Value, i64, i64, String)>> {
+) -> EngineResult<Vec<(Value, Value, i64, String)>> {
     let week_start = monday_text(today_iso)?;
     let mut rows = Vec::new();
     for block in reminder_blocks(blocks, trace)? {
-        let fields = dict(&block)?;
-        let start = fields.get("start");
-        if !truthy(start) || truthy(fields.get("completed")) {
+        let start = get(&block, "start")?;
+        if !truthy(start) || truthy(get(&block, "completed")?) {
             continue;
         }
         let start = start.unwrap_or(&Value::Null);
-        for day in occurrence_days(&block) {
-            let missed = match fields.get("missed_days") {
-                Some(value) if truthy(Some(value)) => value.as_array().cloned().unwrap_or_default(),
-                _ => Vec::new(),
-            };
-            if missed.iter().any(|value| value.as_i64() == Some(day)) {
+        for day in occurrence_days(&block)? {
+            let missed = or_default(get(&block, "missed_days")?, json!([]));
+            if contains(&missed, &day)? {
                 continue;
             }
-            if add_days_text(&week_start, day)? != today_iso {
+            let shown =
+                crate::stored::add_days_of(crate::desk::pydate::from_iso(&week_start)?, &day)?;
+            if crate::desk::pydate::iso_text(shown) != today_iso {
                 continue;
             }
             let start = text(start, "split")?;
             let start_min = hhmm_to_minutes(start)?;
             let key = [
                 week_start.as_str(),
-                key_part(fields, "id", 1)?,
-                &day.to_string(),
+                key_part(&block, "id", 1)?,
+                &py_str(&day),
                 start,
             ]
             .join("|");
@@ -200,53 +176,62 @@ pub fn todays_starts(
     Ok(rows)
 }
 
+/// `key in container` for a set the caller holds, or for whatever it held instead.
+fn member(container: &Value, is_set: bool, key: &str) -> EngineResult<bool> {
+    let item = json!(key);
+    if is_set {
+        return Ok(iterate(container)?.iter().any(|held| eq(held, &item)));
+    }
+    contains(container, &item)
+}
+
 pub fn due_reminders(
-    blocks: &[Value],
-    trace: Option<&Value>,
+    blocks: &Value,
+    trace: &Value,
     today_iso: &str,
     now_min: i64,
     lead_min: i64,
-    fired: &HashSet<String>,
+    fired: &Value,
+    fired_is_set: bool,
 ) -> EngineResult<Vec<Value>> {
     let mut due = Vec::new();
     for (block, day, start_min, key) in todays_starts(blocks, trace, today_iso)? {
-        if fired.contains(&key) || !start_alert_due(start_min, now_min, lead_min) {
+        if member(fired, fired_is_set, &key)? || !start_alert_due(start_min, now_min, lead_min) {
             continue;
         }
-        let fields = dict(&block)?;
         let started = now_min >= start_min;
-        if started && truthy(fields.get("spotify_url")) {
+        if started && truthy(get(&block, "spotify_url")?) {
             continue;
         }
-        let title = py_str(item(fields, "title")?);
-        let start = text(item(fields, "start")?, "split")?;
+        let title = py_str(subscript(&block, "title")?);
+        let start = text(subscript(&block, "start")?, "split")?;
         due.push(json!({
             "key": key,
             "title": format!("{title} {}", if started { "starts now" } else { "starts soon" }),
-            "body": format!("{} · {}", hhmm_text(start), DAYS[day_index(day)?]),
+            "body": format!("{} · {}", hhmm_text(start)?, DAYS[tuple_index(DAYS.len(), &day)?]),
         }));
     }
     Ok(due)
 }
 
 pub fn due_songs(
-    blocks: &[Value],
-    trace: Option<&Value>,
+    blocks: &Value,
+    trace: &Value,
     today_iso: &str,
     now_min: i64,
-    played: &HashSet<String>,
+    played: &Value,
+    played_is_set: bool,
 ) -> EngineResult<Vec<Value>> {
     let mut due = Vec::new();
     for (block, _day, start_min, key) in todays_starts(blocks, trace, today_iso)? {
-        let fields = dict(&block)?;
-        let link = fields.get("spotify_url");
-        if !truthy(link) || played.contains(&key) || !song_due(start_min, now_min) {
+        let link = get(&block, "spotify_url")?;
+        if !truthy(link) || member(played, played_is_set, &key)? || !song_due(start_min, now_min) {
             continue;
         }
         due.push(json!({
             "id": key,
-            "name": item(fields, "title")?,
-            "time": item(fields, "start")?,
+            "name": subscript(&block, "title")?,
+            "time": subscript(&block, "start")?,
             "days": [],
             "enabled": true,
             "sound": "spotify",
@@ -279,63 +264,119 @@ fn hour_and_minute(time: &str) -> EngineResult<(i64, i64)> {
 
 /// The alarms that rang since the last look. `due_ms_of` turns an hour and minute of today into
 /// milliseconds on the caller's local clock, as `datetime.timestamp()` does, so no zone is known
-/// here. `fired` is changed as it goes, as the caller's set was.
+/// here. `fired` is the caller's container; the keys this adds to it come back in `added`, whether
+/// or not the call goes on to fail, as the caller's set was changed as it went.
+#[allow(clippy::too_many_arguments)]
 pub fn due_alarms(
-    alarms: &[Value],
+    alarms: &Value,
     today_iso: &str,
     weekday: i64,
     now_ms: i64,
     last_check_ms: Option<i64>,
-    fired: &mut HashSet<String>,
-    snoozed: &[(String, i64)],
+    fired: &Value,
+    fired_is_set: bool,
+    added: &mut Vec<String>,
+    snoozed: &Value,
     due_ms_of: &mut dyn FnMut(i64, i64) -> EngineResult<i64>,
-) -> EngineResult<(Vec<Value>, Vec<(String, i64)>, i64)> {
-    let start_ms = last_check_ms.unwrap_or(now_ms - REMINDER_WINDOW_MIN * 60_000);
+) -> EngineResult<(Vec<Value>, Vec<(Value, Value)>, i64)> {
+    let now = Value::from(now_ms);
+    let start_ms = match last_check_ms {
+        Some(found) => Value::from(found),
+        None => Value::from(now_ms - REMINDER_WINDOW_MIN * 60_000),
+    };
     let mut queued = Vec::new();
-    let mut remaining: Vec<(String, i64)> = snoozed.to_vec();
-    for alarm in alarms {
-        let fields = dict(alarm)?;
-        if !truthy(fields.get("enabled")) {
+    let mut remaining: Vec<(String, Value)> = py_dict(snoozed)?.into_iter().collect();
+    let day = Value::from(weekday);
+    for alarm in iterate(alarms)? {
+        if !truthy(get(&alarm, "enabled")?) {
             continue;
         }
-        let days = match fields.get("days") {
-            Some(value) if truthy(Some(value)) => value.as_array().cloned().unwrap_or_default(),
-            _ => Vec::new(),
-        };
-        if !days.iter().any(|value| value.as_i64() == Some(weekday)) {
+        if !contains(&or_default(get(&alarm, "days")?, json!([])), &day)? {
             continue;
         }
-        let (hour, minute) = hour_and_minute(&py_str(item(fields, "time")?))?;
-        let due_ms = due_ms_of(hour, minute)?;
-        let key = alarm_key(today_iso, fields);
-        if start_ms < due_ms && due_ms <= now_ms && !fired.contains(&key) {
-            fired.insert(key);
-            queued.push(alarm.clone());
+        let (hour, minute) = hour_and_minute(&py_str(subscript(&alarm, "time")?))?;
+        let due_ms = Value::from(due_ms_of(hour, minute)?);
+        let key = alarm_key(today_iso, &alarm)?;
+        if compare(Cmp::Lt, &start_ms, &due_ms)?
+            && compare(Cmp::Le, &due_ms, &now)?
+            && !(member(fired, fired_is_set, &key)? || added.contains(&key))
+        {
+            if !fired_is_set {
+                return Err(attribute_error(fired, "add"));
+            }
+            added.push(key);
+            queued.push(Value::Object(py_dict(&alarm)?));
         }
     }
-    let waiting = remaining.clone();
-    for (alarm_id, due_ms) in waiting {
-        if !(start_ms < due_ms && due_ms <= now_ms) {
+    let alarm_list = iterate(alarms)?;
+    for (alarm_id, due_ms) in remaining.clone() {
+        if !(compare(Cmp::Lt, &start_ms, &due_ms)? && compare(Cmp::Le, &due_ms, &now)?) {
             continue;
         }
         remaining.retain(|(id, _)| *id != alarm_id);
-        let found = alarms
-            .iter()
-            .find(|candidate| {
-                candidate
-                    .as_object()
-                    .and_then(|map| map.get("id"))
-                    .and_then(Value::as_str)
-                    == Some(alarm_id.as_str())
-            })
-            .filter(|candidate| truthy(candidate.get("enabled")));
-        if let Some(alarm) = found {
-            queued.push(alarm.clone());
+        let mut found = None;
+        for candidate in &alarm_list {
+            if eq(
+                get(candidate, "id")?.unwrap_or(&Value::Null),
+                &json!(alarm_id),
+            ) {
+                found = Some(candidate);
+                break;
+            }
+        }
+        if let Some(alarm) = found
+            && truthy(Some(alarm))
+            && truthy(get(alarm, "enabled")?)
+        {
+            queued.push(Value::Object(py_dict(alarm)?));
         }
     }
-    Ok((queued, remaining, now_ms))
+    Ok((
+        queued,
+        remaining
+            .into_iter()
+            .map(|(id, due)| (Value::from(id), due))
+            .collect(),
+        now_ms,
+    ))
 }
 
 pub fn snooze_until(now_ms: i64) -> i64 {
     now_ms + ALARM_SNOOZE_MS
+}
+
+/// `now_ms / 1000.0`: the seconds the local clock is asked about.
+pub fn seconds_of(now_ms: i64) -> f64 {
+    now_ms as f64 / 1000.0
+}
+
+/// `millis / 1000` for milliseconds a caller reports as a number of either kind.
+pub fn seconds_of_millis(millis: f64) -> f64 {
+    millis / 1000.0
+}
+
+/// `int(seconds * 1000)`: whole milliseconds of a timestamp, cut towards zero.
+pub fn millis_of(seconds: f64) -> i64 {
+    (seconds * 1000.0).trunc() as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn milliseconds_are_asked_of_the_clock_as_seconds() {
+        assert_eq!(seconds_of(1_790_000_000_000), 1_790_000_000.0);
+        assert_eq!(seconds_of(1_500), 1.5);
+        assert_eq!(seconds_of(-1_500), -1.5);
+        assert_eq!(seconds_of_millis(1_500.5), 1.5005);
+    }
+
+    #[test]
+    fn a_timestamp_is_cut_to_whole_milliseconds_towards_zero() {
+        assert_eq!(millis_of(1_790_000_000.0), 1_790_000_000_000);
+        assert_eq!(millis_of(1.9999), 1_999);
+        assert_eq!(millis_of(-1.9999), -1_999);
+        assert_eq!(millis_of(-0.0004), 0);
+    }
 }

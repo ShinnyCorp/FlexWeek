@@ -10,13 +10,19 @@ from __future__ import annotations
 import contextlib
 import copy
 import dataclasses
+import importlib
+import inspect
 import json
 import os
+import re
 import time
 import types
-from datetime import datetime
+import uuid
+from datetime import date, datetime
 
-from hypothesis import given, settings
+import flexweek_engine  # type: ignore[import-untyped]
+import pytest
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import desk_ref.calendar as ref_calendar
@@ -1438,6 +1444,46 @@ def test_import_look_on_text_that_is_not_utf8():
     same(live_look.import_look, ref_look.import_look, '{"a": 1}'.encode("utf-16"))
 
 
+HEAD_BASE = '{"kind": "FlexWeek look", "version": 1, "'
+LOOK_TEXTS_PYTHON_ONLY = [
+    HEAD_BASE + 'base": ' + value + "}"
+    for value in (
+        "NaN",
+        "Infinity",
+        "-Infinity",
+        "[NaN]",
+        '{"a": NaN}',
+        '"\\ud800"',
+        '"\\udfff x"',
+        "10000000000000000000000",
+        "-10000000000000000000000",
+        "1e400",
+    )
+] + [
+    HEAD_BASE + key + '": ' + value + "}"
+    for key in ("name", "accent", "colours", "categories", "knobs", "now_line", "extra")
+    for value in ('"\\ud800"', "NaN", "10000000000000000000000", "1e400")
+] + [
+    '{"kind": "FlexWeek look", "version": ' + value + "}"
+    for value in ("10000000000000000000000", "-10000000000000000000000", "1e400", "NaN", '"\\ud800"')
+] + [
+    '{"kind": ' + value + ', "version": 1}' for value in ('"\\ud800"', "1e400", "NaN")
+] + [
+    '"\\ud800"',
+    '{"\\ud800": 1}',
+    HEAD_BASE + 'colours": {"text": "\\ud800", "window": NaN}}',
+    HEAD_BASE + 'knobs": {"\\ud800": 1}}',
+    HEAD_BASE + 'categories": {"class": {"fill": NaN}}}',
+    HEAD_BASE + 'name": "a\\ud800b"}',
+]
+
+
+@pytest.mark.parametrize("text", LOOK_TEXTS_PYTHON_ONLY)
+def test_import_look_on_what_only_python_reads(text):
+    same(live_look.import_look, ref_look.import_look, text)
+    same(live_look.import_look, ref_look.import_look, text.encode("utf-8", "surrogatepass"))
+
+
 @CHECK
 @given(st.one_of(st.lists(raw_look(), max_size=5), maybe(None, "x", {}, 5, [], {"a": 1})))
 def test_sanitize_saved_on_generated_lists(raw):
@@ -1858,3 +1904,1303 @@ def test_a_week_model_copies_and_pickles_with_the_engine_week_it_holds():
     for twin in (copy.copy(model), copy.deepcopy(model), pickle.loads(pickle.dumps(model))):
         assert twin == model
         assert twin.load_min(0) == 30 and twin.on_day(0) == (twin.occurrences[0],)
+
+
+# Wrong input to every function. The shadow run and the tests above feed the desktop what it sends,
+# which is valid; a student's file, a hand-edited look or a stale setting is not. For each top-level
+# function of each reference module this makes arguments from realistic values, from odd ones (None,
+# empty text, bad dates and times, negative and huge numbers) and from realistic values with one
+# field spoiled, and requires the live function to give the same value or raise the same type with
+# the same message. A Rust panic arrives as RuntimeError, which the originals never raise.
+
+AUDIT = int(os.environ.get("AUDIT_EXAMPLES", "60"))
+AUDITED = settings(
+    max_examples=AUDIT,
+    deadline=None,
+    suppress_health_check=list(HealthCheck),
+    database=None,
+)
+DESK_MODULES = ("calendar", "custom_look", "files", "focus", "history", "pomodoro", "remind", "reuse")
+DESK_MODULES += ("tokens", "update", "weekmodel")
+DESK_PAIRS = {
+    name: (importlib.import_module(f"desktop.native.{name}"), importlib.import_module(f"desk_ref.{name}"))
+    for name in DESK_MODULES
+}
+# Not a function of its arguments alone: the clock setting is global to the module, and the audit
+# restores it around each call.
+KEEPS_STATE = {"weekmodel.set_clock_24h"}
+
+
+def audited_functions():
+    """Every top-level function of the reference modules that the live module also has."""
+    found = []
+    for module_name, (live, ref) in DESK_PAIRS.items():
+        for name, function in vars(ref).items():
+            if inspect.isfunction(function) and function.__module__ == ref.__name__ and hasattr(live, name):
+                found.append(f"{module_name}.{name}")
+    return found
+
+
+DATES = [
+    "2026-09-21",
+    "2026-09-24",
+    "2026-09-27",
+    "2026-10-04",
+    "2000-01-03",
+    "2099-12-27",
+    "1999-12-27",
+    "2099-12-31",
+    "2026-W39-4",
+    "20260921",
+    "2026-9-21",
+    "2026-13-01",
+    "2026-02-30",
+    "",
+    " 2026-09-21",
+    "2026-09-21T10:00",
+    "2026-09-24T21:00",
+    "2026-09-24T23:59",
+    "2026-09-24T24:00",
+    "0001-01-01",
+    "9999-12-31",
+    "2026-09",
+    "2026-13",
+    "x",
+]
+CLOCKS = [
+    "08:00",
+    "16:00",
+    "09:45",
+    "9:5",
+    "24:00",
+    "25:00",
+    "08:60",
+    "",
+    "x",
+    "8",
+    "10:00:00",
+    "-1:30",
+    " 8:30",
+]
+WORDS = [
+    "",
+    "x",
+    "essay",
+    "b1",
+    "series",
+    "block",
+    "day",
+    "week",
+    "work",
+    "break",
+    "long_break",
+    "ended",
+    "replace",
+    "merge",
+    "myday",
+    "month",
+    "windows",
+    "appimage",
+    "tarball",
+    "é",
+    "a" * 90,
+    "\n",
+    "  ",
+]
+WHOLE = [0, 1, 2, 3, 6, 7, -1, 15, 30, 45, 60, 90, 95, 96, 120, 1439, 1440, 1441, 10**9, 2**62, -(2**62)]
+REALS = [0.0, 0.5, 1.0, 1.2, 0.85, -1.0, 360.0, 1e300, 1e-300]
+# What a JSON file can hold in the place of a value: the kinds of things a spoiled field becomes.
+ODD = [
+    None,
+    True,
+    False,
+    "",
+    "x",
+    0,
+    -1,
+    7,
+    1.5,
+    [],
+    {},
+    [None],
+    {"a": None},
+    [[]],
+    [1, "a"],
+    10**20,
+    2**63,
+    -(10**20),
+]
+
+
+def sample_block(**extra):
+    body = {
+        "id": "b1",
+        "title": "Soccer",
+        "kind": "locked",
+        "duration_min": 60,
+        "days": [0, 2],
+        "start": "16:00",
+        "category": "exercise",
+    }
+    body.update(extra)
+    return body
+
+
+BLOCK_POOL = [
+    sample_block(),
+    sample_block(
+        id="b2", kind="flexible", days=[1], start="10:00", assignment_id="essay", category="assignments"
+    ),
+    sample_block(id="b3", kind="flexible", days=[0, 1, 2], start=None, assignment_id="essay"),
+    sample_block(id="b4", kind="flexible", days=[3], start="09:00", completed=True, completed_day=3),
+    sample_block(
+        id="b5", days=[4], missed_days=[4], pinned=True, spotify_url="https://open.spotify.com/track/x"
+    ),
+    sample_block(id="b6", kind="flexible", days=[2], start="23:30", duration_min=90, pomodoro_role="work"),
+    sample_block(
+        id="b7", kind="flexible", days=[0], start="08:00", earliest="Monday 07:00", latest="Friday 20:00"
+    ),
+    sample_block(id="b8", start=None, days=[]),
+    {},
+    {"id": "b9"},
+]
+ASSIGNMENT_POOL = [
+    {"id": "essay", "title": "Essay", "due": "2026-09-24T21:00", "estimate_min": 120, "unplanned_min": 60},
+    {"id": "lab", "title": "Lab", "due": "2026-09-22", "estimate_min": 45, "completed": True},
+    {"id": "poster", "title": "Poster", "due": None, "estimate_min": 90, "focus_minutes": 30, "priority": 2},
+    {"id": "x"},
+]
+TRACE_POOL = [
+    {"placed": [sample_block(id="b2", kind="flexible", start="11:00", days=[1])], "unplaced": [{"id": "b3"}]},
+    {"placed": [], "explanations": [{"block_id": "b3", "message": "No room", "slack_status": "tight"}]},
+    {"placed": [sample_block(id="b3", kind="flexible", start="09:00", days=[2])], "unplaced": []},
+    {},
+]
+PREF_POOL = [
+    {},
+    {"timer_work_min": 25, "timer_break_min": 5, "timer_long_break_min": 20, "timer_long_break_every": 3},
+    {"timer_work_min": 0},
+    {"timer_long_break_every": 99},
+    {"auto_split_pomodoro": True, "timer_work_min": 30},
+    {"reminder_lead_min": 10},
+    {"timer_work_min": "x"},
+]
+STATE_POOL = [
+    {"id": "b1", "phase": "work", "cycles": 1, "running": True, "remainingMs": 600000, "endsAt": 5000},
+    {
+        "phase": "break",
+        "cycles": 0,
+        "running": False,
+        "remainingMs": 5000,
+        "endsAt": None,
+        "assignmentId": "essay",
+    },
+    {"phase": "ended", "cycles": 2},
+    {
+        "assignmentId": "essay",
+        "sessionId": "b2",
+        "weekStart": "2026-09-21",
+        "day": 1,
+        "start": "10:00",
+        "phase": "work",
+        "cycles": 0,
+        "endsAt": 1000,
+        "remainingMs": None,
+    },
+]
+ALARM_POOL = [
+    {"id": "a", "name": "Wake", "time": "07:30", "enabled": True, "days": [0, 1, 2]},
+    {"id": "b", "time": "25:00", "enabled": True, "days": [3]},
+    {"id": 3, "time": "5", "enabled": 1, "days": [3]},
+]
+LOOK_POOL = [
+    {"preset": "paper", "knobs": {"font": "mono"}},
+    {"preset": "x", "knobs": 5},
+    {},
+    {"custom": {"base": "slate", "name": "N", "accent": "#aabbcc", "text_scale": 1.1}},
+    {"custom": {"base": "x"}},
+]
+CUSTOM_POOL = [
+    {"base": "light", "name": "Night"},
+    {"base": "dark", "accent": "#12345a", "colours": {"page": "#101010"}},
+    {"base": "slate", "categories": {"class": {"hue": 12}}, "motion": "off", "corners": 8},
+    {"name": "x"},
+    {"base": 5},
+]
+RELEASE_POOL = [
+    {
+        "tag_name": "v0.18.0",
+        "assets": [
+            {
+                "name": "FlexWeek-x86_64.AppImage",
+                "browser_download_url": "https://github.com/j0nsh1n/FlexWeek/releases/download/v0.18.0/FlexWeek-x86_64.AppImage",
+            }
+        ],
+        "body": "",
+    },
+    {"tag_name": "x", "assets": []},
+    {"tag_name": "v0.17.2"},
+    {"assets": 5},
+]
+STEP_POOL = [
+    {
+        "label": "x",
+        "weeks": [{"week_start": "2026-09-21", "before": [], "after": [{"id": "a"}]}],
+        "assignments": [],
+        "stale": False,
+    },
+    {"label": "", "weeks": [], "assignments": [], "stale": True},
+    {},
+]
+SESSION_POOL = [
+    types.SimpleNamespace(
+        week_start="2026-09-21",
+        selected_day="2026-09-23",
+        selected_month="2026-10",
+        now_ms=lambda: 1_790_000_000_000,
+    ),
+    types.SimpleNamespace(week_start="x", now_ms=lambda: 0),
+    types.SimpleNamespace(),
+]
+MOMENTS = [
+    datetime(2026, 9, 21, 10, 30),
+    datetime(2026, 9, 24, 23, 59, 30),
+    datetime(2026, 9, 20, 0, 0),
+    datetime(2030, 1, 1),
+]
+ROW_POOL = [
+    {
+        "week_start": "2026-09-21",
+        "day": 1,
+        "fixed": True,
+        "block": sample_block(days=[1]),
+        "group_id": "g",
+        "checked": True,
+        "invalid": "",
+        "original_duration": 60,
+    },
+    {
+        "week_start": "2026-09-21",
+        "day": 1,
+        "fixed": False,
+        "block": sample_block(kind="flexible", assignment_id="essay"),
+        "group_id": "g",
+        "checked": False,
+        "invalid": "No time",
+    },
+]
+ITEM_POOL = [
+    {"block": sample_block(), "source_day": 0, "scope": "series", "group_id": "g"},
+    {
+        "block": sample_block(id="b2", kind="flexible", assignment_id="essay"),
+        "source_day": 1,
+        "scope": "block",
+        "group_id": "h",
+    },
+]
+ROUTINE_POOL = [
+    {"blocks": [{"template_id": "t", "title": "Run", "days": [0, 2], "start": "07:00", "duration_min": 30}]},
+    {},
+]
+PLAN_POOL = [
+    {
+        "error": None,
+        "segments": [
+            {"role": "work", "duration_min": 30, "index": 1},
+            {"role": "break", "duration_min": 15, "index": 1},
+        ],
+        "total_min": 45,
+    },
+    {"error": "x", "segments": [], "total_min": 0},
+    {},
+]
+PROBLEM_POOL = [
+    types.SimpleNamespace(
+        words="Text on cards",
+        ink="#777777",
+        ground="#ffffff",
+        ratio=4.0,
+        field=("colours", "text"),
+        fixed="#555555",
+    ),
+    types.SimpleNamespace(words="x", ink="", ground="", ratio=0.0, field=("accent",), fixed="#abcdef"),
+    types.SimpleNamespace(
+        words="y", ink="", ground="", ratio=0.0, field=("categories", "class"), fixed="#abcdef"
+    ),
+]
+RESULT_POOL = [
+    {"current": None, "next": None},
+    {"current": sample_block(), "next": sample_block(id="b2")},
+    {"now": None},
+    {},
+]
+PAIR_POOL = [(0, 15), (1, 600), (-1, 0), (5,), (), "x"]
+INTERVALS = [[(0, 60)], [(600, 660), (700, 760)], [], [(60, 0)], [(1, 2, 3)]]
+
+
+def pool_for(name, annotation):
+    """Realistic values for a parameter, by what it is called and what it is said to be."""
+    table = [
+        (
+            (
+                "blocks",
+                "before_blocks",
+                "after_blocks",
+                "existing",
+                "incoming",
+                "committed_blocks",
+                "sessions",
+                "source",
+            ),
+            [[], [BLOCK_POOL[0]], BLOCK_POOL[:3], BLOCK_POOL[:8], BLOCK_POOL],
+        ),
+        (("block", "placed_block", "session"), BLOCK_POOL),
+        (("homework",), [[], ASSIGNMENT_POOL[:2], ASSIGNMENT_POOL]),
+        (
+            ("assignments", "before_assignments", "after_assignments", "available"),
+            [
+                {},
+                {a["id"]: a for a in ASSIGNMENT_POOL},
+                {"essay": ASSIGNMENT_POOL[0]},
+                {"essay": 60, "lab": 0},
+            ],
+        ),
+        (("assignment", "item", "target", "settings"), ASSIGNMENT_POOL + BLOCK_POOL[:2]),
+        (("trace",), TRACE_POOL),
+        (("prefs",), PREF_POOL),
+        (("state",), STATE_POOL),
+        (("alarm",), ALARM_POOL),
+        (("alarms",), [ALARM_POOL, ALARM_POOL[:1], []]),
+        (("look",), LOOK_POOL),
+        (("custom",), CUSTOM_POOL),
+        (("saved",), [[], [CUSTOM_POOL[0]], CUSTOM_POOL[:2]]),
+        (("release",), RELEASE_POOL),
+        (("step",), STEP_POOL),
+        (("steps", "stack"), [[], STEP_POOL[:1], STEP_POOL]),
+        (("row",), ROW_POOL),
+        (("rows",), [[], ROW_POOL]),
+        (("items",), [[], ITEM_POOL]),
+        (("routine",), ROUTINE_POOL),
+        (("plan",), PLAN_POOL),
+        (("problem",), PROBLEM_POOL),
+        (("result",), RESULT_POOL),
+        (("placed",), [{"start": "09:00", "days": [1]}, {}]),
+        (("day_data",), [None, {}, {"blocks": []}]),
+        (("now",), MOMENTS + [None]),
+        (("session",), SESSION_POOL),
+        (("grounds",), [("#ffffff",), (), ("#000000", "#ffffff")]),
+        (("occupied",), INTERVALS),
+        (("not_before",), PAIR_POOL + [None]),
+        (
+            ("only", "targets", "keep", "fired", "played", "changed_ids"),
+            [set(), {"b1"}, {"b2", "x"}],
+        ),
+        (("snoozed",), [{}, {"a": 1_790_000_000_000}]),
+        (("saved_weeks",), [[], ["2026-09-14"], ["2026-09-28"]]),
+        (("allowed_days",), [[], [0, 1, 2], [1]]),
+        (("days", "changed", "extra"), [[0], [0, 2], [], [6, 7]]),
+        (("payload",), [b"abc", b"", b"x" * 100]),
+        (
+            ("raw", "text", "location", "checksum_text"),
+            ["", "{}", "[]", "x", json.dumps({"format": "flexweek-week", "version": 2, "blocks": []})],
+        ),
+    ]
+    for names, values in table:
+        if name in names:
+            return list(values)
+    kind = str(annotation)
+    if name == "today" and "date" in kind and "str" not in kind:
+        return [date(2026, 9, 23), date(2026, 9, 21), date(2026, 9, 27), None]
+    if name == "due" and "tuple" in kind:
+        return PAIR_POOL + [None]
+    if name == "saved":
+        return STATE_POOL + [None] if "dict | None" in kind else [[], [CUSTOM_POOL[0]], CUSTOM_POOL[:2]]
+    if (
+        name in {"week_start", "iso_day", "today_iso", "iso_date", "iso", "selected_month", "month", "due"}
+        or "date" in name
+    ):
+        return DATES
+    if name in {"start", "hhmm", "from_start", "target_start"} and "int" not in kind:
+        return CLOCKS
+    if "int" in kind and "list" not in kind and "dict" not in kind:
+        return WHOLE
+    if "float" in kind:
+        return REALS + WHOLE[:6]
+    if "bool" in kind:
+        return [True, False]
+    if "str" in kind:
+        return WORDS + DATES[:3] + CLOCKS[:3]
+    return [None, *WORDS[:4], *WHOLE[:4]]
+
+
+def spoil(draw, value, depth=0):
+    """`value` with one place changed to something of the wrong kind, or one key dropped."""
+    if isinstance(value, dict) and value:
+        key = draw(st.sampled_from(sorted(value, key=repr)))
+        out = dict(value)
+        if draw(st.integers(0, 3)) == 0:
+            out.pop(key)
+        elif depth < 2 and isinstance(value[key], dict | list) and draw(st.booleans()):
+            out[key] = spoil(draw, value[key], depth + 1)
+        else:
+            out[key] = draw(st.sampled_from(ODD + WORDS[:6] + DATES[:4] + CLOCKS[:4] + WHOLE[:8]))
+        return out
+    if isinstance(value, list) and value:
+        at = draw(st.integers(0, len(value) - 1))
+        out = list(value)
+        if depth < 2 and isinstance(value[at], dict | list) and draw(st.booleans()):
+            out[at] = spoil(draw, value[at], depth + 1)
+        else:
+            out[at] = draw(st.sampled_from(ODD))
+        return out
+    return draw(st.sampled_from(ODD))
+
+
+def odd_like(annotation):
+    """Values of the kind the parameter is said to take that a caller should not send but might."""
+    kind = str(annotation)
+    if "object" in kind:
+        return ODD + [(), b"x"]
+    pieces = []
+    if "str" in kind:
+        pieces += WORDS + DATES + CLOCKS
+    if "int" in kind and "list" not in kind and "dict" not in kind:
+        pieces += WHOLE
+    if "float" in kind:
+        pieces += REALS
+    if "bool" in kind:
+        pieces += [True, False]
+    if "dict" in kind:
+        pieces += [{}, {"a": 1}, {"id": None}]
+    if "list" in kind or "tuple" in kind:
+        pieces += [[], [None], [1, "a"], [{}]]
+    if "set" in kind:
+        pieces += [set(), {""}]
+    return pieces or [None]
+
+
+@st.composite
+def audit_arguments(draw, function):
+    args, kwargs = [], {}
+    for parameter in inspect.signature(function).parameters.values():
+        if parameter.default is not inspect.Parameter.empty and draw(st.integers(0, 3)) == 0:
+            continue
+        pool = pool_for(parameter.name, parameter.annotation)
+        choice = draw(st.integers(0, 9))
+        value = draw(st.sampled_from(pool))
+        if choice == 9:
+            value = draw(st.sampled_from(odd_like(parameter.annotation)))
+        elif choice == 8:
+            kind = str(parameter.annotation)
+            if any(word in kind for word in ("None", "dict", "list", "set", "object", "tuple")):
+                value = None
+        elif choice >= 6 and isinstance(value, dict | list):
+            value = spoil(draw, value)
+        if parameter.kind is inspect.Parameter.KEYWORD_ONLY:
+            kwargs[parameter.name] = value
+        else:
+            args.append(value)
+    return args, kwargs
+
+
+def fixed_uuids(owner_modules):
+    counter = iter(range(1, 10**9))
+
+    def next_uuid():
+        return uuid.UUID(int=next(counter))
+
+    return next_uuid
+
+
+def audited_call(function, args, kwargs, modules):
+    previous = [(module, module.__dict__.get("uuid4")) for module in modules if "uuid4" in vars(module)]
+    real = uuid.uuid4
+    maker = fixed_uuids(modules)
+    uuid.uuid4 = maker
+    for module, _ in previous:
+        module.uuid4 = maker
+    try:
+        try:
+            value = function(*args, **kwargs)
+            if inspect.isgenerator(value):
+                value = list(value)
+            return "ok", re.sub(r"<object object at 0x[0-9a-f]+>", "<sentinel>", repr(value))
+        except Exception as error:  # noqa: BLE001
+            return "raise", type(error).__name__, str(error)
+    finally:
+        uuid.uuid4 = real
+        for module, original in previous:
+            module.uuid4 = original
+
+
+@pytest.mark.parametrize("dotted", audited_functions())
+def test_error_parity_on_wrong_input(dotted):
+    module_name, name = dotted.split(".")
+    live_module, ref_module = DESK_PAIRS[module_name]
+    live, ref = getattr(live_module, name), getattr(ref_module, name)
+
+    @AUDITED
+    @given(audit_arguments(ref))
+    def check(arguments):
+        args, kwargs = arguments
+        live_call, ref_call = copy.deepcopy((args, kwargs)), copy.deepcopy((args, kwargs))
+        clock = (
+            live_module.__dict__.get("_clock") and dict(live_module._clock),
+            ref_module.__dict__.get("_clock") and dict(ref_module._clock),
+        )
+        try:
+            got = audited_call(live, live_call[0], live_call[1], [live_module, ref_module])
+            want = audited_call(ref, ref_call[0], ref_call[1], [live_module, ref_module])
+        finally:
+            for module, saved in ((live_module, clock[0]), (ref_module, clock[1])):
+                if saved:
+                    module._clock.update(saved)
+            if module_name == "weekmodel":
+                flexweek_engine.week_set_clock_24h(bool(clock[0]["24h"]))
+        assert got[:2] != ("raise", "RuntimeError") or got == want, f"a panic: {got}"
+        assert got == want
+        assert repr(live_call) == repr(ref_call)
+
+    check()
+
+
+# Files a student brings in. Everything below goes through `parse_import_payload` and the two exports
+# as text or as data, valid and not: one case for each rule of the two models and of the file's own
+# checks, then valid files with places spoiled. Results, errors (type and message) and arguments
+# afterwards must equal the original's.
+
+FILE_BLOCK = {
+    "id": "b1",
+    "title": "Soccer",
+    "kind": "locked",
+    "duration_min": 60,
+    "days": [0, 2],
+    "start": "16:00",
+    "category": "exercise",
+}
+FILE_SESSION = {
+    "id": "s1",
+    "title": "Essay",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [1],
+    "start": "10:00",
+    "category": "assignments",
+    "assignment_id": "essay",
+}
+FILE_HOMEWORK = {"id": "essay", "title": "Essay", "due": "2026-09-24T21:00", "estimate_min": 60}
+FILE_WEEK = {
+    "format": "flexweek-week",
+    "version": 2,
+    "week_start": "2026-09-21",
+    "blocks": [FILE_BLOCK, FILE_SESSION],
+    "assignments": [FILE_HOMEWORK],
+}
+FILE_DAY = {
+    "format": "flexweek-day",
+    "version": 2,
+    "week_start": "2026-09-21",
+    "day": 2,
+    "blocks": [{**FILE_BLOCK, "days": [2]}],
+    "assignments": [],
+}
+LONG = "x" * 81
+BLOCK_FAULTS = [
+    {"id": ""},
+    {"id": LONG},
+    {"id": 5},
+    {"id": None},
+    {"title": ""},
+    {"title": LONG},
+    {"title": None},
+    {"kind": "x"},
+    {"kind": None},
+    {"duration_min": 0},
+    {"duration_min": -15},
+    {"duration_min": 7141},
+    {"duration_min": "60"},
+    {"duration_min": 60.5},
+    {"duration_min": True},
+    {"days": []},
+    {"days": "0"},
+    {"days": [7]},
+    {"days": [-1]},
+    {"days": [0, 1, 2, 3, 4, 5, 6, 0]},
+    {"days": [1.5]},
+    {"days": [None]},
+    {"priority": 0},
+    {"priority": 6},
+    {"energy": "x"},
+    {"earliest": "x" * 41},
+    {"latest": 5},
+    {"start": "16:00:00"},
+    {"start": 5},
+    {"course": "c" * 41},
+    {"category": "c" * 33},
+    {"completed": "yes"},
+    {"completed": 2},
+    {"completed_day": 7},
+    {"completed_day": -1},
+    {"completed_day": 0},
+    {"completed": True, "completed_day": 0},
+    {"completed": True, "completed_day": 0, "kind": "flexible", "days": [0], "start": None},
+    {"missed_days": [0, 0]},
+    {"missed_days": [7]},
+    {"missed_days": [1]},
+    {"missed_days": [0, 1, 2, 3, 4, 5, 6, 0]},
+    {"kind": "flexible", "missed_days": [0]},
+    {"spotify_url": "x"},
+    {"spotify_url": "http://evil.example/"},
+    {"spotify_url": "https://open.spotify.com/track/" + "a" * 500},
+    {"spotify_url": 5},
+    {"focus_sessions": -1},
+    {"focus_sessions": 10000},
+    {"focus_minutes": 71401},
+    {"focus_minutes": -1},
+    {"pomodoro_parent_id": ""},
+    {"pomodoro_parent_id": LONG},
+    {"pomodoro_role": "x"},
+    {"pomodoro_index": 0},
+    {"pomodoro_index": 1000},
+    {"pinned": True},
+    {"pinned": "yes"},
+    {"pinned": True, "kind": "flexible", "days": [0, 1], "start": "08:00"},
+    {"pinned": True, "kind": "flexible", "start": None},
+    {"assignment_id": ""},
+    {"assignment_id": LONG},
+    {"assignment_id": "essay"},
+    {"assignment_id": "essay", "kind": "flexible", "latest": "Friday 20:00"},
+    {"assignment_id": "essay", "kind": "flexible", "focus_minutes": 15},
+    {"assignment_id": "essay", "kind": "locked", "pomodoro_role": "work"},
+    {"assignment_id": "essay", "kind": "locked", "pomodoro_role": "break"},
+    {"assignment_id": "essay", "kind": "flexible", "focus_sessions": 1},
+    {"unknown": 1},
+    {"id": None, "x": 1},
+]
+HOMEWORK_FAULTS = [
+    {"id": ""},
+    {"id": LONG},
+    {"id": 5},
+    {"title": ""},
+    {"title": "   "},
+    {"title": LONG},
+    {"title": None},
+    {"course": "c" * 41},
+    {"category": "c" * 33},
+    {"priority": 0},
+    {"priority": 6},
+    {"energy": "x"},
+    {"spotify_url": "x"},
+    {"due": "x"},
+    {"due": "2026-09-24T25:00"},
+    {"due": "2026-02-30"},
+    {"due": "2026-09-24T21:00:00"},
+    {"due": None},
+    {"estimate_min": 0},
+    {"estimate_min": 20},
+    {"estimate_min": 1441},
+    {"estimate_min": -15},
+    {"estimate_min": "60"},
+    {"estimate_min": 60.0},
+    {"focus_minutes": -1},
+    {"focus_minutes": 71401},
+    {"focus_sessions": 10000},
+    {"completed": True},
+    {"completed": True, "completed_at": "2026-09-24T10:00"},
+    {"completed_at": "2026-09-24T10:00"},
+    {"completed": True, "completed_at": "x"},
+    {"notes": "n" * 4001},
+    {"notes": 5},
+    {"links": "x"},
+    {"links": [{"label": "L", "url": "https://example.com", "extra": 1}]},
+    {"links": [{"label": " ", "url": "https://example.com"}]},
+    {"links": [{"label": "L", "url": "ftp://x"}]},
+    {"links": [{"label": "L", "url": "https://e.com"}] * 21},
+    {"links": [5]},
+    {"checklist": [{"id": "c", "text": "t"}, {"id": "c", "text": "u"}]},
+    {"checklist": [{"id": "c", "text": " "}]},
+    {"checklist": [{"id": "", "text": "t"}]},
+    {"checklist": [{"id": str(n), "text": "t"} for n in range(41)]},
+    {"checklist": "x"},
+    {"unknown": 1},
+    {"revision": 3},
+]
+
+
+def file_text(payload):
+    return json.dumps(payload)
+
+
+def import_matches(text):
+    same(live_files.parse_import_payload, ref_files.parse_import_payload, text)
+
+
+@pytest.mark.parametrize("fault", BLOCK_FAULTS, ids=repr)
+def test_a_week_file_with_a_block_the_model_refuses(fault):
+    for base in (FILE_BLOCK, FILE_SESSION):
+        week = {**FILE_WEEK, "blocks": [{**base, **fault}]}
+        import_matches(file_text(week))
+        same(
+            live_files.exportable_block,
+            ref_files.exportable_block,
+            {**base, **fault},
+            {"essay": FILE_HOMEWORK},
+        )
+        same(
+            live_files.export_week_payload,
+            ref_files.export_week_payload,
+            "2026-09-21",
+            [{**base, **fault}],
+            {"essay": FILE_HOMEWORK},
+        )
+        same(
+            live_files.export_day_payload,
+            ref_files.export_day_payload,
+            "2026-09-21",
+            1,
+            [{**base, **fault, "days": [1]}],
+            {"essay": FILE_HOMEWORK},
+        )
+    day = {**FILE_DAY, "blocks": [{**FILE_BLOCK, "days": [2], **fault}]}
+    import_matches(file_text(day))
+
+
+@pytest.mark.parametrize("fault", HOMEWORK_FAULTS, ids=repr)
+def test_a_week_file_with_homework_the_model_refuses(fault):
+    week = {**FILE_WEEK, "assignments": [{**FILE_HOMEWORK, **fault}]}
+    import_matches(file_text(week))
+    same(live_files.assignment_body, ref_files.assignment_body, {**FILE_HOMEWORK, **fault})
+    same(
+        live_files.referenced_assignments,
+        ref_files.referenced_assignments,
+        [FILE_SESSION],
+        {"essay": {**FILE_HOMEWORK, **fault}},
+    )
+    same(
+        live_files.export_week_payload,
+        ref_files.export_week_payload,
+        "2026-09-21",
+        [FILE_SESSION],
+        {"essay": {**FILE_HOMEWORK, **fault}},
+    )
+
+
+def with_blocks(payload, blocks):
+    return {**payload, "blocks": blocks}
+
+
+WEEK_HEAD = '{"format": "flexweek-week", "version": 2, '
+FILE_RULES = [
+    "",
+    "   ",
+    "\n",
+    "x",
+    "[]",
+    "null",
+    "5",
+    '"x"',
+    "{",
+    "{}",
+    "NaN",
+    "[NaN]",
+    file_text({**FILE_WEEK, "format": None}),
+    file_text({**FILE_WEEK, "format": "other"}),
+    file_text({**FILE_WEEK, "format": ["flexweek-week"]}),
+    file_text({**FILE_WEEK, "format": {}}),
+    file_text({k: v for k, v in FILE_WEEK.items() if k != "format"}),
+    *[
+        file_text({**FILE_WEEK, "version": v})
+        for v in (None, 0, -1, True, False, 1, 3, 1.5, "2", [2], {}, 10**30, -(10**30), 2**63)
+    ],
+    file_text({k: v for k, v in FILE_WEEK.items() if k != "version"}),
+    file_text({**FILE_WEEK, "blocks": None}),
+    file_text({**FILE_WEEK, "blocks": {}}),
+    file_text({**FILE_WEEK, "blocks": "x"}),
+    file_text({k: v for k, v in FILE_WEEK.items() if k != "blocks"}),
+    file_text({**FILE_WEEK, "blocks": [5]}),
+    file_text({**FILE_WEEK, "blocks": [None]}),
+    file_text({**FILE_WEEK, "blocks": [[]]}),
+    file_text({**FILE_WEEK, "assignments": None}),
+    file_text({**FILE_WEEK, "assignments": {}}),
+    file_text({k: v for k, v in FILE_WEEK.items() if k != "assignments"}),
+    file_text({**FILE_WEEK, "assignments": [5]}),
+    file_text({**FILE_WEEK, "version": 1, "assignments": None}),
+    file_text({**FILE_WEEK, "version": 1, "assignments": [5]}),
+    *[
+        file_text({**FILE_WEEK, "week_start": v})
+        for v in (
+            None,
+            "",
+            "2026-09-22",
+            "2026-09-21T00:00",
+            "x",
+            5,
+            0,
+            [],
+            {},
+            True,
+            1.5,
+            "1999-12-27",
+            "2100-01-04",
+            "2026-W39-1",
+            "20260921",
+        )
+    ],
+    file_text({k: v for k, v in FILE_WEEK.items() if k != "week_start"}),
+    *[file_text({**FILE_DAY, "day": v}) for v in (None, -1, 7, 0, 6, True, False, 1.0, "2", [2], 10**30)],
+    file_text({k: v for k, v in FILE_DAY.items() if k != "day"}),
+    file_text(with_blocks(FILE_DAY, [{**FILE_BLOCK, "days": [1]}])),
+    file_text(with_blocks(FILE_DAY, [{**FILE_BLOCK, "days": [2, 3]}])),
+    file_text(with_blocks(FILE_DAY, [])),
+    file_text({**FILE_DAY, "day": True, "blocks": [{**FILE_BLOCK, "days": [1]}]}),
+    file_text(with_blocks(FILE_WEEK, [{**FILE_BLOCK, "id": f"b{n}"} for n in range(100)])),
+    file_text(with_blocks(FILE_WEEK, [{**FILE_BLOCK, "id": f"b{n}"} for n in range(101)])),
+    file_text(with_blocks(FILE_WEEK, [FILE_BLOCK, FILE_BLOCK])),
+    file_text(
+        with_blocks(
+            FILE_WEEK, [FILE_BLOCK, {**FILE_BLOCK, "id": "b2"}, FILE_BLOCK, {**FILE_BLOCK, "id": "b2"}]
+        )
+    ),
+    file_text(
+        with_blocks(
+            FILE_WEEK,
+            [
+                {**FILE_BLOCK, "id": "a"},
+                {**FILE_BLOCK, "id": "b"},
+                {**FILE_BLOCK, "id": "b"},
+                {**FILE_BLOCK, "id": "a"},
+            ],
+        )
+    ),
+    file_text(with_blocks(FILE_WEEK, [FILE_BLOCK, {**FILE_BLOCK, "id": "c", "pomodoro_parent_id": "b1"}])),
+    file_text(with_blocks(FILE_WEEK, [{**FILE_BLOCK, "id": "c", "pomodoro_parent_id": "zzz"}])),
+    file_text({**FILE_WEEK, "assignments": [{**FILE_HOMEWORK, "id": f"h{n}"} for n in range(100)]}),
+    file_text({**FILE_WEEK, "assignments": [{**FILE_HOMEWORK, "id": f"h{n}"} for n in range(101)]}),
+    file_text({**FILE_WEEK, "assignments": [FILE_HOMEWORK, FILE_HOMEWORK]}),
+    file_text(
+        {
+            **FILE_WEEK,
+            "assignments": [
+                FILE_HOMEWORK,
+                {**FILE_HOMEWORK, "id": "two"},
+                FILE_HOMEWORK,
+                {**FILE_HOMEWORK, "id": "two"},
+            ],
+        }
+    ),
+    file_text({**FILE_WEEK, "assignments": []}),
+    file_text({**FILE_WEEK, "version": 1, "assignments": []}),
+    file_text({**FILE_WEEK, "version": 1}),
+    file_text({**FILE_WEEK, "blocks": [FILE_SESSION], "assignments": [{**FILE_HOMEWORK, "id": "other"}]}),
+    file_text(FILE_WEEK),
+    file_text(FILE_DAY),
+    json.dumps(FILE_WEEK, indent=2),
+    "﻿" + file_text(FILE_WEEK),
+    "  " + file_text(FILE_WEEK) + "\n",
+    file_text(FILE_WEEK)[:-3],
+    file_text(FILE_WEEK) + " x",
+    '{"format": "flexweek-week", "version": 2, "blocks": [], "assignments": [], "x": NaN}',
+    '{"format": NaN, "version": 2, "blocks": [], "assignments": []}',
+    '{"format": "flexweek-week", "version": NaN, "blocks": [], "assignments": []}',
+    '{"format": "flexweek-week", "version": 2, "blocks": NaN, "assignments": []}',
+    '{"format": "flexweek-week", "version": 2, "blocks": [], "assignments": [], "week_start": NaN}',
+    '{"format": "flexweek-week", "version": 2, "blocks": [], "assignments": [], "week_start": Infinity}',
+    '{"format": "flexweek-day", "version": 2, "blocks": [], "assignments": [], "day": NaN}',
+    WEEK_HEAD
+    + '"blocks": [{"id": "a", "title": "T", "kind": "locked", "duration_min": NaN, "days": [0]}],'
+    + ' "assignments": []}',
+    WEEK_HEAD
+    + '"blocks": [{"id": "a\\ud800", "title": "T", "kind": "locked", "duration_min": 15, "days": [0]}],'
+    + ' "assignments": []}',
+    '{"format": "flexweek-week", "version": 2, "blocks": [], "assignments": [], "week_start": "\\ud800"}',
+    '{"format": "flexweek-week", "version": 99999999999999999999999, "blocks": [], "assignments": []}',
+]
+
+
+@pytest.mark.parametrize("text", FILE_RULES, ids=lambda text: text[:50])
+def test_each_rule_of_a_file_the_student_imports(text):
+    import_matches(text)
+    import_matches(text or None)
+    same(live_files.parse_import_payload, ref_files.parse_import_payload, None)
+
+
+@st.composite
+def spoiled_files(draw):
+    payload = copy.deepcopy(draw(maybe(FILE_WEEK, FILE_DAY)))
+    for _ in range(draw(st.integers(1, 3))):
+        payload = spoil(draw, payload)
+    return payload
+
+
+@WIDE
+@given(spoiled_files())
+def test_imports_of_files_with_places_spoiled(payload):
+    if isinstance(payload, dict):
+        import_matches(json.dumps(payload))
+    import_matches(json.dumps(payload))
+
+
+@WIDE
+@given(
+    st.lists(
+        st.one_of(st.just(FILE_BLOCK), st.just(FILE_SESSION), st.just({}), maybe(None, 5, "x")), max_size=3
+    ),
+    maybe(1, 2, 3),
+    maybe(0, 2, 7, None, True, "x"),
+)
+def test_imports_of_files_with_odd_blocks(blocks, version, day):
+    payload = {
+        "format": "flexweek-day",
+        "version": version,
+        "week_start": "2026-09-21",
+        "day": day,
+        "blocks": blocks,
+        "assignments": [],
+    }
+    import_matches(json.dumps(payload))
+    import_matches(json.dumps({**payload, "format": "flexweek-week"}))
+
+
+@WIDE
+@given(
+    st.lists(st.one_of(st.just(FILE_BLOCK), st.just(FILE_SESSION), maybe(None, 5, "x", [], {})), max_size=3),
+    st.one_of(
+        st.dictionaries(maybe("essay", "lab", "gone"), st.just(FILE_HOMEWORK), max_size=2),
+        maybe(None, [], "x", ["essay"]),
+    ),
+    st.one_of(DAY, maybe(None, "x", 9)),
+)
+def test_exports_of_odd_weeks(blocks, assignments, day):
+    same(live_files.export_week_payload, ref_files.export_week_payload, "2026-09-21", blocks, assignments)
+    same(live_files.export_day_payload, ref_files.export_day_payload, "2026-09-21", day, blocks, assignments)
+
+
+# E6: the desktop wrappers decide nothing. Each test below covers a decision that used to be made in
+# Python around the engine call and is now made in the engine.
+
+
+@WIDE
+@given(
+    maybe(None, "", "2026-09-24", "2026-09-24T21:00", "2026-09-14", "x", "2026-13-01", 0, [], {}),
+    st.sampled_from(DATES),
+)
+def test_due_day_in_week_on_generated_deadlines(due, week):
+    same(live_calendar.due_day_in_week, ref_calendar.due_day_in_week, due, week)
+
+
+@st.composite
+def history_steps(draw):
+    weeks = st.fixed_dictionaries(
+        {
+            "week_start": st.sampled_from(["2026-09-14", "2026-09-21"]),
+            "before": st.lists(st.integers(0, 3), max_size=2),
+            "after": st.lists(st.integers(0, 3), max_size=2),
+        }
+    )
+    assignments = st.fixed_dictionaries(
+        {"id": st.sampled_from(["a", "b"]), "before": maybe(None, {"n": 1}), "after": maybe(None, {"n": 2})}
+    )
+    return {
+        "label": draw(st.sampled_from(["x", "y"])),
+        "weeks": draw(st.lists(weeks, max_size=3)),
+        "assignments": draw(st.lists(assignments, max_size=3)),
+        "stale": draw(st.booleans()),
+    }
+
+
+@CHECK
+@given(st.lists(history_steps(), max_size=4), history_steps())
+def test_join_step_on_generated_stacks(stack, step):
+    same(live_history.join_step, ref_history.join_step, stack, step)
+    same(live_history.push_step, ref_history.push_step, stack, step)
+
+
+@CHECK
+@given(st.lists(history_steps(), max_size=4), st.sampled_from(["2026-09-14", "2026-09-21", "2026-09-28", ""]))
+def test_mark_stale_on_generated_stacks(steps, week):
+    same(live_history.mark_stale, ref_history.mark_stale, steps, week)
+
+
+@pytest.mark.parametrize("held", [live_history.HISTORY_LIMIT - 1, live_history.HISTORY_LIMIT, 60])
+def test_a_push_past_the_limit_drops_one_step_from_the_front(held):
+    stack = [{"label": str(index), "weeks": [], "assignments": [], "stale": False} for index in range(held)]
+    step = {"label": "new", "weeks": [], "assignments": [], "stale": False}
+    same(live_history.push_step, ref_history.push_step, stack, step)
+    same(live_history.join_step, ref_history.join_step, [{**item, "stale": True} for item in stack], step)
+
+
+@CHECK
+@given(
+    st.lists(st.integers(0, 2), max_size=2),
+    st.lists(st.integers(0, 2), max_size=2),
+    st.dictionaries(st.sampled_from(["a", "b", "c"]), st.sampled_from([{"n": 1}, {"n": 2}]), max_size=3),
+    st.dictionaries(st.sampled_from(["a", "b", "c"]), st.sampled_from([{"n": 1}, {"n": 2}]), max_size=3),
+    st.sets(st.sampled_from(["a", "b", "c", "d"]), max_size=4),
+)
+def test_capture_step_lists_assignments_in_sorted_order(before, after, old, new, changed):
+    same(live_history.capture_step, ref_history.capture_step, "x", WEEK, before, after, old, new, changed)
+
+
+def a_release(**extra):
+    base = "https://github.com/j0nsh1n/FlexWeek/releases/download/v9.0.0/"
+    names = (live_update.WINDOWS_SETUP, live_update.LINUX_TARBALL, live_update.LINUX_APPIMAGE)
+    assets = [
+        {"name": name + suffix, "browser_download_url": base + name + suffix}
+        for name in names
+        for suffix in ("", ".sha256")
+    ]
+    return {"tag_name": "v9.0.0", "assets": assets, "body": "Notes", **extra}
+
+
+@CHECK
+@given(
+    st.one_of(
+        maybe(None, 5, 1.5, True, "x", "", [], [1], {}, (), b"x", types.SimpleNamespace()),
+        maybe(
+            a_release(),
+            a_release(draft=True),
+            a_release(prerelease=1),
+            a_release(tag_name="v0.0.1"),
+            a_release(tag_name=7),
+            a_release(assets="x"),
+            a_release(body=None),
+        ),
+    ),
+    maybe("windows", "appimage", "tarball"),
+)
+def test_available_reads_only_a_dict_as_a_release(release, kind):
+    same(live_update.available, ref_update.available, release, kind, "0.17.2")
+
+
+@CHECK
+@given(
+    maybe(
+        None,
+        5,
+        "x",
+        [],
+        b"x",
+        (),
+        types.SimpleNamespace(),
+        {},
+        {"check": False},
+        {"check": 0, "last_ms": True, "skip": "x" * 33},
+        {"last_ms": 4_102_444_800_001, "skip": "x" * 32},
+        {"last_ms": 4_102_444_800_000, "check": False, "skip": ""},
+        {"last_ms": 1.5, "skip": 3},
+    )
+)
+def test_sanitize_updates_reads_what_json_cannot_write_as_nothing(raw):
+    same(live_update.sanitize_updates, ref_update.sanitize_updates, raw)
+
+
+@pytest.mark.parametrize("kind", ["windows", "appimage", "tarball", "", "x", "Windows"])
+def test_asset_name_of_a_kind_nobody_installs_is_a_key_error(kind):
+    same(live_update.asset_name, ref_update.asset_name, kind)
+
+
+KEYS = ["2026-09-21|a|0|08:30", "2026-09-21|b|0|16:00"]
+FIRED_AS = [
+    set(),
+    set(KEYS[:1]),
+    frozenset(KEYS),
+    KEYS[:1],
+    tuple(KEYS),
+    KEYS[0],
+    {KEYS[0]: 1},
+    None,
+    "",
+]
+
+
+@CHECK
+@given(
+    st.lists(REMIND_BLOCK, max_size=3),
+    REMIND_TRACE,
+    TODAYS,
+    st.integers(7 * 60, 18 * 60),
+    st.integers(0, 15),
+    st.sampled_from(FIRED_AS),
+)
+def test_reminders_and_songs_read_what_was_fired_in_any_container(blocks, trace, today, now_min, lead, fired):
+    same(
+        live_remind.due_reminders,
+        ref_remind.due_reminders,
+        blocks=blocks,
+        trace=trace,
+        today_iso=today,
+        now_min=now_min,
+        lead_min=lead,
+        fired=fired,
+    )
+    same(
+        live_remind.due_songs,
+        ref_remind.due_songs,
+        blocks=blocks,
+        trace=trace,
+        today_iso=today,
+        now_min=now_min,
+        played=fired,
+    )
+
+
+@CHECK
+@given(
+    TODAYS,
+    st.sampled_from(["2026-09-24|a|07:30", "2026-09-24|b|10:30"]),
+    st.sampled_from(FIRED_AS),
+    ZONES,
+    st.integers(1_789_900_000_000, 1_790_300_000_000),
+)
+def test_due_alarms_mark_only_a_set_and_read_any_container(today, key, fired, zone, now_ms):
+    alarms = [
+        {"id": "a", "time": "07:30", "enabled": True},
+        {"id": "b", "time": "10:30", "enabled": True, "days": [datetime.fromisoformat(today).weekday()]},
+    ]
+    with local_zone(zone):
+        same(
+            live_remind.due_alarms,
+            ref_remind.due_alarms,
+            alarms=alarms,
+            today_iso=today,
+            weekday=datetime.fromisoformat(today).weekday(),
+            now_ms=now_ms,
+            midnight_ms=0,
+            last_check_ms=now_ms - 6 * 3_600_000,
+            fired=fired,
+            snoozed={"a": now_ms - 1},
+        )
+
+
+MOMENT = st.datetimes(min_value=datetime(2026, 9, 14), max_value=datetime(2026, 10, 12))
+
+
+@WIDE
+@given(maybe("2026-09-14", "2026-09-21", "2026-09-28", "x", ""), MOMENT)
+def test_plan_start_on_generated_moments(week, now):
+    same(live_reuse.plan_start, ref_reuse.plan_start, week, now)
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        datetime(2026, 9, 27, 23, 50),
+        datetime(2026, 9, 21, 23, 59, 30),
+        datetime(2026, 9, 21, 10, 0, 0, 1),
+        datetime(2026, 9, 21, 10, 0),
+        datetime(2026, 9, 20, 23, 59),
+        None,
+        "x",
+    ],
+)
+def test_plan_start_at_the_edges(now):
+    same(live_reuse.plan_start, ref_reuse.plan_start, WEEK, now)
+
+
+@WIDE
+@given(
+    maybe("2026-09-14", "2026-09-21", "2026-09-28", "x"),
+    maybe(*MOMENTS, None),
+    st.booleans(),
+    st.booleans(),
+    maybe(0, 99, 100, 101),
+)
+def test_running_late_refusal_on_generated_moments(week, now, dirty, conflict, count):
+    same(
+        live_reuse.running_late_refusal,
+        ref_reuse.running_late_refusal,
+        week_start=week,
+        now=now,
+        dirty=dirty,
+        conflict=conflict,
+        block_count=count,
+    )
+
+
+@CHECK
+@given(
+    maybe(
+        types.SimpleNamespace(week_start="2026-09-21", now_ms=lambda: 1_790_000_000_000),
+        types.SimpleNamespace(week_start="2026-09-21", selected_month=None),
+        types.SimpleNamespace(week_start="2026-09-21", now_ms=lambda: 1.79e12),
+        types.SimpleNamespace(now_ms=lambda: 0),
+        types.SimpleNamespace(week_start="2026-09-21", now_ms=5),
+        None,
+    ),
+    maybe("week", "day", "myday", "month"),
+    maybe(None, "2026-09-30"),
+    ZONES,
+)
+def test_planner_title_reads_the_session_as_it_finds_it(session, view, selected, zone):
+    with local_zone(zone):
+        same(live_reuse.planner_title, ref_reuse.planner_title, session, view, selected_day=selected)
+
+
+@CHECK
+@given(preview_rows(), maybe("rows", "tuple", "copies", "dict", "none"))
+def test_conflicts_find_their_own_row_in_any_container(rows, held):
+    for row in rows:
+        others = {
+            "rows": rows,
+            "tuple": tuple(rows),
+            "copies": [dict(item) for item in rows],
+            "dict": {"a": row},
+            "none": None,
+        }[held]
+        same(live_reuse.row_conflict, ref_reuse.row_conflict, row, others, [])
+        same(live_reuse.preview_conflict_message, ref_reuse.preview_conflict_message, row, others, [])
+
+
+@CHECK
+@given(
+    maybe(None, [], ["essay"], {"essay"}, frozenset({"essay"}), ("essay",), "essay", {"essay": 1}),
+    maybe(None, (1, 600), [1, 600], (9, 0), (), [], "x"),
+    maybe(True, False, 0, 1, None, "", "x"),
+)
+def test_solve_request_reads_only_and_not_before_as_it_is_given(only, not_before, everything):
+    blocks = [session(pinned=None), session(id="open", pinned=None, start=None, days=[0, 1, 2])]
+    same(
+        live_reuse.solve_request,
+        ref_reuse.solve_request,
+        blocks,
+        {"essay": homework()},
+        WEEK,
+        everything=everything,
+        only=only,
+        not_before=not_before,
+    )
+
+
+@CHECK
+@given(maybe(set(), {"sess"}, frozenset({"sess"}), ["sess"], ("sess",), "sess", {"sess": 1}, None))
+def test_settle_placements_reads_keep_as_it_is_given(keep):
+    late = [session(start="23:30", pinned=None), session(id="two", start="23:30", pinned=None)]
+    same(live_reuse.settle_placements, ref_reuse.settle_placements, late, {"essay": homework()}, WEEK, keep)
+
+
+@CHECK
+@given(st.lists(maybe(True, False, 1, 0, None, "x", 1.0, 0.0, ""), min_size=1, max_size=6))
+def test_set_clock_24h_compares_the_object_the_window_passed(values):
+    was = dict(live_weekmodel._clock), dict(ref_weekmodel._clock)
+    try:
+        for module in (live_weekmodel, ref_weekmodel):
+            module._clock["24h"] = True
+        for value in values:
+            got = live_weekmodel.set_clock_24h(value)
+            want = ref_weekmodel.set_clock_24h(value)
+            assert repr(got) == repr(want)
+            assert repr(live_weekmodel._clock) == repr(ref_weekmodel._clock)
+            assert live_weekmodel.time_format() == ref_weekmodel.time_format()
+    finally:
+        live_weekmodel._clock.update(was[0])
+        ref_weekmodel._clock.update(was[1])
+        flexweek_engine.week_set_clock_24h(bool(was[0]["24h"]))
+
+
+def test_a_week_model_keeps_its_engine_week_only_while_its_tuples_cannot_change():
+    held = live_weekmodel.Occurrence("y", "Y", "assignments", 0, 60, 90, True, False, False, None, None, None)
+    fixed = live_weekmodel.WeekModel("2026-09-21", (held,), (), 0)
+    assert fixed._engine() is fixed._engine()
+    listed = live_weekmodel.WeekModel("2026-09-21", [held], (), 0)
+    assert listed._engine() is not listed._engine()
+    assert "_engine_week" not in vars(listed)
