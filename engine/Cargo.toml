@@ -7,3 +7,8 @@ edition = "2024"
 license = "GPL-3.0-only"
 version = "0.1.0"
 publish = false
+
+# The solver tests time real solves against the 150 ms budget, as the Python tests did. An
+# unoptimised engine came within reach of it on a loaded four-core machine; opt-level 2 did not.
+[profile.dev.package.flexweek-engine]
+opt-level = 2
