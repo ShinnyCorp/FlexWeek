@@ -1192,7 +1192,7 @@ pub fn readability(
             let fixed = if field == "accent" {
                 fit_lightness(
                     &palette.accent,
-                    &grounds_of(&[surfaces[0], surfaces[1], tint.as_str()]),
+                    &grounds_of(&[surfaces[0], surfaces[1], surfaces[2], tint.as_str()]),
                     need,
                 )?
             } else if field == "text" {

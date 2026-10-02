@@ -8,8 +8,9 @@ mod common;
 
 use common::desk::{object, with};
 use flexweek_engine::desk::custom_look::{
-    FILE_VERSION, ImportedLook, delete_look, duplicate_look, export_look, free_name, import_look,
-    rename_look, reset_look, sanitize_saved, save_look, start_custom, wear,
+    FILE_VERSION, ImportedLook, ReadabilityPalette, delete_look, duplicate_look, export_look,
+    free_name, import_look, readability, rename_look, reset_look, sanitize_saved, save_look,
+    start_custom, wear,
 };
 use flexweek_engine::{EngineResult, ErrorKind};
 use serde_json::{Map, Value, json};
@@ -236,4 +237,36 @@ fn test_an_import_keeps_what_it_can_and_says_what_it_left_out() {
         Some(object(json!({"base": "poster", "name": "My look"})))
     );
     assert_eq!(got.problems.len(), 2, "{:?}", got.problems);
+}
+
+/// A high-contrast look with a green card has a calendar (`grid`) of its own, dark green on a black
+/// page and card. The accent's Fix must read on that calendar too: the palette and both Fix colours
+/// are `desk_ref.custom_look.readability` run on `custom`, with `resolved_palette`'s palette. Blocks
+/// are left out; they only move the text's Fix.
+#[test]
+fn test_an_accent_fix_reads_on_the_calendar_as_well_as_the_page_and_cards() {
+    let custom = object(json!({
+        "base": "high-contrast",
+        "accent": "#ea899d",
+        "colours": {"card": "#84e637"},
+    }));
+    let palette = ReadabilityPalette {
+        window: "#000000".into(),
+        panel: "#000000".into(),
+        grid: "#376117".into(),
+        text: "#ffffff".into(),
+        muted: "#ffffff".into(),
+        accent: "#ea899d".into(),
+        accent_ink: "#000000".into(),
+    };
+    let found = readability(&custom, &palette, &[]).expect("checked");
+    let fixes: Vec<(&str, &str)> = found
+        .iter()
+        .filter(|problem| problem.field == ["accent"])
+        .map(|problem| (problem.words.as_str(), problem.fixed.as_str()))
+        .collect();
+    assert_eq!(
+        fixes,
+        [("Today's day name", "#ffb9cc"), ("Now line", "#eb8a9d")]
+    );
 }
