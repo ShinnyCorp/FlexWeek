@@ -1,0 +1,265 @@
+//! Rust twin of `desktop/tests/test_remind.py`: reminder lead windows and alarm snooze.
+
+mod common;
+
+use common::desk::{utc_ms, with};
+use flexweek_engine::desk::remind::{
+    ALARM_SNOOZE_MS, clock_parts, due_alarms, due_reminders, due_songs, snooze_until,
+    start_alert_due,
+};
+use serde_json::{Value, json};
+use std::collections::HashSet;
+
+#[test]
+fn test_start_alert_due_from_the_lead_to_the_start() {
+    // 16:00 start, 5 minute lead: due from 15:55 through the 16:00 minute, never after.
+    assert!(start_alert_due(16 * 60, 15 * 60 + 55, 5));
+    assert!(!start_alert_due(16 * 60, 15 * 60 + 54, 5));
+    assert!(start_alert_due(16 * 60, 15 * 60 + 58, 5));
+    assert!(start_alert_due(16 * 60, 16 * 60, 5));
+    assert!(!start_alert_due(16 * 60, 16 * 60 + 1, 5));
+    assert!(start_alert_due(16 * 60, 16 * 60, 0));
+    assert!(!start_alert_due(16 * 60, 15 * 60 + 55, 0));
+}
+
+#[test]
+fn test_due_reminders_fire_once_per_block_start() {
+    let blocks = [json!({
+        "id": "soccer",
+        "title": "Soccer",
+        "kind": "locked",
+        "start": "16:00",
+        "days": [0],
+        "completed": false,
+        "missed_days": [],
+    })];
+    let mut fired: HashSet<String> = HashSet::new();
+    let first = due_reminders(&blocks, None, "2026-09-14", 15 * 60 + 55, 5, &fired).expect("due");
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0]["title"], "Soccer starts soon");
+    fired.insert(first[0]["key"].as_str().expect("key").to_string());
+    let again = due_reminders(&blocks, None, "2026-09-14", 15 * 60 + 56, 5, &fired).expect("due");
+    assert_eq!(again, Vec::<Value>::new());
+    let at_start =
+        due_reminders(&blocks, None, "2026-09-14", 16 * 60, 0, &HashSet::new()).expect("due");
+    assert_eq!(at_start.len(), 1);
+}
+
+#[test]
+fn test_completed_and_missed_blocks_do_not_remind() {
+    let blocks = [
+        json!({
+            "id": "done",
+            "title": "Done",
+            "kind": "locked",
+            "start": "16:00",
+            "days": [0],
+            "completed": true,
+            "missed_days": [],
+        }),
+        json!({
+            "id": "missed",
+            "title": "Missed",
+            "kind": "locked",
+            "start": "16:00",
+            "days": [0],
+            "completed": false,
+            "missed_days": [0],
+        }),
+    ];
+    assert_eq!(
+        due_reminders(
+            &blocks,
+            None,
+            "2026-09-14",
+            15 * 60 + 55,
+            5,
+            &HashSet::new()
+        )
+        .expect("due"),
+        Vec::<Value>::new()
+    );
+}
+
+#[test]
+fn test_alarm_fires_once_then_snoozes_five_minutes() {
+    let now_ms = utc_ms(2026, 9, 14, 7, 0);
+    let midnight_ms = utc_ms(2026, 9, 14, 0, 0);
+    let clock = clock_parts(now_ms, (2026, 9, 14, 7, 0), midnight_ms).expect("clock parts");
+    let today = clock["iso"].as_str().expect("iso").to_string();
+    let weekday = clock["day"].as_i64().expect("day");
+    assert_eq!(clock["midnight_ms"], json!(midnight_ms));
+    let alarm =
+        json!({"id": "wake", "name": "Wake", "time": "07:00", "days": [0], "enabled": true});
+    let due_ms_of = |hour: i64, minute: i64| Ok(midnight_ms + (hour * 60 + minute) * 60_000);
+    let mut fired: HashSet<String> = HashSet::new();
+    let (queued, _snoozed, last) = due_alarms(
+        std::slice::from_ref(&alarm),
+        &today,
+        weekday,
+        now_ms,
+        Some(now_ms - 60_000),
+        &mut fired,
+        &[],
+        &mut { due_ms_of },
+    )
+    .expect("alarms");
+    let queued_ids: Vec<&Value> = queued.iter().map(|item| &item["id"]).collect();
+    assert_eq!(queued_ids, ["wake"]);
+    let until = snooze_until(now_ms);
+    assert_eq!(until - now_ms, ALARM_SNOOZE_MS);
+    let (later, remaining, _last) = due_alarms(
+        std::slice::from_ref(&alarm),
+        &today,
+        weekday,
+        until,
+        Some(last),
+        &mut fired,
+        &[("wake".to_string(), until)],
+        &mut { due_ms_of },
+    )
+    .expect("alarms");
+    let later_ids: Vec<&Value> = later.iter().map(|item| &item["id"]).collect();
+    assert_eq!(later_ids, ["wake"]);
+    assert_eq!(remaining, Vec::<(String, i64)>::new());
+}
+
+#[test]
+fn test_alarm_fires_at_seven_on_a_daylight_saving_day() {
+    // The Python test sets TZ to America/New_York and lets the wrapper read the local clock. The
+    // engine never reads a zone: it takes the day's 07:00 from the caller. So the three days are
+    // laid out as that zone gives them, in whole hours from local midnight to local 07:00:
+    // 6 on the spring-forward day, 8 on the fall-back day, 7 on an ordinary one.
+    let alarm =
+        json!({"id": "wake", "name": "Wake", "time": "07:00", "days": [6], "enabled": true});
+    let queued_at = |year: i32, month: u32, day: u32, hours_since_midnight: i64| -> Vec<String> {
+        let midnight_ms = utc_ms(year, month, day, 0, 0);
+        let now_ms = midnight_ms + hours_since_midnight * 3_600_000;
+        let today = format!("{year:04}-{month:02}-{day:02}");
+        let clock =
+            clock_parts(now_ms, (year, month, day, 7, 0), midnight_ms).expect("clock parts");
+        // The local hour h of that date, wherever the zone put it: the day's shift from 24-hour
+        // days is `hours_since_midnight - 7`.
+        let mut due_ms_of = |hour: i64, minute: i64| {
+            Ok(midnight_ms + (hour + hours_since_midnight - 7) * 3_600_000 + minute * 60_000)
+        };
+        let (queued, _, _) = due_alarms(
+            std::slice::from_ref(&alarm),
+            &today,
+            clock["day"].as_i64().expect("day"),
+            now_ms,
+            Some(now_ms - 60_000),
+            &mut HashSet::new(),
+            &[],
+            &mut due_ms_of,
+        )
+        .expect("alarms");
+        queued
+            .iter()
+            .map(|item| item["id"].as_str().expect("id").to_string())
+            .collect()
+    };
+    assert_eq!(queued_at(2026, 3, 8, 6), ["wake"]);
+    assert_eq!(queued_at(2026, 11, 1, 8), ["wake"]);
+    assert_eq!(queued_at(2026, 9, 13, 7), ["wake"]);
+}
+
+const THURSDAY: &str = "2026-09-17";
+
+fn practice() -> Value {
+    json!({
+        "id": "practice",
+        "title": "Guitar practice",
+        "kind": "locked",
+        "start": "18:45",
+        "days": [3],
+        "completed": false,
+        "missed_days": [],
+    })
+}
+
+/// Each minute checked in turn, as the poll does, keeping what has fired.
+fn reminded(minutes: std::ops::Range<i64>, lead: i64, block: &Value) -> Vec<(i64, String)> {
+    let mut fired: HashSet<String> = HashSet::new();
+    let mut seen = Vec::new();
+    for minute in minutes {
+        let due = due_reminders(
+            std::slice::from_ref(block),
+            None,
+            THURSDAY,
+            minute,
+            lead,
+            &fired,
+        )
+        .expect("due");
+        for item in due {
+            fired.insert(item["key"].as_str().expect("key").to_string());
+            seen.push((minute, item["title"].as_str().expect("title").to_string()));
+        }
+    }
+    seen
+}
+
+#[test]
+fn test_a_block_first_seen_inside_its_lead_reminds_at_the_first_check() {
+    // Saved at 18:38 for 18:45 with a 10-minute lead: the lead began at 18:35.
+    assert_eq!(
+        reminded(18 * 60 + 38..19 * 60, 10, &practice()),
+        [(18 * 60 + 38, "Guitar practice starts soon".to_string())]
+    );
+}
+
+#[test]
+fn test_a_block_first_seen_in_its_start_minute_says_it_starts_now() {
+    assert_eq!(
+        reminded(18 * 60 + 45..19 * 60, 10, &practice()),
+        [(18 * 60 + 45, "Guitar practice starts now".to_string())]
+    );
+}
+
+#[test]
+fn test_a_block_that_has_started_does_not_remind() {
+    assert_eq!(reminded(18 * 60 + 46..19 * 60, 10, &practice()), []);
+}
+
+#[test]
+fn test_a_block_with_a_song_is_announced_by_the_song_at_its_start() {
+    let block = with(
+        practice(),
+        json!({"spotify_url": "https://open.spotify.com/track/abc"}),
+    );
+    assert_eq!(reminded(18 * 60 + 45..19 * 60, 0, &block), []);
+    let mut played: HashSet<String> = HashSet::new();
+    let mut songs: Vec<(i64, String, String)> = Vec::new();
+    for minute in 18 * 60 + 40..19 * 60 {
+        let due = due_songs(
+            std::slice::from_ref(&block),
+            None,
+            THURSDAY,
+            minute,
+            &played,
+        )
+        .expect("songs");
+        for song in due {
+            played.insert(song["id"].as_str().expect("id").to_string());
+            songs.push((
+                minute,
+                song["name"].as_str().expect("name").to_string(),
+                song["spotify_url"].as_str().expect("url").to_string(),
+            ));
+        }
+    }
+    assert_eq!(
+        songs,
+        [(
+            18 * 60 + 45,
+            "Guitar practice".to_string(),
+            "https://open.spotify.com/track/abc".to_string()
+        )]
+    );
+    let start = 18 * 60 + 45;
+    assert_eq!(
+        due_songs(&[practice()], None, THURSDAY, start, &HashSet::new()).expect("songs"),
+        Vec::<Value>::new()
+    );
+}

@@ -27,3 +27,33 @@ pub fn fresh_ids() -> impl FnMut() -> String {
         format!("id-{count}")
     }
 }
+
+/// Milliseconds since the epoch of a wall-clock time read as UTC. The engine is handed the local
+/// clock by its caller and never reads a time zone, so these tests pick UTC as "local".
+pub fn utc_ms(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> i64 {
+    chrono::NaiveDate::from_ymd_opt(year, month, day)
+        .and_then(|date| date.and_hms_opt(hour, minute, 0))
+        .expect("a real date and time")
+        .and_utc()
+        .timestamp_millis()
+}
+
+/// Python's `str.title()`: each run of letters starts with a capital and goes on in lower case.
+pub fn py_title(text: &str) -> String {
+    let mut out = String::new();
+    let mut in_word = false;
+    for ch in text.chars() {
+        if ch.is_alphabetic() {
+            if in_word {
+                out.extend(ch.to_lowercase());
+            } else {
+                out.extend(ch.to_uppercase());
+            }
+            in_word = true;
+        } else {
+            out.push(ch);
+            in_word = false;
+        }
+    }
+    out
+}
