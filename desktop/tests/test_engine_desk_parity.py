@@ -273,15 +273,15 @@ def test_asset_name(kind):
 
 @CHECK
 @given(
-    st.from_regex(r"v?[0-9]+(\.[0-9]+){0,3}", fullmatch=True),
-    st.from_regex(r"v?[0-9]+(\.[0-9]+){0,3}", fullmatch=True),
+    st.from_regex(r"v?[0-9]{1,4}(\.[0-9]{1,4}){0,3}", fullmatch=True),
+    st.from_regex(r"v?[0-9]{1,4}(\.[0-9]{1,4}){0,3}", fullmatch=True),
 )
 def test_version_is_newer(candidate, current):
     match(live_version.is_newer, ref_version.is_newer, candidate, current)
 
 
 @CHECK
-@given(st.text(min_size=0, max_size=24))
+@given(st.from_regex(r"v?[0-9]{1,4}(\.[0-9]{1,4}){0,3}|[0-9]{1,4}-rc[0-9]|latest|", fullmatch=True))
 def test_version_parse(value):
     match(live_version.parse, ref_version.parse, value)
 

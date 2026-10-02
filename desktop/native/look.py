@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections import OrderedDict
+from collections.abc import Callable
 from copy import deepcopy
 from functools import lru_cache
 
@@ -588,6 +590,26 @@ CUSTOM_RANGES = {"corners": (0, 16, True), "text_scale": (0.9, 1.3, False), "edg
 NAME_MAX = 40
 HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
+_LOOK_JSON_CACHE: OrderedDict[str, str] = OrderedDict()
+_LOOK_JSON_CACHE_MAX = 128
+
+
+def _look_json_key(raw: object) -> str:
+    return plain(raw)
+
+
+def _cached_look_json(kind: str, key: str, fetch: Callable[[], str]) -> str:
+    slot = f"{kind}\0{key}"
+    hit = _LOOK_JSON_CACHE.get(slot)
+    if hit is not None:
+        _LOOK_JSON_CACHE.move_to_end(slot)
+        return hit
+    hit = fetch()
+    _LOOK_JSON_CACHE[slot] = hit
+    if len(_LOOK_JSON_CACHE) > _LOOK_JSON_CACHE_MAX:
+        _LOOK_JSON_CACHE.popitem(last=False)
+    return hit
+
 
 def _hex(value: object) -> str | None:
     return value.lower() if isinstance(value, str) and HEX.fullmatch(value) else None
@@ -596,20 +618,26 @@ def _hex(value: object) -> str | None:
 def sanitize_custom(raw: object) -> tuple[dict | None, list[str]]:
     """A custom look with every unknown key and bad value dropped, and a plain sentence for each one
     dropped. None when there is no look to keep: no base, or one this FlexWeek does not have."""
-    custom, problems = restore(json.loads(flexweek_engine.look_sanitize_custom(plain(raw))))
+    key = _look_json_key(raw)
+    text = _cached_look_json("sanitize_custom", key, lambda: flexweek_engine.look_sanitize_custom(key))
+    custom, problems = restore(json.loads(text))
     return custom, problems
 
 
 def sanitize_look(raw: object) -> dict:
     """The device's look: a preset and the knobs moved on it, 0.16's knob names read as today's, and a
     custom look when the student made one."""
-    return restore(json.loads(flexweek_engine.look_sanitize_look(plain(raw))))
+    key = _look_json_key(raw)
+    text = _cached_look_json("sanitize_look", key, lambda: flexweek_engine.look_sanitize_look(key))
+    return restore(json.loads(text))
 
 
 def effective_look(choice: dict | None) -> dict:
     """Every knob as it is drawn. A custom look's measures answer as the nearest knob, so what reads a
     knob, such as setup's chips, still reads something true."""
-    return restore(json.loads(flexweek_engine.look_effective_look(plain(choice))))
+    key = _look_json_key(choice)
+    text = _cached_look_json("effective_look", key, lambda: flexweek_engine.look_effective_look(key))
+    return restore(json.loads(text))
 
 
 def look_measures(choice: dict | None) -> dict:
