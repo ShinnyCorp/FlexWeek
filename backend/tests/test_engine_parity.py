@@ -1040,3 +1040,225 @@ def test_a_fake_clock_does_not_outlast_its_test(tmp_path):
     )
     assert run.returncode == 0, run.stdout + run.stderr
     assert "2 passed" in run.stdout, run.stdout
+
+
+# ---------- adapters: logic that moved in this slice
+
+# One argument has to miss i64. Values that fit stay on plan::snap_minutes, and that path's
+# f64::round is not Python's round for every large integer.
+_WIDE_INT = st.one_of(
+    st.integers(min_value=2**63, max_value=2**400),
+    st.integers(min_value=-(2**400), max_value=-(2**63) - 1),
+)
+_ANY_INT = st.integers(min_value=-(2**400), max_value=2**400)
+
+
+@COMMON
+@given(_WIDE_INT, _ANY_INT, _ANY_INT, st.integers(0, 2))
+def test_snap_minutes_wide_integers(wide, other_a, other_b, slot):
+    args = [other_a, other_b]
+    args.insert(slot, wide)
+    value, low, high = args
+    same(
+        lambda: live_comfort.snap_minutes(value, low, high),
+        lambda: ref_comfort.snap_minutes(value, low, high),
+        f"{value} {low} {high}",
+    )
+
+
+def test_snap_minutes_past_i64_and_overflow():
+    cases = [
+        (10**19, 1, 10**20),
+        (10**19, 1, 180),
+        (-(10**19), 1, 180),
+        (10**20, 0, 10**21),
+        (2**63, 1, 2**63),
+        (2**63, 1, 180),
+        (-(2**63), -100, 180),
+        (10**18, 10**18, 10**18 + 50),
+        (2**100, 1, 2**100),
+        (2**80 + 7, 1, 2**100),
+        (10**6, -40, 50),
+        (-(10**19), -(10**19), -1),
+        (2**53 + 3, 1, 2**60),
+        (2**1027, 1, 2**1027),
+        (2**64, 1, 10**20),
+        (2**64 - 1, 1, 10**20),
+    ]
+    for value, low, high in cases:
+        same(
+            lambda value=value, low=low, high=high: live_comfort.snap_minutes(value, low, high),
+            lambda value=value, low=low, high=high: ref_comfort.snap_minutes(value, low, high),
+            f"{value} {low} {high}",
+        )
+    same(
+        lambda: live_comfort.snap_minutes(10**400, 1, 10**400),
+        lambda: ref_comfort.snap_minutes(10**400, 1, 10**400),
+        "overflow",
+    )
+
+
+def test_resolve_work_windows_empty_matches_missing():
+    same(
+        lambda: live_availability.resolve_work_windows(None),
+        lambda: ref_availability.resolve_work_windows(None),
+        "none",
+    )
+    same(
+        lambda: live_availability.resolve_work_windows([]),
+        lambda: ref_availability.resolve_work_windows([]),
+        "empty",
+    )
+
+
+def test_empty_solver_windows_default_like_the_original():
+    block = {"id": "hw", "title": "Essay", "kind": "flexible", "days": [0], "duration_min": 60}
+    both_solvers("solve", [block], {})
+    both_solvers("solve", [block], {"work_windows": [], "study_windows": []})
+
+
+def test_recovery_codes_follow_the_same_draws():
+    import secrets
+
+    sequence = [
+        bytes.fromhex("0011223344556677"),
+        bytes.fromhex("0011223344556677"),
+        bytes.fromhex("ab"),
+        bytes.fromhex("aabbccddeeff0011"),
+    ]
+    live_draws = iter(sequence)
+    ref_draws = iter(sequence)
+    token_bytes, token_hex = secrets.token_bytes, secrets.token_hex
+
+    def live_draw(_n: int) -> bytes:
+        return next(live_draws)
+
+    def ref_draw(_n: int) -> str:
+        return next(ref_draws).hex()
+
+    secrets.token_bytes = live_draw
+    secrets.token_hex = ref_draw
+    try:
+        same(
+            lambda: live_recovery.generate_recovery_codes(2),
+            lambda: ref_recovery.generate_recovery_codes(2),
+            "draws",
+        )
+        same(
+            lambda: live_recovery.generate_recovery_codes(0),
+            lambda: ref_recovery.generate_recovery_codes(0),
+            "zero",
+        )
+        same(
+            lambda: live_recovery.generate_recovery_codes(-3),
+            lambda: ref_recovery.generate_recovery_codes(-3),
+            "negative",
+        )
+    finally:
+        secrets.token_bytes = token_bytes
+        secrets.token_hex = token_hex
+
+
+def test_recovery_code_matches_ascii_length_and_non_ascii():
+    code = "0011-2233-4455-6677"
+    stored = ref_recovery.hash_recovery_code(code)
+    same(
+        lambda: live_recovery.recovery_code_matches(code, stored),
+        lambda: ref_recovery.recovery_code_matches(code, stored),
+        "equal",
+    )
+    same(
+        lambda: live_recovery.recovery_code_matches(code, stored[:-1]),
+        lambda: ref_recovery.recovery_code_matches(code, stored[:-1]),
+        "short",
+    )
+    same(
+        lambda: live_recovery.recovery_code_matches(code, "é"),
+        lambda: ref_recovery.recovery_code_matches(code, "é"),
+        "non-ascii",
+    )
+    same(
+        lambda: live_recovery.recovery_code_matches(code, "\x7f" * 64),
+        lambda: ref_recovery.recovery_code_matches(code, "\x7f" * 64),
+        "del",
+    )
+    same(
+        lambda: live_recovery.recovery_code_matches("nope", stored),
+        lambda: ref_recovery.recovery_code_matches("nope", stored),
+        "presented",
+    )
+
+
+def test_password_matches_without_a_salt_is_index_error():
+    for encoded in ("", "nosalt", "scrypt"):
+        same(
+            lambda encoded=encoded: live_storage.password_matches("secret", encoded),
+            lambda encoded=encoded: ref_storage.password_matches("secret", encoded),
+            encoded,
+        )
+
+
+def test_create_session_stores_digest_and_week_expiry(tmp_path, monkeypatch):
+    token = "fixed-session-token"
+    now = 1_700_000_000
+    monkeypatch.setattr(live_storage.secrets, "token_urlsafe", lambda _n: token)
+    monkeypatch.setattr(live_storage.time, "time", lambda: now)
+    live_path = tmp_path / "live.sqlite"
+    ref_path = tmp_path / "ref.sqlite"
+    live_storage.initialize(live_path)
+    ref_storage.initialize(ref_path)
+    with live_storage.connect(live_path) as db:
+        user = db.insert_user("ada", "hash")
+        db.execute("INSERT INTO sessions VALUES (?, ?, ?)", ("old", user, 100))
+        got = live_storage.create_session(db, user)
+        row = db.execute("SELECT token_hash, user_id, expires FROM sessions").fetchall()
+    with ref_storage.connect(ref_path) as db:
+        db.execute("INSERT INTO users(username, password_hash) VALUES (?, ?)", ("ada", "hash"))
+        user_ref = db.execute("SELECT id FROM users").fetchone()[0]
+        db.execute("INSERT INTO sessions VALUES (?, ?, ?)", ("old", user_ref, 100))
+        want = ref_storage.create_session(db, user_ref)
+        row_ref = db.execute("SELECT token_hash, user_id, expires FROM sessions").fetchall()
+    assert got == want == token
+    assert [(item[0], item[1], item[2]) for item in row] == [(item[0], item[1], item[2]) for item in row_ref]
+    assert row[0][2] == now + 7 * 24 * 60 * 60
+
+
+def test_initialize_dates_a_legacy_week_with_the_same_monday(tmp_path):
+    def legacy(path):
+        import sqlite3
+
+        db = sqlite3.connect(path)
+        db.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL)"
+        )
+        db.execute("INSERT INTO users(username, password_hash) VALUES ('ada', 'x')")
+        db.execute("CREATE TABLE weeks (user_id INTEGER, blocks TEXT, revision INTEGER)")
+        db.execute("INSERT INTO weeks VALUES (1, '[]', 0)")
+        db.commit()
+        db.close()
+
+    live_path = tmp_path / "live.sqlite"
+    ref_path = tmp_path / "ref.sqlite"
+    legacy(live_path)
+    legacy(ref_path)
+    live_storage.initialize(live_path)
+    ref_storage.initialize(ref_path)
+    import sqlite3
+
+    def week_start(path):
+        db = sqlite3.connect(path)
+        row = db.execute("SELECT week_start FROM weeks").fetchone()
+        db.close()
+        return row[0]
+
+    assert week_start(live_path) == week_start(ref_path)
+
+
+@COMMON
+@given(st.one_of(st.none(), st.integers(-5, 5), st.lists(st.integers(-3, 3), max_size=3), st.text(max_size=12)))
+def test_transfer_fits_on_non_dicts(value):
+    same(
+        lambda: live_transfer.transfer_fits(value),
+        lambda: ref_transfer.transfer_fits(value),
+        repr(value),
+    )
