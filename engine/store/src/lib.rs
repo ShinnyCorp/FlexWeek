@@ -608,7 +608,7 @@ pub fn password_matches_index(password: &str, encoded: &str) -> StoreResult<bool
     password_matches(password, encoded)
 }
 
-const SESSION_SECONDS: i64 = 7 * 24 * 60 * 60;
+pub const SESSION_SECONDS: i64 = 7 * 24 * 60 * 60;
 
 pub fn open_session(conn: &Connection, token: &str, user_id: i64, now: i64) -> StoreResult<()> {
     let expires = now.checked_add(SESSION_SECONDS).ok_or_else(|| {

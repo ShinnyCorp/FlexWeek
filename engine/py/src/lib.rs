@@ -303,6 +303,7 @@ fn int_chars(text: &str) -> PyResult<Vec<(String, String)>> {
 
 #[pymodule]
 fn flexweek_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add("SESSION_SECONDS", flexweek_store::SESSION_SECONDS)?;
     m.add("SLOT_MIN", time::SLOT_MIN)?;
     m.add("DAY_START_MIN", time::DAY_START_MIN)?;
     m.add("DAY_END_MIN", time::DAY_END_MIN)?;
