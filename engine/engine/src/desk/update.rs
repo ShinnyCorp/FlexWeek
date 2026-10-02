@@ -431,25 +431,28 @@ mod tests {
     }
 
     #[test]
-    fn install_kind_ignores_the_process_environment() {
-        let mount = std::env::temp_dir();
-        let image = mount.join("flexweek-appimage-probe");
-        let exe = mount.join("flexweek-probe-bin");
-        std::fs::write(&image, b"x").unwrap();
-        std::fs::write(&exe, b"x").unwrap();
-        // set_var is unsafe in this toolchain because another thread can read the
-        // environment at the same time. This test is that reader, on one thread.
-        unsafe {
-            std::env::set_var("APPIMAGE", &image);
-            std::env::set_var("APPDIR", &mount);
-        }
-        let kind = install_kind(Some("linux"), None, None, Some(exe.to_str().unwrap()));
-        unsafe {
-            std::env::remove_var("APPIMAGE");
-            std::env::remove_var("APPDIR");
-        }
-        let _ = std::fs::remove_file(&image);
-        let _ = std::fs::remove_file(&exe);
-        assert_eq!(kind, "tarball");
+    fn install_kind_uses_only_supplied_environment_strings() {
+        assert_eq!(
+            install_kind(Some("linux"), None, None, Some("/mount/usr/bin/FlexWeek")),
+            "tarball"
+        );
+        assert_eq!(
+            install_kind(
+                Some("linux"),
+                Some("/x/FlexWeek.AppImage"),
+                Some("/mount"),
+                Some("/mount/usr/bin/FlexWeek")
+            ),
+            "appimage"
+        );
+        assert_eq!(
+            install_kind(
+                Some("linux"),
+                Some("/x/FlexWeek.AppImage"),
+                Some("/mount"),
+                Some("/elsewhere/FlexWeek")
+            ),
+            "tarball"
+        );
     }
 }

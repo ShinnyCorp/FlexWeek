@@ -212,12 +212,18 @@ mod tests {
         assert_eq!(hypot(3e-310, 4e-310), 5e-310);
     }
 
-    // CPython 3.14 on glibc: `math.cbrt(27.0)` is 3.0000000000000004, where a correctly rounded
-    // cube root (Rust's own) gives 3.0.
-    #[cfg(target_os = "linux")]
     #[test]
-    fn cbrt_is_glibcs() {
-        assert_eq!(cbrt(27.0), 3.0000000000000004);
+    fn cbrt_matches_the_loaded_c_library() {
+        let library = platform::open();
+        assert!(!library.is_null());
+        let address = platform::symbol(library, c"cbrt");
+        assert!(!address.is_null());
+        // SAFETY: the loaded C library's cbrt has this signature and remains loaded.
+        let loaded =
+            unsafe { std::mem::transmute::<*mut c_void, extern "C" fn(f64) -> f64>(address) };
+        for value in [27.0, -27.0, 8.0, 0.0, -0.0] {
+            assert_eq!(cbrt(value).to_bits(), loaded(value).to_bits());
+        }
     }
 
     #[test]
