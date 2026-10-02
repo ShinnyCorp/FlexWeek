@@ -702,6 +702,16 @@ fn remind_snooze_until(now_ms: i64) -> PyResult<i64> {
 }
 
 #[pyfunction]
+fn update_parse_version(value: &str) -> PyResult<Option<Vec<i64>>> {
+    guard(|| Ok(update::parse_version(value)))
+}
+
+#[pyfunction]
+fn update_is_newer(candidate: &str, current: &str) -> PyResult<bool> {
+    guard(|| Ok(update::is_newer(candidate, current)))
+}
+
+#[pyfunction]
 fn update_install_kind(
     platform: &str,
     appimage: &str,
@@ -845,6 +855,8 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         remind_due,
         remind_songs,
         remind_snooze_until,
+        update_parse_version,
+        update_is_newer,
         update_install_kind,
         update_asset_name,
         update_available,

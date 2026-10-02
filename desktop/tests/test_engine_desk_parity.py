@@ -35,6 +35,7 @@ import desk_ref.remind as ref_remind
 import desk_ref.reuse as ref_reuse
 import desk_ref.tokens as ref_tokens
 import desk_ref.update as ref_update
+import desk_ref.version as ref_version
 import desk_ref.weekmodel as ref_weekmodel
 import desktop.native.calendar as live_calendar
 import desktop.native.custom_look as live_look
@@ -46,6 +47,7 @@ import desktop.native.remind as live_remind
 import desktop.native.reuse as live_reuse
 import desktop.native.tokens as live_tokens
 import desktop.native.update as live_update
+import desktop.native.version as live_version
 import desktop.native.weekmodel as live_weekmodel
 
 CHECK = settings(max_examples=30, deadline=None)
@@ -267,6 +269,21 @@ def test_linear_from_oklab(light):
 @given(st.sampled_from(["windows", "appimage", "tarball"]))
 def test_asset_name(kind):
     match(live_update.asset_name, ref_update.asset_name, kind)
+
+
+@CHECK
+@given(
+    st.from_regex(r"v?[0-9]+(\.[0-9]+){0,3}", fullmatch=True),
+    st.from_regex(r"v?[0-9]+(\.[0-9]+){0,3}", fullmatch=True),
+)
+def test_version_is_newer(candidate, current):
+    match(live_version.is_newer, ref_version.is_newer, candidate, current)
+
+
+@CHECK
+@given(st.text(min_size=0, max_size=24))
+def test_version_parse(value):
+    match(live_version.parse, ref_version.parse, value)
 
 
 def test_release_from_page_rejects_hostile_tags():
