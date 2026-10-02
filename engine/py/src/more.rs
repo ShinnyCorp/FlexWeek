@@ -90,16 +90,18 @@ fn normalize_recovery_code(value: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn free_name(saved: &str, name: &str) -> PyResult<String> {
+fn free_name(saved: &str, name: &Bound<'_, PyAny>) -> PyResult<String> {
     let saved = parse(saved)?;
-    guard(|| custom_look::free_name(&saved, name).map_err(crate::raise))
+    let name = name.extract::<String>().unwrap_or_default();
+    guard(|| custom_look::free_name(&saved, &name).map_err(crate::raise))
 }
 
 #[pyfunction]
-fn rename_look(saved: &str, old: &str, new_name: &str) -> PyResult<String> {
+fn rename_look(saved: &str, old: &str, new_name: &Bound<'_, PyAny>) -> PyResult<String> {
     let saved = parse(saved)?;
+    let new_name = new_name.extract::<String>().unwrap_or_default();
     guard(|| {
-        let kept = custom_look::rename_look(&saved, old, new_name).map_err(crate::raise)?;
+        let kept = custom_look::rename_look(&saved, old, &new_name).map_err(crate::raise)?;
         Ok(dump(&Value::Array(kept)))
     })
 }

@@ -204,12 +204,12 @@ The eleven desktop wrapper modules, plus `look.py`'s four engine helpers and `ve
 | custom_look | start_custom | ADAPTER | one call, `look_start` |
 | custom_look | wear | ADAPTER | one call, `look_wear` |
 | custom_look | reset_look | ADAPTER | one call, `look_reset` |
-| custom_look | _name | ADAPTER | one call, `look_name`; the engine's error becomes `LookNameError` |
+| custom_look | _name | ADAPTER | raw name to `look_name`; the binding decodes text and the core validates it; errors become `LookNameError` |
 | custom_look | _find | ADAPTER | one call, `look_find` |
-| custom_look | sanitize_saved | ADAPTER | one call, `look_saved` |
-| custom_look | save_look | ADAPTER | one call, `look_save`; the engine's error becomes `LookNameError` |
-| custom_look | free_name | ADAPTER | one call, `free_name`; the engine's error becomes `LookNameError` |
-| custom_look | rename_look | ADAPTER | one call, `rename_look`; the engine's error becomes `LookNameError` |
+| custom_look | sanitize_saved | ADAPTER | raw value to `look_saved`; the binding decodes a list and the core sanitizes it |
+| custom_look | save_look | ADAPTER | raw name to `look_save`; the binding decodes text and the core validates it; errors become `LookNameError` |
+| custom_look | free_name | ADAPTER | raw name to `free_name`; the binding decodes text and the core validates it; errors become `LookNameError` |
+| custom_look | rename_look | ADAPTER | raw new name to `rename_look`; the binding decodes text and the core validates it; errors become `LookNameError` |
 | custom_look | duplicate_look | ADAPTER | one call, `duplicate_look`; the engine's error becomes `LookNameError` |
 | custom_look | delete_look | ADAPTER | one call, `delete_look`; the engine's error becomes `LookNameError` |
 | custom_look | export_look | ADAPTER | one call, `look_export` |
@@ -422,8 +422,8 @@ The eleven desktop wrapper modules, plus `look.py`'s four engine helpers and `ve
 | weekmodel | Occurrence.slack_words | ADAPTER | encodes, makes one engine call, decodes |
 | weekmodel | WeekModel._engine | LOGIC, moved | the handle cache and its tuple-only rule: `week_handle_of` |
 | weekmodel | WeekModel.date_of | ADAPTER | tuple to `date` |
-| weekmodel | WeekModel.on_day | ADAPTER | the engine answers with positions; they are turned into the held objects |
-| weekmodel | WeekModel.load_min | ADAPTER | encodes, makes one engine call, decodes |
+| weekmodel | WeekModel.on_day | ADAPTER | `_ON_DAY_CACHE` holds per-day results for hashable tuple models; misses and unhashable models use engine positions to return the held objects |
+| weekmodel | WeekModel.load_min | ADAPTER | `_LOAD_MIN_CACHE` holds per-day totals for hashable tuple models; misses and unhashable models call the engine |
 | weekmodel | WeekModel.open_work | ADAPTER | positions to held objects |
 | weekmodel | WeekModel.due_today_unplaced | ADAPTER | positions to held objects |
 | weekmodel | WeekModel.leftover_kind | ADAPTER | encodes, makes one engine call, decodes |
@@ -431,7 +431,7 @@ The eleven desktop wrapper modules, plus `look.py`'s four engine helpers and `ve
 | weekmodel | WeekModel.leftover_parts | ADAPTER | encodes, makes one engine call, decodes |
 | weekmodel | WeekModel.minutes_left_today | ADAPTER | encodes, makes one engine call, decodes |
 | weekmodel | WeekModel.day_queue | ADAPTER | positions to held objects, then `DayQueue` |
-| weekmodel | build_week | ADAPTER | dicts to `Occurrence` and `Waiting`, lists to tuples |
+| weekmodel | build_week | ADAPTER | `_BUILD_WEEK_CACHE` reuses the last encoded inputs; misses call `week_build`, then turn dicts into `Occurrence` and `Waiting` and lists into tuples |
 
 ## STAYS
 

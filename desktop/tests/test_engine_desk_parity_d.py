@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 
+import flexweek_engine
 import pytest
 
 import desk_ref.calendar as ref_calendar
+import desk_ref.custom_look as ref_custom
 import desk_ref.focus as ref_focus
 import desk_ref.history as ref_history
 import desk_ref.look as ref_look
@@ -14,6 +16,7 @@ import desk_ref.tokens as ref_tokens
 import desk_ref.update as ref_update
 import desk_ref.weekmodel as ref_week
 import desktop.native.calendar as live_calendar
+import desktop.native.custom_look as live_custom
 import desktop.native.focus as live_focus
 import desktop.native.history as live_history
 import desktop.native.look as live_look
@@ -137,3 +140,42 @@ def test_empty_history_does_not_encode_an_unused_week():
         return module.mark_stale(iter(()), object())
 
     base.same(lambda: observed(live_history), lambda: observed(ref_history))
+
+
+@pytest.mark.parametrize("raw", [None, True, {}, (), set(), object(), [],
+                                 [{"base": "light", "name": "Study"}],
+                                 '[{"base":"light","name":"Study"}]'])
+def test_raw_look_saved_binding_and_adapter_match_the_original(raw):
+    base.same(lambda: json.loads(flexweek_engine.look_saved(raw)),
+              lambda: ref_custom.sanitize_saved(raw))
+    base.same(lambda: live_custom.sanitize_saved(raw), lambda: ref_custom.sanitize_saved(raw))
+
+
+@pytest.mark.parametrize("name", [None, True, 8, [], b"Study", object()])
+@pytest.mark.parametrize("operation", ["name", "save", "free", "rename"])
+def test_raw_look_name_bindings_use_the_engine_name_error(name, operation):
+    calls = {
+        "name": (flexweek_engine.look_name, (name,)),
+        "save": (flexweek_engine.look_save, ("[]", '{"base":"light"}', name)),
+        "free": (flexweek_engine.free_name, ("[]", name)),
+        "rename": (flexweek_engine.rename_look,
+                   ('[{"base":"light","name":"Kept"}]', "Kept", name)),
+    }
+    function, args = calls[operation]
+    assert base.produced(function, args, {}) == ("raise", "LookNameProblem", "A look needs a name.")
+
+
+@pytest.mark.parametrize("name", ["  Study  ", "", None, True, 8, [], b"Study", object()])
+@pytest.mark.parametrize("operation", ["name", "save", "free", "rename"])
+def test_raw_look_name_adapters_preserve_results_and_errors(name, operation):
+    def observed(module):
+        calls = {
+            "name": (module._name, (name,)),
+            "save": (module.save_look, ([], {"base": "light"}, name)),
+            "free": (module.free_name, ([], name)),
+            "rename": (module.rename_look, ([{"base": "light", "name": "Kept"}], "Kept", name)),
+        }
+        function, args = calls[operation]
+        return base.produced(function, args, {})
+
+    base.same(lambda: observed(live_custom), lambda: observed(ref_custom))
