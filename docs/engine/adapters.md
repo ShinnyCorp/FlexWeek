@@ -451,3 +451,42 @@ The eleven desktop wrapper modules, plus `look.py`'s four engine helpers and `ve
 - weekmodel.Waiting, dataclass definition
 - weekmodel.DayQueue, dataclass definition
 - weekmodel.WeekModel, dataclass definition (methods are classified above)
+
+## Known logic the guard allows for now
+
+`test_engine_adapters.py` also flags a type test (`isinstance` or `type`), `x or default`, a conditional expression, and `if name` / `if not name`. These wrappers already hold one of those, so the guard names them and still fails on any new one. An older shape (a loop, arithmetic, a comparison, a sort) is not in this list.
+
+| Wrapper | Shape | What it holds |
+| --- | --- | --- |
+| assignments.prepare_solve | branch | a missing deadline stays None while decoding |
+| availability.resolve_work_windows | branch | None windows stay None on the way in |
+| solver._points | branch | a missing point stays None while encoding |
+| calendar.apply_block_times | branch | the engine's None answer stays None |
+| calendar.relocate_block | branch | None dest in, None answer out |
+| calendar.placement_on | branch | None trace in; the engine's flag becomes NOT_TODAY |
+| calendar.agenda_for | branch | None trace and day data stay None on the way in |
+| calendar.next_action_for | branch | None day data stays None on the way in |
+| calendar.span_problem | type test | the engine is told the due value's Python type |
+| custom_look._text_or_none | branch, type test | text stays, anything else becomes None |
+| custom_look._name | branch, type test | a non-text name is none for the engine |
+| custom_look.sanitize_saved | branch, type test | a non-list file is an empty list |
+| custom_look.save_look | branch, type test | a non-text name is an empty string |
+| custom_look.free_name | branch, type test | a non-text name is an empty string |
+| custom_look.rename_look | branch, type test | a non-text name is an empty string |
+| focus.persist_payload | branch | the engine's None answer stays None |
+| focus.restore_state | branch | the engine's None answer stays None |
+| focus.credit_target | branch | the engine's None answer stays None |
+| history.capture_step | branch | the engine's None answer stays None |
+| reuse.apply_plan | branch | None targets and assignments stay None on the way in |
+| reuse.due_point | branch | the engine's None answer stays None |
+| reuse.block_occurs_on_day | branch | None placed blocks stay None on the way in |
+| reuse.row_conflict | branch | the engine's None answer stays None |
+| update.available | branch | the engine's None answer stays None |
+| update.release_from_page | branch | the engine's None answer stays None |
+| weekmodel.WeekModel._engine | default, type test | either tuple missing skips the handle cache |
+| weekmodel.WeekModel.on_day | default, type test | either tuple missing skips the day cache |
+| weekmodel.WeekModel.load_min | default, type test | either tuple missing skips the load cache |
+| weekmodel.WeekModel.day_queue | branch | no current block stays None |
+| app.adopt_legacy_deadlines | truth test | the engine's "over the cap" becomes the 422 |
+| app.require_own_assignments | truth test | the engine's "not owned" becomes the 422 |
+| app.insert_restore_point | default | a missing keep-set is an empty list |

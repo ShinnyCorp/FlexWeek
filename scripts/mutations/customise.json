@@ -1,9 +1,9 @@
 [
  {
-  "file": "desktop/native/look.py",
+  "file": "engine/engine/src/desk/custom_look.rs",
   "name": "0.16's round read as Round",
-  "old": "    \"corners\": {\"round\": \"soft\", \"pill\": \"rounded\"},\n",
-  "new": "    \"corners\": {\"pill\": \"rounded\"},\n",
+  "old": "    (\"corners\", \"round\", \"soft\"),\n",
+  "new": "    (\"corners\", \"round\", \"sharp\"),\n",
   "test": "desktop/tests/test_look.py::test_a_look_saved_by_016_opens_with_its_knobs_named_as_017_names_them"
  },
  {

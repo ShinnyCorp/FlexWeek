@@ -50,8 +50,8 @@ import desktop.native.update as live_update
 import desktop.native.version as live_version
 import desktop.native.weekmodel as live_weekmodel
 
-CHECK = settings(max_examples=30, deadline=None)
-WIDE = settings(max_examples=300, deadline=None)
+CHECK = settings(max_examples=30, deadline=None, derandomize=True)
+WIDE = settings(max_examples=300, deadline=None, derandomize=True)
 WEEK = "2026-09-21"
 TAG = "https://github.com/j0nsh1n/FlexWeek/releases/tag/"
 HEX = st.from_regex(r"#[0-9a-f]{6}", fullmatch=True)
@@ -1935,7 +1935,7 @@ AUDITED = settings(
     max_examples=AUDIT,
     deadline=None,
     suppress_health_check=list(HealthCheck),
-    database=None,
+    derandomize=True,
 )
 DESK_MODULES = ("calendar", "custom_look", "files", "focus", "history", "pomodoro", "remind", "reuse")
 DESK_MODULES += ("tokens", "update", "weekmodel")

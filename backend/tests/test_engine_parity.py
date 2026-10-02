@@ -734,6 +734,49 @@ def test_is_work_session(data):
     same(lambda: live_day.is_work_session(body), lambda: ref_day.is_work_session(body), f"{body}")
 
 
+def finished_session_without_start_shares_a_day(weeks: list) -> bool:
+    """The one month input the original cannot sort and the engine still draws."""
+    for _week_start, blocks in weeks:
+        for index, block in enumerate(blocks):
+            start = block.get("start")
+            if not block.get("completed") or (start is not None and start != ""):
+                continue
+            days = {day for day in block.get("days") or [] if isinstance(day, int)}
+            if not days:
+                continue
+            for other_index, other in enumerate(blocks):
+                if other_index == index:
+                    continue
+                if days & set(other.get("days") or []):
+                    return True
+    return False
+
+
+def test_the_month_escape_names_only_a_finished_session_without_a_start():
+    shared = [
+        (
+            "2026-09-14",
+            [
+                {"id": "done", "completed": True, "days": [0], "kind": "flexible"},
+                {"id": "other", "start": "09:00", "days": [0], "kind": "locked"},
+            ],
+        )
+    ]
+    alone = [("2026-09-14", [{"id": "done", "completed": True, "days": [0], "kind": "flexible"}])]
+    started = [
+        (
+            "2026-09-14",
+            [
+                {"id": "done", "completed": True, "start": "09:00", "days": [0], "kind": "flexible"},
+                {"id": "other", "start": "10:00", "days": [0], "kind": "locked"},
+            ],
+        )
+    ]
+    assert finished_session_without_start_shares_a_day(shared)
+    assert not finished_session_without_start_shares_a_day(alone)
+    assert not finished_session_without_start_shares_a_day(started)
+
+
 @COMMON
 @given(st.data())
 def test_build_month(data):
@@ -744,8 +787,13 @@ def test_build_month(data):
     want = outcome(lambda: ref_month.build_month(label, rows, weeks))
     # Known difference, left for Jonathan: a finished session with no start, on a day that also
     # has another block, makes the original raise TypeError (None sorted against a string).
-    # Rust returns the month. Do not copy that crash.
-    if want[0] == "raise" and want[1] == "TypeError" and got[0] == "ok":
+    # Rust returns the month. Do not copy that crash. Any other TypeError still fails.
+    if (
+        want[0] == "raise"
+        and want[1] == "TypeError"
+        and got[0] == "ok"
+        and finished_session_without_start_shares_a_day(weeks)
+    ):
         return
     assert got == want, (
         f"{label}\n rows {json.dumps(rows)}\n weeks {json.dumps(weeks)}"

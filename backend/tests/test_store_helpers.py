@@ -148,7 +148,7 @@ def outcome(step: Callable[[], object]) -> tuple[Any, ...]:
     except HTTPException as error:
         return ("http", error.status_code, error.detail)
     except Exception as error:
-        return ("raised", type(error))
+        return ("raised", type(error), str(error))
     return ("ok", value, json.dumps(value, default=repr))
 
 
@@ -458,7 +458,7 @@ def test_preferences_and_transfer_like_the_original(tmp_path: Path, pins: Pins) 
         ],
         allowed=(AssertionError,),
     )
-    assert results[-1] == ("raised", AssertionError)
+    assert results[-1] == ("raised", AssertionError, "")
     assert results[6][0] == "ok"
 
 
@@ -529,7 +529,11 @@ def test_operations_remember_recall_and_prune_like_the_original(
         allowed=(sqlite3.IntegrityError,),
     )
     assert ("http", 409, "This operation was already used with different data.") in results
-    assert ("raised", sqlite3.IntegrityError) in results
+    assert (
+        "raised",
+        sqlite3.IntegrityError,
+        "UNIQUE constraint failed: operations.user_id, operations.operation_id",
+    ) in results
     assert results[2][1] == {"a": "é", "b": 1}
 
 
@@ -580,7 +584,7 @@ def test_replace_account_with_a_missing_field_fails_the_same_way_and_leaves_the_
         allowed=(KeyError,),
         rollback_on_error=True,
     )
-    assert results[2] == ("raised", KeyError)
+    assert results[2] == ("raised", KeyError, "'revision'")
     assert results[3][1] == [(WEEK_C, [{"id": "old"}])]
 
 
@@ -599,7 +603,11 @@ def test_recovery_codes_replace_like_the_original(tmp_path: Path, pins: Pins) ->
         ],
         allowed=(sqlite3.IntegrityError,),
     )
-    assert ("raised", sqlite3.IntegrityError) in results
+    assert (
+        "raised",
+        sqlite3.IntegrityError,
+        "UNIQUE constraint failed: recovery_codes.user_id, recovery_codes.code_hash",
+    ) in results
 
 
 def test_sessions_are_created_and_expired_ones_swept_like_the_original(tmp_path: Path, pins: Pins) -> None:
@@ -620,7 +628,7 @@ def test_sessions_are_created_and_expired_ones_swept_like_the_original(tmp_path:
         allowed=(sqlite3.IntegrityError,),
     )
     assert results[1][1] == "token-000001"
-    assert results[-1] == ("raised", sqlite3.IntegrityError)
+    assert results[-1] == ("raised", sqlite3.IntegrityError, "FOREIGN KEY constraint failed")
 
 
 def test_delete_account_removes_every_table_of_that_account_only(tmp_path: Path, pins: Pins) -> None:
