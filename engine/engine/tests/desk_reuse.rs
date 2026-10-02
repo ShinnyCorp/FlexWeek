@@ -3,20 +3,188 @@
 mod common;
 
 use common::desk::{object, with};
-use flexweek_engine::desk::calendar::{days_through, due_day_in_week, first_plannable_day};
-use flexweek_engine::desk::clipboard::{
-    merge_preview_rows, proposals_from_clipboard, routine_rows, routine_source_blocks,
-    routine_template, row_conflict, unfinished_items,
-};
+use flexweek_engine::desk::calendar::days_through;
+use flexweek_engine::desk::clipboard;
+use flexweek_engine::desk::grid::{due_day_of, first_plannable_day as first_day};
+use flexweek_engine::desk::planning;
 use flexweek_engine::desk::reuse::{
-    MAX_WEEK_BLOCKS, apply_plan, available_homework_minutes, capacity_problem, clear_stale_pins,
-    clipboard_fingerprint, copied_fixed_block, copied_homework_block, late_locked_line,
-    occurrence_days, restore_point_label, running_late_block, running_late_refusal,
-    settle_placements, solve_request,
+    MAX_WEEK_BLOCKS, copied_fixed_block, copied_homework_block, restore_point_label,
+    running_late_refusal,
 };
 use flexweek_engine::time::SLOT_MIN;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+
+// The calls below encode their arguments as the Python wrappers in desktop/native/reuse.py do
+// (sets as lists, an absent value as null) and unwrap the engine's result; nothing else.
+
+fn occurrence_days(block: &Value) -> Vec<i64> {
+    let days = planning::occurrence_days(block).expect("days");
+    days.iter()
+        .map(|day| day.as_i64().expect("a day"))
+        .collect()
+}
+
+fn apply_plan(
+    blocks: &[Value],
+    trace: Option<&Value>,
+    targets: Option<&HashSet<String>>,
+    assignments: Option<&Map<String, Value>>,
+    week_start: Option<&str>,
+) -> Vec<Value> {
+    let targets = targets.map(|set| {
+        let mut sorted: Vec<&String> = set.iter().collect();
+        sorted.sort();
+        json!(sorted)
+    });
+    let assignments = assignments.map(|map| Value::Object(map.clone()));
+    planning::apply_plan(
+        &json!(blocks),
+        trace.unwrap_or(&Value::Null),
+        targets.as_ref(),
+        assignments.as_ref(),
+        week_start,
+    )
+    .expect("a plan")
+}
+
+fn clear_stale_pins(blocks: &[Value]) -> Vec<Value> {
+    planning::clear_stale_pins(&json!(blocks)).expect("blocks")
+}
+
+fn available_homework_minutes(
+    assignment: Option<&Value>,
+    blocks: &[Value],
+    committed: Option<&[Value]>,
+) -> i64 {
+    planning::available_homework_minutes(
+        assignment.unwrap_or(&Value::Null),
+        &json!(blocks),
+        &committed.map_or(Value::Null, |list| json!(list)),
+    )
+    .expect("minutes")
+}
+
+fn capacity_problem(existing: i64, added: i64, label: &str) -> String {
+    planning::capacity_problem(existing, added, label)
+}
+
+fn clipboard_fingerprint(items: &[Value]) -> String {
+    planning::clipboard_fingerprint(&json!(items)).expect("a fingerprint")
+}
+
+fn late_locked_line(block: &Value, moved: i64) -> String {
+    planning::late_locked_line(block, &json!(moved)).expect("a line")
+}
+
+fn running_late_block(day: i64, from_start: &str, minutes: i64, block_id: &str) -> Value {
+    planning::running_late_block(&json!(day), from_start, minutes, &json!(block_id))
+        .expect("a block")
+}
+
+fn settle_placements(
+    blocks: &[Value],
+    assignments: &Map<String, Value>,
+    week_start: &str,
+    keep: &[String],
+) -> (Vec<Value>, Vec<Value>) {
+    let mut sorted = keep.to_vec();
+    sorted.sort();
+    let (kept, lost) = planning::settle_placements(
+        &json!(blocks),
+        &Value::Object(assignments.clone()),
+        week_start,
+        &json!(sorted),
+        true,
+    )
+    .expect("a week");
+    (kept.as_array().expect("blocks").clone(), lost)
+}
+
+fn solve_request(
+    blocks: &[Value],
+    assignments: &Map<String, Value>,
+    week_start: &str,
+    everything: bool,
+    only: Option<&[String]>,
+    not_before: Option<(i64, i64)>,
+) -> (Vec<Value>, Vec<String>) {
+    let only = only.map(|ids| {
+        let mut sorted = ids.to_vec();
+        sorted.sort();
+        json!(sorted)
+    });
+    let not_before = not_before.map(|(day, minute)| json!([day, minute]));
+    let (payload, targets) = planning::solve_request(
+        &json!(blocks),
+        &Value::Object(assignments.clone()),
+        week_start,
+        everything,
+        only.as_ref(),
+        not_before.as_ref(),
+        false,
+    )
+    .expect("a request");
+    let targets = targets
+        .iter()
+        .map(|id| id.as_str().expect("an id").to_string())
+        .collect();
+    (payload, targets)
+}
+
+fn proposals_from_clipboard(
+    items: &[Value],
+    kind: &str,
+    week_start: &str,
+    target_day: i64,
+    target_start: Option<&str>,
+    assignments: &Map<String, Value>,
+    available: &Map<String, Value>,
+) -> Vec<Value> {
+    clipboard::proposals_from_clipboard(
+        &json!(items),
+        kind,
+        week_start,
+        target_day,
+        target_start,
+        &Value::Object(assignments.clone()),
+        &Value::Object(available.clone()),
+    )
+    .expect("rows")
+}
+
+fn merge_preview_rows(rows: &[Value], operation_id: &str) -> Vec<Value> {
+    clipboard::merge_preview_rows(&json!(rows), operation_id).expect("groups")
+}
+
+fn routine_source_blocks(blocks: &[Value]) -> Vec<Value> {
+    clipboard::routine_source_blocks(&json!(blocks)).expect("sources")
+}
+
+fn routine_template(block: &Value, template_id: &str) -> Value {
+    clipboard::routine_template(block, template_id).expect("a template")
+}
+
+fn routine_rows(routine: &Value, week_start: &str, allowed_days: &[Value]) -> Vec<Value> {
+    clipboard::routine_rows(routine, week_start, &json!(allowed_days)).expect("rows")
+}
+
+fn unfinished_items(
+    assignments: &Map<String, Value>,
+    saved_weeks: &[Value],
+    week_start: &str,
+    blocks: &[Value],
+    committed: &[Value],
+) -> Vec<Value> {
+    clipboard::unfinished_items(
+        &Value::Object(assignments.clone()),
+        &json!(saved_weeks),
+        week_start,
+        &json!(blocks),
+        &json!(committed),
+    )
+    .expect("items")
+}
 
 fn soccer() -> Value {
     json!({
@@ -116,8 +284,7 @@ fn test_homework_paste_keeps_assignment_identity_and_shares_remaining_time() {
         None,
         &object(json!({"essay": assignment})),
         &object(json!({"essay": 90})),
-    )
-    .expect("rows");
+    );
     assert_eq!(rows[0]["checked"], json!(true));
     assert_eq!(rows[0]["block"]["assignment_id"], "essay");
     assert_eq!(rows[0]["block"]["duration_min"], 60);
@@ -154,8 +321,7 @@ fn test_a_second_homework_paste_is_invalid_when_nothing_remains() {
         None,
         &object(json!({"essay": assignment})),
         &object(json!({"essay": 90})),
-    )
-    .expect("rows");
+    );
     assert_eq!(rows[1]["checked"], json!(false));
     assert_eq!(
         rows[1]["invalid"],
@@ -176,16 +342,19 @@ fn test_paste_of_a_fixed_block_onto_the_same_slot_conflicts() {
         Some("16:00"),
         &Map::new(),
         &Map::new(),
-    )
-    .expect("rows");
+    );
     let existing = [source];
+    // The binding finds this row's place by identity. JSON has not got that, so the engine is
+    // told skip is 0, the only row.
     assert_eq!(
-        row_conflict(&rows[0], &rows, &existing, Some(0)).expect("a verdict"),
+        clipboard::row_conflict(&rows[0], &json!(rows), &json!(existing), Some(0))
+            .expect("a verdict"),
         Some(json!("Soccer"))
     );
     rows[0]["block"]["start"] = json!("18:00");
     assert_eq!(
-        row_conflict(&rows[0], &rows, &existing, Some(0)).expect("a verdict"),
+        clipboard::row_conflict(&rows[0], &json!(rows), &json!(existing), Some(0))
+            .expect("a verdict"),
         None
     );
 }
@@ -201,7 +370,8 @@ fn test_adjacent_blocks_do_not_conflict() {
         "block": {"title": "Piano", "start": "17:00", "duration_min": 30, "days": [0]},
     });
     assert_eq!(
-        row_conflict(&row, std::slice::from_ref(&row), &existing, Some(0)).expect("a verdict"),
+        clipboard::row_conflict(&row, &json!([&row]), &json!(existing), Some(0))
+            .expect("a verdict"),
         None
     );
 }
@@ -216,9 +386,8 @@ fn test_capacity_problem_uses_merged_block_count() {
         None,
         &Map::new(),
         &Map::new(),
-    )
-    .expect("rows");
-    let groups = merge_preview_rows(&rows, "00000000-0000-4000-8000-000000000001").expect("groups");
+    );
+    let groups = merge_preview_rows(&rows, "00000000-0000-4000-8000-000000000001");
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0]["block"]["days"], json!([0, 2]));
     assert!(
@@ -236,20 +405,19 @@ fn test_capacity_problem_uses_merged_block_count() {
 fn test_available_minutes_follow_dirty_sessions_on_the_open_week() {
     let mut assignment = essay();
     assert_eq!(
-        available_homework_minutes(Some(&assignment), &[], Some(&[])).expect("minutes"),
+        available_homework_minutes(Some(&assignment), &[], Some(&[])),
         90
     );
     assignment["unplanned_min"] = json!(60);
     let committed = vec![copied_homework_block(&assignment, 1, 30, "here").expect("a block")];
     assert_eq!(
-        available_homework_minutes(Some(&assignment), &committed, Some(&committed))
-            .expect("minutes"),
+        available_homework_minutes(Some(&assignment), &committed, Some(&committed)),
         60
     );
     let mut draft = committed.clone();
     draft.push(copied_homework_block(&assignment, 2, 30, "extra").expect("a block"));
     assert_eq!(
-        available_homework_minutes(Some(&assignment), &draft, Some(&committed)).expect("minutes"),
+        available_homework_minutes(Some(&assignment), &draft, Some(&committed)),
         30
     );
 }
@@ -267,7 +435,6 @@ fn test_unfinished_needs_an_earlier_saved_week_and_a_slot_of_remaining_time() {
             &[],
             &[],
         )
-        .expect("items")
     };
     let items = listed(&assignment, &earlier);
     assert_eq!(items[0]["id"], "essay");
@@ -287,8 +454,7 @@ fn test_unfinished_lists_a_morning_deadline_before_one_with_no_time() {
         "2026-09-07",
         &[],
         &[],
-    )
-    .expect("items");
+    );
     let order: Vec<&Value> = items.iter().map(|item| &item["id"]).collect();
     assert_eq!(order, ["quiz", "paper"]);
 }
@@ -296,7 +462,7 @@ fn test_unfinished_lists_a_morning_deadline_before_one_with_no_time() {
 #[test]
 fn test_days_through_due_matches_the_web_planner() {
     assert_eq!(
-        due_day_in_week(Some("2026-09-11T08:10"), "2026-09-07"),
+        due_day_of(&json!("2026-09-11T08:10"), "2026-09-07").expect("a day"),
         Some(4)
     );
     assert_eq!(days_through(Some(4), 2), vec![2, 3, 4]);
@@ -305,7 +471,7 @@ fn test_days_through_due_matches_the_web_planner() {
     // as an argument, so one day inside the week and one outside stand in for it.
     for today in ["2026-09-09", "2026-01-01"] {
         assert!(
-            (0..7).contains(&first_plannable_day("2026-09-07", today)),
+            (0..7).contains(&first_day("2026-09-07", today).expect("a day")),
             "{today}"
         );
     }
@@ -318,15 +484,15 @@ fn test_routines_are_locked_times_without_homework_or_pomodoro() {
         copied_homework_block(&essay(), 1, 60, "hw").expect("a block"),
         with(soccer(), json!({"id": "chunk", "pomodoro_role": "work"})),
     ];
-    let sources = routine_source_blocks(&blocks).expect("sources");
+    let sources = routine_source_blocks(&blocks);
     let source_ids: Vec<&Value> = sources.iter().map(|block| &block["id"]).collect();
     assert_eq!(source_ids, ["soccer"]);
-    let template = routine_template(&soccer(), "t1").expect("a template");
+    let template = routine_template(&soccer(), "t1");
     assert_eq!(template["template_id"], "t1");
     assert!(template.get("assignment_id").is_none());
     let routine = json!({"name": "Sports", "blocks": [template]});
     let allowed: Vec<Value> = (0..5).map(|day| json!(day)).collect();
-    let rows = routine_rows(&routine, "2026-09-14", &allowed).expect("rows");
+    let rows = routine_rows(&routine, "2026-09-14", &allowed);
     let days: Vec<&Value> = rows.iter().map(|row| &row["day"]).collect();
     assert_eq!(days, [0, 2]);
     assert!(rows.iter().all(|row| row["fixed"] == json!(true)));
