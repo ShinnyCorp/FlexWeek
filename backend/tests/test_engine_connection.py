@@ -302,11 +302,19 @@ def test_a_path_that_starts_with_file_colon_is_a_plain_file_name(tmp_path, monke
         folder = tmp_path / label
         folder.mkdir()
         monkeypatch.chdir(folder)
-        with module.connect(Path(name)) as db:
-            db.execute("CREATE TABLE t(a)")
-            db.execute("INSERT INTO t VALUES (1)")
-        with module.connect(Path(name)) as db:
-            rows = [list(row) for row in db.execute("SELECT a FROM t")]
+        try:
+            with module.connect(Path(name)) as db:
+                db.execute("CREATE TABLE t(a)")
+                db.execute("INSERT INTO t VALUES (1)")
+            with module.connect(Path(name)) as db:
+                rows = [list(row) for row in db.execute("SELECT a FROM t")]
+        except sqlite3.OperationalError as error:
+            rows = [str(error)]
         found[label] = (sorted(path.name for path in folder.iterdir()), rows)
-    assert found["ref"] == ([name], [[1]])
+    # The store always opens a plain file, whatever the name looks like.
+    assert found["live"] == ([name], [[1]])
+    # Python's own answer depends on how its SQLite was built: where the library reads "file:" names
+    # as URIs by default (GitHub's runner), it opens a memory database and the table is gone.
+    if found["ref"] != ([name], [[1]]):
+        pytest.skip(f"this Python's SQLite reads file: names as URIs: {found['ref']}")
     assert found["live"] == found["ref"]
