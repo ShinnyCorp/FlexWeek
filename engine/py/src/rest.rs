@@ -10,7 +10,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use crate::guard;
-use pyo3::types::PyModule;
+use pyo3::types::{PyDict, PyModule};
 use serde_json::Value;
 
 fn parse(text: &str) -> PyResult<Value> {
@@ -446,9 +446,20 @@ fn relay_py(py: Python<'_>, relay: store::Relay<PyErr>) -> PyErr {
     }
 }
 
+/// SHA-256 of `json.dumps(value, sort_keys=True, separators=(",", ":"))`, the original digest.
 #[pyfunction]
-fn payload_digest(text: &str) -> PyResult<String> {
-    guard(|| Ok(store::payload_digest(&parse(text)?)))
+fn payload_digest(py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<String> {
+    guard(|| {
+        let json = py.import("json")?;
+        let kwargs = PyDict::new(py);
+        kwargs.set_item("sort_keys", true)?;
+        kwargs.set_item("separators", (",", ":"))?;
+        let canonical: String = json
+            .getattr("dumps")?
+            .call((value,), Some(&kwargs))?
+            .extract()?;
+        Ok(store::digest(&canonical))
+    })
 }
 
 #[pyfunction]
