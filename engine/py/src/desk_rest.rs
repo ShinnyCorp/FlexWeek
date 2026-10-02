@@ -1103,18 +1103,19 @@ fn look_readability(custom: &str, palette: &str, blocks: &str) -> PyResult<Strin
         accent: text_of("accent"),
         accent_ink: text_of("accent_ink"),
     };
-    let filled = objects(blocks)?
+    let painted = objects(blocks)?
         .into_iter()
         .filter_map(|item| {
             let obj = item.as_object()?;
-            Some(custom_look::BlockInk {
+            Some(custom_look::PaintedCategory {
                 key: obj.get("key")?.as_str()?.to_string(),
-                label: obj.get("label")?.as_str()?.to_string(),
                 fill: obj.get("fill")?.as_str()?.to_string(),
+                drawn_fill: obj.get("drawn_fill")?.as_str()?.to_string(),
                 ink: obj.get("ink")?.as_str()?.to_string(),
             })
         })
         .collect::<Vec<_>>();
+    let filled = custom_look::filled_blocks(&painted);
     guard(|| {
         let found = custom_look::readability(&custom, &palette, &filled).map_err(crate::raise)?;
         Ok(array(

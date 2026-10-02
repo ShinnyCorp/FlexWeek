@@ -10,7 +10,7 @@ use crate::desk::pyops::{contains, eq, get, hashable, iterate, py_dict};
 use crate::desk::pyval::{subscript, type_error};
 use crate::desk::tokens::{contrast, fit_lightness, luminance, mix};
 use crate::error::{EngineError, EngineResult};
-use crate::stored::{Dict, attribute_error, py_str, type_name};
+use crate::stored::{Dict, attribute_error, nonfinite, py_str, type_name};
 use crate::time::{py_repr, py_space};
 
 pub const UNNAMED: &str = "My look";
@@ -871,6 +871,8 @@ pub fn export_look(custom: &Value) -> String {
 /// A look read from a file. `size` is the length of the text as Python counts it, and `raw` what
 /// `json.loads` made of it, or None when it could not be read.
 pub fn import_look(size: usize, raw: Option<&Value>) -> ImportedLook {
+    let raw = raw.map(readable);
+    let raw = raw.as_ref();
     let refused = |sentence: &str| ImportedLook {
         look: None,
         problems: vec![sentence.to_string()],
@@ -924,6 +926,72 @@ pub fn import_look(size: usize, raw: Option<&Value>) -> ImportedLook {
         look: custom,
         problems,
     }
+}
+
+/// `value` with each NaN and Infinity turned into an empty list: no look setting takes either, and
+/// a list is turned away, with the same sentence, wherever a number is.
+fn finite(value: &Value) -> Value {
+    if nonfinite(value).is_some() {
+        return json!([]);
+    }
+    match value {
+        Value::Array(items) => Value::Array(items.iter().map(finite).collect()),
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(key, item)| (key.clone(), finite(item)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// What the rest of the import reads: `base` is the one setting whose value is printed back, so it
+/// keeps its NaN and Infinity to be printed as Python prints them.
+fn readable(raw: &Value) -> Value {
+    match raw {
+        Value::Object(fields) if fields.contains_key("base") => Value::Object(
+            fields
+                .iter()
+                .map(|(key, item)| {
+                    let kept = if key == "base" {
+                        item.clone()
+                    } else {
+                        finite(item)
+                    };
+                    (key.clone(), kept)
+                })
+                .collect(),
+        ),
+        other => finite(other),
+    }
+}
+
+/// A category as the look on screen paints it: the fill its colour family gives it, the fill the
+/// block is drawn with, and the ink drawn on that.
+pub struct PaintedCategory {
+    pub key: String,
+    pub fill: String,
+    pub drawn_fill: String,
+    pub ink: String,
+}
+
+/// The blocks whose fill is the category's own (a block drawn outlined or in another fill is the
+/// text on the calendar), each named as the Customise mock-up names it.
+pub fn filled_blocks(painted: &[PaintedCategory]) -> Vec<BlockInk> {
+    painted
+        .iter()
+        .filter(|block| block.drawn_fill == block.fill)
+        .filter_map(|block| {
+            let (_, info) = CATEGORIES.iter().find(|(key, _)| *key == block.key)?;
+            Some(BlockInk {
+                key: block.key.clone(),
+                label: info.label.to_string(),
+                fill: block.fill.clone(),
+                ink: block.ink.clone(),
+            })
+        })
+        .collect()
 }
 
 pub fn readability(
@@ -1080,4 +1148,60 @@ pub fn readability(
         }
     }
     Ok(found)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_import_reads_a_nan_set_as_the_colours_as_not_a_set() {
+        let raw = json!({
+            "kind": FILE_KIND,
+            "version": 1,
+            "base": "poster",
+            "colours": {crate::stored::NONFINITE: "nan"},
+        });
+        let got = import_look(0, Some(&raw));
+        assert_eq!(
+            got.problems,
+            vec!["The colours were not a set of named colours, so they were left out."]
+        );
+        assert_eq!(
+            Value::Object(got.look.unwrap()),
+            json!({"base": "poster", "name": UNNAMED})
+        );
+    }
+
+    #[test]
+    fn an_import_prints_a_nan_base_as_python_does() {
+        let raw =
+            json!({"kind": FILE_KIND, "version": 1, "base": {crate::stored::NONFINITE: "nan"}});
+        let got = import_look(0, Some(&raw));
+        assert!(got.look.is_none());
+        assert_eq!(
+            got.problems,
+            vec!["It starts from a look FlexWeek does not have: 'nan'."]
+        );
+    }
+
+    #[test]
+    fn only_blocks_drawn_in_their_own_fill_are_checked() {
+        let painted = |key: &str, drawn: &str| PaintedCategory {
+            key: key.to_string(),
+            fill: "#aaaaaa".to_string(),
+            drawn_fill: drawn.to_string(),
+            ink: "#000000".to_string(),
+        };
+        let kept = filled_blocks(&[
+            painted("class", "#aaaaaa"),
+            painted("assignments", "#bbbbbb"),
+            painted("nowhere", "#aaaaaa"),
+        ]);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(
+            (kept[0].key.as_str(), kept[0].label.as_str()),
+            ("class", "School")
+        );
+    }
 }
