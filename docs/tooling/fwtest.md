@@ -49,19 +49,22 @@ fwtest clean
   name. It prints one line per case (`RED`, `GREEN` or `PATTERN`, then the spec, the case name and
   the first failing assertion) and ends with `every mutation was caught` or `N mutation(s)
   SURVIVED`. It exits 1 if any case survived or any pattern was not found exactly once.
-- `rig` starts this checkout's hidden session, then runs `scripts/rig/drive.py` as one job.
+- `rig` runs `scripts/rig/drive.py` as one contained job. The job starts this checkout's hidden
+  session after the stop handlers are installed, so the session is in the job's record and in the
+  same scope and limits as the driver. The state file is written as each session process starts.
   `--server` is `kwin`, `xvfb`, or `auto` (the default: KWin when `kwin_wayland` is on `PATH`,
   otherwise Xvfb). That flag is not forwarded to the driver. The driver receives the display, the
   private D-Bus address, and the runs-folder key in its environment. `FLEXWEEK_RIG_KEEP` is removed
-  before the driver starts, so the run always stops the session afterwards by the PIDs recorded in
-  its state file, then stops anything the job itself left behind.
+  before the driver starts, and the run always stops the session afterwards by the PIDs recorded in
+  its state file. `fwtest rig --list` does not start a session.
 - `run` runs any command as a job, with the guarantees above. It exists for the picture tours and
   the one-off scripts that currently go through `run-alone.sh`.
-- `clean` stops every process recorded by a job that is no longer running. For a stale rig job,
-  with no live rig job in that checkout, it also stops the hidden session by the PIDs in its state
-  file. It restores any source file left edited by a mutation run and removes the stale records. It
-  is safe to run at any time and does nothing when there is nothing to clean. Every other command
-  runs it first.
+- `clean` stops every process recorded by a job that is no longer running. It also stops a hidden
+  session whenever a job record or a state file names it, including when the job record is already
+  gone and only the state file under `/tmp/flexweek-rig/` remains. That is how you stop a stranded
+  session by hand. A live rig job in that checkout is left alone. It restores any source file left
+  edited by a mutation run and removes the stale records. It is safe to run at any time and does
+  nothing when there is nothing to clean. Every other command runs it first.
 
 Every command that runs Python uses `--python PATH` if given, then `$FWTEST_PYTHON`, then
 `<checkout>/.venv/bin/python`, where `<checkout>` is the git top level of the working directory. A

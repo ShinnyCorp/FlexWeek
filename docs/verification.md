@@ -43,7 +43,9 @@ The other `fwtest` commands:
 - `fwtest run -- CMD` runs any other suite, picture tour or script with the same
   limits and cleanup.
 - `fwtest clean` stops processes and restores source files that a killed run
-  left behind. Every other command runs it first.
+  left behind. A hidden session is stopped when a job record or its state file
+  names it, so `fwtest clean` also stops a stranded session from the state file
+  alone. Every other command runs it first.
 
 ## Coverage map
 
