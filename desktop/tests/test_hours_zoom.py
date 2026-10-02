@@ -193,6 +193,7 @@ def test_nothing_zooms_while_a_block_is_held(qapp: QApplication) -> None:
     view.scroll.zoom_by(1)
     assert view.scroll.px == WEEK_SCALE.default
     view.hours.hand.cancel()
+    QTest.mouseRelease(view.hours, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, press)
 
 
 def test_a_day_never_draws_fifteen_minutes_under_24_pixels(qapp: QApplication) -> None:

@@ -5,7 +5,7 @@ does it."""
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -427,6 +427,11 @@ def test_every_design_with_shared_hours_has_the_free_time_menu(
 ) -> None:
     from desktop.native.layouts.registry import sanitize_layout
 
+    # Clay's cards beside the day in front show the stretch of the day the front card has scrolled to,
+    # and that card opens at now. Before about 09:00 that stretch ends before 17:00, so Tuesday would
+    # have no track there unless it was the day in front. Wednesday noon keeps Tuesday's card in range.
+    noon = datetime.fromisoformat(window.session.week_start) + timedelta(days=2, hours=12)
+    window.session.now_ms = lambda: int(noon.timestamp() * 1000)
     window._layout = sanitize_layout({"main": design, "day": "one"})
     window._apply_appearance()
     window._on_week()
