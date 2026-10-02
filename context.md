@@ -794,6 +794,22 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-10-02, `engine/full-port` (pushed at fb290c8, draft PR 35; local head 455570c is two merges
+  ahead): written so far are E1 to E5 complete, E6 (the fourteen backend modules, nine
+  `backend/app.py` helpers and the eleven desktop modules are adapters), `fwtest mutate` for Rust
+  with the first 27 cases repointed, Rust twins of the backend logic tests (119, merged) and of the
+  Qt-free desktop tests (161, on `engine/t1-desk-tests`, being adapted to the final desk
+  functions), and `docs/engine/interface-logic.md`. Written first, reviewed after: none of E6 has
+  had a gate, a shadow run or mutation runs. Three jobs were stopped part-way by the Claude session
+  limit: the backend test run on `engine/backend-whole` (4 of 74 parity cases fail, all new cases),
+  the desktop merge pass on `engine/e6-desktop` (parity 772 passed; `version.py`, the joined
+  adapters table and frame time left), and the desktop twins (16 files edited, uncommitted, they
+  compile). Then: merge those branches and `engine/docs-018`, add the desktop modules to
+  `test_engine_adapters.py`, repoint the mutation cases E5 and E6 moved (`mutations_whole` fails on
+  the local head, which is why it is not pushed), push, and Jonathan reviews PR 35 with Fable 5.1
+  on Cursor. After the review: the full test run, deleting Python tests that have Rust twins, the
+  interface test tidy, and 0.18.0. The step-by-step handoff with worktrees and briefs is
+  `~/.flexweek-ui-harness/scratch/engine-run/handoff.md` (this machine only).
 - 2026-10-01, `engine/full-port`: E1 to E5 (minus the parts listed above as still Python), part C
   steps 1 and 2 and part D are in and examined. Next: push for CI and fix the builds; the rest of E5;
   the route SQL; E6; the engine's tests to Rust; then release as 0.18.0. The rig's hidden session is
