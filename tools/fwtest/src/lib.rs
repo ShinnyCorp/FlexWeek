@@ -4,6 +4,7 @@ pub mod clean;
 pub mod contain;
 pub mod edits;
 pub mod gate;
+pub mod hidden;
 pub mod identity;
 pub mod job;
 pub mod mutate;

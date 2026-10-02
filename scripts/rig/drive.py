@@ -1,9 +1,9 @@
 """Drive FlexWeek with a real pointer on a hidden desktop, and check that the saved week agrees.
 
-    .venv/bin/python scripts/rig/drive.py                       # every design, every tab
-    .venv/bin/python scripts/rig/drive.py --design bento --tab day
-    .venv/bin/python scripts/rig/drive.py --design bento --option hero=today   # a design's saved option
-    .venv/bin/python scripts/rig/drive.py --design dial --tab myday   # My day's screens: one, dial
+    fwtest rig                                              # every design, every tab
+    fwtest rig --design bento --tab day
+    fwtest rig --design bento --option hero=today          # a design's saved option
+    fwtest rig --design dial --tab myday                   # My day's screens: one, dial
     .venv/bin/python scripts/rig/drive.py --list
 
 Every scenario starts from the same seeded week with the clock held at Thursday 15:40. It opens its
@@ -36,7 +36,6 @@ from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from types import ModuleType
 
 # The app the rig drives rings reminders; they play at no volume (desktop/native/sound.py).
 os.environ["FLEXWEEK_SILENT"] = "1"
@@ -81,13 +80,23 @@ def parse_options(design: str | None, pairs: list[str]) -> dict[str, str]:
     return chosen
 
 
-def default_runs_folder(hidden_session: ModuleType) -> Path:
+def default_runs_folder(runs_key: str) -> Path:
     # Runs live on disk, not in /tmp: on Jonathan's machine /tmp is RAM (tmpfs with zram swap) and a
     # day of rig runs held 767 MB of it. FLEXWEEK_RIG_RUNS moves them, since that harness folder
     # exists only there. The hidden session's own state is small and stays in /tmp.
     root = os.environ.get("FLEXWEEK_RIG_RUNS")
     base = Path(root) if root else Path.home() / ".flexweek-ui-harness" / "scratch" / "rig-runs"
-    return base / hidden_session.STATE.parent.name
+    return base / runs_key
+
+
+def session_from_fwtest() -> tuple[str, str, str]:
+    """Display, private bus, and runs-folder key passed in by `fwtest rig`."""
+    display = os.environ.get("FLEXWEEK_RIG_DISPLAY", "")
+    bus = os.environ.get("FLEXWEEK_RIG_BUS", "")
+    runs_key = os.environ.get("FLEXWEEK_RIG_RUNS_KEY", "")
+    if not display or not bus or not runs_key:
+        raise SystemExit("Use fwtest rig.")
+    return display, bus, runs_key
 
 
 def prune_runs(folder: Path) -> None:
@@ -1686,7 +1695,6 @@ def main() -> int:
     parser.add_argument("--design", choices=[*DESIGNS, *MY_DAY])
     parser.add_argument("--tab", choices=TABS)
     parser.add_argument("--scenario")
-    parser.add_argument("--server", choices=["auto", "kwin", "xvfb"], default="auto")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--out")
     parser.add_argument(
@@ -1704,22 +1712,13 @@ def main() -> int:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     if args.child or args.list:
         return child_main(args)
-    import hidden_session
-
-    display = hidden_session.start(args.server)
-    try:
-        return drive(args, display, hidden_session)
-    finally:
-        # The hidden KWin and its bus go when the run does. Kept up for the next run, one outlived its
-        # rig by two hours beside Jonathan's own desktop, which froze under the load around it.
-        # FLEXWEEK_RIG_KEEP=1 keeps it, for runs back to back.
-        if not os.environ.get("FLEXWEEK_RIG_KEEP"):
-            hidden_session.stop()
+    display, bus, runs_key = session_from_fwtest()
+    return drive(args, display, bus, runs_key)
 
 
-def drive(args: argparse.Namespace, display: str, hidden_session: ModuleType) -> int:
+def drive(args: argparse.Namespace, display: str, bus: str, runs_key: str) -> int:
     """Run the scenarios in a child on the hidden display, and return its exit code."""
-    runs = None if args.out else default_runs_folder(hidden_session)
+    runs = None if args.out else default_runs_folder(runs_key)
     out = Path(args.out) if args.out else runs / f"{datetime.now():%Y%m%d-%H%M%S}-{os.getpid()}"
     out.mkdir(parents=True, exist_ok=True)
     env = {
@@ -1731,7 +1730,7 @@ def drive(args: argparse.Namespace, display: str, hidden_session: ModuleType) ->
     # the core protocol, and the zoom scenarios turn the wheel. Presses and drags arrive either way.
     env.update(
         DISPLAY=display,
-        DBUS_SESSION_BUS_ADDRESS=hidden_session.bus(),
+        DBUS_SESSION_BUS_ADDRESS=bus,
         QT_QPA_PLATFORM="xcb",
         QT_XCB_NO_XI2="1",
         XDG_DATA_HOME=str(out / "data"),

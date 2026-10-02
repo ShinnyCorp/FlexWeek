@@ -36,7 +36,7 @@ enum Command {
         /// Spec files. Default is every scripts/mutations/*.json in the checkout.
         specs: Vec<std::path::PathBuf>,
     },
-    /// Run the rig driver, then stop the hidden session and anything left.
+    /// Start the hidden session, run the rig driver, then stop that session.
     Rig {
         /// Python interpreter. Overrides FWTEST_PYTHON and .venv/bin/python.
         #[arg(long)]
