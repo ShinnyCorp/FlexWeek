@@ -272,10 +272,37 @@ enum CaseEnd {
     Interrupted(u8),
 }
 
+struct CargoTest {
+    package: String,
+    target: String,
+    name: String,
+}
+
+fn cargo_test(test: &str) -> Result<Option<CargoTest>, String> {
+    let Some(rest) = test.strip_prefix("cargo:") else {
+        return Ok(None);
+    };
+    let parts: Vec<&str> = rest.split(':').collect();
+    if parts.len() != 3 || parts.iter().any(|part| part.is_empty()) {
+        return Err(format!(
+            "cargo test must be cargo:<package>:<target>:<name>, got {test}"
+        ));
+    }
+    Ok(Some(CargoTest {
+        package: parts[0].to_string(),
+        target: parts[1].to_string(),
+        name: parts[2].to_string(),
+    }))
+}
+
 fn run_case(job: &Job<'_>, stem: &str, case: &Case) -> CaseEnd {
     if let Some(detail) = reject_expect(case) {
         return done("PATTERN", detail);
     }
+    let cargo = match cargo_test(&case.test) {
+        Ok(cargo) => cargo,
+        Err(detail) => return done("PATTERN", detail),
+    };
     let source = job.checkout.join(&case.file);
     let text = match fs::read_to_string(&source) {
         Ok(text) => text,
@@ -301,6 +328,9 @@ fn run_case(job: &Job<'_>, stem: &str, case: &Case) -> CaseEnd {
         return done("GREEN", format!("could not edit {}", case.file));
     }
     edits::delete_bytecode(&source);
+    if let Some(cargo) = cargo {
+        return run_cargo(job, guard, case, &cargo);
+    }
     let note = if is_engine_source(&case.file) {
         if job.build.enabled {
             match rebuild_mutated(job, case) {
@@ -359,6 +389,69 @@ fn run_case(job: &Job<'_>, stem: &str, case: &Case) -> CaseEnd {
     } else {
         done("RED", detail)
     }
+}
+
+fn run_cargo(job: &Job<'_>, guard: Guard, case: &Case, cargo: &CargoTest) -> CaseEnd {
+    let command = vec![
+        "cargo".to_string(),
+        "test".to_string(),
+        "-p".to_string(),
+        cargo.package.clone(),
+        "--test".to_string(),
+        cargo.target.clone(),
+        "--".to_string(),
+        cargo.name.clone(),
+        "--exact".to_string(),
+    ];
+    let engine = job.checkout.join("engine");
+    let ran = match job
+        .session
+        .run_logged_in(&command, Some(rebuild::build_timeout()), &engine)
+    {
+        Ok(ran) => ran,
+        Err(error) => {
+            drop(guard);
+            return done("GREEN", error.to_string());
+        }
+    };
+    if ran.code >= 128 {
+        drop(guard);
+        return CaseEnd::Interrupted(ran.code);
+    }
+    drop(guard);
+    if ran.code == 0 {
+        return done("GREEN", String::new());
+    }
+    if compile_failed(&ran.log) {
+        let label = if case.expect == "build" {
+            "RED"
+        } else {
+            "BUILD"
+        };
+        return done(label, build_failure_line(&ran.log));
+    }
+    done("RED", cargo_failure_line(&ran.log))
+}
+
+fn compile_failed(log: &Path) -> bool {
+    fs::read_to_string(log)
+        .map(|text| text.contains("could not compile"))
+        .unwrap_or(false)
+}
+
+fn cargo_failure_line(log: &Path) -> String {
+    let Ok(text) = fs::read_to_string(log) else {
+        return String::new();
+    };
+    text.lines()
+        .find(|line| {
+            let trimmed = line.trim();
+            trimmed.contains("assertion")
+                || trimmed.contains("assert")
+                || trimmed.contains("panicked")
+        })
+        .map(|line| line.trim().chars().take(110).collect())
+        .unwrap_or_default()
 }
 
 fn reject_expect(case: &Case) -> Option<String> {
@@ -430,7 +523,7 @@ fn specs_rebuild_engine(files: &[PathBuf], case_name: Option<&str>) -> bool {
             if case_name.is_some_and(|wanted| wanted != case.name) {
                 continue;
             }
-            if is_engine_source(&case.file) {
+            if is_engine_source(&case.file) && cargo_test(&case.test).ok().flatten().is_none() {
                 return true;
             }
         }
@@ -542,5 +635,26 @@ mod tests {
         assert!(!is_engine_source("desktop/native/look.py"));
         assert!(!is_engine_source("backend/solver.py"));
         assert!(!is_engine_source("engines/nope.rs"));
+    }
+
+    #[test]
+    fn a_cargo_test_name_has_three_fields() {
+        let parsed = cargo_test(
+            "cargo:flexweek-engine:test_solver:test_a_low_session_skips_midnight_when_the_morning_is_free",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(parsed.package, "flexweek-engine");
+        assert_eq!(parsed.target, "test_solver");
+        assert_eq!(
+            parsed.name,
+            "test_a_low_session_skips_midnight_when_the_morning_is_free"
+        );
+        assert!(
+            cargo_test("backend/tests/test_solver.py::test_names")
+                .unwrap()
+                .is_none()
+        );
+        assert!(cargo_test("cargo:flexweek-engine:test_solver").is_err());
     }
 }

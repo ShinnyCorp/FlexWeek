@@ -159,6 +159,26 @@ second can reuse a stale `.pyc`), run `python -m pytest <test> -q -x -p no:cache
 `PYTHONDONTWRITEBYTECODE=1` and `QT_QPA_PLATFORM=offscreen`, restore the file, delete its bytecode
 again, delete the record. A case is caught when pytest exits non-zero.
 
+A case may name a Rust test instead of a pytest node id:
+
+```text
+cargo:<package>:<test target>:<test name>
+```
+
+For example
+`cargo:flexweek-engine:test_solver:test_a_low_session_skips_midnight_when_the_morning_is_free`.
+`fwtest` runs this in `<checkout>/engine`:
+
+```text
+cargo test -p <package> --test <target> -- <test name> --exact
+```
+
+Cargo compiles the mutated source, so this case does not rebuild the Python module.
+The source file is still restored when the case ends. A compile failure is `BUILD`
+and is not caught, unless the case sets `"expect": "build"`. A failing assertion is
+`RED`. A `cargo:` value that is not those three fields is `PATTERN`, and the file
+is not edited.
+
 ## Mutating a file under engine/
 
 A case whose `file` has `engine` as its first path component edits Rust that the installed
@@ -177,7 +197,8 @@ For each such case `fwtest`:
    rebuild omits `--features audit`, so the checkout is left as it was found. When the import
    cannot be read, the clean rebuild keeps `--features audit`. A command given with
    `--engine-build` or `FWTEST_ENGINE_BUILD` is used as given and is not probed.
-4. Runs the case's pytest. A case that built prints `built in Ns` on its line.
+4. Runs the case's pytest, unless `test` is a `cargo:` name. That case skips this
+   rebuild and the one in step 3. A pytest case that built prints `built in Ns` on its line.
 5. Restores the source from the saved copy.
 6. At the end of the spec, runs the clean command again and deletes the mark. The same clean
    rebuild runs before a later case whose file is not under `engine/` when the mark is still

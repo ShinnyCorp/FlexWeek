@@ -7,6 +7,13 @@
   "test": "backend/tests/test_solver.py::test_a_low_session_skips_midnight_when_the_morning_is_free"
  },
  {
+  "file": "engine/engine/src/solver.rs",
+  "name": "night not ranked last, caught by the Rust twin",
+  "old": "        keyed.push((night, study, match_energy, day, slot));\n    }\n    keyed.sort();\n    Ok(keyed.into_iter().map(|k| (k.3, k.4)).collect())\n",
+  "new": "        keyed.push((study, match_energy, day, slot, night));\n    }\n    keyed.sort();\n    Ok(keyed.into_iter().map(|k| (k.2, k.3)).collect())\n",
+  "test": "cargo:flexweek-engine:test_solver:test_a_low_session_skips_midnight_when_the_morning_is_free"
+ },
+ {
   "file": "engine/engine/src/desk/calendar.rs",
   "name": "a repeating block's day wipes the other week",
   "old": "        let mut dest_vec: Vec<Value> = dest.unwrap().iter().map(deep_copy).collect();\n        dest_vec.push(for_date(&occurrence, from_day, to_day));\n        return Some((source_out, Some(dest_vec), made));\n",

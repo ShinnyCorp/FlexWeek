@@ -435,6 +435,80 @@ fn a_module_without_audit_is_left_without_it() {
 }
 
 #[test]
+fn a_cargo_test_catches_the_mutation_and_a_compile_failure_is_its_own_outcome() {
+    let home = scratch();
+    let repo = home.join("repo");
+    fs::create_dir_all(repo.join("engine/src")).unwrap();
+    fs::create_dir_all(repo.join("engine/tests")).unwrap();
+    git_init(&repo);
+    fs::write(
+        repo.join("engine/Cargo.toml"),
+        "[package]\nname = \"flexweek-engine\"\nversion = \"0.0.0\"\nedition = \"2021\"\npublish = false\n",
+    )
+    .unwrap();
+    fs::write(
+        repo.join("engine/src/lib.rs"),
+        "pub fn value() -> i32 {\n    1\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        repo.join("engine/tests/test_solver.rs"),
+        "#[test]\nfn test_a_low_session_skips_midnight_when_the_morning_is_free() {\n    assert_eq!(flexweek_engine::value(), 1);\n}\n",
+    )
+    .unwrap();
+    let caught = r#"[{"name":"n becomes two","file":"engine/src/lib.rs","old":"pub fn value() -> i32 {\n    1\n}\n","new":"pub fn value() -> i32 {\n    2\n}\n","test":"cargo:flexweek-engine:test_solver:test_a_low_session_skips_midnight_when_the_morning_is_free"}]"#;
+    fs::write(repo.join("mutations.json"), caught).unwrap();
+    let output = fwtest(&home, &repo)
+        .env("FWTEST_ENGINE_BUILD_TIMEOUT", "180")
+        .env("CARGO_NET_OFFLINE", "true")
+        .args(["mutate", "mutations.json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stdout.contains("RED") && stdout.contains("n becomes two"),
+        "{stdout}"
+    );
+    assert!(
+        !stderr.contains("rebuilt clean engine module"),
+        "a cargo case rebuilt the module:\n{stderr}"
+    );
+    assert!(
+        fs::read_to_string(repo.join("engine/src/lib.rs"))
+            .unwrap()
+            .contains("1"),
+        "source was not restored"
+    );
+
+    let broken = r#"[{"name":"n does not compile","file":"engine/src/lib.rs","old":"pub fn value() -> i32 {\n    1\n}\n","new":"pub fn value() -> i32 {\n    1 +\n}\n","test":"cargo:flexweek-engine:test_solver:test_a_low_session_skips_midnight_when_the_morning_is_free"}]"#;
+    fs::write(repo.join("mutations.json"), broken).unwrap();
+    let output = fwtest(&home, &repo)
+        .env("FWTEST_ENGINE_BUILD_TIMEOUT", "180")
+        .env("CARGO_NET_OFFLINE", "true")
+        .args(["mutate", "mutations.json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        stdout.contains("BUILD") && stdout.contains("did not build"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("RED"), "{stdout}");
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
 fn an_unreadable_module_keeps_the_audit_default() {
     let (recorded, _stdout, stderr) = builds_with_default_command("raise RuntimeError('unread')\n");
     let lines: Vec<&str> = recorded.lines().collect();
