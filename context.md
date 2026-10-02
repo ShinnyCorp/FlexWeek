@@ -1,17 +1,13 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-10-01, `fix/sign-in-hover-flake` (from d5dfcd6): the sign-in hover flake is fixed. Two tests left
-  Qt holding the left button for the rest of their worker (`test_hours_zoom`'s press with no release, and
-  `test_layout_mission`'s `QTest.mouseDClick`, which in PySide6 6.11 ends held), so later pointer moves
-  were drags and the sign-in links never got hover. Both now release; conftest's
-  `no_mouse_button_is_left_held` fails any test that leaves a button down. A second cause: the offscreen
-  pointer keeps its place and the window it was last over, and Clay's arrow test leaves it over a view that
-  lives on hidden, so the sign-in move sent that view's stale leave and Forgot password lost hover.
-  `the_pointer_starts_where_a_new_worker_has_it` puts it at (10, 10) before each test, and
-  `test_windows_between_tests` runs that order in a pytest of its own. Gate 2677 passed.
-  Seen flaky, not chased: `test_context_menu.py::test_every_design_with_shared_hours_has_the_free_time_menu[clay]`
-  ("clay shows no hours with Tuesday in them"), 2 of 3 gates on 2026-10-01 and 1 of 6 runs of the file alone.
+- 2026-10-01, `fix/test-isolation` (from d5dfcd6): three flaky tests fixed, all test-only. The sign-in hover tests
+  failed because `test_hours_zoom` and `test_layout_mission` left Qt holding the left button, so later moves were
+  drags (both release now; conftest's `no_mouse_button_is_left_held` fails any test that leaves one down), and
+  because the offscreen pointer kept the view Clay's arrow test left it over (conftest puts it at (10, 10) before
+  each test; `test_windows_between_tests` runs that order in a pytest of its own). The Clay free-time menu test
+  failed before about 09:00: Clay's neighbouring cards show the stretch of the day the front card has scrolled
+  to, and that opens at now, so Tuesday had no track at 17:00; the test now runs under Wednesday noon.
 - 2026-09-30, `feat/0.17.2`: 0.17.2 prepared (version, dated changelog, `docs/release-notes-v0.17.2.md`).
   It is Grok Bot's 0.17.0 audit (T1 to T37, A1 to A12, X1 to X9), split between Claude and GPT 6.1 Sol;
   every lane and unit below is merged. Last two: the 12-hour clock unit (above) and Retry save showing
