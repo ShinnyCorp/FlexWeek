@@ -31,6 +31,9 @@ APP_HELPERS = (
     "rewrite_stored_blocks",
     "assignment_view",
     "payload_digest",
+    "preferences_from_row",
+    "validate_windows",
+    "solve_availability",
 )
 
 ROOT = Path(__file__).resolve().parents[2]

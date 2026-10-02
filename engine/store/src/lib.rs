@@ -127,6 +127,12 @@ impl From<rusqlite::Error> for StoreError {
     }
 }
 
+impl From<flexweek_engine::EngineError> for StoreError {
+    fn from(value: flexweek_engine::EngineError) -> Self {
+        Self::Engine(value)
+    }
+}
+
 impl From<std::io::Error> for StoreError {
     fn from(value: std::io::Error) -> Self {
         Self::Io(value)
@@ -165,7 +171,10 @@ pub use routines::{
     RoutineDelete, RoutineSave, RoutineWrite, delete_routine, list_routines, replace_routines,
     save_routine,
 };
-pub use rules::{Relay, assignment_view, payload_digest, rewrite_blocks, rewrite_stored_blocks};
+pub use rules::{
+    Relay, SolveAvailability, assignment_view, payload_digest, preferences_fields, rewrite_blocks,
+    rewrite_stored_blocks, solve_availability,
+};
 pub use weeks::{WeekSave, list_account_weeks, read_week, save_week, week_blocks, week_starts};
 
 /// A write joins the caller's transaction. The first one begins it, as `Connection.execute` does,

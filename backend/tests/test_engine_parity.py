@@ -1311,6 +1311,55 @@ def ref_rewrite_stored_blocks(blocks, assignments):
     return rewritten
 
 
+def ref_solve_availability(stored):
+    if stored is None:
+        return [0] * 7, [], []
+    availability = json.loads(stored or "{}")
+    protected = [ref_models.ProtectedWindow.model_validate(item) for item in availability.get("protected") or []]
+    study = [ref_models.StudyWindow.model_validate(item) for item in availability.get("study_windows") or []]
+    work = [ref_models.WorkWindow.model_validate(item) for item in availability.get("work_windows") or []]
+    return ref_availability.occupancy_from_windows(protected, availability.get("day_cutoff")), study, work
+
+
+def ref_preferences_from_row(row):
+    availability = json.loads(row["availability_json"] or "{}")
+    comfort = json.loads(row["comfort_json"] or "{}")
+    return live_app.Preferences(
+        theme=row["theme"],
+        reminders_enabled=bool(row["reminders_enabled"]),
+        reminder_lead_min=int(row["reminder_lead_min"]),
+        reminder_sound=bool(row["reminder_sound"]),
+        reminder_dnd_override=bool(row["reminder_dnd_override"]),
+        timer_work_min=int(row["timer_work_min"]),
+        timer_break_min=int(row["timer_break_min"]),
+        timer_long_break_min=int(row["timer_long_break_min"]),
+        timer_long_break_every=int(row["timer_long_break_every"]),
+        auto_split_pomodoro=bool(row["auto_split_pomodoro"]),
+        default_spotify_url=row["default_spotify_url"],
+        alarms=json.loads(row["alarms_json"]),
+        protected=availability.get("protected") or [],
+        study_windows=availability.get("study_windows") or [],
+        work_windows=availability.get("work_windows") or [],
+        day_cutoff=availability.get("day_cutoff"),
+        alert_volume=comfort.get("alert_volume", 80),
+        end_chime=bool(comfort.get("end_chime", False)),
+        tray_notifications=bool(comfort.get("tray_notifications", True)),
+        start_at_login=bool(comfort.get("start_at_login", False)),
+        preferred_view=comfort.get("preferred_view"),
+        sidebar_collapsed=bool(comfort.get("sidebar_collapsed", False)),
+        sidebar_width_px=comfort.get("sidebar_width_px"),
+        theme_pack=comfort.get("theme_pack", "system"),
+        accent=comfort.get("accent", "default"),
+        accent_chips=bool(comfort.get("accent_chips", False)),
+        motion=comfort.get("motion"),
+        alarm_tone=comfort.get("alarm_tone", "chime"),
+        planning_style=comfort.get("planning_style", "suggest"),
+        drag_step_min=comfort.get("drag_step_min", 5),
+        clock_24h=bool(comfort.get("clock_24h", True)),
+        setup=comfort.get("setup"),
+    ).model_dump()
+
+
 @COMMON
 @given(json_value)
 def test_payload_digest(value):
@@ -1430,3 +1479,120 @@ def test_rewrite_stored_blocks_on_a_list_of_nothing_in_particular():
             lambda blocks=blocks: ref_rewrite_stored_blocks(blocks, {}),
             repr(blocks),
         )
+
+
+BASE_ROW = {
+    "theme": "dark",
+    "reminders_enabled": 1,
+    "reminder_lead_min": 10,
+    "reminder_sound": 0,
+    "reminder_dnd_override": 0,
+    "timer_work_min": 25,
+    "timer_break_min": 5,
+    "timer_long_break_min": 15,
+    "timer_long_break_every": 4,
+    "auto_split_pomodoro": 1,
+    "default_spotify_url": None,
+    "alarms_json": "[]",
+    "availability_json": "{}",
+    "comfort_json": "{}",
+}
+COMFORT_VALUES: dict[str, list] = {
+    "alert_volume": [0, 55, 100, 101, None, "x"],
+    "end_chime": [True, False, 0, 1, None],
+    "tray_notifications": [True, False, 0, 1, None],
+    "start_at_login": [True, False, 0, 1],
+    "preferred_view": [None, "week", "day", "bogus"],
+    "sidebar_collapsed": [True, False, 0],
+    "sidebar_width_px": [None, 240, 10, "x"],
+    "theme_pack": ["system", "paper", "bogus", None],
+    "accent": ["default", "teal", "bogus"],
+    "accent_chips": [True, False, 1],
+    "motion": [None, "full", "reduced", "bogus"],
+    "alarm_tone": ["chime", "bell", "bogus"],
+    "planning_style": ["suggest", "auto", "bogus"],
+    "drag_step_min": [5, 15, 7, None],
+    "clock_24h": [True, False, 0],
+    "setup": [None, {"step": 1}, {"finished_at": "2026-10-02T09:00"}, 5],
+}
+comfort_json = st.one_of(
+    st.just("{}"),
+    st.just(""),
+    st.just("null"),
+    st.just("[]"),
+    st.just("{oops"),
+    st.sets(st.sampled_from(sorted(COMFORT_VALUES)), max_size=8).flatmap(
+        lambda picks: st.fixed_dictionaries(
+            {key: st.sampled_from(list(COMFORT_VALUES[key])) for key in picks}
+        ).map(json.dumps)
+    ),
+)
+availability_json = st.one_of(
+    st.just("{}"),
+    st.just(""),
+    st.just("[]"),
+    st.just("{oops"),
+    st.builds(
+        lambda protected, study, work, cutoff: json.dumps(
+            {
+                key: value
+                for key, value in (
+                    ("protected", protected),
+                    ("study_windows", study),
+                    ("work_windows", work),
+                    ("day_cutoff", cutoff),
+                )
+                if value is not ...
+            }
+        ),
+        st.one_of(st.just(...), st.lists(grid_window(extra="protected"), max_size=2), st.just([]), st.none()),
+        st.one_of(st.just(...), st.lists(grid_window(extra="study"), max_size=2), st.just([])),
+        st.one_of(st.just(...), st.lists(work_window(), max_size=2), st.just([])),
+        st.one_of(st.just(...), st.none(), st.sampled_from(["22:00", "21:30", "", "bogus"])),
+    ),
+)
+row_changes = st.fixed_dictionaries(
+    {},
+    optional={
+        "theme": st.sampled_from(["light", "dark", "system", "bogus"]),
+        "reminders_enabled": st.sampled_from([0, 1, 2, None, "yes"]),
+        "reminder_lead_min": st.sampled_from([0, 10, 120, 500, "15", 7.9, -1]),
+        "timer_work_min": st.sampled_from([25, 0, 200, "30"]),
+        "timer_long_break_every": st.sampled_from([4, 1, 13]),
+        "default_spotify_url": st.sampled_from([None, "https://open.spotify.com/playlist/abc", "https://example.com"]),
+        "alarms_json": st.sampled_from(["[]", "[", "null", '[{"id": "a", "time": "07:30", "days": [0], "label": "Up"}]']),
+    },
+)
+
+
+@COMMON
+@given(row_changes, availability_json, comfort_json, st.sets(st.sampled_from(sorted(BASE_ROW)), max_size=2))
+def test_preferences_from_row(changes, availability, comfort, dropped):
+    row = {**BASE_ROW, **changes, "availability_json": availability, "comfort_json": comfort}
+    row = {key: value for key, value in row.items() if key not in dropped}
+    same(lambda: live_app.preferences_from_row(row), lambda: ref_preferences_from_row(row), repr(row))
+
+
+@COMMON
+@given(st.sampled_from([None, "", "{}", "null", "[]", "{oops", '{"protected": null}', '{"day_cutoff": 5}']))
+def test_preferences_from_row_with_other_text_in_the_json_columns(text):
+    for column in ("availability_json", "comfort_json"):
+        row = {**BASE_ROW, column: text}
+        same(
+            lambda row=row: live_app.preferences_from_row(row),
+            lambda row=row: ref_preferences_from_row(row),
+            repr(row),
+        )
+
+
+@COMMON
+@given(availability_json, st.booleans())
+def test_solve_availability(stored, missing):
+    value = None if missing else stored
+    same(lambda: live_app.solve_availability(value), lambda: ref_solve_availability(value), repr(value))
+
+
+def test_solve_availability_on_text_that_is_not_a_dict_of_windows():
+    for stored in (None, "", "{}", "null", "[]", "5", '{"protected": 5}', '{"protected": {"a": 1}}',
+                   '{"study_windows": "ab"}', '{"work_windows": [1]}', '{"protected": [{"days": [9]}]}'):
+        same(lambda stored=stored: live_app.solve_availability(stored), lambda stored=stored: ref_solve_availability(stored), repr(stored))

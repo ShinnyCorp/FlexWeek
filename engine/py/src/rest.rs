@@ -417,6 +417,8 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         assignment_view,
         rewrite_blocks,
         rewrite_stored_blocks,
+        preferences_fields,
+        solve_availability,
     );
     Ok(())
 }
@@ -482,5 +484,30 @@ fn rewrite_stored_blocks(
             })
             .map_err(|relay| relay_py(py, relay))?;
         Ok(dump(&Value::Array(rewritten)))
+    })
+}
+
+#[pyfunction]
+fn preferences_fields(py: Python<'_>, row: &str) -> PyResult<String> {
+    guard(|| {
+        let fields =
+            store::preferences_fields(&parse(row)?).map_err(|error| store_py(py, error))?;
+        Ok(dump(&fields))
+    })
+}
+
+#[pyfunction]
+fn solve_availability(
+    py: Python<'_>,
+    stored: Option<&str>,
+    validate: &Bound<'_, PyAny>,
+) -> PyResult<(Vec<u128>, String, String)> {
+    guard(|| {
+        let found = store::solve_availability(stored, |kind, items| {
+            let text: String = validate.call1((kind, dump(items)))?.extract()?;
+            parse(&text)
+        })
+        .map_err(|relay| relay_py(py, relay))?;
+        Ok((found.occupancy, dump(&found.study), dump(&found.work)))
     })
 }

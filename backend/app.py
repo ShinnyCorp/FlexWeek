@@ -21,7 +21,7 @@ from backend.assignments import (
     planned_minutes_by_id,
     prepare_solve,
 )
-from backend.availability import occupancy_from_windows, spread_sessions
+from backend.availability import spread_sessions
 from backend.comfort import REMINDER_LIMITS, TIMER_PRESETS, preview_split
 from backend.day import build_day
 from backend.limits import MAX_BODY
@@ -743,42 +743,8 @@ def encode_comfort(preferences: Preferences) -> str:
 
 
 def preferences_from_row(row: Row) -> dict:
-    availability = json.loads(row["availability_json"] or "{}")
-    comfort = json.loads(row["comfort_json"] or "{}")
-    return Preferences(
-        theme=row["theme"],
-        reminders_enabled=bool(row["reminders_enabled"]),
-        reminder_lead_min=int(row["reminder_lead_min"]),
-        reminder_sound=bool(row["reminder_sound"]),
-        reminder_dnd_override=bool(row["reminder_dnd_override"]),
-        timer_work_min=int(row["timer_work_min"]),
-        timer_break_min=int(row["timer_break_min"]),
-        timer_long_break_min=int(row["timer_long_break_min"]),
-        timer_long_break_every=int(row["timer_long_break_every"]),
-        auto_split_pomodoro=bool(row["auto_split_pomodoro"]),
-        default_spotify_url=row["default_spotify_url"],
-        alarms=json.loads(row["alarms_json"]),
-        protected=availability.get("protected") or [],
-        study_windows=availability.get("study_windows") or [],
-        work_windows=availability.get("work_windows") or [],
-        day_cutoff=availability.get("day_cutoff"),
-        alert_volume=comfort.get("alert_volume", 80),
-        end_chime=bool(comfort.get("end_chime", False)),
-        tray_notifications=bool(comfort.get("tray_notifications", True)),
-        start_at_login=bool(comfort.get("start_at_login", False)),
-        preferred_view=comfort.get("preferred_view"),
-        sidebar_collapsed=bool(comfort.get("sidebar_collapsed", False)),
-        sidebar_width_px=comfort.get("sidebar_width_px"),
-        theme_pack=comfort.get("theme_pack", "system"),
-        accent=comfort.get("accent", "default"),
-        accent_chips=bool(comfort.get("accent_chips", False)),
-        motion=comfort.get("motion"),
-        alarm_tone=comfort.get("alarm_tone", "chime"),
-        planning_style=comfort.get("planning_style", "suggest"),
-        drag_step_min=comfort.get("drag_step_min", 5),
-        clock_24h=bool(comfort.get("clock_24h", True)),
-        setup=comfort.get("setup"),
-    ).model_dump()
+    fields = json.loads(flexweek_engine.preferences_fields(json.dumps(dict(row))))
+    return Preferences(**fields).model_dump()
 
 
 def capture_transfer(db: Connection, user_id: int) -> dict:
@@ -820,16 +786,27 @@ def write_preferences(db: Connection, user_id: int, preferences: Preferences) ->
     return preferences.model_dump()
 
 
+WINDOW_MODELS: dict[str, type[BaseModel]] = {
+    "protected": ProtectedWindow,
+    "study": StudyWindow,
+    "work": WorkWindow,
+}
+
+
+def validate_windows(kind: str, text: str) -> str:
+    model = WINDOW_MODELS[kind]
+    return json.dumps([model.model_validate(item).model_dump() for item in json.loads(text)])
+
+
 def solve_availability(
     stored: str | None,
 ) -> tuple[list[int], list[StudyWindow], list[WorkWindow]]:
-    if stored is None:
-        return [0] * 7, [], []
-    availability = json.loads(stored or "{}")
-    protected = [ProtectedWindow.model_validate(item) for item in availability.get("protected") or []]
-    study = [StudyWindow.model_validate(item) for item in availability.get("study_windows") or []]
-    work = [WorkWindow.model_validate(item) for item in availability.get("work_windows") or []]
-    return occupancy_from_windows(protected, availability.get("day_cutoff")), study, work
+    occupancy, study, work = flexweek_engine.solve_availability(stored, validate_windows)
+    return (
+        list(occupancy),
+        [StudyWindow.model_validate(item) for item in json.loads(study)],
+        [WorkWindow.model_validate(item) for item in json.loads(work)],
+    )
 
 
 def create_app(database: Path | None = None, origin: str | None = None) -> FastAPI:
