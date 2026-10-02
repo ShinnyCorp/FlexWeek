@@ -46,7 +46,7 @@ fwtest clean
   skipping any value of all zeroes. pytest gets `-n N` where N is `--workers`, or half the cores
   and at least 2. It prints `VERIFIED: Backend and desktop. Packaged binaries and other platforms
   need separate checks.` (or `VERIFIED: Backend.` with `--backend-only`) only when every step
-  passed, as `verify.py` does. The per-step timeout is 480 seconds.
+  passed, as `verify.py` does. The per-step timeout is 900 seconds.
 - `mutate` runs every spec in `scripts/mutations/`, or the specs named. `--case` runs one case by
   name. It prints one line per case (`RED`, `GREEN`, `PATTERN`, or `BUILD`, then the spec, the
   case name, and a short detail) and ends with `every mutation was caught` or `N mutation(s)

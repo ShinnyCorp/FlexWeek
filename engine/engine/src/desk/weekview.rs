@@ -62,7 +62,14 @@ pub struct Week {
 
 fn whole(row: &serde_json::Map<String, Value>, key: &str) -> EngineResult<i64> {
     row.get(key)
-        .and_then(Value::as_i64)
+        .and_then(|value| {
+            value.as_i64().or_else(|| {
+                let value = value.as_f64()?;
+                (value.fract() == 0.0
+                    && (-9_223_372_036_854_775_808.0..9_223_372_036_854_775_808.0).contains(&value))
+                .then_some(value as i64)
+            })
+        })
         .ok_or_else(|| type_error(format!("{key} must be a whole number")))
 }
 
@@ -255,5 +262,29 @@ impl Week {
                 .filter(|at| self.occurrences[*at].start > minute),
         );
         (current, queue)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn week_reads_whole_floats_without_rounding_fractional_fields() {
+        let raw = json!({"week_start": "2026-09-28", "occurrences": [
+            {"day": 1.0, "start": 540.0, "end": 600.0, "work": true}
+        ], "waiting": [{"title": "Math", "minutes": 30.0, "due": "2026-09-29"}]});
+        let week = Week::read(&raw.to_string()).unwrap();
+        assert_eq!(week.on_day(1), [0]);
+        assert_eq!(week.load_min(1), 60);
+        assert_eq!(week.minutes_left_today(Some(1), 540).unwrap(), 90);
+        for value in [json!(1.5), json!(9_223_372_036_854_775_808.0), json!("1")] {
+            assert!(whole(json!({"day": value}).as_object().unwrap(), "day").is_err());
+        }
+        assert_eq!(
+            whole(json!({"day": -0.0}).as_object().unwrap(), "day").unwrap(),
+            0
+        );
     }
 }

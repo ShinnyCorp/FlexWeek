@@ -4,7 +4,7 @@ use serde_json::{Map, Value, json};
 
 use crate::desk::pyops::{PyDict, eq, get, iterate, or_default};
 use crate::desk::pyval::subscript;
-use crate::error::EngineResult;
+use crate::error::{EngineError, EngineResult};
 use crate::stored::truthy;
 
 pub const HISTORY_LIMIT: usize = 50;
@@ -12,6 +12,35 @@ pub const HISTORY_LIMIT: usize = 50;
 /// `len(stack) > HISTORY_LIMIT`: one step is dropped from the front when a push leaves it longer.
 pub fn over_limit(length: usize) -> bool {
     length > HISTORY_LIMIT
+}
+
+/// The caller retains its objects; append and removal happen in Python's original order.
+pub fn push_step<T, E>(
+    step: T,
+    append: impl FnOnce(T) -> Result<(), E>,
+    length: impl FnOnce() -> Result<usize, E>,
+    remove_oldest: impl FnOnce() -> Result<(), E>,
+) -> Result<(), E> {
+    append(step)?;
+    if over_limit(length()?) {
+        remove_oldest()?;
+    }
+    Ok(())
+}
+
+/// Read each JSON snapshot only when reached, so later errors preserve earlier updates.
+pub fn mark_stale<H, E>(
+    items: impl IntoIterator<Item = Result<(Value, Value, H), E>>,
+    mut mark: impl FnMut(H) -> Result<(), E>,
+    mut map_error: impl FnMut(EngineError) -> E,
+) -> Result<(), E> {
+    for item in items {
+        let (step, week_start, handle) = item?;
+        if touches(&step, &week_start).map_err(&mut map_error)? {
+            mark(handle)?;
+        }
+    }
+    Ok(())
 }
 
 fn sort_value(value: &Value) -> Value {
@@ -134,6 +163,49 @@ pub fn touches(step: &Value, week_start: &Value) -> EngineResult<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+
+    #[test]
+    fn pushed_steps_drop_only_the_oldest_at_the_limit() {
+        let stack = RefCell::new((0..HISTORY_LIMIT).map(|at| json!(at)).collect::<Vec<_>>());
+        push_step(
+            json!(50),
+            |step| {
+                stack.borrow_mut().push(step);
+                Ok::<_, EngineError>(())
+            },
+            || Ok(stack.borrow().len()),
+            || {
+                stack.borrow_mut().remove(0);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(stack.borrow().len(), 50);
+        assert_eq!(stack.borrow()[0], json!(1));
+        assert_eq!(stack.borrow()[49], json!(50));
+    }
+
+    #[test]
+    fn stale_marking_preserves_updates_before_a_later_error() {
+        let marked = RefCell::new(Vec::new());
+        let items = [
+            Ok((json!({"weeks": [{"week_start": "w"}]}), json!("w"), 0)),
+            Ok((json!({"weeks": [{}]}), json!("w"), 1)),
+            Ok((json!({"weeks": [{"week_start": "w"}]}), json!("w"), 2)),
+        ];
+        let error = mark_stale(
+            items,
+            |at| {
+                marked.borrow_mut().push(at);
+                Ok(())
+            },
+            |error| error,
+        )
+        .unwrap_err();
+        assert_eq!(error, EngineError::key("week_start"));
+        assert_eq!(*marked.borrow(), [0]);
+    }
 
     fn step(week_start: &str, before: Value, after: Value, stale: bool) -> Value {
         json!({

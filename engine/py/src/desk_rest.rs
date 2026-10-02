@@ -1039,9 +1039,13 @@ fn update_due(settings: &str, now_ms: i64) -> PyResult<bool> {
 }
 
 #[pyfunction]
-fn look_saved(raw: &str) -> PyResult<String> {
-    let raw = parse(raw)?;
+fn look_saved(raw: &Bound<'_, PyAny>) -> PyResult<String> {
     guard(|| {
+        let raw = if raw.is_instance_of::<pyo3::types::PyList>() {
+            parse(&dumps_of(raw)?)?
+        } else {
+            Value::Null
+        };
         custom_look::sanitize_saved(&raw)
             .map(maps)
             .map_err(crate::raise)
@@ -1049,10 +1053,11 @@ fn look_saved(raw: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn look_save(saved: &str, custom: &str, name: &str) -> PyResult<String> {
+fn look_save(saved: &str, custom: &str, name: &Bound<'_, PyAny>) -> PyResult<String> {
     let (saved, custom) = (parse(saved)?, parse(custom)?);
     guard(|| {
-        let kept = custom_look::save_look(&saved, &custom, name).map_err(crate::raise)?;
+        let name = name.extract::<String>().unwrap_or_default();
+        let kept = custom_look::save_look(&saved, &custom, &name).map_err(crate::raise)?;
         Ok(dump(&Value::Array(kept)))
     })
 }
@@ -1107,8 +1112,9 @@ fn look_wear(look: &str, custom: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn look_name(name: Option<&str>) -> PyResult<String> {
-    guard(|| custom_look::name_valid(name).map_err(crate::raise))
+fn look_name(name: &Bound<'_, PyAny>) -> PyResult<String> {
+    let name = name.extract::<String>().ok();
+    guard(|| custom_look::name_valid(name.as_deref()).map_err(crate::raise))
 }
 
 #[pyfunction]

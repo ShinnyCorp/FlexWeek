@@ -1,28 +1,44 @@
 //! Rust twin of `desktop/tests/test_history.py`: undo snapshots for the native week.
 
-use flexweek_engine::desk::history::{HISTORY_LIMIT, capture_step, over_limit, touches};
+use flexweek_engine::EngineError;
+use flexweek_engine::desk::history::{self, HISTORY_LIMIT, capture_step};
 use serde_json::{Value, json};
+use std::cell::RefCell;
 
 fn ids(names: &[&str]) -> Vec<String> {
     names.iter().map(|name| (*name).to_string()).collect()
 }
 
-/// `history_push` in the binding: the step goes on the end, and the engine says when the stack is
-/// over its limit, which drops the oldest. The binding owns the list, so this loop is its.
 fn push_step(stack: &mut Vec<Value>, step: Value) {
-    stack.push(step);
-    if over_limit(stack.len()) {
-        stack.remove(0);
-    }
+    let stack = RefCell::new(stack);
+    history::push_step(
+        step,
+        |step| {
+            stack.borrow_mut().push(step);
+            Ok::<_, EngineError>(())
+        },
+        || Ok(stack.borrow().len()),
+        || {
+            stack.borrow_mut().remove(0);
+            Ok(())
+        },
+    )
+    .expect("a push");
 }
 
-/// `history_mark_stale` in the binding: the engine says which steps hold the week.
 fn mark_stale(steps: &mut [Value], week_start: &str) {
-    for step in steps.iter_mut() {
-        if touches(step, &json!(week_start)).expect("a verdict") {
+    let items = steps
+        .iter_mut()
+        .map(|step| Ok::<_, EngineError>((step.clone(), json!(week_start), step)));
+    history::mark_stale(
+        items,
+        |step| {
             step["stale"] = json!(true);
-        }
-    }
+            Ok(())
+        },
+        |error| error,
+    )
+    .expect("a verdict");
 }
 
 #[test]

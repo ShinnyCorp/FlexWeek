@@ -149,7 +149,8 @@ pub fn restore_state(
         }
     } else {
         None
-    };
+    }
+    .filter(|value| !value.is_null());
     if truthy(Some(&assignment_id))
         && (assignment.is_none() || truthy(get(assignment.unwrap_or(null()), "completed")?))
     {
@@ -460,4 +461,17 @@ pub fn now_next_line(result: &Value, minute: i64) -> EngineResult<String> {
         ));
     }
     Ok(parts.join("  →  "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn restore_state_treats_a_null_assignment_as_missing() {
+        let saved = json!({"phase": "work", "weekStart": "2026-09-28", "cycles": 0,
+            "endsAt": 10000, "assignmentId": "a1"});
+        let result = restore_state(&saved, &json!({"a1": null}), &json!([]), 5000);
+        assert!(matches!(result, Ok(None)), "{result:?}");
+    }
 }

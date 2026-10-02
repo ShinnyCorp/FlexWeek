@@ -171,7 +171,10 @@ class WeekModel:
         """The week as the engine holds it, read once for a model whose tuples cannot change."""
         if not isinstance(self.occurrences, tuple) or not isinstance(self.waiting, tuple):
             return flexweek_engine.week_handle_of(self)
-        found = _WEEK_HANDLES.get(self)
+        try:
+            found = _WEEK_HANDLES.get(self)
+        except TypeError:
+            return flexweek_engine.week_handle_of(self)
         if found is None:
             found = flexweek_engine.week_handle_of(self)
             _WEEK_HANDLES[self] = found
@@ -182,7 +185,10 @@ class WeekModel:
 
     def on_day(self, day: int) -> tuple[Occurrence, ...]:
         if isinstance(self.occurrences, tuple) and isinstance(self.waiting, tuple):
-            by_day = _ON_DAY_CACHE.get(self)
+            try:
+                by_day = _ON_DAY_CACHE.get(self)
+            except TypeError:
+                return tuple(self.occurrences[at] for at in self._engine().on_day(day))
             if by_day is None:
                 by_day = {}
                 _ON_DAY_CACHE[self] = by_day
@@ -195,7 +201,10 @@ class WeekModel:
 
     def load_min(self, day: int) -> int:
         if isinstance(self.occurrences, tuple) and isinstance(self.waiting, tuple):
-            by_day = _LOAD_MIN_CACHE.get(self)
+            try:
+                by_day = _LOAD_MIN_CACHE.get(self)
+            except TypeError:
+                return int(self._engine().load_min(day))
             if by_day is None:
                 by_day = {}
                 _LOAD_MIN_CACHE[self] = by_day

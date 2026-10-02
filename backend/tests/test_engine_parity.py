@@ -1433,7 +1433,7 @@ def test_payload_digest_on_what_json_cannot_write():
 estimate_value = st.one_of(
     st.sampled_from([15, 30, 60, 90, 600]),
     st.sampled_from([None, "45", "x", "", " 7 ", 4.5, -2.5, True, False, [1], {"a": 1}]),
-    st.integers(-300, 3000),
+    st.integers(min_value=-300, max_value=3000),
 )
 
 

@@ -99,11 +99,12 @@ pub(crate) fn members_of(held: &Bound<'_, PyAny>) -> PyResult<(String, bool)> {
 }
 
 fn push_onto(stack: &Bound<'_, PyAny>, step: &Bound<'_, PyAny>) -> PyResult<()> {
-    stack.call_method1("append", (step,))?;
-    if history::over_limit(stack.len()?) {
-        stack.del_item(0)?;
-    }
-    Ok(())
+    history::push_step(
+        step,
+        |step| stack.call_method1("append", (step,)).map(|_| ()),
+        || stack.len(),
+        || stack.del_item(0),
+    )
 }
 
 /// Puts `step` on the newest end of `stack`, which is the caller's own list, and drops the oldest
@@ -134,15 +135,13 @@ fn history_join(stack: &Bound<'_, PyAny>, step: &Bound<'_, PyAny>) -> PyResult<(
 #[pyfunction]
 fn history_mark_stale(steps: &Bound<'_, PyAny>, week_start: &Bound<'_, PyAny>) -> PyResult<()> {
     guard(|| {
-        for step in steps.try_iter()? {
+        let items = steps.try_iter()?.map(|step| {
             let step = step?;
             let held = parse(&dumps_of(&step)?)?;
             let week = parse(&dumps_of(week_start)?)?;
-            if history::touches(&held, &week).map_err(raise)? {
-                step.set_item("stale", true)?;
-            }
-        }
-        Ok(())
+            Ok((held, week, step))
+        });
+        history::mark_stale(items, |step| step.set_item("stale", true), raise)
     })
 }
 

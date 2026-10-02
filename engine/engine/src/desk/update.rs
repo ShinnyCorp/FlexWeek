@@ -201,9 +201,15 @@ pub fn release_from_page(location: &str) -> Option<serde_json::Value> {
 }
 
 pub fn expected_digest(checksum_text: &str, asset: &str) -> Option<String> {
-    for line in checksum_text.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() != 2 || parts[0].len() != 64 {
+    for line in checksum_text.split([
+        '\n', '\r', '\u{b}', '\u{c}', '\u{1c}', '\u{1d}', '\u{1e}', '\u{85}', '\u{2028}',
+        '\u{2029}',
+    ]) {
+        let parts: Vec<&str> = line
+            .split(crate::time::py_space)
+            .filter(|part| !part.is_empty())
+            .collect();
+        if parts.len() != 2 || parts[0].chars().count() != 64 {
             continue;
         }
         if parts[1].trim_start_matches('*') == asset {
@@ -343,7 +349,27 @@ mod sha256 {
 
 #[cfg(test)]
 mod tests {
-    use super::{install_kind, is_newer, parse_version};
+    use super::{expected_digest, install_kind, is_newer, parse_version};
+
+    #[test]
+    fn checksum_lines_and_lengths_follow_python_text_rules() {
+        for separator in [
+            "\n", "\r\n", "\r", "\u{b}", "\u{c}", "\u{1c}", "\u{1d}", "\u{1e}", "\u{85}",
+            "\u{2028}", "\u{2029}",
+        ] {
+            let digest = "a".repeat(64);
+            let text = format!("junk{separator}{digest} *app");
+            assert_eq!(expected_digest(&text, "app"), Some(digest));
+        }
+        assert_eq!(
+            expected_digest(&format!("{}  app", "É".repeat(64)), "app"),
+            Some("é".repeat(64))
+        );
+        assert_eq!(
+            expected_digest(&format!("{}\u{1f}*app", "a".repeat(64)), "app"),
+            Some("a".repeat(64))
+        );
+    }
 
     #[test]
     fn parse_version_matches_desktop_tests() {
@@ -405,25 +431,28 @@ mod tests {
     }
 
     #[test]
-    fn install_kind_ignores_the_process_environment() {
-        let mount = std::env::temp_dir();
-        let image = mount.join("flexweek-appimage-probe");
-        let exe = mount.join("flexweek-probe-bin");
-        std::fs::write(&image, b"x").unwrap();
-        std::fs::write(&exe, b"x").unwrap();
-        // set_var is unsafe in this toolchain because another thread can read the
-        // environment at the same time. This test is that reader, on one thread.
-        unsafe {
-            std::env::set_var("APPIMAGE", &image);
-            std::env::set_var("APPDIR", &mount);
-        }
-        let kind = install_kind(Some("linux"), None, None, Some(exe.to_str().unwrap()));
-        unsafe {
-            std::env::remove_var("APPIMAGE");
-            std::env::remove_var("APPDIR");
-        }
-        let _ = std::fs::remove_file(&image);
-        let _ = std::fs::remove_file(&exe);
-        assert_eq!(kind, "tarball");
+    fn install_kind_uses_only_supplied_environment_strings() {
+        assert_eq!(
+            install_kind(Some("linux"), None, None, Some("/mount/usr/bin/FlexWeek")),
+            "tarball"
+        );
+        assert_eq!(
+            install_kind(
+                Some("linux"),
+                Some("/x/FlexWeek.AppImage"),
+                Some("/mount"),
+                Some("/mount/usr/bin/FlexWeek")
+            ),
+            "appimage"
+        );
+        assert_eq!(
+            install_kind(
+                Some("linux"),
+                Some("/x/FlexWeek.AppImage"),
+                Some("/mount"),
+                Some("/elsewhere/FlexWeek")
+            ),
+            "tarball"
+        );
     }
 }

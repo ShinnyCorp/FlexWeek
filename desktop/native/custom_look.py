@@ -66,7 +66,7 @@ def reset_look(custom: dict) -> dict:
 
 def _name(name: object) -> str:
     try:
-        return str(flexweek_engine.look_name(name if isinstance(name, str) else None))
+        return str(flexweek_engine.look_name(name))
     except flexweek_engine.LookNameProblem as err:
         raise LookNameError(str(err)) from err
 
@@ -78,7 +78,7 @@ def _find(saved: list[dict], name: str) -> int:
 def sanitize_saved(raw: object) -> list[dict]:
     """The saved looks from the look file: each a custom look with a name of its own. One that is
     broken or named twice is left out; the rest load."""
-    return json.loads(flexweek_engine.look_saved(json.dumps(raw if isinstance(raw, list) else [])))
+    return json.loads(flexweek_engine.look_saved(raw))
 
 
 def save_look(saved: list[dict], custom: dict, name: object) -> list[dict]:
@@ -88,7 +88,7 @@ def save_look(saved: list[dict], custom: dict, name: object) -> list[dict]:
             flexweek_engine.look_save(
                 json.dumps(saved),
                 json.dumps(custom),
-                name if isinstance(name, str) else "",
+                name,
             )
         )
     except flexweek_engine.LookNameProblem as err:
@@ -99,7 +99,7 @@ def free_name(saved: list[dict], name: object) -> str:
     """`name` as a new saved look can have it: tidied, and numbered ("My look 2") past the saved looks
     that have it already, since `save_look` puts a look of the same name in their place."""
     try:
-        return str(flexweek_engine.free_name(json.dumps(saved), name if isinstance(name, str) else ""))
+        return str(flexweek_engine.free_name(json.dumps(saved), name))
     except flexweek_engine.LookNameProblem as err:
         raise LookNameError(str(err)) from err
 
@@ -107,7 +107,7 @@ def free_name(saved: list[dict], name: object) -> str:
 def rename_look(saved: list[dict], old: str, new: object) -> list[dict]:
     try:
         return json.loads(
-            flexweek_engine.rename_look(json.dumps(saved), old, new if isinstance(new, str) else "")
+            flexweek_engine.rename_look(json.dumps(saved), old, new)
         )
     except flexweek_engine.LookNameProblem as err:
         raise LookNameError(str(err)) from err
