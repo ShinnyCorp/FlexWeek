@@ -151,14 +151,24 @@ fn solve_request(
 }
 
 #[pyfunction]
+#[pyo3(signature = (blocks, assignments, week_start, keep, keep_is_set=false))]
 fn settle_placements(
+    py: Python<'_>,
     blocks: &str,
     assignments: &str,
     week_start: &str,
-    keep: &str,
+    keep: &Bound<'_, PyAny>,
     keep_is_set: bool,
 ) -> PyResult<(String, String)> {
-    let (blocks, assignments, keep) = (parse(blocks)?, parse(assignments)?, parse(keep)?);
+    let keep_text: String = match keep.extract::<String>() {
+        Ok(text) => text,
+        Err(_) => py
+            .import("json")?
+            .getattr("dumps")?
+            .call1((keep,))?
+            .extract()?,
+    };
+    let (blocks, assignments, keep) = (parse(blocks)?, parse(assignments)?, parse(&keep_text)?);
     guard(|| {
         let (out, lost) =
             planning::settle_placements(&blocks, &assignments, week_start, &keep, keep_is_set)
