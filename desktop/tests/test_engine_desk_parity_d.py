@@ -8,12 +8,14 @@ import pytest
 
 import desk_ref.calendar as ref_calendar
 import desk_ref.focus as ref_focus
+import desk_ref.history as ref_history
 import desk_ref.look as ref_look
 import desk_ref.tokens as ref_tokens
 import desk_ref.update as ref_update
 import desk_ref.weekmodel as ref_week
 import desktop.native.calendar as live_calendar
 import desktop.native.focus as live_focus
+import desktop.native.history as live_history
 import desktop.native.look as live_look
 import desktop.native.tokens as live_tokens
 import desktop.native.update as live_update
@@ -95,3 +97,43 @@ def test_checksum_fields_accept_python_separator_whitespace():
     text = "a" * 64 + "\x1f*app"
     assert ref_update.expected_digest(text, "app") == "a" * 64
     base.same(live_update.expected_digest, ref_update.expected_digest, text, "app")
+
+
+@pytest.mark.parametrize("length", [49, 50, 51])
+def test_history_push_preserves_identity_and_removes_only_one_oldest_step(length):
+    def observed(module):
+        stack = [{"label": str(at)} for at in range(length)]
+        held = tuple(stack)
+        step = {"label": "new", "not_json": object()}
+        module.push_step(stack, step)
+        first = 0 if length < 50 else 1
+        assert all(row is held[at] for at, row in enumerate(stack[:-1], first))
+        assert stack[-1] is step
+        assert len(stack) == length + (length < 50)
+        return [row["label"] for row in stack]
+
+    base.same(lambda: observed(live_history), lambda: observed(ref_history))
+
+
+@pytest.mark.parametrize("malformed", [False, True])
+def test_history_stale_marking_preserves_identity_and_partial_updates(malformed):
+    def observed(module):
+        steps = [{"weeks": [{"week_start": "w"}], "stale": False},
+                 {"weeks": [{}] if malformed else [{"week_start": "other"}], "stale": False},
+                 {"weeks": [{"week_start": "w"}], "stale": False}]
+        held = tuple(steps)
+        outcome = base.produced(module.mark_stale, (steps, "w"), {})
+        assert all(row is held[at] for at, row in enumerate(steps))
+        assert steps[0]["stale"] is True
+        assert steps[1]["stale"] is False
+        assert steps[2]["stale"] is (not malformed)
+        return outcome, steps
+
+    base.same(lambda: observed(live_history), lambda: observed(ref_history))
+
+
+def test_empty_history_does_not_encode_an_unused_week():
+    def observed(module):
+        return module.mark_stale(iter(()), object())
+
+    base.same(lambda: observed(live_history), lambda: observed(ref_history))
