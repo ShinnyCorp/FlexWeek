@@ -373,7 +373,21 @@ fn store_throttle(
 fn store_py(py: Python<'_>, error: flexweek_store::StoreError) -> PyErr {
     match error {
         flexweek_store::StoreError::Sqlite(sqlite) => crate::db::sqlite_py(py, &sqlite),
+        flexweek_store::StoreError::Engine(engine) => crate::raise(engine),
+        flexweek_store::StoreError::Json { text, error } => {
+            json_error(py, &text).unwrap_or_else(|| value_error(error.to_string()))
+        }
         other => value_error(other.to_string()),
+    }
+}
+
+/// The error Python's `json.loads` raises on `text`, type and message both. None when Python
+/// reads text the engine's parser does not, such as `NaN`.
+fn json_error(py: Python<'_>, text: &str) -> Option<PyErr> {
+    let loads = py.import("json").and_then(|json| json.getattr("loads"));
+    match loads {
+        Ok(loads) => loads.call1((text,)).err(),
+        Err(error) => Some(error),
     }
 }
 

@@ -9,6 +9,9 @@ pub enum ErrorKind {
     Index,
     Overflow,
     ZeroDivision,
+    /// `TypeError` and `AttributeError`: what Python raised on a stored value of the wrong type.
+    Type,
+    Attribute,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

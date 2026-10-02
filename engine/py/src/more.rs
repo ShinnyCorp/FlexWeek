@@ -348,9 +348,8 @@ fn planned_minutes_by_id(weeks: &str, from_week: &str) -> PyResult<String> {
 #[pyfunction]
 fn migrate_blocks(week_start: &str, blocks: &str) -> PyResult<String> {
     guard(|| {
-        let blocks = parse(blocks)?.as_array().cloned().unwrap_or_default();
         let (blocks, assignments) =
-            plan::migrate_blocks(week_start, &blocks).map_err(crate::raise)?;
+            plan::migrate_blocks(week_start, &parse(blocks)?).map_err(crate::raise)?;
         Ok(dump(&serde_json::json!([blocks, assignments])))
     })
 }

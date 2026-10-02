@@ -5,8 +5,8 @@ use std::sync::{Mutex, OnceLock};
 use ::flexweek_engine::time;
 use ::flexweek_engine::{EngineError, ErrorKind};
 use pyo3::exceptions::{
-    PyIndexError, PyKeyError, PyLookupError, PyOverflowError, PyRuntimeError, PyValueError,
-    PyZeroDivisionError,
+    PyAttributeError, PyIndexError, PyKeyError, PyLookupError, PyOverflowError, PyRuntimeError,
+    PyTypeError, PyValueError, PyZeroDivisionError,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyDate, PyDict, PyModule};
@@ -23,6 +23,8 @@ pub(crate) fn raise(err: EngineError) -> PyErr {
         ErrorKind::Index => PyIndexError::new_err(err.message),
         ErrorKind::Overflow => PyOverflowError::new_err(err.message),
         ErrorKind::ZeroDivision => PyZeroDivisionError::new_err(err.message),
+        ErrorKind::Type => PyTypeError::new_err(err.message),
+        ErrorKind::Attribute => PyAttributeError::new_err(err.message),
     }
 }
 
@@ -241,6 +243,8 @@ fn int_one(text: &str) -> (String, String) {
                 ErrorKind::Index => "IndexError",
                 ErrorKind::Lookup => "LookupError",
                 ErrorKind::ZeroDivision => "ZeroDivisionError",
+                ErrorKind::Type => "TypeError",
+                ErrorKind::Attribute => "AttributeError",
             };
             (kind.to_string(), err.message)
         }

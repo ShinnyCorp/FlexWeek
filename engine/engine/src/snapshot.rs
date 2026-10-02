@@ -36,13 +36,27 @@ fn py_string(text: &str) -> String {
 
 fn py_number(number: &serde_json::Number) -> String {
     let raw = number.to_string();
-    if raw.contains(['.', 'e', 'E'])
-        && let Some(value) = number.as_f64()
-        && value.is_finite()
-    {
-        return py_json_float(value);
+    if raw.contains(['.', 'e', 'E']) {
+        let value: f64 = raw.parse().unwrap_or(f64::NAN);
+        return match value {
+            v if v.is_nan() => "NaN".into(),
+            v if v.is_infinite() && v > 0.0 => "Infinity".into(),
+            v if v.is_infinite() => "-Infinity".into(),
+            v => py_json_float(v),
+        };
     }
-    raw
+    // `json.loads("-0")` is the int 0.
+    if raw == "-0" { "0".into() } else { raw }
+}
+
+/// Python `repr` of a float.
+pub(crate) fn py_float_repr(value: f64) -> String {
+    match value {
+        v if v.is_nan() => "nan".into(),
+        v if v.is_infinite() && v > 0.0 => "inf".into(),
+        v if v.is_infinite() => "-inf".into(),
+        v => py_json_float(v),
+    }
 }
 
 /// Python `json.dumps` prints a float with `repr`, and adds `.0` so it stays a float.

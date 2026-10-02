@@ -1,8 +1,10 @@
 //! SQLite store matching `backend/storage.py`. Disk I/O lives here; no clock or RNG.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::path::Path;
 
+use flexweek_engine::plan;
+use flexweek_engine::snapshot::canonical;
 use rusqlite::{Connection, OptionalExtension, params};
 use scrypt::{Params, scrypt};
 use serde_json::Value;
@@ -96,7 +98,11 @@ const OPERATIONS_TABLE: &str = r#"
 pub enum StoreError {
     Sqlite(rusqlite::Error),
     Engine(flexweek_engine::EngineError),
-    Json(serde_json::Error),
+    /// Stored text `json.loads` would not read. The Python module raises Python's own error for it.
+    Json {
+        text: String,
+        error: serde_json::Error,
+    },
     Io(std::io::Error),
     Date(String),
 }
@@ -105,8 +111,8 @@ impl std::fmt::Display for StoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Sqlite(e) => write!(f, "{e}"),
-            Self::Engine(e) => write!(f, "{e:?}"),
-            Self::Json(e) => write!(f, "{e}"),
+            Self::Engine(e) => write!(f, "{}", e.message),
+            Self::Json { error, .. } => write!(f, "{error}"),
             Self::Io(e) => write!(f, "{e}"),
             Self::Date(msg) => write!(f, "{msg}"),
         }
@@ -118,12 +124,6 @@ impl std::error::Error for StoreError {}
 impl From<rusqlite::Error> for StoreError {
     fn from(value: rusqlite::Error) -> Self {
         Self::Sqlite(value)
-    }
-}
-
-impl From<serde_json::Error> for StoreError {
-    fn from(value: serde_json::Error) -> Self {
-        Self::Json(value)
     }
 }
 
@@ -359,24 +359,28 @@ pub fn migrate_assignments(db: &Connection) -> StoreResult<()> {
         })?
         .collect::<Result<Vec<_>, _>>()?;
     for (user_id, week_start, blocks_text) in rows {
-        let blocks: Vec<Value> = serde_json::from_str(&blocks_text)?;
-        let before = blocks.clone();
-        let (updated, created) = migrate_blocks(&week_start, blocks)?;
+        let blocks: Value = match serde_json::from_str(&blocks_text) {
+            Ok(blocks) => blocks,
+            Err(error) => {
+                return Err(StoreError::Json {
+                    text: blocks_text,
+                    error,
+                });
+            }
+        };
+        let (updated, created) =
+            plan::migrate_blocks(&week_start, &blocks).map_err(StoreError::Engine)?;
         for body in created {
             db.execute(
                 "INSERT INTO assignments(user_id, id, body, revision) VALUES (?1, ?2, ?3, 1)
                 ON CONFLICT(user_id, id) DO NOTHING",
-                params![
-                    user_id,
-                    body["id"].as_str().unwrap_or_default(),
-                    sorted_json(&body)
-                ],
+                params![user_id, body["id"].as_str(), canonical(&body)],
             )?;
         }
-        if updated != before {
+        if updated != blocks {
             db.execute(
                 "UPDATE weeks SET blocks = ?1 WHERE user_id = ?2 AND week_start = ?3",
-                params![sorted_json_array(&updated), user_id, week_start],
+                params![canonical(&updated), user_id, week_start],
             )?;
         }
     }
@@ -484,33 +488,6 @@ pub fn throttle(path: &Path, address: &str, username: &str, now_unix: i64) -> St
     }
     db.execute_batch("COMMIT")?;
     Ok(true)
-}
-
-fn sorted_json(value: &Value) -> String {
-    match value {
-        Value::Object(map) => {
-            let ordered: BTreeMap<_, _> = map.iter().collect();
-            let inner: Vec<String> = ordered
-                .iter()
-                .map(|(k, v)| format!("\"{k}\":{}", sorted_json(v)))
-                .collect();
-            format!("{{{}}}", inner.join(","))
-        }
-        Value::Array(items) => {
-            let inner: Vec<String> = items.iter().map(sorted_json).collect();
-            format!("[{}]", inner.join(","))
-        }
-        _ => value.to_string(),
-    }
-}
-
-fn sorted_json_array(values: &[Value]) -> String {
-    let inner: Vec<String> = values.iter().map(sorted_json).collect();
-    format!("[{}]", inner.join(","))
-}
-
-fn migrate_blocks(week_start: &str, blocks: Vec<Value>) -> StoreResult<(Vec<Value>, Vec<Value>)> {
-    flexweek_engine::plan::migrate_blocks(week_start, &blocks).map_err(StoreError::Engine)
 }
 
 #[cfg(test)]

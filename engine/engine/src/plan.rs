@@ -8,9 +8,10 @@ use serde_json::{Map, Value, json};
 
 use crate::error::{EngineError, EngineResult};
 use crate::model::{LAST_DAY_ISO, due_sort_key, parse_due};
+use crate::stored::{self, Dict};
 use crate::time::{
     DAY_END_MIN, SLOT_MIN, SLOTS_PER_DAY, block_interval_on_day, clock_to_minutes, date_from_iso,
-    hhmm_to_minutes, minutes_to_hhmm, monday_of, month_grid, occupancy_between, parse_deadline,
+    deadline_with, hhmm_to_minutes, minutes_to_hhmm, monday_of, month_grid, occupancy_between,
     parse_month, shift_days,
 };
 
@@ -371,52 +372,6 @@ fn py_int(token: &str) -> EngineResult<i64> {
     crate::time::py_int(token)
 }
 
-fn json_c_int(value: Option<&Value>) -> EngineResult<Option<i64>> {
-    let Some(value) = value else {
-        return Ok(None);
-    };
-    let Some(number) = value.as_number() else {
-        return Ok(None);
-    };
-    let raw = number.to_string();
-    if raw.contains(['.', 'e', 'E']) {
-        if let Some(whole) = number.as_i64() {
-            return Ok(Some(whole));
-        }
-        if let Some(float) = number.as_f64()
-            && float.is_finite()
-            && float.fract() == 0.0
-            && (i64::MIN as f64..=i64::MAX as f64).contains(&float)
-        {
-            return Ok(Some(float as i64));
-        }
-        return Err(EngineError::overflow(
-            "Python int too large to convert to C int",
-        ));
-    }
-    raw.parse::<i64>()
-        .map(Some)
-        .map_err(|_| EngineError::overflow("Python int too large to convert to C int"))
-}
-
-fn py_date_add(day: NaiveDate, days: i64) -> EngineResult<NaiveDate> {
-    if days > i64::from(i32::MAX) || days < i64::from(i32::MIN) {
-        return Err(EngineError::overflow(
-            "Python int too large to convert to C int",
-        ));
-    }
-    if days.abs() > 999_999_999 {
-        return Err(EngineError::overflow(format!(
-            "days={days}; must have magnitude <= 999999999"
-        )));
-    }
-    let next = shift_days(day, days)?;
-    if !(1..=9999).contains(&next.year()) {
-        return Err(EngineError::overflow("date value out of range"));
-    }
-    Ok(next)
-}
-
 fn unpacked_minutes(text: &str) -> EngineResult<i64> {
     // `map(int, text.split(":"))` converts each piece before the unpack counts them.
     let mut numbers = Vec::new();
@@ -440,46 +395,53 @@ pub fn due_from_latest(
     latest: Option<&str>,
     days: &[i64],
 ) -> EngineResult<String> {
+    let days: Vec<Value> = days.iter().map(|day| Value::from(*day)).collect();
+    due_of(week_start, latest.map(Value::from).as_ref(), &days)
+}
+
+/// `due_from_latest` on what a stored row holds: `latest` may be any value, `days` any list.
+fn due_of(week_start: &str, latest: Option<&Value>, days: &[Value]) -> EngineResult<String> {
     let monday = parse_iso_date(week_start)?;
-    let parsed = parse_deadline(latest, days)?;
-    if parsed.is_none() {
+    let latest = match latest {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(stored::text(value, "strip")?),
+    };
+    let last_day = || {
+        if days.is_empty() {
+            Ok(Value::from(0))
+        } else {
+            stored::py_max(days)
+        }
+    };
+    let Some((day, minutes)) = deadline_with(latest, last_day)? else {
         let sunday = shift_days(monday, 6)?;
         return Ok(format!("{}T23:59", iso_date(sunday)));
-    }
-    let (day_index, minutes) = parsed.unwrap();
-    let day = shift_days(monday, day_index)?;
+    };
+    let day = stored::add_days_of(monday, &day)?;
     Ok(format!("{}T{}", iso_date(day), minutes_to_hhmm(minutes)))
 }
 
 pub fn completed_at_for_block(week_start: &str, block: &Value) -> EngineResult<String> {
     let monday = parse_iso_date(week_start)?;
-    let start = block.get("start").and_then(Value::as_str);
-    let days: Vec<i64> = block
-        .get("days")
-        .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(|v| v.as_i64()).collect())
-        .unwrap_or_default();
-    let mut day = json_c_int(block.get("completed_day"))?;
-    if let Some(start) = start {
+    let block = stored::dict(block)?;
+    let start = block.get("start");
+    let days = stored::py_list(block.get("days"))?;
+    let mut day = block.get("completed_day").filter(|day| !day.is_null());
+    if let Some(start) = start.filter(|start| stored::truthy(Some(start))) {
         if day.is_none() && days.len() == 1 {
-            day = Some(days[0]);
+            day = Some(&days[0]).filter(|day| !day.is_null());
         }
-        if let Some(day_index) = day {
-            let duration = json_c_int(block.get("duration_min"))?.unwrap_or(0);
-            let mut end = hhmm_to_minutes(start)?
+        if let Some(day) = day {
+            let start = hhmm_to_minutes(stored::text(start, "split")?)?;
+            let duration = stored::py_int(stored::item(block, "duration_min")?)?;
+            let mut end = start
                 .checked_add(duration)
                 .ok_or_else(|| EngineError::overflow("Python int too large to convert to C int"))?;
-            let mut extra_days = 0i64;
+            let mut day_date = stored::add_days(monday, stored::py_int(day)?)?;
             if end >= 24 * 60 {
-                extra_days = end.div_euclid(24 * 60);
+                day_date = stored::add_days(day_date, end.div_euclid(24 * 60))?;
                 end = end.rem_euclid(24 * 60);
             }
-            let day_date = py_date_add(
-                monday,
-                day_index.checked_add(extra_days).ok_or_else(|| {
-                    EngineError::overflow("Python int too large to convert to C int")
-                })?,
-            )?;
             let last = NaiveDate::parse_from_str(LAST_DAY_ISO, "%Y-%m-%d").unwrap();
             if day_date > last {
                 return Ok(format!("{LAST_DAY_ISO}T23:59"));
@@ -487,13 +449,13 @@ pub fn completed_at_for_block(week_start: &str, block: &Value) -> EngineResult<S
             return Ok(format!("{}T{}", iso_date(day_date), minutes_to_hhmm(end)));
         }
     }
-    let sunday = py_date_add(monday, 6)?;
+    let sunday = shift_days(monday, 6)?;
     Ok(format!("{}T23:59", iso_date(sunday)))
 }
 
 fn assignment_body(
     assignment_id: &str,
-    block: &Value,
+    block: &Dict,
     due: &str,
     estimate_min: i64,
     focus_minutes: i64,
@@ -501,9 +463,14 @@ fn assignment_body(
     completed: bool,
     completed_at: Option<&str>,
 ) -> Value {
+    let title = block
+        .get("title")
+        .filter(|title| stored::truthy(Some(title)))
+        .cloned()
+        .unwrap_or_else(|| json!(assignment_id));
     json!({
         "id": assignment_id,
-        "title": block.get("title").and_then(Value::as_str).unwrap_or(assignment_id),
+        "title": title,
         "course": block.get("course"),
         "category": block.get("category"),
         "priority": block.get("priority").unwrap_or(&json!(3)),
@@ -518,13 +485,11 @@ fn assignment_body(
     })
 }
 
-fn as_session(block: &mut Value, assignment_id: &str) {
-    if let Some(obj) = block.as_object_mut() {
-        obj.insert("assignment_id".into(), json!(assignment_id));
-        obj.remove("latest");
-        obj.remove("focus_minutes");
-        obj.remove("focus_sessions");
-    }
+fn as_session(block: &mut Dict, assignment_id: &str) {
+    block.insert("assignment_id".into(), json!(assignment_id));
+    block.remove("latest");
+    block.remove("focus_minutes");
+    block.remove("focus_sessions");
 }
 
 pub fn due_placement_bound(week_start: &str, due: &str) -> EngineResult<Option<(i64, i64)>> {
@@ -656,7 +621,7 @@ pub fn legacy_session(week_start: &str, block: &Value) -> EngineResult<(Value, V
     };
     let body = assignment_body(
         &aid,
-        &raw,
+        stored::dict(&raw)?,
         &due,
         block["duration_min"].as_i64().unwrap_or(0),
         block
@@ -699,21 +664,17 @@ pub fn rewrite_session(block: &Value, assignment: &Value) -> Value {
     out
 }
 
-pub fn migrate_blocks(
-    week_start: &str,
-    blocks: &[Value],
-) -> EngineResult<(Vec<Value>, Vec<Value>)> {
-    let mut updated: Vec<Value> = blocks.to_vec();
+pub fn migrate_blocks(week_start: &str, blocks: &Value) -> EngineResult<(Value, Vec<Value>)> {
+    let mut updated = stored::rows(blocks)?;
     let mut created: Vec<Value> = Vec::new();
     let mut grouped: Vec<(String, Vec<usize>)> = Vec::new();
     for (index, block) in updated.iter().enumerate() {
-        if block.get("kind").and_then(Value::as_str) == Some("locked")
-            && let Some(parent) = block.get("pomodoro_parent_id").and_then(Value::as_str)
-        {
-            if let Some((_, indices)) = grouped.iter_mut().find(|(name, _)| name == parent) {
-                indices.push(index);
-            } else {
-                grouped.push((parent.to_string(), vec![index]));
+        let parent = block.get("pomodoro_parent_id");
+        if block.get("kind").and_then(Value::as_str) == Some("locked") && stored::truthy(parent) {
+            let parent = stored::py_str(parent.unwrap_or(&Value::Null));
+            match grouped.iter_mut().find(|(name, _)| *name == parent) {
+                Some((_, indices)) => indices.push(index),
+                None => grouped.push((parent, vec![index])),
             }
         }
     }
@@ -722,83 +683,87 @@ pub fn migrate_blocks(
     let sunday_due = format!("{}T23:59", iso_date(shift_days(monday, 6)?));
     for (parent, indices) in grouped {
         let work_indices: Vec<usize> = indices
-            .iter()
-            .copied()
+            .into_iter()
             .filter(|i| updated[*i].get("pomodoro_role").and_then(Value::as_str) == Some("work"))
             .collect();
         if work_indices.is_empty()
-            || work_indices.iter().any(|i| {
-                updated[*i]
-                    .get("assignment_id")
-                    .and_then(Value::as_str)
-                    .is_some()
-            })
+            || work_indices
+                .iter()
+                .any(|i| stored::truthy(updated[*i].get("assignment_id")))
         {
             continue;
         }
-        let work: Vec<&Value> = work_indices.iter().map(|i| &updated[*i]).collect();
+        let work: Vec<&Dict> = work_indices.iter().map(|i| &updated[*i]).collect();
         let aid = migrated_assignment_id(week_start, &parent);
-        let completed = work
-            .iter()
-            .all(|b| b.get("completed").and_then(Value::as_bool).unwrap_or(false));
+        let completed = work.iter().all(|b| stored::truthy(b.get("completed")));
         let completed_at = if completed {
-            let ends: Vec<String> = work
-                .iter()
-                .filter(|b| b.get("start").is_some())
-                .filter_map(|b| completed_at_for_block(week_start, b).ok())
-                .collect();
+            let mut ends = Vec::new();
+            for block in work.iter().filter(|b| stored::truthy(b.get("start"))) {
+                ends.push(completed_at_for_block(
+                    week_start,
+                    &Value::Object((*block).clone()),
+                )?);
+            }
             Some(ends.into_iter().max().unwrap_or_else(|| sunday_due.clone()))
         } else {
             None
         };
+        let mut estimate_min = 0i64;
+        for block in &work {
+            estimate_min = sum(
+                estimate_min,
+                stored::py_int(stored::item(block, "duration_min")?)?,
+            )?;
+        }
+        let mut focus_minutes = 0i64;
+        for block in &work {
+            focus_minutes = sum(
+                focus_minutes,
+                stored::int_or_zero(block.get("focus_minutes"))?,
+            )?;
+        }
+        let mut focus_sessions = 0i64;
+        for block in &work {
+            focus_sessions = sum(
+                focus_sessions,
+                stored::int_or_zero(block.get("focus_sessions"))?,
+            )?;
+        }
         created.push(assignment_body(
             &aid,
             work[0],
             &sunday_due,
-            work.iter()
-                .map(|b| b["duration_min"].as_i64().unwrap_or(0))
-                .sum(),
-            work.iter()
-                .map(|b| b.get("focus_minutes").and_then(Value::as_i64).unwrap_or(0))
-                .sum(),
-            work.iter()
-                .map(|b| b.get("focus_sessions").and_then(Value::as_i64).unwrap_or(0))
-                .sum(),
+            estimate_min,
+            focus_minutes,
+            focus_sessions,
             completed,
             completed_at.as_deref(),
         ));
         for index in work_indices {
-            if let Some(block) = updated.get_mut(index) {
-                as_session(block, &aid);
-            }
+            as_session(&mut updated[index], &aid);
             claimed.insert(index);
         }
     }
     for (index, block) in updated.iter_mut().enumerate() {
         if claimed.contains(&index)
-            || block.get("assignment_id").and_then(Value::as_str).is_some()
+            || stored::truthy(block.get("assignment_id"))
             || block.get("kind").and_then(Value::as_str) != Some("flexible")
         {
             continue;
         }
-        let block_id = block["id"].as_str().unwrap_or("").to_string();
-        let aid = migrated_assignment_id(week_start, &block_id);
-        let completed = block
-            .get("completed")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let days: Vec<i64> = block
-            .get("days")
-            .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(|v| v.as_i64()).collect())
-            .unwrap_or_default();
-        let due = due_from_latest(
-            week_start,
-            block.get("latest").and_then(Value::as_str),
-            &days,
-        )?;
+        let aid = migrated_assignment_id(week_start, &stored::py_str(stored::item(block, "id")?));
+        let completed = stored::truthy(block.get("completed"));
+        let latest = block.get("latest");
+        let days = stored::py_list(block.get("days"))?;
+        let due = due_of(week_start, latest, &days)?;
+        let estimate_min = stored::py_int(stored::item(block, "duration_min")?)?;
+        let focus_minutes = stored::int_or_zero(block.get("focus_minutes"))?;
+        let focus_sessions = stored::int_or_zero(block.get("focus_sessions"))?;
         let completed_at = if completed {
-            Some(completed_at_for_block(week_start, block)?)
+            Some(completed_at_for_block(
+                week_start,
+                &Value::Object(block.clone()),
+            )?)
         } else {
             None
         };
@@ -806,21 +771,27 @@ pub fn migrate_blocks(
             &aid,
             block,
             &due,
-            block["duration_min"].as_i64().unwrap_or(0),
-            block
-                .get("focus_minutes")
-                .and_then(Value::as_i64)
-                .unwrap_or(0),
-            block
-                .get("focus_sessions")
-                .and_then(Value::as_i64)
-                .unwrap_or(0),
+            estimate_min,
+            focus_minutes,
+            focus_sessions,
             completed,
             completed_at.as_deref(),
         ));
         as_session(block, &aid);
     }
+    let updated = match blocks {
+        Value::Array(_) => Value::Array(updated.into_iter().map(Value::Object).collect()),
+        // An empty str or dict iterates as nothing and comes back as it was.
+        other => other.clone(),
+    };
     Ok((updated, created))
+}
+
+/// Python's `sum` of ints, which has no ceiling; past 64 bits this raises instead.
+fn sum(total: i64, more: i64) -> EngineResult<i64> {
+    total
+        .checked_add(more)
+        .ok_or_else(|| EngineError::overflow("Python int too large to convert to C int"))
 }
 
 // --- availability.py ---

@@ -271,10 +271,19 @@ pub fn block_interval_on_day(
 }
 
 pub fn parse_deadline(latest: Option<&str>, days: &[i64]) -> EngineResult<Option<(i64, i64)>> {
+    deadline_with(latest, || Ok(days.iter().copied().max().unwrap_or(0)))
+}
+
+/// `parse_deadline` with `max(days) if days else 0` left to the caller, which runs it where
+/// Python did: after the text is found non-empty, before the time is read.
+pub(crate) fn deadline_with<D: From<i64>>(
+    latest: Option<&str>,
+    last_day: impl FnOnce() -> EngineResult<D>,
+) -> EngineResult<Option<(D, i64)>> {
     let Some(latest) = latest else {
         return Ok(None);
     };
-    let trimmed = latest.trim();
+    let trimmed = py_strip(latest);
     if trimmed.is_empty() {
         return Ok(None);
     }
@@ -286,19 +295,21 @@ pub fn parse_deadline(latest: Option<&str>, days: &[i64]) -> EngineResult<Option
             .unwrap_or(text);
     }
     let cleaned = text.replace(',', " ");
-    let parts: Vec<&str> = cleaned.split_whitespace().collect();
-    if parts.is_empty() {
-        return Ok(None);
-    }
-    let time_part = parts[parts.len() - 1];
-    let mut day = days.iter().copied().max().unwrap_or(0);
+    let parts: Vec<&str> = cleaned
+        .split(py_space)
+        .filter(|part| !part.is_empty())
+        .collect();
+    let Some(time_part) = parts.last().copied() else {
+        return Err(EngineError::index("list index out of range"));
+    };
+    let mut day = last_day()?;
     if parts.len() >= 2 {
         let name = parts[0].to_lowercase();
         if let Some((_, index)) = day_name_to_index()
             .into_iter()
             .find(|(key, _)| *key == name)
         {
-            day = index;
+            day = D::from(index);
         }
     }
     Ok(Some((day, hhmm_to_minutes(time_part)?)))
