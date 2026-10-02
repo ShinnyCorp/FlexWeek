@@ -2886,3 +2886,56 @@ def test_exports_of_odd_weeks(blocks, assignments, day):
 )
 def test_due_day_in_week_on_generated_deadlines(due, week):
     same(live_calendar.due_day_in_week, ref_calendar.due_day_in_week, due, week)
+
+
+@st.composite
+def history_steps(draw):
+    weeks = st.fixed_dictionaries(
+        {
+            "week_start": st.sampled_from(["2026-09-14", "2026-09-21"]),
+            "before": st.lists(st.integers(0, 3), max_size=2),
+            "after": st.lists(st.integers(0, 3), max_size=2),
+        }
+    )
+    assignments = st.fixed_dictionaries(
+        {"id": st.sampled_from(["a", "b"]), "before": maybe(None, {"n": 1}), "after": maybe(None, {"n": 2})}
+    )
+    return {
+        "label": draw(st.sampled_from(["x", "y"])),
+        "weeks": draw(st.lists(weeks, max_size=3)),
+        "assignments": draw(st.lists(assignments, max_size=3)),
+        "stale": draw(st.booleans()),
+    }
+
+
+@CHECK
+@given(st.lists(history_steps(), max_size=4), history_steps())
+def test_join_step_on_generated_stacks(stack, step):
+    same(live_history.join_step, ref_history.join_step, stack, step)
+    same(live_history.push_step, ref_history.push_step, stack, step)
+
+
+@CHECK
+@given(st.lists(history_steps(), max_size=4), st.sampled_from(["2026-09-14", "2026-09-21", "2026-09-28", ""]))
+def test_mark_stale_on_generated_stacks(steps, week):
+    same(live_history.mark_stale, ref_history.mark_stale, steps, week)
+
+
+@pytest.mark.parametrize("held", [live_history.HISTORY_LIMIT - 1, live_history.HISTORY_LIMIT, 60])
+def test_a_push_past_the_limit_drops_one_step_from_the_front(held):
+    stack = [{"label": str(index), "weeks": [], "assignments": [], "stale": False} for index in range(held)]
+    step = {"label": "new", "weeks": [], "assignments": [], "stale": False}
+    same(live_history.push_step, ref_history.push_step, stack, step)
+    same(live_history.join_step, ref_history.join_step, [{**item, "stale": True} for item in stack], step)
+
+
+@CHECK
+@given(
+    st.lists(st.integers(0, 2), max_size=2),
+    st.lists(st.integers(0, 2), max_size=2),
+    st.dictionaries(st.sampled_from(["a", "b", "c"]), st.sampled_from([{"n": 1}, {"n": 2}]), max_size=3),
+    st.dictionaries(st.sampled_from(["a", "b", "c"]), st.sampled_from([{"n": 1}, {"n": 2}]), max_size=3),
+    st.sets(st.sampled_from(["a", "b", "c", "d"]), max_size=4),
+)
+def test_capture_step_lists_assignments_in_sorted_order(before, after, old, new, changed):
+    same(live_history.capture_step, ref_history.capture_step, "x", WEEK, before, after, old, new, changed)

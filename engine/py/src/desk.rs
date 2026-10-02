@@ -50,11 +50,15 @@ fn history_capture_step(
     after_blocks: &str,
     before_assignments: &str,
     after_assignments: &str,
-    changed_ids: Vec<String>,
+    changed_ids: &Bound<'_, PyAny>,
 ) -> PyResult<Option<String>> {
     let (before_blocks, after_blocks) = (parse(before_blocks)?, parse(after_blocks)?);
     let (before_assignments, after_assignments) =
         (parse(before_assignments)?, parse(after_assignments)?);
+    let changed_ids = changed_ids
+        .try_iter()?
+        .map(|item| item?.extract::<String>())
+        .collect::<PyResult<Vec<String>>>()?;
     guard(|| {
         let step = history::capture_step(
             label,
@@ -70,21 +74,66 @@ fn history_capture_step(
     })
 }
 
-#[pyfunction]
-fn history_over_limit(length: usize) -> PyResult<bool> {
-    guard(|| Ok(history::over_limit(length)))
+/// `json.dumps(value)`, as the Python wrappers wrote it, so a value JSON cannot hold fails alike.
+pub(crate) fn dumps_of(value: &Bound<'_, PyAny>) -> PyResult<String> {
+    value
+        .py()
+        .import("json")?
+        .call_method1("dumps", (value,))?
+        .extract()
 }
 
-#[pyfunction]
-fn history_joined(earlier: &str, step: &str) -> PyResult<String> {
-    let (earlier, step) = (parse(earlier)?, parse(step)?);
-    guard(|| Ok(dump(&history::joined_step(&earlier, &step).map_err(raise)?)))
+/// `json.loads(text)`: a value of the engine's, as the Python wrappers read it.
+pub(crate) fn loads_of<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny>> {
+    py.import("json")?.call_method1("loads", (dump(value),))
 }
 
+fn push_onto(stack: &Bound<'_, PyAny>, step: &Bound<'_, PyAny>) -> PyResult<()> {
+    stack.call_method1("append", (step,))?;
+    if history::over_limit(stack.len()?) {
+        stack.del_item(0)?;
+    }
+    Ok(())
+}
+
+/// Puts `step` on the newest end of `stack`, which is the caller's own list, and drops the oldest
+/// step when that leaves it over the limit.
 #[pyfunction]
-fn history_touches(step: &str, week_start: &str) -> PyResult<bool> {
-    let (step, week_start) = (parse(step)?, parse(week_start)?);
-    guard(|| history::touches(&step, &week_start).map_err(raise))
+fn history_push(stack: &Bound<'_, PyAny>, step: &Bound<'_, PyAny>) -> PyResult<()> {
+    guard(|| push_onto(stack, step))
+}
+
+/// Folds `step` into the newest step of `stack`, or pushes it when there is none or that one is
+/// stale. `stack` is changed in place.
+#[pyfunction]
+fn history_join(stack: &Bound<'_, PyAny>, step: &Bound<'_, PyAny>) -> PyResult<()> {
+    guard(|| {
+        if !stack.is_truthy()? {
+            return push_onto(stack, step);
+        }
+        let newest = stack.get_item(-1)?;
+        let (earlier, step_value) = (parse(&dumps_of(&newest)?)?, parse(&dumps_of(step)?)?);
+        match history::join_into(&earlier, &step_value).map_err(raise)? {
+            Some(joined) => stack.set_item(-1, loads_of(stack.py(), &joined)?),
+            None => push_onto(stack, step),
+        }
+    })
+}
+
+/// Marks every step of `steps` that holds a week of `week_start` as stale, in place.
+#[pyfunction]
+fn history_mark_stale(steps: &Bound<'_, PyAny>, week_start: &Bound<'_, PyAny>) -> PyResult<()> {
+    guard(|| {
+        for step in steps.try_iter()? {
+            let step = step?;
+            let held = parse(&dumps_of(&step)?)?;
+            let week = parse(&dumps_of(week_start)?)?;
+            if history::touches(&held, &week).map_err(raise)? {
+                step.set_item("stale", true)?;
+            }
+        }
+        Ok(())
+    })
 }
 
 #[pyfunction]
@@ -681,9 +730,9 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         module,
         history_same_value,
         history_capture_step,
-        history_over_limit,
-        history_joined,
-        history_touches,
+        history_push,
+        history_join,
+        history_mark_stale,
         week_set_clock_24h,
         week_minute_of,
         week_clock_text,
