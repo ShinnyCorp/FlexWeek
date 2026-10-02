@@ -3204,3 +3204,27 @@ def test_a_week_model_keeps_its_engine_week_only_while_its_tuples_cannot_change(
     listed = live_weekmodel.WeekModel("2026-09-21", [held], (), 0)
     assert listed._engine() is not listed._engine()
     assert "_engine_week" not in vars(listed)
+
+
+@pytest.mark.parametrize("due", [{}, {"a": 1}, 7, 1.5, True, [], ["2026-09-22"], "", "2026-09-22T08:00"])
+def test_due_soon_for_on_a_deadline_the_slice_cannot_take(due):
+    items = {"a": {"id": "a", "due": due}}
+    same(live_calendar.due_soon_for, ref_calendar.due_soon_for, "2026-09-21", items)
+
+
+@pytest.mark.parametrize("fired", FIRED_AS, ids=lambda held: type(held).__name__)
+def test_due_alarms_names_the_container_it_cannot_add_to(fired):
+    now_ms = 1_790_245_800_000
+    with local_zone("UTC"):
+        same(
+            live_remind.due_alarms,
+            ref_remind.due_alarms,
+            alarms=[{"id": "b", "time": "07:30", "enabled": True, "days": [3]}],
+            today_iso="2026-09-24",
+            weekday=3,
+            now_ms=now_ms,
+            midnight_ms=0,
+            last_check_ms=now_ms - 6 * 3_600_000,
+            fired=fired,
+            snoozed={},
+        )

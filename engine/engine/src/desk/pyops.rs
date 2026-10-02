@@ -344,11 +344,13 @@ pub fn compare(op: Cmp, left: &Value, right: &Value) -> EngineResult<bool> {
     Ok(op.holds(order(left, right, op)?))
 }
 
-/// `value[:10]`, which a list or a string takes and nothing else does.
+/// `value[:10]`, which a list or a string takes and nothing else does. A dict reads the slice as a
+/// key and raises `KeyError`.
 pub fn head(value: &Value, count: usize) -> EngineResult<Value> {
     match value {
         Value::String(text) => Ok(Value::String(text.chars().take(count).collect())),
         Value::Array(items) => Ok(Value::Array(items.iter().take(count).cloned().collect())),
+        Value::Object(_) => Err(EngineError::key_repr(format!("slice(None, {count}, None)"))),
         other => Err(type_error(format!(
             "'{}' object is not subscriptable",
             type_name(other)
@@ -529,5 +531,36 @@ pub fn assigning(value: &Value) -> EngineResult<serde_json::Map<String, Value>> 
     match value {
         Value::Object(map) if nonfinite(value).is_none() => Ok(map.clone()),
         other => Err(item_assignment(other)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::error::ErrorKind;
+
+    #[test]
+    fn head_of_a_dict_is_a_key_error_for_the_slice() {
+        let error = head(&json!({}), 10).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::KeyRepr);
+        assert_eq!(error.message, "slice(None, 10, None)");
+    }
+
+    #[test]
+    fn head_of_a_number_is_not_subscriptable() {
+        let error = head(&json!(7), 10).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::Type);
+        assert_eq!(error.message, "'int' object is not subscriptable");
+    }
+
+    #[test]
+    fn head_of_text_and_list_takes_the_first_items() {
+        assert_eq!(
+            head(&json!("2026-09-22T08:00"), 10).unwrap(),
+            json!("2026-09-22")
+        );
+        assert_eq!(head(&json!([1, 2, 3]), 2).unwrap(), json!([1, 2]));
     }
 }

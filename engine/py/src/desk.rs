@@ -5,7 +5,7 @@ use ::flexweek_engine::desk::weekview::{self, Week};
 use ::flexweek_engine::desk::{history, pomodoro, remind, tokens, update, weekmodel};
 use std::cell::RefCell;
 
-use ::flexweek_engine::{EngineError, EngineResult};
+use ::flexweek_engine::{EngineError, EngineResult, ErrorKind};
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyDict, PyFloat, PyFrozenSet, PyInt, PyList, PySet, PySetMethods};
@@ -630,6 +630,8 @@ fn remind_due_alarms(
     moment_of_day: &Bound<'_, PyAny>,
 ) -> PyResult<(String, String, i64)> {
     let fired_set = fired.cast::<PySet>().ok();
+    let is_set = fired_set.is_some();
+    let held_type = fired.get_type().name()?.to_string();
     let (members, _) = members_of(fired)?;
     let (alarms, fired, snoozed) = (parse(alarms)?, parse(&members)?, parse(snoozed)?);
     let mut added: Vec<String> = Vec::new();
@@ -673,7 +675,16 @@ fn remind_due_alarms(
     if let Some(error) = failure.into_inner() {
         return Err(error);
     }
-    let (queued, remaining, last) = outcome.map_err(raise)?;
+    let (queued, remaining, last) = outcome.map_err(|mut error| {
+        // The core saw a list; a frozenset or tuple names its own type in Python's message.
+        if !is_set
+            && error.kind == ErrorKind::Attribute
+            && error.message.ends_with("attribute 'add'")
+        {
+            error.message = format!("'{held_type}' object has no attribute 'add'");
+        }
+        raise(error)
+    })?;
     let remaining: Map<String, Value> = remaining
         .into_iter()
         .filter_map(|(id, due)| id.as_str().map(|name| (name.to_string(), due)))
