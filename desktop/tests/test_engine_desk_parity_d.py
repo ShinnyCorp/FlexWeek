@@ -9,9 +9,11 @@ import pytest
 import desk_ref.calendar as ref_calendar
 import desk_ref.focus as ref_focus
 import desk_ref.look as ref_look
+import desk_ref.tokens as ref_tokens
 import desktop.native.calendar as live_calendar
 import desktop.native.focus as live_focus
 import desktop.native.look as live_look
+import desktop.native.tokens as live_tokens
 import desktop.tests.test_engine_desk_parity as base
 
 
@@ -36,3 +38,10 @@ def test_category_hue_serializes_zero_without_a_sign(hue):
     expected = ref_look.sanitize_custom(raw)
     assert expected[0]["categories"]["class"]["hue"] == 0.0
     assert json.dumps(live_look.sanitize_custom(raw)) == json.dumps(expected)
+
+
+@pytest.mark.parametrize("grounds, expected", [(('#ffffff',), '#000000'), ((), '#777777')])
+def test_nan_contrast_floor_keeps_pythons_comparison(grounds, expected):
+    floor = float("nan")
+    assert ref_tokens.fit_lightness("#777777", grounds, floor) == expected
+    base.same(live_tokens.fit_lightness, ref_tokens.fit_lightness, "#777777", grounds, floor)

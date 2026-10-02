@@ -255,9 +255,10 @@ pub fn fit_lightness(colour: &str, grounds: &[Value], floor: f64) -> EngineResul
     fn reads(candidate: &str, grounds: &[Value], floor: f64) -> EngineResult<bool> {
         for ground in grounds {
             let ratio = contrast_on(candidate, ground)?;
-            if ratio.is_nan() || ratio < floor {
-                return Ok(false);
+            if ratio >= floor {
+                continue;
             }
+            return Ok(false);
         }
         Ok(true)
     }
@@ -436,6 +437,16 @@ pub fn channels(colour: &str) -> crate::error::EngineResult<(i64, i64, i64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_nan_floor_searches_instead_of_accepting_the_original_colour() {
+        assert_eq!(
+            fit_lightness("#777777", &[json!("#ffffff")], f64::NAN).unwrap(),
+            "#000000"
+        );
+        assert_eq!(fit_lightness("#777777", &[], f64::NAN).unwrap(), "#777777");
+    }
 
     #[test]
     fn hex_round_trip_matches_python_encode() {
