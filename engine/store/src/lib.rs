@@ -309,7 +309,14 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 pub fn open_connection(path: &Path) -> StoreResult<Connection> {
-    let db = Connection::open(path)?;
+    // SQLite can interpret a leading "file:" as a URI even when URI flags are disabled.
+    let name = if path.as_os_str().as_encoded_bytes().starts_with(b"file:") {
+        Path::new(".").join(path)
+    } else {
+        path.to_owned()
+    };
+    let flags = rusqlite::OpenFlags::default() - rusqlite::OpenFlags::SQLITE_OPEN_URI;
+    let db = Connection::open_with_flags(name, flags)?;
     db.busy_timeout(std::time::Duration::from_secs(10))?;
     db.execute("PRAGMA foreign_keys = ON", [])?;
     Ok(db)
@@ -407,7 +414,8 @@ pub fn allow_system_theme(db: &Connection) -> StoreResult<()> {
     let kept: Vec<String> = db
         .prepare("PRAGMA table_info('preferences')")?
         .query_map([], |row| row.get::<_, String>(1))?
-        .filter_map(|r| r.ok())
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
         .filter(|name| name != "theme")
         .collect();
     let columns = kept.join(", ");
@@ -614,6 +622,60 @@ pub fn open_session(conn: &Connection, token: &str, user_id: i64, now: i64) -> S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opening_a_database_enforces_foreign_keys() {
+        let db = open_connection(Path::new(":memory:")).unwrap();
+        assert_eq!(
+            db.pragma_query_value(None, "foreign_keys", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        db.execute_batch("CREATE TABLE parent(id INTEGER PRIMARY KEY); CREATE TABLE child(parent_id INTEGER REFERENCES parent(id));").unwrap();
+        assert!(
+            matches!(db.execute("INSERT INTO child VALUES(1)", []), Err(rusqlite::Error::SqliteFailure(error, _)) if error.code == rusqlite::ErrorCode::ConstraintViolation)
+        );
+    }
+
+    #[test]
+    fn theme_migration_stops_on_an_unreadable_column_name() {
+        let db = Connection::open_in_memory().unwrap();
+        let sql = std::ffi::CString::new(&b"CREATE TABLE users(id INTEGER PRIMARY KEY); CREATE TABLE preferences(user_id INTEGER, theme TEXT CHECK(theme IN ('slate', 'nocturne')), \"bad\xff\" TEXT);"[..]).unwrap();
+        // A damaged schema name cannot be represented by Rust's UTF-8 SQL interface.
+        let result = unsafe {
+            rusqlite::ffi::sqlite3_exec(
+                db.handle(),
+                sql.as_ptr(),
+                None,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(result, rusqlite::ffi::SQLITE_OK);
+        // Keep the cached damaged name while making the stored CREATE statement readable.
+        db.execute_batch("PRAGMA writable_schema = ON").unwrap();
+        db.execute("UPDATE sqlite_master SET sql = ? WHERE name = 'preferences'", ["CREATE TABLE preferences(user_id INTEGER, theme TEXT CHECK(theme IN ('slate', 'nocturne')), bad TEXT)"]).unwrap();
+        db.execute_batch("PRAGMA writable_schema = OFF").unwrap();
+        let result = allow_system_theme(&db);
+        assert!(
+            matches!(
+                result,
+                Err(StoreError::Sqlite(
+                    rusqlite::Error::FromSqlConversionFailure(1, _, _)
+                ))
+            ),
+            "{result:?}"
+        );
+        assert!(db.is_autocommit());
+        let renamed: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'preferences_legacy'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(renamed, 0);
+    }
 
     #[test]
     fn password_hash_vector() {

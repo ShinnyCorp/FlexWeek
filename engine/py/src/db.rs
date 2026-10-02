@@ -1,14 +1,15 @@
 //! One SQLite connection for the app. Python's sqlite3 is not opened on this file.
 
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+use std::path::Path;
 use std::sync::Mutex;
 use std::thread::ThreadId;
-use std::time::Duration;
 
 use pyo3::exceptions::{PyIndexError, PyMemoryError, PyOverflowError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDict, PyFloat, PyInt, PyString};
 use rusqlite::types::Value;
-use rusqlite::{Connection as SqlConn, Error as SqlError, OpenFlags, ffi, params_from_iter};
+use rusqlite::{Connection as SqlConn, Error as SqlError, ffi, params_from_iter};
 
 use crate::guard;
 
@@ -65,8 +66,8 @@ fn open_connection(py: Python<'_>, path: &str) -> PyResult<Py<PyConn>> {
     guard(|| {
         let owner = thread_ident(py)?;
         let thread = std::thread::current().id();
-        let opened = py.detach(|| open_sql(path));
-        let conn = opened.map_err(|error| sqlite_py(py, &error))?;
+        let opened = py.detach(|| flexweek_store::open_connection(Path::new(path)));
+        let conn = opened.map_err(|error| crate::rest::store_py(py, error))?;
         Py::new(
             py,
             PyConn {
@@ -76,20 +77,6 @@ fn open_connection(py: Python<'_>, path: &str) -> PyResult<Py<PyConn>> {
             },
         )
     })
-}
-
-/// A plain file name, never a URI. The bundled SQLite is built to read "file:" names as URIs whatever
-/// the flags say, so such a relative name gets "./" in front, which names the same file.
-fn open_sql(path: &str) -> Result<SqlConn, SqlError> {
-    let flags = OpenFlags::default() - OpenFlags::SQLITE_OPEN_URI;
-    let name = if path.starts_with("file:") {
-        format!("./{path}")
-    } else {
-        path.to_string()
-    };
-    let conn = SqlConn::open_with_flags(name, flags)?;
-    conn.busy_timeout(Duration::from_secs(10))?;
-    Ok(conn)
 }
 
 #[pymethods]
@@ -828,10 +815,16 @@ impl PyConn {
             ));
         };
         let (conn, outcome) = py.detach(move || {
-            let outcome = body(&mut conn);
+            let outcome = catch_unwind(AssertUnwindSafe(|| body(&mut conn)));
             (conn, outcome)
         });
         inner.conn = Some(conn);
+        // Restore the connection and release its lock before the outer guard reports a panic.
+        drop(inner);
+        let outcome = match outcome {
+            Ok(outcome) => outcome,
+            Err(payload) => resume_unwind(payload),
+        };
         outcome.map_err(|failure| match failure {
             Failure::Sql(error) => sqlite_py(py, &error),
             Failure::Bind(error) => error,

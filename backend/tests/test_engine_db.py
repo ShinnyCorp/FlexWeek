@@ -13,6 +13,53 @@ import pytest
 from backend.storage import connect, initialize, throttle
 
 
+def test_request_connections_explicitly_enforce_foreign_keys() -> None:
+    db = flexweek_engine.open_connection(":memory:")
+    try:
+        assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        db.execute("CREATE TABLE parent(id INTEGER PRIMARY KEY)")
+        db.execute("CREATE TABLE child(parent_id INTEGER REFERENCES parent(id))")
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO child VALUES(1)")
+    finally:
+        db.close()
+
+
+def test_startup_and_requests_use_the_same_literal_file_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    path = Path("file:literal.db")
+    initialize(path)
+    assert path.exists()
+    assert not Path("literal.db").exists(), "file: is a filename, not a SQLite URI"
+    with connect(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+        assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        db.execute("INSERT INTO users(username, password_hash) VALUES ('ada', 'hash')")
+    initialize(path)
+    with connect(path) as db:
+        assert db.execute("SELECT username FROM users").fetchone()[0] == "ada"
+
+
+def test_database_panic_survives_cleanup_and_rolls_back(tmp_path: Path) -> None:
+    path = tmp_path / "panic.db"
+    with connect(path) as db:
+        db.execute("CREATE TABLE notes(title TEXT)")
+    with pytest.raises(RuntimeError, match="^invalid UTF-8"), connect(path) as db:
+        db.execute("INSERT INTO notes VALUES ('must roll back')")
+        db.execute("SELECT CAST(X'ff' AS TEXT)")
+    with connect(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM notes").fetchone()[0] == 0
+
+
+def test_database_can_be_used_after_catching_its_panic(tmp_path: Path) -> None:
+    with connect(tmp_path / "caught.db") as db:
+        with pytest.raises(RuntimeError, match="^invalid UTF-8"):
+            db.execute("SELECT CAST(X'ff' AS TEXT)")
+        assert db.execute("SELECT 42").fetchone()[0] == 42
+
+
 def _script(db, statements: list[tuple[str, tuple]]) -> list[tuple[bool, object]]:
     seen: list[tuple[bool, object]] = []
     for sql, params in statements:
