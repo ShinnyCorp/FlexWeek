@@ -313,6 +313,7 @@ Run locally:
 ```
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-desktop.txt
+pip install ./engine/py    # builds the Rust engine; needs Rust (rustup)
 python -m desktop.main    # starts the backend inside the app; nothing to open in a browser
 ```
 
@@ -495,14 +496,17 @@ nothing loops.
 - Language/runtime: **Python 3.14**. PINNED. Verified against the local
   interpreter (3.14.7) and `.github/workflows/verify.yml` (`python-version: '3.14'`).
   Never downgrade.
-- Current languages: Python, and SQL for account storage. The client is PySide6
-  Qt widgets; see DESKTOP.md.
-- Moving to Rust: the engine (`docs/engine/contract.md`) takes over the
-  backend's logic and storage and the desktop's Qt-free logic, slice by slice.
-  Once a module is in a slice that has started, new logic for it is written in
-  Rust, not Python. A fix needed in it before its slice lands is the smallest
-  change that works, and the slice carries it over. Code that imports Qt,
-  `backend/app.py` and their tests stay Python until the full rewrite.
+- Current languages: Python, Rust, and SQL for account storage. The client is
+  PySide6 Qt widgets; see DESKTOP.md.
+- The engine (`engine/`, contract in `docs/engine/contract.md`) is Rust: the
+  backend's logic and storage and the desktop's Qt-free logic. It is built
+  into the Python module `flexweek_engine` by maturin (pinned in
+  `requirements-dev.txt`), with the toolchain pinned in `rust-toolchain.toml`
+  and the crates in `engine/Cargo.lock`. The Python modules that held that
+  logic are adapters: they turn arguments into JSON text, call the engine and
+  turn the answer back. New logic for them is written in Rust, not Python.
+  Code that imports Qt, `backend/app.py` and their tests stay Python until
+  the full rewrite.
 - Frameworks, pinned in `requirements.txt`: FastAPI 0.141.1,
   uvicorn[standard] 0.52.4, pytest 9.1.1, httpx 0.28.1, ruff 0.16.6, mypy 2.3.1, Pydantic 2.13.5.
 - Storage: SQLite, in the user data folder for the app (`FLEXWEEK_DATABASE`,
@@ -525,9 +529,17 @@ nothing loops.
     `Explanation`) and slot helpers. **Zero FastAPI imports.**
   - `backend/app.py`. HTTP endpoints, authentication/ownership, static files, `/api/solve`.
     No placement logic.
-  - `backend/solver.py`. Pure synchronous CSP placement. No HTTP knowledge.
-  - `backend/explain.py`. Reason code and slack status to English string.
-  - `backend/storage.py`. SQLite transactions, password hashing and sessions.
+  - `engine/engine`. The pure core: placement, the day's and month's logic,
+    explanations, and the desktop's Qt-free logic (`desk/`). No files, clock,
+    network or database; it takes them as arguments.
+  - `engine/store`. SQLite: schema, start-up migrations, transactions, password
+    hashing, sessions and throttling. The only code that opens the database.
+  - `engine/py`. The `flexweek_engine` module that Python imports.
+  - `backend/solver.py`. Adapter to the engine's synchronous CSP placement. No
+    HTTP knowledge.
+  - `backend/explain.py`. Adapter: reason code and slack status to English string.
+  - `backend/storage.py`. Adapter to the engine's store; `connect()` yields
+    the store's connection.
   - `backend/data/demo_*.json`. Test-only anonymized seed weeks.
   - `backend/tests/`. Pytest suite; the source of truth for solver behavior.
   - `desktop/native/`. The client: `window.py` (chrome, pages and dialogs),
@@ -574,8 +586,10 @@ nothing loops.
   **Dependabot is deliberately not used in this repo**. Do not add
   `.github/dependabot.yml` or re-enable it.
 - Account-owned schedules are sent to the backend and stored in SQLite.
-- Passwords use Python/OpenSSL scrypt, N=32768, r=8, p=3, random 16-byte salt,
-  32-byte derived key; comparison is constant-time. No new hash dependency.
+- Passwords use scrypt, N=32768, r=8, p=3, random 16-byte salt, 32-byte
+  derived key; comparison is constant-time. The engine's store computes it
+  with the `scrypt` crate; hashes made by Python/OpenSSL before 0.18.0 verify
+  unchanged.
 - Opaque random sessions expire in seven days; only SHA-256 token hashes are
   stored. Cookies are HttpOnly, SameSite=Strict, Secure on HTTPS deployments.
   Sign-out revokes the current session. Expired sessions are rejected on reads
@@ -638,9 +652,10 @@ other suite or script, and `fwtest clean` stops what a killed run left.
 Run every local suite, mutation run and rig through `fwtest` rather than
 bare Python, so runs queue behind each other and leave nothing running.
 `.github/workflows/verify.yml` runs `fwtest gate --backend-only` and the
-harness's cargo checks on every push and pull request (Python 3.14, Rust
-stable, `contents: read`), and its `rig` job runs the real-pointer rig on
-Today's app under Xvfb through `fwtest rig`. Neither builds an app binary.
+harness's and the engine's cargo checks on every push and pull request
+(Python 3.14, Rust stable, `contents: read`), and its `rig` job runs the
+real-pointer rig on Today's app under Xvfb through `fwtest rig`. Both build
+the engine module; neither builds an app binary.
 
 The commands it runs, each of which must exit 0:
 
@@ -664,6 +679,13 @@ The commands it runs, each of which must exit 0:
   `tools/fwtest`, each of which must exit 0: `cargo fmt --check`,
   `cargo clippy -- -D warnings` and `cargo test`. The Rust version is the one
   `rustup` installs as stable; the crate uses the 2024 edition.
+- The engine in `engine/` (Rust approved for it on 2026-09-30) has its own
+  checks, run from `engine/`, each of which must exit 0: `cargo fmt --check`,
+  `cargo clippy --workspace -- -D warnings` and `cargo test --workspace`.
+  The Python suites need the module built into the checkout's `.venv` first,
+  and again after the engine changes:
+  `.venv/bin/maturin develop --release --manifest-path engine/py/Cargo.toml --features audit`
+  (`audit` adds functions only the tests call; release builds leave it out).
 
 ## Acceptance Criteria
 - [ ] Only-locked week solves to an identity schedule with 0 moves (T1).

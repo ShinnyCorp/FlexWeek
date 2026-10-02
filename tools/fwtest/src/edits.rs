@@ -85,19 +85,80 @@ pub fn delete_bytecode(source: &Path) {
     }
 }
 
+/// The installed engine module was built from a mutated tree.
+/// `fwtest clean` rebuilds it after the source files are restored.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EngineRebuild {
+    pub checkout: PathBuf,
+    pub command: Vec<String>,
+}
+
+const ENGINE_MARK: &str = "engine-module.json";
+
+pub fn mark_engine_rebuild(root: &Path, checkout: &Path, command: &[String]) -> io::Result<()> {
+    let dir = root.join("edits");
+    fs::create_dir_all(&dir)?;
+    let record = EngineRebuild {
+        checkout: checkout.to_path_buf(),
+        command: command.to_vec(),
+    };
+    let path = dir.join(ENGINE_MARK);
+    let tmp = path.with_extension("json.tmp");
+    fs::write(
+        &tmp,
+        serde_json::to_vec_pretty(&record).map_err(io::Error::other)?,
+    )?;
+    fs::rename(&tmp, &path)?;
+    Ok(())
+}
+
+pub fn engine_rebuild(root: &Path) -> io::Result<Option<EngineRebuild>> {
+    let path = root.join("edits").join(ENGINE_MARK);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let text = fs::read_to_string(&path)?;
+    serde_json::from_str(&text)
+        .map(Some)
+        .map_err(|error| io::Error::other(format!("{}: {error}", path.display())))
+}
+
+pub fn clear_engine_rebuild(root: &Path) -> io::Result<()> {
+    let path = root.join("edits").join(ENGINE_MARK);
+    if path.is_file() {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+pub struct RestoreReport {
+    pub restored: usize,
+    pub held_by_live_job: bool,
+}
+
 /// Put back edits only when no job is still running. A live mutate owns its file.
-pub fn restore_finished(root: &Path) -> io::Result<usize> {
+pub fn restore_finished(root: &Path) -> io::Result<RestoreReport> {
     if live_job(root)? {
-        return Ok(0);
+        return Ok(RestoreReport {
+            restored: 0,
+            held_by_live_job: true,
+        });
     }
     let dir = root.join("edits");
     if !dir.exists() {
-        return Ok(0);
+        return Ok(RestoreReport {
+            restored: 0,
+            held_by_live_job: false,
+        });
     }
     let mut restored = 0;
     for entry in fs::read_dir(&dir)? {
         let path = entry?.path();
         if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        // The module mark is not a source-file backup. Rebuilding it is separate.
+        if path.file_name().and_then(|name| name.to_str()) == Some(ENGINE_MARK) {
             continue;
         }
         let text = match fs::read_to_string(&path) {
@@ -134,7 +195,10 @@ pub fn restore_finished(root: &Path) -> io::Result<usize> {
         let _ = fs::remove_file(&record.backup);
         restored += 1;
     }
-    Ok(restored)
+    Ok(RestoreReport {
+        restored,
+        held_by_live_job: false,
+    })
 }
 
 fn live_job(root: &Path) -> io::Result<bool> {

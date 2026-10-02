@@ -16,6 +16,8 @@ from typing import Any
 
 import flexweek_engine  # type: ignore[import-untyped]
 
+from desktop.native.wire import plain, restore
+
 SLACK_WORDS = {"danger": "Cutting it close", "tight": "Tight", "ok": "Plenty of time"}
 NOT_PLANNED = "Not planned yet."
 # A homework session is saved with no category unless the student picked one. It is still homework.
@@ -33,9 +35,16 @@ def minute_of(hhmm: str) -> int:
     return int(flexweek_engine.week_minute_of(hhmm))
 
 
+# What the window last passed, as it passed it: `changed` compares that object, not its truth.
+_clock = {"24h": True}
+
+
 def set_clock_24h(on: bool) -> bool:
     """Whether this changed the clock, so the caller knows to redraw."""
-    return bool(flexweek_engine.week_set_clock_24h(on))
+    changed = _clock["24h"] != on
+    _clock["24h"] = on
+    flexweek_engine.week_set_clock_24h(bool(on))
+    return changed
 
 
 def clock_text(minute: int) -> str:
@@ -77,22 +86,22 @@ def planned_line(planned_min: int, done_min: int) -> str:
 
 def due_label(due: str | None, week_start: str) -> str:
     """A deadline as a student says it: Sun 27 Sep, or Sun 27 Sep, 09:00 when a time is set."""
-    return str(flexweek_engine.week_due_label(due, week_start))
+    return str(flexweek_engine.week_due_label(plain(due)))
 
 
 def moved_words(block: dict, from_day: int, day: int, start: int, end: int) -> str:
     """What a drag did to `block`, as it was before, now that it is on `day` from `start` to `end`."""
-    return str(flexweek_engine.week_moved_words(json.dumps(block), from_day, day, start, end))
+    return str(restore(flexweek_engine.week_moved_words(plain(block), from_day, day, start, end)))
 
 
 def added_words(block: dict) -> str:
     """A block just made: "Added Club on Thu 16:00.", or without a day and time when it has several days."""
-    return str(flexweek_engine.week_added_words(json.dumps(block)))
+    return str(restore(flexweek_engine.week_added_words(plain(block))))
 
 
 def dated_words(title: str, iso: str) -> str:
     """What carrying a block to another date on Month did, such as "Moved History essay to Fri 25 Sep"."""
-    return str(flexweek_engine.week_dated_words(title, iso))
+    return str(restore(flexweek_engine.week_dated_words(plain(title), plain(iso))))
 
 
 @dataclass(frozen=True)
@@ -225,17 +234,14 @@ def build_week(
     assignments: dict[str, dict] | None = None,
     trace: dict | None = None,
 ) -> WeekModel:
-    raw = json.loads(
-        flexweek_engine.week_build(
-            week_start,
-            json.dumps(blocks),
-            json.dumps(assignments or {}),
-            None if trace is None else json.dumps(trace),
+    raw = restore(
+        json.loads(
+            flexweek_engine.week_build(plain(week_start), plain(blocks), plain(assignments), plain(trace))
         )
     )
     return WeekModel(
         raw["week_start"],
         tuple(Occurrence(**item) for item in raw["occurrences"]),
         tuple(Waiting(**item) for item in raw["waiting"]),
-        int(raw["focus_min"]),
+        raw["focus_min"],
     )

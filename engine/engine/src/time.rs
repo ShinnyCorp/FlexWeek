@@ -64,6 +64,10 @@ pub(crate) fn py_repr(text: &str) -> String {
                 out.push('\\');
                 out.push(quote);
             }
+            // A lone surrogate crosses as a private-use character (desktop/native/wire.py).
+            c if ('\u{10F800}'..='\u{10FFFF}').contains(&c) => {
+                out.push_str(&format!("\\u{:04x}", c as u32 - 0x10F800 + 0xD800));
+            }
             c if !crate::pyprint::py_printable(c) => {
                 let cp = c as u32;
                 if cp < 0x100 {

@@ -4,7 +4,7 @@
 use serde_json::Value;
 
 use crate::error::{EngineError, EngineResult, ErrorKind};
-use crate::stored::{Dict, type_name};
+use crate::stored::type_name;
 
 pub(crate) fn type_error(message: impl Into<String>) -> EngineError {
     EngineError {
@@ -48,16 +48,4 @@ pub(crate) fn unhashable(value: &Value, place: &str) -> EngineError {
         "cannot use '{0}' as a {place} (unhashable type: '{0}')",
         type_name(value)
     ))
-}
-
-/// `table.get(key)` where the key is any value: a string finds its entry, a number or null finds
-/// none, and a list or dict cannot be a key.
-pub(crate) fn lookup<'a>(table: &'a Dict, key: &Value) -> EngineResult<Option<&'a Value>> {
-    match key {
-        Value::String(name) => Ok(table.get(name)),
-        Value::Array(_) | Value::Object(_) => {
-            Err(type_error(format!("unhashable type: '{}'", type_name(key))))
-        }
-        _ => Ok(None),
-    }
 }

@@ -1,128 +1,66 @@
-//! Import/export payloads from `desktop/native/files.py`.
+//! Import and export of week and day files from `desktop/native/files.py`.
+//!
+//! The pydantic models stay in Python (`TimeBlock`, `AssignmentContent`); the Python wrappers run
+//! them at the points the original did. What is here is everything around them.
 
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
-use crate::desk::calendar::{date_for_day, deep_copy, is_series};
-use crate::desk::pyval::unhashable;
-use crate::desk::reuse::{MAX_WEEK_BLOCKS, occurrence_days};
+use crate::desk::calendar::is_series_checked;
+use crate::desk::pyops::{
+    PyDict, concat, contains, eq, get, hashable, is_int, iterate, length, slice_chars,
+};
+use crate::desk::pyval::subscript;
+use crate::desk::reuse::MAX_WEEK_BLOCKS;
 use crate::error::{EngineError, EngineResult};
-use crate::stored::{dict, truthy};
+use crate::stored::{attribute_error, py_str, truthy, type_name};
 use crate::time::is_week_start;
 
 pub const EXPORT_FORMAT: &str = "flexweek-week";
 pub const DAY_FORMAT: &str = "flexweek-day";
 pub const EXPORT_VERSION: i64 = 2;
 
-pub fn export_week_payload(
-    week_start: &str,
-    blocks: &[Value],
-    assignments: &Map<String, Value>,
-) -> Value {
-    let exported: Vec<Value> = blocks
-        .iter()
-        .map(|block| exportable_block(block, assignments))
-        .collect();
-    json!({
-        "format": EXPORT_FORMAT,
-        "version": EXPORT_VERSION,
-        "week_start": week_start,
-        "blocks": exported,
-        "assignments": referenced_assignments(&exported, assignments),
-    })
-}
-
-pub fn export_day_payload(
-    week_start: &str,
-    day: i64,
-    blocks: &[Value],
-    assignments: &Map<String, Value>,
-) -> Value {
-    let mut day_blocks = Vec::new();
-    for block in blocks {
-        if !occurrence_days(block).contains(&day) {
-            continue;
-        }
-        let mut copy = exportable_block(block, assignments);
-        if let Some(obj) = copy.as_object_mut() {
-            obj.insert("days".into(), json!([day]));
-            if let Some(missed) = obj.get("missed_days").and_then(Value::as_array) {
-                obj.insert(
-                    "missed_days".into(),
-                    json!(
-                        missed
-                            .iter()
-                            .filter(|v| v.as_i64() == Some(day))
-                            .collect::<Vec<_>>()
-                    ),
-                );
-            }
-        }
-        day_blocks.push(copy);
-    }
-    json!({
-        "format": DAY_FORMAT,
-        "version": EXPORT_VERSION,
-        "week_start": week_start,
-        "date": date_for_day(week_start, day),
-        "day": day,
-        "blocks": day_blocks,
-        "assignments": referenced_assignments(&day_blocks, assignments),
-    })
-}
-
 /// The block as `exportable_block` hands it to the model: a link to homework the file does not
 /// carry is dropped first.
-pub fn export_input(block: &Value, assignments: &[String]) -> EngineResult<Value> {
-    let mut copy = deep_copy(block);
-    let fields = dict(&copy)?;
-    if let Some(id) = fields.get("assignment_id")
-        && truthy(Some(id))
-        && !listed(assignments, id)?
-        && let Some(obj) = copy.as_object_mut()
+pub fn export_input(block: &Value, assignments: &Value) -> EngineResult<Value> {
+    let mut copy = block.clone();
+    let linked = get(&copy, "assignment_id")?.cloned();
+    if let Some(id) = linked
+        && truthy(Some(&id))
+        && !contains(assignments, &id)?
+        && let Some(object) = copy.as_object_mut()
     {
-        obj.shift_remove("assignment_id");
+        object.shift_remove("assignment_id");
     }
     Ok(copy)
-}
-
-/// `id in assignments` for a dict keyed by strings.
-fn listed(keys: &[String], id: &Value) -> EngineResult<bool> {
-    match id {
-        Value::String(text) => Ok(keys.contains(text)),
-        Value::Array(_) | Value::Object(_) => Err(unhashable(id, "dict key")),
-        _ => Ok(false),
-    }
 }
 
 /// The ids of the homework `referenced_assignments` gives a body to: each once, in the order the
 /// blocks name them, and only those the account has. A later id may fail after earlier ones were
 /// taken; the ids so far come back with that failure, since Python had made their bodies by then.
 pub fn referenced_ids(
-    blocks: &[Value],
-    assignments: &[String],
-) -> EngineResult<(Vec<String>, Option<EngineError>)> {
-    let mut ids: Vec<&Value> = Vec::new();
-    for block in blocks {
-        if let Some(id) = dict(block)?.get("assignment_id")
+    blocks: &Value,
+    assignments: &Value,
+) -> EngineResult<(Vec<Value>, Option<EngineError>)> {
+    let mut ids: Vec<Value> = Vec::new();
+    for block in iterate(blocks)? {
+        if let Some(id) = get(&block, "assignment_id")?
             && truthy(Some(id))
         {
-            ids.push(id);
+            ids.push(id.clone());
         }
     }
-    let mut unique: Vec<String> = Vec::new();
+    let mut unique: Vec<Value> = Vec::new();
     for id in ids {
-        match id {
-            Value::String(text) if unique.contains(text) => continue,
-            Value::Array(_) | Value::Object(_) => {
-                return Ok((unique, Some(unhashable(id, "set element"))));
-            }
-            _ => {}
+        if let Err(error) = hashable(&id, "set element") {
+            return Ok((unique, Some(error)));
         }
-        if !listed(assignments, id)? {
+        if unique.iter().any(|seen| eq(seen, &id)) {
             continue;
         }
-        if let Value::String(text) = id {
-            unique.push(text.clone());
+        match contains(assignments, &id) {
+            Ok(true) => unique.push(id),
+            Ok(false) => {}
+            Err(error) => return Ok((unique, Some(error))),
         }
     }
     Ok((unique, None))
@@ -131,7 +69,7 @@ pub fn referenced_ids(
 /// What `assignment_body` hands the model: only the keys the model has.
 pub fn assignment_input(item: &Value, fields: &[String]) -> EngineResult<Value> {
     let Value::Object(item) = item else {
-        return Err(crate::stored::attribute_error(item, "items"));
+        return Err(attribute_error(item, "items"));
     };
     Ok(Value::Object(
         item.iter()
@@ -141,488 +79,446 @@ pub fn assignment_input(item: &Value, fields: &[String]) -> EngineResult<Value> 
     ))
 }
 
-fn exportable_block(block: &Value, assignments: &Map<String, Value>) -> Value {
-    let mut copy = deep_copy(block);
-    if let Some(id) = copy.get("assignment_id").and_then(Value::as_str)
-        && !assignments.contains_key(id)
-        && let Some(obj) = copy.as_object_mut()
-    {
-        obj.shift_remove("assignment_id");
-    }
-    dump_time_block(&copy)
-}
-
-/// `TimeBlock.model_dump(mode="json")`: field order, defaults, and `exclude_if`.
-fn dump_time_block(block: &Value) -> Value {
-    let Some(obj) = block.as_object() else {
-        return block.clone();
+/// A block of the day export after the model: its days are the day, and only that day stays missed.
+pub fn day_copy(copy: &Value, day: &Value) -> EngineResult<Value> {
+    let mut copy = copy.clone();
+    let Value::Object(fields) = &mut copy else {
+        return Err(attribute_error(&copy, "get"));
     };
-    let mut out = Map::new();
-    for key in ["id", "title", "kind", "duration_min", "days"] {
-        if let Some(value) = obj.get(key) {
-            out.insert(key.to_string(), value.clone());
-        }
-    }
-    out.insert(
-        "priority".to_string(),
-        obj.get("priority").cloned().unwrap_or(json!(3)),
-    );
-    out.insert(
-        "energy".to_string(),
-        obj.get("energy").cloned().unwrap_or(json!("medium")),
-    );
-    for key in ["earliest", "latest", "start", "course"] {
-        out.insert(
-            key.to_string(),
-            obj.get(key).cloned().unwrap_or(Value::Null),
-        );
-    }
-    if let Some(value) = obj.get("category").filter(|value| !value.is_null()) {
-        out.insert("category".to_string(), value.clone());
-    }
-    if obj.get("completed").and_then(Value::as_bool) == Some(true) {
-        out.insert("completed".to_string(), json!(true));
-    }
-    if let Some(value) = obj.get("completed_day").filter(|value| !value.is_null()) {
-        out.insert("completed_day".to_string(), value.clone());
-    }
-    if let Some(missed) = obj.get("missed_days").and_then(Value::as_array)
-        && !missed.is_empty()
+    fields.insert("days".into(), json!([day]));
+    if let Some(missed) = fields.get("missed_days").cloned()
+        && truthy(Some(&missed))
     {
-        out.insert("missed_days".to_string(), Value::Array(missed.clone()));
-    }
-    if let Some(value) = obj.get("spotify_url").filter(|value| !value.is_null()) {
-        out.insert("spotify_url".to_string(), value.clone());
-    }
-    for key in ["focus_sessions", "focus_minutes"] {
-        if obj.get(key).and_then(Value::as_i64).is_some_and(|n| n != 0) {
-            out.insert(
-                key.to_string(),
-                obj.get(key).cloned().unwrap_or(Value::Null),
-            );
-        }
-    }
-    for key in ["pomodoro_parent_id", "pomodoro_role", "pomodoro_index"] {
-        if let Some(value) = obj.get(key).filter(|value| !value.is_null()) {
-            out.insert(key.to_string(), value.clone());
-        }
-    }
-    if obj.get("pinned").and_then(Value::as_bool) == Some(true) {
-        out.insert("pinned".to_string(), json!(true));
-    }
-    if let Some(value) = obj.get("assignment_id").filter(|value| !value.is_null()) {
-        out.insert("assignment_id".to_string(), value.clone());
-    }
-    Value::Object(out)
-}
-
-fn referenced_assignments(blocks: &[Value], assignments: &Map<String, Value>) -> Vec<Value> {
-    let mut unique = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for block in blocks {
-        let Some(id) = block.get("assignment_id").and_then(Value::as_str) else {
-            continue;
-        };
-        if seen.contains(id) || !assignments.contains_key(id) {
-            continue;
-        }
-        seen.insert(id.to_string());
-        unique.push(assignment_body(assignments.get(id).expect("assignment")));
-    }
-    unique
-}
-
-fn assignment_body(item: &Value) -> Value {
-    // `AssignmentContent.model_dump(mode="json")`, including defaults the input left out.
-    let Some(obj) = item.as_object() else {
-        return json!({});
-    };
-    let mut out = Map::new();
-    for key in ["id", "title"] {
-        if let Some(value) = obj.get(key) {
-            out.insert(key.to_string(), value.clone());
-        }
-    }
-    out.insert(
-        "course".to_string(),
-        obj.get("course").cloned().unwrap_or(Value::Null),
-    );
-    out.insert(
-        "category".to_string(),
-        obj.get("category").cloned().unwrap_or(Value::Null),
-    );
-    out.insert(
-        "priority".to_string(),
-        obj.get("priority").cloned().unwrap_or(json!(3)),
-    );
-    out.insert(
-        "energy".to_string(),
-        obj.get("energy").cloned().unwrap_or(json!("medium")),
-    );
-    out.insert(
-        "spotify_url".to_string(),
-        obj.get("spotify_url").cloned().unwrap_or(Value::Null),
-    );
-    if let Some(value) = obj.get("due") {
-        out.insert("due".to_string(), value.clone());
-    }
-    if let Some(value) = obj.get("estimate_min") {
-        out.insert("estimate_min".to_string(), value.clone());
-    }
-    out.insert(
-        "focus_minutes".to_string(),
-        obj.get("focus_minutes").cloned().unwrap_or(json!(0)),
-    );
-    out.insert(
-        "focus_sessions".to_string(),
-        obj.get("focus_sessions").cloned().unwrap_or(json!(0)),
-    );
-    out.insert(
-        "completed".to_string(),
-        obj.get("completed").cloned().unwrap_or(json!(false)),
-    );
-    out.insert(
-        "completed_at".to_string(),
-        obj.get("completed_at").cloned().unwrap_or(Value::Null),
-    );
-    if let Some(notes) = obj.get("notes").and_then(Value::as_str)
-        && !notes.is_empty()
-    {
-        out.insert("notes".to_string(), json!(notes));
-    }
-    if let Some(links) = obj.get("links").and_then(Value::as_array)
-        && !links.is_empty()
-    {
-        out.insert("links".to_string(), Value::Array(links.clone()));
-    }
-    if let Some(checklist) = obj.get("checklist").and_then(Value::as_array)
-        && !checklist.is_empty()
-    {
-        out.insert("checklist".to_string(), Value::Array(checklist.clone()));
-    }
-    Value::Object(out)
-}
-
-pub fn parse_import_payload(raw: &str) -> Value {
-    let text = raw.trim();
-    if text.is_empty() {
-        return json!({"error": "Empty file."});
-    }
-    let data: Value = match serde_json::from_str(text) {
-        Ok(v) => v,
-        Err(_) => return json!({"error": "Not valid JSON. Plain-text import is export-only."}),
-    };
-    let Some(data) = data.as_object() else {
-        return json!({"error": "Invalid FlexWeek export."});
-    };
-    let format = data.get("format").and_then(Value::as_str);
-    if format != Some(EXPORT_FORMAT) && format != Some(DAY_FORMAT) {
-        return json!({"error": "Unrecognized export format."});
-    }
-    let version = data.get("version").and_then(Value::as_i64);
-    if version.is_none() || version.unwrap_or(0) < 1 {
-        return json!({"error": "Export has no version."});
-    }
-    if version.unwrap_or(0) > EXPORT_VERSION {
-        return json!({"error": format!("Export came from a newer FlexWeek (version {}).", version.unwrap_or(0))});
-    }
-    if !data.get("blocks").and_then(Value::as_array).is_some() {
-        return json!({"error": "Export is missing blocks."});
-    }
-    let homework = if version.unwrap_or(0) >= 2 {
-        data.get("assignments").and_then(Value::as_array).cloned()
-    } else {
-        Some(Vec::new())
-    };
-    if homework.is_none() {
-        return json!({"error": "Export is missing its homework list."});
-    }
-    let week_start = data.get("week_start").and_then(Value::as_str);
-    if week_start.is_some_and(|ws| !is_week_start(ws)) {
-        return json!({"error": "Export week_start must be a Monday."});
-    }
-    let blocks = data
-        .get("blocks")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let assignments: Vec<Value> = homework.unwrap();
-    if format == Some(DAY_FORMAT) {
-        let day = data.get("day").and_then(Value::as_i64);
-        if day.is_none() || !(0..=6).contains(&day.unwrap_or(-1)) {
-            return json!({"error": "Day export must contain only its day in 0..6. Nothing was imported."});
-        }
-        let day = day.unwrap();
-        if blocks
-            .iter()
-            .any(|b| b.get("days").and_then(Value::as_array) != Some(&vec![json!(day)]))
-        {
-            return json!({"error": "Day export must contain only its day in 0..6. Nothing was imported."});
-        }
-    }
-    let ids: Vec<String> = blocks
-        .iter()
-        .filter_map(|b| b.get("id").and_then(Value::as_str).map(str::to_string))
-        .collect();
-    if ids.len() as i64 > MAX_WEEK_BLOCKS {
-        return json!({"error": format!("Export has more than {MAX_WEEK_BLOCKS} blocks. Nothing was imported.")});
-    }
-    let mut seen = std::collections::HashSet::new();
-    for id in &ids {
-        if !seen.insert(id.clone()) {
-            return json!({"error": format!("Export repeats the id {id}.")});
-        }
-    }
-    if blocks.iter().any(|b| {
-        b.get("pomodoro_parent_id")
-            .and_then(Value::as_str)
-            .is_some_and(|pid| seen.contains(pid))
-    }) {
-        return json!({"error": "Export includes a task together with the focus chunks split from it. Nothing was imported."});
-    }
-    let homework_ids: Vec<String> = assignments
-        .iter()
-        .filter_map(|a| a.get("id").and_then(Value::as_str).map(str::to_string))
-        .collect();
-    if version.unwrap_or(0) >= 2 {
-        if homework_ids.len() as i64 > MAX_WEEK_BLOCKS {
-            return json!({"error": format!("Export has more than {MAX_WEEK_BLOCKS} homework items. Nothing was imported.")});
-        }
-        let mut hseen = std::collections::HashSet::new();
-        for id in &homework_ids {
-            if !hseen.insert(id.clone()) {
-                return json!({"error": format!("Export repeats the homework id {id}. Nothing was imported.")});
+        let mut kept = Vec::new();
+        for item in iterate(&missed)? {
+            if eq(&item, day) {
+                kept.push(item);
             }
         }
-        for (index, block) in blocks.iter().enumerate() {
-            if let Some(aid) = block.get("assignment_id").and_then(Value::as_str)
-                && !hseen.contains(aid)
-            {
-                return json!({"error": format!(
-                    "Block {} points at homework the file does not include. Nothing was imported.",
-                    index + 1
-                )});
-            }
-        }
+        fields.insert("missed_days".into(), Value::Array(kept));
     }
-    let week_value = match week_start {
-        Some(text) if !text.is_empty() => Value::from(text),
-        _ => Value::Null,
-    };
-    let day_value = data
-        .get("day")
-        .and_then(Value::as_i64)
-        .map_or(Value::Null, |day| json!(day));
+    Ok(copy)
+}
+
+pub fn export_week(week_start: &Value, blocks: &Value, assignments: &Value) -> Value {
     json!({
-        "format": format,
-        "week_start": week_value,
-        "day": day_value,
-        "blocks": blocks.iter().map(dump_time_block).collect::<Vec<_>>(),
-        "assignments": assignments.iter().map(assignment_body).collect::<Vec<_>>(),
-        "error": Value::Null,
+        "format": EXPORT_FORMAT,
+        "version": EXPORT_VERSION,
+        "week_start": week_start,
+        "blocks": blocks,
+        "assignments": assignments,
     })
 }
 
-pub fn occurrence_import_id(day: i64, block_id: &str) -> String {
-    let prefix = format!("occ-{day}-");
-    let legacy = format!("{prefix}{block_id}");
-    if legacy.len() <= 80 {
-        return legacy;
+pub fn export_day(
+    week_start: &Value,
+    date: &Value,
+    day: &Value,
+    blocks: &Value,
+    assignments: &Value,
+) -> Value {
+    json!({
+        "format": DAY_FORMAT,
+        "version": EXPORT_VERSION,
+        "week_start": week_start,
+        "date": date,
+        "day": day,
+        "blocks": blocks,
+        "assignments": assignments,
+    })
+}
+
+fn refused(message: impl Into<String>) -> Value {
+    json!({"error": message.into()})
+}
+
+/// What a file says before its blocks are checked: an error, or its format, version, week, day and
+/// whether it carries a homework list. `readable` is whether the text parsed; `data` what it parsed to.
+pub fn import_head(empty: bool, readable: bool, data: Option<&Value>) -> EngineResult<Value> {
+    if empty {
+        return Ok(refused("Empty file."));
     }
+    let Some(data) = data.filter(|_| readable) else {
+        return Ok(refused("Not valid JSON. Plain-text import is export-only."));
+    };
+    if !matches!(data, Value::Object(_)) || crate::stored::nonfinite(data).is_some() {
+        return Ok(refused("Invalid FlexWeek export."));
+    }
+    let format = get(data, "format")?.unwrap_or(&Value::Null);
+    hashable(format, "set element")?;
+    let known = format
+        .as_str()
+        .filter(|name| *name == EXPORT_FORMAT || *name == DAY_FORMAT);
+    let Some(format) = known else {
+        return Ok(refused("Unrecognized export format."));
+    };
+    let version = get(data, "version")?.unwrap_or(&Value::Null);
+    let number = match version {
+        Value::Bool(flag) => Some(i128::from(*flag)),
+        Value::Number(found) if is_int(version) => {
+            Some(found.to_string().parse::<i128>().unwrap_or(
+                if found.to_string().starts_with('-') {
+                    i128::MIN
+                } else {
+                    i128::MAX
+                },
+            ))
+        }
+        _ => None,
+    };
+    let Some(number) = number.filter(|found| *found >= 1) else {
+        return Ok(refused("Export has no version."));
+    };
+    if number > i128::from(EXPORT_VERSION) {
+        return Ok(refused(format!(
+            "Export came from a newer FlexWeek (version {}).",
+            py_str(version)
+        )));
+    }
+    if !matches!(get(data, "blocks")?, Some(Value::Array(_))) {
+        return Ok(refused("Export is missing blocks."));
+    }
+    let carries = number >= 2;
+    if carries && !matches!(get(data, "assignments")?, Some(Value::Array(_))) {
+        return Ok(refused("Export is missing its homework list."));
+    }
+    let week_start = get(data, "week_start")?.cloned().unwrap_or(Value::Null);
+    if truthy(Some(&week_start)) {
+        match &week_start {
+            Value::String(text) => {
+                if !is_week_start(text) {
+                    return Ok(refused("Export week_start must be a Monday."));
+                }
+            }
+            other => {
+                return Err(EngineError {
+                    kind: crate::error::ErrorKind::Type,
+                    message: format!(
+                        "expected string or bytes-like object, got '{}'",
+                        type_name(other)
+                    ),
+                });
+            }
+        }
+    }
+    Ok(json!({
+        "format": format,
+        "version": number.min(i128::from(i64::MAX)) as i64,
+        "week_start": week_start,
+        "day": get(data, "day")?.cloned().unwrap_or(Value::Null),
+        "homework_from_file": carries,
+    }))
+}
+
+/// `next(item for item in ids if ids.count(item) > 1)`.
+fn first_repeated(ids: &[Value]) -> Option<&Value> {
+    ids.iter()
+        .find(|item| ids.iter().filter(|other| eq(other, item)).count() > 1)
+}
+
+/// The rest of the file's checks, on blocks and homework the models have accepted.
+pub fn import_tail(head: &Value, blocks: &[Value], assignments: &[Value]) -> EngineResult<Value> {
+    let format = subscript(head, "format")?.clone();
+    let day = subscript(head, "day")?.clone();
+    let version = subscript(head, "version")?.as_i64().unwrap_or(0);
+    let week_start = subscript(head, "week_start")?.clone();
+    let day_error =
+        || refused("Day export must contain only its day in 0..6. Nothing was imported.");
+    if format == json!(DAY_FORMAT) {
+        let in_range = is_int(&day) && {
+            let found = crate::stored::py_int(&day).unwrap_or(-1);
+            (0..=6).contains(&found)
+        };
+        if !in_range {
+            return Ok(day_error());
+        }
+        for block in blocks {
+            if !eq(subscript(block, "days")?, &json!([day.clone()])) {
+                return Ok(day_error());
+            }
+        }
+    }
+    let mut ids: Vec<Value> = Vec::new();
+    for block in blocks {
+        ids.push(subscript(block, "id")?.clone());
+    }
+    if ids.len() as i64 > MAX_WEEK_BLOCKS {
+        return Ok(refused(format!(
+            "Export has more than {MAX_WEEK_BLOCKS} blocks. Nothing was imported."
+        )));
+    }
+    let seen: Vec<&Value> = ids.iter().collect();
+    if let Some(repeated) = first_repeated(&ids) {
+        return Ok(refused(format!(
+            "Export repeats the id {}.",
+            py_str(repeated)
+        )));
+    }
+    for block in blocks {
+        if let Some(parent) = get(block, "pomodoro_parent_id")? {
+            hashable(parent, "set element")?;
+            if seen.iter().any(|held| eq(held, parent)) {
+                return Ok(refused(
+                    "Export includes a task together with the focus chunks split from it. Nothing was imported.",
+                ));
+            }
+        }
+    }
+    let mut homework_ids: Vec<Value> = Vec::new();
+    for item in assignments {
+        homework_ids.push(subscript(item, "id")?.clone());
+    }
+    if version >= 2 {
+        if homework_ids.len() as i64 > MAX_WEEK_BLOCKS {
+            return Ok(refused(format!(
+                "Export has more than {MAX_WEEK_BLOCKS} homework items. Nothing was imported."
+            )));
+        }
+        if let Some(repeated) = first_repeated(&homework_ids) {
+            return Ok(refused(format!(
+                "Export repeats the homework id {}. Nothing was imported.",
+                py_str(repeated)
+            )));
+        }
+        for (index, block) in blocks.iter().enumerate() {
+            if let Some(linked) = get(block, "assignment_id")?
+                && truthy(Some(linked))
+                && !homework_ids.iter().any(|held| eq(held, linked))
+            {
+                return Ok(refused(format!(
+                    "Block {} points at homework the file does not include. Nothing was imported.",
+                    index + 1
+                )));
+            }
+        }
+    }
+    let shown_day = if is_int(&day) { day } else { Value::Null };
+    Ok(json!({
+        "format": format,
+        "week_start": if truthy(Some(&week_start)) { week_start } else { Value::Null },
+        "day": shown_day,
+        "blocks": blocks,
+        "assignments": assignments,
+        "error": Value::Null,
+    }))
+}
+
+pub fn occurrence_import_id(day: &Value, block_id: &Value) -> EngineResult<String> {
+    let prefix = format!("occ-{}-", py_str(day));
+    let legacy = concat(&prefix, block_id)?;
+    if legacy.chars().count() <= 80 {
+        return Ok(legacy);
+    }
+    let text = block_id.as_str().unwrap_or_default();
     let mut hash_val: u32 = 2166136261;
-    for ch in block_id.chars() {
+    for ch in text.chars() {
         hash_val ^= u32::from(ch);
         hash_val = hash_val.wrapping_mul(16777619);
     }
     let suffix = format!("-{hash_val:08x}");
-    let available = 80usize.saturating_sub(prefix.len() + suffix.len());
-    format!(
-        "{}{}{}",
-        prefix,
-        &block_id[..block_id.len().min(available)],
-        suffix
-    )
+    let available = 80 - (prefix.chars().count() + suffix.chars().count()) as i64;
+    Ok(format!(
+        "{prefix}{}{suffix}",
+        slice_chars(text, None, Some(available))
+    ))
 }
 
-pub fn migrated_assignment_id(week_start: &str, source_id: &str) -> String {
-    let digest =
-        crate::desk::update::sha256_hex_for_migration(&format!("{week_start}:{source_id}"));
-    format!("a-{}", &digest[..32])
+pub fn migrated_assignment_id(week_start: &Value, source_id: &Value) -> String {
+    crate::plan::migrated_assignment_id(&py_str(week_start), &py_str(source_id))
+}
+
+fn dict_get<'a>(value: &'a Value, key: &Value) -> EngineResult<Option<&'a Value>> {
+    hashable(key, "dict key")?;
+    Ok(match (value, key) {
+        (Value::Object(map), Value::String(name)) => map.get(name),
+        (Value::Object(_), _) => None,
+        (other, _) => return Err(attribute_error(other, "get")),
+    })
 }
 
 pub fn plan_imported_homework(
-    homework: &[Value],
-    blocks: &[Value],
-    week_start: &str,
-    assignments: &Map<String, Value>,
-) -> Value {
-    let mut id_for: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    homework: &Value,
+    blocks: &Value,
+    week_start: &Value,
+    assignments: &Value,
+) -> EngineResult<Value> {
+    let mut id_for = PyDict::new();
     let mut create = Vec::new();
-    for item in homework {
-        let Some(item_id) = item.get("id").and_then(Value::as_str) else {
-            continue;
-        };
-        if let Some(own) = assignments.get(item_id)
-            && own.get("title") == item.get("title")
-            && own.get("due") == item.get("due")
+    for item in iterate(homework)? {
+        // `assignments.get(item["id"])` finds `get` before it reads the id.
+        dict_get(assignments, &Value::Null)?;
+        let item_id = subscript(&item, "id")?.clone();
+        let own = dict_get(assignments, &item_id)?;
+        if let Some(own) = own
+            && truthy(Some(own))
+            && eq(
+                get(own, "title")?.unwrap_or(&Value::Null),
+                get(&item, "title")?.unwrap_or(&Value::Null),
+            )
+            && eq(
+                get(own, "due")?.unwrap_or(&Value::Null),
+                get(&item, "due")?.unwrap_or(&Value::Null),
+            )
         {
-            id_for.insert(item_id.to_string(), item_id.to_string());
+            id_for.set(item_id.clone(), item_id)?;
             continue;
         }
-        let new_id = migrated_assignment_id(week_start, item_id);
-        if !assignments.contains_key(&new_id) {
-            let mut created = deep_copy(item);
-            if let Some(obj) = created.as_object_mut() {
-                obj.insert("id".into(), json!(new_id));
-            }
+        let new_id = json!(migrated_assignment_id(week_start, &item_id));
+        if !contains(assignments, &new_id)? {
+            let mut created = item.clone();
+            let Value::Object(fields) = &mut created else {
+                return Err(attribute_error(&item, "get"));
+            };
+            fields.insert("id".into(), new_id.clone());
             create.push(created);
         }
-        id_for.insert(item_id.to_string(), new_id);
+        id_for.set(item_id, new_id)?;
     }
     let mut remapped = Vec::new();
-    for block in blocks {
-        let mut copy = deep_copy(block);
-        if let Some(source) = copy.get("assignment_id").and_then(Value::as_str)
-            && let Some(mapped) = id_for.get(source)
-            && let Some(obj) = copy.as_object_mut()
+    for block in iterate(blocks)? {
+        let mut copy = block.clone();
+        let source = get(&copy, "assignment_id")?.cloned().unwrap_or(Value::Null);
+        if let Some(found) = id_for.get(&source)?.cloned()
+            && let Value::Object(fields) = &mut copy
         {
-            obj.insert("assignment_id".into(), json!(mapped));
+            fields.insert("assignment_id".into(), found);
         }
         remapped.push(copy);
     }
-    json!({"blocks": remapped, "create": create})
+    Ok(json!({"blocks": remapped, "create": create}))
+}
+
+fn list_or_empty(value: Option<&Value>) -> Value {
+    match value {
+        Some(found) if truthy(Some(found)) => found.clone(),
+        _ => json!([]),
+    }
 }
 
 pub fn merge_imported_blocks(
-    existing: &[Value],
-    incoming: &[Value],
-    mode: &str,
-    day: Option<i64>,
+    existing: &Value,
+    incoming: &Value,
+    mode: &Value,
+    day: &Value,
 ) -> EngineResult<Vec<Value>> {
-    if mode == "replace" {
-        return Ok(incoming.iter().map(deep_copy).collect());
+    if eq(mode, &json!("replace")) {
+        return iterate(incoming);
     }
-    // Insertion order, as Python's dict keeps the existing blocks and appends a split.
-    let mut by_id: Map<String, Value> = Map::new();
-    for block in existing {
-        let Some(id) = block.get("id").and_then(Value::as_str) else {
+    let mut by_id = PyDict::new();
+    for block in iterate(existing)? {
+        by_id.set(subscript(&block, "id")?.clone(), block.clone())?;
+    }
+    for block in iterate(incoming)? {
+        if !truthy(Some(&block)) {
             continue;
+        }
+        let block_id = get(&block, "id")?.cloned().unwrap_or(Value::Null);
+        if !truthy(Some(&block_id)) {
+            continue;
+        }
+        let current = by_id.get(&block_id)?.cloned();
+        let split_id = if day.is_null() {
+            json!("")
+        } else {
+            json!(occurrence_import_id(day, &block_id)?)
         };
-        by_id.insert(id.to_string(), deep_copy(block));
-    }
-    for block in incoming {
-        if !crate::stored::truthy(Some(block)) || !crate::stored::truthy(block.get("id")) {
-            continue;
-        }
-        let block_id = block.get("id").and_then(Value::as_str).unwrap_or("");
-        let current = by_id.get(block_id).cloned();
-        let split_id = day
-            .map(|d| occurrence_import_id(d, block_id))
-            .unwrap_or_default();
-        let prior_split = by_id.get(&split_id).cloned();
-        let imports_one_day = day.is_some()
-            && block.get("days").and_then(Value::as_array) == Some(&vec![json!(day.unwrap())]);
-        if let Some(current) = current.clone() {
-            if imports_one_day
-                && current.get("kind").and_then(Value::as_str) == Some("flexible")
-                && current
-                    .get("days")
-                    .and_then(Value::as_array)
-                    .map(|d| d.len())
-                    .unwrap_or(0)
-                    > 1
-            {
-                return Err(EngineError::value(format!(
-                    "Day import cannot merge multi-day task {block_id}. Import the full week instead."
-                )));
-            }
-            if block.get("kind").and_then(Value::as_str) == Some("locked")
-                && current.get("kind").and_then(Value::as_str) == Some("locked")
-                && imports_one_day
-                && day.is_some_and(|d| {
-                    current
-                        .get("days")
-                        .and_then(Value::as_array)
-                        .is_some_and(|days| days.iter().any(|v| v.as_i64() == Some(d)))
-                })
-                && is_series(&current)
-            {
-                if prior_split.is_some() {
-                    return Err(EngineError::value(format!(
-                        "Import would overwrite existing block {split_id}."
-                    )));
-                }
-                let day = day.unwrap();
-                let kept_days: Vec<i64> = current
-                    .get("days")
-                    .and_then(Value::as_array)
-                    .map(|d| {
-                        d.iter()
-                            .filter_map(Value::as_i64)
-                            .filter(|dd| *dd != day)
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let missed_split: Vec<i64> = block
-                    .get("missed_days")
-                    .and_then(Value::as_array)
-                    .map(|m| {
-                        m.iter()
-                            .filter_map(Value::as_i64)
-                            .filter(|d| *d == day)
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let mut split = deep_copy(block);
-                if let Some(obj) = split.as_object_mut() {
-                    obj.insert("id".into(), json!(split_id));
-                    obj.insert("days".into(), json!([day]));
-                    obj.insert("missed_days".into(), json!(missed_split));
-                }
-                if !kept_days.is_empty() {
-                    let missed_kept: Vec<i64> = current
-                        .get("missed_days")
-                        .and_then(Value::as_array)
-                        .map(|m| {
-                            m.iter()
-                                .filter_map(Value::as_i64)
-                                .filter(|d| kept_days.contains(d))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    let mut kept = deep_copy(&current);
-                    if let Some(obj) = kept.as_object_mut() {
-                        obj.insert("days".into(), json!(kept_days.clone()));
-                        obj.insert("missed_days".into(), json!(missed_kept));
-                    }
-                    by_id.insert(block_id.to_string(), kept);
-                } else {
-                    by_id.shift_remove(block_id);
-                }
-                by_id.insert(split_id, split);
-                continue;
-            }
-        }
-        if let (Some(current), Some(day)) = (current, day)
-            && block.get("kind").and_then(Value::as_str) == Some("locked")
-            && current.get("kind").and_then(Value::as_str) == Some("locked")
+        let prior_split = by_id.get(&split_id)?.cloned();
+        let imports_one_day =
+            is_int(day) && eq(&list_or_empty(get(&block, "days")?), &json!([day.clone()]));
+        let current_ok = current.as_ref().filter(|found| truthy(Some(found)));
+        if let Some(current) = current_ok
             && imports_one_day
-            && !current
-                .get("days")
-                .and_then(Value::as_array)
-                .is_some_and(|days| days.iter().any(|v| v.as_i64() == Some(day)))
-            && prior_split
-                .as_ref()
-                .is_some_and(|p| p.get("days").and_then(Value::as_array) == Some(&vec![json!(day)]))
+            && eq(
+                get(current, "kind")?.unwrap_or(&Value::Null),
+                &json!("flexible"),
+            )
+            && length(&list_or_empty(get(current, "days")?))? > 1
         {
-            let mut split = deep_copy(block);
-            if let Some(obj) = split.as_object_mut() {
-                obj.insert("id".into(), json!(split_id));
+            return Err(EngineError::value(
+                concat("Day import cannot merge multi-day task ", &block_id)?
+                    + ". Import the full week instead.",
+            ));
+        }
+        let kinds_locked = |current: &Value| -> EngineResult<bool> {
+            if !eq(
+                get(&block, "kind")?.unwrap_or(&Value::Null),
+                &json!("locked"),
+            ) {
+                return Ok(false);
             }
-            by_id.insert(split_id, split);
+            Ok(eq(
+                get(current, "kind")?.unwrap_or(&Value::Null),
+                &json!("locked"),
+            ))
+        };
+        if let Some(current) = current_ok
+            && kinds_locked(current)?
+            && imports_one_day
+            && contains(&list_or_empty(get(current, "days")?), day)?
+            && is_series_checked(current)?
+        {
+            if let Some(prior) = &prior_split
+                && truthy(Some(prior))
+            {
+                return Err(EngineError::value(
+                    concat("Import would overwrite existing block ", &split_id)? + ".",
+                ));
+            }
+            let mut kept_days = Vec::new();
+            for item in iterate(subscript(current, "days")?)? {
+                if !eq(&item, day) {
+                    kept_days.push(item);
+                }
+            }
+            let mut split = block.clone();
+            let Value::Object(fields) = &mut split else {
+                return Err(attribute_error(&block, "get"));
+            };
+            fields.insert("id".into(), split_id.clone());
+            fields.insert("days".into(), json!([day]));
+            let mut missed = Vec::new();
+            for item in iterate(&list_or_empty(fields.get("missed_days")))? {
+                if eq(&item, day) {
+                    missed.push(item);
+                }
+            }
+            fields.insert("missed_days".into(), Value::Array(missed));
+            if !kept_days.is_empty() {
+                let mut kept = current.clone();
+                let Value::Object(kept_fields) = &mut kept else {
+                    return Err(attribute_error(current, "get"));
+                };
+                let mut still = Vec::new();
+                for item in iterate(&list_or_empty(kept_fields.get("missed_days")))? {
+                    if contains(&Value::Array(kept_days.clone()), &item)? {
+                        still.push(item);
+                    }
+                }
+                kept_fields.insert("days".into(), Value::Array(kept_days));
+                kept_fields.insert("missed_days".into(), Value::Array(still));
+                by_id.set(subscript(current, "id")?.clone(), kept)?;
+            } else {
+                by_id.pop(subscript(current, "id")?)?;
+            }
+            by_id.set(split_id.clone(), split)?;
             continue;
         }
-        by_id.insert(block_id.to_string(), deep_copy(block));
+        if let Some(current) = current_ok
+            && kinds_locked(current)?
+            && imports_one_day
+            && !contains(&list_or_empty(get(current, "days")?), day)?
+            && let Some(prior) = prior_split.as_ref().filter(|found| truthy(Some(found)))
+            && eq(&list_or_empty(get(prior, "days")?), &json!([day.clone()]))
+        {
+            let mut split = block.clone();
+            let Value::Object(fields) = &mut split else {
+                return Err(attribute_error(&block, "get"));
+            };
+            fields.insert("id".into(), split_id.clone());
+            by_id.set(split_id.clone(), split)?;
+            continue;
+        }
+        by_id.set(block_id, block.clone())?;
     }
-    Ok(by_id.into_values().collect())
+    Ok(by_id.into_values())
 }

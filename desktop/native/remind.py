@@ -14,8 +14,13 @@ ALARM_SNOOZE_MIN = 5
 ALARM_SNOOZE_MS = ALARM_SNOOZE_MIN * 60_000
 
 
+def _members(held: object) -> str:
+    """What `held` contains, as the engine reads it; a set is written out, anything else as it is."""
+    return json.dumps(list(held) if isinstance(held, set | frozenset) else held)
+
+
 def reminder_lead_min(prefs: dict | None, default: int = 5) -> int:
-    return int(flexweek_engine.remind_lead_min(None if prefs is None else json.dumps(prefs), default))
+    return int(flexweek_engine.remind_lead_min(json.dumps(prefs), default))
 
 
 def start_alert_due(start_min: int, now_min: int, lead: int) -> bool:
@@ -52,9 +57,7 @@ def clock_parts(now_ms: int) -> dict:
 
 
 def reminder_blocks(blocks: list[dict], trace: dict | None) -> list[dict]:
-    return json.loads(
-        flexweek_engine.remind_blocks(json.dumps(blocks), None if trace is None else json.dumps(trace))
-    )
+    return json.loads(flexweek_engine.remind_blocks(json.dumps(blocks), json.dumps(trace)))
 
 
 def due_reminders(
@@ -69,11 +72,12 @@ def due_reminders(
     return json.loads(
         flexweek_engine.remind_due(
             json.dumps(blocks),
-            None if trace is None else json.dumps(trace),
+            json.dumps(trace),
             today_iso,
             now_min,
             lead_min,
-            json.dumps(sorted(fired)),
+            _members(fired),
+            isinstance(fired, set | frozenset),
         )
     )
 
@@ -85,10 +89,11 @@ def due_songs(
     return json.loads(
         flexweek_engine.remind_songs(
             json.dumps(blocks),
-            None if trace is None else json.dumps(trace),
+            json.dumps(trace),
             today_iso,
             now_min,
-            json.dumps(sorted(played)),
+            _members(played),
+            isinstance(played, set | frozenset),
         )
     )
 
@@ -97,11 +102,7 @@ def todays_starts(
     blocks: list[dict], trace: dict | None, today_iso: str
 ) -> Iterator[tuple[dict, int, int, str]]:
     """Each block starting today: the block, its day, its start in minutes, and its reminder key."""
-    rows = json.loads(
-        flexweek_engine.remind_todays_starts(
-            json.dumps(blocks), None if trace is None else json.dumps(trace), today_iso
-        )
-    )
+    rows = json.loads(flexweek_engine.remind_todays_starts(json.dumps(blocks), json.dumps(trace), today_iso))
     yield from (tuple(row) for row in rows)
 
 
@@ -121,7 +122,15 @@ def due_alarms(
         return int(due_at.timestamp() * 1000)
 
     queued, remaining, last_ms = flexweek_engine.remind_due_alarms(
-        json.dumps(alarms), today_iso, weekday, now_ms, last_check_ms, fired, json.dumps(snoozed), due_ms_of
+        json.dumps(alarms),
+        today_iso,
+        weekday,
+        now_ms,
+        last_check_ms,
+        _members(fired),
+        fired if isinstance(fired, set) else None,
+        json.dumps(snoozed),
+        due_ms_of,
     )
     return json.loads(queued), json.loads(remaining), last_ms
 

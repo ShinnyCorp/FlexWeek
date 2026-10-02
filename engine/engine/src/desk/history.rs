@@ -2,9 +2,16 @@
 
 use serde_json::{Map, Value, json};
 
-use crate::desk::calendar::deep_copy;
+use crate::desk::pyops::{PyDict, eq, get, iterate, or_default};
+use crate::desk::pyval::subscript;
+use crate::error::EngineResult;
 
 pub const HISTORY_LIMIT: usize = 50;
+
+/// `len(stack) > HISTORY_LIMIT`: one step is dropped from the front when a push leaves it longer.
+pub fn over_limit(length: usize) -> bool {
+    length > HISTORY_LIMIT
+}
 
 fn sort_value(value: &Value) -> Value {
     match value {
@@ -29,177 +36,85 @@ pub fn same_value(left: &Value, right: &Value) -> bool {
 pub fn capture_step(
     label: &str,
     week_start: &str,
-    before_blocks: &[Value],
-    after_blocks: &[Value],
-    before_assignments: &Map<String, Value>,
-    after_assignments: &Map<String, Value>,
-    changed_ids: &std::collections::HashSet<String>,
-) -> Option<Map<String, Value>> {
-    let mut step = Map::new();
-    step.insert("label".into(), Value::String(label.to_string()));
-    step.insert("weeks".into(), Value::Array(Vec::new()));
-    step.insert("assignments".into(), Value::Array(Vec::new()));
-    step.insert("stale".into(), Value::Bool(false));
-    if !same_value(
-        &Value::Array(before_blocks.to_vec()),
-        &Value::Array(after_blocks.to_vec()),
-    ) {
-        let mut entry = Map::new();
-        entry.insert("week_start".into(), json!(week_start));
-        entry.insert(
-            "before".into(),
-            Value::Array(before_blocks.iter().map(deep_copy).collect()),
-        );
-        entry.insert(
-            "after".into(),
-            Value::Array(after_blocks.iter().map(deep_copy).collect()),
-        );
-        step.get_mut("weeks")
-            .and_then(Value::as_array_mut)
-            .unwrap()
-            .push(Value::Object(entry));
+    before_blocks: &Value,
+    after_blocks: &Value,
+    before_assignments: &Value,
+    after_assignments: &Value,
+    changed_ids: &[String],
+) -> EngineResult<Option<Value>> {
+    let mut weeks = Vec::new();
+    let mut assignments = Vec::new();
+    if !same_value(before_blocks, after_blocks) {
+        weeks.push(json!({
+            "week_start": week_start,
+            "before": before_blocks,
+            "after": after_blocks,
+        }));
     }
-    let mut ids: Vec<_> = changed_ids.iter().cloned().collect();
-    ids.sort();
-    for item_id in ids {
-        let prior = before_assignments.get(&item_id);
-        let after = after_assignments.get(&item_id);
-        if same_value(
-            &prior.cloned().unwrap_or(Value::Null),
-            &after.cloned().unwrap_or(Value::Null),
-        ) {
+    for item_id in changed_ids {
+        let prior = get(before_assignments, item_id)?
+            .cloned()
+            .unwrap_or(Value::Null);
+        let after = get(after_assignments, item_id)?
+            .cloned()
+            .unwrap_or(Value::Null);
+        if same_value(&prior, &after) {
             continue;
         }
-        let mut entry = Map::new();
-        entry.insert("id".into(), json!(item_id));
-        entry.insert("before".into(), prior.map(deep_copy).unwrap_or(Value::Null));
-        entry.insert("after".into(), after.map(deep_copy).unwrap_or(Value::Null));
-        step.get_mut("assignments")
-            .and_then(Value::as_array_mut)
-            .unwrap()
-            .push(Value::Object(entry));
+        assignments.push(json!({"id": item_id, "before": prior, "after": after}));
     }
-    let weeks = step
-        .get("weeks")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let assignments = step
-        .get("assignments")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
     if weeks.is_empty() && assignments.is_empty() {
-        return None;
+        return Ok(None);
     }
-    Some(step)
+    Ok(Some(json!({
+        "label": label,
+        "weeks": weeks,
+        "assignments": assignments,
+        "stale": false,
+    })))
 }
 
-pub fn push_step(stack: &mut Vec<Map<String, Value>>, step: Map<String, Value>) {
-    stack.push(step);
-    if stack.len() > HISTORY_LIMIT {
-        stack.remove(0);
+/// `{entry[key]: dict(entry) ...}` folded with a later step's entries: each key keeps the earlier
+/// `before` and the later entry otherwise.
+fn merged(earlier: &Value, step: &Value, list: &str, key: &str) -> EngineResult<Vec<Value>> {
+    let mut table = PyDict::new();
+    for entry in iterate(subscript(earlier, list)?)? {
+        let name = subscript(&entry, key)?.clone();
+        table.set(name, Value::Object(crate::desk::pyops::py_dict(&entry)?))?;
     }
-}
-
-pub fn join_step(stack: &mut Vec<Map<String, Value>>, step: Map<String, Value>) {
-    if stack.is_empty()
-        || stack
-            .last()
-            .and_then(|s| s.get("stale"))
-            .and_then(Value::as_bool)
-            == Some(true)
-    {
-        push_step(stack, step);
-        return;
-    }
-    let earlier = stack.pop().expect("step");
-    let mut weeks: std::collections::BTreeMap<String, Map<String, Value>> = earlier
-        .get("weeks")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| {
-            let obj = entry.as_object()?;
-            Some((obj.get("week_start")?.as_str()?.to_string(), obj.clone()))
-        })
-        .collect();
-    for entry in step
-        .get("weeks")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        let Some(obj) = entry.as_object() else {
-            continue;
+    for entry in iterate(subscript(step, list)?)? {
+        let name = subscript(&entry, key)?.clone();
+        let known = table.get(&name)?.cloned();
+        let value = match known {
+            Some(known) if crate::stored::truthy(Some(&known)) => {
+                let mut combined = crate::desk::pyops::py_dict(&entry)?;
+                combined.insert("before".into(), subscript(&known, "before")?.clone());
+                Value::Object(combined)
+            }
+            _ => Value::Object(crate::desk::pyops::py_dict(&entry)?),
         };
-        let week_start = obj.get("week_start").and_then(Value::as_str).unwrap_or("");
-        if let Some(known) = weeks.get(week_start) {
-            let mut merged = obj.clone();
-            merged.insert(
-                "before".into(),
-                known.get("before").cloned().unwrap_or(Value::Null),
-            );
-            weeks.insert(week_start.to_string(), merged);
-        } else {
-            weeks.insert(week_start.to_string(), obj.clone());
-        }
+        table.set(name, value)?;
     }
-    let mut assignments: std::collections::BTreeMap<String, Map<String, Value>> = earlier
-        .get("assignments")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| {
-            let obj = entry.as_object()?;
-            Some((obj.get("id")?.as_str()?.to_string(), obj.clone()))
-        })
-        .collect();
-    for entry in step
-        .get("assignments")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        let Some(obj) = entry.as_object() else {
-            continue;
-        };
-        let id = obj.get("id").and_then(Value::as_str).unwrap_or("");
-        if let Some(known) = assignments.get(id) {
-            let mut merged = obj.clone();
-            merged.insert(
-                "before".into(),
-                known.get("before").cloned().unwrap_or(Value::Null),
-            );
-            assignments.insert(id.to_string(), merged);
-        } else {
-            assignments.insert(id.to_string(), obj.clone());
-        }
-    }
-    let mut combined = earlier;
-    combined.insert(
-        "weeks".into(),
-        Value::Array(weeks.into_values().map(Value::Object).collect()),
-    );
-    combined.insert(
-        "assignments".into(),
-        Value::Array(assignments.into_values().map(Value::Object).collect()),
-    );
-    stack.push(combined);
+    Ok(table.into_values())
 }
 
-pub fn mark_stale(steps: &mut [Map<String, Value>], week_start: &str) {
-    for step in steps.iter_mut() {
-        if step
-            .get("weeks")
-            .and_then(Value::as_array)
-            .is_some_and(|weeks| {
-                weeks.iter().any(|entry| {
-                    entry.get("week_start").and_then(Value::as_str) == Some(week_start)
-                })
-            })
-        {
-            step.insert("stale".into(), Value::Bool(true));
+/// The last step with `step` folded into it, so one Undo takes both back.
+pub fn joined_step(earlier: &Value, step: &Value) -> EngineResult<Value> {
+    let weeks = merged(earlier, step, "weeks", "week_start")?;
+    let assignments = merged(earlier, step, "assignments", "id")?;
+    let mut out = crate::desk::pyops::py_dict(earlier)?;
+    out.insert("weeks".into(), Value::Array(weeks));
+    out.insert("assignments".into(), Value::Array(assignments));
+    Ok(Value::Object(out))
+}
+
+/// Whether `step` holds a week of `week_start`, which a reload of that week makes stale.
+pub fn touches(step: &Value, week_start: &Value) -> EngineResult<bool> {
+    let weeks = or_default(get(step, "weeks")?, json!([]));
+    for entry in iterate(&weeks)? {
+        if eq(subscript(&entry, "week_start")?, week_start) {
+            return Ok(true);
         }
     }
+    Ok(false)
 }

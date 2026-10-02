@@ -9,6 +9,7 @@ pub mod identity;
 pub mod job;
 pub mod mutate;
 pub mod queue;
+pub mod rebuild;
 pub mod rig;
 pub mod state;
 

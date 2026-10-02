@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
-from uuid import uuid4
 
 import flexweek_engine  # type: ignore[import-untyped]
 
@@ -126,7 +125,7 @@ def monday_of(iso_day: str) -> str:
 
 
 def date_for_day(week_start: str, day: int) -> str:
-    return str(flexweek_engine.calendar_date_for_day(week_start, day))
+    return str(flexweek_engine.calendar_date_for_day(week_start, json.dumps(day)))
 
 
 def sunday_due(week_start: str) -> str:
@@ -139,14 +138,18 @@ def local_stamp(now: datetime | None = None) -> str:
 
 
 def occupied_intervals(blocks: list[dict], day: int) -> list[tuple[int, int]]:
-    return list(flexweek_engine.calendar_occupied(json.dumps(blocks), day))
+    found = json.loads(flexweek_engine.calendar_occupied(json.dumps(blocks), json.dumps(day)))
+    return [(begin, end) for begin, end in found]
 
 
 def create_click_range(begin: int, occupied: list[tuple[int, int]]) -> tuple[int, int] | None:
     """Up to an hour from `begin`, which the hand has already put on its step, stopping where the next
     block starts."""
-    span = flexweek_engine.calendar_click_range(begin, occupied)
-    return None if span is None else (int(span[0]), int(span[1]))
+    span = flexweek_engine.calendar_click_range(begin, json.dumps(occupied))
+    if span is None:
+        return None
+    start, stop = json.loads(span)
+    return start, stop
 
 
 def apply_block_times(block: dict, start_min: int, end_min: int, day: int | None = None) -> dict | None:
@@ -156,12 +159,16 @@ def apply_block_times(block: dict, start_min: int, end_min: int, day: int | None
 
 
 def split_occurrence(blocks: list[dict], block_id: str, day: int) -> tuple[list[dict], str | None]:
-    updated, new_id = flexweek_engine.calendar_split(json.dumps(blocks), block_id, day, str(uuid4()))
+    updated, new_id = flexweek_engine.calendar_split(
+        json.dumps(blocks), json.dumps(block_id), json.dumps(day)
+    )
     return json.loads(updated), new_id
 
 
 def delete_occurrence(blocks: list[dict], block_id: str, day: int | None) -> list[dict]:
-    return json.loads(flexweek_engine.calendar_delete(json.dumps(blocks), block_id, day))
+    return json.loads(
+        flexweek_engine.calendar_delete(json.dumps(blocks), json.dumps(block_id), json.dumps(day))
+    )
 
 
 def apply_block_edit(
@@ -169,7 +176,7 @@ def apply_block_edit(
 ) -> list[dict]:
     return json.loads(
         flexweek_engine.calendar_apply_edit(
-            json.dumps(blocks), json.dumps(block), scope, day, str(uuid4())
+            json.dumps(blocks), json.dumps(block), json.dumps(scope), json.dumps(day)
         )
     )
 
@@ -184,16 +191,15 @@ def relocate_block(
     """One day's copy of a block, moved onto `to_day`. `dest` is None when that day is in the same week."""
     moved = flexweek_engine.calendar_relocate(
         json.dumps(source),
-        block_id,
-        from_day,
-        to_day,
+        json.dumps(block_id),
+        json.dumps(from_day),
+        json.dumps(to_day),
         None if dest is None else json.dumps(dest),
-        str(uuid4()),
     )
     if moved is None:
         return None
     source_out, dest_out, made = moved
-    return json.loads(source_out), None if dest_out is None else json.loads(dest_out), made
+    return json.loads(source_out), None if dest_out is None else json.loads(dest_out), json.loads(made)
 
 
 def first_plannable_day(week_start: str, today: date | None = None) -> int:
@@ -204,8 +210,7 @@ def first_plannable_day(week_start: str, today: date | None = None) -> int:
 def due_day_in_week(due: str | None, week_start: str) -> int | None:
     if not due:
         return None
-    day = flexweek_engine.calendar_due_day(due, week_start)
-    return None if day is None else int(day)
+    return int(flexweek_engine.calendar_due_day(due, week_start))
 
 
 def days_through(due_day: int | None, first_day: int = 0) -> list[int]:
@@ -238,16 +243,12 @@ NOT_TODAY = object()
 def placement_on(block: dict, day: int, trace: dict | None) -> str | None | object:
     """Where this block sits on this day: a time, None if it has none, or NOT_TODAY if it is not on
     this day at all."""
-    raw = str(
+    found = json.loads(
         flexweek_engine.calendar_placement(
-            json.dumps(block), day, None if trace is None else json.dumps(trace)
+            json.dumps(block), json.dumps(day), None if trace is None else json.dumps(trace)
         )
     )
-    if raw == "not_today":
-        return NOT_TODAY
-    if raw == "none":
-        return None
-    return raw.removeprefix("time:")
+    return NOT_TODAY if found.get("not_today") else found["start"]
 
 
 def agenda_for(
@@ -307,13 +308,14 @@ def span_problem(
     """Why a block cannot go at this time, in words, or None. Landing on another block is allowed, as
     in Daily Scheduler: the two sit side by side. What cannot stand is time FlexWeek does not plan in,
     and homework that would end after it is due."""
-    due_day, due_minute = (None, None) if due is None else due
-    return flexweek_engine.calendar_span_problem(day, start_min, end_min, due_day, due_minute)
+    return flexweek_engine.calendar_span_problem(day, start_min, end_min, json.dumps(due), type(due).__name__)
 
 
 def span_clash(blocks: list[dict], block_id: str, day: int, start_min: int, end_min: int) -> str | None:
     """The name of a block this time would sit beside, for the words that go with a drop."""
-    return flexweek_engine.calendar_span_clash(json.dumps(blocks), block_id, day, start_min, end_min)
+    return flexweek_engine.calendar_span_clash(
+        json.dumps(blocks), json.dumps(block_id), json.dumps(day), start_min, end_min
+    )
 
 
 def category_icon(category: str | None) -> str | None:
