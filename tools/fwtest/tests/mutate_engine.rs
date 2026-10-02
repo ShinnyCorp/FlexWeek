@@ -349,3 +349,97 @@ else:
     );
     let _ = fs::remove_dir_all(home);
 }
+
+fn write_default_maturin(repo: &Path, module_source: &str) {
+    write_repo(
+        repo,
+        r#"[{"name":"n becomes two","file":"engine/rule.rs","old":"pub const N: i32 = 1;\n","new":"pub const N: i32 = 2;\n","test":"toy/test_built.py::test_value"}]"#,
+    );
+    let bin = repo.join(".venv/bin");
+    fs::create_dir_all(&bin).unwrap();
+    let maturin = bin.join("maturin");
+    fs::write(
+        &maturin,
+        r#"#!/usr/bin/env python3
+import os, pathlib, re, sys
+log = pathlib.Path(os.environ["BUILD_LOG"])
+with log.open("a") as handle:
+    handle.write(" ".join(sys.argv) + "\n")
+text = pathlib.Path("engine/rule.rs").read_text()
+value = re.search(r"N: i32 = \(?(\d+)\)?", text).group(1)
+pathlib.Path("toy/built.py").write_text(f"VALUE = {value}\n")
+"#,
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&maturin).unwrap().permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        permissions.set_mode(0o755);
+    }
+    fs::set_permissions(&maturin, permissions).unwrap();
+    fs::create_dir_all(repo.join("fake")).unwrap();
+    fs::write(repo.join("fake/flexweek_engine.py"), module_source).unwrap();
+}
+
+fn builds_with_default_command(module_source: &str) -> (String, String, String) {
+    let home = scratch();
+    let repo = home.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    git_init(&repo);
+    write_default_maturin(&repo, module_source);
+    let log = home.join("builds.log");
+    let output = fwtest(&home, &repo)
+        .env("BUILD_LOG", &log)
+        .env("PYTHONPATH", repo.join("fake"))
+        .args(["mutate", "mutations.json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(
+        output.status.success(),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    let recorded = fs::read_to_string(&log).unwrap_or_default();
+    let _ = fs::remove_dir_all(&home);
+    (recorded, stdout, stderr)
+}
+
+#[test]
+fn a_module_with_audit_is_rebuilt_with_audit() {
+    let (recorded, stdout, stderr) =
+        builds_with_default_command("def panic_probe():\n    return None\n");
+    let lines: Vec<&str> = recorded.lines().collect();
+    assert_eq!(lines.len(), 2, "{recorded}");
+    assert!(lines[0].contains("--features audit"), "{recorded}");
+    assert!(lines[1].contains("--features audit"), "{recorded}");
+    assert!(stdout.contains("RED"), "{stdout}");
+    assert!(
+        stderr.contains("installed engine module has the audit functions"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn a_module_without_audit_is_left_without_it() {
+    let (recorded, _stdout, stderr) = builds_with_default_command("VALUE = 1\n");
+    let lines: Vec<&str> = recorded.lines().collect();
+    assert_eq!(lines.len(), 2, "{recorded}");
+    assert!(lines[0].contains("--features audit"), "{recorded}");
+    assert!(
+        !lines[1].contains("audit"),
+        "clean rebuild changed the feature set: {recorded}"
+    );
+    assert!(stderr.contains("has no audit functions"), "{stderr}");
+}
+
+#[test]
+fn an_unreadable_module_keeps_the_audit_default() {
+    let (recorded, _stdout, stderr) = builds_with_default_command("raise RuntimeError('unread')\n");
+    let lines: Vec<&str> = recorded.lines().collect();
+    assert_eq!(lines.len(), 2, "{recorded}");
+    assert!(lines[0].contains("--features audit"), "{recorded}");
+    assert!(lines[1].contains("--features audit"), "{recorded}");
+    assert!(stderr.contains("could not read"), "{stderr}");
+}

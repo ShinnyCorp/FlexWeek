@@ -56,7 +56,7 @@ pub fn run(
             return 2;
         }
     };
-    let build = match rebuild::resolve(&checkout, engine_build, no_engine_rebuild) {
+    let mut build = match rebuild::resolve(&checkout, engine_build, no_engine_rebuild) {
         Ok(build) => build,
         Err(message) => {
             eprintln!("{message}");
@@ -85,6 +85,9 @@ pub fn run(
     unsafe {
         std::env::set_var("PYTHONDONTWRITEBYTECODE", "1");
         std::env::set_var("QT_QPA_PLATFORM", "offscreen");
+    }
+    if build.match_installed_audit && specs_rebuild_engine(&files, case_name) {
+        match_clean_rebuild_to_installed_module(&session, &python, &checkout, &mut build);
     }
     let job = Job {
         session: &session,
@@ -379,7 +382,8 @@ enum Rebuild {
 }
 
 fn rebuild_mutated(job: &Job<'_>, case: &Case) -> Rebuild {
-    if let Err(error) = edits::mark_engine_rebuild(job.root, job.checkout, &job.build.command) {
+    if let Err(error) = edits::mark_engine_rebuild(job.root, job.checkout, &job.build.clean_command)
+    {
         return Rebuild::Blocked(format!("could not record the engine rebuild: {error}"));
     }
     let command = rebuild::with_features(&job.build.command, &case.features);
@@ -411,6 +415,65 @@ fn join_detail(failing: &str, note: &str) -> String {
         (false, true) => failing.to_string(),
         (true, false) => note.to_string(),
         (false, false) => format!("{failing} {note}"),
+    }
+}
+
+fn specs_rebuild_engine(files: &[PathBuf], case_name: Option<&str>) -> bool {
+    for spec in files {
+        let Ok(text) = fs::read_to_string(spec) else {
+            continue;
+        };
+        let Ok(cases) = serde_json::from_str::<Vec<Case>>(&text) else {
+            continue;
+        };
+        for case in cases {
+            if case_name.is_some_and(|wanted| wanted != case.name) {
+                continue;
+            }
+            if is_engine_source(&case.file) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn match_clean_rebuild_to_installed_module(
+    session: &Session,
+    python: &Path,
+    checkout: &Path,
+    build: &mut EngineBuild,
+) {
+    let command = vec![
+        python.to_string_lossy().into_owned(),
+        "-c".to_string(),
+        rebuild::AUDIT_PROBE.to_string(),
+    ];
+    let audit = match session.run_logged_in(&command, Some(60), checkout) {
+        Ok(ran) => {
+            let output = fs::read_to_string(&ran.log).unwrap_or_default();
+            rebuild::classify_audit_probe(ran.code, &output)
+        }
+        Err(error) => {
+            eprintln!("could not read the installed engine module: {error}");
+            rebuild::InstalledAudit::Unknown
+        }
+    };
+    match audit {
+        rebuild::InstalledAudit::Present => {
+            eprintln!("installed engine module has the audit functions");
+        }
+        rebuild::InstalledAudit::Absent => {
+            build.clean_command = rebuild::without_audit(&build.command);
+            eprintln!(
+                "installed engine module has no audit functions; the clean rebuild will match that"
+            );
+        }
+        rebuild::InstalledAudit::Unknown => {
+            eprintln!(
+                "could not read the installed engine module; the clean rebuild keeps --features audit"
+            );
+        }
     }
 }
 

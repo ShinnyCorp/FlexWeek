@@ -128,7 +128,7 @@ the backup and the record deleted after the case's test finishes, whatever the o
 ```json
 {
   "checkout": "/path/to/checkout",
-  "command": [".venv/bin/maturin", "develop", "--release", "--manifest-path", "engine/py/Cargo.toml"]
+  "command": [".venv/bin/maturin", "develop", "--release", "--manifest-path", "engine/py/Cargo.toml", "--features", "audit"]
 }
 ```
 
@@ -169,15 +169,20 @@ For each such case `fwtest`:
 
 1. Saves the edit record and writes the mutation, the same way it does for Python.
 2. Writes `edits/engine-module.json` with the base install command, before the build.
-3. Runs that command with the checkout as its working directory. The case's `features` are
-   appended as one `--features` argument. The default command is
-   `<checkout>/.venv/bin/maturin develop --release --manifest-path engine/py/Cargo.toml`.
-   It does not pass `--features audit`.
+3. Runs that command with the checkout as its working directory. The case's `features` join
+   the command's `--features` list. The default command is
+   `<checkout>/.venv/bin/maturin develop --release --manifest-path engine/py/Cargo.toml --features audit`.
+   Before the first mutated build, `fwtest` asks the checkout's Python whether
+   `flexweek_engine` has `panic_probe`. When it does not, the command stored for the clean
+   rebuild omits `--features audit`, so the checkout is left as it was found. When the import
+   cannot be read, the clean rebuild keeps `--features audit`. A command given with
+   `--engine-build` or `FWTEST_ENGINE_BUILD` is used as given and is not probed.
 4. Runs the case's pytest. A case that built prints `built in Ns` on its line.
 5. Restores the source from the saved copy.
-6. At the end of the spec, runs the base command again and deletes the mark. The same clean
+6. At the end of the spec, runs the clean command again and deletes the mark. The same clean
    rebuild runs before a later case whose file is not under `engine/` when the mark is still
-   there. Stderr prints `rebuilt clean engine module in Ns`.
+   there. Stderr prints `rebuilt clean engine module in Ns`. The mutated build still passes
+   `--features audit` when the default command is in use.
 
 A build that fails is `BUILD`. The detail starts with `did not build`. The case is not caught.
 When the case sets `"expect": "build"`, that same failure is `RED` and the detail still starts
@@ -200,9 +205,8 @@ Each engine case pays one release build of the mutated tree. A clean release bui
 the next case whose file is not under `engine/`, and again at the end of the spec when the mark
 is still set. Incremental builds reuse `engine/target`. Measured on 2026-10-02 in this checkout,
 with that directory already warm: a mutated build took 4.4s to 7.5s, and a clean rebuild took
-4.4s to 7.2s. A cold `engine/target` is slower than these times. The default build does not
-pass `--features audit`. The gate's audit tests call `panic_probe`, `int_text`, and `int_chars`.
-After a mutation run, install the module again with `--features audit` before `fwtest gate`.
+4.4s to 7.2s. A cold `engine/target` is slower than these times. The gate's audit tests call
+`panic_probe`, `int_text`, and `int_chars`, which the default build exports.
 
 ## How a job is contained
 
