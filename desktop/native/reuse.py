@@ -103,13 +103,7 @@ def held_in_place(block: dict) -> dict:
 def plan_start(week_start: str, now: datetime) -> tuple[int, int] | None:
     """The first time a plan may use in this week, as (day, minute): now, rounded up to the next
     quarter hour. None while the whole week is still ahead; a day past Sunday once it is over."""
-    point = flexweek_engine.reuse_plan_start(
-        week_start,
-        now.date().isoformat(),
-        now.hour * 60 + now.minute,
-        bool(now.second or now.microsecond),
-    )
-    return None if point is None else (int(point[0]), int(point[1]))
+    return flexweek_engine.reuse_plan_start(week_start, now)
 
 
 def solve_request(
@@ -128,14 +122,8 @@ def solve_request(
     `only` places just those sessions around everything else, for work whose time stopped working.
     `not_before` (from `plan_start`) keeps every placement at or after now.
     """
-    payload, targets = flexweek_engine.solve_request(
-        json.dumps(blocks),
-        json.dumps(assignments),
-        week_start,
-        bool(everything),
-        None if only is None else json.dumps(list(only)),
-        None if not_before is None else json.dumps(not_before),
-        isinstance(not_before, list),
+    payload, targets = flexweek_engine.reuse_solve_request(
+        json.dumps(blocks), json.dumps(assignments), week_start, everything, only, not_before
     )
     return json.loads(payload), set(json.loads(targets))
 
@@ -162,12 +150,8 @@ def settle_placements(
     Homework the student placed by hand, pinned, is theirs: nothing sitting on it takes its time, and
     it takes time from nothing, since the student chose to put the two side by side.
     """
-    kept, lost = flexweek_engine.settle_placements(
-        json.dumps(blocks),
-        json.dumps(assignments),
-        week_start,
-        json.dumps(list(keep) if isinstance(keep, set | frozenset) else keep),
-        isinstance(keep, set | frozenset),
+    kept, lost = flexweek_engine.reuse_settle_placements(
+        json.dumps(blocks), json.dumps(assignments), week_start, keep
     )
     return json.loads(kept), json.loads(lost)
 
@@ -226,16 +210,8 @@ def intervals_overlap(start_a: int, end_a: int, start_b: int, end_b: int) -> boo
     return bool(flexweek_engine.reuse_overlap(start_a, end_a, start_b, end_b))
 
 
-def _own_place(row: dict, rows: object) -> int | None:
-    """Where `row` sits in `rows`, which the engine cannot see by identity."""
-    if not isinstance(rows, list | tuple):
-        return None
-    return next((index for index, item in enumerate(rows) if item is row), None)
-
-
 def row_conflict(row: dict, rows: list[dict], existing: list[dict]) -> str | None:
-    skip = _own_place(row, rows)
-    title = flexweek_engine.reuse_row_conflict(json.dumps(row), json.dumps(rows), json.dumps(existing), skip)
+    title = flexweek_engine.reuse_row_conflict(row, rows, existing)
     return None if title is None else json.loads(title)
 
 
@@ -271,10 +247,7 @@ def capacity_problem(existing_count: int, added_count: int, label: str) -> str:
 
 
 def preview_conflict_message(row: dict, rows: list[dict], existing: list[dict]) -> str:
-    skip = _own_place(row, rows)
-    return json.loads(
-        flexweek_engine.reuse_preview_message(json.dumps(row), json.dumps(rows), json.dumps(existing), skip)
-    )
+    return json.loads(flexweek_engine.reuse_preview_message(row, rows, existing))
 
 
 def routine_source_blocks(blocks: list[dict]) -> list[dict]:
@@ -327,9 +300,7 @@ def running_late_refusal(
     conflict: bool,
     block_count: int,
 ) -> str | None:
-    return flexweek_engine.reuse_late_refusal(
-        week_start, now.date().isoformat(), dirty, conflict, block_count
-    )
+    return flexweek_engine.reuse_late_refusal(week_start, now, dirty, conflict, block_count)
 
 
 def late_locked_line(block: dict, moved: int) -> str:
@@ -380,13 +351,5 @@ def planner_title(session: object, view: str, *, short: bool = False, selected_d
     and no statement of which week you were on at all.
     """
     return str(
-        flexweek_engine.reuse_planner_title(
-            session.week_start,
-            getattr(session, "selected_day", None),
-            getattr(session, "selected_month", None),
-            view,
-            short,
-            selected_day,
-            lambda: datetime.fromtimestamp(session.now_ms() / 1000).date().isoformat(),
-        )
+        flexweek_engine.reuse_planner_title(session, view, short, selected_day, datetime.fromtimestamp)
     )

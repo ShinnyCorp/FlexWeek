@@ -5,6 +5,7 @@ use serde_json::{Map, Value, json};
 use crate::desk::pyops::{PyDict, eq, get, iterate, or_default};
 use crate::desk::pyval::subscript;
 use crate::error::EngineResult;
+use crate::stored::truthy;
 
 pub const HISTORY_LIMIT: usize = 50;
 
@@ -42,6 +43,8 @@ pub fn capture_step(
     after_assignments: &Value,
     changed_ids: &[String],
 ) -> EngineResult<Option<Value>> {
+    let mut changed_ids = changed_ids.to_vec();
+    changed_ids.sort();
     let mut weeks = Vec::new();
     let mut assignments = Vec::new();
     if !same_value(before_blocks, after_blocks) {
@@ -51,7 +54,7 @@ pub fn capture_step(
             "after": after_blocks,
         }));
     }
-    for item_id in changed_ids {
+    for item_id in &changed_ids {
         let prior = get(before_assignments, item_id)?
             .cloned()
             .unwrap_or(Value::Null);
@@ -86,7 +89,7 @@ fn merged(earlier: &Value, step: &Value, list: &str, key: &str) -> EngineResult<
         let name = subscript(&entry, key)?.clone();
         let known = table.get(&name)?.cloned();
         let value = match known {
-            Some(known) if crate::stored::truthy(Some(&known)) => {
+            Some(known) if truthy(Some(&known)) => {
                 let mut combined = crate::desk::pyops::py_dict(&entry)?;
                 combined.insert("before".into(), subscript(&known, "before")?.clone());
                 Value::Object(combined)
@@ -108,6 +111,15 @@ pub fn joined_step(earlier: &Value, step: &Value) -> EngineResult<Value> {
     Ok(Value::Object(out))
 }
 
+/// What `join_step` does with the newest step: fold `step` into it, or `None` when it is stale and
+/// `step` is pushed after it instead.
+pub fn join_into(newest: &Value, step: &Value) -> EngineResult<Option<Value>> {
+    if truthy(get(newest, "stale")?) {
+        return Ok(None);
+    }
+    joined_step(newest, step).map(Some)
+}
+
 /// Whether `step` holds a week of `week_start`, which a reload of that week makes stale.
 pub fn touches(step: &Value, week_start: &Value) -> EngineResult<bool> {
     let weeks = or_default(get(step, "weeks")?, json!([]));
@@ -117,4 +129,62 @@ pub fn touches(step: &Value, week_start: &Value) -> EngineResult<bool> {
         }
     }
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn step(week_start: &str, before: Value, after: Value, stale: bool) -> Value {
+        json!({
+            "label": week_start,
+            "weeks": [{"week_start": week_start, "before": before, "after": after}],
+            "assignments": [],
+            "stale": stale,
+        })
+    }
+
+    #[test]
+    fn assignments_are_listed_in_sorted_id_order() {
+        let before = json!({"b": {"title": "old"}, "a": {"title": "old"}});
+        let after = json!({"b": {"title": "new"}, "a": {"title": "new"}});
+        let ids = ["b".to_string(), "a".to_string()];
+        let made = capture_step("x", "w", &json!([]), &json!([]), &before, &after, &ids)
+            .unwrap()
+            .unwrap();
+        let listed: Vec<&str> = made["assignments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(listed, ["a", "b"]);
+    }
+
+    #[test]
+    fn a_step_folds_into_the_newest_and_keeps_the_earlier_before() {
+        let newest = step("w1", json!([1]), json!([2]), false);
+        let later = step("w1", json!([2]), json!([3]), false);
+        let joined = join_into(&newest, &later).unwrap().unwrap();
+        assert_eq!(joined["label"], "w1");
+        assert_eq!(
+            joined["weeks"],
+            json!([{"week_start": "w1", "before": [1], "after": [3]}])
+        );
+    }
+
+    #[test]
+    fn a_stale_newest_step_is_not_folded_into() {
+        let newest = step("w1", json!([1]), json!([2]), true);
+        assert_eq!(
+            join_into(&newest, &step("w1", json!([2]), json!([3]), false)).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_newest_step_that_is_not_a_dict_has_no_get() {
+        let error = join_into(&json!(5), &json!({})).unwrap_err();
+        assert_eq!(error.message, "'int' object has no attribute 'get'");
+    }
 }

@@ -5,10 +5,10 @@ use ::flexweek_engine::desk::weekview::{self, Week};
 use ::flexweek_engine::desk::{history, pomodoro, remind, tokens, update, weekmodel};
 use std::cell::RefCell;
 
-use ::flexweek_engine::{EngineError, EngineResult};
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use ::flexweek_engine::{EngineError, EngineResult, ErrorKind};
+use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyFloat, PyInt, PySet, PySetMethods};
+use pyo3::types::{PyAnyMethods, PyDict, PyFloat, PyFrozenSet, PyInt, PyList, PySet, PySetMethods};
 use serde_json::{Map, Value};
 
 use crate::{guard, raise};
@@ -50,11 +50,15 @@ fn history_capture_step(
     after_blocks: &str,
     before_assignments: &str,
     after_assignments: &str,
-    changed_ids: Vec<String>,
+    changed_ids: &Bound<'_, PyAny>,
 ) -> PyResult<Option<String>> {
     let (before_blocks, after_blocks) = (parse(before_blocks)?, parse(after_blocks)?);
     let (before_assignments, after_assignments) =
         (parse(before_assignments)?, parse(after_assignments)?);
+    let changed_ids = changed_ids
+        .try_iter()?
+        .map(|item| item?.extract::<String>())
+        .collect::<PyResult<Vec<String>>>()?;
     guard(|| {
         let step = history::capture_step(
             label,
@@ -70,21 +74,76 @@ fn history_capture_step(
     })
 }
 
-#[pyfunction]
-fn history_over_limit(length: usize) -> PyResult<bool> {
-    guard(|| Ok(history::over_limit(length)))
+/// `json.dumps(value)`, as the Python wrappers wrote it, so a value JSON cannot hold fails alike.
+pub(crate) fn dumps_of(value: &Bound<'_, PyAny>) -> PyResult<String> {
+    value
+        .py()
+        .import("json")?
+        .call_method1("dumps", (value,))?
+        .extract()
 }
 
-#[pyfunction]
-fn history_joined(earlier: &str, step: &str) -> PyResult<String> {
-    let (earlier, step) = (parse(earlier)?, parse(step)?);
-    guard(|| Ok(dump(&history::joined_step(&earlier, &step).map_err(raise)?)))
+/// `json.loads(text)`: a value of the engine's, as the Python wrappers read it.
+pub(crate) fn loads_of<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny>> {
+    py.import("json")?.call_method1("loads", (dump(value),))
 }
 
+/// What a set argument holds, written as the Python wrappers wrote it: a set or frozenset as the list
+/// of its members, anything else as it is, and whether it was a set.
+pub(crate) fn members_of(held: &Bound<'_, PyAny>) -> PyResult<(String, bool)> {
+    if held.is_instance_of::<PySet>() || held.is_instance_of::<PyFrozenSet>() {
+        let members = held.py().get_type::<PyList>().call1((held,))?;
+        return Ok((dumps_of(&members)?, true));
+    }
+    Ok((dumps_of(held)?, false))
+}
+
+fn push_onto(stack: &Bound<'_, PyAny>, step: &Bound<'_, PyAny>) -> PyResult<()> {
+    stack.call_method1("append", (step,))?;
+    if history::over_limit(stack.len()?) {
+        stack.del_item(0)?;
+    }
+    Ok(())
+}
+
+/// Puts `step` on the newest end of `stack`, which is the caller's own list, and drops the oldest
+/// step when that leaves it over the limit.
 #[pyfunction]
-fn history_touches(step: &str, week_start: &str) -> PyResult<bool> {
-    let (step, week_start) = (parse(step)?, parse(week_start)?);
-    guard(|| history::touches(&step, &week_start).map_err(raise))
+fn history_push(stack: &Bound<'_, PyAny>, step: &Bound<'_, PyAny>) -> PyResult<()> {
+    guard(|| push_onto(stack, step))
+}
+
+/// Folds `step` into the newest step of `stack`, or pushes it when there is none or that one is
+/// stale. `stack` is changed in place.
+#[pyfunction]
+fn history_join(stack: &Bound<'_, PyAny>, step: &Bound<'_, PyAny>) -> PyResult<()> {
+    guard(|| {
+        if !stack.is_truthy()? {
+            return push_onto(stack, step);
+        }
+        let newest = stack.get_item(-1)?;
+        let (earlier, step_value) = (parse(&dumps_of(&newest)?)?, parse(&dumps_of(step)?)?);
+        match history::join_into(&earlier, &step_value).map_err(raise)? {
+            Some(joined) => stack.set_item(-1, loads_of(stack.py(), &joined)?),
+            None => push_onto(stack, step),
+        }
+    })
+}
+
+/// Marks every step of `steps` that holds a week of `week_start` as stale, in place.
+#[pyfunction]
+fn history_mark_stale(steps: &Bound<'_, PyAny>, week_start: &Bound<'_, PyAny>) -> PyResult<()> {
+    guard(|| {
+        for step in steps.try_iter()? {
+            let step = step?;
+            let held = parse(&dumps_of(&step)?)?;
+            let week = parse(&dumps_of(week_start)?)?;
+            if history::touches(&held, &week).map_err(raise)? {
+                step.set_item("stale", true)?;
+            }
+        }
+        Ok(())
+    })
 }
 
 #[pyfunction]
@@ -474,10 +533,11 @@ fn remind_due(
     today_iso: &str,
     now_min: i64,
     lead_min: i64,
-    fired: &str,
-    fired_is_set: bool,
+    fired: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
-    let (blocks, trace, fired) = (parse(blocks)?, parse(trace)?, parse(fired)?);
+    let (blocks, trace) = (parse(blocks)?, parse(trace)?);
+    let (fired, fired_is_set) = members_of(fired)?;
+    let fired = parse(&fired)?;
     guard(|| {
         let rows = remind::due_reminders(
             &blocks,
@@ -499,10 +559,11 @@ fn remind_songs(
     trace: &str,
     today_iso: &str,
     now_min: i64,
-    played: &str,
-    played_is_set: bool,
+    played: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
-    let (blocks, trace, played) = (parse(blocks)?, parse(trace)?, parse(played)?);
+    let (blocks, trace) = (parse(blocks)?, parse(trace)?);
+    let (played, played_is_set) = members_of(played)?;
+    let played = parse(&played)?;
     guard(|| {
         let rows = remind::due_songs(&blocks, &trace, today_iso, now_min, &played, played_is_set)
             .map_err(raise)?;
@@ -510,16 +571,28 @@ fn remind_songs(
     })
 }
 
+/// `moment_at(seconds)` and `moment_of(year, month, day)` are the caller's own local-clock
+/// constructors (`datetime.fromtimestamp` and `datetime`); a Python error from them is raised as it
+/// came.
 #[pyfunction]
 fn remind_clock_parts(
     now_ms: i64,
-    year: i32,
-    month: u32,
-    day: u32,
-    hour: i64,
-    minute: i64,
-    midnight_ms: i64,
+    moment_at: &Bound<'_, PyAny>,
+    moment_of: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
+    let moment = moment_at.call1((remind::seconds_of(now_ms),))?;
+    let field = |name: &str| moment.getattr(name);
+    let (year, month, day) = (
+        field("year")?.extract::<i32>()?,
+        field("month")?.extract::<u32>()?,
+        field("day")?.extract::<u32>()?,
+    );
+    let (hour, minute) = (
+        field("hour")?.extract::<i64>()?,
+        field("minute")?.extract::<i64>()?,
+    );
+    let midnight = moment_of.call1((year, month, day))?;
+    let midnight_ms = remind::millis_of(midnight.call_method0("timestamp")?.extract::<f64>()?);
     guard(|| {
         let parts = remind::clock_parts(now_ms, (year, month, day, hour, minute), midnight_ms)
             .map_err(raise)?;
@@ -540,9 +613,10 @@ fn remind_todays_starts(blocks: &str, trace: &str, today_iso: &str) -> PyResult<
     })
 }
 
-/// `due_ms_of(hour, minute)` is the caller's own local-clock conversion; a Python error from it
-/// is raised as it came. `fired_set` is the caller's set when it is one, which gets the keys the
-/// engine marks, whether or not the call goes on to fail.
+/// `moment_of_day(today_iso)` is the caller's own date reader (`datetime.fromisoformat`); the local
+/// time of an alarm is read from it when one is needed, and a Python error from it is raised as it
+/// came. `fired` gets the keys the engine marks when it is a set, whether or not the call goes on to
+/// fail.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn remind_due_alarms(
@@ -551,22 +625,33 @@ fn remind_due_alarms(
     weekday: i64,
     now_ms: i64,
     last_check_ms: Option<i64>,
-    fired: &str,
-    fired_set: Option<&Bound<'_, PySet>>,
+    fired: &Bound<'_, PyAny>,
     snoozed: &str,
-    due_ms_of: &Bound<'_, PyAny>,
+    moment_of_day: &Bound<'_, PyAny>,
 ) -> PyResult<(String, String, i64)> {
-    let (alarms, fired, snoozed) = (parse(alarms)?, parse(fired)?, parse(snoozed)?);
+    let fired_set = fired.cast::<PySet>().ok();
+    let is_set = fired_set.is_some();
+    let held_type = fired.get_type().name()?.to_string();
+    let (members, _) = members_of(fired)?;
+    let (alarms, fired, snoozed) = (parse(alarms)?, parse(&members)?, parse(snoozed)?);
     let mut added: Vec<String> = Vec::new();
     let failure: RefCell<Option<PyErr>> = RefCell::new(None);
     let mut convert = |hour: i64, minute: i64| -> EngineResult<i64> {
-        due_ms_of
-            .call1((hour, minute))
-            .and_then(|value| value.extract::<i64>())
-            .map_err(|error| {
-                *failure.borrow_mut() = Some(error);
-                EngineError::value("local time")
-            })
+        let read = || -> PyResult<i64> {
+            let kwargs = PyDict::new(moment_of_day.py());
+            kwargs.set_item("hour", hour)?;
+            kwargs.set_item("minute", minute)?;
+            kwargs.set_item("second", 0)?;
+            kwargs.set_item("microsecond", 0)?;
+            let day = moment_of_day.call1((today_iso,))?;
+            let due_at = day.call_method("replace", (), Some(&kwargs))?;
+            let seconds = due_at.call_method0("timestamp")?.extract::<f64>()?;
+            Ok(remind::millis_of(seconds))
+        };
+        read().map_err(|error| {
+            *failure.borrow_mut() = Some(error);
+            EngineError::value("local time")
+        })
     };
     let outcome = guard(|| {
         Ok(remind::due_alarms(
@@ -590,7 +675,16 @@ fn remind_due_alarms(
     if let Some(error) = failure.into_inner() {
         return Err(error);
     }
-    let (queued, remaining, last) = outcome.map_err(raise)?;
+    let (queued, remaining, last) = outcome.map_err(|mut error| {
+        // The core saw a list; a frozenset or tuple names its own type in Python's message.
+        if !is_set
+            && error.kind == ErrorKind::Attribute
+            && error.message.ends_with("attribute 'add'")
+        {
+            error.message = format!("'{held_type}' object has no attribute 'add'");
+        }
+        raise(error)
+    })?;
     let remaining: Map<String, Value> = remaining
         .into_iter()
         .filter_map(|(id, due)| id.as_str().map(|name| (name.to_string(), due)))
@@ -605,6 +699,16 @@ fn remind_due_alarms(
 #[pyfunction]
 fn remind_snooze_until(now_ms: i64) -> PyResult<i64> {
     guard(|| Ok(remind::snooze_until(now_ms)))
+}
+
+#[pyfunction]
+fn update_parse_version(value: &str) -> PyResult<Option<Vec<i64>>> {
+    guard(|| Ok(update::parse_version(value)))
+}
+
+#[pyfunction]
+fn update_is_newer(candidate: &str, current: &str) -> PyResult<bool> {
+    guard(|| Ok(update::is_newer(candidate, current)))
 }
 
 #[pyfunction]
@@ -626,13 +730,26 @@ fn update_install_kind(
 }
 
 #[pyfunction]
-fn update_asset_name(kind: &str) -> PyResult<Option<String>> {
-    guard(|| Ok(update::asset_name(kind).map(str::to_string)))
+fn update_asset_name(kind: &str) -> PyResult<String> {
+    guard(|| {
+        update::asset_name(kind)
+            .map(str::to_string)
+            .ok_or_else(|| PyKeyError::new_err((kind.to_string(),)))
+    })
 }
 
+/// `release` is whatever the network handed back; only a dict is a release, anything else is
+/// none.
 #[pyfunction]
-fn update_available(release: &str, kind: &str, current: &str) -> PyResult<Option<String>> {
-    let release = parse(release)?;
+fn update_available(
+    release: &Bound<'_, PyAny>,
+    kind: &str,
+    current: &str,
+) -> PyResult<Option<String>> {
+    if !release.is_instance_of::<PyDict>() {
+        return Ok(None);
+    }
+    let release = parse(&dumps_of(release)?)?;
     guard(|| {
         let found = update::available(&release, kind, current).map_err(raise)?;
         Ok(found.map(|item| {
@@ -681,9 +798,9 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         module,
         history_same_value,
         history_capture_step,
-        history_over_limit,
-        history_joined,
-        history_touches,
+        history_push,
+        history_join,
+        history_mark_stale,
         week_set_clock_24h,
         week_minute_of,
         week_clock_text,
@@ -738,10 +855,97 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         remind_due,
         remind_songs,
         remind_snooze_until,
+        update_parse_version,
+        update_is_newer,
         update_install_kind,
         update_asset_name,
         update_available,
         update_verified,
+        week_handle_of,
+        week_set_clock,
     );
     Ok(())
+}
+
+/// `value` as text, refused as PyO3 refuses an argument of the wrong kind, for what the Python
+/// wrapper once passed as an argument and the binding now reads off an object.
+pub(crate) fn text_arg(value: &Bound<'_, PyAny>, name: &str) -> PyResult<String> {
+    value.extract::<String>().map_err(|error| {
+        if error.is_instance_of::<PyTypeError>(value.py()) {
+            PyTypeError::new_err(format!("argument '{name}': {error}"))
+        } else {
+            error
+        }
+    })
+}
+
+/// `text_arg`, with none allowed.
+pub(crate) fn opt_text_arg(value: &Bound<'_, PyAny>, name: &str) -> PyResult<Option<String>> {
+    if value.is_none() {
+        return Ok(None);
+    }
+    text_arg(value, name).map(Some)
+}
+
+/// `getattr(object, name, None)`.
+pub(crate) fn attr_or_none<'py>(
+    object: &Bound<'py, PyAny>,
+    name: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    match object.getattr(name) {
+        Err(error) if error.is_instance_of::<pyo3::exceptions::PyAttributeError>(object.py()) => {
+            Ok(object.py().None().into_bound(object.py()))
+        }
+        found => found,
+    }
+}
+
+/// The week a `WeekModel` holds, read once and kept on the model when its tuples cannot change, so
+/// the methods of a week on screen do not read it again. A model whose occurrences or waiting are
+/// lists is read each time, since they can.
+#[pyfunction]
+fn week_handle_of(model: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+    guard(|| {
+        let py = model.py();
+        let kept = model.getattr("__dict__")?;
+        let held = kept.call_method1("get", ("_engine_week",))?;
+        if !held.is_none() {
+            return Ok(held.unbind());
+        }
+        let vars = py.import("builtins")?.getattr("vars")?;
+        let week_start = model.getattr("week_start")?;
+        let occurrences = model.getattr("occurrences")?;
+        let occupied = PyList::empty(py);
+        for item in occurrences.try_iter()? {
+            occupied.append(vars.call1((item?,))?)?;
+        }
+        let waiting = model.getattr("waiting")?;
+        let queued = PyList::empty(py);
+        for item in waiting.try_iter()? {
+            queued.append(vars.call1((item?,))?)?;
+        }
+        let body = PyDict::new(py);
+        body.set_item("week_start", week_start)?;
+        body.set_item("occurrences", occupied)?;
+        body.set_item("waiting", queued)?;
+        let handle = Py::new(py, WeekHandle::new(dumps_of(&body)?)?)?;
+        if occurrences.is_instance_of::<pyo3::types::PyTuple>()
+            && waiting.is_instance_of::<pyo3::types::PyTuple>()
+        {
+            kept.set_item("_engine_week", &handle)?;
+        }
+        Ok(handle.into_any())
+    })
+}
+
+/// Records what the window last passed for the 24-hour clock in `state` (the caller's own record,
+/// compared as the object it was, not its truth), tells the engine, and says whether it changed.
+#[pyfunction]
+fn week_set_clock(on: &Bound<'_, PyAny>, state: &Bound<'_, PyAny>) -> PyResult<bool> {
+    guard(|| {
+        let changed = state.get_item("24h")?.ne(on)?;
+        state.set_item("24h", on)?;
+        weekmodel::set_clock_24h(on.is_truthy()?);
+        Ok(changed)
+    })
 }

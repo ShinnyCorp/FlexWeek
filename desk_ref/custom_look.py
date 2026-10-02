@@ -13,6 +13,7 @@ import json
 from dataclasses import dataclass
 
 from desk_ref.calendar import CATEGORIES
+from desk_ref.look import effective_look, known_pack, sanitize_custom, sanitize_look
 from desk_ref.tokens import fit_lightness, luminance, mix
 from desktop.native.look import (
     AA_GRAPHIC,
@@ -26,11 +27,7 @@ from desktop.native.look import (
     block_paint,
     category_paint,
     contrast,
-    effective_look,
-    known_pack,
     resolved_palette,
-    sanitize_custom,
-    sanitize_look,
 )
 
 # Shown when a student has not named the look yet.

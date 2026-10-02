@@ -344,3 +344,39 @@ pub fn due_alarms(
 pub fn snooze_until(now_ms: i64) -> i64 {
     now_ms + ALARM_SNOOZE_MS
 }
+
+/// `now_ms / 1000.0`: the seconds the local clock is asked about.
+pub fn seconds_of(now_ms: i64) -> f64 {
+    now_ms as f64 / 1000.0
+}
+
+/// `millis / 1000` for milliseconds a caller reports as a number of either kind.
+pub fn seconds_of_millis(millis: f64) -> f64 {
+    millis / 1000.0
+}
+
+/// `int(seconds * 1000)`: whole milliseconds of a timestamp, cut towards zero.
+pub fn millis_of(seconds: f64) -> i64 {
+    (seconds * 1000.0).trunc() as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn milliseconds_are_asked_of_the_clock_as_seconds() {
+        assert_eq!(seconds_of(1_790_000_000_000), 1_790_000_000.0);
+        assert_eq!(seconds_of(1_500), 1.5);
+        assert_eq!(seconds_of(-1_500), -1.5);
+        assert_eq!(seconds_of_millis(1_500.5), 1.5005);
+    }
+
+    #[test]
+    fn a_timestamp_is_cut_to_whole_milliseconds_towards_zero() {
+        assert_eq!(millis_of(1_790_000_000.0), 1_790_000_000_000);
+        assert_eq!(millis_of(1.9999), 1_999);
+        assert_eq!(millis_of(-1.9999), -1_999);
+        assert_eq!(millis_of(-0.0004), 0);
+    }
+}

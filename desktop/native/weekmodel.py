@@ -13,6 +13,7 @@ import json
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
+from weakref import WeakKeyDictionary
 
 import flexweek_engine  # type: ignore[import-untyped]
 
@@ -41,10 +42,7 @@ _clock = {"24h": True}
 
 def set_clock_24h(on: bool) -> bool:
     """Whether this changed the clock, so the caller knows to redraw."""
-    changed = _clock["24h"] != on
-    _clock["24h"] = on
-    flexweek_engine.week_set_clock_24h(bool(on))
-    return changed
+    return flexweek_engine.week_set_clock(on, _clock)
 
 
 def clock_text(minute: int) -> str:
@@ -156,6 +154,11 @@ class DayQueue:
     queue: tuple[Occurrence, ...]
 
 
+_WEEK_HANDLES: WeakKeyDictionary[Any, Any] = WeakKeyDictionary()
+_ON_DAY_CACHE: WeakKeyDictionary[Any, dict[int, tuple[Any, ...]]] = WeakKeyDictionary()
+_LOAD_MIN_CACHE: WeakKeyDictionary[Any, dict[int, int]] = WeakKeyDictionary()
+
+
 @dataclass(frozen=True)
 class WeekModel:
     week_start: str
@@ -166,29 +169,41 @@ class WeekModel:
 
     def _engine(self) -> Any:
         """The week as the engine holds it, read once for a model whose tuples cannot change."""
-        held = self.__dict__.get("_engine_week")
-        if held is not None:
-            return held
-        held = flexweek_engine.WeekHandle(
-            json.dumps(
-                {
-                    "week_start": self.week_start,
-                    "occurrences": [vars(item) for item in self.occurrences],
-                    "waiting": [vars(item) for item in self.waiting],
-                }
-            )
-        )
-        if isinstance(self.occurrences, tuple) and isinstance(self.waiting, tuple):
-            object.__setattr__(self, "_engine_week", held)
-        return held
+        if not isinstance(self.occurrences, tuple) or not isinstance(self.waiting, tuple):
+            return flexweek_engine.week_handle_of(self)
+        found = _WEEK_HANDLES.get(self)
+        if found is None:
+            found = flexweek_engine.week_handle_of(self)
+            _WEEK_HANDLES[self] = found
+        return found
 
     def date_of(self, day: int) -> date:
         return date(*flexweek_engine.week_date_of(self.week_start, day))
 
     def on_day(self, day: int) -> tuple[Occurrence, ...]:
+        if isinstance(self.occurrences, tuple) and isinstance(self.waiting, tuple):
+            by_day = _ON_DAY_CACHE.get(self)
+            if by_day is None:
+                by_day = {}
+                _ON_DAY_CACHE[self] = by_day
+            found = by_day.get(day)
+            if found is None:
+                found = tuple(self.occurrences[at] for at in self._engine().on_day(day))
+                by_day[day] = found
+            return found
         return tuple(self.occurrences[at] for at in self._engine().on_day(day))
 
     def load_min(self, day: int) -> int:
+        if isinstance(self.occurrences, tuple) and isinstance(self.waiting, tuple):
+            by_day = _LOAD_MIN_CACHE.get(self)
+            if by_day is None:
+                by_day = {}
+                _LOAD_MIN_CACHE[self] = by_day
+            found = by_day.get(day)
+            if found is None:
+                found = int(self._engine().load_min(day))
+                by_day[day] = found
+            return found
         return int(self._engine().load_min(day))
 
     def open_work(self) -> tuple[Occurrence, ...]:
@@ -228,20 +243,29 @@ class WeekModel:
         )
 
 
+_BUILD_WEEK_CACHE: tuple[tuple[str, str, str, str], WeekModel] | None = None
+
+
 def build_week(
     week_start: str,
     blocks: list[dict],
     assignments: dict[str, dict] | None = None,
     trace: dict | None = None,
 ) -> WeekModel:
+    global _BUILD_WEEK_CACHE
+    key = (plain(week_start), plain(blocks), plain(assignments), plain(trace))
+    if _BUILD_WEEK_CACHE is not None and _BUILD_WEEK_CACHE[0] == key:
+        return _BUILD_WEEK_CACHE[1]
     raw = restore(
         json.loads(
-            flexweek_engine.week_build(plain(week_start), plain(blocks), plain(assignments), plain(trace))
+            flexweek_engine.week_build(key[0], key[1], key[2], key[3])
         )
     )
-    return WeekModel(
+    model = WeekModel(
         raw["week_start"],
         tuple(Occurrence(**item) for item in raw["occurrences"]),
         tuple(Waiting(**item) for item in raw["waiting"]),
         raw["focus_min"],
     )
+    _BUILD_WEEK_CACHE = (key, model)
+    return model

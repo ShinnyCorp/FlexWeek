@@ -487,6 +487,21 @@ pub fn due_day_in_week(due: &str, week_start: &str) -> EngineResult<i64> {
     Ok((due_day - monday).num_days())
 }
 
+/// `due_day_in_week` for a deadline that may be missing: no deadline, no day. A deadline that is
+/// not text is refused as the Python binding refused it.
+pub fn due_day_of(due: &Value, week_start: &str) -> EngineResult<Option<i64>> {
+    if !truthy(Some(due)) {
+        return Ok(None);
+    }
+    let Some(text) = due.as_str() else {
+        return Err(type_error(format!(
+            "argument 'due': '{}' object cannot be converted to 'PyString'",
+            type_name(due)
+        )));
+    };
+    due_day_in_week(text, week_start).map(Some)
+}
+
 pub fn month_for_view(iso_day: &str) -> String {
     let month: String = iso_day.chars().take(7).collect();
     if month.as_str() < FIRST_MONTH {
@@ -801,4 +816,49 @@ pub fn span_clash(
 
 pub fn category_icon(category: Option<&str>) -> Option<&'static str> {
     crate::desk::calendar::category_icon(category)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_deadline_is_counted_in_days_from_the_week_start() {
+        assert_eq!(
+            due_day_of(&json!("2026-09-24"), "2026-09-21").unwrap(),
+            Some(3)
+        );
+        assert_eq!(
+            due_day_of(&json!("2026-09-24T21:00"), "2026-09-21").unwrap(),
+            Some(3)
+        );
+        assert_eq!(
+            due_day_of(&json!("2026-09-14"), "2026-09-21").unwrap(),
+            Some(-7)
+        );
+    }
+
+    #[test]
+    fn no_deadline_is_no_day() {
+        for none in [
+            json!(null),
+            json!(""),
+            json!(0),
+            json!(false),
+            json!([]),
+            json!({}),
+        ] {
+            assert_eq!(due_day_of(&none, "not a date").unwrap(), None);
+        }
+    }
+
+    #[test]
+    fn a_deadline_that_is_not_text_is_refused() {
+        let error = due_day_of(&json!(7), "2026-09-21").unwrap_err();
+        assert_eq!(
+            error.message,
+            "argument 'due': 'int' object cannot be converted to 'PyString'"
+        );
+        assert!(due_day_of(&json!("x"), "2026-09-21").is_err());
+    }
 }

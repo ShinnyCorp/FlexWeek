@@ -362,7 +362,39 @@ mod sha256 {
 
 #[cfg(test)]
 mod tests {
-    use super::install_kind;
+    use super::{install_kind, is_newer, parse_version};
+
+    #[test]
+    fn parse_version_matches_desktop_tests() {
+        for value in ["0.14.0", "v0.14.0", "1.2.3", "0.13.0.1"] {
+            assert!(parse_version(value).is_some());
+        }
+        for value in [
+            "",
+            "v",
+            "1.2.3-rc1",
+            "latest",
+            "1.2.x",
+            "2026-09-20",
+            "1.2.3.4.5",
+        ] {
+            assert!(parse_version(value).is_none());
+        }
+    }
+
+    #[test]
+    fn is_newer_orders_by_number_not_text() {
+        assert!(is_newer("0.14.0", "0.13.0"));
+        assert!(is_newer("v0.14.0", "0.13.0"));
+        assert!(is_newer("0.13.1", "0.13.0"));
+        assert!(is_newer("1.0.0", "0.13.0"));
+        assert!(!is_newer("0.13.0", "0.13.0"));
+        assert!(!is_newer("0.12.9", "0.13.0"));
+        assert!(!is_newer("0.9.0", "0.13.0"));
+        assert!(!is_newer("0.2.0", "0.13.0"));
+        assert!(!is_newer("", "0.13.0"));
+        assert!(!is_newer("1.2.3-rc1", "0.13.0"));
+    }
 
     #[test]
     fn install_kind_ignores_the_process_environment() {

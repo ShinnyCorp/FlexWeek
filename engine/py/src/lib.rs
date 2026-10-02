@@ -30,16 +30,31 @@ pub(crate) fn raise(err: EngineError) -> PyErr {
         ErrorKind::Stop => PyStopIteration::new_err(err.message),
         ErrorKind::LookName => crate::desk::LookNameProblem::new_err(err.message),
         ErrorKind::KeyRepr => Python::attach(|py| {
-            let key = py
-                .import("ast")
-                .and_then(|module| module.getattr("literal_eval"))
-                .and_then(|function| function.call1((err.message.clone(),)));
+            let key = match slice_stop(&err.message) {
+                Some(stop) => py
+                    .import("builtins")
+                    .and_then(|module| module.getattr("slice"))
+                    .and_then(|function| function.call1((py.None(), stop, py.None()))),
+                None => py
+                    .import("ast")
+                    .and_then(|module| module.getattr("literal_eval"))
+                    .and_then(|function| function.call1((err.message.clone(),))),
+            };
             match key {
                 Ok(found) => PyKeyError::new_err((found.unbind(),)),
                 Err(_) => PyKeyError::new_err(err.message),
             }
         }),
     }
+}
+
+/// The stop of a `slice(None, stop, None)` repr: a slice is not a literal, so `literal_eval` cannot
+/// rebuild the key a dict raised `KeyError` for.
+fn slice_stop(repr: &str) -> Option<usize> {
+    repr.strip_prefix("slice(None, ")?
+        .strip_suffix(", None)")?
+        .parse()
+        .ok()
 }
 
 pub(crate) fn guard<T>(func: impl FnOnce() -> PyResult<T>) -> PyResult<T> {

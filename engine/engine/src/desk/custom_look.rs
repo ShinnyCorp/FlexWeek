@@ -8,9 +8,9 @@ use crate::casefold::casefold;
 use crate::desk::calendar::CATEGORIES;
 use crate::desk::pyops::{contains, eq, get, hashable, iterate, py_dict};
 use crate::desk::pyval::{subscript, type_error};
-use crate::desk::tokens::{contrast, fit_lightness, luminance, mix};
+use crate::desk::tokens::{TEXT_SCALE, contrast, fit_lightness, luminance, mix};
 use crate::error::{EngineError, EngineResult};
-use crate::stored::{Dict, attribute_error, py_str, type_name};
+use crate::stored::{Dict, attribute_error, nonfinite, py_str, type_name};
 use crate::time::{py_repr, py_space};
 
 pub const UNNAMED: &str = "My look";
@@ -871,6 +871,8 @@ pub fn export_look(custom: &Value) -> String {
 /// A look read from a file. `size` is the length of the text as Python counts it, and `raw` what
 /// `json.loads` made of it, or None when it could not be read.
 pub fn import_look(size: usize, raw: Option<&Value>) -> ImportedLook {
+    let raw = raw.map(readable);
+    let raw = raw.as_ref();
     let refused = |sentence: &str| ImportedLook {
         look: None,
         problems: vec![sentence.to_string()],
@@ -924,6 +926,153 @@ pub fn import_look(size: usize, raw: Option<&Value>) -> ImportedLook {
         look: custom,
         problems,
     }
+}
+
+/// `value` with each NaN and Infinity turned into an empty list: no look setting takes either, and
+/// a list is turned away, with the same sentence, wherever a number is.
+fn finite(value: &Value) -> Value {
+    if nonfinite(value).is_some() {
+        return json!([]);
+    }
+    match value {
+        Value::Array(items) => Value::Array(items.iter().map(finite).collect()),
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(key, item)| (key.clone(), finite(item)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// What the rest of the import reads: `base` is the one setting whose value is printed back, so it
+/// keeps its NaN and Infinity to be printed as Python prints them.
+pub fn readable(raw: &Value) -> Value {
+    match raw {
+        Value::Object(fields) if fields.contains_key("base") => Value::Object(
+            fields
+                .iter()
+                .map(|(key, item)| {
+                    let kept = if key == "base" {
+                        item.clone()
+                    } else {
+                        finite(item)
+                    };
+                    (key.clone(), kept)
+                })
+                .collect(),
+        ),
+        other => finite(other),
+    }
+}
+
+/// A category as the look on screen paints it: the fill its colour family gives it, the fill the
+/// block is drawn with, and the ink drawn on that.
+pub struct PaintedCategory {
+    pub key: String,
+    pub fill: String,
+    pub drawn_fill: String,
+    pub ink: String,
+}
+
+/// The blocks whose fill is the category's own (a block drawn outlined or in another fill is the
+/// text on the calendar), each named as the Customise mock-up names it.
+pub fn filled_blocks(painted: &[PaintedCategory]) -> Vec<BlockInk> {
+    painted
+        .iter()
+        .filter(|block| block.drawn_fill == block.fill)
+        .filter_map(|block| {
+            let (_, info) = CATEGORIES.iter().find(|(key, _)| *key == block.key)?;
+            Some(BlockInk {
+                key: block.key.clone(),
+                label: info.label.to_string(),
+                fill: block.fill.clone(),
+                ink: block.ink.clone(),
+            })
+        })
+        .collect()
+}
+
+/// A Font knob's (body, heading) faces.
+const FONT_PAIRS: [(&str, (&str, &str)); 3] = [
+    ("sans", ("sans", "sans")),
+    ("serif", ("sans", "serif")),
+    ("mono", ("mono", "mono")),
+];
+/// A card's corner in pixels at each Corners setting, in the order Settings offers them.
+const CORNER_CARDS: [(&str, f64); 3] = [("soft", 10.0), ("sharp", 2.0), ("rounded", 16.0)];
+
+/// The name whose number is nearest `value`; the first of them on a tie.
+fn nearest(value: f64, choices: &[(&'static str, f64)]) -> &'static str {
+    let mut best = choices[0];
+    for choice in &choices[1..] {
+        if (choice.1 - value).abs() < (best.1 - value).abs() {
+            best = *choice;
+        }
+    }
+    best.0
+}
+
+/// Every knob as it is drawn. A custom look's measures answer as the nearest knob, so what reads a
+/// knob, such as setup's chips, still reads something true.
+pub fn effective_look(choice: &Value) -> Dict {
+    let selected = sanitize_look(choice);
+    let Some(Value::Object(custom)) = selected.get("custom") else {
+        return effective_knobs(&selected);
+    };
+    let base_preset = custom
+        .get("base")
+        .and_then(Value::as_str)
+        .and_then(|base| LOOK_BASES.iter().find(|(name, _, _)| *name == base))
+        .map_or("default", |(_, _, preset)| preset);
+    let mut base_look = Map::new();
+    base_look.insert("preset".into(), json!(base_preset));
+    let mut knobs = effective_knobs(&base_look);
+    for (field, knob) in [
+        ("spacing", "density"),
+        ("shadows", "depth"),
+        ("blocks", "blocks"),
+    ] {
+        if let Some(value) = custom.get(field) {
+            knobs.insert(knob.into(), value.clone());
+        }
+    }
+    let font = knobs.get("font").and_then(Value::as_str).unwrap_or("sans");
+    let pair = FONT_PAIRS
+        .iter()
+        .find(|(name, _)| *name == font)
+        .map_or(("sans", "sans"), |(_, pair)| *pair);
+    let mut body = pair.0;
+    if selected.get("preset") == Some(&json!("paper")) && font == "serif" {
+        body = "serif";
+    }
+    let heading = pair.1;
+    let body = custom
+        .get("body_font")
+        .and_then(Value::as_str)
+        .unwrap_or(body);
+    let heading = custom
+        .get("heading_font")
+        .and_then(Value::as_str)
+        .unwrap_or(heading);
+    if (body, heading) != pair {
+        let font = if body == "mono" {
+            "mono"
+        } else if body == "serif" || heading == "serif" {
+            "serif"
+        } else {
+            "sans"
+        };
+        knobs.insert("font".into(), json!(font));
+    }
+    if let Some(scale) = number(custom.get("text_scale")) {
+        knobs.insert("text".into(), json!(nearest(scale, &TEXT_SCALE)));
+    }
+    if let Some(corners) = number(custom.get("corners")) {
+        knobs.insert("corners".into(), json!(nearest(corners, &CORNER_CARDS)));
+    }
+    knobs
 }
 
 pub fn readability(
@@ -1080,4 +1229,173 @@ pub fn readability(
         }
     }
     Ok(found)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn knobs(choice: Value) -> Vec<(String, String)> {
+        effective_look(&choice)
+            .into_iter()
+            .map(|(knob, value)| (knob, value.as_str().unwrap_or("?").to_string()))
+            .collect()
+    }
+
+    fn pairs(rows: &[(&str, &str)]) -> Vec<(String, String)> {
+        rows.iter()
+            .map(|(knob, value)| (knob.to_string(), value.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn effective_look_of_nothing_is_the_defaults() {
+        assert_eq!(
+            knobs(Value::Null),
+            pairs(&[
+                ("surface", "layered"),
+                ("corners", "soft"),
+                ("depth", "soft"),
+                ("font", "sans"),
+                ("blocks", "edge"),
+                ("density", "comfortable"),
+                ("text", "normal"),
+            ])
+        );
+    }
+
+    #[test]
+    fn effective_look_puts_the_moved_knobs_over_the_preset() {
+        assert_eq!(
+            knobs(json!({"preset": "paper", "knobs": {"text": "large"}})),
+            pairs(&[
+                ("surface", "layered"),
+                ("corners", "soft"),
+                ("depth", "none"),
+                ("font", "serif"),
+                ("blocks", "edge"),
+                ("density", "comfortable"),
+                ("text", "large"),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_custom_looks_measures_answer_as_the_nearest_knob() {
+        let worn = json!({"custom": {"base": "poster", "corners": 13, "text_scale": 1.3}});
+        assert_eq!(
+            knobs(worn),
+            pairs(&[
+                ("surface", "layered"),
+                ("corners", "soft"),
+                ("depth", "bold"),
+                ("font", "sans"),
+                ("blocks", "edge"),
+                ("density", "comfortable"),
+                ("text", "large"),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_custom_look_takes_its_spacing_shadows_and_blocks() {
+        let worn = json!({
+            "custom": {"base": "light", "spacing": "compact", "shadows": "bold", "blocks": "filled"}
+        });
+        let got = knobs(worn);
+        assert!(got.contains(&("density".to_string(), "compact".to_string())));
+        assert!(got.contains(&("depth".to_string(), "bold".to_string())));
+        assert!(got.contains(&("blocks".to_string(), "filled".to_string())));
+    }
+
+    #[test]
+    fn the_font_knob_follows_the_body_face_first_then_a_serif_heading() {
+        let font_of = |custom: Value| {
+            knobs(json!({ "custom": custom }))
+                .into_iter()
+                .find(|(knob, _)| knob == "font")
+                .map(|(_, value)| value)
+        };
+        assert_eq!(
+            font_of(json!({"base": "system", "body_font": "serif"})).as_deref(),
+            Some("serif")
+        );
+        assert_eq!(
+            font_of(json!({"base": "system", "body_font": "mono"})).as_deref(),
+            Some("mono")
+        );
+        // A mono heading over the sans body is neither mono nor serif, so it reads as sans.
+        assert_eq!(
+            font_of(json!({"base": "system", "heading_font": "mono"})).as_deref(),
+            Some("sans")
+        );
+        assert_eq!(
+            font_of(json!({"base": "system", "heading_font": "serif"})).as_deref(),
+            Some("serif")
+        );
+    }
+
+    #[test]
+    fn an_import_reads_a_nan_set_as_the_colours_as_not_a_set() {
+        let raw = json!({
+            "kind": FILE_KIND,
+            "version": 1,
+            "base": "poster",
+            "colours": {crate::stored::NONFINITE: "nan"},
+        });
+        let got = import_look(0, Some(&raw));
+        assert_eq!(
+            got.problems,
+            vec!["The colours were not a set of named colours, so they were left out."]
+        );
+        assert_eq!(
+            Value::Object(got.look.unwrap()),
+            json!({"base": "poster", "name": UNNAMED})
+        );
+    }
+
+    #[test]
+    fn an_import_prints_a_nan_base_as_python_does() {
+        let raw =
+            json!({"kind": FILE_KIND, "version": 1, "base": {crate::stored::NONFINITE: "nan"}});
+        let got = import_look(0, Some(&raw));
+        assert!(got.look.is_none());
+        assert_eq!(
+            got.problems,
+            vec!["It starts from a look FlexWeek does not have: 'nan'."]
+        );
+    }
+
+    #[test]
+    fn readable_empties_every_non_finite_number_but_the_one_under_base() {
+        let nan = json!({crate::stored::NONFINITE: "nan"});
+        let raw = json!({"base": nan, "corners": nan, "colours": {"text": [nan]}});
+        assert_eq!(
+            readable(&raw),
+            json!({"base": nan, "corners": [], "colours": {"text": [[]]}})
+        );
+        // Without a base the whole value is read, a bare NaN included.
+        assert_eq!(readable(&nan), json!([]));
+        assert_eq!(readable(&json!({"name": nan})), json!({"name": []}));
+    }
+
+    #[test]
+    fn only_blocks_drawn_in_their_own_fill_are_checked() {
+        let painted = |key: &str, drawn: &str| PaintedCategory {
+            key: key.to_string(),
+            fill: "#aaaaaa".to_string(),
+            drawn_fill: drawn.to_string(),
+            ink: "#000000".to_string(),
+        };
+        let kept = filled_blocks(&[
+            painted("class", "#aaaaaa"),
+            painted("assignments", "#bbbbbb"),
+            painted("nowhere", "#aaaaaa"),
+        ]);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(
+            (kept[0].key.as_str(), kept[0].label.as_str()),
+            ("class", "School")
+        );
+    }
 }

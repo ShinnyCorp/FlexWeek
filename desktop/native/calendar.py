@@ -208,13 +208,11 @@ def first_plannable_day(week_start: str, today: date | None = None) -> int:
 
 
 def due_day_in_week(due: str | None, week_start: str) -> int | None:
-    if not due:
-        return None
-    return int(flexweek_engine.calendar_due_day(due, week_start))
+    return flexweek_engine.calendar_due_day(json.dumps(due), week_start)
 
 
 def days_through(due_day: int | None, first_day: int = 0) -> list[int]:
-    return [int(day) for day in flexweek_engine.calendar_days_through(due_day, first_day)]
+    return flexweek_engine.calendar_days_through(due_day, first_day)
 
 
 def month_for_view(iso_day: str) -> str:

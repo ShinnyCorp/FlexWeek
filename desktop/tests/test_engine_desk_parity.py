@@ -35,6 +35,7 @@ import desk_ref.remind as ref_remind
 import desk_ref.reuse as ref_reuse
 import desk_ref.tokens as ref_tokens
 import desk_ref.update as ref_update
+import desk_ref.version as ref_version
 import desk_ref.weekmodel as ref_weekmodel
 import desktop.native.calendar as live_calendar
 import desktop.native.custom_look as live_look
@@ -46,6 +47,7 @@ import desktop.native.remind as live_remind
 import desktop.native.reuse as live_reuse
 import desktop.native.tokens as live_tokens
 import desktop.native.update as live_update
+import desktop.native.version as live_version
 import desktop.native.weekmodel as live_weekmodel
 
 CHECK = settings(max_examples=30, deadline=None)
@@ -267,6 +269,21 @@ def test_linear_from_oklab(light):
 @given(st.sampled_from(["windows", "appimage", "tarball"]))
 def test_asset_name(kind):
     match(live_update.asset_name, ref_update.asset_name, kind)
+
+
+@CHECK
+@given(
+    st.from_regex(r"v?[0-9]{1,4}(\.[0-9]{1,4}){0,3}", fullmatch=True),
+    st.from_regex(r"v?[0-9]{1,4}(\.[0-9]{1,4}){0,3}", fullmatch=True),
+)
+def test_version_is_newer(candidate, current):
+    match(live_version.is_newer, ref_version.is_newer, candidate, current)
+
+
+@CHECK
+@given(st.from_regex(r"v?[0-9]{1,4}(\.[0-9]{1,4}){0,3}|[0-9]{1,4}-rc[0-9]|latest|", fullmatch=True))
+def test_version_parse(value):
+    match(live_version.parse, ref_version.parse, value)
 
 
 def test_release_from_page_rejects_hostile_tags():
@@ -2873,3 +2890,358 @@ def test_imports_of_files_with_odd_blocks(blocks, version, day):
 def test_exports_of_odd_weeks(blocks, assignments, day):
     same(live_files.export_week_payload, ref_files.export_week_payload, "2026-09-21", blocks, assignments)
     same(live_files.export_day_payload, ref_files.export_day_payload, "2026-09-21", day, blocks, assignments)
+
+
+# E6: the desktop wrappers decide nothing. Each test below covers a decision that used to be made in
+# Python around the engine call and is now made in the engine.
+
+
+@WIDE
+@given(
+    maybe(None, "", "2026-09-24", "2026-09-24T21:00", "2026-09-14", "x", "2026-13-01", 0, [], {}),
+    st.sampled_from(DATES),
+)
+def test_due_day_in_week_on_generated_deadlines(due, week):
+    same(live_calendar.due_day_in_week, ref_calendar.due_day_in_week, due, week)
+
+
+@st.composite
+def history_steps(draw):
+    weeks = st.fixed_dictionaries(
+        {
+            "week_start": st.sampled_from(["2026-09-14", "2026-09-21"]),
+            "before": st.lists(st.integers(0, 3), max_size=2),
+            "after": st.lists(st.integers(0, 3), max_size=2),
+        }
+    )
+    assignments = st.fixed_dictionaries(
+        {"id": st.sampled_from(["a", "b"]), "before": maybe(None, {"n": 1}), "after": maybe(None, {"n": 2})}
+    )
+    return {
+        "label": draw(st.sampled_from(["x", "y"])),
+        "weeks": draw(st.lists(weeks, max_size=3)),
+        "assignments": draw(st.lists(assignments, max_size=3)),
+        "stale": draw(st.booleans()),
+    }
+
+
+@CHECK
+@given(st.lists(history_steps(), max_size=4), history_steps())
+def test_join_step_on_generated_stacks(stack, step):
+    same(live_history.join_step, ref_history.join_step, stack, step)
+    same(live_history.push_step, ref_history.push_step, stack, step)
+
+
+@CHECK
+@given(st.lists(history_steps(), max_size=4), st.sampled_from(["2026-09-14", "2026-09-21", "2026-09-28", ""]))
+def test_mark_stale_on_generated_stacks(steps, week):
+    same(live_history.mark_stale, ref_history.mark_stale, steps, week)
+
+
+@pytest.mark.parametrize("held", [live_history.HISTORY_LIMIT - 1, live_history.HISTORY_LIMIT, 60])
+def test_a_push_past_the_limit_drops_one_step_from_the_front(held):
+    stack = [{"label": str(index), "weeks": [], "assignments": [], "stale": False} for index in range(held)]
+    step = {"label": "new", "weeks": [], "assignments": [], "stale": False}
+    same(live_history.push_step, ref_history.push_step, stack, step)
+    same(live_history.join_step, ref_history.join_step, [{**item, "stale": True} for item in stack], step)
+
+
+@CHECK
+@given(
+    st.lists(st.integers(0, 2), max_size=2),
+    st.lists(st.integers(0, 2), max_size=2),
+    st.dictionaries(st.sampled_from(["a", "b", "c"]), st.sampled_from([{"n": 1}, {"n": 2}]), max_size=3),
+    st.dictionaries(st.sampled_from(["a", "b", "c"]), st.sampled_from([{"n": 1}, {"n": 2}]), max_size=3),
+    st.sets(st.sampled_from(["a", "b", "c", "d"]), max_size=4),
+)
+def test_capture_step_lists_assignments_in_sorted_order(before, after, old, new, changed):
+    same(live_history.capture_step, ref_history.capture_step, "x", WEEK, before, after, old, new, changed)
+
+
+def a_release(**extra):
+    base = "https://github.com/j0nsh1n/FlexWeek/releases/download/v9.0.0/"
+    names = (live_update.WINDOWS_SETUP, live_update.LINUX_TARBALL, live_update.LINUX_APPIMAGE)
+    assets = [
+        {"name": name + suffix, "browser_download_url": base + name + suffix}
+        for name in names
+        for suffix in ("", ".sha256")
+    ]
+    return {"tag_name": "v9.0.0", "assets": assets, "body": "Notes", **extra}
+
+
+@CHECK
+@given(
+    st.one_of(
+        maybe(None, 5, 1.5, True, "x", "", [], [1], {}, (), b"x", types.SimpleNamespace()),
+        maybe(
+            a_release(),
+            a_release(draft=True),
+            a_release(prerelease=1),
+            a_release(tag_name="v0.0.1"),
+            a_release(tag_name=7),
+            a_release(assets="x"),
+            a_release(body=None),
+        ),
+    ),
+    maybe("windows", "appimage", "tarball"),
+)
+def test_available_reads_only_a_dict_as_a_release(release, kind):
+    same(live_update.available, ref_update.available, release, kind, "0.17.2")
+
+
+@CHECK
+@given(
+    maybe(
+        None,
+        5,
+        "x",
+        [],
+        b"x",
+        (),
+        types.SimpleNamespace(),
+        {},
+        {"check": False},
+        {"check": 0, "last_ms": True, "skip": "x" * 33},
+        {"last_ms": 4_102_444_800_001, "skip": "x" * 32},
+        {"last_ms": 4_102_444_800_000, "check": False, "skip": ""},
+        {"last_ms": 1.5, "skip": 3},
+    )
+)
+def test_sanitize_updates_reads_what_json_cannot_write_as_nothing(raw):
+    same(live_update.sanitize_updates, ref_update.sanitize_updates, raw)
+
+
+@pytest.mark.parametrize("kind", ["windows", "appimage", "tarball", "", "x", "Windows"])
+def test_asset_name_of_a_kind_nobody_installs_is_a_key_error(kind):
+    same(live_update.asset_name, ref_update.asset_name, kind)
+
+
+KEYS = ["2026-09-21|a|0|08:30", "2026-09-21|b|0|16:00"]
+FIRED_AS = [
+    set(),
+    set(KEYS[:1]),
+    frozenset(KEYS),
+    KEYS[:1],
+    tuple(KEYS),
+    KEYS[0],
+    {KEYS[0]: 1},
+    None,
+    "",
+]
+
+
+@CHECK
+@given(
+    st.lists(REMIND_BLOCK, max_size=3),
+    REMIND_TRACE,
+    TODAYS,
+    st.integers(7 * 60, 18 * 60),
+    st.integers(0, 15),
+    st.sampled_from(FIRED_AS),
+)
+def test_reminders_and_songs_read_what_was_fired_in_any_container(blocks, trace, today, now_min, lead, fired):
+    same(
+        live_remind.due_reminders,
+        ref_remind.due_reminders,
+        blocks=blocks,
+        trace=trace,
+        today_iso=today,
+        now_min=now_min,
+        lead_min=lead,
+        fired=fired,
+    )
+    same(
+        live_remind.due_songs,
+        ref_remind.due_songs,
+        blocks=blocks,
+        trace=trace,
+        today_iso=today,
+        now_min=now_min,
+        played=fired,
+    )
+
+
+@CHECK
+@given(
+    TODAYS,
+    st.sampled_from(["2026-09-24|a|07:30", "2026-09-24|b|10:30"]),
+    st.sampled_from(FIRED_AS),
+    ZONES,
+    st.integers(1_789_900_000_000, 1_790_300_000_000),
+)
+def test_due_alarms_mark_only_a_set_and_read_any_container(today, key, fired, zone, now_ms):
+    alarms = [
+        {"id": "a", "time": "07:30", "enabled": True},
+        {"id": "b", "time": "10:30", "enabled": True, "days": [datetime.fromisoformat(today).weekday()]},
+    ]
+    with local_zone(zone):
+        same(
+            live_remind.due_alarms,
+            ref_remind.due_alarms,
+            alarms=alarms,
+            today_iso=today,
+            weekday=datetime.fromisoformat(today).weekday(),
+            now_ms=now_ms,
+            midnight_ms=0,
+            last_check_ms=now_ms - 6 * 3_600_000,
+            fired=fired,
+            snoozed={"a": now_ms - 1},
+        )
+
+
+MOMENT = st.datetimes(min_value=datetime(2026, 9, 14), max_value=datetime(2026, 10, 12))
+
+
+@WIDE
+@given(maybe("2026-09-14", "2026-09-21", "2026-09-28", "x", ""), MOMENT)
+def test_plan_start_on_generated_moments(week, now):
+    same(live_reuse.plan_start, ref_reuse.plan_start, week, now)
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        datetime(2026, 9, 27, 23, 50),
+        datetime(2026, 9, 21, 23, 59, 30),
+        datetime(2026, 9, 21, 10, 0, 0, 1),
+        datetime(2026, 9, 21, 10, 0),
+        datetime(2026, 9, 20, 23, 59),
+        None,
+        "x",
+    ],
+)
+def test_plan_start_at_the_edges(now):
+    same(live_reuse.plan_start, ref_reuse.plan_start, WEEK, now)
+
+
+@WIDE
+@given(
+    maybe("2026-09-14", "2026-09-21", "2026-09-28", "x"),
+    maybe(*MOMENTS, None),
+    st.booleans(),
+    st.booleans(),
+    maybe(0, 99, 100, 101),
+)
+def test_running_late_refusal_on_generated_moments(week, now, dirty, conflict, count):
+    same(
+        live_reuse.running_late_refusal,
+        ref_reuse.running_late_refusal,
+        week_start=week,
+        now=now,
+        dirty=dirty,
+        conflict=conflict,
+        block_count=count,
+    )
+
+
+@CHECK
+@given(
+    maybe(
+        types.SimpleNamespace(week_start="2026-09-21", now_ms=lambda: 1_790_000_000_000),
+        types.SimpleNamespace(week_start="2026-09-21", selected_month=None),
+        types.SimpleNamespace(week_start="2026-09-21", now_ms=lambda: 1.79e12),
+        types.SimpleNamespace(now_ms=lambda: 0),
+        types.SimpleNamespace(week_start="2026-09-21", now_ms=5),
+        None,
+    ),
+    maybe("week", "day", "myday", "month"),
+    maybe(None, "2026-09-30"),
+    ZONES,
+)
+def test_planner_title_reads_the_session_as_it_finds_it(session, view, selected, zone):
+    with local_zone(zone):
+        same(live_reuse.planner_title, ref_reuse.planner_title, session, view, selected_day=selected)
+
+
+@CHECK
+@given(preview_rows(), maybe("rows", "tuple", "copies", "dict", "none"))
+def test_conflicts_find_their_own_row_in_any_container(rows, held):
+    for row in rows:
+        others = {
+            "rows": rows,
+            "tuple": tuple(rows),
+            "copies": [dict(item) for item in rows],
+            "dict": {"a": row},
+            "none": None,
+        }[held]
+        same(live_reuse.row_conflict, ref_reuse.row_conflict, row, others, [])
+        same(live_reuse.preview_conflict_message, ref_reuse.preview_conflict_message, row, others, [])
+
+
+@CHECK
+@given(
+    maybe(None, [], ["essay"], {"essay"}, frozenset({"essay"}), ("essay",), "essay", {"essay": 1}),
+    maybe(None, (1, 600), [1, 600], (9, 0), (), [], "x"),
+    maybe(True, False, 0, 1, None, "", "x"),
+)
+def test_solve_request_reads_only_and_not_before_as_it_is_given(only, not_before, everything):
+    blocks = [session(pinned=None), session(id="open", pinned=None, start=None, days=[0, 1, 2])]
+    same(
+        live_reuse.solve_request,
+        ref_reuse.solve_request,
+        blocks,
+        {"essay": homework()},
+        WEEK,
+        everything=everything,
+        only=only,
+        not_before=not_before,
+    )
+
+
+@CHECK
+@given(maybe(set(), {"sess"}, frozenset({"sess"}), ["sess"], ("sess",), "sess", {"sess": 1}, None))
+def test_settle_placements_reads_keep_as_it_is_given(keep):
+    late = [session(start="23:30", pinned=None), session(id="two", start="23:30", pinned=None)]
+    same(live_reuse.settle_placements, ref_reuse.settle_placements, late, {"essay": homework()}, WEEK, keep)
+
+
+@CHECK
+@given(st.lists(maybe(True, False, 1, 0, None, "x", 1.0, 0.0, ""), min_size=1, max_size=6))
+def test_set_clock_24h_compares_the_object_the_window_passed(values):
+    was = dict(live_weekmodel._clock), dict(ref_weekmodel._clock)
+    try:
+        for module in (live_weekmodel, ref_weekmodel):
+            module._clock["24h"] = True
+        for value in values:
+            got = live_weekmodel.set_clock_24h(value)
+            want = ref_weekmodel.set_clock_24h(value)
+            assert repr(got) == repr(want)
+            assert repr(live_weekmodel._clock) == repr(ref_weekmodel._clock)
+            assert live_weekmodel.time_format() == ref_weekmodel.time_format()
+    finally:
+        live_weekmodel._clock.update(was[0])
+        ref_weekmodel._clock.update(was[1])
+        flexweek_engine.week_set_clock_24h(bool(was[0]["24h"]))
+
+
+def test_a_week_model_keeps_its_engine_week_only_while_its_tuples_cannot_change():
+    held = live_weekmodel.Occurrence("y", "Y", "assignments", 0, 60, 90, True, False, False, None, None, None)
+    fixed = live_weekmodel.WeekModel("2026-09-21", (held,), (), 0)
+    assert fixed._engine() is fixed._engine()
+    listed = live_weekmodel.WeekModel("2026-09-21", [held], (), 0)
+    assert listed._engine() is not listed._engine()
+    assert "_engine_week" not in vars(listed)
+
+
+@pytest.mark.parametrize("due", [{}, {"a": 1}, 7, 1.5, True, [], ["2026-09-22"], "", "2026-09-22T08:00"])
+def test_due_soon_for_on_a_deadline_the_slice_cannot_take(due):
+    items = {"a": {"id": "a", "due": due}}
+    same(live_calendar.due_soon_for, ref_calendar.due_soon_for, "2026-09-21", items)
+
+
+@pytest.mark.parametrize("fired", FIRED_AS, ids=lambda held: type(held).__name__)
+def test_due_alarms_names_the_container_it_cannot_add_to(fired):
+    now_ms = 1_790_245_800_000
+    with local_zone("UTC"):
+        same(
+            live_remind.due_alarms,
+            ref_remind.due_alarms,
+            alarms=[{"id": "b", "time": "07:30", "enabled": True, "days": [3]}],
+            today_iso="2026-09-24",
+            weekday=3,
+            now_ms=now_ms,
+            midnight_ms=0,
+            last_check_ms=now_ms - 6 * 3_600_000,
+            fired=fired,
+            snoozed={},
+        )
