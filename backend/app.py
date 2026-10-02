@@ -829,11 +829,11 @@ def write_preferences(db: Connection, user_id: int, preferences: Preferences) ->
 
 
 def solve_availability(
-    row: Row | None,
+    stored: str | None,
 ) -> tuple[list[int], list[StudyWindow], list[WorkWindow]]:
-    if row is None:
+    if stored is None:
         return [0] * 7, [], []
-    availability = json.loads(row["availability_json"] or "{}")
+    availability = json.loads(stored or "{}")
     protected = [ProtectedWindow.model_validate(item) for item in availability.get("protected") or []]
     study = [StudyWindow.model_validate(item) for item in availability.get("study_windows") or []]
     work = [WorkWindow.model_validate(item) for item in availability.get("work_windows") or []]
@@ -899,18 +899,13 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     def user(request: Request) -> dict:
         token = request.cookies.get(COOKIE, "")
         with connect(path) as db:
-            row = db.execute(
-                """SELECT users.id, users.username FROM sessions
-                JOIN users ON users.id = sessions.user_id
-                WHERE token_hash = ? AND expires > ?""",
-                (digest(token), int(time.time())),
-            ).fetchone()
-        if row is None:
+            found = db.session_user(digest(token), int(time.time()))
+        if found is None:
             raise HTTPException(401, "Please sign in")
         expected = request.headers.get("X-FlexWeek-Account")
-        if expected is not None and expected != str(row["id"]):
+        if expected is not None and expected != str(found[0]):
             raise HTTPException(401, "Account changed. Please sign in again.")
-        return dict(row)
+        return {"id": found[0], "username": found[1]}
 
     def session_response(response: Response, token: str) -> None:
         response.set_cookie(
@@ -929,10 +924,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             codes = generate_recovery_codes()
             try:
                 with connect(path) as db:
-                    cursor = db.execute(
-                        "INSERT INTO users(username, password_hash) VALUES (?, ?)", (data.username, encoded)
-                    )
-                    user_id = int(cursor.lastrowid or 0)
+                    user_id = db.insert_user(data.username, encoded)
                     new_preferences(db, user_id)
                     replace_recovery_codes(db, user_id, codes)
                     token = create_session(db, user_id)
@@ -940,18 +932,16 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 raise HTTPException(409, "Username unavailable") from exc
         else:
             with connect(path) as db:
-                row = db.execute("SELECT * FROM users WHERE username = ?", (data.username,)).fetchone()
-            encoded = row["password_hash"] if row else password_hash("missing-account-password", "00" * 16)
+                found = db.find_user(data.username)
+            encoded = found[2] if found else password_hash("missing-account-password", "00" * 16)
             matched = password_matches(data.password, encoded)
-            if not row or not matched:
+            if not found or not matched:
                 raise HTTPException(401, "Incorrect username or password")
-            user_id = row["id"]
+            user_id = found[0]
             with connect(path) as db:
                 token = create_session(db, user_id)
         with connect(path) as db:
-            db.execute(
-                "DELETE FROM sessions WHERE token_hash = ?", (digest(request.cookies.get(COOKIE, "")),)
-            )
+            db.delete_session(digest(request.cookies.get(COOKIE, "")))
         session_response(response, token)
         result = {"id": user_id, "username": data.username}
         if codes is not None:
@@ -975,9 +965,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         if request.headers.get("X-FlexWeek-Account") is not None:
             user(request)
         with connect(path) as db:
-            db.execute(
-                "DELETE FROM sessions WHERE token_hash = ?", (digest(request.cookies.get(COOKIE, "")),)
-            )
+            db.delete_session(digest(request.cookies.get(COOKIE, "")))
         response.delete_cookie(COOKIE, path="/", httponly=True, secure=secure, samesite="strict")
 
     def deny_if_throttled(request: Request, username: str) -> None:
@@ -990,8 +978,8 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     def require_password(db: Connection, user_id: int, password: str) -> None:
         # Called inside the caller's transaction so a password rotated by another
         # session between the check and the write cannot still authorize the write.
-        row = db.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
-        if row is None or not password_matches(password, row["password_hash"]):
+        stored = db.password_hash_of(user_id)
+        if stored is None or not password_matches(password, stored):
             raise HTTPException(401, PASSWORD_WRONG)
 
     @app.post("/api/auth/recover")
@@ -1001,18 +989,9 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         # scrypt runs before the write lock is taken, like register.
         new_hash = password_hash(data.password)
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT * FROM users WHERE username = ?", (data.username,)).fetchone()
-            hashes = (
-                [
-                    item["code_hash"]
-                    for item in db.execute(
-                        "SELECT code_hash FROM recovery_codes WHERE user_id = ?", (row["id"],)
-                    )
-                ]
-                if row is not None
-                else []
-            )
+            db.begin_immediate()
+            found = db.find_user(data.username)
+            hashes = db.recovery_hashes(found[0]) if found is not None else []
             real = set(hashes)
             padded = list(hashes)
             while len(padded) < RECOVERY_CODE_COUNT:
@@ -1021,27 +1000,21 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             for stored in padded:
                 if recovery_code_matches(data.code, stored):
                     matched = stored
-            if row is None or matched is None or matched not in real:
+            if found is None or matched is None or matched not in real:
                 raise HTTPException(401, RECOVER_WRONG)
-            db.execute(
-                "DELETE FROM recovery_codes WHERE user_id = ? AND code_hash = ?",
-                (row["id"], matched),
-            )
-            db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, row["id"]))
-            db.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
-            token = create_session(db, row["id"])
-            user_id = row["id"]
-            username = row["username"]
+            db.use_recovery_code(found[0], matched)
+            db.rotate_password(found[0], new_hash)
+            token = create_session(db, found[0])
+            user_id = found[0]
+            username = found[1]
         session_response(response, token)
         return {"id": user_id, "username": username}
 
     @app.get("/api/auth/recovery-status")
     def recovery_status(account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            row = db.execute(
-                "SELECT COUNT(*) AS n FROM recovery_codes WHERE user_id = ?", (account["id"],)
-            ).fetchone()
-        return {"remaining": int(row["n"]) if row else 0}
+            remaining = db.count_recovery_codes(account["id"])
+        return {"remaining": remaining}
 
     @app.post("/api/auth/recovery-codes")
     def refresh_recovery_codes(
@@ -1050,7 +1023,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         deny_if_throttled(request, account["username"])
         codes = generate_recovery_codes()
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             require_password(db, account["id"], data.password)
             replace_recovery_codes(db, account["id"], codes)
         return {"recovery_codes": codes, "remaining": len(codes)}
@@ -1062,12 +1035,11 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         deny_if_throttled(request, account["username"])
         new_hash = password_hash(data.new_password)
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             require_password(db, account["id"], data.current_password)
             if data.new_password == data.current_password:
                 raise HTTPException(422, PASSWORD_SAME)
-            db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, account["id"]))
-            db.execute("DELETE FROM sessions WHERE user_id = ?", (account["id"],))
+            db.rotate_password(account["id"], new_hash)
             token = create_session(db, account["id"])
         session_response(response, token)
         return {"id": account["id"], "username": account["username"]}
@@ -1078,7 +1050,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     ) -> None:
         deny_if_throttled(request, account["username"])
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             require_password(db, account["id"], data.password)
             delete_account(db, account["id"])
         response.delete_cookie(COOKIE, path="/", httponly=True, secure=secure, samesite="strict")
@@ -1089,11 +1061,8 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         if not is_week_start(start):
             raise HTTPException(422, WEEK_START_RULE)
         with connect(path) as db:
-            row = db.execute(
-                "SELECT blocks, revision FROM weeks WHERE user_id = ? AND week_start = ?",
-                (account["id"], start),
-            ).fetchone()
-            blocks = json.loads(row["blocks"]) if row else []
+            row = db.read_week(account["id"], start)
+            blocks = json.loads(row[0]) if row else []
             owned = load_assignment_bodies(
                 db,
                 account["id"],
@@ -1103,16 +1072,14 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         return {
             "week_start": start,
             "blocks": rewrite_stored_blocks(blocks, owned),
-            "revision": row["revision"] if row else 0,
+            "revision": row[1] if row else 0,
         }
 
     @app.get("/api/weeks")
     def get_weeks(account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            rows = db.execute(
-                "SELECT week_start FROM weeks WHERE user_id = ? ORDER BY week_start", (account["id"],)
-            ).fetchall()
-        return {"weeks": [row["week_start"] for row in rows]}
+            weeks = db.week_starts(account["id"])
+        return {"weeks": weeks}
 
     @app.get("/api/day")
     def get_day(account: Annotated[dict, Depends(user)], date: str | None = None) -> dict:
@@ -1120,21 +1087,15 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             raise HTTPException(422, DATE_RULE)
         week_start = monday_of(date)
         with connect(path) as db:
-            row = db.execute(
-                "SELECT blocks FROM weeks WHERE user_id = ? AND week_start = ?",
-                (account["id"], week_start),
-            ).fetchone()
-            blocks = json.loads(row["blocks"]) if row else []
+            stored = db.week_blocks(account["id"], week_start)
+            blocks = json.loads(stored) if stored is not None else []
             owned = load_assignment_bodies(
                 db,
                 account["id"],
                 {block["assignment_id"] for block in blocks if block.get("assignment_id")},
             )
             assignment_rows = [
-                (json.loads(item["body"]), int(item["revision"]))
-                for item in db.execute(
-                    "SELECT body, revision FROM assignments WHERE user_id = ?", (account["id"],)
-                ).fetchall()
+                (json.loads(body), int(revision)) for body, revision in db.assignment_bodies(account["id"])
             ]
             weeks = list_account_weeks(db, account["id"])
         return build_day(date, week_start, rewrite_stored_blocks(blocks, owned), assignment_rows, weeks)
@@ -1145,10 +1106,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             raise HTTPException(422, MONTH_RULE)
         with connect(path) as db:
             assignment_rows = [
-                (json.loads(item["body"]), int(item["revision"]))
-                for item in db.execute(
-                    "SELECT body, revision FROM assignments WHERE user_id = ?", (account["id"],)
-                ).fetchall()
+                (json.loads(body), int(revision)) for body, revision in db.assignment_bodies(account["id"])
             ]
             weeks = list_account_weeks(db, account["id"])
         return build_month(month, assignment_rows, weeks)
@@ -1156,7 +1114,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     @app.put("/api/week")
     def put_week(week: SavedWeek, account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             incoming = adopt_legacy_deadlines(db, account["id"], week.week_start, week.blocks)
             owned = require_own_assignments(db, account["id"], assignment_ids_of(incoming))
             blocks = dump_blocks(rewrite_blocks(incoming, owned))
@@ -1172,17 +1130,15 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         if week_start is None or not is_week_start(week_start):
             raise HTTPException(422, WEEK_START_RULE)
         with connect(path) as db:
-            rows = db.execute(
-                "SELECT id, body, revision FROM assignments WHERE user_id = ?", (account["id"],)
-            ).fetchall()
+            rows = db.list_assignment_rows(account["id"])
             weeks = list_account_weeks(db, account["id"])
         planned_by_id = planned_minutes_by_id(weeks, week_start)
         items = []
-        for row in rows:
-            body = json.loads(row["body"])
+        for row_id, row_body, row_revision in rows:
+            body = json.loads(row_body)
             if body["completed"] and not include_completed:
                 continue
-            items.append(assignment_view(body, row["revision"], planned_by_id.get(row["id"], 0)))
+            items.append(assignment_view(body, row_revision, planned_by_id.get(row_id, 0)))
         items.sort(key=lambda item: due_sort_key(item["due"], item["id"]))
         return {"assignments": items}
 
@@ -1194,7 +1150,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             raise HTTPException(422, "assignment id in the path and body must match")
         content = AssignmentContent.model_validate(payload.model_dump(exclude={"revision"}))
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             return upsert_assignment(db, account["id"], content, payload.revision)
 
     @app.post("/api/assignments/{assignment_id}/spread")
@@ -1202,14 +1158,11 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         assignment_id: str, payload: SpreadRequest, account: Annotated[dict, Depends(user)]
     ) -> dict:
         with connect(path) as db:
-            row = db.execute(
-                "SELECT body FROM assignments WHERE user_id = ? AND id = ?",
-                (account["id"], assignment_id),
-            ).fetchone()
-            if row is None:
+            stored = db.assignment_body(account["id"], assignment_id)
+            if stored is None:
                 raise HTTPException(404, "Assignment not found")
             weeks = list_account_weeks(db, account["id"])
-        body = json.loads(row["body"])
+        body = json.loads(stored)
         if body["completed"]:
             raise HTTPException(422, "completed assignments cannot be spread")
         planned = planned_minutes_by_id(weeks, "2000-01-01").get(assignment_id, 0)
@@ -1235,14 +1188,14 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         if revision is None:
             raise HTTPException(422, "revision is required")
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             return delete_assignment(db, account["id"], assignment_id, revision)
 
     @app.post("/api/changes")
     def post_changes(batch: ChangesRequest, account: Annotated[dict, Depends(user)]) -> dict:
         digest_value = payload_digest(batch.model_dump())
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             if batch.operation_id is not None:
                 remembered = recall_operation(db, account["id"], batch.operation_id, digest_value)
                 if remembered is not None:
@@ -1315,7 +1268,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         if payload.id != routine_id:
             raise HTTPException(422, "routine id in the path and body must match")
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             return upsert_routine(db, account["id"], payload)
 
     @app.delete("/api/routines/{routine_id}")
@@ -1329,7 +1282,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             raise HTTPException(422, "revision is required")
         digest_value = payload_digest({"id": routine_id, "revision": revision, "op": "delete"})
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             if operation_id is not None:
                 remembered = recall_operation(db, account["id"], operation_id, digest_value)
                 if remembered is not None:
@@ -1360,7 +1313,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     ) -> dict:
         deny_if_throttled(request, account["username"])
         with connect(path) as db:
-            db.execute("BEGIN")
+            db.begin()
             require_password(db, account["id"], data.password)
             payload = {
                 "format": 3,
@@ -1391,7 +1344,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         incoming = payload.snapshot.model_dump()
         digest_value = payload_digest(payload.model_dump())
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             remembered = recall_operation(db, account["id"], payload.operation_id, digest_value)
             if remembered is not None:
                 return remembered
@@ -1428,18 +1381,14 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     @app.get("/api/restore-points")
     def get_restore_points(account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            rows = db.execute(
-                """SELECT id, label, created_at, weeks_count, assignments_count
-                FROM restore_points WHERE user_id = ? ORDER BY seq DESC""",
-                (account["id"],),
-            ).fetchall()
+            rows = json.loads(db.list_restore_points(account["id"]))
         return {"restore_points": [restore_point_view(row) for row in rows]}
 
     @app.post("/api/restore-points")
     def post_restore_point(payload: RestoreCreate, account: Annotated[dict, Depends(user)]) -> dict:
         digest_value = payload_digest(payload.model_dump())
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             remembered = recall_operation(db, account["id"], payload.operation_id, digest_value)
             if remembered is not None:
                 return remembered
@@ -1450,16 +1399,13 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     @app.get("/api/restore-points/{point_id}/preview")
     def preview_restore_point(point_id: str, account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            row = db.execute(
-                "SELECT id, body FROM restore_points WHERE user_id = ? AND id = ?",
-                (account["id"], point_id),
-            ).fetchone()
+            row = db.restore_point_body(account["id"], point_id)
             if row is None:
                 raise HTTPException(404, RESTORE_UNKNOWN)
             current = capture_account(db, account["id"])
-        stored = json.loads(row["body"])
+        stored = json.loads(row[1])
         return {
-            "id": row["id"],
+            "id": row[0],
             "state_token": state_token(current),
             "changes": diff_snapshots(current, stored),
         }
@@ -1470,20 +1416,17 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     ) -> dict:
         digest_value = payload_digest({"id": point_id, **payload.model_dump()})
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             remembered = recall_operation(db, account["id"], payload.operation_id, digest_value)
             if remembered is not None:
                 return remembered
-            row = db.execute(
-                "SELECT id, body FROM restore_points WHERE user_id = ? AND id = ?",
-                (account["id"], point_id),
-            ).fetchone()
+            row = db.restore_point_body(account["id"], point_id)
             if row is None:
                 raise HTTPException(404, RESTORE_UNKNOWN)
             current = capture_account(db, account["id"])
             if payload.state_token != state_token(current):
                 raise HTTPException(409, RESTORE_STALE)
-            stored = json.loads(row["body"])
+            stored = json.loads(row[1])
             stamp = naive_now()
             recovery = insert_restore_point(
                 db, account["id"], f"Before restore — {stamp}", keep_ids={point_id}
@@ -1498,10 +1441,8 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         ids = assignment_ids_of(week.blocks)
         with connect(path) as db:
             owned = require_own_assignments(db, account["id"], ids) if ids else {}
-            prefs = db.execute(
-                "SELECT availability_json FROM preferences WHERE user_id = ?", (account["id"],)
-            ).fetchone()
-        extra_occ, study_windows, work_windows = solve_availability(prefs)
+            availability = db.availability_json(account["id"])
+        extra_occ, study_windows, work_windows = solve_availability(availability)
         blocks = week.blocks
         extra_deadlines = None
         extra_slack = None
