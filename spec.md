@@ -653,9 +653,14 @@ Run every local suite, mutation run and rig through `fwtest` rather than
 bare Python, so runs queue behind each other and leave nothing running.
 `.github/workflows/verify.yml` runs `fwtest gate --backend-only` and the
 harness's and the engine's cargo checks on every push and pull request
-(Python 3.14, Rust stable, `contents: read`), and its `rig` job runs the
-real-pointer rig on Today's app under Xvfb through `fwtest rig`. Both build
-the engine module; neither builds an app binary.
+(Python 3.14, Rust stable, `contents: read`). Its `rig` job runs the
+real-pointer rig on Today's app under Xvfb through `fwtest rig`, then the
+desktop engine suites offscreen (the desk parity files and the wrapper
+modules' tests, which do not depend on fonts). Its `mutate` job runs
+`fwtest mutate --engine-only`, the mutation cases whose rule is in the
+engine, on a manual run and on a pull request that changes `engine/` or
+`scripts/mutations/`. All build the engine module; none builds an app
+binary.
 
 The commands it runs, each of which must exit 0:
 
