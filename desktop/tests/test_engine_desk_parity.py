@@ -2873,3 +2873,16 @@ def test_imports_of_files_with_odd_blocks(blocks, version, day):
 def test_exports_of_odd_weeks(blocks, assignments, day):
     same(live_files.export_week_payload, ref_files.export_week_payload, "2026-09-21", blocks, assignments)
     same(live_files.export_day_payload, ref_files.export_day_payload, "2026-09-21", day, blocks, assignments)
+
+
+# E6: the desktop wrappers decide nothing. Each test below covers a decision that used to be made in
+# Python around the engine call and is now made in the engine.
+
+
+@WIDE
+@given(
+    maybe(None, "", "2026-09-24", "2026-09-24T21:00", "2026-09-14", "x", "2026-13-01", 0, [], {}),
+    st.sampled_from(DATES),
+)
+def test_due_day_in_week_on_generated_deadlines(due, week):
+    same(live_calendar.due_day_in_week, ref_calendar.due_day_in_week, due, week)

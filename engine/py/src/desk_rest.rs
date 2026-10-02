@@ -168,8 +168,9 @@ fn calendar_first_day(week_start: &str, today_iso: &str) -> PyResult<i64> {
 }
 
 #[pyfunction]
-fn calendar_due_day(due: &str, week_start: &str) -> PyResult<i64> {
-    guard(|| grid::due_day_in_week(due, week_start).map_err(crate::raise))
+fn calendar_due_day(due: &str, week_start: &str) -> PyResult<Option<i64>> {
+    let due = parse(due)?;
+    guard(|| grid::due_day_of(&due, week_start).map_err(crate::raise))
 }
 
 #[pyfunction]
