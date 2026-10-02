@@ -34,6 +34,11 @@ All notable changes to FlexWeek are documented here. Format follows
 - A study window whose start uses digits from another script, such as Arabic-Indic, is read at its real time.
 - Tests draw text the same way in every worker, so the date picker's test no
   longer fails on machines with subpixel text.
+- A look saved with a category hue of exactly 0 or -360 is written as 0.0,
+  not -0.0, and the update check reads a checksum file with unusual line
+  breaks the way it did before the engine.
+- The release workflow stops a Windows installer or smoke test that hangs
+  after ten minutes instead of waiting out the runner.
 
 ## [0.17.2] - 2026-09-30
 

@@ -187,7 +187,9 @@ jobs:
           python-version: '3.14'
       - name: Install Python dependencies
         if: steps.changed.outputs.run == 'true'
-        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+        # 29 of the engine cases name desktop tests. Without PySide6 those tests cannot even
+        # import, pytest exits red, and fwtest would count every mutation as caught.
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt PySide6==6.11.2
       - name: Point .venv at the runner's Python
         if: steps.changed.outputs.run == 'true'
         run: |
@@ -209,4 +211,6 @@ jobs:
         run: python -m pip install ./engine/py --config-settings=build-args="--features audit"
       - name: Mutation cases whose rule is in the engine
         if: steps.changed.outputs.run == 'true'
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: fwtest mutate --engine-only
