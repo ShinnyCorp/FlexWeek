@@ -116,14 +116,14 @@
   "name": "a saved look named Paper",
   "old": "    if built_in {\n        return Err(EngineError::look_name(format!(\n            \"{clean} is one of FlexWeek's own looks. Choose another name.\"\n        )));\n    }\n",
   "new": "    if built_in && clean.is_empty() {\n        return Err(EngineError::look_name(format!(\n            \"{clean} is one of FlexWeek's own looks. Choose another name.\"\n        )));\n    }\n",
-  "test": "desktop/tests/test_custom_look.py::test_saved_looks_are_named_saved_renamed_duplicated_deleted_and_reset"
+  "test": "cargo:flexweek-engine:desk_custom_look:test_saved_looks_are_named_saved_renamed_duplicated_deleted_and_reset"
  },
  {
   "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a newer file's look opened anyway",
   "old": "    if version > i128::from(FILE_VERSION) {\n        return refused(\"This look was made by a newer FlexWeek. Update FlexWeek to open it.\");\n    }\n",
   "new": "    if version > i128::from(FILE_VERSION) && version < 1 {\n        return refused(\"This look was made by a newer FlexWeek. Update FlexWeek to open it.\");\n    }\n",
-  "test": "desktop/tests/test_custom_look.py::test_an_import_says_plainly_what_was_wrong"
+  "test": "cargo:flexweek-engine:desk_custom_look:test_an_import_says_plainly_what_was_wrong"
  },
  {
   "file": "desktop/native/hours/canvas.py",

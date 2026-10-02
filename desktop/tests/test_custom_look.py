@@ -3,27 +3,12 @@ the built-in looks are, checked for readability, kept by name, and shared as a s
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from desktop.native.calendar import CATEGORIES
 from desktop.native.custom_look import (
-    FILE_VERSION,
-    LookNameError,
     apply_fix,
-    delete_look,
-    duplicate_look,
-    export_look,
-    free_name,
-    import_look,
     readability,
-    rename_look,
-    reset_look,
-    sanitize_saved,
-    save_look,
-    start_custom,
-    wear,
 )
 from desktop.native.look import (
     AA_TEXT,
@@ -284,102 +269,3 @@ def test_grey_text_names_every_block_colour_and_its_fix_reads_on_the_blocks_too(
     text = next(p for p in readability(dark_study) if p.field == ("colours", "text"))
     left = readability(apply_fix(dark_study, text))
     assert [p.field for p in left if p.field != ("accent",)] == [("categories", "study")]
-
-
-def test_saved_looks_are_named_saved_renamed_duplicated_deleted_and_reset() -> None:
-    night = {"base": "nocturne", "accent": "sea", "spacing": "compact"}
-    saved = save_look([], night, "Night study")
-    saved = save_look(saved, {"base": "paper"}, "  Exams ")
-    assert [look["name"] for look in saved] == ["Night study", "Exams"]
-    # Saving under a name that exists replaces that look.
-    saved = save_look(saved, {"base": "slate"}, "exams")
-    assert [look["name"] for look in saved] == ["Night study", "exams"] and saved[1]["base"] == "slate"
-    saved = rename_look(saved, "Night study", "Late night")
-    saved, copy = duplicate_look(saved, "Late night")
-    saved, second = duplicate_look(saved, "Late night")
-    assert (copy, second) == ("Late night copy", "Late night copy 2")
-    assert [look["name"] for look in saved] == ["Late night", "Late night copy 2", "Late night copy", "exams"]
-    assert saved[1] == {**night, "name": "Late night copy 2"}
-    saved = delete_look(saved, "late night copy 2")
-    assert [look["name"] for look in saved] == ["Late night", "Late night copy", "exams"]
-    assert reset_look(saved[0]) == {"name": "Late night", "base": "nocturne"}
-    for bad, words in (
-        ("", "needs a name"),
-        ("Paper", "one of FlexWeek's own looks"),
-        ("x" * 41, "40 letters"),
-    ):
-        with pytest.raises(LookNameError, match=words):
-            save_look(saved, night, bad)
-    with pytest.raises(LookNameError, match="already a look called Exams"):
-        rename_look(saved, "Late night", "Exams")
-    with pytest.raises(LookNameError, match="No saved look"):
-        delete_look(saved, "Nope")
-    # What the look file holds is read back whole, and a broken or doubled entry left out.
-    stored = json.loads(json.dumps([*saved, {"base": "neon", "name": "Bad"}, {**saved[0]}, "junk"]))
-    assert sanitize_saved(stored) == saved
-    assert sanitize_saved("junk") == []
-
-
-def test_a_new_look_is_numbered_past_the_saved_looks_rather_than_replacing_one() -> None:
-    """Save as new, Done on a new look and Import keep every saved look: save_look puts a look of the
-    same name in its place, so a new one takes the next free name."""
-    saved = save_look(save_look([], {"base": "light"}, "My look"), {"base": "dark"}, "My look 2")
-    assert free_name(saved, "  Exams  week ") == "Exams week"
-    assert free_name(saved, "my look") == "my look 3"
-    kept = save_look(saved, {"base": "paper"}, free_name(saved, "My look"))
-    assert [look["name"] for look in kept] == ["My look", "My look 2", "My look 3"]
-    assert kept[0]["base"] == "light", "the look already saved under the name is untouched"
-    long = "x" * 40
-    numbered = free_name(save_look([], {"base": "light"}, long), long)
-    assert numbered == "x" * 37 + " 2" and len(numbered) <= 40
-    with pytest.raises(LookNameError, match="one of FlexWeek's own looks"):
-        free_name(saved, "Paper")
-
-
-def test_starting_from_the_look_on_screen_keeps_what_the_student_had_moved() -> None:
-    custom = start_custom("slate", {"preset": "default", "knobs": {"density": "compact"}}, "gold")
-    assert custom == {"name": "My look", "base": "slate", "accent": "gold", "spacing": "compact"}
-    assert start_custom("dark-frost", {"preset": "poster", "knobs": {}})["base"] == "poster"
-    assert start_custom("light-frost", None)["base"] == "light"
-    look = wear({"preset": "ink", "knobs": {"text": "large"}}, custom)
-    assert (look["preset"], look["knobs"], look["custom"]) == ("ink", {"text": "large"}, custom)
-    assert start_custom("system", look) == custom
-
-
-def test_a_look_is_exported_as_a_small_versioned_file_and_imported_back() -> None:
-    custom = {
-        "name": "Night study",
-        "base": "nocturne",
-        "accent": "#e8590c",
-        "corners": 12,
-        "categories": {"class": {"hue": 200.0}},
-    }
-    text = export_look(custom)
-    assert json.loads(text)["version"] == FILE_VERSION and json.loads(text)["kind"] == "FlexWeek look"
-    assert len(text) < 1024
-    back = import_look(text)
-    assert back.look == custom and back.problems == ()
-
-
-@pytest.mark.parametrize(
-    ("text", "said"),
-    [
-        ("not json at all", "could not be read"),
-        ("[1, 2]", "not a FlexWeek look"),
-        ('{"base": "paper"}', "not a FlexWeek look"),
-        ('{"kind": "FlexWeek look", "base": "paper"}', "no version"),
-        ('{"kind": "FlexWeek look", "version": 99, "base": "paper"}', "newer FlexWeek"),
-        ('{"kind": "FlexWeek look", "version": 1, "base": "neon"}', "does not have: 'neon'"),
-        ("{" + " " * 70000 + "}", "too large"),
-    ],
-)
-def test_an_import_says_plainly_what_was_wrong(text: str, said: str) -> None:
-    got = import_look(text)
-    assert got.look is None
-    assert len(got.problems) == 1 and said in got.problems[0]
-
-
-def test_an_import_keeps_what_it_can_and_says_what_it_left_out() -> None:
-    got = import_look('{"kind": "FlexWeek look", "version": 1, "base": "poster", "corners": 99, "x": 1}')
-    assert got.look == {"base": "poster", "name": "My look"}
-    assert len(got.problems) == 2
