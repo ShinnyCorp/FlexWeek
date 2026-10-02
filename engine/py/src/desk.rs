@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use ::flexweek_engine::{EngineError, EngineResult};
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyDict, PyFloat, PyInt, PySet, PySetMethods};
+use pyo3::types::{PyAnyMethods, PyDict, PyFloat, PyFrozenSet, PyInt, PyList, PySet, PySetMethods};
 use serde_json::{Map, Value};
 
 use crate::{guard, raise};
@@ -86,6 +86,16 @@ pub(crate) fn dumps_of(value: &Bound<'_, PyAny>) -> PyResult<String> {
 /// `json.loads(text)`: a value of the engine's, as the Python wrappers read it.
 pub(crate) fn loads_of<'py>(py: Python<'py>, value: &Value) -> PyResult<Bound<'py, PyAny>> {
     py.import("json")?.call_method1("loads", (dump(value),))
+}
+
+/// What a set argument holds, written as the Python wrappers wrote it: a set or frozenset as the list
+/// of its members, anything else as it is, and whether it was a set.
+pub(crate) fn members_of(held: &Bound<'_, PyAny>) -> PyResult<(String, bool)> {
+    if held.is_instance_of::<PySet>() || held.is_instance_of::<PyFrozenSet>() {
+        let members = held.py().get_type::<PyList>().call1((held,))?;
+        return Ok((dumps_of(&members)?, true));
+    }
+    Ok((dumps_of(held)?, false))
 }
 
 fn push_onto(stack: &Bound<'_, PyAny>, step: &Bound<'_, PyAny>) -> PyResult<()> {
@@ -523,10 +533,11 @@ fn remind_due(
     today_iso: &str,
     now_min: i64,
     lead_min: i64,
-    fired: &str,
-    fired_is_set: bool,
+    fired: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
-    let (blocks, trace, fired) = (parse(blocks)?, parse(trace)?, parse(fired)?);
+    let (blocks, trace) = (parse(blocks)?, parse(trace)?);
+    let (fired, fired_is_set) = members_of(fired)?;
+    let fired = parse(&fired)?;
     guard(|| {
         let rows = remind::due_reminders(
             &blocks,
@@ -548,10 +559,11 @@ fn remind_songs(
     trace: &str,
     today_iso: &str,
     now_min: i64,
-    played: &str,
-    played_is_set: bool,
+    played: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
-    let (blocks, trace, played) = (parse(blocks)?, parse(trace)?, parse(played)?);
+    let (blocks, trace) = (parse(blocks)?, parse(trace)?);
+    let (played, played_is_set) = members_of(played)?;
+    let played = parse(&played)?;
     guard(|| {
         let rows = remind::due_songs(&blocks, &trace, today_iso, now_min, &played, played_is_set)
             .map_err(raise)?;
@@ -559,16 +571,28 @@ fn remind_songs(
     })
 }
 
+/// `moment_at(seconds)` and `moment_of(year, month, day)` are the caller's own local-clock
+/// constructors (`datetime.fromtimestamp` and `datetime`); a Python error from them is raised as it
+/// came.
 #[pyfunction]
 fn remind_clock_parts(
     now_ms: i64,
-    year: i32,
-    month: u32,
-    day: u32,
-    hour: i64,
-    minute: i64,
-    midnight_ms: i64,
+    moment_at: &Bound<'_, PyAny>,
+    moment_of: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
+    let moment = moment_at.call1((remind::seconds_of(now_ms),))?;
+    let field = |name: &str| moment.getattr(name);
+    let (year, month, day) = (
+        field("year")?.extract::<i32>()?,
+        field("month")?.extract::<u32>()?,
+        field("day")?.extract::<u32>()?,
+    );
+    let (hour, minute) = (
+        field("hour")?.extract::<i64>()?,
+        field("minute")?.extract::<i64>()?,
+    );
+    let midnight = moment_of.call1((year, month, day))?;
+    let midnight_ms = remind::millis_of(midnight.call_method0("timestamp")?.extract::<f64>()?);
     guard(|| {
         let parts = remind::clock_parts(now_ms, (year, month, day, hour, minute), midnight_ms)
             .map_err(raise)?;
@@ -589,9 +613,10 @@ fn remind_todays_starts(blocks: &str, trace: &str, today_iso: &str) -> PyResult<
     })
 }
 
-/// `due_ms_of(hour, minute)` is the caller's own local-clock conversion; a Python error from it
-/// is raised as it came. `fired_set` is the caller's set when it is one, which gets the keys the
-/// engine marks, whether or not the call goes on to fail.
+/// `moment_of_day(today_iso)` is the caller's own date reader (`datetime.fromisoformat`); the local
+/// time of an alarm is read from it when one is needed, and a Python error from it is raised as it
+/// came. `fired` gets the keys the engine marks when it is a set, whether or not the call goes on to
+/// fail.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn remind_due_alarms(
@@ -600,22 +625,31 @@ fn remind_due_alarms(
     weekday: i64,
     now_ms: i64,
     last_check_ms: Option<i64>,
-    fired: &str,
-    fired_set: Option<&Bound<'_, PySet>>,
+    fired: &Bound<'_, PyAny>,
     snoozed: &str,
-    due_ms_of: &Bound<'_, PyAny>,
+    moment_of_day: &Bound<'_, PyAny>,
 ) -> PyResult<(String, String, i64)> {
-    let (alarms, fired, snoozed) = (parse(alarms)?, parse(fired)?, parse(snoozed)?);
+    let fired_set = fired.cast::<PySet>().ok();
+    let (members, _) = members_of(fired)?;
+    let (alarms, fired, snoozed) = (parse(alarms)?, parse(&members)?, parse(snoozed)?);
     let mut added: Vec<String> = Vec::new();
     let failure: RefCell<Option<PyErr>> = RefCell::new(None);
     let mut convert = |hour: i64, minute: i64| -> EngineResult<i64> {
-        due_ms_of
-            .call1((hour, minute))
-            .and_then(|value| value.extract::<i64>())
-            .map_err(|error| {
-                *failure.borrow_mut() = Some(error);
-                EngineError::value("local time")
-            })
+        let read = || -> PyResult<i64> {
+            let kwargs = PyDict::new(moment_of_day.py());
+            kwargs.set_item("hour", hour)?;
+            kwargs.set_item("minute", minute)?;
+            kwargs.set_item("second", 0)?;
+            kwargs.set_item("microsecond", 0)?;
+            let day = moment_of_day.call1((today_iso,))?;
+            let due_at = day.call_method("replace", (), Some(&kwargs))?;
+            let seconds = due_at.call_method0("timestamp")?.extract::<f64>()?;
+            Ok(remind::millis_of(seconds))
+        };
+        read().map_err(|error| {
+            *failure.borrow_mut() = Some(error);
+            EngineError::value("local time")
+        })
     };
     let outcome = guard(|| {
         Ok(remind::due_alarms(

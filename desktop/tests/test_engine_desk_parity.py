@@ -2997,3 +2997,76 @@ def test_sanitize_updates_reads_what_json_cannot_write_as_nothing(raw):
 @pytest.mark.parametrize("kind", ["windows", "appimage", "tarball", "", "x", "Windows"])
 def test_asset_name_of_a_kind_nobody_installs_is_a_key_error(kind):
     same(live_update.asset_name, ref_update.asset_name, kind)
+
+
+KEYS = ["2026-09-21|a|0|08:30", "2026-09-21|b|0|16:00"]
+FIRED_AS = [
+    set(),
+    set(KEYS[:1]),
+    frozenset(KEYS),
+    KEYS[:1],
+    tuple(KEYS),
+    KEYS[0],
+    {KEYS[0]: 1},
+    None,
+    "",
+]
+
+
+@CHECK
+@given(
+    st.lists(REMIND_BLOCK, max_size=3),
+    REMIND_TRACE,
+    TODAYS,
+    st.integers(7 * 60, 18 * 60),
+    st.integers(0, 15),
+    st.sampled_from(FIRED_AS),
+)
+def test_reminders_and_songs_read_what_was_fired_in_any_container(blocks, trace, today, now_min, lead, fired):
+    same(
+        live_remind.due_reminders,
+        ref_remind.due_reminders,
+        blocks=blocks,
+        trace=trace,
+        today_iso=today,
+        now_min=now_min,
+        lead_min=lead,
+        fired=fired,
+    )
+    same(
+        live_remind.due_songs,
+        ref_remind.due_songs,
+        blocks=blocks,
+        trace=trace,
+        today_iso=today,
+        now_min=now_min,
+        played=fired,
+    )
+
+
+@CHECK
+@given(
+    TODAYS,
+    st.sampled_from(["2026-09-24|a|07:30", "2026-09-24|b|10:30"]),
+    st.sampled_from(FIRED_AS),
+    ZONES,
+    st.integers(1_789_900_000_000, 1_790_300_000_000),
+)
+def test_due_alarms_mark_only_a_set_and_read_any_container(today, key, fired, zone, now_ms):
+    alarms = [
+        {"id": "a", "time": "07:30", "enabled": True},
+        {"id": "b", "time": "10:30", "enabled": True, "days": [datetime.fromisoformat(today).weekday()]},
+    ]
+    with local_zone(zone):
+        same(
+            live_remind.due_alarms,
+            ref_remind.due_alarms,
+            alarms=alarms,
+            today_iso=today,
+            weekday=datetime.fromisoformat(today).weekday(),
+            now_ms=now_ms,
+            midnight_ms=0,
+            last_check_ms=now_ms - 6 * 3_600_000,
+            fired=fired,
+            snoozed={"a": now_ms - 1},
+        )

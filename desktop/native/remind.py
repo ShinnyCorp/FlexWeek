@@ -14,11 +14,6 @@ ALARM_SNOOZE_MIN = 5
 ALARM_SNOOZE_MS = ALARM_SNOOZE_MIN * 60_000
 
 
-def _members(held: object) -> str:
-    """What `held` contains, as the engine reads it; a set is written out, anything else as it is."""
-    return json.dumps(list(held) if isinstance(held, set | frozenset) else held)
-
-
 def reminder_lead_min(prefs: dict | None, default: int = 5) -> int:
     return int(flexweek_engine.remind_lead_min(json.dumps(prefs), default))
 
@@ -41,19 +36,7 @@ def alarm_key(iso_date: str, alarm: dict) -> str:
 
 
 def clock_parts(now_ms: int) -> dict:
-    moment = datetime.fromtimestamp(now_ms / 1000.0)
-    midnight = datetime(moment.year, moment.month, moment.day)
-    return json.loads(
-        flexweek_engine.remind_clock_parts(
-            now_ms,
-            moment.year,
-            moment.month,
-            moment.day,
-            moment.hour,
-            moment.minute,
-            int(midnight.timestamp() * 1000),
-        )
-    )
+    return json.loads(flexweek_engine.remind_clock_parts(now_ms, datetime.fromtimestamp, datetime))
 
 
 def reminder_blocks(blocks: list[dict], trace: dict | None) -> list[dict]:
@@ -76,8 +59,7 @@ def due_reminders(
             today_iso,
             now_min,
             lead_min,
-            _members(fired),
-            isinstance(fired, set | frozenset),
+            fired,
         )
     )
 
@@ -92,8 +74,7 @@ def due_songs(
             json.dumps(trace),
             today_iso,
             now_min,
-            _members(played),
-            isinstance(played, set | frozenset),
+            played,
         )
     )
 
@@ -103,7 +84,7 @@ def todays_starts(
 ) -> Iterator[tuple[dict, int, int, str]]:
     """Each block starting today: the block, its day, its start in minutes, and its reminder key."""
     rows = json.loads(flexweek_engine.remind_todays_starts(json.dumps(blocks), json.dumps(trace), today_iso))
-    yield from (tuple(row) for row in rows)
+    yield from map(tuple, rows)
 
 
 def due_alarms(
@@ -117,20 +98,15 @@ def due_alarms(
     fired: set[str],
     snoozed: dict[str, int],
 ) -> tuple[list[dict], dict[str, int], int]:
-    def due_ms_of(hour: int, minute: int) -> int:
-        due_at = datetime.fromisoformat(today_iso).replace(hour=hour, minute=minute, second=0, microsecond=0)
-        return int(due_at.timestamp() * 1000)
-
     queued, remaining, last_ms = flexweek_engine.remind_due_alarms(
         json.dumps(alarms),
         today_iso,
         weekday,
         now_ms,
         last_check_ms,
-        _members(fired),
-        fired if isinstance(fired, set) else None,
+        fired,
         json.dumps(snoozed),
-        due_ms_of,
+        datetime.fromisoformat,
     )
     return json.loads(queued), json.loads(remaining), last_ms
 
