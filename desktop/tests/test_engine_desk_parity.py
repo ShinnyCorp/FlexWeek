@@ -1255,3 +1255,322 @@ def test_planner_title_of_my_day_reads_the_local_date():
         assert live_reuse.planner_title(session, "myday") == "Thursday 1 October"
     with local_zone("America/New_York"):
         assert live_reuse.planner_title(session, "myday") == "Wednesday 30 September"
+
+
+NAMES = [
+    "Night",
+    "night",
+    "  Night   shift ",
+    "My look",
+    "",
+    "   ",
+    " ",
+    "a b",
+    "x" * 40,
+    "x" * 41,
+    "Ünï",
+    "ÜNÏ",
+    "straße",
+    "STRASSE",
+    "İstanbul",
+    "ǅ",
+    "light",
+    "LIGHT",
+    "Pack default",
+    "high  contrast",
+    "System",
+    "nocturne",
+    "é\U0001f600",
+]
+HEXES = [
+    "#3d6fc4",
+    "#3D6FC4",
+    "#abcdef",
+    "#12345",
+    "#1234567",
+    "3d6fc4",
+    "#gggggg",
+    "#12345\n",
+    "red",
+    "",
+    None,
+    5,
+]
+
+
+def raw_look():
+    """A custom look as a look file might hold it: every setting right, wrong, or of the wrong kind."""
+    return st.fixed_dictionaries(
+        {
+            "base": maybe(
+                "light",
+                "dark",
+                "system",
+                "high-contrast",
+                "slate",
+                "nocturne",
+                "paper",
+                "ink",
+                "terminal",
+                "poster",
+                "pastel",
+                "light",
+                "x",
+                "",
+                None,
+                5,
+            )
+        },
+        optional={
+            "name": st.one_of(maybe(*NAMES), maybe(None, 5, ["a"])),
+            "accent": st.one_of(
+                maybe("default", "sky", "gold", "sea", "sand", "other", None, 5), maybe(*HEXES)
+            ),
+            "colours": st.one_of(
+                st.dictionaries(
+                    maybe("page", "card", "text", "line", "muted", "extra"), maybe(*HEXES), max_size=5
+                ),
+                maybe(None, 5, "x", []),
+            ),
+            "categories": st.one_of(
+                st.dictionaries(
+                    maybe("class", "study", "sleep", "assignments", "zzz", "free"),
+                    st.one_of(
+                        st.fixed_dictionaries(
+                            {},
+                            optional={
+                                "hue": maybe(250, -30, 720.5, 359.999, 0, True, "x", None, 1e300),
+                                "colour": maybe(*HEXES),
+                            },
+                        ),
+                        maybe(None, 5, "x", []),
+                    ),
+                    max_size=4,
+                ),
+                maybe(None, 5, [], "x"),
+            ),
+            "spacing": maybe("comfortable", "compact", "x", None, 5),
+            "shadows": maybe("none", "soft", "bold", "hard", None),
+            "body_font": maybe("sans", "serif", "mono", "x", None),
+            "heading_font": maybe("sans", "serif", "mono", "x"),
+            "blocks": maybe("edge", "filled", "outline", "outlined", 3),
+            "hour_lines": maybe("none", "faint", "clear", "x"),
+            "now_line": maybe("accent", "text", "x"),
+            "motion": maybe("normal", "extra", "reduce", "off", "x"),
+            "show_times": maybe(True, False, 1, "yes", None),
+            "show_lengths": maybe(True, False, 0),
+            "today_highlight": maybe(True, False, "x"),
+            "corners": maybe(0, 16, 8, 7.5, 6.5, 16.5, -1, 0.5, True, "x", None, 8.0),
+            "text_scale": maybe(
+                0.9, 1.3, 1, 1.0, 1.255, 1.245, 0.125, 0.895, 1.2999, 1.305, True, "x", 1.125
+            ),
+            "edge_width": maybe(2, 6, 3.5, 2.5, 4.4999, 1, 7, False),
+            "mystery": maybe(1, "x"),
+            "kind": maybe("x"),
+        },
+    )
+
+
+@CHECK
+@given(raw_look())
+def test_export_look_on_generated_looks(custom):
+    same(live_look.export_look, ref_look.export_look, custom)
+
+
+@CHECK
+@given(maybe(None, 5, "x", [], [1]))
+def test_export_look_of_something_that_is_not_a_look(custom):
+    same(live_look.export_look, ref_look.export_look, custom)
+
+
+def look_file(custom, kind="FlexWeek look", version=1):
+    body = {"kind": kind, "version": version, **custom}
+    return json.dumps(body)
+
+
+@CHECK
+@given(
+    raw_look(),
+    maybe("FlexWeek look", "other", None, 5),
+    maybe(1, 2, 0, -1, 1.0, True, "1", None, 10**30),
+    st.booleans(),
+)
+def test_import_look_on_generated_files(custom, kind, version, as_bytes):
+    text = look_file(custom, kind, version)
+    same(live_look.import_look, ref_look.import_look, text.encode() if as_bytes else text)
+
+
+LOOK_HEAD = '{"kind": "FlexWeek look", "version": 1, "base": "light"'
+
+
+@CHECK
+@given(
+    maybe(
+        "",
+        "not json",
+        "[]",
+        "null",
+        '"x"',
+        "{",
+        "NaN",
+        LOOK_HEAD + ', "text_scale": NaN}',
+        LOOK_HEAD + ', "categories": {"class": {"hue": Infinity}}}',
+        LOOK_HEAD + ', "categories": {"class": {"hue": -Infinity, "colour": "#abcdef"}}}',
+        '{"kind": "FlexWeek look", "version": NaN, "base": "light"}',
+        LOOK_HEAD + ', "colours": NaN, "name": NaN, "accent": Infinity}',
+        LOOK_HEAD + ', "name": "caf\\u00e9"}',
+        LOOK_HEAD + ', "base": "dark"}',
+        LOOK_HEAD + "} trailing",
+        "﻿{}",
+        " \n{}",
+        "x" * 70_000,
+        LOOK_HEAD + ', "name": "' + "x" * 65_500 + '"}',
+    )
+)
+def test_import_look_on_odd_text(text):
+    same(live_look.import_look, ref_look.import_look, text)
+    same(live_look.import_look, ref_look.import_look, text.encode("utf-8"))
+
+
+def test_import_look_on_text_that_is_not_utf8():
+    same(live_look.import_look, ref_look.import_look, b'{"kind": "\xff"}')
+    same(live_look.import_look, ref_look.import_look, '{"a": 1}'.encode("utf-16"))
+
+
+@CHECK
+@given(st.one_of(st.lists(raw_look(), max_size=5), maybe(None, "x", {}, 5, [], {"a": 1})))
+def test_sanitize_saved_on_generated_lists(raw):
+    same(live_look.sanitize_saved, ref_look.sanitize_saved, raw)
+
+
+@CHECK
+@given(
+    st.lists(
+        st.builds(lambda body, name: {**body, "base": "light", "name": name}, raw_look(), maybe(*NAMES[:12])),
+        min_size=1,
+        max_size=6,
+    )
+)
+def test_sanitize_saved_drops_a_look_named_twice(raw):
+    same(live_look.sanitize_saved, ref_look.sanitize_saved, raw)
+
+
+@CHECK
+@given(st.one_of(maybe(*NAMES), maybe(None, 5, [], b"x")))
+def test_look_names_on_generated_names(name):
+    for func_pair in ((live_look._name, ref_look._name),):
+        assert produced(func_pair[0], (name,), {}) == produced(func_pair[1], (name,), {})
+
+
+@CHECK
+@given(
+    st.lists(
+        st.one_of(
+            st.fixed_dictionaries({"name": maybe(*NAMES)}), maybe({}, {"name": None}, {"name": 5}, 5, None)
+        ),
+        max_size=4,
+    ),
+    maybe(*NAMES),
+)
+def test_finding_a_saved_look_on_generated_lists(saved, name):
+    same(live_look._find, ref_look._find, saved, name)
+
+
+PACKS_AND_JUNK = ["system", "light-frost", "dark-frost", "nocturne", "slate", "other", "", None, 5]
+
+
+@st.composite
+def device_looks(draw):
+    look = {}
+    if draw(st.booleans()):
+        look["preset"] = draw(
+            maybe("default", "terminal", "poster", "ink", "high-contrast", "paper", "pastel", "x", None, 5)
+        )
+    if draw(st.booleans()):
+        look["knobs"] = draw(
+            st.one_of(
+                st.fixed_dictionaries(
+                    {},
+                    optional={
+                        "surface": maybe("flat", "layered", "frost", "x", 5),
+                        "corners": maybe("soft", "sharp", "rounded", "round", "pill", None),
+                        "depth": maybe("none", "soft", "bold", "flat", "hard"),
+                        "font": maybe("sans", "serif", "mono", "x"),
+                        "blocks": maybe("edge", "filled", "outline", "outlined"),
+                        "density": maybe("comfortable", "compact"),
+                        "text": maybe("small", "normal", "large", "huge"),
+                    },
+                ),
+                maybe(None, 5, [], "x"),
+            )
+        )
+    if draw(st.booleans()):
+        look["custom"] = draw(st.one_of(raw_look(), maybe(None, 5, "x", [])))
+    return draw(st.one_of(st.just(look), maybe(None, 5, "x", [])))
+
+
+@CHECK
+@given(maybe(*PACKS_AND_JUNK), device_looks())
+def test_base_of_on_generated_looks(pack, look):
+    same(live_look.base_of, ref_look.base_of, pack, look)
+
+
+@CHECK
+@given(maybe(*PACKS_AND_JUNK), device_looks(), maybe("default", "sky", "#ABCDEF", "#abc", "other", None, 5))
+def test_start_custom_on_generated_looks(pack, look, accent):
+    same(live_look.start_custom, ref_look.start_custom, pack, look, accent)
+    same(live_look.start_custom, ref_look.start_custom, pack, look)
+
+
+@CHECK
+@given(device_looks(), st.one_of(raw_look(), maybe(None, 5, "x", [])))
+def test_wear_on_generated_looks(look, custom):
+    same(live_look.wear, ref_look.wear, look, custom)
+
+
+@st.composite
+def saved_looks(draw):
+    names = draw(st.lists(maybe(*NAMES[:12], "Day", "dAy"), max_size=4))
+    return [{"base": "light", "name": name} for name in names]
+
+
+@CHECK
+@given(saved_looks(), maybe(*NAMES), raw_look())
+def test_saving_looks_on_generated_names(saved, name, custom):
+    same(live_look.save_look, ref_look.save_look, saved, custom, name)
+    same(live_look.free_name, ref_look.free_name, saved, name)
+    same(live_look.rename_look, ref_look.rename_look, saved, "day", name)
+    same(live_look.duplicate_look, ref_look.duplicate_look, saved, name)
+    same(live_look.delete_look, ref_look.delete_look, saved, name)
+
+
+def test_the_look_tables_in_the_engine_are_the_ones_in_look_py():
+    import flexweek_engine
+
+    import desktop.native.look as look
+    from desktop.native.calendar import CATEGORIES
+
+    held = json.loads(flexweek_engine.look_tables())
+    wanted = {
+        "LOOK_BASES": {key: list(value) for key, value in look.LOOK_BASES.items()},
+        "BASE_LABELS": list(look.BASE_LABELS.values()),
+        "PACK_LABELS": list(look.PACK_LABELS.values()),
+        "PRESET_LABELS": list(look.LOOK_PRESET_LABELS.values()),
+        "PACKS": list(look.PACKS),
+        "ACCENTS": list(look.ACCENTS),
+        "LOOK_KNOBS": {key: list(value) for key, value in look.LOOK_KNOBS.items()},
+        "LOOK_DEFAULTS": look.LOOK_DEFAULTS,
+        "LOOK_PRESETS": look.LOOK_PRESETS,
+        "CUSTOM_CHOICES": {key: list(value) for key, value in look.CUSTOM_CHOICES.items()},
+        "CUSTOM_SWITCHES": list(look.CUSTOM_SWITCHES),
+        "CUSTOM_RANGES": {key: list(value) for key, value in look.CUSTOM_RANGES.items()},
+        "CUSTOM_COLOURS": list(look.CUSTOM_COLOURS),
+        "CATEGORIES": [[key, info["label"], info["kind"]] for key, info in CATEGORIES.items()],
+    }
+    assert held == wanted
+
+
+def test_base_of_each_pack_and_preset():
+    for pack in PACKS_AND_JUNK:
+        for look in (None, {}, {"preset": "paper"}, {"preset": "default"}, {"custom": {"base": "slate"}}):
+            same(live_look.base_of, ref_look.base_of, pack, look)

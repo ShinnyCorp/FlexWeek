@@ -933,7 +933,11 @@ fn update_due(settings: &str, now_ms: i64) -> PyResult<bool> {
 #[pyfunction]
 fn look_saved(raw: &str) -> PyResult<String> {
     let raw = parse(raw)?;
-    guard(|| Ok(maps(custom_look::sanitize_saved(&raw))))
+    guard(|| {
+        custom_look::sanitize_saved(&raw)
+            .map(maps)
+            .map_err(crate::raise)
+    })
 }
 
 #[pyfunction]
@@ -960,19 +964,56 @@ fn look_export(custom: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn look_import(text: &Bound<'_, PyAny>) -> PyResult<(Option<String>, Vec<String>)> {
-    let bytes = if let Ok(text) = text.extract::<String>() {
-        text.into_bytes()
-    } else {
-        text.extract::<Vec<u8>>()?
-    };
+fn look_import(size: usize, raw: Option<&str>) -> PyResult<(Option<String>, Vec<String>)> {
+    let raw = raw.map(parse).transpose()?;
     guard(|| {
-        let imported = custom_look::import_look(&bytes);
+        let imported = custom_look::import_look(size, raw.as_ref());
         Ok((
             imported.look.map(|look| dump(&Value::Object(look))),
             imported.problems,
         ))
     })
+}
+
+#[pyfunction]
+fn look_base_of(pack: &str, look: &str) -> PyResult<String> {
+    let (pack, look) = (parse(pack)?, parse(look)?);
+    guard(|| Ok(dump(&custom_look::base_of(&pack, &look))))
+}
+
+#[pyfunction]
+fn look_start(pack: &str, look: &str, accent: &str) -> PyResult<String> {
+    let (pack, look, accent) = (parse(pack)?, parse(look)?, parse(accent)?);
+    guard(|| {
+        Ok(dump(&Value::Object(custom_look::start_custom(
+            &pack, &look, &accent,
+        ))))
+    })
+}
+
+#[pyfunction]
+fn look_wear(look: &str, custom: &str) -> PyResult<String> {
+    let (look, custom) = (parse(look)?, parse(custom)?);
+    guard(|| Ok(dump(&Value::Object(custom_look::wear(&look, &custom)))))
+}
+
+#[pyfunction]
+fn look_name(name: Option<&str>) -> PyResult<String> {
+    guard(|| custom_look::name_valid(name).map_err(crate::raise))
+}
+
+#[pyfunction]
+fn look_find(saved: &str, name: &str) -> PyResult<i64> {
+    let saved = objects(saved)?;
+    guard(|| {
+        let at = custom_look::find_index_of(&saved, name).map_err(crate::raise)?;
+        Ok(at.map_or(-1, |index| index as i64))
+    })
+}
+
+#[pyfunction]
+fn look_tables() -> PyResult<String> {
+    guard(|| Ok(dump(&custom_look::tables())))
 }
 
 #[pyfunction]
@@ -1169,6 +1210,12 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         look_reset,
         look_export,
         look_import,
+        look_base_of,
+        look_start,
+        look_wear,
+        look_name,
+        look_find,
+        look_tables,
         look_readability,
         look_apply_fix,
     );

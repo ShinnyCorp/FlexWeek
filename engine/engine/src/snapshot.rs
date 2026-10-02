@@ -190,6 +190,44 @@ pub fn dumps_sorted(value: &Value) -> String {
     json_text(value, ", ", ": ")
 }
 
+/// `json.dumps(value, indent=indent)`: keys in the order they were written, every non-ASCII
+/// character escaped, an empty list or dict as `[]` or `{}`.
+pub fn dumps_indent(value: &Value, indent: usize) -> String {
+    fn walk(value: &Value, indent: usize, level: usize, out: &mut String) {
+        let pad = |depth: usize| " ".repeat(indent * depth);
+        match value {
+            Value::Array(items) if !items.is_empty() => {
+                out.push('[');
+                for (index, item) in items.iter().enumerate() {
+                    out.push_str(if index == 0 { "\n" } else { ",\n" });
+                    out.push_str(&pad(level + 1));
+                    walk(item, indent, level + 1, out);
+                }
+                out.push('\n');
+                out.push_str(&pad(level));
+                out.push(']');
+            }
+            Value::Object(map) if !map.is_empty() => {
+                out.push('{');
+                for (index, (key, item)) in map.iter().enumerate() {
+                    out.push_str(if index == 0 { "\n" } else { ",\n" });
+                    out.push_str(&pad(level + 1));
+                    out.push_str(&py_string(key));
+                    out.push_str(": ");
+                    walk(item, indent, level + 1, out);
+                }
+                out.push('\n');
+                out.push_str(&pad(level));
+                out.push('}');
+            }
+            other => out.push_str(&json_text(other, ", ", ": ")),
+        }
+    }
+    let mut out = String::new();
+    walk(value, indent, 0, &mut out);
+    out
+}
+
 pub fn state_token(snapshot: &Value) -> String {
     let digest = Sha256::digest(canonical(snapshot).as_bytes());
     hex::encode(digest)
