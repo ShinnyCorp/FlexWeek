@@ -10,11 +10,13 @@ import desk_ref.calendar as ref_calendar
 import desk_ref.focus as ref_focus
 import desk_ref.look as ref_look
 import desk_ref.tokens as ref_tokens
+import desk_ref.update as ref_update
 import desk_ref.weekmodel as ref_week
 import desktop.native.calendar as live_calendar
 import desktop.native.focus as live_focus
 import desktop.native.look as live_look
 import desktop.native.tokens as live_tokens
+import desktop.native.update as live_update
 import desktop.native.weekmodel as live_week
 import desktop.tests.test_engine_desk_parity as base
 
@@ -78,3 +80,18 @@ def test_unhashable_week_models_use_the_engine_without_caching(method):
 
     assert observed(ref_week) == (60 if method == "load_min" else ["b1"])
     base.same(lambda: observed(live_week), lambda: observed(ref_week))
+
+
+@pytest.mark.parametrize("separator", ["\n", "\r\n", "\r", "\v", "\f", "\x1c", "\x1d", "\x1e",
+                                      "\x85", "\u2028", "\u2029"])
+@pytest.mark.parametrize("digest", ["a" * 64, "É" * 64])
+def test_checksum_files_use_python_line_breaks_and_character_lengths(separator, digest):
+    text = f"junk{separator}{digest}  *app"
+    assert ref_update.expected_digest(text, "app") == digest.lower()
+    base.same(live_update.expected_digest, ref_update.expected_digest, text, "app")
+
+
+def test_checksum_fields_accept_python_separator_whitespace():
+    text = "a" * 64 + "\x1f*app"
+    assert ref_update.expected_digest(text, "app") == "a" * 64
+    base.same(live_update.expected_digest, ref_update.expected_digest, text, "app")

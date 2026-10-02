@@ -201,9 +201,15 @@ pub fn release_from_page(location: &str) -> Option<serde_json::Value> {
 }
 
 pub fn expected_digest(checksum_text: &str, asset: &str) -> Option<String> {
-    for line in checksum_text.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() != 2 || parts[0].len() != 64 {
+    for line in checksum_text.split([
+        '\n', '\r', '\u{b}', '\u{c}', '\u{1c}', '\u{1d}', '\u{1e}', '\u{85}', '\u{2028}',
+        '\u{2029}',
+    ]) {
+        let parts: Vec<&str> = line
+            .split(crate::time::py_space)
+            .filter(|part| !part.is_empty())
+            .collect();
+        if parts.len() != 2 || parts[0].chars().count() != 64 {
             continue;
         }
         if parts[1].trim_start_matches('*') == asset {
@@ -343,7 +349,27 @@ mod sha256 {
 
 #[cfg(test)]
 mod tests {
-    use super::{install_kind, is_newer, parse_version};
+    use super::{expected_digest, install_kind, is_newer, parse_version};
+
+    #[test]
+    fn checksum_lines_and_lengths_follow_python_text_rules() {
+        for separator in [
+            "\n", "\r\n", "\r", "\u{b}", "\u{c}", "\u{1c}", "\u{1d}", "\u{1e}", "\u{85}",
+            "\u{2028}", "\u{2029}",
+        ] {
+            let digest = "a".repeat(64);
+            let text = format!("junk{separator}{digest} *app");
+            assert_eq!(expected_digest(&text, "app"), Some(digest));
+        }
+        assert_eq!(
+            expected_digest(&format!("{}  app", "É".repeat(64)), "app"),
+            Some("é".repeat(64))
+        );
+        assert_eq!(
+            expected_digest(&format!("{}\u{1f}*app", "a".repeat(64)), "app"),
+            Some("a".repeat(64))
+        );
+    }
 
     #[test]
     fn parse_version_matches_desktop_tests() {
