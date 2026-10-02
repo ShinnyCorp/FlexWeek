@@ -105,10 +105,12 @@ pub fn rewrite_blocks(blocks: &Value, assignments: &Value) -> EngineResult<Vec<V
 fn membership(id: &Value, assignments: &Value) -> EngineResult<bool> {
     match id {
         Value::String(text) => Ok(assignments.get(text.as_str()).is_some()),
-        Value::Array(_) | Value::Object(_) => Err(type_error(format!(
-            "unhashable type: '{}'",
-            stored::type_name(id)
-        ))),
+        Value::Array(_) | Value::Object(_) => {
+            let name = stored::type_name(id);
+            Err(type_error(format!(
+                "cannot use '{name}' as a dict key (unhashable type: '{name}')"
+            )))
+        }
         _ => Ok(false),
     }
 }
@@ -568,7 +570,10 @@ mod tests {
         let unhashable = text(r#"[{"id": "s1", "assignment_id": [1]}]"#);
         match rewrite_stored_blocks(&unhashable, &text(ASSIGNMENTS), pad) {
             Err(Relay::Store(StoreError::Engine(error))) => {
-                assert_eq!(error.message, "unhashable type: 'list'");
+                assert_eq!(
+                    error.message,
+                    "cannot use 'list' as a dict key (unhashable type: 'list')"
+                );
             }
             _ => panic!("a list id must be an unhashable-type error"),
         }
