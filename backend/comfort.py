@@ -42,18 +42,7 @@ REMINDER_LIMITS = {
 
 
 def snap_minutes(value: int, minimum: int, maximum: int) -> int:
-    try:
-        return flexweek_engine.snap_minutes(value, minimum, maximum)
-    except OverflowError:
-        # The engine takes 64-bit ints. Python's formula still runs for a larger one.
-        snapped = int(round(value / 15) * 15)
-        if snapped < minimum:
-            snapped = minimum + ((15 - minimum % 15) % 15)
-        if snapped > maximum:
-            snapped = maximum - (maximum % 15)
-        if snapped < 15:
-            snapped = 15
-        return snapped
+    return flexweek_engine.snap_minutes_wide(value, minimum, maximum)
 
 
 def split_plan(
