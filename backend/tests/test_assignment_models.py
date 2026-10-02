@@ -165,3 +165,46 @@ def test_models_module_does_not_import_fastapi() -> None:
         elif isinstance(node, ast.ImportFrom) and node.module:
             imported.append(node.module.split(".", 1)[0])
     assert "fastapi" not in imported
+
+
+def test_a_spotify_link_cannot_be_faked_by_putting_the_host_somewhere_else() -> None:
+    """The link is handed to the desktop to open externally, so the host has to be the real host and
+    not merely present in the string. Each of these puts open.spotify.com somewhere a substring
+    check would accept."""
+    from backend.models import valid_spotify_url
+
+    for attack in (
+        "https://open.spotify.com@evil.com/track/abc",
+        "https://evil.com/open.spotify.com/track/abc",
+        "https://evil.com/?x=https://open.spotify.com/track/abc",
+        "https://open.spotify.com.evil.com/track/abc",
+        "http://open.spotify.com/track/abc",
+        "https://open.spotify.com:8080/track/abc",
+        "javascript:alert(1)//open.spotify.com/track/abc",
+    ):
+        with pytest.raises(ValueError):
+            valid_spotify_url(attack)
+
+
+def test_a_real_share_link_still_passes() -> None:
+    from backend.models import valid_spotify_url
+
+    assert valid_spotify_url("https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT")
+    assert valid_spotify_url("https://open.spotify.com/track/abc?si=xyz")
+
+
+def test_parse_due_treats_a_date_and_2359_as_the_end_of_that_day() -> None:
+    from datetime import date
+
+    from backend.assignments import due_placement_bound, due_slack_point
+    from backend.models import END_OF_DAY_MIN, parse_due
+
+    tuesday = date(2026, 9, 15)
+    assert parse_due("2026-09-15") == (tuesday, END_OF_DAY_MIN)
+    assert parse_due("2026-09-15T23:59") == (tuesday, END_OF_DAY_MIN)
+    assert parse_due("2026-09-15T09:00") == (tuesday, 9 * 60)
+    week = "2026-09-14"
+    assert due_placement_bound(week, "2026-09-15") == (1, END_OF_DAY_MIN)
+    assert due_placement_bound(week, "2026-09-15T23:59") == (1, END_OF_DAY_MIN)
+    assert due_placement_bound(week, "2026-09-15T09:00") == (1, 9 * 60)
+    assert due_slack_point(week, "2026-09-15") == due_slack_point(week, "2026-09-15T23:59")
