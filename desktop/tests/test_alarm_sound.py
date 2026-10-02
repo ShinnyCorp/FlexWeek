@@ -75,9 +75,13 @@ def test_tests_ring_at_no_volume(qapp: Any) -> None:
     """What tests, the rig and fwtest ring came out of the speakers of whoever was at the machine."""
     assert os.environ.get("FLEXWEEK_SILENT") == "1", "conftest silences every test"
     bell = Bell()
-    if not bell.once("chime", 80):
-        pytest.skip("no sound card here, so nothing to hear")
-    assert bell._sink is not None and bell._sink.volume() == 0.0
+    played = bell.once("chime", 80)
+    if played:
+        assert bell._sink is not None and bell._sink.volume() == 0.0
+    else:
+        # No sound card: the test must still finish clean. A skip raised here used to leave
+        # the Bell in the skip's traceback for the collector, which failed the teardown.
+        assert bell._sink is None, "nothing reached a card, so nothing should be set up"
     bell.stop()
 
 
