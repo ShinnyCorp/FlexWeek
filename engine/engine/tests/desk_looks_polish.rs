@@ -35,9 +35,10 @@ fn test_sleep_is_darker_than_the_other_light_fills() {
             .map(|(_, info)| info.color)
             .expect("sleep"),
     )
+    .expect("a colour")
     .0;
     for (key, info) in CATEGORIES.iter().filter(|(key, _)| *key != "sleep") {
-        let gap = oklab(info.color).0 - sleep;
+        let gap = oklab(info.color).expect("a colour").0 - sleep;
         assert!(gap >= 0.05, "{key}: {gap}");
     }
 }
