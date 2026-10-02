@@ -1696,6 +1696,12 @@ mod tests {
         )
         .unwrap();
         assert!(read_session(&state).is_none());
+        let seen = format!(
+            "recorded {:?}; state {:?}; comm {:?}",
+            read_recorded(&state),
+            process_state(Path::new("/proc"), pid),
+            fs::read_to_string(format!("/proc/{pid}/comm"))
+        );
         stop_at(&state, Path::new("/proc"), &mut real_kill).unwrap();
         // Asked of the child itself, not of /proc: once stopped it may still be listed there for a
         // moment as a zombie until its parent, this test, collects it.
@@ -1710,7 +1716,7 @@ mod tests {
             let _ = child.kill();
             let _ = child.wait();
         }
-        assert!(stopped, "pid {pid} still running 5 s after stop");
+        assert!(stopped, "pid {pid} still running 5 s after stop ({seen})");
         assert!(!state.exists());
         let _ = fs::remove_dir_all(root);
     }
