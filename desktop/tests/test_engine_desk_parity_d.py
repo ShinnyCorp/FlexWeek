@@ -10,10 +10,12 @@ import desk_ref.calendar as ref_calendar
 import desk_ref.focus as ref_focus
 import desk_ref.look as ref_look
 import desk_ref.tokens as ref_tokens
+import desk_ref.weekmodel as ref_week
 import desktop.native.calendar as live_calendar
 import desktop.native.focus as live_focus
 import desktop.native.look as live_look
 import desktop.native.tokens as live_tokens
+import desktop.native.weekmodel as live_week
 import desktop.tests.test_engine_desk_parity as base
 
 
@@ -45,3 +47,34 @@ def test_nan_contrast_floor_keeps_pythons_comparison(grounds, expected):
     floor = float("nan")
     assert ref_tokens.fit_lightness("#777777", grounds, floor) == expected
     base.same(live_tokens.fit_lightness, ref_tokens.fit_lightness, "#777777", grounds, floor)
+
+
+def test_week_methods_accept_whole_float_fields():
+    def observed(module):
+        row = module.Occurrence("b", "Math", "assignments", 1.0, 540.0, 600.0,
+                                True, False, False, "a1", None, None)
+        waiting = module.Waiting("w", "English", "assignments", 30.0, "a2", "2026-09-29", "")
+        model = module.WeekModel("2026-09-28", (row,), (waiting,))
+        assert model.on_day(1)[0] is row
+        assert model.load_min(1) == 60
+        assert model.minutes_left_today(1, 540) == 90
+
+    base.same(lambda: observed(live_week), lambda: observed(ref_week))
+
+
+@pytest.mark.parametrize("method", ["on_day", "load_min", "open_work"])
+def test_unhashable_week_models_use_the_engine_without_caching(method):
+    blocks = [{"id": "b1", "title": "HW", "kind": "flexible", "assignment_id": "a1",
+               "start": "16:00", "duration_min": 60, "days": [0]}]
+    assignments = {"a1": {"due": ["2026-10-05"]}}
+
+    def observed(module):
+        model = module.build_week("2026-09-28", blocks, assignments, None)
+        if method == "load_min":
+            return model.load_min(0)
+        rows = model.on_day(0) if method == "on_day" else model.open_work()
+        assert rows[0] is model.occurrences[0]
+        return [row.block_id for row in rows]
+
+    assert observed(ref_week) == (60 if method == "load_min" else ["b1"])
+    base.same(lambda: observed(live_week), lambda: observed(ref_week))
