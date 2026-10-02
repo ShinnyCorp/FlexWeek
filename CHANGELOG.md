@@ -3,6 +3,28 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+- The planner, the day's and month's logic, storage and the desktop's logic
+  that does not draw are rewritten in Rust (`engine/`, contract in
+  `docs/engine/contract.md`) and built into the app as the `flexweek_engine`
+  module. Nothing a student sees changes: the same plans, the same words, the
+  same files. A week that took the old planner 2.9 ms to place takes 0.3 ms,
+  and drawing a frame of the hours takes about 5.5 ms where it took 9.1.
+- An existing account opens as it is. The database keeps its format, and
+  passwords, sessions and recovery codes made by earlier versions still work.
+- Storage has one owner: only the engine opens the database. The server's
+  routes ask it for rows instead of writing SQL themselves.
+- Building from source needs Rust as well as Python (`pip install ./engine/py`;
+  see the README). The downloads need nothing new.
+- `fwtest` starts and stops the rig's hidden desktop itself (it was a Python
+  script), and an interrupted run leaves nothing running.
+
+### Fixed
+- Tests draw text the same way in every worker, so the date picker's test no
+  longer fails on machines with subpixel text.
+
 ## [0.17.2] - 2026-09-30
 
 ### Added
