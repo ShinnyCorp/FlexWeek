@@ -1697,12 +1697,21 @@ mod tests {
         .unwrap();
         assert!(read_session(&state).is_none());
         stop_at(&state, Path::new("/proc"), &mut real_kill).unwrap();
-        assert!(
-            crate::identity::read_identity(pid).unwrap().is_none(),
-            "pid {pid} still running"
-        );
+        // Asked of the child itself, not of /proc: once stopped it may still be listed there for a
+        // moment as a zombie until its parent, this test, collects it.
+        let stopped = (0..50).any(|_| {
+            let done = matches!(child.try_wait(), Ok(Some(_)) | Err(_));
+            if !done {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            done
+        });
+        if !stopped {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        assert!(stopped, "pid {pid} still running 5 s after stop");
         assert!(!state.exists());
-        let _ = child.wait();
         let _ = fs::remove_dir_all(root);
     }
 
