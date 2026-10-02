@@ -1,6 +1,18 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-01, `engine/full-port`: the audit's last fix round is merged. The start-up migration reads
+  stored rows as the Python store did (`engine/engine/src/stored.rs`, shared by `plan::migrate_blocks`
+  and the store) and writes JSON with `snapshot::canonical`; the audit's probe gives 22 of 22 cases
+  identical, stored text included. The connection (`engine/py/src/db.rs`) compiles, begins, binds and
+  runs in CPython's order, maps SQLite result codes to `sqlite3`'s exception classes, opens a plain
+  path, and is typed by Protocols in `backend/storage.py`. Parity tests restore the solver clocks.
+  The free-time menu test pins its clock (Clay's side cards cover only the stretch of the day the
+  front card is scrolled to). Gate: 3075 passed. Not verified: CI, the Windows build and the packaged
+  app, since nothing is pushed. Known differences left: integers past 64 bits and JSON only Python
+  reads (NaN, lone surrogates) in stored rows; `build_month` returns a month where the Python raised
+  `TypeError` on a finished session with no start. The `desk` modules are not wired (E5), SQL is
+  still in `app.py` (part C step 2), and the Python wrappers remain (E6).
 - 2026-10-01, `engine/full-port`: Part C step 1 is in (`907def4`). `storage.connect` is the Rust
   connection; app SQL is unchanged. Part D drops store helpers Python never calls and
   `install_kind` no longer reads the process environment. Desk stays unwired. JSON text
@@ -749,6 +761,9 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-10-01, `engine/full-port` at the commit that adds this line: parts A to D and the fix round
+  are in and audited by Claude. Next: Jonathan's word to push for CI; then E5, part C step 2 and E6,
+  one slice at a time. Audit notes: `~/.flexweek-ui-harness/scratch/engine-audit/`.
 - 2026-10-01, `engine/full-port`: Part C step 1 committed (`c5c1aa2`, `f9d1362`, `907def4`).
   Gate before those commits: 3040 passed. Part D is the unused-store removal and the
   environment read in `install_kind`. Nothing pushed.
