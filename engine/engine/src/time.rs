@@ -47,6 +47,15 @@ pub(crate) fn py_strip(text: &str) -> &str {
 }
 
 pub(crate) fn py_repr(text: &str) -> String {
+    py_repr_inner(text, true)
+}
+
+/// `int()` sees a UTF-8 scalar, not a JSON-mapped surrogate, so its error must not unmap U+10F800.
+fn py_repr_for_int(text: &str) -> String {
+    py_repr_inner(text, false)
+}
+
+fn py_repr_inner(text: &str, unmap_wire: bool) -> String {
     let quote = if text.contains('\'') && !text.contains('"') {
         '"'
     } else {
@@ -65,7 +74,7 @@ pub(crate) fn py_repr(text: &str) -> String {
                 out.push(quote);
             }
             // A lone surrogate crosses as a private-use character (desktop/native/wire.py).
-            c if ('\u{10F800}'..='\u{10FFFF}').contains(&c) => {
+            c if unmap_wire && ('\u{10F800}'..='\u{10FFFF}').contains(&c) => {
                 out.push_str(&format!("\\u{:04x}", c as u32 - 0x10F800 + 0xD800));
             }
             c if !crate::pyprint::py_printable(c) => {
@@ -115,7 +124,7 @@ pub fn py_int(raw: &str) -> EngineResult<i64> {
     let fail = || {
         EngineError::value(format!(
             "invalid literal for int() with base 10: {}",
-            py_repr(raw)
+            py_repr_for_int(raw)
         ))
     };
     let trimmed = raw.trim();
