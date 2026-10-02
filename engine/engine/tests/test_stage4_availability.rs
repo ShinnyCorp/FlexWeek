@@ -3,7 +3,7 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::{Dump, by_id, ids, late_legacy, solve_legacy, solve_studied, study_span};
-use flexweek_engine::plan::{occupancy_from_windows, prepare_solve, spread_sessions};
+use flexweek_engine::plan::{occupancy_from_windows, prepare_solve, spread_sessions, study_rank};
 use flexweek_engine::solver::{SOLVE_BUDGET_MS, TimeBlock};
 use flexweek_engine::time::hhmm_to_minutes;
 use serde_json::json;
@@ -292,4 +292,23 @@ fn test_a_subjects_own_window_beats_an_earlier_untagged_one() {
     ];
     let trace = solve_studied(&[math], None, &windows);
     assert_eq!(by_id(&trace.placed, "math").start.as_deref(), Some("19:00"));
+}
+
+#[test]
+fn test_a_window_start_in_other_digits_is_read_as_python_reads_it() {
+    // The StudyWindow pattern's `\d` takes any Unicode digit, and Python's int() reads
+    // "1٩" as 19, so this window keeps 19:00 to 20:30 for Math.
+    let math = Dump::flex("math", "math", 60, &[0])
+        .energy("high")
+        .course("Math")
+        .into_block();
+    let windows = [study_span(&[0], "1\u{0669}:00", 90, Some("Math"))];
+    let trace = solve_studied(&[math], None, &windows);
+    assert_eq!(by_id(&trace.placed, "math").start.as_deref(), Some("19:00"));
+}
+
+#[test]
+fn test_a_window_start_that_is_not_a_time_is_an_error_not_midnight() {
+    let windows = [json!({"days": [0], "start": "bad", "duration_min": 90})];
+    assert!(study_rank(&windows, None, 0, 0, 60).is_err());
 }

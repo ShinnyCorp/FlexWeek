@@ -231,7 +231,7 @@ fn study_rank(
     day: i64,
     start_min: i64,
     duration_min: i64,
-) -> i64 {
+) -> EngineResult<i64> {
     let values: Vec<Value> = windows.iter().map(study_value).collect();
     crate::plan::study_rank(&values, course, day, start_min, duration_min)
 }
@@ -378,7 +378,7 @@ fn order_values(
             day,
             start_min,
             block.duration_min,
-        );
+        )?;
         let match_energy = if low <= start_min && start_min < high {
             0
         } else {

@@ -877,7 +877,7 @@ pub fn study_rank(
     day: i64,
     start_min: i64,
     duration_min: i64,
-) -> i64 {
+) -> EngineResult<i64> {
     let wanted = casefold_trim(course);
     let mut best = 2i64;
     for window in windows {
@@ -889,10 +889,7 @@ pub fn study_rank(
         if !days.contains(&day) {
             continue;
         }
-        let start_str = window["start"].as_str().unwrap_or("00:00");
-        let parts: Vec<&str> = start_str.split(':').collect();
-        let begin =
-            parts[0].parse::<i64>().unwrap_or(0) * 60 + parts[1].parse::<i64>().unwrap_or(0);
+        let begin = unpacked_minutes(window["start"].as_str().unwrap_or("00:00"))?;
         let win_dur = window["duration_min"].as_i64().unwrap_or(0);
         if !(begin <= start_min && start_min + duration_min <= begin + win_dur) {
             continue;
@@ -906,10 +903,10 @@ pub fn study_rank(
                 .map(|s| crate::casefold::casefold(crate::time::py_strip(s)))
                 == Some(wanted.clone())
         {
-            return 0;
+            return Ok(0);
         }
     }
-    best
+    Ok(best)
 }
 
 pub fn resolve_work_windows(windows: Option<&[Value]>) -> (Vec<Value>, bool) {

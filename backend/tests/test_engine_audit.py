@@ -182,3 +182,13 @@ def test_file_separator_is_stripped_before_a_subject_is_folded():
     raw = json.dumps([{"days": [0], "start": "16:00", "duration_min": 120, "subject": "\x1cética"}])
     got = flexweek_engine.study_rank(raw, "\x1cÉtica", 0, 16 * 60, 60)
     assert got == want
+
+
+def test_a_window_start_in_other_digits_is_read_as_int_reads_it():
+    # The pattern's `\d` takes "1٠" and int() reads it as 10, so the window runs 10:00 to 12:00.
+    body = {"days": [0], "start": "1٠:00", "duration_min": 120}
+    live = [live_models.StudyWindow(**body)]
+    ref = [ref_models.StudyWindow(**body)]
+    for start_min, rank in ((10 * 60, 1), (0, 2)):
+        assert ref_availability.study_rank(ref, None, 0, start_min, 60) == rank
+        assert live_availability.study_rank(live, None, 0, start_min, 60) == rank

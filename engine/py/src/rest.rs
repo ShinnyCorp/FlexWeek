@@ -133,13 +133,7 @@ fn study_rank(
 ) -> PyResult<i64> {
     guard(|| {
         let windows = parse(windows)?.as_array().cloned().unwrap_or_default();
-        Ok(plan::study_rank(
-            &windows,
-            course,
-            day,
-            start_min,
-            duration_min,
-        ))
+        plan::study_rank(&windows, course, day, start_min, duration_min).map_err(crate::raise)
     })
 }
 
