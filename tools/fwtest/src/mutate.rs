@@ -41,6 +41,7 @@ pub fn run(
     python: Option<&Path>,
     engine_build: Option<&str>,
     no_engine_rebuild: bool,
+    engine_only: bool,
 ) -> u8 {
     let checkout = match crate::state::git_toplevel() {
         Ok(path) => path,
@@ -120,6 +121,9 @@ pub fn run(
         };
         for case in cases {
             if case_name.is_some_and(|wanted| wanted != case.name) {
+                continue;
+            }
+            if engine_only && !is_engine_source(&case.file) {
                 continue;
             }
             saw_case = true;
