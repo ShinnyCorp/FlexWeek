@@ -20,13 +20,6 @@ fn opt_value(text: Option<&str>) -> PyResult<Option<Value>> {
     }
 }
 
-fn opt_map(text: Option<&str>) -> PyResult<Option<Map<String, Value>>> {
-    match text {
-        Some(text) => Ok(Some(object_map(text)?)),
-        None => Ok(None),
-    }
-}
-
 fn array(items: Vec<Value>) -> String {
     dump(&Value::Array(items))
 }
@@ -305,9 +298,12 @@ fn calendar_category_icon(category: Option<&str>) -> PyResult<Option<String>> {
 }
 
 #[pyfunction]
-fn focus_phase_ms(phase: &str, prefs: Option<&str>) -> PyResult<i64> {
-    let prefs = opt_map(prefs)?;
-    guard(|| Ok(focus::phase_duration_ms(phase, prefs.as_ref())))
+fn focus_phase_ms(phase: &str, prefs: &str) -> PyResult<String> {
+    let (phase, prefs) = (parse(phase)?, parse(prefs)?);
+    guard(|| {
+        let found = focus::phase_duration_ms(&phase, &prefs).map_err(crate::raise)?;
+        Ok(found.to_string())
+    })
 }
 
 #[pyfunction]
@@ -316,15 +312,19 @@ fn focus_countdown(milliseconds: i64) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn focus_remaining(state: &str, now_ms: i64) -> PyResult<i64> {
-    let state = object_map(state)?;
-    guard(|| Ok(focus::remaining_ms(&state, now_ms)))
+fn focus_remaining(state: &str, now_ms: i64) -> PyResult<String> {
+    let state = parse(state)?;
+    guard(|| {
+        Ok(focus::remaining_ms(&state, now_ms)
+            .map_err(crate::raise)?
+            .to_string())
+    })
 }
 
 #[pyfunction]
-fn focus_now(state: Option<&str>) -> PyResult<String> {
-    let state = opt_map(state)?;
-    guard(|| Ok(focus::focus_now(state.as_ref()).to_string()))
+fn focus_now(state: &str) -> PyResult<String> {
+    let state = parse(state)?;
+    guard(|| Ok(focus::focus_now(&state).map_err(crate::raise)?.to_string()))
 }
 
 #[pyfunction]
@@ -333,114 +333,107 @@ fn focus_more_time(estimate_min: i64) -> PyResult<Vec<i64>> {
 }
 
 #[pyfunction]
-fn focus_persist(state: Option<&str>) -> PyResult<Option<String>> {
-    let state = opt_map(state)?;
-    guard(|| Ok(focus::persist_payload(state.as_ref()).map(|value| dump(&value))))
-}
-
-#[pyfunction]
-fn focus_restore(
-    saved: Option<&str>,
-    assignments: &str,
-    blocks: &str,
-    now_ms: i64,
-) -> PyResult<Option<String>> {
-    let saved = opt_value(saved)?;
-    let assignments = object_map(assignments)?;
-    let blocks = objects(blocks)?;
+fn focus_persist(state: &str) -> PyResult<Option<String>> {
+    let state = parse(state)?;
     guard(|| {
-        Ok(
-            focus::restore_state(saved.as_ref(), &assignments, &blocks, now_ms)
-                .map(|state| dump(&Value::Object(state))),
-        )
+        let payload = focus::persist_payload(&state).map_err(crate::raise)?;
+        Ok(payload.map(|value| dump(&value)))
     })
 }
 
 #[pyfunction]
-fn focus_begin(target: &str, prefs: Option<&str>, now_ms: i64) -> PyResult<String> {
-    let target = object_map(target)?;
-    let prefs = opt_map(prefs)?;
+fn focus_restore(
+    saved: &str,
+    assignments: &str,
+    blocks: &str,
+    now_ms: i64,
+) -> PyResult<Option<String>> {
+    let (saved, assignments, blocks) = (parse(saved)?, parse(assignments)?, parse(blocks)?);
     guard(|| {
-        Ok(dump(&Value::Object(focus::begin_state(
-            target,
-            prefs.as_ref(),
-            now_ms,
-        ))))
+        let state =
+            focus::restore_state(&saved, &assignments, &blocks, now_ms).map_err(crate::raise)?;
+        Ok(state.map(|value| dump(&value)))
+    })
+}
+
+#[pyfunction]
+fn focus_begin(target: &str, prefs: &str, now_ms: i64) -> PyResult<String> {
+    let (target, prefs) = (parse(target)?, parse(prefs)?);
+    guard(|| {
+        Ok(dump(
+            &focus::begin_state(&target, &prefs, now_ms).map_err(crate::raise)?,
+        ))
     })
 }
 
 #[pyfunction]
 fn focus_pause(state: &str, now_ms: i64) -> PyResult<String> {
-    let state = object_map(state)?;
-    guard(|| Ok(dump(&Value::Object(focus::pause_state(&state, now_ms)))))
-}
-
-#[pyfunction]
-fn focus_set_phase(state: &str, phase: &str, prefs: Option<&str>, now_ms: i64) -> PyResult<String> {
-    let state = object_map(state)?;
-    let prefs = opt_map(prefs)?;
+    let state = parse(state)?;
     guard(|| {
-        Ok(dump(&Value::Object(focus::set_phase(
-            &state,
-            phase,
-            prefs.as_ref(),
-            now_ms,
-        ))))
+        Ok(dump(
+            &focus::pause_state(&state, now_ms).map_err(crate::raise)?,
+        ))
     })
 }
 
 #[pyfunction]
-fn focus_break_phase(cycles: i64, prefs: Option<&str>) -> PyResult<String> {
-    let prefs = opt_map(prefs)?;
-    guard(|| Ok(focus::break_phase(cycles, prefs.as_ref()).to_string()))
+fn focus_set_phase(state: &str, phase: &str, prefs: &str, now_ms: i64) -> PyResult<String> {
+    let (state, phase, prefs) = (parse(state)?, parse(phase)?, parse(prefs)?);
+    guard(|| {
+        Ok(dump(
+            &focus::set_phase(&state, &phase, &prefs, now_ms).map_err(crate::raise)?,
+        ))
+    })
+}
+
+#[pyfunction]
+fn focus_break_phase(cycles: i64, prefs: &str) -> PyResult<String> {
+    let prefs = parse(prefs)?;
+    guard(|| {
+        Ok(focus::break_phase(cycles, &prefs)
+            .map_err(crate::raise)?
+            .to_string())
+    })
 }
 
 #[pyfunction]
 fn focus_credit(
     state: &str,
-    assignment: Option<&str>,
-    block: Option<&str>,
+    assignment: &str,
+    block: &str,
     work_min: i64,
 ) -> PyResult<Option<String>> {
-    let state = object_map(state)?;
-    let assignment = opt_value(assignment)?;
-    let block = opt_value(block)?;
+    let (state, assignment, block) = (parse(state)?, parse(assignment)?, parse(block)?);
     guard(|| {
-        Ok(
-            focus::credit_target(&state, assignment.as_ref(), block.as_ref(), work_min)
-                .map(|value| dump(&value)),
-        )
+        let credited =
+            focus::credit_target(&state, &assignment, &block, work_min).map_err(crate::raise)?;
+        Ok(credited.map(|value| dump(&value)))
     })
 }
 
 #[pyfunction]
-fn focus_candidates(blocks: &str, assignments: &str, trace: Option<&str>) -> PyResult<String> {
-    let blocks = objects(blocks)?;
-    let assignments = object_map(assignments)?;
-    let trace = opt_value(trace)?;
+fn focus_candidates(blocks: &str, assignments: &str, trace: &str) -> PyResult<String> {
+    let (blocks, assignments, trace) = (parse(blocks)?, parse(assignments)?, parse(trace)?);
     guard(|| {
-        Ok(array(focus::focus_candidates(
-            &blocks,
-            &assignments,
-            trace.as_ref(),
-        )))
+        let found = focus::focus_candidates(&blocks, &assignments, &trace).map_err(crate::raise)?;
+        Ok(array(found))
     })
 }
 
 #[pyfunction]
-fn focus_now_next(blocks: &str, day: i64, minute: i64) -> PyResult<String> {
-    let blocks = objects(blocks)?;
+fn focus_now_next(blocks: &str, day: &str, minute: i64) -> PyResult<String> {
+    let (blocks, day) = (parse(blocks)?, parse(day)?);
     guard(|| {
-        Ok(dump(&Value::Object(focus::now_and_next(
-            &blocks, day, minute,
-        ))))
+        Ok(dump(
+            &focus::now_and_next(&blocks, &day, minute).map_err(crate::raise)?,
+        ))
     })
 }
 
 #[pyfunction]
 fn focus_now_next_line(result: &str, minute: i64) -> PyResult<String> {
-    let result = object_map(result)?;
-    guard(|| Ok(focus::now_next_line(&result, minute)))
+    let result = parse(result)?;
+    guard(|| focus::now_next_line(&result, minute).map_err(crate::raise))
 }
 
 #[pyfunction]
@@ -989,8 +982,8 @@ fn update_sanitize(raw: &str) -> PyResult<String> {
 
 #[pyfunction]
 fn update_due(settings: &str, now_ms: i64) -> PyResult<bool> {
-    let settings = object_map(settings)?;
-    guard(|| Ok(update::due_for_check(&settings, now_ms)))
+    let settings = parse(settings)?;
+    guard(|| update::due_for_check(&settings, now_ms).map_err(crate::raise))
 }
 
 #[pyfunction]
@@ -1116,7 +1109,7 @@ fn look_readability(custom: &str, palette: &str, blocks: &str) -> PyResult<Strin
         })
         .collect::<Vec<_>>();
     guard(|| {
-        let found = custom_look::readability(&custom, &palette, &filled);
+        let found = custom_look::readability(&custom, &palette, &filled).map_err(crate::raise)?;
         Ok(array(
             found
                 .into_iter()

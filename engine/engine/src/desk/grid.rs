@@ -181,10 +181,7 @@ fn object_mut<'a>(
 ) -> EngineResult<&'a mut Map<String, Value>> {
     match value {
         Value::Object(fields) => Ok(fields),
-        _ => Err(type_error(format!(
-            "'{}' object does not support item assignment",
-            type_name(original)
-        ))),
+        _ => Err(crate::desk::pyops::item_assignment(original)),
     }
 }
 
@@ -601,7 +598,7 @@ pub fn placement_on(block: &Value, day: &Value, trace: Option<&Value>) -> Engine
 }
 
 /// `_is_work_session`.
-fn work_session(block: &Value) -> EngineResult<bool> {
+pub(crate) fn work_session(block: &Value) -> EngineResult<bool> {
     let kind = get(block, "kind")?.unwrap_or(null());
     if eq(kind, &json!("flexible")) {
         return Ok(true);

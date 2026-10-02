@@ -1,14 +1,12 @@
 //! Desktop logic bindings. Dicts cross as JSON text.
 
-use std::collections::HashSet;
-
 use ::flexweek_engine::desk::tokens::TextScale;
 use ::flexweek_engine::desk::weekview::{self, Week};
 use ::flexweek_engine::desk::{history, pomodoro, remind, tokens, update, weekmodel};
 use std::cell::RefCell;
 
 use ::flexweek_engine::{EngineError, EngineResult};
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyFloat, PyInt, PySet, PySetMethods};
 use serde_json::{Map, Value};
@@ -27,30 +25,16 @@ pub(crate) fn objects(text: &str) -> PyResult<Vec<Value>> {
     Ok(parse(text)?.as_array().cloned().unwrap_or_default())
 }
 
-pub(crate) fn maps_of(text: &str) -> PyResult<Vec<Map<String, Value>>> {
-    Ok(objects(text)?
-        .into_iter()
-        .filter_map(|item| match item {
-            Value::Object(map) => Some(map),
-            _ => None,
-        })
-        .collect())
-}
-
 pub(crate) fn object_map(text: &str) -> PyResult<Map<String, Value>> {
     Ok(parse(text)?.as_object().cloned().unwrap_or_default())
 }
 
-fn scale_factor(value: &Bound<'_, PyAny>) -> PyResult<f64> {
+fn scale_of(value: &Bound<'_, PyAny>) -> PyResult<TextScale> {
     if value.is_instance_of::<PyFloat>() || value.is_instance_of::<PyInt>() {
-        return value.extract();
+        return Ok(TextScale::Factor(value.extract()?));
     }
     let name: String = value.extract()?;
-    Ok(tokens::TEXT_SCALE
-        .iter()
-        .find(|(key, _)| *key == name)
-        .map(|(_, factor)| *factor)
-        .unwrap_or(1.0))
+    Ok(TextScale::Named(name))
 }
 
 #[pyfunction]
@@ -68,63 +52,52 @@ fn history_capture_step(
     after_assignments: &str,
     changed_ids: Vec<String>,
 ) -> PyResult<Option<String>> {
+    let (before_blocks, after_blocks) = (parse(before_blocks)?, parse(after_blocks)?);
+    let (before_assignments, after_assignments) =
+        (parse(before_assignments)?, parse(after_assignments)?);
     guard(|| {
-        let ids: HashSet<String> = changed_ids.into_iter().collect();
-        Ok(history::capture_step(
+        let step = history::capture_step(
             label,
             week_start,
-            &objects(before_blocks)?,
-            &objects(after_blocks)?,
-            &object_map(before_assignments)?,
-            &object_map(after_assignments)?,
-            &ids,
+            &before_blocks,
+            &after_blocks,
+            &before_assignments,
+            &after_assignments,
+            &changed_ids,
         )
-        .map(|step| dump(&Value::Object(step))))
+        .map_err(raise)?;
+        Ok(step.map(|value| dump(&value)))
     })
 }
 
 #[pyfunction]
-fn history_push_step(stack: &str, step: &str) -> PyResult<String> {
+fn history_over_limit(length: usize) -> PyResult<bool> {
+    guard(|| Ok(history::over_limit(length)))
+}
+
+#[pyfunction]
+fn history_joined(earlier: &str, step: &str) -> PyResult<String> {
+    let (earlier, step) = (parse(earlier)?, parse(step)?);
+    guard(|| Ok(dump(&history::joined_step(&earlier, &step).map_err(raise)?)))
+}
+
+#[pyfunction]
+fn history_touches(step: &str, week_start: &str) -> PyResult<bool> {
+    let (step, week_start) = (parse(step)?, parse(week_start)?);
+    guard(|| history::touches(&step, &week_start).map_err(raise))
+}
+
+#[pyfunction]
+fn week_set_clock_24h(on: bool) -> PyResult<()> {
     guard(|| {
-        let mut items = maps_of(stack)?;
-        let step = object_map(step)?;
-        history::push_step(&mut items, step);
-        Ok(dump(&Value::Array(
-            items.into_iter().map(Value::Object).collect(),
-        )))
+        weekmodel::set_clock_24h(on);
+        Ok(())
     })
 }
 
 #[pyfunction]
-fn history_join_step(stack: &str, step: &str) -> PyResult<String> {
-    guard(|| {
-        let mut items = maps_of(stack)?;
-        history::join_step(&mut items, object_map(step)?);
-        Ok(dump(&Value::Array(
-            items.into_iter().map(Value::Object).collect(),
-        )))
-    })
-}
-
-#[pyfunction]
-fn history_mark_stale(steps: &str, week_start: &str) -> PyResult<String> {
-    guard(|| {
-        let mut items = maps_of(steps)?;
-        history::mark_stale(&mut items, week_start);
-        Ok(dump(&Value::Array(
-            items.into_iter().map(Value::Object).collect(),
-        )))
-    })
-}
-
-#[pyfunction]
-fn week_set_clock_24h(on: bool) -> PyResult<bool> {
-    guard(|| Ok(weekmodel::set_clock_24h(on)))
-}
-
-#[pyfunction]
-fn week_minute_of(hhmm: &str) -> PyResult<i64> {
-    guard(|| Ok(weekmodel::minute_of(hhmm)))
+fn week_minute_of(hhmm: &str) -> PyResult<i128> {
+    guard(|| weekmodel::minute_of(hhmm).map_err(raise))
 }
 
 #[pyfunction]
@@ -134,7 +107,7 @@ fn week_clock_text(minute: i64) -> PyResult<String> {
 
 #[pyfunction]
 fn week_hhmm_text(hhmm: &str) -> PyResult<String> {
-    guard(|| Ok(weekmodel::hhmm_text(hhmm)))
+    guard(|| weekmodel::hhmm_text(hhmm).map_err(raise))
 }
 
 #[pyfunction]
@@ -168,8 +141,9 @@ fn week_planned_line(planned_min: i64, done_min: i64) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn week_due_label(due: Option<&str>, week_start: &str) -> PyResult<String> {
-    guard(|| Ok(weekmodel::due_label(due, week_start)))
+fn week_due_label(due: &str) -> PyResult<String> {
+    let due = parse(due)?;
+    guard(|| weekmodel::due_label(&due).map_err(raise))
 }
 
 #[pyfunction]
@@ -180,44 +154,30 @@ fn week_moved_words(
     start: i64,
     end: i64,
 ) -> PyResult<String> {
-    guard(|| {
-        Ok(weekmodel::moved_words(
-            &parse(block)?,
-            from_day,
-            day,
-            start,
-            end,
-        ))
-    })
+    let block = parse(block)?;
+    guard(|| weekmodel::moved_words(&block, from_day, day, start, end).map_err(raise))
 }
 
 #[pyfunction]
 fn week_added_words(block: &str) -> PyResult<String> {
-    guard(|| Ok(weekmodel::added_words(&parse(block)?)))
+    let block = parse(block)?;
+    guard(|| weekmodel::added_words(&block).map_err(raise))
 }
 
 #[pyfunction]
 fn week_dated_words(title: &str, iso: &str) -> PyResult<String> {
-    guard(|| Ok(weekmodel::dated_words(title, iso)))
+    let (title, iso) = (parse(title)?, parse(iso)?);
+    guard(|| weekmodel::dated_words(&title, &iso).map_err(raise))
 }
 
 #[pyfunction]
-fn week_build(
-    week_start: &str,
-    blocks: &str,
-    assignments: &str,
-    trace: Option<&str>,
-) -> PyResult<String> {
+fn week_build(week_start: &str, blocks: &str, assignments: &str, trace: &str) -> PyResult<String> {
+    let (week_start, blocks) = (parse(week_start)?, parse(blocks)?);
+    let (assignments, trace) = (parse(assignments)?, parse(trace)?);
     guard(|| {
-        let blocks = objects(blocks)?;
-        let assignments = object_map(assignments)?;
-        let trace = trace.map(parse).transpose()?;
-        Ok(dump(&weekmodel::build_week_json(
-            week_start,
-            &blocks,
-            Some(&assignments),
-            trace.as_ref(),
-        )))
+        weekmodel::build_week(&week_start, &blocks, &assignments, &trace)
+            .map(|week| dump(&week))
+            .map_err(raise)
     })
 }
 
@@ -309,8 +269,8 @@ impl WeekHandle {
 
 #[pyfunction]
 fn tokens_type_pt(role: &str, scale: &Bound<'_, PyAny>) -> PyResult<f64> {
-    let factor = scale_factor(scale)?;
-    guard(|| Ok(tokens::type_pt(role, TextScale::Factor(factor))))
+    let scale = scale_of(scale)?;
+    guard(|| tokens::type_pt(role, &scale).map_err(raise))
 }
 
 #[pyfunction]
@@ -320,12 +280,12 @@ fn tokens_text_knob(body_pt: f64) -> PyResult<Option<String>> {
 
 #[pyfunction]
 fn tokens_linear_rgb(colour: &str) -> PyResult<(f64, f64, f64)> {
-    guard(|| Ok(tokens::linear_rgb(colour)))
+    guard(|| tokens::linear_rgb(colour).map_err(raise))
 }
 
 #[pyfunction]
 fn tokens_hex_from_linear(red: f64, green: f64, blue: f64) -> PyResult<String> {
-    guard(|| Ok(tokens::hex_from_linear(red, green, blue)))
+    guard(|| tokens::hex_from_linear(red, green, blue).map_err(raise))
 }
 
 #[pyfunction]
@@ -335,43 +295,46 @@ fn tokens_oklab_from_linear(red: f64, green: f64, blue: f64) -> PyResult<(f64, f
 
 #[pyfunction]
 fn tokens_linear_from_oklab(light: f64, a: f64, b: f64) -> PyResult<(f64, f64, f64)> {
-    guard(|| Ok(tokens::linear_from_oklab(light, a, b)))
+    guard(|| tokens::linear_from_oklab(light, a, b).map_err(raise))
 }
 
 #[pyfunction]
 fn tokens_oklab(colour: &str) -> PyResult<(f64, f64, f64)> {
-    guard(|| Ok(tokens::oklab(colour)))
+    guard(|| tokens::oklab(colour).map_err(raise))
 }
 
 #[pyfunction]
 fn tokens_oklch(light: f64, chroma: f64, hue: f64) -> PyResult<String> {
-    guard(|| Ok(tokens::oklch(light, chroma, hue)))
+    guard(|| tokens::oklch(light, chroma, hue).map_err(raise))
 }
 
 #[pyfunction]
 fn tokens_mix(top: &str, bottom: &str, alpha: f64) -> PyResult<String> {
-    guard(|| Ok(tokens::mix(top, bottom, alpha)))
+    guard(|| tokens::mix(top, bottom, alpha).map_err(raise))
 }
 
 #[pyfunction]
 fn tokens_luminance(colour: &str) -> PyResult<f64> {
-    guard(|| Ok(tokens::luminance(colour)))
+    guard(|| tokens::luminance(colour).map_err(raise))
 }
 
 #[pyfunction]
 fn tokens_contrast(first: &str, second: &str) -> PyResult<f64> {
-    guard(|| Ok(tokens::contrast(first, second)))
+    guard(|| tokens::contrast(first, second).map_err(raise))
 }
 
 #[pyfunction]
 fn tokens_oklch_of(colour: &str) -> PyResult<(f64, f64, f64)> {
-    guard(|| Ok(tokens::oklch_of(colour)))
+    guard(|| tokens::oklch_of(colour).map_err(raise))
 }
 
 #[pyfunction]
-fn tokens_fit_lightness(colour: &str, grounds: Vec<String>, floor: f64) -> PyResult<String> {
-    let refs: Vec<&str> = grounds.iter().map(String::as_str).collect();
-    guard(|| Ok(tokens::fit_lightness(colour, &refs, floor)))
+fn tokens_fit_lightness(colour: &str, grounds: &str, floor: f64) -> PyResult<String> {
+    let grounds = parse(grounds)?;
+    guard(|| {
+        let grounds = grounds.as_array().cloned().unwrap_or_default();
+        tokens::fit_lightness(colour, &grounds, floor).map_err(raise)
+    })
 }
 
 #[pyfunction]
@@ -381,37 +344,37 @@ fn tokens_channels(colour: &str) -> PyResult<(i64, i64, i64)> {
 
 #[pyfunction]
 fn tokens_mix_oklab(top: &str, bottom: &str, amount: f64) -> PyResult<String> {
-    guard(|| Ok(tokens::mix_oklab(top, bottom, amount)))
+    guard(|| tokens::mix_oklab(top, bottom, amount).map_err(raise))
 }
 
 #[pyfunction]
 fn tokens_family_colours(hue: f64, grey: bool, homework: bool, sleep: bool) -> PyResult<String> {
     guard(|| {
         let mut map = Map::new();
-        for (family, pair) in tokens::family_colours(hue, grey, homework, sleep) {
+        for (family, pair) in tokens::family_colours(hue, grey, homework, sleep).map_err(raise)? {
             map.insert(family, serde_json::json!([pair.0, pair.1]));
         }
         Ok(dump(&Value::Object(map)))
     })
 }
 
-fn pomo_prefs(text: Option<&str>) -> PyResult<Option<Map<String, Value>>> {
-    Ok(match text {
-        Some(text) => Some(object_map(text)?),
-        None => None,
+#[pyfunction]
+fn pomo_timers(prefs: &str) -> PyResult<String> {
+    let prefs = parse(prefs)?;
+    guard(|| {
+        let (work, rest, long, every) = pomodoro::timers(&prefs).map_err(raise)?;
+        Ok(format!("[{work}, {rest}, {long}, {every}]"))
     })
 }
 
 #[pyfunction]
-fn pomo_timers(prefs: Option<&str>) -> PyResult<(i64, i64, i64, i64)> {
-    let prefs = pomo_prefs(prefs)?;
-    guard(|| Ok(pomodoro::timers(prefs.as_ref())))
-}
-
-#[pyfunction]
-fn pomo_plan_for(duration_min: i64, prefs: Option<&str>) -> PyResult<String> {
-    let prefs = pomo_prefs(prefs)?;
-    guard(|| Ok(dump(&pomodoro::plan_for(duration_min, prefs.as_ref()))))
+fn pomo_plan_for(duration_min: i64, prefs: &str) -> PyResult<String> {
+    let prefs = parse(prefs)?;
+    guard(|| {
+        Ok(dump(
+            &pomodoro::plan_for(duration_min, &prefs).map_err(raise)?,
+        ))
+    })
 }
 
 #[pyfunction]
@@ -429,33 +392,27 @@ pub(crate) fn fresh_id(py: Python<'_>) -> String {
 
 #[pyfunction]
 fn pomo_split_children(py: Python<'_>, source: &str, placed: &str, plan: &str) -> PyResult<String> {
-    let source = parse(source)?;
-    let placed = parse(placed)?;
-    let plan = parse(plan)?;
+    let (source, placed, plan) = (parse(source)?, parse(placed)?, parse(plan)?);
     guard(|| {
-        Ok(dump(&Value::Array(pomodoro::split_children(
-            &source,
-            &placed,
-            &plan,
-            || fresh_id(py),
-        ))))
+        let children =
+            pomodoro::split_children(&source, &placed, &plan, || fresh_id(py)).map_err(raise)?;
+        Ok(dump(&Value::Array(children)))
     })
 }
 
 #[pyfunction]
-fn pomo_splittable(block: &str, prefs: Option<&str>) -> PyResult<bool> {
-    let prefs = pomo_prefs(prefs)?;
-    guard(|| Ok(pomodoro::splittable(&parse(block)?, prefs.as_ref())))
+fn pomo_splittable(block: &str, prefs: &str) -> PyResult<bool> {
+    let (block, prefs) = (parse(block)?, parse(prefs)?);
+    guard(|| pomodoro::splittable(&block, &prefs).map_err(raise))
 }
 
 #[pyfunction]
-fn pomo_inflate_for_solve(blocks: &str, prefs: Option<&str>) -> PyResult<String> {
-    let prefs = pomo_prefs(prefs)?;
+fn pomo_inflate_for_solve(blocks: &str, prefs: &str) -> PyResult<String> {
+    let (blocks, prefs) = (parse(blocks)?, parse(prefs)?);
     guard(|| {
-        Ok(dump(&Value::Array(pomodoro::inflate_for_solve(
-            &objects(blocks)?,
-            prefs.as_ref(),
-        ))))
+        Ok(dump(
+            &pomodoro::inflate_for_solve(&blocks, &prefs).map_err(raise)?,
+        ))
     })
 }
 
@@ -463,21 +420,19 @@ fn pomo_inflate_for_solve(blocks: &str, prefs: Option<&str>) -> PyResult<String>
 fn pomo_split_solved(
     py: Python<'_>,
     blocks: &str,
-    trace: Option<&str>,
-    prefs: Option<&str>,
+    trace: &str,
+    prefs: &str,
 ) -> PyResult<(String, i64)> {
-    let prefs = pomo_prefs(prefs)?;
-    let trace = trace.map(parse).transpose()?;
-    let blocks = objects(blocks)?;
+    let (blocks, trace, prefs) = (parse(blocks)?, parse(trace)?, parse(prefs)?);
     guard(|| {
-        let (blocks, count) =
-            pomodoro::split_solved(&blocks, trace.as_ref(), prefs.as_ref(), || fresh_id(py));
-        Ok((dump(&Value::Array(blocks)), count))
+        let (out, count) =
+            pomodoro::split_solved(&blocks, &trace, &prefs, || fresh_id(py)).map_err(raise)?;
+        Ok((dump(&out), count))
     })
 }
 
 #[pyfunction]
-fn remind_lead_min(prefs: &str, default: i64) -> PyResult<i64> {
+fn remind_lead_min(prefs: &str, default: i64) -> PyResult<i128> {
     let prefs = parse(prefs)?;
     guard(|| remind::reminder_lead_min(&prefs, default).map_err(raise))
 }
@@ -677,24 +632,39 @@ fn update_asset_name(kind: &str) -> PyResult<Option<String>> {
 
 #[pyfunction]
 fn update_available(release: &str, kind: &str, current: &str) -> PyResult<Option<String>> {
+    let release = parse(release)?;
     guard(|| {
-        Ok(
-            update::available(&parse(release)?, kind, current).map(|item| {
-                dump(&serde_json::json!({
-                    "version": item.version,
-                    "asset": item.asset,
-                    "url": item.url,
-                    "checksum_url": item.checksum_url,
-                    "notes": item.notes,
-                }))
-            }),
-        )
+        let found = update::available(&release, kind, current).map_err(raise)?;
+        Ok(found.map(|item| {
+            dump(&serde_json::json!({
+                "version": item.version,
+                "asset": item.asset,
+                "url": item.url,
+                "checksum_url": item.checksum_url,
+                "notes": item.notes,
+            }))
+        }))
     })
 }
 
+/// `payload` is read only when there is a digest to compare it with, as `hashlib` was.
 #[pyfunction]
-fn update_verified(payload: &[u8], digest: Option<&str>) -> PyResult<bool> {
-    guard(|| Ok(update::verified(payload, digest)))
+fn update_verified(payload: &Bound<'_, PyAny>, digest: Option<&str>) -> PyResult<bool> {
+    let wanted = digest.filter(|text| !text.is_empty() && text.chars().count() == 64);
+    if wanted.is_none() {
+        return Ok(false);
+    }
+    if payload.is_instance_of::<pyo3::types::PyString>() {
+        return Err(PyTypeError::new_err(
+            "Strings must be encoded before hashing",
+        ));
+    }
+    let Ok(bytes) = payload.extract::<Vec<u8>>() else {
+        return Err(PyTypeError::new_err(
+            "object supporting the buffer API required",
+        ));
+    };
+    guard(|| Ok(update::verified(&bytes, digest)))
 }
 
 pyo3::create_exception!(
@@ -711,9 +681,9 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         module,
         history_same_value,
         history_capture_step,
-        history_push_step,
-        history_join_step,
-        history_mark_stale,
+        history_over_limit,
+        history_joined,
+        history_touches,
         week_set_clock_24h,
         week_minute_of,
         week_clock_text,

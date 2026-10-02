@@ -1,6 +1,9 @@
 //! Colour maths and design tokens from `desktop/native/tokens.py`.
 
+use serde_json::Value;
+
 use super::cmath;
+use crate::error::{EngineError, EngineResult};
 
 pub const SPACING: [i64; 6] = [4, 8, 12, 16, 24, 32];
 pub const RADIUS_CONTROL: i64 = 6;
@@ -45,55 +48,75 @@ fn py_round(value: f64) -> f64 {
     value.round_ties_even()
 }
 
-pub fn type_pt(role: &str, scale: TextScale) -> f64 {
+fn floating_error() -> EngineError {
+    EngineError::overflow("(34, 'Numerical result out of range')")
+}
+
+/// `value ** exponent` for floats: a finite number raised to a finite power that overflows raises.
+fn power(base: f64, exponent: f64) -> EngineResult<f64> {
+    let found = cmath::pow(base, exponent);
+    if found.is_infinite() && base.is_finite() && exponent.is_finite() {
+        return Err(floating_error());
+    }
+    Ok(found)
+}
+
+/// `round(value)` as an integer.
+fn round_int(value: f64) -> EngineResult<i128> {
+    if value.is_nan() {
+        return Err(EngineError::value("cannot convert float NaN to integer"));
+    }
+    if value.is_infinite() {
+        return Err(EngineError::overflow(
+            "cannot convert float infinity to integer",
+        ));
+    }
+    Ok(py_round(value) as i128)
+}
+
+/// `format(number, "02x")`.
+fn hex2(number: i128) -> String {
+    if number < 0 {
+        format!("-{:01x}", -number)
+    } else {
+        format!("{number:02x}")
+    }
+}
+
+pub fn type_pt(role: &str, scale: &TextScale) -> EngineResult<f64> {
     let factor = match scale {
         TextScale::Named(name) => TEXT_SCALE
             .iter()
-            .find(|(key, _)| *key == name)
+            .find(|(key, _)| key == name)
             .map(|(_, v)| *v)
-            .unwrap_or(1.0),
-        TextScale::Factor(f) => f,
+            .ok_or_else(|| EngineError::key(name))?,
+        TextScale::Factor(f) => *f,
     };
     let base = TYPE_PT
         .iter()
         .find(|(key, _)| *key == role)
         .map(|(_, v)| *v)
-        .unwrap_or(13.0);
-    py_round(base * factor * 2.0) / 2.0
+        .ok_or_else(|| EngineError::key(role))?;
+    Ok(round_int(base * factor * 2.0)? as f64 / 2.0)
 }
 
-pub enum TextScale<'a> {
-    Named(&'a str),
+pub enum TextScale {
+    Named(String),
     Factor(f64),
-}
-
-impl<'a> From<&'a str> for TextScale<'a> {
-    fn from(s: &'a str) -> Self {
-        TextScale::Named(s)
-    }
-}
-
-impl From<f64> for TextScale<'static> {
-    fn from(f: f64) -> Self {
-        TextScale::Factor(f)
-    }
 }
 
 pub fn text_knob(body_pt: f64) -> Option<&'static str> {
     TEXT_SCALE.iter().find_map(|(name, _)| {
-        if type_pt("body", TextScale::Named(name)) == body_pt {
-            Some(*name)
-        } else {
-            None
-        }
+        (type_pt("body", &TextScale::Named((*name).to_string())).ok() == Some(body_pt))
+            .then_some(*name)
     })
 }
 
-fn decode(channel: f64) -> f64 {
+fn decode(channel: f64) -> EngineResult<f64> {
     if channel <= 0.04045 {
-        channel / 12.92
+        Ok(channel / 12.92)
     } else {
-        cmath::pow((channel + 0.055) / 1.055, 2.4)
+        power((channel + 0.055) / 1.055, 2.4)
     }
 }
 
@@ -105,20 +128,30 @@ fn encode(channel: f64) -> f64 {
     }
 }
 
-pub fn linear_rgb(colour: &str) -> (f64, f64, f64) {
+pub fn linear_rgb(colour: &str) -> EngineResult<(f64, f64, f64)> {
     let raw = colour.trim_start_matches('#');
-    let parse = |at: usize| i64::from_str_radix(&raw[at..at + 2], 16).unwrap_or(0) as f64 / 255.0;
-    (decode(parse(0)), decode(parse(2)), decode(parse(4)))
+    let pair = |at: usize| -> EngineResult<f64> {
+        let part: String = raw.chars().skip(at).take(2).collect();
+        Ok(hex_part(&part)? as f64 / 255.0)
+    };
+    let (red, green, blue) = (pair(0)?, pair(2)?, pair(4)?);
+    Ok((decode(red)?, decode(green)?, decode(blue)?))
 }
 
-pub fn hex_from_linear(red: f64, green: f64, blue: f64) -> String {
-    let channel = |value: f64| -> i64 { py_round(encode(value.clamp(0.0, 1.0)) * 255.0) as i64 };
-    format!(
-        "#{:02x}{:02x}{:02x}",
-        channel(red),
-        channel(green),
-        channel(blue)
-    )
+/// `min(max(value, 0.0), 1.0)`, which keeps a NaN as it is.
+fn clipped(value: f64) -> f64 {
+    let low = if 0.0 > value { 0.0 } else { value };
+    if 1.0 < low { 1.0 } else { low }
+}
+
+pub fn hex_from_linear(red: f64, green: f64, blue: f64) -> EngineResult<String> {
+    let channel = |value: f64| -> EngineResult<i128> { round_int(encode(clipped(value)) * 255.0) };
+    Ok(format!(
+        "#{}{}{}",
+        hex2(channel(red)?),
+        hex2(channel(green)?),
+        hex2(channel(blue)?)
+    ))
 }
 
 pub fn oklab_from_linear(red: f64, green: f64, blue: f64) -> (f64, f64, f64) {
@@ -132,92 +165,111 @@ pub fn oklab_from_linear(red: f64, green: f64, blue: f64) -> (f64, f64, f64) {
     )
 }
 
-pub fn linear_from_oklab(light: f64, a: f64, b: f64) -> (f64, f64, f64) {
-    let long = cmath::pow(light + 0.3963377774 * a + 0.2158037573 * b, 3.0);
-    let medium = cmath::pow(light - 0.1055613458 * a - 0.0638541728 * b, 3.0);
-    let short = cmath::pow(light - 0.0894841775 * a - 1.2914855480 * b, 3.0);
-    (
+pub fn linear_from_oklab(light: f64, a: f64, b: f64) -> EngineResult<(f64, f64, f64)> {
+    let long = power(light + 0.3963377774 * a + 0.2158037573 * b, 3.0)?;
+    let medium = power(light - 0.1055613458 * a - 0.0638541728 * b, 3.0)?;
+    let short = power(light - 0.0894841775 * a - 1.2914855480 * b, 3.0)?;
+    Ok((
         4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short,
         -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short,
         -0.0041960863 * long - 0.7034186147 * medium + 1.7076147010 * short,
-    )
+    ))
 }
 
-pub fn oklab(colour: &str) -> (f64, f64, f64) {
-    let (r, g, b) = linear_rgb(colour);
-    oklab_from_linear(r, g, b)
+pub fn oklab(colour: &str) -> EngineResult<(f64, f64, f64)> {
+    let (r, g, b) = linear_rgb(colour)?;
+    Ok(oklab_from_linear(r, g, b))
 }
 
-pub fn oklch(light: f64, chroma: f64, hue: f64) -> String {
+pub fn oklch(light: f64, chroma: f64, hue: f64) -> EngineResult<String> {
     let angle = hue.to_radians();
+    if angle.is_infinite() {
+        return Err(EngineError::value("math domain error"));
+    }
     let (r, g, b) = linear_from_oklab(
         light,
         chroma * cmath::cos(angle),
         chroma * cmath::sin(angle),
-    );
+    )?;
     hex_from_linear(r, g, b)
 }
 
-fn colour_channels(colour: &str) -> (i64, i64, i64) {
-    (
-        i64::from_str_radix(&colour[1..3], 16).unwrap_or(0),
-        i64::from_str_radix(&colour[3..5], 16).unwrap_or(0),
-        i64::from_str_radix(&colour[5..7], 16).unwrap_or(0),
-    )
-}
-
-pub fn mix(top: &str, bottom: &str, alpha: f64) -> String {
-    let (tr, tg, tb) = colour_channels(top);
-    let (br, bg, bb) = colour_channels(bottom);
-    let blend = |over: i64, under: i64| -> i64 {
-        py_round(over as f64 * alpha + under as f64 * (1.0 - alpha)) as i64
+/// `_channels` of both colours, which `zip(..., strict=True)` reads before it blends.
+pub fn mix(top: &str, bottom: &str, alpha: f64) -> EngineResult<String> {
+    let (over, under) = (channels(top)?, channels(bottom)?);
+    let blend = |over: i64, under: i64| -> EngineResult<String> {
+        Ok(hex2(round_int(
+            over as f64 * alpha + under as f64 * (1.0 - alpha),
+        )?))
     };
-    format!(
-        "#{:02x}{:02x}{:02x}",
-        blend(tr, br),
-        blend(tg, bg),
-        blend(tb, bb)
-    )
+    Ok(format!(
+        "#{}{}{}",
+        blend(over.0, under.0)?,
+        blend(over.1, under.1)?,
+        blend(over.2, under.2)?
+    ))
 }
 
-pub fn luminance(colour: &str) -> f64 {
-    let (red, green, blue) = linear_rgb(colour);
-    0.2126 * red + 0.7152 * green + 0.0722 * blue
+pub fn luminance(colour: &str) -> EngineResult<f64> {
+    let (red, green, blue) = linear_rgb(colour)?;
+    Ok(0.2126 * red + 0.7152 * green + 0.0722 * blue)
 }
 
-pub fn contrast(first: &str, second: &str) -> f64 {
-    let mut high = luminance(first);
-    let mut low = luminance(second);
+pub fn contrast(first: &str, second: &str) -> EngineResult<f64> {
+    contrast_on(first, &Value::String(second.to_string()))
+}
+
+/// `contrast` with the second colour as the caller held it: the first is read before a non-string
+/// second is refused.
+fn contrast_on(first: &str, second: &Value) -> EngineResult<f64> {
+    let mut high = luminance(first)?;
+    let mut low = luminance(ground_text(second)?)?;
     if high < low {
         std::mem::swap(&mut high, &mut low);
     }
-    (high + 0.05) / (low + 0.05)
+    let divisor = low + 0.05;
+    if divisor == 0.0 {
+        return Err(EngineError::zero_division("float division by zero"));
+    }
+    Ok((high + 0.05) / divisor)
 }
 
-pub fn oklch_of(colour: &str) -> (f64, f64, f64) {
-    let (light, a, b) = oklab(colour);
-    (
+pub fn oklch_of(colour: &str) -> EngineResult<(f64, f64, f64)> {
+    let (light, a, b) = oklab(colour)?;
+    let hue = cmath::atan2(b, a).to_degrees().rem_euclid(360.0);
+    Ok((
         light,
         cmath::hypot(a, b),
-        cmath::atan2(b, a).to_degrees().rem_euclid(360.0),
-    )
+        if hue == 0.0 { 0.0 } else { hue },
+    ))
 }
 
-pub fn fit_lightness(colour: &str, grounds: &[&str], floor: f64) -> String {
-    fn reads(candidate: &str, grounds: &[&str], floor: f64) -> bool {
-        grounds
-            .iter()
-            .all(|ground| contrast(candidate, ground) >= floor)
+/// A ground as text: the `lstrip` of `linear_rgb` needs a string.
+fn ground_text(ground: &Value) -> EngineResult<&str> {
+    ground
+        .as_str()
+        .ok_or_else(|| crate::stored::attribute_error(ground, "lstrip"))
+}
+
+pub fn fit_lightness(colour: &str, grounds: &[Value], floor: f64) -> EngineResult<String> {
+    fn reads(candidate: &str, grounds: &[Value], floor: f64) -> EngineResult<bool> {
+        for ground in grounds {
+            let ratio = contrast_on(candidate, ground)?;
+            if ratio.is_nan() || ratio < floor {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
-    if reads(colour, grounds, floor) {
-        return colour.to_string();
+    if reads(colour, grounds, floor)? {
+        return Ok(colour.to_string());
     }
-    let (light, chroma, hue) = oklch_of(colour);
+    let (light, chroma, hue) = oklch_of(colour)?;
     let mut found: Vec<(f64, String)> = Vec::new();
     for (end, extreme) in [(0.0, "#000000"), (1.0, "#ffffff")] {
-        if !reads(&oklch(end, chroma, hue), grounds, floor) {
-            if reads(extreme, grounds, floor) {
+        if !reads(&oklch(end, chroma, hue)?, grounds, floor)? {
+            if reads(extreme, grounds, floor)? {
                 found.push(((end - light).abs() + 1.0, extreme.to_string()));
             }
             continue;
@@ -226,31 +278,32 @@ pub fn fit_lightness(colour: &str, grounds: &[&str], floor: f64) -> String {
         let mut passes = end;
         for _ in 0..40 {
             let middle = (fails + passes) / 2.0;
-            if reads(&oklch(middle, chroma, hue), grounds, floor) {
+            if reads(&oklch(middle, chroma, hue)?, grounds, floor)? {
                 passes = middle;
             } else {
                 fails = middle;
             }
         }
-        found.push(((passes - light).abs(), oklch(passes, chroma, hue)));
+        found.push(((passes - light).abs(), oklch(passes, chroma, hue)?));
     }
     if found.is_empty() {
         // Python's `max` keeps the first of equals, so black wins a tie.
-        let worst = |ink: &str| {
-            grounds
-                .iter()
-                .map(|ground| contrast(ink, ground))
-                .fold(f64::INFINITY, f64::min)
+        let worst = |ink: &str| -> EngineResult<f64> {
+            let mut least = f64::INFINITY;
+            for ground in grounds {
+                least = least.min(contrast_on(ink, ground)?);
+            }
+            Ok(least)
         };
-        let ink = if worst("#000000") >= worst("#ffffff") {
+        let ink = if worst("#000000")? >= worst("#ffffff")? {
             "#000000"
         } else {
             "#ffffff"
         };
-        return ink.to_string();
+        return Ok(ink.to_string());
     }
     // Python's `min` over (distance, colour) tuples: equal distances go to the smaller colour text.
-    found
+    Ok(found
         .into_iter()
         .min_by(|a, b| {
             a.0.partial_cmp(&b.0)
@@ -258,17 +311,17 @@ pub fn fit_lightness(colour: &str, grounds: &[&str], floor: f64) -> String {
                 .then_with(|| a.1.cmp(&b.1))
         })
         .map(|(_, c)| c)
-        .unwrap_or_else(|| colour.to_string())
+        .unwrap_or_else(|| colour.to_string()))
 }
 
-pub fn mix_oklab(top: &str, bottom: &str, amount: f64) -> String {
-    let over = oklab(top);
-    let under = oklab(bottom);
+pub fn mix_oklab(top: &str, bottom: &str, amount: f64) -> EngineResult<String> {
+    let over = oklab(top)?;
+    let under = oklab(bottom)?;
     let (r, g, b) = linear_from_oklab(
         over.0 * amount + under.0 * (1.0 - amount),
         over.1 * amount + under.1 * (1.0 - amount),
         over.2 * amount + under.2 * (1.0 - amount),
-    );
+    )?;
     hex_from_linear(r, g, b)
 }
 
@@ -290,12 +343,12 @@ pub fn family_colours(
     grey: bool,
     homework: bool,
     sleep: bool,
-) -> Vec<(String, (String, String))> {
+) -> EngineResult<Vec<(String, (String, String))>> {
     let fill = oklch(
         FILL.0 - if sleep { SLEEP_FILL_DARKER } else { 0.0 },
         if grey { GREY_CHROMA } else { FILL.1 },
         hue,
-    );
+    )?;
     let mut colours = Vec::new();
     for (family, (light, chroma)) in MARK {
         let chroma = if grey { GREY_CHROMA } else { chroma };
@@ -304,25 +357,15 @@ pub fn family_colours(
             tone - if homework { HOMEWORK_DARKER } else { 0.0 },
             chroma,
             hue,
-        );
+        )?;
         let pair = if family == "light" {
             (fill.clone(), mark)
         } else {
-            (oklch(tone, chroma, hue), mark)
+            (oklch(tone, chroma, hue)?, mark)
         };
         colours.push((family.to_string(), pair));
     }
-    colours
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hex_round_trip_matches_python_encode() {
-        assert_eq!(hex_from_linear(0.5, 0.5, 0.5), "#bcbcbc");
-    }
+    Ok(colours)
 }
 
 /// `int(text, 16)` as Python reads it: white space around, a sign, a `0x` prefix, single underscores
@@ -388,4 +431,14 @@ pub fn channels(colour: &str) -> crate::error::EngineResult<(i64, i64, i64)> {
         hex_part(&part(3))?,
         hex_part(&part(5))?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hex_round_trip_matches_python_encode() {
+        assert_eq!(hex_from_linear(0.5, 0.5, 0.5).unwrap(), "#bcbcbc");
+    }
 }

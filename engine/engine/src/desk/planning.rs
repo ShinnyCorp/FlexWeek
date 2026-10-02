@@ -9,7 +9,7 @@ use crate::desk::grid::unpack_pair;
 use crate::desk::pydate::from_iso;
 use crate::desk::pyops::{
     Cmp, PyDict, compare, contains, eq, first_of, get, hashable, head, hhmm_of, in_set, int_of,
-    is_int, iso_day_of, iterate, length, or_default, order, py_dict, tuple_index,
+    is_int, iso_day_of, iterate, length, or_default, order, py_dict, to_int, tuple_index,
 };
 use crate::desk::pyval::{list_of, subscript, type_error};
 use crate::error::{EngineError, EngineResult};
@@ -219,7 +219,9 @@ pub fn plan_start(
     Ok(Some((day, minute)))
 }
 
-fn begun(block: &Value, not_before: Option<&Value>) -> EngineResult<bool> {
+/// `not_before` crosses as JSON, which cannot tell the tuple Python compares against from a list it
+/// refuses to, so the caller says which it held.
+fn begun(block: &Value, not_before: Option<&Value>, held_a_list: bool) -> EngineResult<bool> {
     let Some(not_before) = not_before.filter(|value| !value.is_null()) else {
         return Ok(false);
     };
@@ -228,7 +230,10 @@ fn begun(block: &Value, not_before: Option<&Value>) -> EngineResult<bool> {
         minutes_of(subscript(block, "start")?)?
     ]);
     match not_before {
-        Value::Array(_) => compare(Cmp::Lt, &here, not_before),
+        Value::Array(_) if !held_a_list => compare(Cmp::Lt, &here, not_before),
+        Value::Array(_) => Err(type_error(
+            "'<' not supported between instances of 'tuple' and 'list'",
+        )),
         other => Err(type_error(format!(
             "'<' not supported between instances of 'tuple' and '{}'",
             crate::stored::type_name(other)
@@ -270,6 +275,7 @@ pub fn solve_request(
     everything: bool,
     only: Option<&Value>,
     not_before: Option<&Value>,
+    not_before_is_list: bool,
 ) -> EngineResult<(Vec<Value>, Vec<Value>)> {
     let mut payload = Vec::new();
     let mut targets: Vec<Value> = Vec::new();
@@ -281,7 +287,8 @@ pub fn solve_request(
             continue;
         }
         let planned = is_planned(&block)?;
-        let kept = planned && (truthy(get(&block, "pinned")?) || begun(&block, not_before)?);
+        let kept = planned
+            && (truthy(get(&block, "pinned")?) || begun(&block, not_before, not_before_is_list)?);
         let wanted = match only.filter(|value| !value.is_null()) {
             Some(only) => contains(only, subscript(&block, "id")?)?,
             None => (everything && !kept) || !planned,
@@ -464,7 +471,7 @@ pub fn settle_placements(
         };
         let title = or_default(get(block, "title")?, json!("Homework"));
         let shown = DAY_FULL[tuple_index(DAY_FULL.len(), &day)?];
-        let stamp = crate::desk::weekmodel::hhmm_text(text(subscript(block, "start")?, "split")?);
+        let stamp = crate::desk::weekmodel::hhmm_text(text(subscript(block, "start")?, "split")?)?;
         lost.set(
             subscript(block, "id")?.clone(),
             json!({
@@ -650,7 +657,7 @@ pub fn running_late_block(
 
 pub fn late_locked_line(block: &Value, moved: &Value) -> EngineResult<String> {
     let start = hhmm_to_minutes(&py_str(subscript(block, "start")?))?;
-    let end = start + int_of(subscript(block, "duration_min")?)?;
+    let end = i128::from(start) + to_int(subscript(block, "duration_min")?)?;
     let extra = if truthy(Some(moved)) {
         format!("{} moved.", py_str(moved))
     } else {
@@ -659,7 +666,7 @@ pub fn late_locked_line(block: &Value, moved: &Value) -> EngineResult<String> {
     Ok(format!(
         "Running late: {}–{} is now locked. {extra}",
         crate::desk::weekmodel::clock_text(start),
-        crate::desk::weekmodel::clock_text(end)
+        crate::desk::weekmodel::clock_of(end)
     ))
 }
 

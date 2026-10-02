@@ -10,6 +10,7 @@ file's "saved_looks" (plan, "Customise"). Settings builds its screen on these fu
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 
 import flexweek_engine  # type: ignore[import-untyped]
@@ -20,6 +21,7 @@ from desktop.native.look import (
     category_paint,
     resolved_palette,
 )
+from desktop.native.wire import plain, restore
 
 # Shown when a student has not named the look yet.
 UNNAMED = "My look"
@@ -142,18 +144,39 @@ class Imported:
     problems: tuple[str, ...]
 
 
+def _finite(value: object) -> object:
+    """`value` with each NaN and Infinity turned into an empty list: no look setting takes either, and
+    a list is turned away, with the same sentence, wherever a number is."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return []
+    if isinstance(value, list):
+        return [_finite(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _finite(item) for key, item in value.items()}
+    return value
+
+
+def _readable(raw: object) -> object:
+    """What the engine reads: `base` is the one setting whose value is printed back, so it keeps its NaN
+    and Infinity to be printed as Python prints them."""
+    if isinstance(raw, dict) and "base" in raw:
+        return {**{key: _finite(item) for key, item in raw.items()}, "base": raw["base"]}
+    return _finite(raw)
+
+
 def import_look(text: str | bytes) -> Imported:
     size = len(text)
     raw = None
     if size <= FILE_MAX_BYTES:
         try:
-            # NaN and Infinity read as an empty list: no look setting takes either, and a list is
-            # turned away, with the same sentence, wherever a number is.
-            raw = json.dumps(json.loads(text, parse_constant=lambda _name: []))
+            raw = plain(_readable(json.loads(text)))
         except ValueError:
             raw = None
     look, problems = flexweek_engine.look_import(size, raw)
-    return Imported(None if look is None else json.loads(look), tuple(problems))
+    return Imported(
+        None if look is None else restore(json.loads(look)),
+        tuple(restore(problem) for problem in problems),
+    )
 
 
 @dataclass(frozen=True)

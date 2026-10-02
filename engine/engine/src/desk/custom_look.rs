@@ -889,14 +889,24 @@ pub fn import_look(size: usize, raw: Option<&Value>) -> ImportedLook {
     }
     let version = match fields.get("version") {
         Some(Value::Number(found)) if !found.to_string().contains(['.', 'e', 'E']) => {
-            found.as_i64().or(Some(i64::MAX))
+            let digits = found.to_string();
+            // Past 128 bits only the sign still matters.
+            Some(
+                digits
+                    .parse::<i128>()
+                    .unwrap_or(if digits.starts_with('-') {
+                        i128::MIN
+                    } else {
+                        i128::MAX
+                    }),
+            )
         }
         _ => None,
     };
     let Some(version) = version.filter(|version| *version >= 1) else {
         return refused("This look file has no version FlexWeek can read.");
     };
-    if version > FILE_VERSION {
+    if version > i128::from(FILE_VERSION) {
         return refused("This look was made by a newer FlexWeek. Update FlexWeek to open it.");
     }
     let body: Map<String, Value> = fields
@@ -920,7 +930,9 @@ pub fn readability(
     custom: &Map<String, Value>,
     palette: &ReadabilityPalette,
     filled_blocks: &[BlockInk],
-) -> Vec<ReadabilityProblem> {
+) -> EngineResult<Vec<ReadabilityProblem>> {
+    let grounds_of =
+        |names: &[&str]| -> Vec<Value> { names.iter().map(|name| json!(name)).collect() };
     let w = palette.window.as_str();
     let p = palette.panel.as_str();
     let g = palette.grid.as_str();
@@ -929,21 +941,26 @@ pub fn readability(
         .get("accent")
         .and_then(Value::as_str)
         .is_some_and(|a| a.starts_with('#'));
-    let tint = mix(&palette.accent, &palette.window, 0.10);
-    let dark_page = luminance(&palette.window) < MID_GREY;
-    let alike: Vec<&str> = filled_blocks
-        .iter()
-        .filter(|b| (luminance(&b.fill) < MID_GREY) == dark_page)
-        .map(|b| b.fill.as_str())
-        .collect();
+    let tint = mix(&palette.accent, &palette.window, 0.10)?;
+    let dark_page = luminance(&palette.window)? < MID_GREY;
+    let mut alike: Vec<&str> = Vec::new();
+    for block in filled_blocks {
+        if (luminance(&block.fill)? < MID_GREY) == dark_page {
+            alike.push(block.fill.as_str());
+        }
+    }
     let mut under: Vec<&str> = surfaces.to_vec();
     under.extend(alike.iter().copied());
-    let mut text_fixed = fit_lightness(&palette.text, &under, AA_TEXT);
-    if under
-        .iter()
-        .any(|ground| contrast(&text_fixed, ground) < AA_TEXT)
-    {
-        text_fixed = fit_lightness(&palette.text, &surfaces, AA_TEXT);
+    let mut text_fixed = fit_lightness(&palette.text, &grounds_of(&under), AA_TEXT)?;
+    let mut unreadable = false;
+    for under_ground in &under {
+        if contrast(&text_fixed, under_ground)? < AA_TEXT {
+            unreadable = true;
+            break;
+        }
+    }
+    if unreadable {
+        text_fixed = fit_lightness(&palette.text, &grounds_of(&surfaces), AA_TEXT)?;
     }
     let mut found = Vec::new();
     let checks = [
@@ -1021,18 +1038,18 @@ pub fn readability(
         } else {
             AA_TEXT
         };
-        let ratio = contrast(ink, ground);
+        let ratio = contrast(ink, ground)?;
         if ratio < need {
             let fixed = if field == "accent" {
                 fit_lightness(
                     &palette.accent,
-                    &[surfaces[0], surfaces[1], tint.as_str()],
+                    &grounds_of(&[surfaces[0], surfaces[1], tint.as_str()]),
                     need,
-                )
+                )?
             } else if field == "text" {
                 text_fixed.clone()
             } else {
-                fit_lightness(ink, &surfaces, AA_TEXT)
+                fit_lightness(ink, &grounds_of(&surfaces), AA_TEXT)?
             };
             let field_vec = if field == "accent" {
                 vec!["accent".to_string()]
@@ -1050,7 +1067,7 @@ pub fn readability(
         }
     }
     for block in filled_blocks {
-        let ratio = contrast(&block.ink, &block.fill);
+        let ratio = contrast(&block.ink, &block.fill)?;
         if ratio < AA_TEXT {
             found.push(ReadabilityProblem {
                 words: format!("Text on {} blocks", block.label),
@@ -1058,9 +1075,9 @@ pub fn readability(
                 ground: block.fill.clone(),
                 ratio,
                 field: vec!["categories".to_string(), block.key.clone()],
-                fixed: fit_lightness(&block.fill, &[block.ink.as_str()], AA_TEXT),
+                fixed: fit_lightness(&block.fill, &grounds_of(&[block.ink.as_str()]), AA_TEXT)?,
             });
         }
     }
-    found
+    Ok(found)
 }

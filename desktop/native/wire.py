@@ -43,6 +43,8 @@ def restore(value: object) -> object:
     if isinstance(value, str):
         return value.translate(str.maketrans(_BACK)) if any(ch in _BACK for ch in value) else value
     if isinstance(value, dict):
+        if list(value) == [NONFINITE]:
+            return float(value[NONFINITE])
         return {restore(key) if isinstance(key, str) else key: restore(item) for key, item in value.items()}
     if isinstance(value, list):
         return [restore(item) for item in value]

@@ -130,6 +130,7 @@ fn solve_request(
     everything: bool,
     only: Option<&str>,
     not_before: Option<&str>,
+    not_before_is_list: bool,
 ) -> PyResult<(String, String)> {
     let (blocks, assignments) = (parse(blocks)?, parse(assignments)?);
     let only = only.map(parse).transpose()?;
@@ -142,6 +143,7 @@ fn solve_request(
             everything,
             only.as_ref(),
             not_before.as_ref(),
+            not_before_is_list,
         )
         .map_err(crate::raise)?;
         Ok((dump(&Value::Array(payload)), dump(&Value::Array(targets))))

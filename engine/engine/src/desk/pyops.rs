@@ -1,5 +1,4 @@
 //! Python's operators on JSON values: `==`, `in`, iteration, `len`, slicing, `value.get(key)`,
-#![allow(dead_code)] // TEMP: helpers wait for the functions still to be moved
 //! with the errors Python raised on a value of the wrong type.
 
 use serde_json::Value;
@@ -146,16 +145,6 @@ pub fn slice_chars(text: &str, start: Option<i64>, end: Option<i64>) -> String {
     chars[from..to].iter().collect()
 }
 
-/// `float` as Python prints it.
-pub fn float_text(value: f64) -> String {
-    py_float_repr(value)
-}
-
-/// A plain error for a place nothing checks: the value was not what the Python code needed.
-pub fn wrong(message: impl Into<String>) -> EngineError {
-    type_error(message)
-}
-
 /// A dict as Python keeps one: keys of any hashable kind, in the order they were first set.
 #[derive(Default)]
 pub struct PyDict {
@@ -192,6 +181,10 @@ impl PyDict {
         Ok(self.position(key)?.map(|at| self.items.remove(at).1))
     }
 
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
@@ -199,11 +192,6 @@ impl PyDict {
     pub fn into_values(self) -> Vec<Value> {
         self.items.into_iter().map(|(_, value)| value).collect()
     }
-}
-
-/// `value[key]` on a dict the code made itself, as a string-keyed lookup that may miss.
-pub fn index_error(key: &str) -> EngineError {
-    EngineError::key(key)
 }
 
 /// `isinstance(value, int)`: a bool is one too.
@@ -376,11 +364,6 @@ pub fn or_default(value: Option<&Value>, default: Value) -> Value {
     }
 }
 
-/// `int` as a Value when it fits, for places that need a plain number.
-pub fn int_value(value: i64) -> Value {
-    Value::from(value)
-}
-
 /// `date.fromisoformat(value)` for a value that may not be text.
 pub fn iso_day_of(value: &Value) -> EngineResult<chrono::NaiveDate> {
     match value {
@@ -439,6 +422,11 @@ pub fn tuple_index(length: usize, index: &Value) -> EngineResult<usize> {
             )));
         }
     };
+    if i128::from(i64::MIN) > whole || whole > i128::from(i64::MAX) {
+        return Err(EngineError::index(
+            "cannot fit 'int' into an index-sized integer",
+        ));
+    }
     let shifted = if whole < 0 {
         whole + length as i128
     } else {
@@ -494,5 +482,52 @@ pub fn hhmm_of(minutes: &Value) -> EngineResult<String> {
             "unsupported operand type(s) for divmod(): '{}' and 'int'",
             type_name(other)
         ))),
+    }
+}
+
+/// `int(value)` with room for what Python's unbounded ints hold in practice.
+pub fn to_int(value: &Value) -> EngineResult<i128> {
+    if nonfinite(value).is_some() {
+        return crate::stored::py_int(value).map(i128::from);
+    }
+    match value {
+        Value::Number(number) if !number.to_string().contains(['.', 'e', 'E']) => number
+            .to_string()
+            .parse::<i128>()
+            .map_err(|_| EngineError::overflow("integer too large for the engine")),
+        Value::Number(_) => {
+            let whole = crate::stored::py_int(value)?;
+            Ok(i128::from(whole))
+        }
+        other => crate::stored::py_int(other).map(i128::from),
+    }
+}
+
+/// An integer as a JSON number.
+pub fn int_json(value: i128) -> Value {
+    serde_json::Number::from_i128(value).map_or(Value::Null, Value::Number)
+}
+
+/// `isinstance(value, (int, float))`: a bool and a non-finite float count.
+pub fn is_number(value: &Value) -> bool {
+    matches!(value, Value::Bool(_) | Value::Number(_)) || nonfinite(value).is_some()
+}
+
+/// `value[key] = ...` on a value that is not a dict.
+pub fn item_assignment(value: &Value) -> EngineError {
+    match value {
+        Value::Array(_) => type_error("list indices must be integers or slices, not str"),
+        other => type_error(format!(
+            "'{}' object does not support item assignment",
+            type_name(other)
+        )),
+    }
+}
+
+/// A copy of a dict that the code is about to assign into.
+pub fn assigning(value: &Value) -> EngineResult<serde_json::Map<String, Value>> {
+    match value {
+        Value::Object(map) if nonfinite(value).is_none() => Ok(map.clone()),
+        other => Err(item_assignment(other)),
     }
 }

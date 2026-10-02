@@ -135,6 +135,7 @@ def solve_request(
         bool(everything),
         None if only is None else json.dumps(list(only)),
         None if not_before is None else json.dumps(not_before),
+        isinstance(not_before, list),
     )
     return json.loads(payload), set(json.loads(targets))
 

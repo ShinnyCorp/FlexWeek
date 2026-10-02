@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::desk::pydate::from_iso;
 use crate::desk::pyval::type_error;
-use crate::desk::weekmodel::{LEFTOVER, SLACK_WORDS, due_label};
+use crate::desk::weekmodel::{LEFTOVER, SLACK_WORDS, due_label_text};
 use crate::error::{EngineError, EngineResult};
 use crate::stored::{dict, truthy};
 
@@ -203,7 +203,7 @@ impl Week {
         let heading = self.leftover_words(today)?.to_string();
         if kind == "needs_time" {
             let first = &self.waiting[self.due_today_unplaced(today)?[0]];
-            let due = due_label(first.due.as_deref(), &self.week_start);
+            let due = due_label_text(first.due.as_deref())?;
             let line = if due.is_empty() {
                 "Due today".to_string()
             } else {

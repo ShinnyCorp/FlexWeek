@@ -17,13 +17,3 @@ pub mod tokens;
 pub mod update;
 pub mod weekmodel;
 pub mod weekview;
-
-use serde_json::Value;
-
-/// A clock time Python would treat as present: a non-empty string. JSON null is not one.
-pub(crate) fn has_start(value: &Value) -> bool {
-    value
-        .get("start")
-        .and_then(Value::as_str)
-        .is_some_and(|start| !start.is_empty())
-}

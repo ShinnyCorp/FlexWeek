@@ -7,12 +7,12 @@ use crate::desk::calendar::DAYS;
 use crate::desk::planning::occurrence_days;
 use crate::desk::pydate::{calendar_date, monday_text};
 use crate::desk::pyops::{
-    Cmp, PyDict, compare, contains, eq, get, iterate, or_default, py_dict, tuple_index,
+    Cmp, PyDict, compare, contains, eq, get, iterate, or_default, py_dict, to_int, tuple_index,
 };
 use crate::desk::pyval::{list_of, subscript, type_error};
 use crate::desk::weekmodel::hhmm_text;
 use crate::error::{EngineError, EngineResult};
-use crate::stored::{Dict, attribute_error, py_int, py_str, text, truthy, type_name};
+use crate::stored::{Dict, attribute_error, py_str, text, truthy, type_name};
 use crate::time::{hhmm_to_minutes, py_int as text_int};
 
 pub const REMINDER_WINDOW_MIN: i64 = 2;
@@ -21,13 +21,13 @@ pub const ALARM_SNOOZE_MIN: i64 = 5;
 pub const ALARM_SNOOZE_MS: i64 = ALARM_SNOOZE_MIN * 60_000;
 
 /// `int(prefs["reminder_lead_min"])`, or the default when there are no prefs or the key is None.
-pub fn reminder_lead_min(prefs: &Value, default: i64) -> EngineResult<i64> {
+pub fn reminder_lead_min(prefs: &Value, default: i64) -> EngineResult<i128> {
     if !truthy(Some(prefs)) {
-        return Ok(default);
+        return Ok(i128::from(default));
     }
     match get(prefs, "reminder_lead_min")? {
-        None | Some(Value::Null) => Ok(default),
-        Some(_) => py_int(subscript(prefs, "reminder_lead_min")?),
+        None | Some(Value::Null) => Ok(i128::from(default)),
+        Some(_) => to_int(subscript(prefs, "reminder_lead_min")?),
     }
 }
 
@@ -208,7 +208,7 @@ pub fn due_reminders(
         due.push(json!({
             "key": key,
             "title": format!("{title} {}", if started { "starts now" } else { "starts soon" }),
-            "body": format!("{} · {}", hhmm_text(start), DAYS[tuple_index(DAYS.len(), &day)?]),
+            "body": format!("{} · {}", hhmm_text(start)?, DAYS[tuple_index(DAYS.len(), &day)?]),
         }));
     }
     Ok(due)

@@ -4,8 +4,8 @@ use serde_json::{Map, Value, json};
 
 use crate::desk::planning::{available_homework_minutes, occurrence_days};
 use crate::desk::pyops::{
-    Cmp, PyDict, add, compare, contains, eq, get, hashable, in_set, iterate, or_default, order,
-    py_dict, sub,
+    Cmp, PyDict, compare, contains, eq, get, hashable, in_set, iterate, or_default, order, py_dict,
+    sub,
 };
 use crate::desk::pyval::{list_of, subscript, type_error};
 use crate::desk::reuse::{copied_fixed_block_of, copied_homework_block_of, intervals_overlap};
@@ -53,7 +53,7 @@ fn table_get<'a>(table: &'a Value, key: &Value) -> EngineResult<Option<&'a Value
 fn tuple_hashable(value: &Value) -> EngineResult<()> {
     if matches!(value, Value::Array(_) | Value::Object(_)) {
         return Err(type_error(format!(
-            "unhashable type: '{}'",
+            "cannot use 'tuple' as a dict key (unhashable type: '{}')",
             type_name(value)
         )));
     }
@@ -73,8 +73,7 @@ pub fn row_conflict(
     }
     let block = subscript(row, "block")?;
     let start = minutes_of(subscript(block, "start")?)?;
-    let end = add(&Value::from(start), subscript(block, "duration_min")?)?;
-    let end = int_of_number(&end)?;
+    let end = start + whole(subscript(block, "duration_min")?)?;
     for saved in iterate(existing)? {
         if !truthy(get(&saved, "start")?) {
             continue;
@@ -112,17 +111,6 @@ pub fn row_conflict(
         }
     }
     Ok(None)
-}
-
-/// `int(...)` of a sum the way `intervals_overlap` takes it: whole minutes.
-fn int_of_number(value: &Value) -> EngineResult<i64> {
-    match value {
-        Value::Number(_) | Value::Bool(_) => py_int(value),
-        other => Err(type_error(format!(
-            "unsupported operand type(s) for +: 'int' and '{}'",
-            type_name(other)
-        ))),
-    }
 }
 
 pub fn preview_conflict_message(
@@ -282,10 +270,7 @@ pub fn merge_preview_rows(rows: &Value, operation_id: &str) -> EngineResult<Vec<
         if truthy(get(&row, "fixed")?) {
             let day = subscript(&row, "day")?.clone();
             let Value::Object(map) = &mut block else {
-                return Err(type_error(format!(
-                    "'{}' object does not support item assignment",
-                    type_name(&block)
-                )));
+                return Err(crate::desk::pyops::item_assignment(&block));
             };
             map.insert("days".into(), json!([day]));
         }

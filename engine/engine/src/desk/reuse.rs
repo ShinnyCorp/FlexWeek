@@ -4,9 +4,9 @@ use chrono::{Datelike, Duration, NaiveDate};
 use serde_json::{Value, json};
 
 use crate::desk::pydate::from_iso;
-use crate::desk::pyval::{subscript, type_error};
-use crate::error::{EngineError, EngineResult};
-use crate::stored::{truthy, type_name};
+use crate::desk::pyval::subscript;
+use crate::error::EngineResult;
+use crate::stored::truthy;
 
 pub const MAX_WEEK_BLOCKS: i64 = 100;
 pub const AVAILABILITY_LIMIT: i64 = 21;
@@ -169,17 +169,6 @@ pub fn planner_title(
     })
 }
 
-/// `copy[key] = value` on a value that is not a dict.
-fn item_assignment(value: &Value) -> EngineError {
-    match value {
-        Value::Array(_) => type_error("list indices must be integers or slices, not str"),
-        other => type_error(format!(
-            "'{}' object does not support item assignment",
-            type_name(other)
-        )),
-    }
-}
-
 /// `copied_fixed_block` with the days and the id as the caller holds them.
 pub fn copied_fixed_block_of(
     source: &Value,
@@ -187,7 +176,7 @@ pub fn copied_fixed_block_of(
     block_id: &Value,
 ) -> EngineResult<Value> {
     let Value::Object(source) = source else {
-        return Err(item_assignment(source));
+        return Err(crate::desk::pyops::item_assignment(source));
     };
     let mut copy = source.clone();
     copy.insert("id".into(), block_id.clone());
@@ -218,7 +207,7 @@ pub fn copied_fixed_block_listing(
     block_id: &Value,
 ) -> EngineResult<Value> {
     if !matches!(source, Value::Object(_)) {
-        return Err(item_assignment(source));
+        return Err(crate::desk::pyops::item_assignment(source));
     }
     copied_fixed_block_of(source, crate::desk::pyval::list_of(days)?, block_id)
 }
