@@ -1,6 +1,14 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-01, `engine/full-port`: part C step 2 and `main` (PR 34's test fixes) are merged in. The SQL
+  of 22 helpers in `backend/app.py` and `backend/storage.py` runs in the Rust store
+  (`engine/store/src/{assignments,ledger,prefs,routines,weeks}.rs`) on the caller's connection and
+  transaction; about 40 statements remain in the route bodies of `create_app`. Every per-account
+  filter in the store has a test that fails without it (`backend/tests/test_store_helpers.py`).
+  Checked on the merged tree: gate 3184 passed; every request of the backend suite also sent to the
+  original Python server (1,170 requests): no difference in responses or rows except two tests that
+  patch the live server on purpose. Not verified: CI, the Windows build, the packaged app.
 - 2026-10-01, `engine/full-port`: E5 is committed (`430d2c1`, `326c44c`, `13fd070`, `de1cf34`,
   `c6c5b95`). The Qt-free desktop modules (calendar, custom_look, files, focus, history, pomodoro,
   remind, reuse, tokens, update, weekmodel) call `engine::desk` through `engine/py/src/desk.rs` and
@@ -786,6 +794,11 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-10-01, `engine/full-port`: E1 to E5 (minus the parts listed above as still Python), part C
+  steps 1 and 2 and part D are in and examined. Next: push for CI and fix the builds; the rest of E5;
+  the route SQL; E6; the engine's tests to Rust; then release as 0.18.0. The rig's hidden session is
+  moving into fwtest on `tooling/rig-session-rs`; the rig driver stays Python while the interface is
+  PySide6. Audit notes and harnesses: `~/.flexweek-ui-harness/scratch/engine-audit/`.
 - 2026-10-01, `engine/full-port`, committed through the context commit after `c6c5b95`: E5 is in
   and checked as Current State says. Next: the coordinator's merge of part C step 2, Jonathan's
   word to push for CI, then E6. Audit notes: `~/.flexweek-ui-harness/scratch/engine-audit/`;
