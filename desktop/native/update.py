@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
 from typing import TypedDict
 
 import flexweek_engine  # type: ignore[import-untyped]
@@ -49,14 +50,20 @@ def install_kind(
 ) -> str:
     """How this copy was installed, which decides what an update looks like.
 
-    The process environment is read here, not in the engine. `APPIMAGE` alone is not enough: a
-    FlexWeek started inside some other AppImage inherits that path. The engine then checks whether
-    this executable is running from inside the mounted image.
+    The process environment and the file system are read here, not in the engine. `APPIMAGE` alone
+    is not enough: a FlexWeek started inside some other AppImage inherits that path. The engine then
+    checks whether this executable, with links followed, is running from inside the mounted image.
     """
     system = sys.platform if platform is None else platform
     image = os.environ.get("APPIMAGE", "") if appimage is None else appimage
     mount = os.environ.get("APPDIR", "") if appdir is None else appdir
     running = (sys.executable if executable is None else executable) or ""
+    if not system.startswith("win") and image and mount and running:
+        try:
+            running = str(Path(running).resolve())
+            mount = str(Path(mount).resolve())
+        except OSError, ValueError:
+            return "tarball"
     return str(flexweek_engine.update_install_kind(system, image or "", mount or "", running))
 
 

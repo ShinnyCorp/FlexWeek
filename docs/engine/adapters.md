@@ -379,7 +379,7 @@ The eleven desktop wrapper modules, plus `look.py`'s four engine helpers and `ve
 
 | Module | Function | Class | Reason |
 |---|---|---|---|
-| update | install_kind | STAYS | reads `sys.platform`, the environment and `sys.executable`; the engine decides from the values |
+| update | install_kind | STAYS | reads `sys.platform`, the environment and `sys.executable`, and resolves the executable and mount paths as the original did; the engine decides from the values |
 | update | asset_name | LOGIC, moved | the unknown-kind `KeyError` is raised by `update_asset_name` |
 | update | available | LOGIC, moved | a payload that is not a dict is no release: read by `update_available` |
 | update | release_from_page | ADAPTER | encodes, makes one engine call, decodes |
@@ -446,7 +446,7 @@ The eleven desktop wrapper modules, plus `look.py`'s four engine helpers and `ve
 - files._read_import, Python `json` reader for NaN and lone surrogates
 - files._checked_import, pydantic validation and exception text
 - tokens.Shadow, dataclass
-- update.install_kind, reads platform, environment and executable
+- update.install_kind, reads platform, environment and executable, and resolves paths
 - weekmodel.Occurrence, dataclass definition
 - weekmodel.Waiting, dataclass definition
 - weekmodel.DayQueue, dataclass definition

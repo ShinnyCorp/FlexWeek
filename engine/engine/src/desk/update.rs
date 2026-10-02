@@ -76,29 +76,10 @@ pub fn install_kind(
     "tarball"
 }
 
+/// `PurePath.is_relative_to`: whole components, no file system. The adapter resolves both paths
+/// first, as the original `Path.resolve()` did, so the core never touches the disk.
 fn path_is_relative_to(path: &str, base: &str) -> bool {
-    let path = std::path::Path::new(path);
-    let base = std::path::Path::new(base);
-    match (path.canonicalize(), base.canonicalize()) {
-        (Ok(path), Ok(base)) => path.starts_with(base),
-        // A path that is not on disk yet still counts. Python's Path.resolve
-        // does not require the file to exist.
-        _ => logical_path(path).starts_with(logical_path(base)),
-    }
-}
-
-fn logical_path(path: &std::path::Path) -> std::path::PathBuf {
-    let mut out = std::path::PathBuf::new();
-    for part in path.components() {
-        match part {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
+    std::path::Path::new(path).starts_with(base)
 }
 
 pub fn asset_name(kind: &str) -> Option<&'static str> {
@@ -394,6 +375,33 @@ mod tests {
         assert!(!is_newer("0.2.0", "0.13.0"));
         assert!(!is_newer("", "0.13.0"));
         assert!(!is_newer("1.2.3-rc1", "0.13.0"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn install_kind_compares_the_paths_it_is_given_and_follows_no_links() {
+        // Following links is file access; the Python adapter resolves both paths first.
+        let root = std::env::temp_dir().join(format!("flexweek-link-probe-{}", std::process::id()));
+        let mount = root.join("mount");
+        std::fs::create_dir_all(mount.join("usr/bin")).unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&mount, &link).unwrap();
+        let through_link = link.join("usr/bin/FlexWeek");
+        let inside = mount.join("usr/bin/FlexWeek");
+        // The file exists, so a lookup on disk would succeed and follow the link.
+        std::fs::write(&inside, b"x").unwrap();
+        let kind = |exe: &std::path::Path| {
+            install_kind(
+                Some("linux"),
+                Some("/x/FlexWeek.AppImage"),
+                Some(mount.to_str().unwrap()),
+                Some(exe.to_str().unwrap()),
+            )
+        };
+        let (linked, direct) = (kind(&through_link), kind(&inside));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(linked, "tarball");
+        assert_eq!(direct, "appimage");
     }
 
     #[test]
