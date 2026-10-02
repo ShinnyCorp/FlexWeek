@@ -59,7 +59,7 @@
   "file": "engine/engine/src/desk/planning.rs",
   "name": "Replan all moves homework whose time has come",
   "old": "        let kept = planned\n            && (truthy(get(&block, \"pinned\")?) || begun(&block, not_before, not_before_is_list)?);\n",
-  "new": "        let _ = begun(&block, not_before, not_before_is_list)?;\n        let kept = planned && truthy(get(&block, \"pinned\")?)?;\n",
+  "new": "        let _ = begun(&block, not_before, not_before_is_list)?;\n        let kept = planned && truthy(get(&block, \"pinned\")?);\n",
   "test": "desktop/tests/test_homework_plan.py::test_replan_all_leaves_homework_whose_time_has_passed"
  },
  {
