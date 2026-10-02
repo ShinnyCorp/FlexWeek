@@ -20,6 +20,7 @@ import types
 import uuid
 from datetime import date, datetime
 
+import flexweek_engine  # type: ignore[import-untyped]
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -1443,6 +1444,46 @@ def test_import_look_on_text_that_is_not_utf8():
     same(live_look.import_look, ref_look.import_look, '{"a": 1}'.encode("utf-16"))
 
 
+HEAD_BASE = '{"kind": "FlexWeek look", "version": 1, "'
+LOOK_TEXTS_PYTHON_ONLY = [
+    HEAD_BASE + 'base": ' + value + "}"
+    for value in (
+        "NaN",
+        "Infinity",
+        "-Infinity",
+        "[NaN]",
+        '{"a": NaN}',
+        '"\\ud800"',
+        '"\\udfff x"',
+        "10000000000000000000000",
+        "-10000000000000000000000",
+        "1e400",
+    )
+] + [
+    HEAD_BASE + key + '": ' + value + "}"
+    for key in ("name", "accent", "colours", "categories", "knobs", "now_line", "extra")
+    for value in ('"\\ud800"', "NaN", "10000000000000000000000", "1e400")
+] + [
+    '{"kind": "FlexWeek look", "version": ' + value + "}"
+    for value in ("10000000000000000000000", "-10000000000000000000000", "1e400", "NaN", '"\\ud800"')
+] + [
+    '{"kind": ' + value + ', "version": 1}' for value in ('"\\ud800"', "1e400", "NaN")
+] + [
+    '"\\ud800"',
+    '{"\\ud800": 1}',
+    HEAD_BASE + 'colours": {"text": "\\ud800", "window": NaN}}',
+    HEAD_BASE + 'knobs": {"\\ud800": 1}}',
+    HEAD_BASE + 'categories": {"class": {"fill": NaN}}}',
+    HEAD_BASE + 'name": "a\\ud800b"}',
+]
+
+
+@pytest.mark.parametrize("text", LOOK_TEXTS_PYTHON_ONLY)
+def test_import_look_on_what_only_python_reads(text):
+    same(live_look.import_look, ref_look.import_look, text)
+    same(live_look.import_look, ref_look.import_look, text.encode("utf-8", "surrogatepass"))
+
+
 @CHECK
 @given(st.one_of(st.lists(raw_look(), max_size=5), maybe(None, "x", {}, 5, [], {"a": 1})))
 def test_sanitize_saved_on_generated_lists(raw):
@@ -2279,7 +2320,7 @@ def pool_for(name, annotation):
         or "date" in name
     ):
         return DATES
-    if name in {"start", "hhmm", "from_start", "target_start"}:
+    if name in {"start", "hhmm", "from_start", "target_start"} and "int" not in kind:
         return CLOCKS
     if "int" in kind and "list" not in kind and "dict" not in kind:
         return WHOLE
@@ -2390,6 +2431,37 @@ def audited_call(function, args, kwargs, modules):
         uuid.uuid4 = real
         for module, original in previous:
             module.uuid4 = original
+
+
+@pytest.mark.parametrize("dotted", audited_functions())
+def test_error_parity_on_wrong_input(dotted):
+    module_name, name = dotted.split(".")
+    live_module, ref_module = DESK_PAIRS[module_name]
+    live, ref = getattr(live_module, name), getattr(ref_module, name)
+
+    @AUDITED
+    @given(audit_arguments(ref))
+    def check(arguments):
+        args, kwargs = arguments
+        live_call, ref_call = copy.deepcopy((args, kwargs)), copy.deepcopy((args, kwargs))
+        clock = (
+            live_module.__dict__.get("_clock") and dict(live_module._clock),
+            ref_module.__dict__.get("_clock") and dict(ref_module._clock),
+        )
+        try:
+            got = audited_call(live, live_call[0], live_call[1], [live_module, ref_module])
+            want = audited_call(ref, ref_call[0], ref_call[1], [live_module, ref_module])
+        finally:
+            for module, saved in ((live_module, clock[0]), (ref_module, clock[1])):
+                if saved:
+                    module._clock.update(saved)
+            if module_name == "weekmodel":
+                flexweek_engine.week_set_clock_24h(bool(clock[0]["24h"]))
+        assert got[:2] != ("raise", "RuntimeError") or got == want, f"a panic: {got}"
+        assert got == want
+        assert repr(live_call) == repr(ref_call)
+
+    check()
 
 
 # Files a student brings in. Everything below goes through `parse_import_payload` and the two exports
