@@ -39,7 +39,7 @@
   "name": "a block with a song has one notice at its start",
   "old": "        if started && truthy(get(&block, \"spotify_url\")?) {\n            continue;\n        }\n",
   "new": "        if started && truthy(get(&block, \"spotify_url\")?) {\n        }\n",
-  "test": "desktop/tests/test_remind.py::test_a_block_with_a_song_is_announced_by_the_song_at_its_start"
+  "test": "cargo:flexweek-engine:desk_remind:test_a_block_with_a_song_is_announced_by_the_song_at_its_start"
  },
  {
   "file": "desktop/native/window.py",
