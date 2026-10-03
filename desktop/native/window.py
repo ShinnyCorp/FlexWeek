@@ -13,6 +13,7 @@ from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, QStandardPaths
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
+    QContextMenuEvent,
     QDesktopServices,
     QGuiApplication,
     QIcon,
@@ -525,6 +526,7 @@ class NativeWindow(QMainWindow):
         self.session.week_changed.connect(self._on_week)
         self.session.status.connect(self._on_status)
         self._busy_guard = BusyGuard(self, lambda: self.session.busy)
+        self._relaying = False
         self._busy_look = QTimer(self)
         self._busy_look.setSingleShot(True)
         self._busy_look.setInterval(BUSY_LOOK_MS)
@@ -3543,6 +3545,26 @@ class NativeWindow(QMainWindow):
         if self._tray_icon is not None:
             self._tray_icon.hide()
         QApplication.quit()
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """Qt gives a right-click's context menu to the widget under the pointer only when the pointer
+        did not move between the press and the release. A hand or a touchpad nearly always moves a few
+        pixels, and the menu then came to the window instead, so a block's or free time's menu opened about
+        one time in ten. It goes on to the widget the pointer is over."""
+        target = QApplication.widgetAt(event.globalPos())
+        by_mouse = event.reason() == QContextMenuEvent.Reason.Mouse
+        if not by_mouse or target is None or target is self or self._relaying:
+            super().contextMenuEvent(event)
+            return
+        self._relaying = True
+        try:
+            relayed = QContextMenuEvent(
+                QContextMenuEvent.Reason.Mouse, target.mapFromGlobal(event.globalPos()), event.globalPos()
+            )
+            QApplication.sendEvent(target, relayed)
+        finally:
+            self._relaying = False
+        event.setAccepted(relayed.isAccepted())
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         tray = self._tray_icon
