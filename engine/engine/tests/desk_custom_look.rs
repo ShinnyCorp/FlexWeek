@@ -241,7 +241,7 @@ fn test_an_import_keeps_what_it_can_and_says_what_it_left_out() {
 
 /// A high-contrast look with a green card has a calendar (`grid`) of its own, dark green on a black
 /// page and card. The accent's Fix must read on that calendar too: the palette and both Fix colours
-/// are `desk_ref.custom_look.readability` run on `custom`, with `resolved_palette`'s palette. Blocks
+/// are `desk_ref.custom_look.readability` (at v0.18.0, since deleted) run on `custom`, with `resolved_palette`'s palette. Blocks
 /// are left out; they only move the text's Fix.
 #[test]
 fn test_an_accent_fix_reads_on_the_calendar_as_well_as_the_page_and_cards() {
