@@ -127,12 +127,21 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-02 late, `release/0.18.1` (integration branch, from `main` at c50f264, not pushed): v0.18.0 is
-  published. 0.18.1 is in progress per roadmap.md on `docs/roadmap-0-18-x` (pushed). Merged here: the
-  plumbing (restored adapter tests, NaN import test, Bell fixture, wheel settle, same-version updater
-  test, frozen references and differential tests deleted) and the one-source-per-setting lane (J3-J6).
-  Lane branches still being written in `~/.worktrees/flexweek-0181-*`: `fix/time-entry`,
-  `fix/plan-undo`, `fix/sheets`, `fix/deadlines-dates`, `test/logic-tidy`; `fix/grid-keyboard` starts
-  after time entry merges (brief in the scratch plan folder). Integration tests run in the venv at
-  `~/.flexweek-ui-harness/venv-0181` (this branch's engine); the checkout's own `.venv` holds main's
-  engine for the lanes. Next: review and merge each lane, one gate, rig, then Jonathan's word to push.
+- 2026-10-03, `release/0.18.1` (from `main` at c50f264, not pushed): 0.18.1 is built: plumbing, one
+  source per setting, time entry, Plan and Undo, sheets, deadlines and dates, grid and keyboard, the
+  test tidy's helper merge, ten mutation cases repointed, version 0.18.1 with its changelog and
+  release notes, and roadmap.md from `docs/roadmap-0-18-x`. Gate 2790 passed in 7 min 8 s in the
+  venv at `~/.flexweek-ui-harness/venv-0181` (this branch's engine; the checkout's `.venv` still
+  holds main's engine and needs `pip install ./engine/py --config-settings=build-args="--features
+  audit"` after a checkout of this branch). Rig passed on ten design and tab pairs.
+- Open for Jonathan before or after release: the old "Choose a time…" and "Let FlexWeek move it"
+  buttons in Edit homework now double the When row; a typed date already passed this year rolls to
+  next year (typing 1 Oct on 2 Oct gives 2027); Plan's reason for a passed deadline still comes from
+  the engine as "does not fit"; the Delete key deletes at once with Undo while the menu's Delete
+  asks; arrow keys reach only the first of blocks that share a time; the amber conflict row keeps
+  its light fill in dark looks; drag step (5 or 15) applies to moves and resizes while clicks and
+  new blocks snap to 15; `hypothesis` is unused; about 100 cases the deleted differential tests
+  pinned have no Rust test. spec.md drift: the CI desk step's wording, the song rule, the 5-minute
+  lead default and the shared "No homework after" list (wording in the scratch lane reports).
+- Next: Jonathan's word to push `release/0.18.1` and open the PR; CI (including the mutate job);
+  then his word to merge and publish v0.18.1 as latest.

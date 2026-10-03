@@ -149,7 +149,14 @@ ones a solid edge.
   re-checked away with evidence; the differential tests and frozen references
   are deleted; gate, rig and mutation runs green; CHANGELOG, release notes and
   context.md updated; v0.18.1 published as latest.
-- Status: [ ] not started.
+- Status: [~] built on `release/0.18.1` 2026-10-03, not pushed. Gate 2790
+  passed; rig passed on classic, Timeline, Mission, Clay, Bento and Retro;
+  the ten mutation cases the lanes outdated are repointed and RED (the whole
+  mutation run is left to CI). Re-checked away: #64 (the code never offered
+  the running version), #10 (rail and panel agree; guard test added), #6 as
+  worded (a carried block lands where it is dropped; a new block's start is
+  fixed with #7). Not done: the test tidy's cutting of overlapping tests (its
+  helper merge is in). Open for Jonathan: see context.md.
 
 ### 0.18.2 — Behaviour and layout
 | Lane | Findings |
