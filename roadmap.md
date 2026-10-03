@@ -141,8 +141,10 @@ Jonathan approved as shown the sheet footer (filled main action, outlined
 Cancel), the swatch-grid colour picker, Sign out as a sheet, the amber
 conflict row, the disabled button in the text colour with a hint, and tonal
 "Plan here" at 36 px; dark is checked in the rig, not mocked. The Due row
-("Due by" plus "Do it at") waits on a demo of how "Do it at" flips when a
-block is dragged.
+("Due by" plus "Do it at") was approved from a six-frame demo: "Do it at"
+and a hand drag are the same pin the solver already has; dragging pins,
+"Let FlexWeek pick a time" unpins; planned blocks get a dashed edge, pinned
+ones a solid edge.
 - Complete when: every finding above is closed on the shipped build or
   re-checked away with evidence; the differential tests and frozen references
   are deleted; gate, rig and mutation runs green; CHANGELOG, release notes and
