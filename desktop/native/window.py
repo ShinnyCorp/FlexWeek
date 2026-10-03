@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from backend.slots import minutes_to_hhmm
+from backend.slots import DAY_END_MIN, SLOT_MIN, minutes_to_hhmm
 from desktop.native import autostart, icons
 from desktop.native.calendar import (
     CATEGORIES,
@@ -2789,10 +2789,16 @@ class NativeWindow(QMainWindow):
         if refusal:
             self.session._say(refusal)
             return
-        from_start = late_from_start(now.hour * 60 + now.minute)
+        # Rounded up: a start in the quarter hour that has already begun was a time gone by. After 23:45
+        # there is no quarter left today, so it stays the last one.
+        ahead, minute = next_slot(now.hour * 60 + now.minute)
+        if ahead:
+            minute = DAY_END_MIN - SLOT_MIN
+        starting = now.replace(hour=minute // 60, minute=minute % 60, second=0, microsecond=0)
+        from_start = late_from_start(minute)
         dialog = LateDialog(self, f"Starting from {hhmm_text(from_start)} today ({DAY_FULL[now.weekday()]}).")
         dialog.preview_requested.connect(
-            lambda: self.session.preview_running_late(dialog.chosen_minutes(), now)
+            lambda: self.session.preview_running_late(dialog.chosen_minutes(), starting)
         )
         self._late_dialog = dialog
         self.session.status.connect(dialog.error.setText)
