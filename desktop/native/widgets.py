@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from copy import deepcopy
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -113,6 +113,7 @@ from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
     LATE_MINUTES,
     PROTECTED_KINDS,
+    due_point,
     preview_conflict_message,
     routine_source_blocks,
     row_conflict,
@@ -130,6 +131,8 @@ DUE_DATE_FORMAT = "ddd d MMM yyyy"
 DATE_FORMAT = "ddd d MMM yyyy"
 DIALOG_MAX_HEIGHT = 700
 SLOT_HINT = "Use a multiple of 15 minutes, such as 15, 30, or 45."
+DUE_BY_HINT = "FlexWeek plans it before this time."
+DUE_PASSED = "That time has already passed."
 ESTIMATE_ERROR = "That time is not a multiple of 15 minutes."
 ESTIMATE_SHORT = "Give it at least 15 minutes."
 ESTIMATE_LONG = "That is more than 24 hours. Split it into parts and add each part as its own homework."
@@ -2555,9 +2558,10 @@ class DueField(QWidget):
         self.date.setMaximumDate(QDate(2099, 12, 31))
         self.date.setAccessibleName("Due date")
         self.date.calendarWidget().parentWidget().installEventFilter(self)
-        self.timed = QCheckBox("At a set time")
+        # "At a set time" read like "do it at", and it sets the time the work must be done by.
+        self.timed = Switch("Due by")
         self.timed.setObjectName(f"{name}Timed")
-        self.timed.setAccessibleName("Due at a set time")
+        self.timed.setAccessibleName("Due by a set time")
         self.time = ClockField()
         self.time.setObjectName(f"{name}Time")
         self.time.setAccessibleName("Due time")
@@ -2570,6 +2574,13 @@ class DueField(QWidget):
         row.addWidget(self.timed)
         row.addWidget(self.time)
         row.addStretch(1)
+        self.hint = sheet_note(DUE_BY_HINT)
+        outer.addWidget(self.hint)
+        self.problem = _error_label()
+        self.problem.setObjectName("validationError")
+        self.problem.setAccessibleName("Due date problem")
+        self.problem.setVisible(False)
+        outer.addWidget(self.problem)
         self.set_value(due)
         self.date.dateChanged.connect(self._say_changed)
         self.timed.toggled.connect(self._show_time)
@@ -2591,6 +2602,12 @@ class DueField(QWidget):
 
     def _show_time(self, timed: bool) -> None:
         self.time.setVisible(timed)
+        self.hint.setVisible(timed)
+
+    def show_problem(self, text: str) -> None:
+        """Say what is wrong with the due, beside it in the sheet's error colour; empty clears it."""
+        self.problem.setText(text)
+        self.problem.setVisible(bool(text))
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt virtual
         if event.type() == QEvent.Type.Show and watched.objectName() == "qt_datetimedit_calendar":
@@ -2637,6 +2654,7 @@ class HomeworkDialog(Dialog):
                 "completed_at": None,
             }
         )
+        self._today = today
         self._result: dict | None = None
         self._spread = False
         # "choose" to pick a time for a session that needs one, "unpin" to let FlexWeek move it again.
@@ -2656,6 +2674,8 @@ class HomeworkDialog(Dialog):
         form.addRow("Title", self.title)
         self.due = DueField(self._original["due"], "homeworkDue", stacked=True)
         form.addRow("Due", self.due)
+        self.due.changed.connect(self._clear_due_problem)
+        self._add_when(form)
         self.estimate = LengthBox("homeworkEstimate", self._original["estimate_min"])
         form.addRow("Estimated time", Stepper(self.estimate, QUICK_LENGTHS))
         self.estimate_hint = QLabel(SLOT_HINT)
@@ -2670,7 +2690,6 @@ class HomeworkDialog(Dialog):
         form.addRow("", self.error)
         # The row goes with its words: an empty one left a gap above Finished.
         form.setRowVisible(self.error, False)
-        self._form = form
         self.completed = QCheckBox("Finished")
         self.completed.setObjectName("homeworkCompleted")
         self.completed.setChecked(bool(self._original.get("completed")))
@@ -2820,6 +2839,126 @@ class HomeworkDialog(Dialog):
         if not self.sheet:
             fit_scroll_dialog(self)
 
+    def _open_sessions(self) -> list[dict]:
+        """This homework's unfinished times on the week in the window, which the dialog reads from the
+        window's session so a pinned one can be shown and set again."""
+        session = getattr(self.parent(), "session", None)
+        if session is None:
+            return []
+        return [
+            block
+            for block in session.blocks
+            if block.get("assignment_id") == self._original["id"] and not block.get("completed")
+        ]
+
+    def _add_when(self, form: Form) -> None:
+        """Under Due: "Let FlexWeek pick a time", or "Do it at" a day and time, which pins the time
+        so no plan moves it. Homework spread over several times keeps Spread's own way."""
+        self._form = form
+        sessions = self._open_sessions()
+        placed = next((block for block in sessions if block.get("pinned") and block.get("start")), None)
+        self._placed = (placed["days"][0], placed["start"]) if placed else None
+        self.when = Segmented((("Let FlexWeek pick a time", "plan"), ("Do it at", "fixed")), "homeworkWhen")
+        form.addRow("When", self.when)
+        fixed = bare(QWidget())
+        fixed.setObjectName("homeworkFixed")
+        column = QVBoxLayout(fixed)
+        column.setContentsMargins(0, 0, 0, 0)
+        day, start = self._default_placement()
+        if self._placed:
+            day, start = self._placed[0], hhmm_to_minutes(self._placed[1])
+        self.when_day = DayPicker([day], "homeworkWhenDay")
+        self._day = day
+        column.addWidget(self.when_day)
+        clock = QHBoxLayout()
+        clock.setContentsMargins(0, 0, 0, 0)
+        self.when_time = ClockField(QTime(start // 60, start % 60))
+        self.when_time.setObjectName("homeworkWhenTime")
+        self.when_time.setAccessibleName("Do it at time")
+        clock.addWidget(self.when_time)
+        clock.addStretch(1)
+        column.addLayout(clock)
+        self.when_problem = _error_label()
+        self.when_problem.setAccessibleName("Do it at problem")
+        self.when_problem.setVisible(False)
+        column.addWidget(self.when_problem)
+        form.addRow("", fixed)
+        self.when_note = sheet_note("")
+        form.addRow("", self.when_note)
+        self._fixed_row = fixed
+        self.when.setCurrentIndex(1 if self._placed else 0)
+        if len(sessions) > 1:
+            for part in (self.when, fixed, self.when_note):
+                form.setRowVisible(part, False)
+            self._spread_out = True
+        else:
+            self._spread_out = False
+        self._follow_when()
+        self.when.currentIndexChanged.connect(self._follow_when)
+        self.when.currentIndexChanged.connect(self.refit)
+        self.when_day.changed.connect(self._pick_day)
+        self.when_time.timeChanged.connect(self._follow_when)
+
+    def _default_placement(self) -> tuple[int, int]:
+        """Today if the week on screen has it, else Monday, at 16:00 or the next quarter hour after it."""
+        now = self._now()
+        today = date.fromisoformat(self._today) if self._today else now.date()
+        week = getattr(getattr(self.parent(), "session", None), "week_start", None)
+        if week is not None and monday_of(today.isoformat()) != week:
+            return 0, 16 * 60
+        quarter = (now.hour * 60 + now.minute) // 15 * 15 + 15
+        return today.weekday(), min(max(16 * 60, quarter), 23 * 60 + 45)
+
+    def _pick_day(self) -> None:
+        """One day only: ticking another unticks the first, and the last one cannot be unticked."""
+        days = self.when_day.days()
+        fresh = [day for day in days if day != self._day]
+        self._day = fresh[0] if fresh else self._day
+        if days != [self._day]:
+            self.when_day.blockSignals(True)
+            self.when_day.set_days([self._day])
+            self.when_day.blockSignals(False)
+        self._follow_when()
+
+    def _fixed_at(self) -> dict | None:
+        """The day and start picked under "Do it at", or None when FlexWeek picks the time."""
+        if self.when.currentData() != "fixed":
+            return None
+        return {"day": self._day, "start": self.when_time.time().toString("HH:mm")}
+
+    def _follow_when(self, *_args: object) -> None:
+        fixed = self._fixed_at()
+        if not self._spread_out:
+            # Said only for Do it at: the dialog is already near the height of a laptop screen.
+            self._form.setRowVisible(self._fixed_row, fixed is not None)
+            self._form.setRowVisible(self.when_note, fixed is not None)
+        self.when_problem.setVisible(False)
+        self.when_note.setText(
+            f"Stays on {DAYS[fixed['day']]} at {fixed['start']} when you plan again." if fixed else ""
+        )
+
+    def _when_changed(self) -> bool:
+        """Whether the student changed what the dialog opened with. A choice they left alone is not
+        sent, so saving never moves or pins anything they did not ask about."""
+        fixed = self._fixed_at()
+        if self._spread_out:
+            return False
+        if fixed is None:
+            return self._placed is not None
+        return self._placed is None or (fixed["day"], fixed["start"]) != tuple(self._placed)
+
+    def _fixed_problem(self, fixed: dict, due: str) -> str:
+        """Why that day and time cannot be kept, in the words a drop on the calendar uses."""
+        session = getattr(self.parent(), "session", None)
+        week = getattr(session, "week_start", None)
+        if week is None:
+            return ""
+        start = hhmm_to_minutes(fixed["start"])
+        sessions = self._open_sessions()
+        length = int(sessions[0]["duration_min"]) if sessions else self.estimate.value()
+        problem = span_problem([], "", fixed["day"], start, start + length, due_point(due, week))
+        return (problem or "").replace(", so it stayed where it was", "")
+
     def _show_error(self, text: str) -> None:
         self.error.setText(text)
         self._form.setRowVisible(self.error, bool(text))
@@ -2925,10 +3064,48 @@ class HomeworkDialog(Dialog):
         chosen, before = self.due.value(), self._original["due"]
         return before if parse_due(chosen) == parse_due(before) else chosen
 
+    def _now(self) -> datetime:
+        """Now on the window's clock when it has one."""
+        session = getattr(self.parent(), "session", None)
+        return datetime.fromtimestamp(session.now_ms() / 1000) if session is not None else datetime.now()
+
+    def _due_passed(self) -> bool:
+        """Whether the student set a deadline that is already over. A saved deadline they did not
+        change is left alone, and so is finished homework, so old work can still be edited."""
+        if self.completed.isChecked():
+            return False
+        chosen = self._chosen_due()
+        if chosen == self._original["due"]:
+            return False
+        try:
+            day, minute = parse_due(chosen)
+        except ValueError:
+            # Not a date: the saved homework's own check says so, in its words.
+            return False
+        now = self._now()
+        today = date.fromisoformat(self._today) if self._today else now.date()
+        return (day, minute) < (today, now.hour * 60 + now.minute)
+
+    def _clear_due_problem(self) -> None:
+        self.due.show_problem("")
+
     def accept(self) -> None:
         if self._say_length():
             self.estimate.setFocus()
             return
+        if self._due_passed():
+            self.due.show_problem(DUE_PASSED)
+            self._scroll.ensureWidgetVisible(self.due)
+            self.due.date.setFocus()
+            return
+        fixed = self._fixed_at()
+        if fixed is not None and self._when_changed():
+            problem = self._fixed_problem(fixed, self._chosen_due())
+            if problem:
+                self.when_problem.setText(problem)
+                self.when_problem.setVisible(True)
+                self._scroll.ensureWidgetVisible(self.when_problem)
+                return
         candidate = deepcopy(self._original)
         links = [self.links.item(index).data(Qt.ItemDataRole.UserRole) for index in range(self.links.count())]
         checklist = []
@@ -2959,6 +3136,9 @@ class HomeworkDialog(Dialog):
             completed=completed,
             completed_at=completed_at,
         )
+        if self._when_changed():
+            # Not part of the saved homework: the window's save reads it to pin or free its time.
+            candidate["fixed_at"] = fixed
         try:
             Assignment.model_validate(
                 {key: value for key, value in candidate.items() if key in Assignment.model_fields}

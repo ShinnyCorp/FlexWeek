@@ -861,6 +861,8 @@ class NativeSession(QObject):
                 session["category"] = body["category"]
             if days is not None and len(sessions) == 1 and not session.get("start"):
                 session["days"] = days
+            if "fixed_at" in assignment and not session.get("completed"):
+                self._fix_session(session, assignment["fixed_at"])
             blocks.append(TimeBlock.model_validate(session).model_dump(mode="json"))
         if not sessions:
             session = {
@@ -874,6 +876,8 @@ class NativeSession(QObject):
                 "assignment_id": body["id"],
                 "category": body.get("category"),
             }
+            if assignment.get("fixed_at"):
+                self._fix_session(session, assignment["fixed_at"])
             blocks.append(TimeBlock.model_validate(session).model_dump(mode="json"))
         finished = bool(body.get("completed"))
         label = "editing " + body["title"]
@@ -893,6 +897,15 @@ class NativeSession(QObject):
         self.blocks = blocks
         edited = {session["id"] for session in blocks if session.get("assignment_id") == body["id"]}
         self._touch(label, keep=edited)
+
+    def _fix_session(self, session: dict, fixed_at: dict | None) -> None:
+        """Pin `session` at the day and start the student chose with "Do it at", or with None let
+        FlexWeek move it again, as "Let FlexWeek pick a time" does."""
+        if fixed_at is None:
+            session.pop("pinned", None)
+            return
+        session.update(start=fixed_at["start"], days=[fixed_at["day"]], pinned=True)
+        self.needs_time.pop(session["id"], None)
 
     def apply_times(self, block_id: str, start_min: int, end_min: int, day: int | None = None) -> bool:
         block = next((item for item in self.blocks if item["id"] == block_id), None)
