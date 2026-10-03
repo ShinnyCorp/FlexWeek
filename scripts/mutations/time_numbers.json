@@ -1,9 +1,9 @@
 [
   {
     "name": "Week goes back to full month names",
-    "file": "desktop/native/reuse.py",
-    "old": "    short = True\n    end = start + timedelta(days=6)",
-    "new": "    short = False\n    end = start + timedelta(days=6)",
+    "file": "engine/engine/src/desk/reuse.rs",
+    "old": "    let end = crate::stored::add_days(start, 6)?;\n    Ok(if start.month() == end.month() {\n        format!(\n            \"{} – {} {}\",\n            start.day(),\n            end.day(),\n            name(&MONTHS, start.month0() as usize, true)\n        )\n    } else {\n        format!(\n            \"{} {} – {} {}\",\n            start.day(),\n            name(&MONTHS, start.month0() as usize, true),\n            end.day(),\n            name(&MONTHS, end.month0() as usize, true)\n        )\n    })\n",
+    "new": "    let end = crate::stored::add_days(start, 6)?;\n    Ok(if start.month() == end.month() {\n        format!(\n            \"{} – {} {}\",\n            start.day(),\n            end.day(),\n            name(&MONTHS, start.month0() as usize, false)\n        )\n    } else {\n        format!(\n            \"{} {} – {} {}\",\n            start.day(),\n            name(&MONTHS, start.month0() as usize, false),\n            end.day(),\n            name(&MONTHS, end.month0() as usize, false)\n        )\n    })\n",
     "test": "desktop/tests/test_time_numbers.py::test_the_week_title_uses_the_same_short_date_at_every_width[default-classic]"
   },
   {

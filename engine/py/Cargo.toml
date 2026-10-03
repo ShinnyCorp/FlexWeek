@@ -1,0 +1,22 @@
+[package]
+name = "flexweek-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "flexweek_py"
+crate-type = ["cdylib"]
+
+[dependencies]
+flexweek-engine = { path = "../engine" }
+flexweek-store = { path = "../store" }
+pyo3 = { version = "0.27.2", features = ["extension-module"] }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+serde = "1.0.228"
+serde_json = { version = "1.0.145", features = ["float_roundtrip", "arbitrary_precision", "preserve_order", "unbounded_depth"] }
+
+[features]
+default = []
+audit = []

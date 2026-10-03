@@ -1,27 +1,29 @@
-"""Account-transfer size checks. No HTTP, no database."""
+"""Account-transfer size checks. The engine measures the envelope. No HTTP, no database."""
 
 from __future__ import annotations
 
 import json
 
-from backend.limits import MAX_BODY
+from flexweek_engine import (  # type: ignore[import-untyped]
+    transfer_apply_bytes as _transfer_apply_bytes,
+)
+from flexweek_engine import (
+    transfer_apply_envelope as _transfer_apply_envelope,
+)
+from flexweek_engine import (
+    transfer_fits as _transfer_fits,
+)
 
 TRANSFER_TOO_LARGE = "This account is larger than the 256 KiB transfer limit."
-APPLY_TOKEN_PAD = "f" * 64
-APPLY_OPERATION_PAD = "o" * 80
 
 
 def transfer_apply_envelope(snapshot: dict) -> dict:
-    return {
-        "snapshot": snapshot,
-        "state_token": APPLY_TOKEN_PAD,
-        "operation_id": APPLY_OPERATION_PAD,
-    }
+    return json.loads(_transfer_apply_envelope(json.dumps(snapshot)))
 
 
 def transfer_apply_bytes(snapshot: dict) -> int:
-    return len(json.dumps(transfer_apply_envelope(snapshot), separators=(",", ":")).encode())
+    return _transfer_apply_bytes(json.dumps(snapshot))
 
 
 def transfer_fits(snapshot: dict) -> bool:
-    return transfer_apply_bytes(snapshot) <= MAX_BODY
+    return _transfer_fits(json.dumps(snapshot))

@@ -31,6 +31,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,7 +47,14 @@ jobs:
         run: |
           python -m venv .venv
           .venv\Scripts\python -m pip install --upgrade pip
-          .venv\Scripts\python -m pip install -r requirements.txt -r requirements-desktop.txt
+          .venv\Scripts\python -m pip install -r requirements.txt -r requirements-desktop.txt -r requirements-dev.txt
+
+      - name: Install Rust and build the engine module
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          .venv\Scripts\python -m maturin develop --release --manifest-path engine/py/Cargo.toml
+        shell: pwsh
 
       - name: Build Windows onedir package
         # -AssumeYesForDownloads lets Nuitka fetch dependency walker (required
@@ -56,7 +64,7 @@ jobs:
 
       - name: Smoke-test package layout and the setup Solve
         # GUI-subsystem freezes do not set $LASTEXITCODE under `&`. Start-Process
-        # -Wait reads the process exit code.
+        # WaitForExit reads the process exit code.
         # --smoke-test walks a new account through setup to its first Solve and
         # fails on a blank window, which is how 0.9.0 broke for testers.
         env:
@@ -75,14 +83,21 @@ jobs:
             throw "Native package must not ship QtWebEngineProcess.exe"
           }
           $report = Join-Path (Get-Location) "dist\windows-smoke.json"
-          $proc = Start-Process -FilePath $exe -ArgumentList "--smoke-test",$report -WorkingDirectory $root -PassThru -Wait
-          if (Test-Path $report) { Get-Content $report }
-          if ($null -eq $proc.ExitCode -or $proc.ExitCode -ne 0) {
-            throw "FlexWeek --smoke-test failed with $($proc.ExitCode)"
-          }
-          $result = Get-Content $report -Raw | ConvertFrom-Json
-          if (-not $result.ok -or $result.stage -ne "week shown after setup Solve") {
-            throw "FlexWeek --smoke-test stopped at: $($result.stage)"
+          $proc = Start-Process -FilePath $exe -ArgumentList "--smoke-test",$report -WorkingDirectory $root -PassThru
+          try {
+            if (-not $proc.WaitForExit(600000)) {
+              Stop-Process -Id $proc.Id -Force
+              throw "FlexWeek --smoke-test timed out after 10 minutes"
+            }
+            if ($null -eq $proc.ExitCode -or $proc.ExitCode -ne 0) {
+              throw "FlexWeek --smoke-test failed with $($proc.ExitCode)"
+            }
+            $result = Get-Content $report -Raw | ConvertFrom-Json
+            if (-not $result.ok -or $result.stage -ne "week shown after setup Solve") {
+              throw "FlexWeek --smoke-test stopped at: $($result.stage)"
+            }
+          } finally {
+            if (Test-Path $report) { Get-Content $report }
           }
         shell: pwsh
 
@@ -99,8 +114,12 @@ jobs:
           $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
           if ($hash -ne $env:INNO_SHA256) { throw "Inno Setup download has SHA-256 $hash, expected $env:INNO_SHA256" }
           $dir = Join-Path $env:RUNNER_TEMP "innosetup"
-          $proc = Start-Process -FilePath $installer -Wait -PassThru `
+          $proc = Start-Process -FilePath $installer -PassThru `
             -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/CURRENTUSER", "/DIR=$dir"
+          if (-not $proc.WaitForExit(600000)) {
+            Stop-Process -Id $proc.Id -Force
+            throw "Inno Setup install timed out after 10 minutes"
+          }
           if ($proc.ExitCode -ne 0) { throw "Inno Setup install failed with $($proc.ExitCode)" }
           $iscc = Join-Path $dir "ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "ISCC.exe missing under $dir" }
@@ -139,7 +158,11 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           function Invoke-Checked([string] $file, [string[]] $arguments, [string] $what) {
-            $proc = Start-Process -FilePath $file -ArgumentList $arguments -Wait -PassThru
+            $proc = Start-Process -FilePath $file -ArgumentList $arguments -PassThru
+            if (-not $proc.WaitForExit(600000)) {
+              Stop-Process -Id $proc.Id -Force
+              throw "$what timed out after 10 minutes"
+            }
             if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "$what failed with $($proc.ExitCode)" }
           }
           function Test-Installed([string] $exe, [string] $shortcut, [string] $name) {
@@ -153,11 +176,18 @@ jobs:
             }
             $report = Join-Path $env:RUNNER_TEMP "$name-smoke.json"
             $proc = Start-Process -FilePath $link.TargetPath -ArgumentList "--smoke-test", $report `
-              -WorkingDirectory $link.WorkingDirectory -Wait -PassThru
-            if (Test-Path $report) { Get-Content $report }
-            $result = if (Test-Path $report) { Get-Content $report -Raw | ConvertFrom-Json } else { $null }
-            if ($proc.ExitCode -ne 0 -or -not $result.ok -or $result.stage -ne "week shown after setup Solve") {
-              throw "$name installed app failed its smoke test (exit $($proc.ExitCode), stage $($result.stage))"
+              -WorkingDirectory $link.WorkingDirectory -PassThru
+            try {
+              if (-not $proc.WaitForExit(600000)) {
+                Stop-Process -Id $proc.Id -Force
+                throw "$name installed app smoke test timed out after 10 minutes"
+              }
+              $result = if (Test-Path $report) { Get-Content $report -Raw | ConvertFrom-Json } else { $null }
+              if ($proc.ExitCode -ne 0 -or -not $result.ok -or $result.stage -ne "week shown after setup Solve") {
+                throw "$name installed app failed its smoke test (exit $($proc.ExitCode), stage $($result.stage))"
+              }
+            } finally {
+              if (Test-Path $report) { Get-Content $report }
             }
           }
           function Wait-Removed([string] $path, [string] $name) {
@@ -207,6 +237,7 @@ jobs:
 
   linux:
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -228,7 +259,13 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install -r requirements.txt -r requirements-desktop.txt
+          .venv/bin/python -m pip install -r requirements.txt -r requirements-desktop.txt -r requirements-dev.txt
+
+      - name: Install Rust and build the engine module
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          .venv/bin/python -m maturin develop --release --manifest-path engine/py/Cargo.toml
 
       - name: Build and package Linux onedir
         run: |

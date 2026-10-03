@@ -91,10 +91,10 @@
   "test": "desktop/tests/test_layout_mission.py::test_in_a_short_window_the_lanes_and_not_the_tables_rows_set_the_pages_height"
  },
  {
-  "file": "desktop/native/weekmodel.py",
+  "file": "engine/engine/src/desk/weekmodel.rs",
   "name": "focus counted from every homework on the account",
-  "old": "    focus = sum(int((homework.get(key) or {}).get(\"focus_minutes\") or 0) for key in worked)\n",
-  "new": "    focus = sum(int(item.get(\"focus_minutes\") or 0) for item in homework.values())\n",
+  "old": "    let mut worked: Vec<Value> = Vec::new();\n    for block in iterate(blocks)? {\n        let key = field(&block, \"assignment_id\")?;\n        crate::desk::pyops::hashable(&key, \"set element\")?;\n        if !key.is_null() && !worked.iter().any(|held| eq(held, &key)) {\n            worked.push(key);\n        }\n    }\n    let mut focus: i128 = 0;\n    for key in &worked {\n        let entry = or_default(dict_get(&homework, key)?, json!({}));\n        focus += to_int(&or_default(get(&entry, \"focus_minutes\")?, json!(0)))?;\n    }\n",
+  "new": "    let mut focus: i128 = 0;\n    if let Value::Object(map) = &homework {\n        for item in map.values() {\n            focus += to_int(&or_default(get(item, \"focus_minutes\")?, json!(0)))?;\n        }\n    }\n",
   "test": "desktop/tests/test_weekmodel.py::test_focus_is_what_the_timer_credited_to_this_weeks_homework_and_blocks"
  },
  {

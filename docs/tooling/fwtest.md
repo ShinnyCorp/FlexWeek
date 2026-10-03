@@ -24,7 +24,9 @@ This file is the contract. The implementation is built and reviewed against it.
    the suites share Qt's test-mode files in `~/.qttest`. A job also waits for other agents' suites
    started outside `fwtest`, for up to 30 minutes.
 4. **Source files are always restored.** A mutation's edit is undone however the run ends. A run
-   that finds an edit left by a killed run restores it before it does anything else.
+   that finds an edit left by a killed run restores it before it does anything else. A file under
+   `engine/` also leaves a mark. The next clean rebuilds the installed engine module from the
+   restored tree, so a killed run does not leave a mutated module either.
 5. **Only its own processes are killed.** `fwtest` never matches processes by name or command line.
    It kills a PID only if the PID's start time matches the one it recorded.
 
@@ -32,7 +34,7 @@ This file is the contract. The implementation is built and reviewed against it.
 
 ```text
 fwtest gate [--backend-only] [--workers N]
-fwtest mutate [SPEC.json ...] [--case NAME]
+fwtest mutate [SPEC.json ...] [--case NAME] [--engine-build COMMAND] [--no-engine-rebuild]
 fwtest rig [--server kwin|xvfb|auto] [ARGS FOR scripts/rig/drive.py ...]
 fwtest run [--timeout SECONDS] -- COMMAND [ARGS ...]
 fwtest clean
@@ -44,11 +46,15 @@ fwtest clean
   skipping any value of all zeroes. pytest gets `-n N` where N is `--workers`, or half the cores
   and at least 2. It prints `VERIFIED: Backend and desktop. Packaged binaries and other platforms
   need separate checks.` (or `VERIFIED: Backend.` with `--backend-only`) only when every step
-  passed, as `verify.py` does. The per-step timeout is 480 seconds.
+  passed, as `verify.py` does. The per-step timeout is 900 seconds.
 - `mutate` runs every spec in `scripts/mutations/`, or the specs named. `--case` runs one case by
-  name. It prints one line per case (`RED`, `GREEN` or `PATTERN`, then the spec, the case name and
-  the first failing assertion) and ends with `every mutation was caught` or `N mutation(s)
-  SURVIVED`. It exits 1 if any case survived or any pattern was not found exactly once.
+  name. It prints one line per case (`RED`, `GREEN`, `BASE`, `PATTERN`, or `BUILD`, then the spec, the
+  case name, and a short detail) and ends with `every mutation was caught` or `N mutation(s)
+  SURVIVED`. `RED` is caught. `GREEN`, `BASE`, `PATTERN`, and `BUILD` each count as not caught. `BASE`
+  means the case's test was red before any mutation (each test is run once unmutated per run, after
+  a clean engine rebuild when a case left a mutated module installed), so the case proves nothing. It exits 1
+  if any case was not caught. A file under `engine/` is rebuilt before its test. See
+  [Mutating a file under engine/](#mutating-a-file-under-engine).
 - `rig` runs `scripts/rig/drive.py` as one contained job. The job starts this checkout's hidden
   session after the stop handlers are installed, so the session is in the job's record and in the
   same scope and limits as the driver. The state file is written as each session process starts.
@@ -65,8 +71,11 @@ fwtest clean
   session whenever a job record or a state file names it, including when the job record is already
   gone and only the state file under `/tmp/flexweek-rig/` remains. That is how you stop a stranded
   session by hand. A live rig job in that checkout is left alone. It restores any source file left
-  edited by a mutation run and removes the stale records. It is safe to run at any time and does
-  nothing when there is nothing to clean. Every other command runs it first.
+  edited by a mutation run and removes the stale records. When `edits/engine-module.json` is
+  present and no live job holds the checkout, it then runs the command stored in that mark and
+  deletes the mark only after the rebuild succeeds. A failed rebuild leaves the mark, so the next
+  clean tries again. It is safe to run at any time and does nothing when there is nothing to
+  clean. Every other command runs it first.
 
 Every command that runs Python uses `--python PATH` if given, then `$FWTEST_PYTHON`, then
 `<checkout>/.venv/bin/python`, where `<checkout>` is the git top level of the working directory. A
@@ -86,6 +95,7 @@ checkout.
 lock                   the machine-wide lock (flock)
 jobs/<job id>.json     one record per running job
 edits/<file hash>.json one record per source file a mutation is editing
+edits/engine-module.json  the command that rebuilds a clean engine module
 logs/<job id>.log      the job's combined output
 ```
 
@@ -115,19 +125,111 @@ A mutation edit record:
 
 The backup is written, and the record saved, before the edit is made. The source is restored from
 the backup and the record deleted after the case's test finishes, whatever the outcome.
-
-A mutation case stays exactly as `scripts/mutate.py` reads it today, so the existing specs work
-unchanged:
+`restore_finished` skips `engine-module.json`. That file is not an edit record.
 
 ```json
-{"name": "…", "file": "path from the repo root", "old": "…", "new": "…", "test": "pytest node id"}
+{
+  "checkout": "/path/to/checkout",
+  "command": [".venv/bin/maturin", "develop", "--release", "--manifest-path", "engine/py/Cargo.toml", "--features", "audit"]
+}
 ```
+
+The mark is written before a mutated engine build and removed only after a clean rebuild succeeds.
+
+A mutation case stays as `scripts/mutate.py` reads it, with two optional fields:
+
+```json
+{
+  "name": "…",
+  "file": "path from the repo root",
+  "old": "…",
+  "new": "…",
+  "test": "pytest node id",
+  "expect": "",
+  "features": []
+}
+```
+
+`expect` is omitted, or `""`, when the catch is a failing pytest. `"build"` means a failed engine
+rebuild is the catch. Any other value is `PATTERN` and the file is not edited. `"build"` on a file
+outside `engine/` is also `PATTERN`. `features` lists cargo features added only to the mutated
+build, for example `["audit"]`. The clean rebuild does not pass them.
 
 Running a case: check `old` occurs exactly once, save the edit record, write the edited file,
 delete the file's cached bytecode (`__pycache__/<stem>.*.pyc`, because a same-length edit within a
 second can reuse a stale `.pyc`), run `python -m pytest <test> -q -x -p no:cacheprovider` with
 `PYTHONDONTWRITEBYTECODE=1` and `QT_QPA_PLATFORM=offscreen`, restore the file, delete its bytecode
 again, delete the record. A case is caught when pytest exits non-zero.
+
+A case may name a Rust test instead of a pytest node id:
+
+```text
+cargo:<package>:<test target>:<test name>
+```
+
+For example
+`cargo:flexweek-engine:test_solver:test_a_low_session_skips_midnight_when_the_morning_is_free`.
+`fwtest` runs this in `<checkout>/engine`:
+
+```text
+cargo test -p <package> --test <target> -- <test name> --exact
+```
+
+Cargo compiles the mutated source, so this case does not rebuild the Python module.
+The source file is still restored when the case ends. A compile failure is `BUILD`
+and is not caught, unless the case sets `"expect": "build"`. A failing assertion is
+`RED`. A `cargo:` value that is not those three fields is `PATTERN`, and the file
+is not edited.
+
+## Mutating a file under engine/
+
+A case whose `file` has `engine` as its first path component edits Rust that the installed
+`flexweek_engine` module was built from. Pytest imports that module, so the edit is invisible
+until the module is rebuilt. `engines/` is not an engine path.
+
+For each such case `fwtest`:
+
+1. Saves the edit record and writes the mutation, the same way it does for Python.
+2. Writes `edits/engine-module.json` with the base install command, before the build.
+3. Runs that command with the checkout as its working directory. The case's `features` join
+   the command's `--features` list. The default command is
+   `<checkout>/.venv/bin/maturin develop --release --manifest-path engine/py/Cargo.toml --features audit`.
+   Before the first mutated build, `fwtest` asks the checkout's Python whether
+   `flexweek_engine` has `panic_probe`. When it does not, the command stored for the clean
+   rebuild omits `--features audit`, so the checkout is left as it was found. When the import
+   cannot be read, the clean rebuild keeps `--features audit`. A command given with
+   `--engine-build` or `FWTEST_ENGINE_BUILD` is used as given and is not probed.
+4. Runs the case's pytest, unless `test` is a `cargo:` name. That case skips this
+   rebuild and the one in step 3. A pytest case that built prints `built in Ns` on its line.
+5. Restores the source from the saved copy.
+6. At the end of the spec, runs the clean command again and deletes the mark. The same clean
+   rebuild runs before a later case whose file is not under `engine/` when the mark is still
+   there. Stderr prints `rebuilt clean engine module in Ns`. The mutated build still passes
+   `--features audit` when the default command is in use.
+
+A build that fails is `BUILD`. The detail starts with `did not build`. The case is not caught.
+When the case sets `"expect": "build"`, that same failure is `RED` and the detail still starts
+with `did not build`. A failure to write the mark is `GREEN`, the same as a failure to write the
+backup.
+
+`--engine-build COMMAND` replaces the install command. `FWTEST_ENGINE_BUILD` does the same when
+the flag is absent. The value `off`, the flag `--no-engine-rebuild`, or `FWTEST_ENGINE_REBUILD`
+set to `0`, `off`, or `false` skips the rebuild. The source is still edited and restored, and
+pytest runs against the module already installed, so the case is not caught. The command is a
+shell-style string: words split on spaces, with single quotes, double quotes, and backslash
+escapes. `FWTEST_ENGINE_BUILD_TIMEOUT` is the build limit in seconds. The default is 1200.
+
+An interrupt is a child exit code of 128 or higher, including Ctrl+C. The run stops. The edit
+record's drop restores the source. If `fwtest` itself is killed, the record stays and the next
+`fwtest clean` (or the clean at the start of the next command) restores the file and runs the
+marked rebuild. A failed clean rebuild leaves the mark.
+
+Each engine case pays one release build of the mutated tree. A clean release build runs before
+the next case whose file is not under `engine/`, and again at the end of the spec when the mark
+is still set. Incremental builds reuse `engine/target`. Measured on 2026-10-02 in this checkout,
+with that directory already warm: a mutated build took 4.4s to 7.5s, and a clean rebuild took
+4.4s to 7.2s. A cold `engine/target` is slower than these times. The gate's audit tests call
+`panic_probe`, `int_text`, and `int_chars`, which the default build exports.
 
 ## How a job is contained
 

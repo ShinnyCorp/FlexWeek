@@ -8,6 +8,8 @@ and the newest CHANGELOG heading in step, so the two cannot drift.
 
 from __future__ import annotations
 
+import flexweek_engine  # type: ignore[import-untyped]
+
 VERSION = "0.17.2"
 
 
@@ -18,18 +20,13 @@ def parse(value: str) -> tuple[int, ...] | None:
     Anything with a suffix (1.2.3-rc1) is refused rather than guessed at: ordering
     pre-releases correctly is a problem this app does not need to have.
     """
-    text = value.strip().removeprefix("v")
-    parts = text.split(".")
-    if not 1 <= len(parts) <= 4 or not all(part.isdigit() for part in parts):
+    found = flexweek_engine.update_parse_version(value)
+    if found is None:
         return None
-    return tuple(int(part) for part in parts)
+    return tuple(found)
 
 
 def is_newer(candidate: str, current: str = VERSION) -> bool:
     """Whether candidate is a release later than current. False if either is unreadable,
     so a tag this build cannot parse never triggers an update."""
-    one, two = parse(candidate), parse(current)
-    if one is None or two is None:
-        return False
-    width = max(len(one), len(two))
-    return one + (0,) * (width - len(one)) > two + (0,) * (width - len(two))
+    return flexweek_engine.update_is_newer(candidate, current)

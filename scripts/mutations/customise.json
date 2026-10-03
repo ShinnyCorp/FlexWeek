@@ -1,9 +1,9 @@
 [
  {
-  "file": "desktop/native/look.py",
+  "file": "engine/engine/src/desk/custom_look.rs",
   "name": "0.16's round read as Round",
-  "old": "    \"corners\": {\"round\": \"soft\", \"pill\": \"rounded\"},\n",
-  "new": "    \"corners\": {\"pill\": \"rounded\"},\n",
+  "old": "    (\"corners\", \"round\", \"soft\"),\n",
+  "new": "    (\"corners\", \"round\", \"sharp\"),\n",
   "test": "desktop/tests/test_look.py::test_a_look_saved_by_016_opens_with_its_knobs_named_as_017_names_them"
  },
  {
@@ -63,10 +63,10 @@
   "test": "desktop/tests/test_custom_look.py::test_the_students_colours_replace_the_bases_and_the_rest_follows_from_them"
  },
  {
-  "file": "desktop/native/look.py",
+  "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a list as a base crashes",
-  "old": "    if not isinstance(raw.get(\"base\"), str) or raw[\"base\"] not in LOOK_BASES:",
-  "new": "    if raw.get(\"base\") not in LOOK_BASES:",
+  "old": "    let base = match raw.get(\"base\") {\n        Some(Value::String(base)) if LOOK_BASES.iter().any(|(known, _, _)| known == base) => base,\n",
+  "new": "    let base = match raw.get(\"base\") {\n        Some(Value::Array(_)) => panic!(\"list as a base\"),\n        Some(Value::String(base)) if LOOK_BASES.iter().any(|(known, _, _)| known == base) => base,\n",
   "test": "desktop/tests/test_custom_look.py::test_unknown_settings_and_bad_values_are_dropped_and_said_never_a_crash"
  },
  {
@@ -84,24 +84,24 @@
   "test": "desktop/tests/test_custom_look.py::test_the_students_colours_replace_the_bases_and_the_rest_follows_from_them"
  },
  {
-  "file": "desktop/native/custom_look.py",
+  "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a readability fix that does not move the text",
-  "old": "            fixed = text_fixed if field == \"text\" else fit_lightness(ink, surfaces, AA_TEXT)\n",
-  "new": "            fixed = ink\n",
+  "old": "            } else if field == \"text\" {\n                text_fixed.clone()\n            } else {\n                fit_lightness(ink, &grounds_of(&surfaces), AA_TEXT)?\n            };\n",
+  "new": "            } else if field == \"text\" {\n                let _ = &text_fixed;\n                ink.to_string()\n            } else {\n                ink.to_string()\n            };\n",
   "test": "desktop/tests/test_custom_look.py::test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_to_one"
  },
  {
-  "file": "desktop/native/custom_look.py",
+  "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a pale accent's fix that does not move it",
-  "old": "                fixed = fit_lightness(accent, surfaces + (tint,), need)\n",
-  "new": "                fixed = accent\n",
+  "old": "                fit_lightness(\n                    &palette.accent,\n                    &grounds_of(&[surfaces[0], surfaces[1], surfaces[2], tint.as_str()]),\n                    need,\n                )?\n",
+  "new": "                palette.accent.clone()\n",
   "test": "desktop/tests/test_custom_look.py::test_a_colour_of_the_students_own_as_the_accent"
  },
  {
-  "file": "desktop/native/custom_look.py",
+  "file": "engine/engine/src/desk/custom_look.rs",
   "name": "the now line held to the 4.5 to 1 of text",
-  "old": "        need = AA_GRAPHIC if words == \"Now line\" else AA_TEXT\n",
-  "new": "        need = AA_TEXT\n",
+  "old": "        let need = if words == \"Now line\" {\n            AA_GRAPHIC\n        } else {\n            AA_TEXT\n        };\n",
+  "new": "        let need = AA_TEXT;\n",
   "test": "desktop/tests/test_looks_polish.py::test_the_now_line_is_flagged_only_when_the_line_would_not_show"
  },
  {
@@ -112,17 +112,17 @@
   "test": "desktop/tests/test_custom_look.py::test_each_unreadable_pair_is_named_with_a_fix_that_ends_at_four_and_a_half_to_one"
  },
  {
-  "file": "desktop/native/custom_look.py",
+  "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a saved look named Paper",
-  "old": "    if clean.casefold() in built_in:\n",
-  "new": "    if False:\n",
+  "old": "    if built_in {\n        return Err(EngineError::look_name(format!(\n            \"{clean} is one of FlexWeek's own looks. Choose another name.\"\n        )));\n    }\n",
+  "new": "    if built_in && clean.is_empty() {\n        return Err(EngineError::look_name(format!(\n            \"{clean} is one of FlexWeek's own looks. Choose another name.\"\n        )));\n    }\n",
   "test": "desktop/tests/test_custom_look.py::test_saved_looks_are_named_saved_renamed_duplicated_deleted_and_reset"
  },
  {
-  "file": "desktop/native/custom_look.py",
+  "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a newer file's look opened anyway",
-  "old": "    if version > FILE_VERSION:\n",
-  "new": "    if False:\n",
+  "old": "    if version > i128::from(FILE_VERSION) {\n        return refused(\"This look was made by a newer FlexWeek. Update FlexWeek to open it.\");\n    }\n",
+  "new": "    if version > i128::from(FILE_VERSION) && version < 1 {\n        return refused(\"This look was made by a newer FlexWeek. Update FlexWeek to open it.\");\n    }\n",
   "test": "desktop/tests/test_custom_look.py::test_an_import_says_plainly_what_was_wrong"
  },
  {

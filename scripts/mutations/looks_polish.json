@@ -71,23 +71,23 @@
   },
   {
     "name": "Non-homework blocks lose their category icons",
-    "file": "desktop/native/calendar.py",
-    "old": "    return \"book-open\" if category == \"homework\" else CATEGORIES.get(category or \"\", {}).get(\"icon\")",
-    "new": "    return \"book-open\" if category == \"homework\" else None",
+    "file": "engine/engine/src/desk/calendar.rs",
+    "old": "    CATEGORIES\n        .iter()\n        .find(|(key, _)| Some(*key) == category)\n        .and_then(|(_, info)| info.icon)\n",
+    "new": "    None\n",
     "test": "desktop/tests/test_looks_polish.py::test_each_category_paints_its_approved_icon_in_its_mark"
   },
   {
     "name": "Plan pale accent drops out of Readability",
-    "file": "desktop/native/custom_look.py",
-    "old": "        (\"Plan button words\", accent, tint, \"accent\"),",
-    "new": "        (\"Plan button words\", palette[\"text\"], tint, \"accent\"),",
+    "file": "engine/engine/src/desk/custom_look.rs",
+    "old": "            \"Plan button words\",\n            palette.accent.as_str(),\n            tint.as_str(),\n            \"accent\",\n",
+    "new": "            \"Plan button words\",\n            palette.text.as_str(),\n            tint.as_str(),\n            \"accent\",\n",
     "test": "desktop/tests/test_looks_polish.py::test_readability_names_each_use_of_a_pale_accent_and_fixes_them"
   },
   {
     "name": "Stock blue gets a misleading Readability warning",
-    "file": "desktop/native/custom_look.py",
-    "old": "        if field == \"accent\" and not own_accent:\n            continue\n",
-    "new": "        if False:\n            continue\n",
+    "file": "engine/engine/src/desk/custom_look.rs",
+    "old": "        if field == \"accent\" && !own_accent {\n            continue;\n        }\n",
+    "new": "        if field == \"accent\" && !own_accent && field.len() > 100 {\n            continue;\n        }\n",
     "test": "desktop/tests/test_looks_polish.py::test_stock_accents_have_no_readability_warning[default]"
   },
   {
@@ -155,9 +155,9 @@
   },
   {
     "name": "Free time gets its icon back",
-    "file": "desktop/native/calendar.py",
-    "old": "    \"free\": {\n        \"label\": \"Free\",",
-    "new": "    \"free\": {\n        \"icon\": \"wind\",\n        \"label\": \"Free\",",
+    "file": "engine/engine/src/desk/calendar.rs",
+    "old": "        \"free\",\n        CategoryInfo {\n            icon: None,\n",
+    "new": "        \"free\",\n        CategoryInfo {\n            icon: Some(\"wind\"),\n",
     "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_3_to_1_on_each_block_style"
   },
   {

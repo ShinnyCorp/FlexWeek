@@ -1,0 +1,4 @@
+# Builds the flexweek_engine module into this checkout's .venv. Not a runtime dependency.
+maturin==1.15.0
+# Differential tests compare the engine with the original Python bodies.
+hypothesis==6.168.3

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-from copy import deepcopy
+from typing import cast
 
-from backend.assignments import migrated_assignment_id
+import flexweek_engine  # type: ignore[import-untyped]
+
 from backend.models import AssignmentContent, TimeBlock
-from backend.weeks import is_week_start
-from desktop.native.calendar import date_for_day, is_series
-from desktop.native.reuse import MAX_WEEK_BLOCKS, occurrence_days
+from desktop.native.wire import plain, restore
 
 EXPORT_FORMAT = "flexweek-week"
 DAY_FORMAT = "flexweek-day"
@@ -17,232 +16,117 @@ EXPORT_VERSION = 2
 
 
 def assignment_body(item: dict) -> dict:
+    fields = list(AssignmentContent.model_fields)
     body = AssignmentContent.model_validate(
-        {key: value for key, value in item.items() if key in AssignmentContent.model_fields}
+        restore(json.loads(flexweek_engine.files_assignment_input(plain(item), fields)))
     ).model_dump(mode="json")
     return body
 
 
 def exportable_block(block: dict, assignments: dict) -> dict:
-    copy = deepcopy(block)
-    if copy.get("assignment_id") and copy["assignment_id"] not in assignments:
-        copy.pop("assignment_id", None)
+    copy = json.loads(flexweek_engine.files_export_input(json.dumps(block), json.dumps(assignments)))
     return TimeBlock.model_validate(copy).model_dump(mode="json")
 
 
+def _block_models(items: list[dict]) -> list[dict]:
+    return [TimeBlock.model_validate(item).model_dump(mode="json") for item in items]
+
+
+def _bodies(ids: str, failure: Exception | None, assignments: dict) -> list[dict]:
+    """The model's body for each homework id; a failure the engine stopped at is raised after them."""
+    bodies = [assignment_body(assignments[item_id]) for item_id in json.loads(ids)]
+    if failure is not None:
+        raise failure
+    return bodies
+
+
+def _exported_blocks(blocks: list[dict], assignments: dict, day_text: str | None) -> list[dict]:
+    inputs, failure = flexweek_engine.files_block_inputs(
+        json.dumps(blocks), json.dumps(assignments), day_text
+    )
+    exported = _block_models(json.loads(inputs))
+    if failure is not None:
+        raise failure
+    return exported
+
+
+def _export_payload(week_start: str, day_text: str | None, blocks: list[dict], assignments: dict) -> dict:
+    exported = _exported_blocks(blocks, assignments, day_text)
+    payload, ids, failure = flexweek_engine.files_export_rest(
+        json.dumps(week_start), day_text, json.dumps(exported), json.dumps(assignments)
+    )
+    bodies = _bodies(ids, failure, assignments)
+    return json.loads(flexweek_engine.files_export_finish(payload, json.dumps(bodies)))
+
+
 def referenced_assignments(blocks: list[dict], assignments: dict) -> list[dict]:
-    ids = [block.get("assignment_id") for block in blocks if block.get("assignment_id")]
-    unique = []
-    seen: set[str] = set()
-    for item_id in ids:
-        if item_id in seen or item_id not in assignments:
-            continue
-        seen.add(item_id)
-        unique.append(assignment_body(assignments[item_id]))
-    return unique
+    ids, failure = flexweek_engine.files_referenced_ids(json.dumps(blocks), json.dumps(assignments))
+    return _bodies(ids, failure, assignments)
 
 
 def export_week_payload(week_start: str, blocks: list[dict], assignments: dict) -> dict:
-    exported = [exportable_block(block, assignments) for block in blocks]
-    return {
-        "format": EXPORT_FORMAT,
-        "version": EXPORT_VERSION,
-        "week_start": week_start,
-        "blocks": exported,
-        "assignments": referenced_assignments(exported, assignments),
-    }
+    return _export_payload(week_start, None, blocks, assignments)
 
 
 def export_day_payload(week_start: str, day: int, blocks: list[dict], assignments: dict) -> dict:
-    day_blocks = []
-    for block in blocks:
-        if day not in occurrence_days(block):
-            continue
-        copy = exportable_block(block, assignments)
-        copy["days"] = [day]
-        if copy.get("missed_days"):
-            copy["missed_days"] = [item for item in copy["missed_days"] if item == day]
-        day_blocks.append(copy)
-    return {
-        "format": DAY_FORMAT,
-        "version": EXPORT_VERSION,
-        "week_start": week_start,
-        "date": date_for_day(week_start, day),
-        "day": day,
-        "blocks": day_blocks,
-        "assignments": referenced_assignments(day_blocks, assignments),
-    }
+    return _export_payload(week_start, json.dumps(day), blocks, assignments)
+
+
+def _read_import(raw: str) -> tuple[bool, bool, str | None]:
+    """Whether the file is empty, whether it reads as JSON, and what it read, as the engine takes it."""
+    text = (raw or "").strip()
+    if not text:
+        return True, False, None
+    try:
+        return False, True, plain(json.loads(text))
+    except ValueError:
+        return False, False, None
+
+
+def _checked_import(blocks: str, homework: str) -> tuple[list[dict], list[dict], str | None]:
+    """The models' version of the file's blocks and homework, or the first complaint they make."""
+    try:
+        return (
+            _block_models(_read_list(blocks)),
+            [assignment_body(item) for item in _read_list(homework)],
+            None,
+        )
+    except Exception as error:
+        return [], [], str(error)
+
+
+def _read_list(text: str) -> list[dict]:
+    return cast(list[dict], restore(json.loads(text)))
 
 
 def parse_import_payload(raw: str) -> dict:
-    text = (raw or "").strip()
-    if not text:
-        return {"error": "Empty file."}
-    try:
-        data = json.loads(text)
-    except ValueError:
-        return {"error": "Not valid JSON. Plain-text import is export-only."}
-    if not isinstance(data, dict):
-        return {"error": "Invalid FlexWeek export."}
-    if data.get("format") not in {EXPORT_FORMAT, DAY_FORMAT}:
-        return {"error": "Unrecognized export format."}
-    version = data.get("version")
-    if not isinstance(version, int) or version < 1:
-        return {"error": "Export has no version."}
-    if version > EXPORT_VERSION:
-        return {"error": f"Export came from a newer FlexWeek (version {version})."}
-    if not isinstance(data.get("blocks"), list):
-        return {"error": "Export is missing blocks."}
-    homework = data.get("assignments") if version >= 2 else []
-    if not isinstance(homework, list):
-        return {"error": "Export is missing its homework list."}
-    week_start = data.get("week_start")
-    if week_start and not is_week_start(week_start):
-        return {"error": "Export week_start must be a Monday."}
-    try:
-        blocks = [TimeBlock.model_validate(block).model_dump(mode="json") for block in data["blocks"]]
-        assignments = [assignment_body(item) for item in homework]
-    except Exception as error:
-        return {"error": str(error) + " Nothing was imported."}
-    if data["format"] == DAY_FORMAT:
-        day = data.get("day")
-        if not isinstance(day, int) or day < 0 or day > 6:
-            return {"error": "Day export must contain only its day in 0..6. Nothing was imported."}
-        if any(block["days"] != [day] for block in blocks):
-            return {"error": "Day export must contain only its day in 0..6. Nothing was imported."}
-    ids = [block["id"] for block in blocks]
-    if len(ids) > MAX_WEEK_BLOCKS:
-        return {"error": f"Export has more than {MAX_WEEK_BLOCKS} blocks. Nothing was imported."}
-    if len(ids) != len(set(ids)):
-        return {"error": "Export repeats the id " + next(item for item in ids if ids.count(item) > 1) + "."}
-    seen = set(ids)
-    if any(block.get("pomodoro_parent_id") in seen for block in blocks):
-        return {
-            "error": "Export includes a task together with the focus chunks split from it. "
-            "Nothing was imported."
-        }
-    homework_ids = [item["id"] for item in assignments]
-    if version >= 2:
-        if len(homework_ids) > MAX_WEEK_BLOCKS:
-            return {"error": f"Export has more than {MAX_WEEK_BLOCKS} homework items. Nothing was imported."}
-        if len(homework_ids) != len(set(homework_ids)):
-            repeated = next(item for item in homework_ids if homework_ids.count(item) > 1)
-            return {"error": "Export repeats the homework id " + repeated + ". Nothing was imported."}
-        for index, block in enumerate(blocks):
-            assignment_id = block.get("assignment_id")
-            if assignment_id and assignment_id not in homework_ids:
-                return {
-                    "error": f"Block {index + 1} points at homework the file does not include. "
-                    "Nothing was imported."
-                }
-    return {
-        "format": data["format"],
-        "week_start": week_start or None,
-        "day": data.get("day") if isinstance(data.get("day"), int) else None,
-        "blocks": blocks,
-        "assignments": assignments,
-        "error": None,
-    }
+    empty, readable, data = _read_import(raw)
+    head, blocks, homework = flexweek_engine.files_import_start(empty, readable, data)
+    checked, bodies, complaint = _checked_import(blocks, homework)
+    return json.loads(
+        flexweek_engine.files_import_finish(head, json.dumps(checked), json.dumps(bodies), complaint)
+    )
 
 
 def occurrence_import_id(day: int, block_id: str) -> str:
-    prefix = f"occ-{day}-"
-    legacy = prefix + block_id
-    if len(legacy) <= 80:
-        return legacy
-    hash_val = 2166136261
-    for character in block_id:
-        hash_val ^= ord(character)
-        hash_val = (hash_val * 16777619) & 0xFFFFFFFF
-    suffix = "-" + format(hash_val, "08x")
-    available = 80 - len(prefix + suffix)
-    return prefix + block_id[:available] + suffix
+    return str(flexweek_engine.files_occurrence_id(json.dumps(day), json.dumps(block_id)))
 
 
 def plan_imported_homework(
     homework: list[dict], blocks: list[dict], week_start: str, assignments: dict
 ) -> dict:
-    id_for: dict[str, str] = {}
-    create = []
-    for item in homework:
-        own = assignments.get(item["id"])
-        if own and own.get("title") == item.get("title") and own.get("due") == item.get("due"):
-            id_for[item["id"]] = item["id"]
-            continue
-        new_id = migrated_assignment_id(week_start, item["id"])
-        if new_id not in assignments:
-            created = deepcopy(item)
-            created["id"] = new_id
-            create.append(created)
-        id_for[item["id"]] = new_id
-    remapped = []
-    for block in blocks:
-        copy = deepcopy(block)
-        source = copy.get("assignment_id")
-        if source in id_for:
-            copy["assignment_id"] = id_for[source]
-        remapped.append(copy)
-    return {"blocks": remapped, "create": create}
+    return json.loads(
+        flexweek_engine.files_plan_homework(
+            json.dumps(homework), json.dumps(blocks), json.dumps(week_start), json.dumps(assignments)
+        )
+    )
 
 
 def merge_imported_blocks(
     existing: list[dict], incoming: list[dict], mode: str, day: int | None
 ) -> list[dict]:
-    if mode == "replace":
-        return [deepcopy(block) for block in incoming]
-    by_id = {block["id"]: deepcopy(block) for block in existing}
-    for block in incoming:
-        if not block or not block.get("id"):
-            continue
-        current = by_id.get(block["id"])
-        split_id = occurrence_import_id(day, block["id"]) if day is not None else ""
-        prior_split = by_id.get(split_id)
-        imports_one_day = isinstance(day, int) and (block.get("days") or []) == [day]
-        if (
-            current
-            and imports_one_day
-            and current.get("kind") == "flexible"
-            and len(current.get("days") or []) > 1
-        ):
-            raise ValueError(
-                "Day import cannot merge multi-day task " + block["id"] + ". Import the full week instead."
-            )
-        if (
-            current
-            and block.get("kind") == "locked"
-            and current.get("kind") == "locked"
-            and imports_one_day
-            and day in (current.get("days") or [])
-            and is_series(current)
-        ):
-            if prior_split:
-                raise ValueError("Import would overwrite existing block " + split_id + ".")
-            kept_days = [item for item in current["days"] if item != day]
-            split = deepcopy(block)
-            split["id"] = split_id
-            split["days"] = [day]
-            split["missed_days"] = [item for item in (split.get("missed_days") or []) if item == day]
-            if kept_days:
-                kept = deepcopy(current)
-                kept["days"] = kept_days
-                kept["missed_days"] = [item for item in (kept.get("missed_days") or []) if item in kept_days]
-                by_id[current["id"]] = kept
-            else:
-                by_id.pop(current["id"], None)
-            by_id[split["id"]] = split
-            continue
-        if (
-            current
-            and block.get("kind") == "locked"
-            and current.get("kind") == "locked"
-            and imports_one_day
-            and day not in (current.get("days") or [])
-            and prior_split
-            and (prior_split.get("days") or []) == [day]
-        ):
-            split = deepcopy(block)
-            split["id"] = split_id
-            by_id[split_id] = split
-            continue
-        by_id[block["id"]] = deepcopy(block)
-    return list(by_id.values())
+    return json.loads(
+        flexweek_engine.files_merge(
+            json.dumps(existing), json.dumps(incoming), json.dumps(mode), json.dumps(day)
+        )
+    )

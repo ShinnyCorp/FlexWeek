@@ -33,6 +33,17 @@ enum Command {
         /// Python interpreter. Overrides FWTEST_PYTHON and .venv/bin/python.
         #[arg(long)]
         python: Option<std::path::PathBuf>,
+        /// Command that installs the engine into this checkout's .venv.
+        /// Overrides FWTEST_ENGINE_BUILD. The checkout is the working directory.
+        /// `off` skips the rebuild.
+        #[arg(long)]
+        engine_build: Option<String>,
+        /// Apply an engine mutation but do not rebuild the installed module.
+        #[arg(long)]
+        no_engine_rebuild: bool,
+        /// Run only cases whose file is under engine/.
+        #[arg(long)]
+        engine_only: bool,
         /// Spec files. Default is every scripts/mutations/*.json in the checkout.
         specs: Vec<std::path::PathBuf>,
     },
@@ -74,8 +85,18 @@ fn main() {
         Command::Mutate {
             case,
             python,
+            engine_build,
+            no_engine_rebuild,
+            engine_only,
             specs,
-        } => fwtest::mutate::run(&specs, case.as_deref(), python.as_deref()),
+        } => fwtest::mutate::run(
+            &specs,
+            case.as_deref(),
+            python.as_deref(),
+            engine_build.as_deref(),
+            no_engine_rebuild,
+            engine_only,
+        ),
         Command::Rig { python, args } => fwtest::rig::run(&args, python.as_deref()),
         Command::Run { timeout, command } => fwtest::contain::execute(&command, timeout),
     };

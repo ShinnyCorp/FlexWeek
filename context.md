@@ -1,6 +1,81 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-02, `engine/full-port` (from 6e5ba72): the review's remaining fixes. An empty `start` is
+  not placed in Day and Month (`plan.rs` `has_start`); a custom accent's Fix fits against the grid
+  too; a study window's start is read with `int()`'s rules; `install_kind` resolves paths in the
+  Python adapter, so the core reads no files; the Replan all mutation case compiles and is caught;
+  solver tests use a real clock, and `engine/Cargo.toml` builds the engine crate at opt-level 2 in
+  debug so the 150 ms budget holds under load (Jonathan's choice). Each new test was seen to fail
+  without its fix. Engine fmt, clippy and tests (380) pass. Gate in a cloud container: ruff and mypy
+  clean, 3926 passed; 5 layout and menu-text tests and the alarm cleanup error fail there on
+  6e5ba72 as well (container fonts), and 4 others failed only under load and passed alone.
+- 2026-10-02, `fix/engine-review-parity`, based on PR 35 at `aa9f875`: five review fixes restore
+  large-minute rounding, Python text for unusual restore titles, one database opener with explicit
+  foreign keys and literal paths, migration read-error propagation, and panic-safe connection
+  cleanup. Eight regression tests catch deliberately removed fixes. All 13 connection tests also
+  pass with SQLite's foreign-key default disabled. Engine formatting, clippy and workspace tests
+  pass, as do the harness's checks, Python lint and backend types. Full gate: 3934 passed, 1 skipped,
+  1 teardown error in `test_tests_ring_at_no_volume` (a Qt `Bell` left for garbage collection).
+  Prepared for cloud review on PR 35; the alarm-test cleanup error remains unresolved.
+  No app build was run.
+- 2026-10-02, `engine/full-port`: docs, backend-whole, desktop E6 and the desk twins are merged (local, not pushed). Desktop wrappers are in `docs/engine/adapters.md` and `test_engine_adapters.py`. `custom_look.readability` is the one LOGIC leftover. Frame time on the desktop branch after caches: the saved log says model + paint median 9.83 ms, worst 54.85 ms (the worker's report said 8.90 / 10.03). Contract limit is 16 ms. Next: repoint mutation cases, then push PR 35.
+- 2026-10-01, `engine/full-port`: part C step 2 and `main` (PR 34's test fixes) are merged in. The SQL
+  of 22 helpers in `backend/app.py` and `backend/storage.py` runs in the Rust store
+  (`engine/store/src/{assignments,ledger,prefs,routines,weeks}.rs`) on the caller's connection and
+  transaction; about 40 statements remain in the route bodies of `create_app`. Every per-account
+  filter in the store has a test that fails without it (`backend/tests/test_store_helpers.py`).
+  Checked on the merged tree: gate 3184 passed; every request of the backend suite also sent to the
+  original Python server (1,170 requests): no difference in responses or rows except two tests that
+  patch the live server on purpose. Not verified: CI, the Windows build, the packaged app.
+- 2026-10-01, `engine/full-port`: E5 is committed (`430d2c1`, `326c44c`, `13fd070`, `de1cf34`,
+  `c6c5b95`). The Qt-free desktop modules (calendar, custom_look, files, focus, history, pomodoro,
+  remind, reuse, tokens, update, weekmodel) call `engine::desk` through `engine/py/src/desk.rs` and
+  `desk_rest.rs`; `serde_json` `preserve_order` is on and `engine/clippy.toml` forbids the removes that
+  reorder keys. Still Python: `remind.clock_parts` and `due_alarms` and `reuse.planner_title`, because
+  the Rust copies treat a local timestamp as UTC; saving, exporting and importing custom looks
+  (`sanitize_saved`, `save_look`, `export_look`, `import_look` and their helpers), because the Rust
+  sanitize keeps only base, name and accent; clipboard proposals, routines and the small `files`
+  helpers, which have no engine function. Colour maths calls the C library's `cbrt`, `pow`, `atan2`,
+  `sin` and `cos`, looked up at run time (`desk/cmath.rs`: `dlopen` of `libm.so.6`, `ucrtbase.dll`
+  on Windows). The original modules are in `desk_ref/` (was `engine/oracle/`) and
+  `desktop/tests/test_engine_desk_parity.py` compares them by repr (61 tests). Shadow run over
+  `desktop/tests`: 2328 passed, 169 functions called, 0 value and 0 key-order differences.
+  Backend parity at 300 examples: 81 passed. Week view frame time, same week, 300 frames: model +
+  paint median 9.14 ms before and 7.25 ms after (worst 10.03 and 8.33 ms), paint only 6.84 and
+  4.81 ms. Gate before committing: lint, types and 3136 tests passed; the whitespace step caught
+  four blank lines at file ends, removed before commit. Not verified: the Windows build (the
+  `ucrtbase.dll` lookup has never run), CI, the packaged app, and Linux without glibc's
+  `libm.so.6`. Nothing pushed.
+- 2026-10-01, `engine/full-port`: the audit's last fix round is merged. The start-up migration reads
+  stored rows as the Python store did (`engine/engine/src/stored.rs`, shared by `plan::migrate_blocks`
+  and the store) and writes JSON with `snapshot::canonical`; the audit's probe gives 22 of 22 cases
+  identical, stored text included. The connection (`engine/py/src/db.rs`) compiles, begins, binds and
+  runs in CPython's order, maps SQLite result codes to `sqlite3`'s exception classes, opens a plain
+  path, and is typed by Protocols in `backend/storage.py`. Parity tests restore the solver clocks.
+  The free-time menu test pins its clock (Clay's side cards cover only the stretch of the day the
+  front card is scrolled to). Gate: 3075 passed. Not verified: CI, the Windows build and the packaged
+  app, since nothing is pushed. Known differences left: integers past 64 bits and JSON only Python
+  reads (NaN, lone surrogates) in stored rows; `build_month` returns a month where the Python raised
+  `TypeError` on a finished session with no start. The `desk` modules are not wired (E5), SQL is
+  still in `app.py` (part C step 2), and the Python wrappers remain (E6).
+- 2026-10-01, `engine/full-port`: Part C step 1 is in (`907def4`). `storage.connect` is the Rust
+  connection; app SQL is unchanged. Part D drops store helpers Python never calls and
+  `install_kind` no longer reads the process environment. Desk stays unwired. JSON text
+  still crosses the boundary; a 12-block week is about 0.02 ms to encode and decode.
+  Nothing pushed.
+- 2026-10-01, `engine/full-port`: parts A and B of the engine audit are in. Day helpers match
+  Python on the audit's digit, date, and overflow cases. Subject matching uses Python's full
+  case fold (a table generated from this interpreter, no new crate). The solver keeps the GIL
+  while it reads the caller's clock. Parity at 300 examples: 45 passed. Gate: 3018 passed.
+  One earlier gate failed three desktop tests that pass alone; that hover flake was already
+  known. Parts C and D are not started. Nothing pushed.
+- 2026-10-01, `engine/full-port`: planning, restore, recovery, explain, the solver, and
+  store startup, throttle, and hashes call `flexweek_engine`. `connect`, `create_session`,
+  `delete_account`, and `new_preferences` still use the Python connection the routes hold.
+  Desktop Qt-free modules are Rust in `engine::desk` and are not switched. spec.md was not edited.
+- 2026-09-30, `engine/full-port` (from `engine/contract` at 6e86802, main d5dfcd6 / v0.17.2): Rust engine
+  started. `slots` and `weeks` call `flexweek_engine`. Gate at 025adb9: 2952 passed.
 - 2026-10-01, `fix/test-isolation` (from d5dfcd6): three flaky tests fixed, all test-only. The sign-in hover tests
   failed because `test_hours_zoom` and `test_layout_mission` left Qt holding the left button, so later moves were
   drags (both release now; conftest's `no_mouse_button_is_left_held` fails any test that leaves one down), and
@@ -738,6 +813,34 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-10-02, `engine/full-port`: review fixes above pushed for PR 35's CI (Jonathan's word). Next:
+  CI on Linux and Windows, then the alarm-test cleanup error and the release steps. Not done here:
+  the intermittent parity failure where an assignment estimate past 2^63 raises an OverflowError in
+  the engine while Python returns a number (seen once under hypothesis, not reproduced).
+- 2026-10-02, `fix/engine-review-parity`: the five engine review repairs and their regression
+  proofs are implemented. Logs are in `~/.flexweek-ui-harness/scratch/engine-review-fixes/`.
+  The full gate has an outside-scope alarm-test cleanup error. Jonathan requested these fixes on
+  PR 35's `engine/full-port` branch for cloud review with that failure recorded.
+  Next: cloud review and the alarm-test cleanup repair. The existing engine rollout remains incomplete.
+- 2026-10-02, `engine/full-port` (pushed at 364eb5c, draft PR 35): the three stopped jobs, the
+  adapter guard and the eighteen repointed mutation cases are in. Store tests in
+  `engine/store/tests/test_account_bounds.rs` cover account isolation and a failed delete, account
+  replace and routine replace rolling back. Not pushed after those tests. Next: finish the review
+  of `fb290c8..HEAD`, then the review brief.
+  After the review: full test run, fault checks, delete Python twins, interface tidy, 0.18.0.
+  Step-by-step notes: `~/.flexweek-ui-harness/scratch/engine-run/handoff.md` (this machine only).
+- 2026-10-01, `engine/full-port`: E1 to E5 (minus the parts listed above as still Python), part C
+  steps 1 and 2 and part D are in and examined. Next: push for CI and fix the builds; the rest of E5;
+  the route SQL; E6; the engine's tests to Rust; then release as 0.18.0. The rig's hidden session is
+  moving into fwtest on `tooling/rig-session-rs`; the rig driver stays Python while the interface is
+  PySide6. Audit notes and harnesses: `~/.flexweek-ui-harness/scratch/engine-audit/`.
+- 2026-10-01, `engine/full-port`, committed through the context commit after `c6c5b95`: E5 is in
+  and checked as Current State says. Next: the coordinator's merge of part C step 2, Jonathan's
+  word to push for CI, then E6. Audit notes: `~/.flexweek-ui-harness/scratch/engine-audit/`;
+  E5 fix logs: `~/.flexweek-ui-harness/scratch/engine-fix/e5/`. Nothing pushed.
+- 2026-10-01, `engine/full-port`: Part C step 1 committed (`c5c1aa2`, `f9d1362`, `907def4`).
+  Gate before those commits: 3040 passed. Part D is the unused-store removal and the
+  environment read in `install_kind`. Nothing pushed.
 - 2026-10-01, `fix/sign-in-hover-flake`: the hover-flake fix is committed locally, not merged or pushed.
   Next: Jonathan reviews and merges; the Clay free-time menu flake above is open.
 - 2026-09-30, `feat/0.17.2`: ready to push, PR to main, merge after CI and release v0.17.2 as latest

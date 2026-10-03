@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import re
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
+import flexweek_engine  # type: ignore[import-untyped]
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -17,13 +17,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from backend.assignments import (
-    legacy_session,
     planned_minutes_by_id,
     prepare_solve,
-    rewrite_session,
-    unplanned_minutes,
 )
-from backend.availability import occupancy_from_windows, spread_sessions
+from backend.availability import spread_sessions
 from backend.comfort import REMINDER_LIMITS, TIMER_PRESETS, preview_split
 from backend.day import build_day
 from backend.limits import MAX_BODY
@@ -54,6 +51,8 @@ from backend.slots import DAY_END_MIN, SLOT_MIN
 from backend.solver import reschedule_after_miss, reschedule_running_late, solve
 from backend.storage import (
     SESSION_SECONDS,
+    Connection,
+    Row,
     connect,
     create_session,
     delete_account,
@@ -106,184 +105,110 @@ def assignment_ids_of(blocks: list[TimeBlock]) -> set[str]:
     return {block.assignment_id for block in blocks if block.assignment_id}
 
 
-def load_assignment_rows(db: sqlite3.Connection, user_id: int, ids: set[str]) -> dict[str, tuple[str, int]]:
-    if not ids:
-        return {}
-    placeholders = ",".join("?" * len(ids))
-    rows = db.execute(
-        f"SELECT id, body, revision FROM assignments WHERE user_id = ? AND id IN ({placeholders})",
-        (user_id, *ids),
-    ).fetchall()
-    return {row["id"]: (row["body"], row["revision"]) for row in rows}
+def load_assignment_rows(db: Connection, user_id: int, ids: set[str]) -> dict[str, tuple[str, int]]:
+    rows = db.load_assignment_rows(user_id, list(ids))
+    return {row[0]: (row[1], int(row[2])) for row in rows}
 
 
-def load_assignment_bodies(db: sqlite3.Connection, user_id: int, ids: set[str]) -> dict[str, dict]:
+def load_assignment_bodies(db: Connection, user_id: int, ids: set[str]) -> dict[str, dict]:
     loaded = load_assignment_rows(db, user_id, ids)
     return {key: json.loads(body) for key, (body, _revision) in loaded.items()}
 
 
-def require_own_assignments(db: sqlite3.Connection, user_id: int, ids: set[str]) -> dict[str, dict]:
-    found = load_assignment_bodies(db, user_id, ids)
-    if found.keys() != ids:
+def require_own_assignments(db: Connection, user_id: int, ids: set[str]) -> dict[str, dict]:
+    owned, rows = db.require_own_assignments(user_id, list(ids))
+    found = {row[0]: json.loads(row[1]) for row in rows}
+    if not owned:
         raise HTTPException(422, ASSIGNMENT_UNKNOWN)
     return found
 
 
+def encode_new_assignment(text: str) -> str:
+    return encode_assignment(AssignmentContent.model_validate(json.loads(text)))
+
+
 def adopt_legacy_deadlines(
-    db: sqlite3.Connection, user_id: int, week_start: str, blocks: list[TimeBlock]
+    db: Connection, user_id: int, week_start: str, blocks: list[TimeBlock]
 ) -> list[TimeBlock]:
-    adopted: list[TimeBlock] = []
-    created: list[dict] = []
-    for block in blocks:
-        if block.kind != "flexible" or block.assignment_id or not block.latest:
-            adopted.append(block)
-            continue
-        session, body = legacy_session(week_start, block)
-        exists = db.execute(
-            "SELECT 1 FROM assignments WHERE user_id = ? AND id = ?", (user_id, body["id"])
-        ).fetchone()
-        if exists is None:
-            created.append(body)
-        adopted.append(session)
-    if created:
-        count = db.execute("SELECT COUNT(*) AS n FROM assignments WHERE user_id = ?", (user_id,)).fetchone()
-        if int(count["n"]) + len(created) > MAX_ASSIGNMENTS:
-            raise HTTPException(422, ASSIGNMENT_LIMIT)
-        for body in created:
-            db.execute(
-                "INSERT INTO assignments(user_id, id, body, revision) VALUES (?, ?, ?, 1)",
-                (user_id, body["id"], encode_assignment(AssignmentContent.model_validate(body))),
-            )
-    return adopted
+    fits, adopted = db.adopt_legacy_deadlines(
+        user_id,
+        week_start,
+        json.dumps([block.model_dump() for block in blocks]),
+        MAX_ASSIGNMENTS,
+        encode_new_assignment,
+    )
+    if not fits:
+        raise HTTPException(422, ASSIGNMENT_LIMIT)
+    return [TimeBlock.model_validate(item) for item in json.loads(adopted)]
 
 
 def rewrite_blocks(blocks: list[TimeBlock], assignments: dict[str, dict]) -> list[TimeBlock]:
-    rewritten: list[TimeBlock] = []
-    for block in blocks:
-        if block.assignment_id:
-            rewritten.append(rewrite_session(block, assignments[block.assignment_id]))
-        else:
-            rewritten.append(block)
-    return rewritten
+    rewritten = flexweek_engine.rewrite_blocks(
+        json.dumps([block.model_dump() for block in blocks]), json.dumps(assignments)
+    )
+    return [TimeBlock.model_validate(item) for item in json.loads(rewritten)]
+
+
+def normalize_stored_block(text: str) -> str:
+    return json.dumps(TimeBlock.model_validate(json.loads(text)).model_dump())
 
 
 def rewrite_stored_blocks(blocks: list[dict], assignments: dict[str, dict]) -> list[dict]:
-    rewritten: list[dict] = []
-    for raw in blocks:
-        aid = raw.get("assignment_id")
-        if not aid or aid not in assignments:
-            rewritten.append(raw)
-            continue
-        rewritten.append(rewrite_session(TimeBlock.model_validate(raw), assignments[aid]).model_dump())
-    return rewritten
+    rewritten = flexweek_engine.rewrite_stored_blocks(
+        json.dumps(blocks), json.dumps(assignments), normalize_stored_block
+    )
+    loaded: list[dict] = json.loads(rewritten)
+    return loaded
 
 
 def dump_blocks(blocks: list[TimeBlock]) -> list[dict]:
     return [block.model_dump() for block in blocks]
 
 
-def list_account_weeks(db: sqlite3.Connection, user_id: int) -> list[tuple[str, list[dict]]]:
-    rows = db.execute("SELECT week_start, blocks FROM weeks WHERE user_id = ?", (user_id,)).fetchall()
-    return [(row["week_start"], json.loads(row["blocks"])) for row in rows]
+def list_account_weeks(db: Connection, user_id: int) -> list[tuple[str, list[dict]]]:
+    rows = db.list_account_weeks(user_id)
+    return [(row[0], json.loads(row[1])) for row in rows]
 
 
 def assignment_view(body: dict, revision: int, planned: int) -> dict:
-    return {
-        **body,
-        "revision": revision,
-        "planned_min": planned,
-        "unplanned_min": unplanned_minutes(int(body["estimate_min"]), int(body["focus_minutes"]), planned),
-    }
+    view: dict = json.loads(flexweek_engine.assignment_view(json.dumps(body), revision, planned))
+    return view
 
 
-def upsert_assignment(
-    db: sqlite3.Connection, user_id: int, content: AssignmentContent, revision: int
-) -> dict:
+def upsert_assignment(db: Connection, user_id: int, content: AssignmentContent, revision: int) -> dict:
     encoded = encode_assignment(content)
-    row = db.execute(
-        "SELECT body, revision FROM assignments WHERE user_id = ? AND id = ?", (user_id, content.id)
-    ).fetchone()
-    stored, stored_revision = (row["body"], row["revision"]) if row else (None, 0)
-    if stored == encoded:
-        return {**content.model_dump(), "revision": stored_revision}
-    if revision != stored_revision:
-        raise HTTPException(409, ASSIGNMENT_CONFLICT)
-    if stored is None:
-        count = db.execute("SELECT COUNT(*) AS n FROM assignments WHERE user_id = ?", (user_id,)).fetchone()
-        if int(count["n"]) >= MAX_ASSIGNMENTS:
-            raise HTTPException(422, ASSIGNMENT_LIMIT)
-        db.execute(
-            "INSERT INTO assignments(user_id, id, body, revision) VALUES (?, ?, ?, 1)",
-            (user_id, content.id, encoded),
-        )
-        return {**content.model_dump(), "revision": 1}
-    db.execute(
-        "UPDATE assignments SET body = ?, revision = revision + 1 WHERE user_id = ? AND id = ?",
-        (encoded, user_id, content.id),
+    status, stored_revision = db.save_assignment(
+        user_id, content.id, encoded, revision, MAX_ASSIGNMENTS
     )
-    return {**content.model_dump(), "revision": revision + 1}
-
-
-def delete_assignment(db: sqlite3.Connection, user_id: int, assignment_id: str, revision: int) -> dict:
-    row = db.execute(
-        "SELECT revision FROM assignments WHERE user_id = ? AND id = ?", (user_id, assignment_id)
-    ).fetchone()
-    if row is None:
-        raise HTTPException(404, "Assignment not found")
-    if revision != row["revision"]:
+    if status == "conflict":
         raise HTTPException(409, ASSIGNMENT_CONFLICT)
-    weeks = db.execute(
-        "SELECT week_start, blocks, revision FROM weeks WHERE user_id = ? ORDER BY week_start",
-        (user_id,),
-    ).fetchall()
-    changed_weeks: list[dict] = []
-    removed_sessions: dict[str, list[dict]] = {}
-    for week in weeks:
-        blocks = json.loads(week["blocks"])
-        kept = [block for block in blocks if block.get("assignment_id") != assignment_id]
-        removed = [block for block in blocks if block.get("assignment_id") == assignment_id]
-        if not removed:
-            continue
-        new_revision = week["revision"] + 1
-        db.execute(
-            "UPDATE weeks SET blocks = ?, revision = ? WHERE user_id = ? AND week_start = ?",
-            (
-                json.dumps(kept, sort_keys=True, separators=(",", ":")),
-                new_revision,
-                user_id,
-                week["week_start"],
-            ),
-        )
-        changed_weeks.append({"week_start": week["week_start"], "revision": new_revision})
-        removed_sessions[week["week_start"]] = removed
-    db.execute("DELETE FROM assignments WHERE user_id = ? AND id = ?", (user_id, assignment_id))
-    return {"changed_weeks": changed_weeks, "removed_sessions": removed_sessions}
+    if status == "limit":
+        raise HTTPException(422, ASSIGNMENT_LIMIT)
+    return {**content.model_dump(), "revision": stored_revision}
+
+
+def delete_assignment(db: Connection, user_id: int, assignment_id: str, revision: int) -> dict:
+    status, payload = db.delete_assignment(user_id, assignment_id, revision)
+    if status == "missing":
+        raise HTTPException(404, "Assignment not found")
+    if status == "conflict":
+        raise HTTPException(409, ASSIGNMENT_CONFLICT)
+    loaded: dict = json.loads(payload)
+    return loaded
 
 
 def save_week_row(
-    db: sqlite3.Connection,
+    db: Connection,
     user_id: int,
     week_start: str,
     blocks: list[dict],
     revision: int,
 ) -> tuple[list[dict], int]:
     encoded = json.dumps(blocks, sort_keys=True, separators=(",", ":"))
-    row = db.execute(
-        "SELECT blocks, revision FROM weeks WHERE user_id = ? AND week_start = ?",
-        (user_id, week_start),
-    ).fetchone()
-    stored, stored_revision = (row["blocks"], row["revision"]) if row else ("[]", 0)
-    if encoded == stored:
-        return blocks, stored_revision
-    if revision != stored_revision:
+    status, stored_revision = db.save_week(user_id, week_start, encoded, revision)
+    if status == "conflict":
         raise HTTPException(409, WEEK_CONFLICT)
-    db.execute(
-        """INSERT INTO weeks(user_id, week_start, blocks, revision) VALUES (?, ?, ?, 1)
-        ON CONFLICT(user_id, week_start)
-        DO UPDATE SET blocks = excluded.blocks, revision = revision + 1""",
-        (user_id, week_start, encoded),
-    )
-    return blocks, revision + 1
+    return blocks, stored_revision
 
 
 def naive_now() -> str:
@@ -291,84 +216,43 @@ def naive_now() -> str:
 
 
 def payload_digest(value: object) -> str:
-    return hashlib.sha256(canonical(value).encode()).hexdigest()
+    return flexweek_engine.payload_digest(value)
 
 
-def capture_account(db: sqlite3.Connection, user_id: int) -> dict:
-    weeks = [
-        {
-            "week_start": row["week_start"],
-            "blocks": json.loads(row["blocks"]),
-            "revision": row["revision"],
-        }
-        for row in db.execute(
-            "SELECT week_start, blocks, revision FROM weeks WHERE user_id = ? ORDER BY week_start",
-            (user_id,),
-        )
-    ]
-    assignments = [
-        {"id": row["id"], "body": json.loads(row["body"]), "revision": row["revision"]}
-        for row in db.execute(
-            "SELECT id, body, revision FROM assignments WHERE user_id = ? ORDER BY id",
-            (user_id,),
-        )
-    ]
-    return {"weeks": weeks, "assignments": assignments}
+def capture_account(db: Connection, user_id: int) -> dict:
+    raw = json.loads(db.capture_account(user_id))
+    return {
+        "weeks": [
+            {
+                "week_start": row["week_start"],
+                "blocks": json.loads(row["blocks"]),
+                "revision": row["revision"],
+            }
+            for row in raw["weeks"]
+        ],
+        "assignments": [
+            {"id": row["id"], "body": json.loads(row["body"]), "revision": row["revision"]}
+            for row in raw["assignments"]
+        ],
+    }
 
 
-def prune_restore_points(db: sqlite3.Connection, user_id: int, keep_ids: set[str]) -> None:
-    rows = db.execute(
-        "SELECT seq, id FROM restore_points WHERE user_id = ? ORDER BY seq ASC",
-        (user_id,),
-    ).fetchall()
-    overflow = len(rows) - MAX_RESTORE_POINTS
-    if overflow <= 0:
-        return
-    extras = [row for row in rows if row["id"] not in keep_ids]
-    for row in extras[:overflow]:
-        db.execute("DELETE FROM restore_points WHERE seq = ?", (row["seq"],))
-
-
-def prune_operations(db: sqlite3.Connection, user_id: int) -> None:
-    count = db.execute("SELECT COUNT(*) AS n FROM operations WHERE user_id = ?", (user_id,)).fetchone()
-    extra = int(count["n"]) - MAX_OPERATIONS
-    if extra <= 0:
-        return
-    db.execute(
-        """DELETE FROM operations WHERE seq IN (
-            SELECT seq FROM operations WHERE user_id = ? ORDER BY seq ASC LIMIT ?
-        )""",
-        (user_id, extra),
-    )
-
-
-def recall_operation(
-    db: sqlite3.Connection, user_id: int, operation_id: str, digest_value: str
-) -> dict | None:
-    row = db.execute(
-        """SELECT payload_hash, response FROM operations
-        WHERE user_id = ? AND operation_id = ?""",
-        (user_id, operation_id),
-    ).fetchone()
-    if row is None:
+def recall_operation(db: Connection, user_id: int, operation_id: str, digest_value: str) -> dict | None:
+    status, payload = db.recall_operation(user_id, operation_id, digest_value)
+    if status == "missing":
         return None
-    if row["payload_hash"] != digest_value:
+    if status == "conflict":
         raise HTTPException(409, OPERATION_CONFLICT)
-    return json.loads(row["response"])
+    return json.loads(payload)
 
 
 def remember_operation(
-    db: sqlite3.Connection, user_id: int, operation_id: str, digest_value: str, response: dict
+    db: Connection, user_id: int, operation_id: str, digest_value: str, response: dict
 ) -> None:
-    db.execute(
-        """INSERT INTO operations(user_id, operation_id, payload_hash, response)
-        VALUES (?, ?, ?, ?)""",
-        (user_id, operation_id, digest_value, canonical(response)),
-    )
-    prune_operations(db, user_id)
+    db.remember_operation(user_id, operation_id, digest_value, canonical(response), MAX_OPERATIONS)
 
 
-def restore_point_view(row: sqlite3.Row) -> dict:
+def restore_point_view(row: Row) -> dict:
     return {
         "id": row["id"],
         "label": row["label"],
@@ -378,72 +262,46 @@ def restore_point_view(row: sqlite3.Row) -> dict:
     }
 
 
-def insert_restore_point(
-    db: sqlite3.Connection, user_id: int, label: str, keep_ids: set[str] | None = None
-) -> dict:
-    snapshot = capture_account(db, user_id)
-    point_id = "rp-" + secrets.token_hex(8)
-    created_at = naive_now()
-    db.execute(
-        """INSERT INTO restore_points(
-            user_id, id, label, created_at, weeks_count, assignments_count, body
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (
+def insert_restore_point(db: Connection, user_id: int, label: str, keep_ids: set[str] | None = None) -> dict:
+    created: dict = json.loads(
+        db.create_restore_point(
             user_id,
-            point_id,
+            secrets.token_hex(8),
             label,
-            created_at,
-            len(snapshot["weeks"]),
-            len(snapshot["assignments"]),
-            canonical(snapshot),
-        ),
+            naive_now(),
+            list(keep_ids or ()),
+            MAX_RESTORE_POINTS,
+        )
     )
-    protected = set(keep_ids or ())
-    protected.add(point_id)
-    prune_restore_points(db, user_id, protected)
+    return created
+
+
+def replace_account(db: Connection, user_id: int, snapshot: dict) -> dict:
+    weeks = [
+        (week["week_start"], canonical(week["blocks"]), int(week["revision"]))
+        for week in snapshot["weeks"]
+    ]
+    assignments = [
+        (item["id"], canonical(item["body"]), int(item["revision"])) for item in snapshot["assignments"]
+    ]
+    db.replace_account(user_id, weeks, assignments)
     return {
-        "id": point_id,
-        "label": label,
-        "created_at": created_at,
-        "weeks": len(snapshot["weeks"]),
-        "assignments": len(snapshot["assignments"]),
+        "weeks": [{"week_start": start, "revision": revision} for start, _blocks, revision in weeks],
+        "assignments": [
+            {"id": item_id, "revision": revision} for item_id, _body, revision in assignments
+        ],
     }
 
 
-def replace_account(db: sqlite3.Connection, user_id: int, snapshot: dict) -> dict:
-    db.execute("DELETE FROM weeks WHERE user_id = ?", (user_id,))
-    db.execute("DELETE FROM assignments WHERE user_id = ?", (user_id,))
-    weeks = []
-    assignments = []
-    for week in snapshot["weeks"]:
-        db.execute(
-            "INSERT INTO weeks(user_id, week_start, blocks, revision) VALUES (?, ?, ?, ?)",
-            (user_id, week["week_start"], canonical(week["blocks"]), week["revision"]),
-        )
-        weeks.append({"week_start": week["week_start"], "revision": week["revision"]})
-    for item in snapshot["assignments"]:
-        db.execute(
-            "INSERT INTO assignments(user_id, id, body, revision) VALUES (?, ?, ?, ?)",
-            (user_id, item["id"], canonical(item["body"]), item["revision"]),
-        )
-        assignments.append({"id": item["id"], "revision": item["revision"]})
-    return {"weeks": weeks, "assignments": assignments}
-
-
-def replace_recovery_codes(db: sqlite3.Connection, user_id: int, codes: list[str]) -> None:
-    db.execute("DELETE FROM recovery_codes WHERE user_id = ?", (user_id,))
-    for code in codes:
-        db.execute(
-            "INSERT INTO recovery_codes(user_id, code_hash) VALUES (?, ?)",
-            (user_id, hash_recovery_code(code)),
-        )
+def replace_recovery_codes(db: Connection, user_id: int, codes: list[str]) -> None:
+    db.replace_recovery_codes(user_id, [hash_recovery_code(code) for code in codes])
 
 
 def encode_routine(routine: Routine) -> str:
     return canonical([block.model_dump() for block in routine.blocks])
 
 
-def routine_view(row: sqlite3.Row) -> dict:
+def routine_view(row: Row) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -454,58 +312,24 @@ def routine_view(row: sqlite3.Row) -> dict:
     }
 
 
-def upsert_routine(db: sqlite3.Connection, user_id: int, routine: Routine) -> dict:
+def upsert_routine(db: Connection, user_id: int, routine: Routine) -> dict:
     encoded = encode_routine(routine)
-    row = db.execute(
-        """SELECT id, name, body, revision, created_at, updated_at FROM routines
-        WHERE user_id = ? AND id = ?""",
-        (user_id, routine.id),
-    ).fetchone()
-    stored_revision = row["revision"] if row else 0
-    if row is not None and row["name"] == routine.name and row["body"] == encoded:
-        return routine_view(row)
-    if routine.revision != stored_revision:
-        raise HTTPException(409, ROUTINE_CONFLICT)
-    stamp = naive_now()
-    if row is None:
-        count = db.execute("SELECT COUNT(*) AS n FROM routines WHERE user_id = ?", (user_id,)).fetchone()
-        if int(count["n"]) >= MAX_ROUTINES:
-            raise HTTPException(422, ROUTINE_LIMIT)
-        db.execute(
-            """INSERT INTO routines(user_id, id, name, body, revision, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 1, ?, ?)""",
-            (user_id, routine.id, routine.name, encoded, stamp, stamp),
-        )
-        stored = db.execute(
-            """SELECT id, name, body, revision, created_at, updated_at FROM routines
-            WHERE user_id = ? AND id = ?""",
-            (user_id, routine.id),
-        ).fetchone()
-        assert stored is not None
-        return routine_view(stored)
-    db.execute(
-        """UPDATE routines SET name = ?, body = ?, revision = revision + 1, updated_at = ?
-        WHERE user_id = ? AND id = ?""",
-        (routine.name, encoded, stamp, user_id, routine.id),
+    status, payload = db.save_routine(
+        user_id, routine.id, routine.name, encoded, routine.revision, naive_now(), MAX_ROUTINES
     )
-    stored = db.execute(
-        """SELECT id, name, body, revision, created_at, updated_at FROM routines
-        WHERE user_id = ? AND id = ?""",
-        (user_id, routine.id),
-    ).fetchone()
-    assert stored is not None
-    return routine_view(stored)
-
-
-def delete_routine(db: sqlite3.Connection, user_id: int, routine_id: str, revision: int) -> dict:
-    row = db.execute(
-        "SELECT revision FROM routines WHERE user_id = ? AND id = ?", (user_id, routine_id)
-    ).fetchone()
-    if row is None:
-        raise HTTPException(404, ROUTINE_UNKNOWN)
-    if revision != row["revision"]:
+    if status == "conflict":
         raise HTTPException(409, ROUTINE_CONFLICT)
-    db.execute("DELETE FROM routines WHERE user_id = ? AND id = ?", (user_id, routine_id))
+    if status == "limit":
+        raise HTTPException(422, ROUTINE_LIMIT)
+    return routine_view(json.loads(payload))
+
+
+def delete_routine(db: Connection, user_id: int, routine_id: str, revision: int) -> dict:
+    status = db.delete_routine(user_id, routine_id, revision)
+    if status == "missing":
+        raise HTTPException(404, ROUTINE_UNKNOWN)
+    if status == "conflict":
+        raise HTTPException(409, ROUTINE_CONFLICT)
     return {"id": routine_id}
 
 
@@ -804,23 +628,24 @@ class TransferApplyRequest(BaseModel):
     operation_id: str = Field(min_length=1, max_length=80)
 
 
-def apply_transfer(db: sqlite3.Connection, user_id: int, snapshot: TransferSnapshot) -> dict:
+def apply_transfer(db: Connection, user_id: int, snapshot: TransferSnapshot) -> dict:
     write_preferences(db, user_id, snapshot.preferences)
-    db.execute("DELETE FROM routines WHERE user_id = ?", (user_id,))
-    for routine in snapshot.routines:
-        db.execute(
-            """INSERT INTO routines(user_id, id, name, body, revision, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                user_id,
-                routine.id,
-                routine.name,
-                encode_routine(routine),
-                routine.revision,
-                routine.created_at,
-                routine.updated_at,
-            ),
-        )
+    db.replace_routines(
+        user_id,
+        json.dumps(
+            [
+                {
+                    "id": routine.id,
+                    "name": routine.name,
+                    "body": encode_routine(routine),
+                    "revision": routine.revision,
+                    "created_at": routine.created_at,
+                    "updated_at": routine.updated_at,
+                }
+                for routine in snapshot.routines
+            ]
+        ),
+    )
     replaced = replace_account(
         db,
         user_id,
@@ -898,103 +723,71 @@ def encode_comfort(preferences: Preferences) -> str:
     )
 
 
-def preferences_from_row(row: sqlite3.Row) -> dict:
-    availability = json.loads(row["availability_json"] or "{}")
-    comfort = json.loads(row["comfort_json"] or "{}")
-    return Preferences(
-        theme=row["theme"],
-        reminders_enabled=bool(row["reminders_enabled"]),
-        reminder_lead_min=int(row["reminder_lead_min"]),
-        reminder_sound=bool(row["reminder_sound"]),
-        reminder_dnd_override=bool(row["reminder_dnd_override"]),
-        timer_work_min=int(row["timer_work_min"]),
-        timer_break_min=int(row["timer_break_min"]),
-        timer_long_break_min=int(row["timer_long_break_min"]),
-        timer_long_break_every=int(row["timer_long_break_every"]),
-        auto_split_pomodoro=bool(row["auto_split_pomodoro"]),
-        default_spotify_url=row["default_spotify_url"],
-        alarms=json.loads(row["alarms_json"]),
-        protected=availability.get("protected") or [],
-        study_windows=availability.get("study_windows") or [],
-        work_windows=availability.get("work_windows") or [],
-        day_cutoff=availability.get("day_cutoff"),
-        alert_volume=comfort.get("alert_volume", 80),
-        end_chime=bool(comfort.get("end_chime", False)),
-        tray_notifications=bool(comfort.get("tray_notifications", True)),
-        start_at_login=bool(comfort.get("start_at_login", False)),
-        preferred_view=comfort.get("preferred_view"),
-        sidebar_collapsed=bool(comfort.get("sidebar_collapsed", False)),
-        sidebar_width_px=comfort.get("sidebar_width_px"),
-        theme_pack=comfort.get("theme_pack", "system"),
-        accent=comfort.get("accent", "default"),
-        accent_chips=bool(comfort.get("accent_chips", False)),
-        motion=comfort.get("motion"),
-        alarm_tone=comfort.get("alarm_tone", "chime"),
-        planning_style=comfort.get("planning_style", "suggest"),
-        drag_step_min=comfort.get("drag_step_min", 5),
-        clock_24h=bool(comfort.get("clock_24h", True)),
-        setup=comfort.get("setup"),
-    ).model_dump()
+def preferences_from_row(row: Row) -> dict:
+    fields = json.loads(flexweek_engine.preferences_fields(json.dumps(dict(row))))
+    return Preferences(**fields).model_dump()
 
 
-def capture_transfer(db: sqlite3.Connection, user_id: int) -> dict:
+def capture_transfer(db: Connection, user_id: int) -> dict:
     snapshot = capture_account(db, user_id)
-    prefs = db.execute("SELECT * FROM preferences WHERE user_id = ?", (user_id,)).fetchone()
-    assert prefs is not None
-    routines = [
-        routine_view(row)
-        for row in db.execute(
-            """SELECT id, name, body, revision, created_at, updated_at FROM routines
-            WHERE user_id = ? ORDER BY name, id""",
-            (user_id,),
-        )
-    ]
+    raw = db.preference_row(user_id)
+    assert raw is not None
+    routines = [routine_view(row) for row in json.loads(db.list_routines(user_id))]
     return {
         **snapshot,
-        "preferences": preferences_from_row(prefs),
+        "preferences": preferences_from_row(json.loads(raw)),
         "routines": routines,
     }
 
 
-def write_preferences(db: sqlite3.Connection, user_id: int, preferences: Preferences) -> dict:
-    db.execute(
-        """UPDATE preferences
-        SET theme = ?, reminders_enabled = ?, reminder_lead_min = ?, reminder_sound = ?,
-            reminder_dnd_override = ?, timer_work_min = ?, timer_break_min = ?,
-            timer_long_break_min = ?, timer_long_break_every = ?, auto_split_pomodoro = ?,
-            default_spotify_url = ?, alarms_json = ?, availability_json = ?, comfort_json = ?
-        WHERE user_id = ?""",
-        (
-            preferences.theme,
-            int(preferences.reminders_enabled),
-            preferences.reminder_lead_min,
-            int(preferences.reminder_sound),
-            int(preferences.reminder_dnd_override),
-            preferences.timer_work_min,
-            preferences.timer_break_min,
-            preferences.timer_long_break_min,
-            preferences.timer_long_break_every,
-            int(preferences.auto_split_pomodoro),
-            preferences.default_spotify_url,
-            json.dumps([alarm.model_dump() for alarm in preferences.alarms], separators=(",", ":")),
-            encode_availability(preferences),
-            encode_comfort(preferences),
-            user_id,
+def write_preferences(db: Connection, user_id: int, preferences: Preferences) -> dict:
+    db.write_preferences(
+        user_id,
+        json.dumps(
+            {
+                "theme": preferences.theme,
+                "reminders_enabled": int(preferences.reminders_enabled),
+                "reminder_lead_min": preferences.reminder_lead_min,
+                "reminder_sound": int(preferences.reminder_sound),
+                "reminder_dnd_override": int(preferences.reminder_dnd_override),
+                "timer_work_min": preferences.timer_work_min,
+                "timer_break_min": preferences.timer_break_min,
+                "timer_long_break_min": preferences.timer_long_break_min,
+                "timer_long_break_every": preferences.timer_long_break_every,
+                "auto_split_pomodoro": int(preferences.auto_split_pomodoro),
+                "default_spotify_url": preferences.default_spotify_url,
+                "alarms_json": json.dumps(
+                    [alarm.model_dump() for alarm in preferences.alarms], separators=(",", ":")
+                ),
+                "availability_json": encode_availability(preferences),
+                "comfort_json": encode_comfort(preferences),
+            }
         ),
     )
     return preferences.model_dump()
 
 
+WINDOW_MODELS: dict[str, type[BaseModel]] = {
+    "protected": ProtectedWindow,
+    "study": StudyWindow,
+    "work": WorkWindow,
+}
+
+
+def validate_windows(kind: str, text: str) -> str:
+    model = WINDOW_MODELS[kind]
+    return json.dumps([model.model_validate(item).model_dump() for item in json.loads(text)])
+
+
 def solve_availability(
-    row: sqlite3.Row | None,
+    stored: str | None,
 ) -> tuple[list[int], list[StudyWindow], list[WorkWindow]]:
-    if row is None:
-        return [0] * 7, [], []
-    availability = json.loads(row["availability_json"] or "{}")
-    protected = [ProtectedWindow.model_validate(item) for item in availability.get("protected") or []]
-    study = [StudyWindow.model_validate(item) for item in availability.get("study_windows") or []]
-    work = [WorkWindow.model_validate(item) for item in availability.get("work_windows") or []]
-    return occupancy_from_windows(protected, availability.get("day_cutoff")), study, work
+    occupancy, study, work = flexweek_engine.solve_availability(stored, validate_windows)
+    return (
+        list(occupancy),
+        [StudyWindow.model_validate(item) for item in json.loads(study)],
+        [WorkWindow.model_validate(item) for item in json.loads(work)],
+    )
 
 
 def create_app(database: Path | None = None, origin: str | None = None) -> FastAPI:
@@ -1056,18 +849,13 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     def user(request: Request) -> dict:
         token = request.cookies.get(COOKIE, "")
         with connect(path) as db:
-            row = db.execute(
-                """SELECT users.id, users.username FROM sessions
-                JOIN users ON users.id = sessions.user_id
-                WHERE token_hash = ? AND expires > ?""",
-                (digest(token), int(time.time())),
-            ).fetchone()
-        if row is None:
+            found = db.session_user(digest(token), int(time.time()))
+        if found is None:
             raise HTTPException(401, "Please sign in")
         expected = request.headers.get("X-FlexWeek-Account")
-        if expected is not None and expected != str(row["id"]):
+        if expected is not None and expected != str(found[0]):
             raise HTTPException(401, "Account changed. Please sign in again.")
-        return dict(row)
+        return {"id": found[0], "username": found[1]}
 
     def session_response(response: Response, token: str) -> None:
         response.set_cookie(
@@ -1086,10 +874,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             codes = generate_recovery_codes()
             try:
                 with connect(path) as db:
-                    cursor = db.execute(
-                        "INSERT INTO users(username, password_hash) VALUES (?, ?)", (data.username, encoded)
-                    )
-                    user_id = int(cursor.lastrowid or 0)
+                    user_id = db.insert_user(data.username, encoded)
                     new_preferences(db, user_id)
                     replace_recovery_codes(db, user_id, codes)
                     token = create_session(db, user_id)
@@ -1097,18 +882,16 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 raise HTTPException(409, "Username unavailable") from exc
         else:
             with connect(path) as db:
-                row = db.execute("SELECT * FROM users WHERE username = ?", (data.username,)).fetchone()
-            encoded = row["password_hash"] if row else password_hash("missing-account-password", "00" * 16)
+                found = db.find_user(data.username)
+            encoded = found[2] if found else password_hash("missing-account-password", "00" * 16)
             matched = password_matches(data.password, encoded)
-            if not row or not matched:
+            if not found or not matched:
                 raise HTTPException(401, "Incorrect username or password")
-            user_id = row["id"]
+            user_id = found[0]
             with connect(path) as db:
                 token = create_session(db, user_id)
         with connect(path) as db:
-            db.execute(
-                "DELETE FROM sessions WHERE token_hash = ?", (digest(request.cookies.get(COOKIE, "")),)
-            )
+            db.delete_session(digest(request.cookies.get(COOKIE, "")))
         session_response(response, token)
         result = {"id": user_id, "username": data.username}
         if codes is not None:
@@ -1132,9 +915,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         if request.headers.get("X-FlexWeek-Account") is not None:
             user(request)
         with connect(path) as db:
-            db.execute(
-                "DELETE FROM sessions WHERE token_hash = ?", (digest(request.cookies.get(COOKIE, "")),)
-            )
+            db.delete_session(digest(request.cookies.get(COOKIE, "")))
         response.delete_cookie(COOKIE, path="/", httponly=True, secure=secure, samesite="strict")
 
     def deny_if_throttled(request: Request, username: str) -> None:
@@ -1144,11 +925,11 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 429, "Too many attempts. Try again in five minutes.", headers={"Retry-After": "300"}
             )
 
-    def require_password(db: sqlite3.Connection, user_id: int, password: str) -> None:
+    def require_password(db: Connection, user_id: int, password: str) -> None:
         # Called inside the caller's transaction so a password rotated by another
         # session between the check and the write cannot still authorize the write.
-        row = db.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
-        if row is None or not password_matches(password, row["password_hash"]):
+        stored = db.password_hash_of(user_id)
+        if stored is None or not password_matches(password, stored):
             raise HTTPException(401, PASSWORD_WRONG)
 
     @app.post("/api/auth/recover")
@@ -1158,18 +939,9 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         # scrypt runs before the write lock is taken, like register.
         new_hash = password_hash(data.password)
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT * FROM users WHERE username = ?", (data.username,)).fetchone()
-            hashes = (
-                [
-                    item["code_hash"]
-                    for item in db.execute(
-                        "SELECT code_hash FROM recovery_codes WHERE user_id = ?", (row["id"],)
-                    )
-                ]
-                if row is not None
-                else []
-            )
+            db.begin_immediate()
+            found = db.find_user(data.username)
+            hashes = db.recovery_hashes(found[0]) if found is not None else []
             real = set(hashes)
             padded = list(hashes)
             while len(padded) < RECOVERY_CODE_COUNT:
@@ -1178,27 +950,21 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             for stored in padded:
                 if recovery_code_matches(data.code, stored):
                     matched = stored
-            if row is None or matched is None or matched not in real:
+            if found is None or matched is None or matched not in real:
                 raise HTTPException(401, RECOVER_WRONG)
-            db.execute(
-                "DELETE FROM recovery_codes WHERE user_id = ? AND code_hash = ?",
-                (row["id"], matched),
-            )
-            db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, row["id"]))
-            db.execute("DELETE FROM sessions WHERE user_id = ?", (row["id"],))
-            token = create_session(db, row["id"])
-            user_id = row["id"]
-            username = row["username"]
+            db.use_recovery_code(found[0], matched)
+            db.rotate_password(found[0], new_hash)
+            token = create_session(db, found[0])
+            user_id = found[0]
+            username = found[1]
         session_response(response, token)
         return {"id": user_id, "username": username}
 
     @app.get("/api/auth/recovery-status")
     def recovery_status(account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            row = db.execute(
-                "SELECT COUNT(*) AS n FROM recovery_codes WHERE user_id = ?", (account["id"],)
-            ).fetchone()
-        return {"remaining": int(row["n"]) if row else 0}
+            remaining = db.count_recovery_codes(account["id"])
+        return {"remaining": remaining}
 
     @app.post("/api/auth/recovery-codes")
     def refresh_recovery_codes(
@@ -1207,7 +973,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         deny_if_throttled(request, account["username"])
         codes = generate_recovery_codes()
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             require_password(db, account["id"], data.password)
             replace_recovery_codes(db, account["id"], codes)
         return {"recovery_codes": codes, "remaining": len(codes)}
@@ -1219,12 +985,11 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         deny_if_throttled(request, account["username"])
         new_hash = password_hash(data.new_password)
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             require_password(db, account["id"], data.current_password)
             if data.new_password == data.current_password:
                 raise HTTPException(422, PASSWORD_SAME)
-            db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, account["id"]))
-            db.execute("DELETE FROM sessions WHERE user_id = ?", (account["id"],))
+            db.rotate_password(account["id"], new_hash)
             token = create_session(db, account["id"])
         session_response(response, token)
         return {"id": account["id"], "username": account["username"]}
@@ -1235,7 +1000,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     ) -> None:
         deny_if_throttled(request, account["username"])
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             require_password(db, account["id"], data.password)
             delete_account(db, account["id"])
         response.delete_cookie(COOKIE, path="/", httponly=True, secure=secure, samesite="strict")
@@ -1246,11 +1011,8 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         if not is_week_start(start):
             raise HTTPException(422, WEEK_START_RULE)
         with connect(path) as db:
-            row = db.execute(
-                "SELECT blocks, revision FROM weeks WHERE user_id = ? AND week_start = ?",
-                (account["id"], start),
-            ).fetchone()
-            blocks = json.loads(row["blocks"]) if row else []
+            row = db.read_week(account["id"], start)
+            blocks = json.loads(row[0]) if row else []
             owned = load_assignment_bodies(
                 db,
                 account["id"],
@@ -1260,16 +1022,14 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         return {
             "week_start": start,
             "blocks": rewrite_stored_blocks(blocks, owned),
-            "revision": row["revision"] if row else 0,
+            "revision": row[1] if row else 0,
         }
 
     @app.get("/api/weeks")
     def get_weeks(account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            rows = db.execute(
-                "SELECT week_start FROM weeks WHERE user_id = ? ORDER BY week_start", (account["id"],)
-            ).fetchall()
-        return {"weeks": [row["week_start"] for row in rows]}
+            weeks = db.week_starts(account["id"])
+        return {"weeks": weeks}
 
     @app.get("/api/day")
     def get_day(account: Annotated[dict, Depends(user)], date: str | None = None) -> dict:
@@ -1277,21 +1037,15 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             raise HTTPException(422, DATE_RULE)
         week_start = monday_of(date)
         with connect(path) as db:
-            row = db.execute(
-                "SELECT blocks FROM weeks WHERE user_id = ? AND week_start = ?",
-                (account["id"], week_start),
-            ).fetchone()
-            blocks = json.loads(row["blocks"]) if row else []
+            stored = db.week_blocks(account["id"], week_start)
+            blocks = json.loads(stored) if stored is not None else []
             owned = load_assignment_bodies(
                 db,
                 account["id"],
                 {block["assignment_id"] for block in blocks if block.get("assignment_id")},
             )
             assignment_rows = [
-                (json.loads(item["body"]), int(item["revision"]))
-                for item in db.execute(
-                    "SELECT body, revision FROM assignments WHERE user_id = ?", (account["id"],)
-                ).fetchall()
+                (json.loads(body), int(revision)) for body, revision in db.assignment_bodies(account["id"])
             ]
             weeks = list_account_weeks(db, account["id"])
         return build_day(date, week_start, rewrite_stored_blocks(blocks, owned), assignment_rows, weeks)
@@ -1302,10 +1056,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             raise HTTPException(422, MONTH_RULE)
         with connect(path) as db:
             assignment_rows = [
-                (json.loads(item["body"]), int(item["revision"]))
-                for item in db.execute(
-                    "SELECT body, revision FROM assignments WHERE user_id = ?", (account["id"],)
-                ).fetchall()
+                (json.loads(body), int(revision)) for body, revision in db.assignment_bodies(account["id"])
             ]
             weeks = list_account_weeks(db, account["id"])
         return build_month(month, assignment_rows, weeks)
@@ -1313,7 +1064,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     @app.put("/api/week")
     def put_week(week: SavedWeek, account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             incoming = adopt_legacy_deadlines(db, account["id"], week.week_start, week.blocks)
             owned = require_own_assignments(db, account["id"], assignment_ids_of(incoming))
             blocks = dump_blocks(rewrite_blocks(incoming, owned))
@@ -1329,17 +1080,15 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         if week_start is None or not is_week_start(week_start):
             raise HTTPException(422, WEEK_START_RULE)
         with connect(path) as db:
-            rows = db.execute(
-                "SELECT id, body, revision FROM assignments WHERE user_id = ?", (account["id"],)
-            ).fetchall()
+            rows = db.list_assignment_rows(account["id"])
             weeks = list_account_weeks(db, account["id"])
         planned_by_id = planned_minutes_by_id(weeks, week_start)
         items = []
-        for row in rows:
-            body = json.loads(row["body"])
+        for row_id, row_body, row_revision in rows:
+            body = json.loads(row_body)
             if body["completed"] and not include_completed:
                 continue
-            items.append(assignment_view(body, row["revision"], planned_by_id.get(row["id"], 0)))
+            items.append(assignment_view(body, row_revision, planned_by_id.get(row_id, 0)))
         items.sort(key=lambda item: due_sort_key(item["due"], item["id"]))
         return {"assignments": items}
 
@@ -1351,7 +1100,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             raise HTTPException(422, "assignment id in the path and body must match")
         content = AssignmentContent.model_validate(payload.model_dump(exclude={"revision"}))
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             return upsert_assignment(db, account["id"], content, payload.revision)
 
     @app.post("/api/assignments/{assignment_id}/spread")
@@ -1359,14 +1108,11 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         assignment_id: str, payload: SpreadRequest, account: Annotated[dict, Depends(user)]
     ) -> dict:
         with connect(path) as db:
-            row = db.execute(
-                "SELECT body FROM assignments WHERE user_id = ? AND id = ?",
-                (account["id"], assignment_id),
-            ).fetchone()
-            if row is None:
+            stored = db.assignment_body(account["id"], assignment_id)
+            if stored is None:
                 raise HTTPException(404, "Assignment not found")
             weeks = list_account_weeks(db, account["id"])
-        body = json.loads(row["body"])
+        body = json.loads(stored)
         if body["completed"]:
             raise HTTPException(422, "completed assignments cannot be spread")
         planned = planned_minutes_by_id(weeks, "2000-01-01").get(assignment_id, 0)
@@ -1392,14 +1138,14 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         if revision is None:
             raise HTTPException(422, "revision is required")
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             return delete_assignment(db, account["id"], assignment_id, revision)
 
     @app.post("/api/changes")
     def post_changes(batch: ChangesRequest, account: Annotated[dict, Depends(user)]) -> dict:
         digest_value = payload_digest(batch.model_dump())
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             if batch.operation_id is not None:
                 remembered = recall_operation(db, account["id"], batch.operation_id, digest_value)
                 if remembered is not None:
@@ -1452,8 +1198,9 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     @app.get("/api/preferences")
     def get_preferences(account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            row = db.execute("SELECT * FROM preferences WHERE user_id = ?", (account["id"],)).fetchone()
-        return preferences_from_row(row)
+            raw = db.preference_row(account["id"])
+        assert raw is not None
+        return preferences_from_row(json.loads(raw))
 
     @app.put("/api/preferences")
     def put_preferences(preferences: Preferences, account: Annotated[dict, Depends(user)]) -> dict:
@@ -1463,11 +1210,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     @app.get("/api/routines")
     def get_routines(account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            rows = db.execute(
-                """SELECT id, name, body, revision, created_at, updated_at FROM routines
-                WHERE user_id = ? ORDER BY name, id""",
-                (account["id"],),
-            ).fetchall()
+            rows = json.loads(db.list_routines(account["id"]))
         return {"routines": [routine_view(row) for row in rows]}
 
     @app.put("/api/routines/{routine_id}")
@@ -1475,7 +1218,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         if payload.id != routine_id:
             raise HTTPException(422, "routine id in the path and body must match")
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             return upsert_routine(db, account["id"], payload)
 
     @app.delete("/api/routines/{routine_id}")
@@ -1489,7 +1232,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             raise HTTPException(422, "revision is required")
         digest_value = payload_digest({"id": routine_id, "revision": revision, "op": "delete"})
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             if operation_id is not None:
                 remembered = recall_operation(db, account["id"], operation_id, digest_value)
                 if remembered is not None:
@@ -1520,7 +1263,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     ) -> dict:
         deny_if_throttled(request, account["username"])
         with connect(path) as db:
-            db.execute("BEGIN")
+            db.begin()
             require_password(db, account["id"], data.password)
             payload = {
                 "format": 3,
@@ -1551,7 +1294,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         incoming = payload.snapshot.model_dump()
         digest_value = payload_digest(payload.model_dump())
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             remembered = recall_operation(db, account["id"], payload.operation_id, digest_value)
             if remembered is not None:
                 return remembered
@@ -1588,18 +1331,14 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     @app.get("/api/restore-points")
     def get_restore_points(account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            rows = db.execute(
-                """SELECT id, label, created_at, weeks_count, assignments_count
-                FROM restore_points WHERE user_id = ? ORDER BY seq DESC""",
-                (account["id"],),
-            ).fetchall()
+            rows = json.loads(db.list_restore_points(account["id"]))
         return {"restore_points": [restore_point_view(row) for row in rows]}
 
     @app.post("/api/restore-points")
     def post_restore_point(payload: RestoreCreate, account: Annotated[dict, Depends(user)]) -> dict:
         digest_value = payload_digest(payload.model_dump())
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             remembered = recall_operation(db, account["id"], payload.operation_id, digest_value)
             if remembered is not None:
                 return remembered
@@ -1610,16 +1349,13 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     @app.get("/api/restore-points/{point_id}/preview")
     def preview_restore_point(point_id: str, account: Annotated[dict, Depends(user)]) -> dict:
         with connect(path) as db:
-            row = db.execute(
-                "SELECT id, body FROM restore_points WHERE user_id = ? AND id = ?",
-                (account["id"], point_id),
-            ).fetchone()
+            row = db.restore_point_body(account["id"], point_id)
             if row is None:
                 raise HTTPException(404, RESTORE_UNKNOWN)
             current = capture_account(db, account["id"])
-        stored = json.loads(row["body"])
+        stored = json.loads(row[1])
         return {
-            "id": row["id"],
+            "id": row[0],
             "state_token": state_token(current),
             "changes": diff_snapshots(current, stored),
         }
@@ -1630,20 +1366,17 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
     ) -> dict:
         digest_value = payload_digest({"id": point_id, **payload.model_dump()})
         with connect(path) as db:
-            db.execute("BEGIN IMMEDIATE")
+            db.begin_immediate()
             remembered = recall_operation(db, account["id"], payload.operation_id, digest_value)
             if remembered is not None:
                 return remembered
-            row = db.execute(
-                "SELECT id, body FROM restore_points WHERE user_id = ? AND id = ?",
-                (account["id"], point_id),
-            ).fetchone()
+            row = db.restore_point_body(account["id"], point_id)
             if row is None:
                 raise HTTPException(404, RESTORE_UNKNOWN)
             current = capture_account(db, account["id"])
             if payload.state_token != state_token(current):
                 raise HTTPException(409, RESTORE_STALE)
-            stored = json.loads(row["body"])
+            stored = json.loads(row[1])
             stamp = naive_now()
             recovery = insert_restore_point(
                 db, account["id"], f"Before restore — {stamp}", keep_ids={point_id}
@@ -1658,10 +1391,8 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         ids = assignment_ids_of(week.blocks)
         with connect(path) as db:
             owned = require_own_assignments(db, account["id"], ids) if ids else {}
-            prefs = db.execute(
-                "SELECT availability_json FROM preferences WHERE user_id = ?", (account["id"],)
-            ).fetchone()
-        extra_occ, study_windows, work_windows = solve_availability(prefs)
+            availability = db.availability_json(account["id"])
+        extra_occ, study_windows, work_windows = solve_availability(availability)
         blocks = week.blocks
         extra_deadlines = None
         extra_slack = None

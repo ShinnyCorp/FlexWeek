@@ -174,6 +174,19 @@ def test_an_appimage_variable_with_no_mount_behind_it_is_ignored() -> None:
     )
 
 
+def test_the_executable_path_is_resolved_before_it_is_compared_with_the_mount() -> None:
+    """The original resolved both paths. `..` steps out of the mount, so this copy is not the image."""
+    assert (
+        install_kind(
+            "linux",
+            appimage="/x/FlexWeek.AppImage",
+            appdir="/tmp/.mount_fw",
+            executable="/tmp/.mount_fw/../elsewhere/FlexWeek",
+        )
+        == "tarball"
+    )
+
+
 def settings(**fields: object) -> dict:
     from desktop.native.update import sanitize_updates
 

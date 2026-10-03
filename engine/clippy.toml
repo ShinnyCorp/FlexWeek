@@ -1,0 +1,5 @@
+disallowed-methods = [
+    { path = "serde_json::Map::remove", reason = "with preserve_order it moves the last key into the gap; Python's dict.pop keeps the order, as shift_remove does" },
+    { path = "serde_json::Map::remove_entry", reason = "with preserve_order it moves the last key into the gap; use shift_remove_entry" },
+    { path = "serde_json::Map::swap_remove", reason = "moves the last key into the gap; Python's dict.pop keeps the order, as shift_remove does" },
+]

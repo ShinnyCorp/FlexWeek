@@ -21,17 +21,17 @@
   "test": "desktop/tests/test_hours_geometry.py::test_a_span_is_drawn_between_its_minutes_and_shares_the_width_when_it_overlaps"
  },
  {
-  "file": "desktop/native/look.py",
+  "file": "engine/engine/src/desk/custom_look.rs",
   "name": "Filled blocks the default again",
-  "old": "    # Decision 14 of 0.17: the category's fill with a 3-pixel edge in its mark.\n    \"blocks\": \"edge\",\n",
-  "new": "    \"blocks\": \"filled\",\n",
+  "old": "    (\"font\", \"sans\"),\n    (\"blocks\", \"edge\"),\n    (\"density\", \"comfortable\"),\n",
+  "new": "    (\"font\", \"sans\"),\n    (\"blocks\", \"filled\"),\n    (\"density\", \"comfortable\"),\n",
   "test": "desktop/tests/test_look_widgets.py::test_an_edge_block_is_its_category_fill_with_the_strong_colour_down_its_left"
  },
  {
-  "file": "desktop/native/weekmodel.py",
+  "file": "engine/engine/src/desk/weekmodel.rs",
   "name": "a 12-hour range says PM twice",
-  "old": "    if first_half == last_half:\n",
-  "new": "    if False:\n",
+  "old": "    if first_half == last_half {\n",
+  "new": "    if false && first_half == last_half {\n",
   "test": "desktop/tests/test_clock.py::test_the_hours_words"
  },
  {
