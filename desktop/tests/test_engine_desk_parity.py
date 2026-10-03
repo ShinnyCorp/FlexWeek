@@ -181,7 +181,9 @@ def test_timers(work):
 @CHECK
 @given(MINUTE, MINUTE)
 def test_song_due(start, now):
-    match(live_remind.song_due, ref_remind.song_due, start, now)
+    # The original has the two-minute window only; the engine's follows the lead, so it is asked for two.
+    window = live_remind.REMINDER_WINDOW_MIN
+    match(lambda a, b: live_remind.song_due(a, b, window), ref_remind.song_due, start, now)
 
 
 @CHECK
@@ -659,6 +661,11 @@ def produced(func, args, kwargs, listed=False):
         return ("raise", type(error).__name__, str(error))
 
 
+def live_songs(**kwargs):
+    """The engine's songs under the frozen original's rules: no default link, the old two-minute window."""
+    return live_remind.due_songs(**kwargs, lead_min=live_remind.REMINDER_WINDOW_MIN)
+
+
 def same(live, ref, *args, listed=False, **kwargs):
     live_call, ref_call = copy.deepcopy((args, kwargs)), copy.deepcopy((args, kwargs))
     assert produced(live, live_call[0], live_call[1], listed) == produced(
@@ -962,7 +969,7 @@ def test_due_reminders_and_songs_on_generated_weeks(blocks, trace, today, now_mi
         fired=fired,
     )
     same(
-        live_remind.due_songs,
+        live_songs,
         ref_remind.due_songs,
         blocks=blocks,
         trace=trace,
@@ -1946,6 +1953,10 @@ DESK_PAIRS = {
 # Not a function of its arguments alone: the clock setting is global to the module, and the audit
 # restores it around each call.
 KEEPS_STATE = {"weekmodel.set_clock_24h"}
+# The engine's song rules grew past the frozen original (a window that follows the lead, a default link),
+# so these take other arguments; test_song_due and the generated-weeks tests hold them to the original's
+# rules where the two still agree.
+CHANGED_ON_PURPOSE = {"remind.song_due", "remind.due_songs"}
 
 
 def audited_functions():
@@ -1955,7 +1966,7 @@ def audited_functions():
         for name, function in vars(ref).items():
             if inspect.isfunction(function) and function.__module__ == ref.__name__ and hasattr(live, name):
                 found.append(f"{module_name}.{name}")
-    return found
+    return [dotted for dotted in found if dotted not in CHANGED_ON_PURPOSE]
 
 
 DATES = [
@@ -3051,7 +3062,7 @@ def test_reminders_and_songs_read_what_was_fired_in_any_container(blocks, trace,
         fired=fired,
     )
     same(
-        live_remind.due_songs,
+        live_songs,
         ref_remind.due_songs,
         blocks=blocks,
         trace=trace,

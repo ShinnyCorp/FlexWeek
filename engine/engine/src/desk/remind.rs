@@ -60,9 +60,29 @@ pub fn start_alert_due(start_min: i64, now_min: i64, lead: i64) -> bool {
     start - lead <= i128::from(now_min) && i128::from(now_min) <= start
 }
 
-pub fn song_due(start_min: i64, now_min: i64) -> bool {
+/// A block's song plays from its start for as long as its reminder leads it, so a start the poll
+/// reached a few minutes late still plays. A lead under the alarm window gets the window instead.
+pub fn song_due(start_min: i64, now_min: i64, lead: i64) -> bool {
+    let window = i128::from(lead).max(i128::from(REMINDER_WINDOW_MIN));
     i128::from(start_min) <= i128::from(now_min)
-        && i128::from(now_min) <= i128::from(start_min) + i128::from(REMINDER_WINDOW_MIN)
+        && i128::from(now_min) <= i128::from(start_min) + window
+}
+
+/// What plays when a block starts: its own Spotify link, else the Settings link when the chosen
+/// sound is Spotify. None means no song, and the start is announced by a notice instead.
+fn start_link(
+    block: &Value,
+    default_link: &Value,
+    sound_is_spotify: bool,
+) -> EngineResult<Option<Value>> {
+    let own = get(block, "spotify_url")?;
+    if truthy(own) {
+        return Ok(own.cloned());
+    }
+    if sound_is_spotify && truthy(Some(default_link)) {
+        return Ok(Some(default_link.clone()));
+    }
+    Ok(None)
 }
 
 pub fn reminder_key(week_start: &str, block_id: &str, day: i64, start: &str) -> String {
@@ -185,6 +205,7 @@ fn member(container: &Value, is_set: bool, key: &str) -> EngineResult<bool> {
     contains(container, &item)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn due_reminders(
     blocks: &Value,
     trace: &Value,
@@ -193,6 +214,8 @@ pub fn due_reminders(
     lead_min: i64,
     fired: &Value,
     fired_is_set: bool,
+    default_link: &Value,
+    sound_is_spotify: bool,
 ) -> EngineResult<Vec<Value>> {
     let mut due = Vec::new();
     for (block, day, start_min, key) in todays_starts(blocks, trace, today_iso)? {
@@ -200,7 +223,7 @@ pub fn due_reminders(
             continue;
         }
         let started = now_min >= start_min;
-        if started && truthy(get(&block, "spotify_url")?) {
+        if started && start_link(&block, default_link, sound_is_spotify)?.is_some() {
             continue;
         }
         let title = py_str(subscript(&block, "title")?);
@@ -214,18 +237,24 @@ pub fn due_reminders(
     Ok(due)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn due_songs(
     blocks: &Value,
     trace: &Value,
     today_iso: &str,
     now_min: i64,
+    lead_min: i64,
     played: &Value,
     played_is_set: bool,
+    default_link: &Value,
+    sound_is_spotify: bool,
 ) -> EngineResult<Vec<Value>> {
     let mut due = Vec::new();
     for (block, _day, start_min, key) in todays_starts(blocks, trace, today_iso)? {
-        let link = get(&block, "spotify_url")?;
-        if !truthy(link) || member(played, played_is_set, &key)? || !song_due(start_min, now_min) {
+        let Some(link) = start_link(&block, default_link, sound_is_spotify)? else {
+            continue;
+        };
+        if member(played, played_is_set, &key)? || !song_due(start_min, now_min, lead_min) {
             continue;
         }
         due.push(json!({

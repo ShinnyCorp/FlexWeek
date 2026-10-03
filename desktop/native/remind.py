@@ -9,9 +9,9 @@ from datetime import datetime
 import flexweek_engine  # type: ignore[import-untyped]
 
 REMINDER_WINDOW_MIN = 2
-REMINDER_POLL_MS = 30_000
 ALARM_SNOOZE_MIN = 5
 ALARM_SNOOZE_MS = ALARM_SNOOZE_MIN * 60_000
+REMINDER_POLL_MS = 30_000
 
 
 def reminder_lead_min(prefs: dict | None, default: int = 5) -> int:
@@ -23,8 +23,9 @@ def start_alert_due(start_min: int, now_min: int, lead: int) -> bool:
     return bool(flexweek_engine.remind_start_alert_due(start_min, now_min, lead))
 
 
-def song_due(start_min: int, now_min: int) -> bool:
-    return bool(flexweek_engine.remind_song_due(start_min, now_min))
+def song_due(start_min: int, now_min: int, lead: int) -> bool:
+    """From the start minute until the reminder lead has passed."""
+    return bool(flexweek_engine.remind_song_due(start_min, now_min, lead))
 
 
 def reminder_key(week_start: str, block_id: str, day: int, start: str) -> str:
@@ -51,6 +52,8 @@ def due_reminders(
     now_min: int,
     lead_min: int,
     fired: set[str],
+    default_link: str | None = None,
+    sound_is_spotify: bool = False,
 ) -> list[dict]:
     return json.loads(
         flexweek_engine.remind_due(
@@ -60,21 +63,35 @@ def due_reminders(
             now_min,
             lead_min,
             fired,
+            default_link,
+            sound_is_spotify,
         )
     )
 
 
 def due_songs(
-    *, blocks: list[dict], trace: dict | None, today_iso: str, now_min: int, played: set[str]
+    *,
+    blocks: list[dict],
+    trace: dict | None,
+    today_iso: str,
+    now_min: int,
+    lead_min: int,
+    played: set[str],
+    default_link: str | None = None,
+    sound_is_spotify: bool = False,
 ) -> list[dict]:
-    """Blocks with a Spotify link that are starting, as alarms."""
+    """Blocks that are starting with a song to play, as alarms: the block's own Spotify link, else the
+    Settings link when the chosen sound is Spotify."""
     return json.loads(
         flexweek_engine.remind_songs(
             json.dumps(blocks),
             json.dumps(trace),
             today_iso,
             now_min,
+            lead_min,
             played,
+            default_link,
+            sound_is_spotify,
         )
     )
 

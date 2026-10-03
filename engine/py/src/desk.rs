@@ -507,8 +507,8 @@ fn remind_start_alert_due(start_min: i64, now_min: i64, lead: i64) -> PyResult<b
 }
 
 #[pyfunction]
-fn remind_song_due(start_min: i64, now_min: i64) -> PyResult<bool> {
-    guard(|| Ok(remind::song_due(start_min, now_min)))
+fn remind_song_due(start_min: i64, now_min: i64, lead: i64) -> PyResult<bool> {
+    guard(|| Ok(remind::song_due(start_min, now_min, lead)))
 }
 
 #[pyfunction]
@@ -532,6 +532,7 @@ fn remind_blocks(blocks: &str, trace: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 fn remind_due(
     blocks: &str,
     trace: &str,
@@ -539,6 +540,8 @@ fn remind_due(
     now_min: i64,
     lead_min: i64,
     fired: &Bound<'_, PyAny>,
+    default_link: Option<&str>,
+    sound_is_spotify: bool,
 ) -> PyResult<String> {
     let (blocks, trace) = (parse(blocks)?, parse(trace)?);
     let (fired, fired_is_set) = members_of(fired)?;
@@ -552,6 +555,8 @@ fn remind_due(
             lead_min,
             &fired,
             fired_is_set,
+            &Value::from(default_link),
+            sound_is_spotify,
         )
         .map_err(raise)?;
         Ok(dump(&Value::Array(rows)))
@@ -559,19 +564,33 @@ fn remind_due(
 }
 
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 fn remind_songs(
     blocks: &str,
     trace: &str,
     today_iso: &str,
     now_min: i64,
+    lead_min: i64,
     played: &Bound<'_, PyAny>,
+    default_link: Option<&str>,
+    sound_is_spotify: bool,
 ) -> PyResult<String> {
     let (blocks, trace) = (parse(blocks)?, parse(trace)?);
     let (played, played_is_set) = members_of(played)?;
     let played = parse(&played)?;
     guard(|| {
-        let rows = remind::due_songs(&blocks, &trace, today_iso, now_min, &played, played_is_set)
-            .map_err(raise)?;
+        let rows = remind::due_songs(
+            &blocks,
+            &trace,
+            today_iso,
+            now_min,
+            lead_min,
+            &played,
+            played_is_set,
+            &Value::from(default_link),
+            sound_is_spotify,
+        )
+        .map_err(raise)?;
         Ok(dump(&Value::Array(rows)))
     })
 }

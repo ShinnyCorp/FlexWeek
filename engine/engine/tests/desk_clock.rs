@@ -93,6 +93,8 @@ fn test_the_next_line_a_reminder_and_running_late() {
         5,
         &json!([]),
         true,
+        &Value::Null,
+        false,
     )
     .expect("due");
     let bodies: Vec<&Value> = due.iter().map(|item| &item["body"]).collect();
