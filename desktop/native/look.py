@@ -1677,7 +1677,7 @@ def overlay_rules(palette: dict, knobs: dict, pad: int, card_radius: int) -> str
     box_edge = "none" if flat else f"1px solid {palette['hairline']}"
     return (
         f"QFrame#toast {{ background: {toast['background']}; color: {toast['text']}; "
-        f"border: {toast_edge}; border-radius: {sheet_radius}px; padding: 8px 12px 8px 16px; }}"
+        f"border: {toast_edge}; border-radius: {sheet_radius}px; padding: 10px 16px; }}"
         f"QLabel#toastText {{ color: {toast['text']}; }}"
         # The toast's one button reads as part of its sentence.
         f"QPushButton#toastButton {{ background: transparent; color: {toast['action']}; border: none; "

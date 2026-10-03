@@ -234,21 +234,22 @@ def test_a_blocked_running_late_toasts_why(qapp: QApplication, window: NativeWin
 def test_the_notice_sits_under_the_bar_on_one_line(qapp: QApplication, window: NativeWindow) -> None:
     """A notice short enough for one line stays on one line, and it never covers the bar. Sized from
     a wrapped label it broke after "locked. 2". It sits over the foot of the hours now, far below the
-    bar at either text size."""
+    bar at either text size. This one is longer than the pill's 420 pixels allow on one line at either
+    text size, so it takes two and the pill grows to them: the old one-line height cut the second."""
     said = "Running late: 16:30–17:00 is now locked. 2 moved."
     for text in ("normal", "large"):
         window._look = {**window._look, "knobs": {**(window._look.get("knobs") or {}), "text": text}}
         window._apply_appearance()
         settled(qapp, window)
         window.toast.show_message("OK")
-        one_line = window.toast.height()
         window.toast.show_message(said)
         settled(qapp, window)
         bar_bottom = max(
             button.mapTo(window, button.rect().bottomLeft()).y()
             for button in (window.solve_button, window.more_button, window.settings_gear)
         )
-        assert (text, window.toast.height()) == (text, one_line)
+        label = window.toast.label
+        assert label.height() >= label.heightForWidth(label.width()), f"{text}: the second line is cut"
         assert window.toast.y() > bar_bottom, text
 
 
@@ -2751,3 +2752,33 @@ def test_a_short_busy_spell_takes_no_clicks_but_does_not_grey_the_top_bar(
     session.busy = False
     session.busy_changed.emit(False)
     assert plan.isEnabled(), "and it comes back at once"
+
+
+def test_mission_counts_focus_minutes_while_a_session_runs(qapp: QApplication, window: NativeWindow) -> None:
+    """Audit #12: four minutes into a session Mission control said "0 min · Focusing now". The minutes
+    count while the session runs, and a pause keeps what had passed."""
+    window._layout = {"main": "mission", "day": "one", "options": {}}
+    window._on_week()
+    qapp.processEvents()
+    block = next(b for b in window.session.blocks if b.get("assignment_id"))
+    window.session.start_focus(block["id"], 3)
+    wait_until(qapp, lambda: window.session.focus is not None)
+    began = window.session.now_ms()
+    window.session.now_ms = lambda: began + 4 * 60_000
+    window._refresh_layout()
+    qapp.processEvents()
+    mission = window.planner.currentWidget()
+
+    def plain(label: QLabel) -> str:
+        import re
+
+        return re.sub(r"<[^>]+>", "", label.text()).replace("&nbsp;", " ")
+
+    assert plain(mission.findChild(QLabel, "missionFocusValue")) == "4 min"
+    assert plain(mission.findChild(QLabel, "missionFocusLine")) == "Focusing now"
+    window.session.toggle_focus_pause()
+    window.session.now_ms = lambda: began + 9 * 60_000
+    window._refresh_layout()
+    qapp.processEvents()
+    assert plain(mission.findChild(QLabel, "missionFocusValue")) == "4 min"
+    assert plain(mission.findChild(QLabel, "missionFocusLine")) == "Focus paused"

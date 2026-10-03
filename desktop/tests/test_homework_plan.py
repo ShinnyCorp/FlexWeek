@@ -646,3 +646,78 @@ def test_homework_editor_refuses_each_field_in_its_own_words(
         assert "Value error" not in dialog.error.text()
     finally:
         dialog.close()
+
+
+def held_solves(window: NativeWindow) -> tuple[list[dict], list[Callable[[], None]]]:
+    """Every /api/solve the window sends is kept, unanswered, until a test releases it."""
+    sent: list[dict] = []
+    waiting: list[Callable[[], None]] = []
+    real = window.session.client.request
+
+    def request(verb, target, payload, on_success, on_error):
+        if verb == "POST" and target == "/api/solve":
+            sent.append(payload)
+            waiting.append(lambda: real(verb, target, payload, on_success, on_error))
+            return None
+        return real(verb, target, payload, on_success, on_error)
+
+    window.session.client.request = request  # type: ignore[method-assign]
+    return sent, waiting
+
+
+def test_twelve_fast_clicks_on_plan_make_one_plan(qapp: QApplication, window: NativeWindow) -> None:
+    sent, waiting = held_solves(window)
+    plan = window.findChild(QPushButton, "solveButton")
+    said: list[str] = []
+    window.session.status.connect(said.append)
+    for _ in range(12):
+        plan.click()
+        qapp.processEvents()
+    assert not plan.isEnabled(), "disabled from the first click, not after the busy look's delay"
+    assert len(sent) == 1
+    assert said.count("Planning…") == 1
+    waiting[0]()
+    settled(qapp, window)
+    assert plan.isEnabled(), "back once the result is in"
+    assert len(sent) == 1
+
+
+def test_plan_asked_for_in_other_ways_while_one_is_running_is_ignored(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    sent, waiting = held_solves(window)
+    window.session.solve()
+    for _ in range(11):
+        window.session.solve()
+        window.session.solve(everything=True)
+    assert len(sent) == 1
+    waiting[0]()
+    settled(qapp, window)
+    assert len(sent) == 1
+
+
+
+def test_the_rail_and_the_plan_panel_count_the_same_homework_without_a_time(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Audit #10 saw the rail say "Everything has a time." beside a plan panel saying "1 without a
+    time". Plan with one project too long for what is left today: both say one, and the rail's
+    "Everything has a time." is hidden. Not reproduced on 0.18.0: this test passes without a change."""
+    session = window.session
+    session.add_homework(
+        {
+            "id": "project",
+            "title": "Long project",
+            "due": thursday_iso(window) + "T23:00",
+            "estimate_min": 300,
+            "revision": 0,
+        }
+    )
+    session.save()
+    settled(qapp, window)
+    window.findChild(QPushButton, "solveButton").click()
+    settled(qapp, window)
+    assert window.plan_review.heading.text() == "Placed 1 · 1 without a time"
+    assert window.rail.waiting_count.text() == "1"
+    assert len(window.rail.chips()) == 1
+    assert not window.rail.none_waiting.isVisible()
