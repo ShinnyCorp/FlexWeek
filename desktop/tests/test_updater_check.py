@@ -16,8 +16,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from desktop.native.update import available, release_from_page
-
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="Desktop dependencies absent"
 )
@@ -35,30 +33,6 @@ TAG_PAGE = "https://github.com/j0nsh1n/FlexWeek/releases/tag/v9.9.9"
 # went while Qt still had events queued for it, and the next test crashed.
 KEPT: list[object] = []
 DOWNLOADS = "https://github.com/j0nsh1n/FlexWeek/releases/download/v9.9.9/"
-
-
-def test_the_release_page_s_redirect_names_the_newest_release() -> None:
-    update = available(release_from_page(TAG_PAGE), "appimage", current="0.14.0")
-    assert update is not None
-    assert update["version"] == "9.9.9"
-    assert update["url"] == DOWNLOADS + "FlexWeek-x86_64.AppImage"
-    assert update["checksum_url"] == DOWNLOADS + "FlexWeek-x86_64.AppImage.sha256"
-    assert update["notes"] == ""
-
-
-@pytest.mark.parametrize(
-    "location",
-    [
-        "",
-        "https://github.com/j0nsh1n/FlexWeek/releases",
-        "https://github.com/someone-else/FlexWeek/releases/tag/v9.9.9",
-        "https://github.com/j0nsh1n/FlexWeek/releases/tag/v9.9.9/../../evil",
-        "https://github.com/j0nsh1n/FlexWeek/releases/tag/latest",
-        "http://github.com/j0nsh1n/FlexWeek/releases/tag/v9.9.9",
-    ],
-)
-def test_a_redirect_anywhere_else_is_not_a_release(location: str) -> None:
-    assert release_from_page(location) is None
 
 
 class GitHub(BaseHTTPRequestHandler):

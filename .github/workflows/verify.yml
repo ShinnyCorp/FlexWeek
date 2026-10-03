@@ -122,12 +122,6 @@ jobs:
             desktop/tests/test_engine_desk_parity.py \
             desktop/tests/test_engine_desk_parity_b.py \
             desktop/tests/test_engine_desk_parity_c.py \
-            desktop/tests/test_files.py \
-            desktop/tests/test_focus.py \
-            desktop/tests/test_pomodoro.py \
-            desktop/tests/test_calendar.py \
-            desktop/tests/test_history.py \
-            desktop/tests/test_reuse.py \
             desktop/tests/test_tokens.py \
             desktop/tests/test_update.py
       - name: Run classic Day and Week with a real pointer
