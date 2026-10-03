@@ -1599,7 +1599,7 @@ class NativeWindow(QMainWindow):
         else:
             said = "Sent. This computer shows no notifications, so reminders appear in FlexWeek instead."
         if opened:
-            said += " Alarms play your Spotify link in the Spotify app, which it has just been given."
+            said += " Alarms and block starts play your Spotify link in the Spotify app, which it has just been given."
         self.setup_page.show_test_result(said)
 
     def _show_recovery(self, codes: list) -> None:
