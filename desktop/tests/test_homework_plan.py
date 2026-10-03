@@ -694,3 +694,30 @@ def test_plan_asked_for_in_other_ways_while_one_is_running_is_ignored(
     waiting[0]()
     settled(qapp, window)
     assert len(sent) == 1
+
+
+
+def test_the_rail_and_the_plan_panel_count_the_same_homework_without_a_time(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Audit #10 saw the rail say "Everything has a time." beside a plan panel saying "1 without a
+    time". Plan with one project too long for what is left today: both say one, and the rail's
+    "Everything has a time." is hidden. Not reproduced on 0.18.0: this test passes without a change."""
+    session = window.session
+    session.add_homework(
+        {
+            "id": "project",
+            "title": "Long project",
+            "due": thursday_iso(window) + "T23:00",
+            "estimate_min": 300,
+            "revision": 0,
+        }
+    )
+    session.save()
+    settled(qapp, window)
+    window.findChild(QPushButton, "solveButton").click()
+    settled(qapp, window)
+    assert window.plan_review.heading.text() == "Placed 1 · 1 without a time"
+    assert window.rail.waiting_count.text() == "1"
+    assert len(window.rail.chips()) == 1
+    assert not window.rail.none_waiting.isVisible()
