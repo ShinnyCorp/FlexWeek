@@ -56,6 +56,17 @@ Decisions taken 2026-10-02:
   0.18.1 grid and keyboard lane with finding 20.
 
 
+### From Jonathan while using the app (running list)
+Gripes reported in conversation. Each gets a J-number here, then a lane; the
+lane entry carries the number so nothing is lost between sessions.
+- J1 (2026-10-02): an End of 00:00 is refused ("End must be after Start") in
+  the block editor, Setup's school and activity hours, the School hours sheet
+  and study hours. Read it as 24:00, drawn as "24:00" (12:00 AM on the 12-hour
+  clock); the engine already accepts a block to the end of the day. Running
+  past midnight in general is not included. → 0.18.1 time entry.
+- J2 (2026-10-02): Duplicate stops on an overlap while drag only warns. →
+  decision above; 0.18.1 grid and keyboard.
+
 ### 0.18.1 — Broken things
 Twenty Fix-first findings, the engine leftovers, and eight Next-patch items
 that share code with a Fix-first one.
@@ -63,7 +74,7 @@ that share code with a Fix-first one.
 | Lane | Findings and work |
 |---|---|
 | Plumbing | Bell GC teardown error; the three adapter tests; the today.json mutation survivor; the interface-test tidy (T4); delete the differential tests, `desk_ref/` and `backend/tests/engine_ref/`; spec.md drift line for the CI desk step |
-| Time entry | #1 retyping a time fails; #33 Choose a time and New event default to the past; coupled #6 drop lands a step early, #7 pointer times off the grid, #53 Running late rounds down |
+| Time entry | #1 retyping a time fails; #33 Choose a time and New event default to the past; coupled #6 drop lands a step early, #7 pointer times off the grid, #53 Running late rounds down; J1 an End of 00:00 reads as 24:00 |
 | Grid and keyboard | #8 right-click rarely opens; #9 Shift+F10 at 00:00; #87 Tab never reaches a block; #39 focus jumps to ‹; #11 last hour unlabelled; coupled #42 Ctrl+Z after Plan; Duplicate and paste previews warn on overlap instead of blocking Save (decision above) |
 | Plan and Undo | #38 Undo twice locks the week; #40 toast clipped at 1024; #10 rail says everything has a time; #12 Mission opens without now; coupled #46 Plan not locked while planning |
 | Sheets | #49 seven OS windows become sheets; #70 Manage account layout; #34 Add homework scrolls inside itself; #48 conflict line; #91 disabled buttons unreadable; #79 clipped buttons; coupled #50 recovery codes save folder and warning, #76 Sign out as a sheet |
