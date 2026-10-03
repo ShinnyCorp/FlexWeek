@@ -15,12 +15,10 @@
   pure), the pydantic checks, `backend/models.py`'s Spotify and due-date copies, the `CATEGORIES`
   table in `calendar.py`, `TYPE_PT` in `tokens.py`, `custom_look.readability`, all Qt drawing, and
   `scripts/rig/drive.py`.
-- Tests: 389 Rust engine tests (engine, store and bindings; clippy and fmt clean). The Python gate on
-  this branch after the twin deletion: 3722 passed in 7 min 38 s (`fwtest gate --workers 4`). 259
-  Python tests were deleted because their Rust twin went red under a deliberate break; the
-  differential tests (`backend/tests/test_engine_parity.py`, `desktop/tests/test_engine_desk_parity*.py`)
-  stay until after the release. Before the deletion the gate on `engine/full-port` passed 4059 in
-  454 s; the shadow runs over the HTTP tests found no difference in responses or rows.
+- Tests: 396 Rust engine tests (engine, store and bindings; clippy and fmt clean). The Python gate on
+  `release/0.18.1`: 2790 passed in 7 min 8 s (`fwtest gate --workers 4`). The differential tests and
+  the frozen Python copies are deleted; the Python tests that remain guard Python-only code and the
+  interface.
 - CI on PR 35 at b0b2040 was green: verify, rig, Linux and Windows builds, CodeQL and the engine
   mutation job (32 cases). The packaged app after the engine has had only those builds.
 - Speed (`log.tsv`, pr35 review at 2e2f76a): placing the probe week 1.1 ms (0.17.2: 2.9 ms; with a
