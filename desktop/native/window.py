@@ -185,6 +185,8 @@ TRAVEL_WAIT_MS = 900
 # milliseconds, and greying for them flashed the whole top bar (Grok Bot's 0.17.0 audit, T7). They
 # take no clicks, keys or shortcuts from the moment it is busy (BusyGuard).
 BUSY_LOOK_MS = 250
+# Boxes that keep Ctrl+Z for the text typed in them.
+EDITABLE = (QLineEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)
 BUSY_BUTTONS = (
     "createAccount",
     "signIn",
@@ -547,6 +549,7 @@ class NativeWindow(QMainWindow):
         self._busy_guard = BusyGuard(self, lambda: self.session.busy)
         self._last_input = LastInput(self)
         self._relaying = False
+        QApplication.instance().focusChanged.connect(self._watch_field)
         self._busy_look = QTimer(self)
         self._busy_look.setSingleShot(True)
         self._busy_look.setInterval(BUSY_LOOK_MS)
@@ -3664,6 +3667,31 @@ class NativeWindow(QMainWindow):
         if button is not None:
             button.setFocus(Qt.FocusReason.ShortcutFocusReason)
 
+    def _watch_field(self, _old: QWidget | None, now: QWidget | None) -> None:
+        """A box on the week page that takes keys of its own is watched, so Ctrl+Z and Ctrl+Y reach the
+        week through it while it has nothing typed to undo."""
+        if (
+            isinstance(now, EDITABLE)
+            and not now.property("undoWatched")
+            and self._week_page.isAncestorOf(now)
+        ):
+            now.setProperty("undoWatched", True)
+            now.installEventFilter(self)
+
+    @staticmethod
+    def _undo_passes(box: QWidget, event: QKeyEvent) -> bool:
+        """Whether Ctrl+Z or Ctrl+Y in `box` belongs to the week: the box has no typed text of its own
+        to undo or redo."""
+        control = event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier)
+        if not control or event.key() not in (Qt.Key.Key_Z, Qt.Key.Key_Y):
+            return False
+        line = box.findChild(QLineEdit) if isinstance(box, (QAbstractSpinBox, QComboBox)) else box
+        if isinstance(line, QLineEdit):
+            return not (line.isUndoAvailable() or line.isRedoAvailable())
+        if isinstance(line, QPlainTextEdit):
+            return not (line.document().isUndoAvailable() or line.document().isRedoAvailable())
+        return True
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if self.session.account is None or QApplication.activeModalWidget() is not None:
             super().keyPressEvent(event)
@@ -3676,11 +3704,11 @@ class NativeWindow(QMainWindow):
             super().keyPressEvent(event)
             return
         focus = QApplication.focusWidget()
-        if isinstance(focus, (QLineEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)):
-            super().keyPressEvent(event)
-            return
         key = event.key()
         mods = event.modifiers()
+        if isinstance(focus, EDITABLE) and not self._undo_passes(focus, event):
+            super().keyPressEvent(event)
+            return
         if key == Qt.Key.Key_Escape and not mods and isinstance(focus, HoursCanvas) and not self._day_mode:
             self._focus_top_bar()
             event.accept()
@@ -3763,6 +3791,12 @@ class NativeWindow(QMainWindow):
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() != QEvent.Type.KeyPress:
+            return super().eventFilter(watched, event)
+        if isinstance(watched, EDITABLE):
+            # Only Ctrl+Z and Ctrl+Y, and only past a box with nothing of its own to undo.
+            if watched.property("undoWatched") and self._undo_passes(watched, event):
+                self.keyPressEvent(event)
+                return True
             return super().eventFilter(watched, event)
         key = event.key()
         mods = event.modifiers()
