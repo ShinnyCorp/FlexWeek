@@ -7,7 +7,10 @@ import importlib.util
 import os
 from collections.abc import Iterator
 
+import flexweek_engine  # type: ignore[import-untyped]
 import pytest
+
+from desktop.native import remind
 
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="Desktop dependencies absent"
@@ -132,3 +135,56 @@ def test_play_says_it_previews_a_block_start(qapp: QApplication) -> None:
     dialog = settings(qapp)
     assert dialog.play_tone.toolTip() == "Hear what plays when a block starts"
     dialog.close()
+
+
+# The reminder lead
+
+
+@pytest.fixture()
+def lead_of_seven(monkeypatch: pytest.MonkeyPatch) -> int:
+    monkeypatch.setattr(remind, "REMINDER_LEAD_DEFAULT_MIN", 7)
+    return 7
+
+
+def test_the_default_lead_is_the_engines_and_is_five() -> None:
+    assert remind.REMINDER_LEAD_DEFAULT_MIN == flexweek_engine.REMINDER_LEAD_DEFAULT_MIN == 5
+    assert remind.reminder_lead_min({}) == 5
+    assert remind.reminder_lead_min({"reminder_lead_min": None}) == 5
+    assert remind.reminder_lead_min({"reminder_lead_min": 12}) == 12
+
+
+def test_setup_settings_and_the_summary_start_from_the_one_default(qapp: QApplication) -> None:
+    first = setup_page(qapp)
+    first._show(REMINDERS)
+    assert first.lead.value() == 5
+    first.close()
+    later = setup_page(qapp, first_run=False, preferences={"reminders_enabled": True})
+    later._show(REMINDERS)
+    assert later.lead.value() == 5
+    later.close()
+    assert settings(qapp).lead.value() == 5
+    summary = setup_page(qapp, preferences={"reminders_enabled": True})
+    assert summary_reminders(summary).startswith("5 min before things start")
+    summary.close()
+
+
+def test_every_page_follows_the_default_when_it_changes(qapp: QApplication, lead_of_seven: int) -> None:
+    first = setup_page(qapp)
+    first._show(REMINDERS)
+    assert first.lead.value() == lead_of_seven
+    first.close()
+    later = setup_page(qapp, first_run=False, preferences={"reminders_enabled": True})
+    later._show(REMINDERS)
+    assert later.lead.value() == lead_of_seven
+    later.close()
+    dialog = settings(qapp)
+    assert dialog.lead.value() == lead_of_seven
+    dialog.close()
+    summary = setup_page(qapp, preferences={"reminders_enabled": True})
+    assert summary_reminders(summary).startswith(f"{lead_of_seven} min before things start")
+    summary.close()
+
+
+def summary_reminders(page: SetupPage) -> str:
+    page._fill_summary()
+    return page.summary_text()[3]

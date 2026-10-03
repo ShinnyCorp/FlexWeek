@@ -9,13 +9,16 @@ from datetime import datetime
 import flexweek_engine  # type: ignore[import-untyped]
 
 REMINDER_WINDOW_MIN = 2
+REMINDER_LEAD_DEFAULT_MIN = flexweek_engine.REMINDER_LEAD_DEFAULT_MIN
 ALARM_SNOOZE_MIN = 5
 ALARM_SNOOZE_MS = ALARM_SNOOZE_MIN * 60_000
 REMINDER_POLL_MS = 30_000
 
 
-def reminder_lead_min(prefs: dict | None, default: int = 5) -> int:
-    return int(flexweek_engine.remind_lead_min(json.dumps(prefs), default))
+def reminder_lead_min(prefs: dict | None, default: int | None = None) -> int:
+    """The saved lead, else `default`, else the engine's own default."""
+    fallback = REMINDER_LEAD_DEFAULT_MIN if default is None else default
+    return int(flexweek_engine.remind_lead_min(json.dumps(prefs), fallback))
 
 
 def start_alert_due(start_min: int, now_min: int, lead: int) -> bool:

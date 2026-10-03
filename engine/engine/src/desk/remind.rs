@@ -19,6 +19,8 @@ pub const REMINDER_WINDOW_MIN: i64 = 2;
 pub const REMINDER_POLL_MS: i64 = 30_000;
 pub const ALARM_SNOOZE_MIN: i64 = 5;
 pub const ALARM_SNOOZE_MS: i64 = ALARM_SNOOZE_MIN * 60_000;
+/// Minutes before a block that its reminder comes, until the student chooses another.
+pub const REMINDER_LEAD_DEFAULT_MIN: i64 = 5;
 
 /// `int(prefs["reminder_lead_min"])`, or the default when there are no prefs or the key is None.
 pub fn reminder_lead_min(prefs: &Value, default: i64) -> EngineResult<i128> {

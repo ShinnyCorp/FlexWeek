@@ -511,3 +511,12 @@ fn test_a_start_played_by_the_settings_song_is_not_also_announced_by_a_notice() 
     assert_eq!(now.len(), 1);
     assert_eq!(now[0]["title"], "Guitar practice starts now");
 }
+
+#[test]
+fn test_the_reminder_lead_default_is_five_minutes() {
+    assert_eq!(remind::REMINDER_LEAD_DEFAULT_MIN, 5);
+    assert_eq!(
+        remind::reminder_lead_min(&json!({}), remind::REMINDER_LEAD_DEFAULT_MIN).expect("lead"),
+        5
+    );
+}

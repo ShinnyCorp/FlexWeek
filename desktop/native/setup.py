@@ -68,6 +68,7 @@ from desktop.native.look import (
 )
 from desktop.native.motion import appear, fade_away, glide, hold_picture, switch_page
 from desktop.native.previews import Previews
+from desktop.native.remind import reminder_lead_min
 from desktop.native.settings import (
     DRAG_STEP_CHOICES,
     DRAG_STEP_QUESTION,
@@ -1080,7 +1081,7 @@ class SetupPage(QWidget):
     def _fill_reminders(self) -> None:
         prefs = self._state.preferences
         self.reminders.setChecked(prefs.get("reminders_enabled", True) is not False)
-        self.lead.setValue(int(prefs.get("reminder_lead_min", 10) if not self._state.first_run else 10))
+        self.lead.setValue(reminder_lead_min(None if self._state.first_run else prefs))
         self.lead.setEnabled(self.reminders.isChecked())
         tone = str(prefs.get("alarm_tone") or FALLBACK)
         self.tone_buttons.get(tone, self.tone_buttons[FALLBACK]).setChecked(True)
@@ -1589,7 +1590,7 @@ class SetupPage(QWidget):
         tone = str(prefs.get("alarm_tone") or FALLBACK)
         sound = "Spotify" if tone == "spotify" else TONE_NAMES.get(tone, tone.title())
         if prefs.get("reminders_enabled"):
-            reminders = f"{prefs.get('reminder_lead_min', 5)} min before things start · {sound}"
+            reminders = f"{reminder_lead_min(prefs)} min before things start · {sound}"
         else:
             reminders = f"Off · alarms ring {sound}"
         values = (

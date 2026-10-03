@@ -83,7 +83,7 @@ from desktop.native.look import (
 from desktop.native.look_editor import LookEditor
 from desktop.native.look_preview import look_choice, look_preview
 from desktop.native.motion import switch_page
-from desktop.native.remind import ALARM_SNOOZE_MIN
+from desktop.native.remind import ALARM_SNOOZE_MIN, reminder_lead_min
 from desktop.native.sound import Bell
 from desktop.native.spotify import SpotifyPlayer, open_in_app
 from desktop.native.tokens import SPACING
@@ -704,8 +704,7 @@ class SettingsPage(QWidget):
         self.lead.setObjectName("prefLead")
         self.lead.setRange(0, 120)
         self.lead.setSuffix(" min")
-        lead = preferences.get("reminder_lead_min")
-        self.lead.setValue(5 if lead is None else int(lead))
+        self.lead.setValue(reminder_lead_min(preferences))
         self.reminder_sound = Switch("Play a sound")
         self.reminder_sound.setObjectName("prefReminderSound")
         self.reminder_sound.setChecked(preferences.get("reminder_sound", True) is not False)

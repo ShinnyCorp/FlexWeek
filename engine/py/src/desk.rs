@@ -818,6 +818,10 @@ pyo3::create_exception!(
 pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<WeekHandle>()?;
     module.add("LookNameProblem", module.py().get_type::<LookNameProblem>())?;
+    module.add(
+        "REMINDER_LEAD_DEFAULT_MIN",
+        remind::REMINDER_LEAD_DEFAULT_MIN,
+    )?;
     crate::export!(
         module,
         history_same_value,
