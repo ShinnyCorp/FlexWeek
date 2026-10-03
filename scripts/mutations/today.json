@@ -37,8 +37,8 @@
  {
   "file": "engine/engine/src/desk/remind.rs",
   "name": "a block with a song has one notice at its start",
-  "old": "        if started && truthy(get(&block, \"spotify_url\")?) {\n            continue;\n        }\n",
-  "new": "        if started && truthy(get(&block, \"spotify_url\")?) {\n        }\n",
+  "old": "        if started && start_link(&block, default_link, sound_is_spotify)?.is_some() {\n            continue;\n        }\n",
+  "new": "        if started && start_link(&block, default_link, sound_is_spotify)?.is_some() {\n        }\n",
   "test": "cargo:flexweek-engine:desk_remind:test_a_block_with_a_song_is_announced_by_the_song_at_its_start"
  },
  {
