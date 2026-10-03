@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -25,6 +26,19 @@ if importlib.util.find_spec("PySide6") is not None:
 
     from desktop.native.settings import SettingsPage
     from desktop.native.sound import Bell
+
+
+@pytest.fixture()
+def bell(qapp: Any) -> Iterator[Any]:
+    """A Bell freed before the test ends. Its timer's slot points back at it, so a Bell left to the
+    collector sits in a cycle; the gate once failed this file's teardown on one."""
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    made = Bell()
+    yield made
+    made.stop()
+    made.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 class Recorder:
@@ -59,10 +73,9 @@ def prefs_dialog(qapp: Any, **extra: Any) -> Any:
     return SettingsPage(None, preferences, {}, {})
 
 
-def test_a_bell_says_whether_it_reached_the_sound_card_and_never_raises(qapp: Any) -> None:
+def test_a_bell_says_whether_it_reached_the_sound_card_and_never_raises(bell: Any) -> None:
     """A runner may have an audio device or none, so the answer is not fixed. What is fixed is that
     asking never raises: an alarm that throws loses its dialog too, which is worse than a silent one."""
-    bell = Bell()
     assert isinstance(bell.once("chime", 80), bool)
     played = bell.start("chime", 80)
     assert bell.ringing is played
@@ -71,10 +84,9 @@ def test_a_bell_says_whether_it_reached_the_sound_card_and_never_raises(qapp: An
     bell.stop()
 
 
-def test_tests_ring_at_no_volume(qapp: Any) -> None:
+def test_tests_ring_at_no_volume(bell: Any) -> None:
     """What tests, the rig and fwtest ring came out of the speakers of whoever was at the machine."""
     assert os.environ.get("FLEXWEEK_SILENT") == "1", "conftest silences every test"
-    bell = Bell()
     played = bell.once("chime", 80)
     if played:
         assert bell._sink is not None and bell._sink.volume() == 0.0
@@ -85,8 +97,8 @@ def test_tests_ring_at_no_volume(qapp: Any) -> None:
     bell.stop()
 
 
-def test_a_bell_asked_for_silence_does_not_go_looking_for_a_device(qapp: Any) -> None:
-    assert Bell().once("chime", 0) is False
+def test_a_bell_asked_for_silence_does_not_go_looking_for_a_device(bell: Any) -> None:
+    assert bell.once("chime", 0) is False
 
 
 def test_the_editor_offers_the_tones_and_the_spotify_option(qapp: Any) -> None:
