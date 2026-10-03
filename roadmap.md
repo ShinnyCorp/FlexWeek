@@ -134,10 +134,15 @@ that share code with a Fix-first one.
 | Update prompt | #64 offers the running version (re-check first: the code moved to Rust in 0.18.0) |
 | One source per setting | J3 Spotify link rules; J4 reminder lead default; J5 one cutoff picker; J6 snooze and window constants read from the engine |
 
-Order: plumbing → time entry, Plan and Undo, update prompt in parallel → grid
-and keyboard → sheets and deadlines after mockup round 1 (the seven sheets,
-the accent swatch grid, the amber conflict row, disabled labels in the text
-colour, tonal "Plan here", the Due row).
+Order: plumbing → time entry, Plan and Undo, update prompt, one source per
+setting in parallel → grid and keyboard → sheets and deadlines after mockup
+round 1. Mockup round 1 (2026-10-02, pictures in the scratch mockups folder):
+Jonathan approved as shown the sheet footer (filled main action, outlined
+Cancel), the swatch-grid colour picker, Sign out as a sheet, the amber
+conflict row, the disabled button in the text colour with a hint, and tonal
+"Plan here" at 36 px; dark is checked in the rig, not mocked. The Due row
+("Due by" plus "Do it at") waits on a demo of how "Do it at" flips when a
+block is dragged.
 - Complete when: every finding above is closed on the shipped build or
   re-checked away with evidence; the differential tests and frozen references
   are deleted; gate, rig and mutation runs green; CHANGELOG, release notes and
