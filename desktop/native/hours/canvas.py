@@ -36,6 +36,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QScrollArea, QWidget
 
+from backend.slots import SLOT_MIN
 from desktop.native import icons
 from desktop.native.calendar import DAYS, category_icon, create_click_range
 from desktop.native.fonts import at_scale, caption, time_font, weighted
@@ -1315,9 +1316,9 @@ class HoursCanvas(QWidget):
         self.hand.press(self, held, at, tap=lambda: self._quick_create(track, anchor), home=(self, track))
 
     def _step_at(self, track: LinearTrack, point: QPointF) -> int:
-        """The start of the step the pointer is in. Less half a step, so rounding floors."""
-        step = self.hand.step
-        return min(max(snap(track.minute_at(point) - step / 2, step), track.first), track.last - step)
+        """The quarter hour nearest the pointer, whatever the drag step: a click or a menu makes something
+        at a slot, and the start of the step the pointer was in put a click just short of 08:00 at 07:55."""
+        return min(max(snap(track.minute_at(point), SLOT_MIN), track.first), track.last - SLOT_MIN)
 
     def _edge_kind(self, rect: QRectF, upright: QPointF, track: LinearTrack) -> Gesture:
         """Resize from within a few pixels of the start or end edge of a block long enough to have
@@ -1385,7 +1386,7 @@ class HoursCanvas(QWidget):
         )
         if self.hand.busy or track is None:
             return False
-        step = self.hand.step
+        step = SLOT_MIN
         taken = [(item.start, item.end) for item in self.occurrences if item.day == track.day]
         minute = -(-track.first // step) * step
         while minute + step <= track.last and any(
