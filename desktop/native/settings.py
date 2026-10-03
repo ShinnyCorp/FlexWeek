@@ -83,7 +83,7 @@ from desktop.native.look import (
 from desktop.native.look_editor import LookEditor
 from desktop.native.look_preview import look_choice, look_preview
 from desktop.native.motion import switch_page
-from desktop.native.remind import ALARM_SNOOZE_MIN
+from desktop.native.remind import ALARM_SNOOZE_MIN, reminder_lead_min
 from desktop.native.sound import Bell
 from desktop.native.spotify import SpotifyPlayer, open_in_app
 from desktop.native.tokens import SPACING
@@ -178,10 +178,11 @@ PLANNING_STYLES = (
     ),
     ("manual", "I'll drag it onto the calendar myself", "The planning button becomes Suggest times."),
 )
+SPOTIFY_LINK_HINT = "Used by alarms and by blocks that start without a link of their own."
 SPOTIFY_TONE_NOTE = (
-    "Alarms play this in your Spotify app, and stopping the alarm stops it. A block with its own"
-    " Spotify link plays that link when it starts instead. Reminders and the end of a focus session"
-    " play Chime. Without the Spotify app, alarms open the link and ring Chime too."
+    f"{SPOTIFY_LINK_HINT} It plays in your Spotify app, and stopping the alarm stops it. Reminders before"
+    " a block and the end of a focus session play Chime. Without the Spotify app, the link opens and"
+    " Chime rings too."
 )
 # What only Today's app reads. Every other design has its own colours and shapes, so these changed
 # nothing there (measured 2026-09-21: not the view, not the top bar, apart from Corners on the bar).
@@ -223,7 +224,8 @@ HELP_KEYS = (
 FOCUS_RUNNING_NOTE = "Work on this until the timer ends. Pause if something interrupts you."
 FOCUS_ENDED_NOTE = "Time is up. Mark it finished, take a break, or give it more time."
 BLOCK_SONG_NOTE = (
-    "A block with a Spotify link plays it when the block starts. Dismiss or snooze it as you would an alarm."
+    "When a block starts, its own Spotify link plays. With none, the default link plays if the sound is"
+    " Spotify. Dismiss or snooze it as you would an alarm."
 )
 ALARM_NOTE = "An alarm rings at its time on the days you pick, until you dismiss or snooze it."
 # A checkbox's words do not wrap, so what needs more than a few words says it underneath.
@@ -702,8 +704,7 @@ class SettingsPage(QWidget):
         self.lead.setObjectName("prefLead")
         self.lead.setRange(0, 120)
         self.lead.setSuffix(" min")
-        lead = preferences.get("reminder_lead_min")
-        self.lead.setValue(5 if lead is None else int(lead))
+        self.lead.setValue(reminder_lead_min(preferences))
         self.reminder_sound = Switch("Play a sound")
         self.reminder_sound.setObjectName("prefReminderSound")
         self.reminder_sound.setChecked(preferences.get("reminder_sound", True) is not False)
@@ -734,7 +735,8 @@ class SettingsPage(QWidget):
         self.spotify.setObjectName("prefSpotify")
         self.spotify.setPlaceholderText("Paste a Spotify link")
         self.spotify.setCursorPosition(0)
-        # One sound for reminders, the end of a focus session and new alarms.
+        # The tone for reminders, the end of a focus session and new alarms. Spotify plays for alarms and
+        # block starts only.
         self.alarm_tone = QComboBox()
         self.alarm_tone.setObjectName("prefAlarmTone")
         for name in SOUNDS:
@@ -744,6 +746,7 @@ class SettingsPage(QWidget):
         self.play_tone = QPushButton("Play")
         self.play_tone.setObjectName("prefPlayTone")
         self.play_tone.setProperty("quiet", True)
+        self.play_tone.setToolTip("Hear what plays when a block starts")
         self.play_tone.clicked.connect(self._play_tone)
         self.tone_note = QLabel(SPOTIFY_TONE_NOTE)
         self.tone_note.setObjectName("prefToneNote")
@@ -833,7 +836,7 @@ class SettingsPage(QWidget):
         tone_row.addWidget(self.play_tone)
         tone_row.addStretch(1)
         reminder_form.addRow("Sound", tone_row)
-        reminder_form.addRow("Spotify link", self.spotify)
+        reminder_form.addRow("Default Spotify link", self.spotify)
         reminder_form.addRow(self.tone_note)
         reminder_form.addRow(self.dnd_override)
         reminder_form.addRow(_note(DND_NOTE, "prefDndNote"))

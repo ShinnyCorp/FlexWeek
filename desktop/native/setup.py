@@ -68,6 +68,7 @@ from desktop.native.look import (
 )
 from desktop.native.motion import appear, fade_away, glide, hold_picture, switch_page
 from desktop.native.previews import Previews
+from desktop.native.remind import reminder_lead_min
 from desktop.native.settings import (
     DRAG_STEP_CHOICES,
     DRAG_STEP_QUESTION,
@@ -86,6 +87,7 @@ from desktop.native.widgets import (
     ChoiceCard,
     DueField,
     FlowLayout,
+    fill_cutoff,
     rounded_picture,
 )
 from desktop.native.work_windows import WorkWindowsEditor
@@ -118,7 +120,10 @@ NOTES = {
     COLOURS: "The picture follows what you pick.",
     WEEK: "Fixed times the planner works around. Skip anything you don't have.",
     HOMEWORK: "You can change this any time in Settings, under Planning.",
-    REMINDERS: "One sound for reminders, alarms and the end of a focus session.",
+    REMINDERS: (
+        "Pick the sound for reminders, alarms and the end of a focus session. A Spotify song plays for"
+        " alarms and when a block starts; the rest play Chime."
+    ),
     FIRST: "Add up to three. You can add the rest any time.",
     DONE: "Everything here is also in Settings. Run setup again from Settings, under This computer.",
 }
@@ -127,7 +132,6 @@ SKIP_STEP_LABEL, SKIP_ALL_LABEL = "Skip this step", "Skip setup"
 OWN_LOOK_LABEL = "Choose my own look instead"
 MAX_ACTIVITIES = 8
 MAX_FIRST_HOMEWORK = 3
-CUTOFFS = ("20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00")
 # A tap adds one of these rather than making the student type hours for the usual answers.
 TEXT_SIZES = (("small", "Small"), ("normal", "Normal"), ("large", "Large"))
 SPACINGS = (("comfortable", "Comfortable"), ("compact", "Compact"))
@@ -832,9 +836,7 @@ class SetupPage(QWidget):
         self.cutoff = QComboBox()
         self.cutoff.setObjectName("setupCutoff")
         self.cutoff.setAccessibleName("No homework after")
-        self.cutoff.addItem("No limit", None)
-        for hhmm in CUTOFFS:
-            self.cutoff.addItem(hhmm_text(hhmm), hhmm)
+        fill_cutoff(self.cutoff, None)
         box.addWidget(_row(_label("No homework after", "setupFieldLabel", wrap=False), self.cutoff))
         return content
 
@@ -922,10 +924,12 @@ class SetupPage(QWidget):
         self.tones.addButton(spotify)
         self.tone_buttons["spotify"] = spotify
         box.addWidget(spotify)
+        self.spotify_label = _label("Default Spotify link", "setupFieldLabel", wrap=False)
+        box.addWidget(self.spotify_label)
         self.spotify = QLineEdit()
         self.spotify.setObjectName("setupSpotify")
         self.spotify.setPlaceholderText("Paste a link from Spotify: open.spotify.com/track/… or /playlist/…")
-        self.spotify.setAccessibleName("Spotify link")
+        self.spotify.setAccessibleName("Default Spotify link")
         self.spotify_note = _label(SPOTIFY_TONE_NOTE, "setupHint")
         box.addWidget(self.spotify)
         box.addWidget(self.spotify_note)
@@ -1058,8 +1062,7 @@ class SetupPage(QWidget):
                 )
         if not self.activities:
             self._add_activity()
-        cutoff = self._state.preferences.get("day_cutoff")
-        self.cutoff.setCurrentIndex(max(0, self.cutoff.findData(cutoff)))
+        fill_cutoff(self.cutoff, self._state.preferences.get("day_cutoff"))
         self._follow_school()
 
     def _follow_school(self) -> None:
@@ -1075,7 +1078,7 @@ class SetupPage(QWidget):
     def _fill_reminders(self) -> None:
         prefs = self._state.preferences
         self.reminders.setChecked(prefs.get("reminders_enabled", True) is not False)
-        self.lead.setValue(int(prefs.get("reminder_lead_min", 10) if not self._state.first_run else 10))
+        self.lead.setValue(reminder_lead_min(None if self._state.first_run else prefs))
         self.lead.setEnabled(self.reminders.isChecked())
         tone = str(prefs.get("alarm_tone") or FALLBACK)
         self.tone_buttons.get(tone, self.tone_buttons[FALLBACK]).setChecked(True)
@@ -1402,6 +1405,7 @@ class SetupPage(QWidget):
     def _follow_tone(self) -> None:
         spotify = self._tone() == "spotify"
         self.spotify.setEnabled(spotify)
+        self.spotify_label.setVisible(spotify)
         self.spotify_note.setVisible(spotify)
 
     def _spotify_link(self) -> str | None:
@@ -1583,7 +1587,7 @@ class SetupPage(QWidget):
         tone = str(prefs.get("alarm_tone") or FALLBACK)
         sound = "Spotify" if tone == "spotify" else TONE_NAMES.get(tone, tone.title())
         if prefs.get("reminders_enabled"):
-            reminders = f"{prefs.get('reminder_lead_min', 5)} min before things start · {sound}"
+            reminders = f"{reminder_lead_min(prefs)} min before things start · {sound}"
         else:
             reminders = f"Off · alarms ring {sound}"
         values = (

@@ -28,6 +28,22 @@ fn due_reminders(
     lead_min: i64,
     fired: &HashSet<String>,
 ) -> Vec<Value> {
+    due_reminders_with(
+        blocks, trace, today_iso, now_min, lead_min, fired, "", false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn due_reminders_with(
+    blocks: &[Value],
+    trace: Option<&Value>,
+    today_iso: &str,
+    now_min: i64,
+    lead_min: i64,
+    fired: &HashSet<String>,
+    default_link: &str,
+    sound_is_spotify: bool,
+) -> Vec<Value> {
     remind::due_reminders(
         &json!(blocks),
         trace.unwrap_or(&Value::Null),
@@ -36,6 +52,8 @@ fn due_reminders(
         lead_min,
         &sorted(fired),
         true,
+        &json!(default_link),
+        sound_is_spotify,
     )
     .expect("due")
 }
@@ -47,13 +65,30 @@ fn due_songs(
     now_min: i64,
     played: &HashSet<String>,
 ) -> Vec<Value> {
+    due_songs_with(blocks, trace, today_iso, now_min, 0, played, "", false)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn due_songs_with(
+    blocks: &[Value],
+    trace: Option<&Value>,
+    today_iso: &str,
+    now_min: i64,
+    lead_min: i64,
+    played: &HashSet<String>,
+    default_link: &str,
+    sound_is_spotify: bool,
+) -> Vec<Value> {
     remind::due_songs(
         &json!(blocks),
         trace.unwrap_or(&Value::Null),
         today_iso,
         now_min,
+        lead_min,
         &sorted(played),
         true,
+        &json!(default_link),
+        sound_is_spotify,
     )
     .expect("songs")
 }
@@ -345,5 +380,143 @@ fn test_a_block_with_a_song_is_announced_by_the_song_at_its_start() {
     assert_eq!(
         due_songs(&[practice()], None, THURSDAY, start, &HashSet::new()),
         Vec::<Value>::new()
+    );
+}
+
+const DEFAULT_SONG: &str = "https://open.spotify.com/playlist/settings";
+const OWN_SONG: &str = "https://open.spotify.com/track/own";
+
+/// The links of the songs due at each minute checked in turn, with what has played kept.
+fn sung(
+    minutes: std::ops::Range<i64>,
+    lead: i64,
+    block: &Value,
+    default_link: &str,
+    sound_is_spotify: bool,
+) -> Vec<(i64, String)> {
+    let mut played: HashSet<String> = HashSet::new();
+    let mut seen = Vec::new();
+    for minute in minutes {
+        let due = due_songs_with(
+            std::slice::from_ref(block),
+            None,
+            THURSDAY,
+            minute,
+            lead,
+            &played,
+            default_link,
+            sound_is_spotify,
+        );
+        for song in due {
+            played.insert(song["id"].as_str().expect("id").to_string());
+            seen.push((
+                minute,
+                song["spotify_url"].as_str().expect("url").to_string(),
+            ));
+        }
+    }
+    seen
+}
+
+#[test]
+fn test_a_block_without_a_link_plays_the_settings_link_when_the_sound_is_spotify() {
+    assert_eq!(
+        sung(18 * 60 + 40..19 * 60, 5, &practice(), DEFAULT_SONG, true),
+        [(18 * 60 + 45, DEFAULT_SONG.to_string())]
+    );
+}
+
+#[test]
+fn test_a_block_with_its_own_link_plays_that_link_not_the_settings_one() {
+    let block = with(practice(), json!({"spotify_url": OWN_SONG}));
+    assert_eq!(
+        sung(18 * 60 + 40..19 * 60, 5, &block, DEFAULT_SONG, true),
+        [(18 * 60 + 45, OWN_SONG.to_string())]
+    );
+    // The block's own link plays whatever the chosen sound is, as before.
+    assert_eq!(
+        sung(18 * 60 + 40..19 * 60, 5, &block, DEFAULT_SONG, false),
+        [(18 * 60 + 45, OWN_SONG.to_string())]
+    );
+}
+
+#[test]
+fn test_a_block_without_a_link_plays_nothing_when_the_sound_is_not_spotify() {
+    assert_eq!(
+        sung(18 * 60 + 40..19 * 60, 5, &practice(), DEFAULT_SONG, false),
+        []
+    );
+}
+
+#[test]
+fn test_a_block_without_a_link_plays_nothing_when_the_settings_link_is_empty() {
+    assert_eq!(sung(18 * 60 + 40..19 * 60, 5, &practice(), "", true), []);
+}
+
+#[test]
+fn test_a_song_caught_late_still_plays_within_the_reminder_lead() {
+    // 18:45 start, 10-minute lead, first look at 18:53: eight minutes late, inside the lead.
+    assert_eq!(
+        sung(18 * 60 + 53..19 * 60, 10, &practice(), DEFAULT_SONG, true),
+        [(18 * 60 + 53, DEFAULT_SONG.to_string())]
+    );
+    // One minute past the lead is too late.
+    assert_eq!(
+        sung(18 * 60 + 56..19 * 60, 10, &practice(), DEFAULT_SONG, true),
+        []
+    );
+}
+
+#[test]
+fn test_a_short_lead_never_narrows_the_song_window_below_two_minutes() {
+    // The window was two minutes before it followed the lead; a lead of 0 or 1 must not shrink it.
+    for lead in [0, 1] {
+        assert_eq!(
+            sung(18 * 60 + 47..19 * 60, lead, &practice(), DEFAULT_SONG, true),
+            [(18 * 60 + 47, DEFAULT_SONG.to_string())],
+            "lead {lead}"
+        );
+        assert_eq!(
+            sung(18 * 60 + 48..19 * 60, lead, &practice(), DEFAULT_SONG, true),
+            [],
+            "lead {lead}"
+        );
+    }
+}
+
+#[test]
+fn test_a_start_played_by_the_settings_song_is_not_also_announced_by_a_notice() {
+    let start = 18 * 60 + 45;
+    let none = HashSet::new();
+    let notice = |sound_is_spotify: bool, minute: i64| {
+        due_reminders_with(
+            &[practice()],
+            None,
+            THURSDAY,
+            minute,
+            5,
+            &none,
+            DEFAULT_SONG,
+            sound_is_spotify,
+        )
+    };
+    // Ahead of the start the notice says so, whatever the sound: reminders stay Chime.
+    let soon = notice(true, start - 5);
+    assert_eq!(soon.len(), 1);
+    assert_eq!(soon[0]["title"], "Guitar practice starts soon");
+    // At the start the song announces it, so the notice stays quiet.
+    assert_eq!(notice(true, start), Vec::<Value>::new());
+    // With the sound on a tone there is no song, so the notice does announce it.
+    let now = notice(false, start);
+    assert_eq!(now.len(), 1);
+    assert_eq!(now[0]["title"], "Guitar practice starts now");
+}
+
+#[test]
+fn test_the_reminder_lead_default_is_five_minutes() {
+    assert_eq!(remind::REMINDER_LEAD_DEFAULT_MIN, 5);
+    assert_eq!(
+        remind::reminder_lead_min(&json!({}), remind::REMINDER_LEAD_DEFAULT_MIN).expect("lead"),
+        5
     );
 }

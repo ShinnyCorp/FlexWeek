@@ -2822,15 +2822,21 @@ class NativeSession(QObject):
     def _due_block_alerts(
         self, blocks: list[dict], trace: dict | None, clock: dict, prefs: dict
     ) -> tuple[list[dict], list[dict]]:
-        """Today's reminders, and the songs of blocks with a Spotify link that are starting."""
+        """Today's reminders, and the songs of blocks that are starting."""
         notices: list[dict] = []
+        lead = reminder_lead_min(prefs)
+        # A bad saved link is left out here, as it is when the alarm rings.
+        default_link = self.spotify_url(prefs.get("default_spotify_url") or "") or None
+        sound_is_spotify = prefs.get("alarm_tone") == "spotify"
         due = due_reminders(
             blocks=blocks,
             trace=trace,
             today_iso=clock["iso"],
             now_min=clock["minute"],
-            lead_min=reminder_lead_min(prefs),
+            lead_min=lead,
             fired=self.fired_reminders,
+            default_link=default_link,
+            sound_is_spotify=sound_is_spotify,
         )
         for item in due:
             self.fired_reminders.add(item["key"])
@@ -2840,7 +2846,10 @@ class NativeSession(QObject):
             trace=trace,
             today_iso=clock["iso"],
             now_min=clock["minute"],
+            lead_min=lead,
             played=self.played_songs,
+            default_link=default_link,
+            sound_is_spotify=sound_is_spotify,
         )
         self.played_songs.update(song["id"] for song in songs)
         return notices, songs
