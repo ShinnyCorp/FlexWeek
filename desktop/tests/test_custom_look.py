@@ -8,6 +8,7 @@ import pytest
 from desktop.native.calendar import CATEGORIES
 from desktop.native.custom_look import (
     apply_fix,
+    import_look,
     readability,
 )
 from desktop.native.look import (
@@ -269,3 +270,11 @@ def test_grey_text_names_every_block_colour_and_its_fix_reads_on_the_blocks_too(
     text = next(p for p in readability(dark_study) if p.field == ("colours", "text"))
     left = readability(apply_fix(dark_study, text))
     assert [p.field for p in left if p.field != ("accent",)] == [("categories", "study")]
+
+
+def test_an_import_with_a_not_a_number_value_leaves_it_out_and_says_so() -> None:
+    """Python's JSON reader accepts NaN, which no file format and no engine value allows. The wrapper
+    rewrites it before the engine sees it, so the look keeps what it can and names the bad field."""
+    got = import_look('{"kind": "FlexWeek look", "version": 1, "base": "poster", "corners": NaN}')
+    assert got.look == {"base": "poster", "name": "My look"}
+    assert len(got.problems) == 1 and "Corners" in got.problems[0]

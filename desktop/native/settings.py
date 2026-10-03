@@ -83,7 +83,7 @@ from desktop.native.look import (
 from desktop.native.look_editor import LookEditor
 from desktop.native.look_preview import look_choice, look_preview
 from desktop.native.motion import switch_page
-from desktop.native.remind import ALARM_SNOOZE_MIN
+from desktop.native.remind import ALARM_SNOOZE_MIN, reminder_lead_min
 from desktop.native.sound import Bell
 from desktop.native.spotify import SpotifyPlayer, open_in_app
 from desktop.native.tokens import SPACING
@@ -93,6 +93,7 @@ from desktop.native.weekmodel import hhmm_text, length_label
 from desktop.native.widgets import (
     CARD_GAP,
     CARD_WIDTH_PAD,
+    SHEET_FORM,
     SHEET_LIST,
     CardGrid,
     ChoiceCard,
@@ -107,8 +108,10 @@ from desktop.native.widgets import (
     bare,
     even_fields,
     even_labels,
-    info_card,
     overlay_scroll_bars,
+    sheet_button,
+    sheet_footer,
+    sheet_section,
 )
 
 UPDATE_MIN_WIDTH = 420
@@ -178,10 +181,11 @@ PLANNING_STYLES = (
     ),
     ("manual", "I'll drag it onto the calendar myself", "The planning button becomes Suggest times."),
 )
+SPOTIFY_LINK_HINT = "Used by alarms and by blocks that start without a link of their own."
 SPOTIFY_TONE_NOTE = (
-    "Alarms play this in your Spotify app, and stopping the alarm stops it. A block with its own"
-    " Spotify link plays that link when it starts instead. Reminders and the end of a focus session"
-    " play Chime. Without the Spotify app, alarms open the link and ring Chime too."
+    f"{SPOTIFY_LINK_HINT} It plays in your Spotify app, and stopping the alarm stops it. Reminders before"
+    " a block and the end of a focus session play Chime. Without the Spotify app, the link opens and"
+    " Chime rings too."
 )
 # What only Today's app reads. Every other design has its own colours and shapes, so these changed
 # nothing there (measured 2026-09-21: not the view, not the top bar, apart from Corners on the bar).
@@ -223,7 +227,8 @@ HELP_KEYS = (
 FOCUS_RUNNING_NOTE = "Work on this until the timer ends. Pause if something interrupts you."
 FOCUS_ENDED_NOTE = "Time is up. Mark it finished, take a break, or give it more time."
 BLOCK_SONG_NOTE = (
-    "A block with a Spotify link plays it when the block starts. Dismiss or snooze it as you would an alarm."
+    "When a block starts, its own Spotify link plays. With none, the default link plays if the sound is"
+    " Spotify. Dismiss or snooze it as you would an alarm."
 )
 ALARM_NOTE = "An alarm rings at its time on the days you pick, until you dismiss or snooze it."
 # A checkbox's words do not wrap, so what needs more than a few words says it underneath.
@@ -702,8 +707,7 @@ class SettingsPage(QWidget):
         self.lead.setObjectName("prefLead")
         self.lead.setRange(0, 120)
         self.lead.setSuffix(" min")
-        lead = preferences.get("reminder_lead_min")
-        self.lead.setValue(5 if lead is None else int(lead))
+        self.lead.setValue(reminder_lead_min(preferences))
         self.reminder_sound = Switch("Play a sound")
         self.reminder_sound.setObjectName("prefReminderSound")
         self.reminder_sound.setChecked(preferences.get("reminder_sound", True) is not False)
@@ -734,7 +738,8 @@ class SettingsPage(QWidget):
         self.spotify.setObjectName("prefSpotify")
         self.spotify.setPlaceholderText("Paste a Spotify link")
         self.spotify.setCursorPosition(0)
-        # One sound for reminders, the end of a focus session and new alarms.
+        # The tone for reminders, the end of a focus session and new alarms. Spotify plays for alarms and
+        # block starts only.
         self.alarm_tone = QComboBox()
         self.alarm_tone.setObjectName("prefAlarmTone")
         for name in SOUNDS:
@@ -744,6 +749,7 @@ class SettingsPage(QWidget):
         self.play_tone = QPushButton("Play")
         self.play_tone.setObjectName("prefPlayTone")
         self.play_tone.setProperty("quiet", True)
+        self.play_tone.setToolTip("Hear what plays when a block starts")
         self.play_tone.clicked.connect(self._play_tone)
         self.tone_note = QLabel(SPOTIFY_TONE_NOTE)
         self.tone_note.setObjectName("prefToneNote")
@@ -833,7 +839,7 @@ class SettingsPage(QWidget):
         tone_row.addWidget(self.play_tone)
         tone_row.addStretch(1)
         reminder_form.addRow("Sound", tone_row)
-        reminder_form.addRow("Spotify link", self.spotify)
+        reminder_form.addRow("Default Spotify link", self.spotify)
         reminder_form.addRow(self.tone_note)
         reminder_form.addRow(self.dnd_override)
         reminder_form.addRow(_note(DND_NOTE, "prefDndNote"))
@@ -1514,24 +1520,20 @@ class RestoreDialog(QDialog):
 
 class AccountDialog(Dialog):
     def __init__(self, parent: QWidget | None, remaining: int | None, storage: dict | None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Account")
+        super().__init__(parent, sheet=True)
+        self.setObjectName("accountDialog")
         self.action: str | None = None
-        layout = QVBoxLayout(self)
+        layout = self.card_body("Manage account", SHEET_FORM)
         where = "your FlexWeek server" if (storage or {}).get("mode") == "hosted" else "this computer"
         info = QLabel(
             f"Signed in as {(storage or {}).get('username') or ''}. Your plans are saved on {where}."
         )
         info.setWordWrap(True)
-        # Word wrap alone does not bound a label: it still claims the width of its longest
-        # unwrapped line, which made this dialog 1338 pixels wide. The button row was not the
-        # cause; with the label bounded a plain row measures 560 by 260.
-        info.setMaximumWidth(ACCOUNT_MAX_WIDTH)
         info.setObjectName("accountLocation")
         layout.addWidget(info)
         remaining_text = "Recovery-code status unavailable."
         if remaining == 0:
-            remaining_text = "No unused recovery codes remain. Replace them before logging out."
+            remaining_text = "No unused recovery codes remain. Replace them before signing out."
         elif remaining == 1:
             remaining_text = "1 unused recovery code remains."
         elif isinstance(remaining, int):
@@ -1539,11 +1541,16 @@ class AccountDialog(Dialog):
         status = QLabel(remaining_text)
         status.setObjectName("recoveryCount")
         status.setProperty("problem", remaining == 0)
-        self.setMinimumWidth(ACCOUNT_MIN_WIDTH)
-        # Three cards, each about one thing (decision 23 of 0.17): eight buttons in three wrapped rows
-        # said nothing about which went with the two fields.
-        password, password_box = info_card("Password", ACCOUNT_PASSWORD_NOTE)
-        form = Form()
+        # One body that scrolls past 90 % of the window, its answers fixed under it. Sections, each about
+        # one thing, with every label above its field (#70: the two password boxes were drawn over each
+        # other and the red action was cut off).
+        left = Qt.AlignmentFlag.AlignLeft
+        body = QWidget()
+        column = QVBoxLayout(body)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING[2])
+        sheet_section(column, "Password", ACCOUNT_PASSWORD_NOTE)
+        form = Form(stacked=True)
         self.current_password = QLineEdit()
         self.current_password.setEchoMode(QLineEdit.EchoMode.Password)
         self.current_password.setObjectName("currentPassword")
@@ -1552,46 +1559,46 @@ class AccountDialog(Dialog):
         self.new_password.setEchoMode(QLineEdit.EchoMode.Password)
         self.new_password.setObjectName("newPassword")
         form.addRow("New password", self.new_password)
-        password_box.addLayout(form)
-        codes, codes_box = info_card("Recovery codes", ACCOUNT_CODES_NOTE)
-        codes_box.addWidget(status)
-        data, data_box = info_card("Your data", ACCOUNT_DATA_NOTE)
+        column.addLayout(form)
+        # Replace password is the answer to the two fields above; the rest open something else.
+        column.addWidget(self._action("Replace password", "changePassword", "password", False), 0, left)
+        sheet_section(column, "Recovery codes", ACCOUNT_CODES_NOTE)
+        column.addWidget(status)
+        column.addWidget(self._action("Replace recovery codes", "replaceCodes", "codes"), 0, left)
+        sheet_section(column, "Your data", ACCOUNT_DATA_NOTE)
         files = FlowLayout()
-        cards = {"password": password_box, "codes": codes_box, "data": files}
-        for words, name, action, where in (
-            ("Replace password", "changePassword", "password", "password"),
-            ("Replace recovery codes", "replaceCodes", "codes", "codes"),
-            ("Export account", "exportAccount", "export", "data"),
-            ("Import account", "importAccount", "import", "data"),
-            ("Export week", "exportWeek", "week", "data"),
-            ("Export day", "exportDay", "day", "data"),
-            ("Import week or day file", "importFile", "import-week", "data"),
+        for words, name, action in (
+            ("Export account", "exportAccount", "export"),
+            ("Import account", "importAccount", "import"),
+            ("Export week", "exportWeek", "week"),
+            ("Export day", "exportDay", "day"),
+            ("Import week or day file", "importFile", "import-week"),
         ):
-            button = QPushButton(words)
-            button.setObjectName(name)
-            button.setProperty("action", action)
-            # Replace password is the answer to the two fields above; the rest open something else.
-            button.setProperty("quiet", action != "password")
-            button.clicked.connect(self._set)
-            if where == "data":
-                files.addWidget(button)
-            else:
-                cards[where].addWidget(button, 0, Qt.AlignmentFlag.AlignLeft)
-        data_box.addLayout(files)
-        # Deleting is words in red, away from the rest, as it is in the editors.
+            files.addWidget(self._action(words, name, action))
+        column.addLayout(files)
+        # Deleting is in red, apart from the rest, and shown whole: an outlined button, not words.
         delete = QPushButton("Delete account")
         delete.setObjectName("deleteAccount")
         delete.setProperty("action", "delete")
+        delete.setProperty("outlined", True)
+        delete.setProperty("danger", True)
         delete.setAutoDefault(False)
         delete.setCursor(Qt.CursorShape.PointingHandCursor)
         delete.clicked.connect(self._set)
-        data_box.addWidget(delete, 0, Qt.AlignmentFlag.AlignLeft)
-        for card in (password, codes, data):
-            layout.addWidget(card)
-        close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        close.button(QDialogButtonBox.StandardButton.Close).setProperty("quiet", True)
-        close.rejected.connect(self.reject)
-        layout.addWidget(close)
+        column.addSpacing(SPACING[2])
+        column.addWidget(delete, 0, left)
+        layout.addWidget(FitScroll(body, "accountScroll"), 1)
+        close = sheet_button("Close", "outlined", "accountClose")
+        close.clicked.connect(self.reject)
+        sheet_footer(layout, close, divided=True)
+
+    def _action(self, words: str, name: str, action: str, outlined: bool = True) -> QPushButton:
+        button = QPushButton(words)
+        button.setObjectName(name)
+        button.setProperty("action", action)
+        button.setProperty("outlined", outlined)
+        button.clicked.connect(self._set)
+        return button
 
     def _set(self) -> None:
         self.action = self.sender().property("action")

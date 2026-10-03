@@ -197,8 +197,9 @@ def test_the_default_file_name_is_offered_to_the_dialog(
         return "", ""
 
     monkeypatch.setattr(window_module.QFileDialog, "getSaveFileName", staticmethod(answer))
-    recovering.recovery_save.click()
-    assert asked == ["flexweek-recovery-codes.txt"]
+    # Save… opens a sheet first (test_sheets.py); the file dialog is what the sheet's answer opens.
+    recovering._pick_recovery_file()
+    assert [Path(name).name for name in asked] == ["flexweek-recovery-codes.txt"]
 
 
 def test_both_cards_show_the_icon_beside_the_wordmark(

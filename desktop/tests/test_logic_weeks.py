@@ -3,16 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
-from datetime import date, timedelta
-
-import pytest
 
 from desktop.native.calendar import date_for_day
 from desktop.tests import logic_support
 
-pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("PySide6") is None, reason="Desktop dependencies absent"
-)
+pytestmark = logic_support.NEEDS_DESKTOP
 qapp = logic_support.qapp
 server = logic_support.server
 
@@ -21,17 +16,9 @@ if importlib.util.find_spec("PySide6") is not None:
 
     from desktop.native.controller import NativeSession
     from desktop.server import LocalServer
-    from desktop.tests.logic_support import fail_once, fixed, settled, signed_in
+    from desktop.tests.logic_support import fail_once, fixed, settled, signed_in, titles, week_after
 
 STORAGE_DOWN = "Storage is unavailable. Keep your changes and try again shortly."
-
-
-def titles(session: NativeSession) -> list[str]:
-    return [block["title"] for block in session.blocks]
-
-
-def week_after(week_start: str) -> str:
-    return (date.fromisoformat(week_start) + timedelta(days=7)).isoformat()
 
 
 def two_saved_weeks(qapp: QApplication, session: NativeSession) -> tuple[str, str]:
@@ -48,7 +35,7 @@ def two_saved_weeks(qapp: QApplication, session: NativeSession) -> tuple[str, st
     settled(qapp, session)
     session.load_week(first)
     settled(qapp, session)
-    assert (session.week_start, titles(session), session.revision) == (first, ["Soccer"], 1)
+    assert (session.week_start, titles(session.blocks), session.revision) == (first, ["Soccer"], 1)
     return first, second
 
 
@@ -60,7 +47,7 @@ def test_a_failed_week_load_keeps_the_week_on_screen(qapp: QApplication, server:
     settled(qapp, session)
     assert session.message == STORAGE_DOWN
     assert session.week_start == first
-    assert titles(session) == ["Soccer"]
+    assert titles(session.blocks) == ["Soccer"]
 
 
 def test_a_save_after_a_failed_week_load_does_not_overwrite_the_other_week(
@@ -77,10 +64,10 @@ def test_a_save_after_a_failed_week_load_does_not_overwrite_the_other_week(
     assert session.message == "Saved."
     session.load_week(second)
     settled(qapp, session)
-    assert (session.week_start, titles(session), session.revision) == (second, ["Piano"], 1)
+    assert (session.week_start, titles(session.blocks), session.revision) == (second, ["Piano"], 1)
     session.load_week(first)
     settled(qapp, session)
-    assert (session.week_start, titles(session), session.revision) == (first, ["Soccer", "Chess"], 2)
+    assert (session.week_start, titles(session.blocks), session.revision) == (first, ["Soccer", "Chess"], 2)
 
 
 def test_stepping_outside_the_supported_dates_stays_on_the_edge_week(
@@ -96,7 +83,7 @@ def test_stepping_outside_the_supported_dates_stays_on_the_edge_week(
     session.load_week("1999-12-20")
     settled(qapp, session)
     assert session.week_start == "1999-12-27"
-    assert titles(session) == ["Soccer"]
+    assert titles(session.blocks) == ["Soccer"]
     session.load_week("2099-12-28")
     settled(qapp, session)
     assert session.week_start == "2099-12-28"
@@ -123,13 +110,13 @@ def test_a_failed_assignments_load_does_not_switch_the_week(qapp: QApplication, 
     session.load_week(second)
     settled(qapp, session)
     assert session.week_start == first
-    assert titles(session) == ["Soccer"]
+    assert titles(session.blocks) == ["Soccer"]
     session.add_block(fixed("chess", "Chess", 2, "15:00"))
     session.save()
     settled(qapp, session)
     session.undo()
     settled(qapp, session)
-    assert titles(session) == ["Soccer"]
+    assert titles(session.blocks) == ["Soccer"]
 
 
 def test_an_unsaved_week_is_kept_when_opening_another(qapp: QApplication, server: LocalServer) -> None:
@@ -145,13 +132,13 @@ def test_an_unsaved_week_is_kept_when_opening_another(qapp: QApplication, server
     session.load_week(second)
     settled(qapp, session)
     assert session.week_start == second
-    assert titles(session) == []
+    assert titles(session.blocks) == []
     assert session.selected_day == date_for_day(second, 2)
     session.load_week(first)
     settled(qapp, session)
     assert session.week_start == first
-    assert titles(session) == ["Soccer", "Chess"]
+    assert titles(session.blocks) == ["Soccer", "Chess"]
     assert session.selected_day == wednesday
     session.reload()
     settled(qapp, session)
-    assert titles(session) == ["Soccer"]
+    assert titles(session.blocks) == ["Soccer"]

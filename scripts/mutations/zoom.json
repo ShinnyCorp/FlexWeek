@@ -128,7 +128,7 @@
  {
   "file": "desktop/native/layouts/mission.py",
   "name": "Mission opens at midnight",
-  "old": "        scroll.open_at(\n            (week.week_start, day) if is_day else week.week_start,\n            lanes_end(items),\n            end=True,\n            keep=scene.minute if at_now else None,\n        )\n",
+  "old": "        scroll.open_at(\n            (week.week_start, day) if is_day else week.week_start,\n            lanes_end(items, scene.minute if at_now else None),\n            end=True,\n            keep=scene.minute if at_now else None,\n        )\n",
   "new": "",
   "test": "desktop/tests/test_hours_open.py::test_every_design_opens_at_now_or_the_first_block_and_again_on_another_day_or_week"
  },
@@ -177,8 +177,8 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "the hours zoom on Ctrl and = as well as the window",
-  "old": "        chosen = self.hand.selection\n        mine = ",
-  "new": "        if event.modifiers() & Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_Equal:\n            self.zoom_asked.emit(1, None)\n        chosen = self.hand.selection\n        mine = ",
+  "old": "        key, mods = event.key(), event.modifiers()\n",
+  "new": "        key, mods = event.key(), event.modifiers()\n        if mods & Qt.KeyboardModifier.ControlModifier and key == Qt.Key.Key_Equal:\n            self.zoom_asked.emit(1, None)\n",
   "test": "desktop/tests/test_zoom_keys.py::test_with_the_hours_holding_the_keyboard_one_press_is_one_step"
  },
  {

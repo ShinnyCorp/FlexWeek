@@ -4,6 +4,8 @@ passed on the way down."""
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -48,6 +50,24 @@ def page(parent: QWidget) -> tuple[QScrollArea, QLineEdit, QSpinBox, QTimeEdit, 
     return area, typing, spin, clock, menu
 
 
+def settled(app: QApplication, widget: QWidget) -> None:
+    """Shown and placed. Right after a window is exposed the window manager may still be moving it,
+    and a wheel event aimed through the window then lands beside the box it was meant for: alone in
+    a fresh process this test rolled over nothing and the page stayed put."""
+    assert QTest.qWaitForWindowExposed(widget)
+    top = widget.window()
+    last = None
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        app.processEvents()
+        QTest.qWait(30)
+        now = (top.frameGeometry().getRect(), top.isActiveWindow())
+        if now == last and now[1]:
+            return
+        last = now
+    raise AssertionError("the window never settled")
+
+
 def roll(area: QScrollArea, over: QWidget) -> None:
     """One notch down, from the system, as a real mouse sends it: through the window."""
     at = QPointF(over.mapTo(area.window(), QPoint(12, over.height() // 2)))
@@ -62,7 +82,7 @@ def test_the_wheel_over_a_box_the_student_is_not_in_scrolls_the_page(
 ) -> None:
     area, typing, spin, clock, menu = page(host)
     host.show()
-    assert QTest.qWaitForWindowExposed(area)
+    settled(qapp, area)
     bar = area.verticalScrollBar()
     for box, value in ((spin, spin.value), (clock, clock.time), (menu, menu.currentIndex)):
         typing.setFocus()
@@ -81,7 +101,7 @@ def test_the_wheel_still_changes_a_box_the_student_clicked_into(
 ) -> None:
     area, _typing, spin, _clock, _menu = page(host)
     host.show()
-    assert QTest.qWaitForWindowExposed(area)
+    settled(qapp, area)
     spin.setFocus()
     roll(area, spin)
     assert spin.value() == 49

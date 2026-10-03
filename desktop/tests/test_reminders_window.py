@@ -464,6 +464,65 @@ def test_a_block_without_a_link_plays_nothing_at_its_start(
     assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")]
 
 
+def test_a_block_without_a_link_plays_the_settings_link_when_the_sound_is_spotify(
+    qapp: QApplication, database: Path, opened: list, spotify_app: SpotifyApp
+) -> None:
+    window = launch(qapp, serve(database, opened), "settings_song", opened, create=True)
+    clock = hold(window, 18, 30)
+    choose(qapp, window, reminder_lead_min=10, alarm_tone="spotify", default_spotify_url=TRACK)
+    add_practice(qapp, window)
+    tick(qapp, window, clock, 35)
+    assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")]
+    assert window._bell.once_rung == ["chime"], "the reminder before the start stays Chime"
+    assert spotify_app.asked == []
+    heard: list = []
+    answer_alarm(qapp, window, "alarmDismiss", heard)
+    tick(qapp, window, clock, 45)
+    assert heard and heard[0][:2] == ["Guitar practice", "18:45 · Starting now"]
+    assert spotify_app.asked == [TRACK_ADDRESS]
+    assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")], "one notice"
+
+
+def test_a_block_with_its_own_link_beats_the_settings_link(
+    qapp: QApplication, database: Path, opened: list, spotify_app: SpotifyApp
+) -> None:
+    other = "https://open.spotify.com/track/1301WleyT98MSxVHPZCA6M"
+    window = launch(qapp, serve(database, opened), "own_song", opened, create=True)
+    clock = hold(window, 18, 44)
+    choose(qapp, window, alarm_tone="spotify", default_spotify_url=other)
+    add_practice(qapp, window, spotify_url=TRACK)
+    answer_alarm(qapp, window, "alarmDismiss", [])
+    tick(qapp, window, clock, 45)
+    assert spotify_app.asked == [TRACK_ADDRESS]
+
+
+def test_a_block_without_a_link_plays_nothing_when_the_sound_is_a_tone(
+    qapp: QApplication, database: Path, opened: list, spotify_app: SpotifyApp
+) -> None:
+    window = launch(qapp, serve(database, opened), "tone_only", opened, create=True)
+    clock = hold(window, 18, 44)
+    choose(qapp, window, alarm_tone="soft", default_spotify_url=TRACK)
+    add_practice(qapp, window)
+    rang: list = []
+    window.session.alarm_due.connect(rang.append)
+    for minute in range(44, 55):
+        tick(qapp, window, clock, minute)
+    assert rang == [] and spotify_app.asked == []
+
+
+def test_a_start_the_poll_reaches_a_few_minutes_late_still_plays_its_song(
+    qapp: QApplication, database: Path, opened: list, spotify_app: SpotifyApp
+) -> None:
+    window = launch(qapp, serve(database, opened), "late_song", opened, create=True)
+    clock = hold(window, 18, 51)
+    choose(qapp, window, reminder_lead_min=10)
+    add_practice(qapp, window, spotify_url=TRACK)
+    heard: list = []
+    answer_alarm(qapp, window, "alarmDismiss", heard)
+    tick(qapp, window, clock, 51)
+    assert heard and spotify_app.asked == [TRACK_ADDRESS]
+
+
 def test_the_toast_keeps_a_reminder_until_something_more_important(
     qapp: QApplication, database: Path, opened: list
 ) -> None:

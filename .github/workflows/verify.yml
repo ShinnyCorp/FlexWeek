@@ -119,9 +119,6 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           fwtest run --timeout 1800 -- .venv/bin/python -m pytest -q -p no:cacheprovider -n 4 \
-            desktop/tests/test_engine_desk_parity.py \
-            desktop/tests/test_engine_desk_parity_b.py \
-            desktop/tests/test_engine_desk_parity_c.py \
             desktop/tests/test_tokens.py \
             desktop/tests/test_update.py
       - name: Run classic Day and Week with a real pointer

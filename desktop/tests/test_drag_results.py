@@ -557,3 +557,31 @@ def test_a_routine_save_says_nothing_and_a_refusal_says_why(qapp: QApplication, 
     window.session._say("Select a block before copying it.")
     qapp.processEvents()
     assert toast(window) == "Select a block before copying it."
+
+
+def test_a_notice_of_two_lines_grows_its_pill_and_is_cut_nowhere(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Plan's "Planned 1 homework block. 1 still needs a time." wrapped to two lines inside a pill one
+    line tall, cut top and bottom at 1024 wide: the height was asked of a layout whose wrapped label
+    had not been measured yet. Every pill is at least 44 tall, with 10 above and below and 16 at the
+    sides."""
+    said = "Planned 1 homework block. 1 still needs a time."
+    for width in (1024, 1280):
+        window.resize(width, 860)
+        for _ in range(5):
+            qapp.processEvents()
+        window.toast.hide()
+        window._set_notice(said, "Undo", lambda: None)
+        QTest.qWait(400)
+        toast, card, label = window.toast, window.toast.card, window.toast.label
+        wanted = label.heightForWidth(label.width())
+        assert label.height() >= wanted, (width, "the words are cut")
+        assert card.height() >= max(44, wanted + 20), (width, "the pill does not grow to its lines")
+        assert label.x() >= 16 and label.y() >= 10, "10 above and 16 at the side"
+        assert card.height() - label.geometry().bottom() - 1 >= 10, "10 below"
+        assert toast.geometry().contains(toast.button.geometry())
+        window.toast.hide()
+        window._set_notice("Moved it.", "", None)
+        QTest.qWait(400)
+        assert card.height() >= 44, (width, "a short pill with no button")

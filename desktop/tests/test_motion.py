@@ -17,8 +17,8 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QPoint, QRect, QRectF, Qt
-    from PySide6.QtGui import QColor, QImage, QPalette
+    from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, Qt
+    from PySide6.QtGui import QColor, QImage, QPalette, QPixmap
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import (
         QApplication,
@@ -45,6 +45,7 @@ if importlib.util.find_spec("PySide6") is not None:
         PAGE_OUT_MS,
         RISE_PX,
         SEGMENT_MS,
+        SLIDE_NAME,
         SLIDE_PX,
         Dim,
         app_level,
@@ -69,6 +70,10 @@ def qapp() -> Iterator[QApplication]:
 
 def pictures(host: QWidget) -> list[QLabel]:
     return [label for label in host.findChildren(QLabel, FADE_NAME) if label.isVisible()]
+
+
+def slides(host: QWidget) -> list[QLabel]:
+    return [label for label in host.findChildren(QLabel, SLIDE_NAME) if label.isVisible()]
 
 
 # Long enough for a page to fade through at the slowest level, with room for a busy machine.
@@ -242,18 +247,18 @@ def test_settings_slides_in_from_the_right_over_the_page_dimmed(qapp: QApplicati
     """Decision 30 of 0.17: Settings slides in over the week dimmed 20 %, rather than fading over it."""
     stack, first, second = two_pages(qapp)
     slide_over(stack, second, "normal")
-    assert stack.currentWidget() is second
-    effect = second.graphicsEffect()
-    assert effect.offset == QPoint(stack.width(), 0) and effect.opacity == 1, "it starts off the right edge"
+    assert stack.currentWidget() is second and second.graphicsEffect() is None
+    (coming,) = slides(stack)
+    assert coming.pos() == QPoint(stack.width(), 0), "its picture starts off the right edge"
     (week,) = pictures(stack)
     kids = stack.children()
-    assert kids.index(week) < kids.index(second), "the page it covers stays under it"
+    assert kids.index(week) < kids.index(coming), "the page it covers stays under it"
     assert len(week.findChildren(Dim)) == 1
     QTest.qWait(duration(OVER_MS, "normal") // 2)
-    assert 0 < effect.offset.x() < stack.width()
+    assert 0 < coming.x() < stack.width()
     assert 0 < week.findChildren(Dim)[0].share < 1, "the page under it is dimming"
     QTest.qWait(duration(OVER_MS, "extra") + 150)
-    assert pictures(stack) == [] and second.graphicsEffect() is None
+    assert pictures(stack) == [] and slides(stack) == [] and second.graphicsEffect() is None
     slide_over(stack, first, "normal", back=True)
     assert stack.currentWidget() is first and first.graphicsEffect() is None, "the page under it is live"
     (leaving,) = pictures(stack)
@@ -262,6 +267,72 @@ def test_settings_slides_in_from_the_right_over_the_page_dimmed(qapp: QApplicati
     QTest.qWait(duration(OVER_MS, "extra") + 150)
     assert pictures(stack) == [] and stack.findChildren(Dim) == []
     stack.close()
+
+
+def test_the_page_sliding_in_is_painted_once_not_on_every_frame(qapp: QApplication) -> None:
+    """J12: Settings stuttered in. The page was drawn through an effect, which paints the whole page
+    again for each frame. A picture of it slides instead, so the page paints for the picture and when
+    it lands, however many frames the slide has."""
+
+    class Counted(QLabel):
+        paints = 0
+
+        def paintEvent(self, event: object) -> None:  # noqa: N802
+            Counted.paints += 1
+            super().paintEvent(event)  # type: ignore[arg-type]
+
+    stack = QStackedWidget()
+    first, second = QLabel("Week"), Counted("Settings")
+    stack.addWidget(first)
+    stack.addWidget(second)
+    stack.resize(400, 300)
+    stack.show()
+    qapp.processEvents()
+    Counted.paints = 0
+    slide_over(stack, second, "normal")
+    frames = 0
+    deadline = time.monotonic() + (duration(OVER_MS, "normal") + 150) / 1000
+    while time.monotonic() < deadline:
+        qapp.processEvents()
+        frames += 1
+        QTest.qWait(8)
+    assert frames >= 8, "the slide ran for several frames"
+    assert Counted.paints <= 3, f"the page painted {Counted.paints} times over {frames} frames"
+    assert stack.currentWidget() is second and second.graphicsEffect() is None
+    stack.close()
+
+
+def test_the_design_pictures_wait_until_settings_has_slid_in(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """J12: each design's picture takes over 100 ms to draw, and they were drawn one after another
+    from the moment Settings was built, so the first slide in got three frames. The first is held
+    until a slide at the slowest level has landed."""
+    from desktop.native.layouts import dialog
+    from desktop.native.layouts.dialog import DesignPicker
+
+    drawn: list[float] = []
+    started = time.monotonic()
+
+    class Counting:
+        def get(self, *_args: object) -> QPixmap:
+            drawn.append(time.monotonic() - started)
+            return QPixmap(4, 4)
+
+    monkeypatch.setattr(dialog, "Previews", Counting)
+    picker = DesignPicker("plan", "designs", "Design", "slate")
+    assert picker.cards
+    picker.show()
+    slide = duration(OVER_MS, "extra") / 1000
+    while time.monotonic() - started < slide:
+        qapp.processEvents()
+        QTest.qWait(5)
+    assert drawn == [], "nothing is drawn while the page could still be sliding in"
+    assert within(3, lambda: len(drawn) == len(picker.cards)), "then every picture is drawn"
+    assert drawn[0] >= slide
+    picker.close()
+    picker.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def test_under_reduce_settings_fades_through_rather_than_over_the_page(qapp: QApplication) -> None:

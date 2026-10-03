@@ -1161,6 +1161,10 @@ def _rgba(colour: str, alpha: float) -> str:
 
 
 DISABLED = 0.4
+CONFLICT_FILL, CONFLICT_TEXT = "#fff4d6", "#6b4a00"
+# A roomy button: 8 pixels above and below its words, 20 at the sides, and at least 36 pixels tall in all,
+# 40 at Large text. Qt's min-height is the words' own box, inside the padding and the 2-pixel border.
+ROOMY_PAD, ROOMY_SIDE, ROOMY_MIN, ROOMY_MIN_LARGE = 8, 20, 36, 40
 
 
 def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str, text: float | str) -> str:
@@ -1184,8 +1188,17 @@ def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str, t
         'QScrollArea[bare="true"] > QWidget#qt_scrollarea_viewport { background: transparent; }'
         # Its words in the text colour: the accent's own ink at 40 % on that fill could not be read
         # (Running late's Accept, T6 of the 0.17.0 audit).
-        f"QDialog QPushButton:disabled {{ background: {_rgba(palette['accent'], DISABLED)}; "
-        f"color: {palette['text']}; }}"
+        f"QDialog QPushButton:disabled {{ background: {main_off_colours(palette)[0]}; "
+        f"color: {main_off_colours(palette)[1]}; }}"
+        # A line across a scrolling sheet over its answers, and the reason a main button is off.
+        f"QFrame#sheetFooterLine {{ background: {palette['hairline_strong']}; border: none; padding: 0; "
+        "border-radius: 0; }"
+        f"QLabel#whyOff {{ color: {palette['muted']}; }}"
+        # A warning that does not stop the student, in amber whatever the look: its own colours, which
+        # read at 8 to 1 and are not the look's.
+        f"QFrame#conflictRow {{ background: {CONFLICT_FILL}; border: none; padding: 0; "
+        f"border-radius: {RADIUS_CONTROL + 2 if card_radius else 0}px; }}"
+        f"QFrame#conflictRow QLabel {{ color: {CONFLICT_TEXT}; }}"
         'QDialog QPushButton[quiet="true"]:disabled, '
         'QWidget#settingsPage QPushButton[quiet="true"]:disabled '
         f"{{ {quiet_edge} color: {_rgba(palette['text'], DISABLED)}; }}"
@@ -1348,7 +1361,35 @@ def _veil(colour: str, amount: float) -> str:
     return f"rgba({red}, {green}, {blue}, {round(amount * 255)})"
 
 
-def button_rules(palette: dict, pad: int, radius: int, depth: str, button_min: str) -> str:
+def outline_edge(palette: dict) -> str:
+    """The edge of an outlined button: the look's own hairline when it is seen at 3 to 1 on the card and
+    on the page, else the text colour at 55 %, which is in every shipped look. Most looks' hairline is
+    1.4 to 1, drawn to be a line under text, not the edge of a control."""
+    edge = palette["hairline_strong"]
+    if min(contrast(edge, palette["panel"]), contrast(edge, palette["window"])) >= 3.0:
+        return edge
+    return mix(palette["text"], palette["panel"], 0.55)
+
+
+def tonal_colours(palette: dict, share: float = 0.14) -> tuple[str, str]:
+    """A tonal button's tint, `share` of the accent on the card, and its words: the accent with the text
+    colour mixed in, which reads at 4.5 to 1 on the tint in every shipped look."""
+    return (
+        mix(palette["accent"], palette["panel"], share),
+        mix(palette["accent"], palette["text"], 0.65),
+    )
+
+
+def main_off_colours(palette: dict) -> tuple[str, str]:
+    """A main button that cannot be pressed yet: its words in the text colour on a pale tint of the text
+    colour, 8 to 1 or better in every shipped look (#91). Words in the accent's own ink at 40 % on a
+    40 % accent were 1.82 to 1."""
+    return mix(palette["text"], palette["panel"], 0.12), palette["text"]
+
+
+def button_rules(
+    palette: dict, pad: int, radius: int, depth: str, button_min: str, large: bool = False
+) -> str:
     """Decision 11: one set of states dresses every button in the app. Primary is filled in the accent,
     secondary is accent words on a tenth of the accent, outline is words in the text colour on the card
     inside a hairline, quiet is words in the text colour. Each takes
@@ -1379,8 +1420,18 @@ def button_rules(palette: dict, pad: int, radius: int, depth: str, button_min: s
             f"{selector} {{ background: {fill}; color: {words}; font-weight: {weight}; }}",
             f"{selector}:hover {{ background: {mix(text, solid, 0.06)}; }}",
             f"{selector}:pressed {{ background: {mix(text, solid, 0.10)}; }}",
-            f"{selector}:disabled {{ background: {mix(solid, page, 0.4)}; color: {mix(words, page, 0.4)}; }}",
         ]
+        if selector == 'QPushButton[secondary="true"]':
+            rules.append(
+                f"{selector}:disabled {{ background: {mix(solid, page, 0.4)}; "
+                f"color: {mix(words, page, 0.4)}; }}"
+            )
+    off_fill, off_words = main_off_colours(palette)
+    # A filled button is the page's answer; turned off, its words stay readable (#91).
+    rules += [
+        f"QPushButton:disabled {{ background: {off_fill}; color: {off_words}; }}",
+        f'QPushButton[danger="true"]:disabled {{ background: {off_fill}; color: {off_words}; }}',
+    ]
     if contrast_look:
         # A tint of yellow on black is mud, so High contrast outlines a secondary button instead.
         rules.append(f'QPushButton[secondary="true"] {{ border-color: {accent}; }}')
@@ -1394,6 +1445,37 @@ def button_rules(palette: dict, pad: int, radius: int, depth: str, button_min: s
         f'QPushButton[outline="true"]:pressed {{ background: {mix(text, card, 0.10)}; }}',
         f'QPushButton[outline="true"]:disabled {{ background: {card}; color: {mix(text, page, 0.4)}; '
         f"border-color: {mix(edge, page, 0.4)}; }}",
+    ]
+    # Outlined: transparent, words in the text colour, one hairline; the danger kind is red throughout.
+    # Tonal: accent words on a tint of the accent, the quieter answer beside a filled one.
+    line = outline_edge(palette)
+    tint_fill, tint_words = tonal_colours(palette)
+    rules += [
+        f'QPushButton[outlined="true"] {{ background: transparent; color: {text}; '
+        f"font-weight: {WEIGHT_REGULAR}; border: 1px solid {line}; padding: {pad + 1}px {pad * 2 + 1}px; }}",
+        f'QPushButton[outlined="true"]:hover {{ background: {_veil(text, 0.06)}; }}',
+        f'QPushButton[outlined="true"]:pressed {{ background: {_veil(text, 0.10)}; }}',
+        f'QPushButton[outlined="true"]:disabled {{ background: transparent; color: {mix(text, page, 0.4)}; '
+        f"border-color: {mix(line, page, 0.4)}; }}",
+        f'QPushButton[outlined="true"][danger="true"] {{ background: transparent; color: {danger}; '
+        f"border-color: {danger}; }}",
+        f'QPushButton[outlined="true"][danger="true"]:hover {{ background: {_veil(danger, 0.08)}; }}',
+        f'QPushButton[outlined="true"][danger="true"]:pressed {{ background: {_veil(danger, 0.14)}; }}',
+        f'QPushButton[outlined="true"][danger="true"]:disabled {{ color: {mix(danger, page, 0.4)}; '
+        f"border-color: {mix(danger, page, 0.4)}; }}",
+        f'QPushButton[tonal="true"] {{ background: {tint_fill}; color: {tint_words}; '
+        f"font-weight: {WEIGHT_STRONG}; }}",
+        f'QPushButton[tonal="true"]:hover {{ background: {tonal_colours(palette, 0.22)[0]}; }}',
+        f'QPushButton[tonal="true"]:pressed {{ background: {tonal_colours(palette, 0.30)[0]}; }}',
+        f'QPushButton[tonal="true"]:disabled {{ background: {mix(tint_fill, page, 0.4)}; '
+        f"color: {mix(tint_words, page, 0.4)}; }}",
+    ]
+    # Roomy: an answer sitting in a row of text, sized to its words with room above and below them
+    # (#79); a filled, tonal or outlined button takes the same height, the outline's border being 1 px.
+    rules += [
+        f'QPushButton[roomy="true"] {{ padding: {ROOMY_PAD}px {ROOMY_SIDE}px; '
+        f"min-height: {(ROOMY_MIN_LARGE if large else ROOMY_MIN) - 2 * (ROOMY_PAD + 2)}px; }}",
+        f'QPushButton[roomy="true"][outlined="true"] {{ padding: {ROOMY_PAD + 1}px {ROOMY_SIDE + 1}px; }}',
     ]
     rules += [
         f'QPushButton[quiet="true"] {{ background: transparent; color: {text}; '
@@ -1556,16 +1638,15 @@ def pack_stylesheet(
         f"QLabel {{ background: transparent; border: none; padding: 0; }}"
         # One filled button per dialog: the answer. Cancel and its kind are drawn plain beside it, and
         # a button that destroys something takes the error colour.
-        + button_rules(palette, pad, radius, knobs["depth"], button_min)
+        + button_rules(palette, pad, radius, knobs["depth"], button_min, knobs["text"] == "large")
         # The rule above that gives every widget the text colour also keeps it when the widget is off,
         # so reminder settings looked live while reminders were off.
         + f"QWidget#prefReminderControls QWidget:disabled {{ color: {palette['muted']}; }}"
-        f"QPushButton#deleteBlock, QPushButton#deleteHomework, QPushButton#deleteAccount {{ "
+        f"QPushButton#deleteBlock, QPushButton#deleteHomework {{ "
         f"background: transparent; "
         f"color: {palette['error']}; border: none; "
         f"padding: {pad}px 2px; font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
-        f"QPushButton#deleteBlock:hover, QPushButton#deleteHomework:hover, "
-        f"QPushButton#deleteAccount:hover {{ text-decoration: underline; }}"
+        f"QPushButton#deleteBlock:hover, QPushButton#deleteHomework:hover {{ text-decoration: underline; }}"
         # Homework that still needs a time, to be dragged onto the hours: it looks like homework, not
         # like a button that does something when pressed. Its edge is homework's own colour; red would
         # say something is wrong, and nothing is.
@@ -1677,7 +1758,7 @@ def overlay_rules(palette: dict, knobs: dict, pad: int, card_radius: int) -> str
     box_edge = "none" if flat else f"1px solid {palette['hairline']}"
     return (
         f"QFrame#toast {{ background: {toast['background']}; color: {toast['text']}; "
-        f"border: {toast_edge}; border-radius: {sheet_radius}px; padding: 8px 12px 8px 16px; }}"
+        f"border: {toast_edge}; border-radius: {sheet_radius}px; padding: 10px 16px; }}"
         f"QLabel#toastText {{ color: {toast['text']}; }}"
         # The toast's one button reads as part of its sentence.
         f"QPushButton#toastButton {{ background: transparent; color: {toast['action']}; border: none; "

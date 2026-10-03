@@ -56,11 +56,11 @@
   "test": "desktop/tests/test_dialogs_look.py::test_the_repeat_scope_is_a_choice_of_two_under_the_days_only_for_a_repeating_block"
  },
  {
-  "name": "a primary that cannot be pressed yet a grey slab",
+  "name": "a primary that cannot be pressed yet a grey slab, not a pale tint with readable words",
   "file": "desktop/native/look.py",
-  "old": "        f\"QDialog QPushButton:disabled {{ background: {_rgba(palette['accent'], DISABLED)}; \"\n",
+  "old": "        f\"QDialog QPushButton:disabled {{ background: {main_off_colours(palette)[0]}; \"\n",
   "new": "        f\"QDialog QPushButton:disabled {{ background: {palette['hairline_strong']}; \"\n",
-  "test": "desktop/tests/test_dialogs_look.py::test_a_primary_that_cannot_be_pressed_yet_keeps_its_colour_at_40_percent_and_reads"
+  "test": "desktop/tests/test_dialogs_look.py::test_a_primary_that_cannot_be_pressed_yet_is_pale_and_its_words_read_at_7_to_1"
  },
  {
   "name": "a list's ticks drawn by Qt",
@@ -70,11 +70,11 @@
   "test": "desktop/tests/test_dialogs_look.py::test_a_lists_ticks_are_the_apps_check_boxes"
  },
  {
-  "name": "Account's actions in one row again",
+  "name": "Account's other actions filled like Replace password",
   "file": "desktop/native/settings.py",
-  "old": "            if where == \"data\":\n",
-  "new": "            if True:\n",
-  "test": "desktop/tests/test_dialogs_look.py::test_account_is_three_cards_each_with_its_own_actions"
+  "old": "    def _action(self, words: str, name: str, action: str, outlined: bool = True) -> QPushButton:\n",
+  "new": "    def _action(self, words: str, name: str, action: str, outlined: bool = False) -> QPushButton:\n",
+  "test": "desktop/tests/test_sheets.py::test_manage_account_keeps_one_filled_button_and_its_actions"
  },
  {
   "name": "the cards against the left",

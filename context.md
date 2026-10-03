@@ -1,9 +1,9 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-10-02. The Rust engine is on `main` (PR 35 merged at c451f59). Version 0.17.2 is the last
-  release; 0.18.0 is being prepared on `engine/release-0.18.0`: version, dated changelog and release
-  notes done, and the Python twin deletion is on top. Nothing a student sees changes in 0.18.0.
+- 2026-10-03. v0.18.0 (the Rust engine) is the last release. 0.18.1 is built on `release/0.18.1` and
+  waits for Jonathan's word to push: the 20 Fix-first findings of the 0.17.2 audit, his J1-J6, and
+  the engine leftovers (see CHANGELOG.md and roadmap.md).
 - Rust (`engine/`, contract `docs/engine/contract.md`, wrappers `docs/engine/adapters.md`): the
   planner and solver, slots, weeks, day, month, explain, restore, recovery codes, the store's SQL
   helpers and database connection, and the desktop's Qt-free logic (`desk`: calendar, custom looks
@@ -15,12 +15,10 @@
   pure), the pydantic checks, `backend/models.py`'s Spotify and due-date copies, the `CATEGORIES`
   table in `calendar.py`, `TYPE_PT` in `tokens.py`, `custom_look.readability`, all Qt drawing, and
   `scripts/rig/drive.py`.
-- Tests: 389 Rust engine tests (engine, store and bindings; clippy and fmt clean). The Python gate on
-  this branch after the twin deletion: 3722 passed in 7 min 38 s (`fwtest gate --workers 4`). 259
-  Python tests were deleted because their Rust twin went red under a deliberate break; the
-  differential tests (`backend/tests/test_engine_parity.py`, `desktop/tests/test_engine_desk_parity*.py`)
-  stay until after the release. Before the deletion the gate on `engine/full-port` passed 4059 in
-  454 s; the shadow runs over the HTTP tests found no difference in responses or rows.
+- Tests: 396 Rust engine tests (engine, store and bindings; clippy and fmt clean). The Python gate on
+  `release/0.18.1`: 2790 passed in 7 min 8 s (`fwtest gate --workers 4`). The differential tests and
+  the frozen Python copies are deleted; the Python tests that remain guard Python-only code and the
+  interface.
 - CI on PR 35 at b0b2040 was green: verify, rig, Linux and Windows builds, CodeQL and the engine
   mutation job (32 cases). The packaged app after the engine has had only those builds.
 - Speed (`log.tsv`, pr35 review at 2e2f76a): placing the probe week 1.1 ms (0.17.2: 2.9 ms; with a
@@ -30,11 +28,10 @@
   (NaN, lone surrogates) in stored rows; an assignment estimate past 2^63 raises `OverflowError` in
   the engine where Python returned a number (seen once under hypothesis); `build_month` returns a
   month where Python raised `TypeError` on a finished session with no start.
-- Open, for 0.18.1 on Jonathan's word: `test_tests_ring_at_no_volume` leaves a Qt `Bell` for garbage
-  collection (teardown error); the three adapter tests; one survivor in the `today.json` mutation
-  baseline; the interface-test tidy (T4). `backend/tests/fixtures/engine_recorded_calls.json` can
-  no longer be re-recorded from the deleted tests. Then: delete the differential tests, `desk_ref/`
-  and `backend/tests/engine_ref/`.
+- 0.18.1 plumbing done on `release/0.18.1`: the Bell teardown, the three adapter tests, the
+  `today.json` baseline and the deletion of the differential tests, `desk_ref/` and
+  `backend/tests/engine_ref/`. About 100 cases those tests pinned have no Rust test of the same case
+  (list in the scratch report); `hypothesis` is now used by no test and awaits Jonathan's word to go.
 - spec.md drift: its CI desk step says "the desk parity files and the wrapper modules' tests"; it now
   runs the parity files plus `test_tokens.py` and `test_update.py`.
 - Open for 0.17.3 (design polish, from 0.17.2): Bento's now pill inside today's column; Mission's
@@ -128,9 +125,21 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-02, `engine/release-0.18.0` (from `engine/delete-twins`): 0.18.0 is being prepared. Version,
-  dated changelog and release-notes Fixed list are committed; this file is pruned. Not pushed. Next:
-  the pre-release test run's result on the other branch, then Jonathan's word to push and release
-  v0.18.0 as latest.
-- 2026-10-02, `engine/delete-twins`: the 259 twin tests are deleted (see Current State); merged into
-  the release branch. Mutation cases that named deleted tests now run `cargo:` twins.
+- 2026-10-03, `release/0.18.1` (from `main` at c50f264, not pushed): 0.18.1 is built: plumbing, one
+  source per setting, time entry, Plan and Undo, sheets, deadlines and dates, grid and keyboard, the
+  test tidy's helper merge, ten mutation cases repointed, version 0.18.1 with its changelog and
+  release notes, and roadmap.md from `docs/roadmap-0-18-x`. Gate 2790 passed in 7 min 8 s in the
+  venv at `~/.flexweek-ui-harness/venv-0181` (this branch's engine; the checkout's `.venv` still
+  holds main's engine and needs `pip install ./engine/py --config-settings=build-args="--features
+  audit"` after a checkout of this branch). Rig passed on ten design and tab pairs.
+- Open for Jonathan before or after release: the old "Choose a time…" and "Let FlexWeek move it"
+  buttons in Edit homework now double the When row; a typed date already passed this year rolls to
+  next year (typing 1 Oct on 2 Oct gives 2027); Plan's reason for a passed deadline still comes from
+  the engine as "does not fit"; the Delete key deletes at once with Undo while the menu's Delete
+  asks; arrow keys reach only the first of blocks that share a time; the amber conflict row keeps
+  its light fill in dark looks; drag step (5 or 15) applies to moves and resizes while clicks and
+  new blocks snap to 15; `hypothesis` is unused; about 100 cases the deleted differential tests
+  pinned have no Rust test. spec.md drift: the CI desk step's wording, the song rule, the 5-minute
+  lead default and the shared "No homework after" list (wording in the scratch lane reports).
+- Next: Jonathan's word to push `release/0.18.1` and open the PR; CI (including the mutate job);
+  then his word to merge and publish v0.18.1 as latest.

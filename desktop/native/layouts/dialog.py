@@ -27,6 +27,7 @@ from desktop.native.layouts.registry import (
     layouts_for,
     options_for,
 )
+from desktop.native.motion import OVER_MS, duration
 from desktop.native.previews import Previews
 from desktop.native.widgets import (
     CARD_GAP,
@@ -54,6 +55,8 @@ PICTURE_WIDTH = 206
 EXPERIMENTAL_TAG = "Experimental"
 # A choice of more than this many is a dropdown; up to it, the choices sit side by side.
 SEGMENTED_MOST = 3
+# A moment past the slide before the first design picture is drawn, so its last frame is not caught.
+PICTURES_AFTER_SLIDE_MS = 40
 
 
 class DesignPicker(Choices):
@@ -82,9 +85,11 @@ class DesignPicker(Choices):
             self.cards.append(card)
         self._grid.set_cards(self.cards)
         box.addWidget(self._grid)
-        # Drawn one at a time once the page is up, as setup does, so Settings opens at once.
+        # Drawn one at a time once the page is up, as setup does, so Settings opens at once. The
+        # first waits until the page has slid in at the slowest level: each picture takes over
+        # 100 ms, and drawn from the start they left Settings' first slide three frames.
         self._waiting = list(range(len(self.cards)))
-        QTimer.singleShot(0, self._draw_next)
+        QTimer.singleShot(duration(OVER_MS, "extra") + PICTURES_AFTER_SLIDE_MS, self._draw_next)
 
     def _card_chosen(self) -> None:
         self.setCurrentIndex(int(self.sender().property("index")))

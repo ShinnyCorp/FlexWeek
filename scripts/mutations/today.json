@@ -37,8 +37,8 @@
  {
   "file": "engine/engine/src/desk/remind.rs",
   "name": "a block with a song has one notice at its start",
-  "old": "        if started && truthy(get(&block, \"spotify_url\")?) {\n            continue;\n        }\n",
-  "new": "        if started && truthy(get(&block, \"spotify_url\")?) {\n        }\n",
+  "old": "        if started && start_link(&block, default_link, sound_is_spotify)?.is_some() {\n            continue;\n        }\n",
+  "new": "        if started && start_link(&block, default_link, sound_is_spotify)?.is_some() {\n        }\n",
   "test": "cargo:flexweek-engine:desk_remind:test_a_block_with_a_song_is_announced_by_the_song_at_its_start"
  },
  {
@@ -127,9 +127,9 @@
  },
  {
   "file": "desktop/native/widgets.py",
-  "name": "the delete question's answer is red",
-  "old": "    go.setProperty(\"danger\", danger)\n    stay = QPushButton(\"Cancel\", box)\n    stay.setObjectName(\"confirmCancel\")\n    stay.setProperty(\"quiet\", True)\n    box.addButton(go, QMessageBox.ButtonRole.DestructiveRole)\n    box.addButton(stay, QMessageBox.ButtonRole.RejectRole)\n",
-  "new": "    stay = QPushButton(\"Cancel\", box)\n    stay.setObjectName(\"confirmCancel\")\n    box.addButton(go, QMessageBox.ButtonRole.DestructiveRole)\n    box.addButton(stay, QMessageBox.ButtonRole.RejectRole)\n    go.setProperty(\"danger\", danger)\n    stay.setProperty(\"quiet\", True)\n",
+  "name": "the delete sheet's answer not drawn red",
+  "old": "        ((\"stay\", \"Cancel\", \"outlined\"), (\"yes\", yes, \"danger\" if danger else \"\")),\n",
+  "new": "        ((\"stay\", \"Cancel\", \"outlined\"), (\"yes\", yes, \"\")),\n",
   "test": "desktop/tests/test_block_editor_words.py::test_the_question_before_deleting_draws_its_answer_red_and_cancel_plain"
  },
  {
@@ -155,10 +155,10 @@
  },
  {
   "file": "desktop/native/window.py",
-  "name": "logging out asks first, and not in red",
-  "old": "if confirm(self, \"Log out\", LOG_OUT_QUESTION, \"Log out\", danger=False):",
-  "new": "if confirm(self, \"Log out\", LOG_OUT_QUESTION, \"Log out\"):",
-  "test": "desktop/tests/test_account_words.py::test_log_out_asks_first_and_stays_signed_in_when_refused"
+  "name": "the sign-out sheet drawn in red",
+  "old": "        if confirm(self, \"Sign out\", SIGN_OUT_QUESTION.format(where=where), \"Sign out\", danger=False):\n",
+  "new": "        if confirm(self, \"Sign out\", SIGN_OUT_QUESTION.format(where=where), \"Sign out\"):\n",
+  "test": "desktop/tests/test_sheets.py::test_the_sign_out_sheet_says_where_the_week_lives_and_does_not_draw_sign_out_red"
  },
  {
   "file": "desktop/native/window.py",

@@ -1,11 +1,11 @@
 """Dialogs in the 0.17 system (decision 23 of docs/0.17/plan.md, look-review.md section 7).
 
 Add homework, Edit event, Routines, Help, About, Running late, School hours, Choose a time and Spread
-are sheets inside the window: a card over the dimmed week. Every other dialog stays a window. In each,
-the body is the card, not a pale box inside it; a label sits on its field's line of words; every field
-of a kind has one width; the repeat scope is a choice of two shown only for a repeating block; a
-primary that cannot be pressed yet keeps its colour at 40 %; a list's ticks are the app's check boxes;
-and Account is three cards.
+are sheets inside the window: a card over the dimmed week. (0.18.1 made Availability, the previews,
+Manage account and the questions sheets too: test_sheets.py.) In each, the body is the card, not a
+pale box inside it; a label sits on its field's line of words; every field of a kind has one width; the
+repeat scope is a choice of two shown only for a repeating block; a primary that cannot be pressed yet
+is pale with its words in the text colour; and a list's ticks are the app's check boxes.
 """
 
 from __future__ import annotations
@@ -21,14 +21,13 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QDialog,
-    QFrame,
     QLabel,
     QPushButton,
     QWidget,
 )
 
 from desktop.native.look import mix, pack_stylesheet, resolved_palette, sanitize_look
-from desktop.native.settings import AboutDialog, AccountDialog, HelpDialog, SettingsPage
+from desktop.native.settings import AboutDialog, HelpDialog, SettingsPage
 from desktop.native.tokens import contrast, type_pt
 from desktop.native.widgets import (
     SHEET_FORM,
@@ -445,12 +444,13 @@ def test_the_repeat_scope_is_a_choice_of_two_under_the_days_only_for_a_repeating
 
 
 @pytest.mark.parametrize("pack", ["light-frost", "dark-frost"])
-def test_a_primary_that_cannot_be_pressed_yet_keeps_its_colour_at_40_percent_and_reads(
+def test_a_primary_that_cannot_be_pressed_yet_is_pale_and_its_words_read_at_7_to_1(
     qapp: QApplication,  # noqa: F811
     pack: str,
 ) -> None:
     """Running late's Accept was a grey slab until Preview, and looked broken; then its words were the
-    accent's ink at 40 % on the 40 % fill, and could not be read (T6 of the 0.17.0 audit)."""
+    accent's ink at 40 % on the 40 % fill, and could not be read (T6 of the 0.17.0 audit, #91 of 0.18.1:
+    1.82 to 1). Now its words are the text colour on a pale tint of it."""
     parent, palette = styled(qapp, pack)
     late = shown(qapp, LateDialog(parent, "School"))
     button = late.accept_button
@@ -461,7 +461,7 @@ def test_a_primary_that_cannot_be_pressed_yet_keeps_its_colour_at_40_percent_and
     def fill() -> QColor:
         return picture().pixelColor(button.mapTo(late, QPoint(button.width() // 2, 4)))
 
-    assert near(fill(), QColor(mix(palette["accent"], palette["panel"], 0.4)))
+    assert near(fill(), QColor(mix(palette["text"], palette["panel"], 0.12)))
     ground = fill().name()
     image = picture()
     corner = button.mapTo(late, QPoint(0, 0))
@@ -473,7 +473,7 @@ def test_a_primary_that_cannot_be_pressed_yet_keeps_its_colour_at_40_percent_and
         ),
         key=lambda colour: contrast(colour, ground),
     )
-    assert contrast(words, ground) >= 4.5, f"{words} on {ground}"
+    assert contrast(words, ground) >= 7.0, f"{words} on {ground}"
     late.show_trace({"moves": [], "unplaced": []}, {})
     qapp.processEvents()
     assert near(fill(), QColor(palette["accent"]))
@@ -496,36 +496,4 @@ def test_a_lists_ticks_are_the_apps_check_boxes(qapp: QApplication) -> None:  # 
     )
     assert ticked > 40, "the tick's box is filled in the accent"
     free(routines)
-    free(parent)
-
-
-def test_account_is_three_cards_each_with_its_own_actions(qapp: QApplication) -> None:  # noqa: F811
-    parent, palette = styled(qapp)
-    account = shown(qapp, AccountDialog(parent, 8, {"username": "maya_r"}))
-    found = account.findChildren(QFrame, "dialogCard")
-    cards = {card.findChild(QLabel, "cardTitle").text(): card for card in found}
-    assert list(cards) == ["Password", "Recovery codes", "Your data"]
-    holds = {
-        "Password": ("currentPassword", "newPassword", "changePassword"),
-        "Recovery codes": ("recoveryCount", "replaceCodes"),
-        "Your data": (
-            "exportAccount", "importAccount", "exportWeek", "exportDay", "importFile", "deleteAccount",
-        ),
-    }
-    for title, names in holds.items():
-        for name in names:
-            assert cards[title].findChild(QWidget, name) is not None, (title, name)
-    delete = account.findChild(QPushButton, "deleteAccount")
-    picture = delete.grab().toImage()
-    red = QColor(palette["error"])
-    assert any(
-        near(picture.pixelColor(x, y), red, 30) for x in range(delete.width()) for y in range(delete.height())
-    ), "deleting is said in red"
-    loud = [
-        button.objectName()
-        for button in account.findChildren(QPushButton)
-        if not button.property("quiet") and button.objectName() not in {"deleteAccount", ""}
-    ]
-    assert loud == ["changePassword"]
-    free(account)
     free(parent)

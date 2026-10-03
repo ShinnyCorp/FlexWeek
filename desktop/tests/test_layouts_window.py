@@ -234,21 +234,22 @@ def test_a_blocked_running_late_toasts_why(qapp: QApplication, window: NativeWin
 def test_the_notice_sits_under_the_bar_on_one_line(qapp: QApplication, window: NativeWindow) -> None:
     """A notice short enough for one line stays on one line, and it never covers the bar. Sized from
     a wrapped label it broke after "locked. 2". It sits over the foot of the hours now, far below the
-    bar at either text size."""
+    bar at either text size. This one is longer than the pill's 420 pixels allow on one line at either
+    text size, so it takes two and the pill grows to them: the old one-line height cut the second."""
     said = "Running late: 16:30–17:00 is now locked. 2 moved."
     for text in ("normal", "large"):
         window._look = {**window._look, "knobs": {**(window._look.get("knobs") or {}), "text": text}}
         window._apply_appearance()
         settled(qapp, window)
         window.toast.show_message("OK")
-        one_line = window.toast.height()
         window.toast.show_message(said)
         settled(qapp, window)
         bar_bottom = max(
             button.mapTo(window, button.rect().bottomLeft()).y()
             for button in (window.solve_button, window.more_button, window.settings_gear)
         )
-        assert (text, window.toast.height()) == (text, one_line)
+        label = window.toast.label
+        assert label.height() >= label.heightForWidth(label.width()), f"{text}: the second line is cut"
         assert window.toast.y() > bar_bottom, text
 
 
@@ -858,7 +859,7 @@ def test_plan_and_more_stay_on_the_bar_in_every_layout(qapp: QApplication, windo
     # Every group under a heading (T23 of the 0.17.0 audit).
     assert more_sections(window) == ["Planning", "Edit", "Help and info", "Account"]
     assert not {"Add homework", "Add fixed time", "School hours"} & set(offered), "adding is under Add"
-    wanted = {"Running late", "Routines", "Reload", "Undo", "Redo", "Undo, copy and save", "Log out"}
+    wanted = {"Running late", "Routines", "Reload", "Undo", "Redo", "Undo, copy and save", "Sign out"}
     assert wanted <= set(offered)
     assert "Settings" not in offered
     assert "Account" not in offered
@@ -1262,7 +1263,9 @@ def test_every_dialog_fits_a_laptop_screen(qapp: QApplication, window: NativeWin
         qapp.processEvents()
         dialog.adjustSize()
         qapp.processEvents()
-        sizes[measure.name] = (dialog.width(), dialog.height())
+        # A sheet's window is its card and the room round it for the shadow; the card is what is seen.
+        seen = dialog.card if getattr(dialog, "sheet", False) else dialog
+        sizes[measure.name] = (seen.width(), seen.height())
         dialog.hide()
         return QDialog.DialogCode.Rejected
 
@@ -1471,7 +1474,7 @@ def test_the_week_toolbar_keeps_only_what_is_reached_for(qapp: QApplication, win
     sections = more_sections(window)
     items = more_actions(window)
     assert sections == ["Planning", "Edit", "Help and info", "Account"]
-    wanted = {"Undo", "Redo", "Duplicate", "Running late", "Routines", "Undo, copy and save", "Log out"}
+    wanted = {"Undo", "Redo", "Duplicate", "Running late", "Routines", "Undo, copy and save", "Sign out"}
     assert wanted <= set(items)
     assert "Settings" not in items
     assert "Account" not in items
@@ -2253,10 +2256,14 @@ def test_settings_slide_in_over_the_week_and_away_again(qapp: QApplication, wind
     window._open_settings()
     settings = window._settings
     assert window._stack.currentWidget() is settings
-    assert settings.graphicsEffect().offset.x() == window._stack.width(), "from the right edge"
+    from desktop.native.motion import SLIDE_NAME
+
+    (coming,) = [label for label in window._stack.findChildren(QLabel, SLIDE_NAME) if label.isVisible()]
+    assert coming.x() == window._stack.width(), "from the right edge"
     (week,) = _fades(window._stack)
     faded_in()
     assert _fades(window) == [] and settings.graphicsEffect() is None
+    assert window._stack.findChildren(QLabel, SLIDE_NAME) == [] or not coming.isVisible()
     settings.close_page()
     assert window._stack.currentWidget().objectName() == "weekPage", "the week is live at once"
     (leaving,) = _fades(window._stack)
@@ -2751,3 +2758,33 @@ def test_a_short_busy_spell_takes_no_clicks_but_does_not_grey_the_top_bar(
     session.busy = False
     session.busy_changed.emit(False)
     assert plan.isEnabled(), "and it comes back at once"
+
+
+def test_mission_counts_focus_minutes_while_a_session_runs(qapp: QApplication, window: NativeWindow) -> None:
+    """Audit #12: four minutes into a session Mission control said "0 min · Focusing now". The minutes
+    count while the session runs, and a pause keeps what had passed."""
+    window._layout = {"main": "mission", "day": "one", "options": {}}
+    window._on_week()
+    qapp.processEvents()
+    block = next(b for b in window.session.blocks if b.get("assignment_id"))
+    window.session.start_focus(block["id"], 3)
+    wait_until(qapp, lambda: window.session.focus is not None)
+    began = window.session.now_ms()
+    window.session.now_ms = lambda: began + 4 * 60_000
+    window._refresh_layout()
+    qapp.processEvents()
+    mission = window.planner.currentWidget()
+
+    def plain(label: QLabel) -> str:
+        import re
+
+        return re.sub(r"<[^>]+>", "", label.text()).replace("&nbsp;", " ")
+
+    assert plain(mission.findChild(QLabel, "missionFocusValue")) == "4 min"
+    assert plain(mission.findChild(QLabel, "missionFocusLine")) == "Focusing now"
+    window.session.toggle_focus_pause()
+    window.session.now_ms = lambda: began + 9 * 60_000
+    window._refresh_layout()
+    qapp.processEvents()
+    assert plain(mission.findChild(QLabel, "missionFocusValue")) == "4 min"
+    assert plain(mission.findChild(QLabel, "missionFocusLine")) == "Focus paused"

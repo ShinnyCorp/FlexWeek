@@ -15,17 +15,16 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QKeyEvent, QPainter, QPen, QPixmap, QResizeEvent, QShowEvent
+from PySide6.QtGui import QColor, QKeyEvent, QPainter, QPalette, QPen, QPixmap, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
-    QColorDialog,
     QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -73,6 +72,7 @@ from desktop.native.look import (
     look_measures,
     look_motion,
     pack_stylesheet,
+    readable_ink,
     resolved_palette,
     sanitize_custom,
     sanitize_look,
@@ -82,13 +82,22 @@ from desktop.native.previews import CANVAS, system_dark
 from desktop.native.previews import render as render_preview
 from desktop.native.tokens import MARK, SPACING, mix, oklch, oklch_of
 from desktop.native.widgets import (
+    SHEET_LIST,
+    SHEET_PAD,
+    ConfirmSheet,
+    Dialog,
     Segmented,
+    SwatchButton,
     Swatches,
     Switch,
+    WhyOff,
     bare,
     confirm,
     control_art,
     overlay_scroll_bars,
+    sheet_button,
+    sheet_footer,
+    sheet_note,
 )
 
 TITLE = "Look editor"
@@ -130,6 +139,9 @@ LEAVE_SAVED = "Save the changes to {name}?"
 LEAVE_NEW = "Save your look as {name}?"
 LEAVE_NOTE = "Keep without saving leaves the changes on until you choose another look."
 SAVE, KEEP, DISCARD = "Save", "Keep without saving", "Discard changes"
+CANCEL = "Cancel"
+# Four answers in one row, which take the list's width between the card's margins.
+LEAVE_WIDTH = SHEET_LIST + 2 * SHEET_PAD
 DELETE_TITLE = "Delete look"
 DELETE_QUESTION = "Delete {name}? This can't be undone."
 EXPORT_TITLE, IMPORT_TITLE = "Export look", "Import look"
@@ -393,6 +405,132 @@ def _icon_button(icon: str | None, name: str, tip: str) -> QPushButton:
     return made
 
 
+def leave_sheet(parent: QWidget, name: str, saved: bool) -> ConfirmSheet:
+    """The one question on the way out of the editor with changes not saved: Save is the filled answer,
+    Discard is outlined in red, Cancel and Keep are quiet."""
+    return ConfirmSheet(
+        parent,
+        LEAVE_TITLE,
+        (LEAVE_SAVED if saved else LEAVE_NEW).format(name=name),
+        (("stay", CANCEL, "quiet"), ("discard", DISCARD, "outlined danger"), ("save", SAVE, "")),
+        default="save",
+        note=LEAVE_NOTE,
+        width=LEAVE_WIDTH,
+        left=("keep", KEEP, "quiet"),
+    )
+
+
+# A dozen hues after the five named accents, each readable as a colour in any look: the picker is a
+# few good choices and a code box, not a colour wheel.
+PICKER_HUES = (
+    "#c0392b", "#d35400", "#e67e22", "#27ae60", "#16a085", "#2980b9",
+    "#5c6bc0", "#8e44ad", "#7d3c98", "#f06292", "#789262", "#2c3e50",
+)  # fmt: skip
+PICKER_NOTE = "Pick a colour, or paste a code."
+PICKER_USE, PICKER_CODE_HINT = "Use this colour", "Type a code such as #3a6cc1."
+PICKER_PER_ROW = 9
+
+
+class ColourDot(SwatchButton):
+    """A round swatch with no name under it: the picker's colours are told apart by their colour, and
+    each is named to a screen reader."""
+
+    def __init__(self, colour: str, name: str) -> None:
+        super().__init__("")
+        self.fill, self.ink = colour, readable_ink(colour)
+        self.setAccessibleName(name)
+        self.setToolTip(name)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        ring = self.SIZE + 2 * SPACING[0]
+        return QSize(ring, ring)
+
+
+class ColourSheet(Dialog):
+    """Any colour, as a sheet over the editor: the five named accents and a dozen hues as round swatches,
+    and a code box with a chip showing the colour. The editor wears each colour as it is tried; Cancel,
+    Esc and the close button put the first colour back."""
+
+    picked = Signal(str)
+
+    def __init__(self, parent: QWidget, colour: str) -> None:
+        super().__init__(parent, sheet=True)
+        self.setObjectName("colourSheet")
+        self._colour = colour
+        box = self.card_body(ANY_COLOUR)
+        box.addWidget(sheet_note(PICKER_NOTE))
+        axis = "dark" if self.palette().color(QPalette.ColorRole.WindowText).lightness() > 128 else "light"
+        named = [(name.capitalize(), ACCENT_COLORS[name][axis][0]) for name in ACCENTS]
+        grid = QGridLayout()
+        grid.setSpacing(SPACING[2])
+        self.dots: list[ColourDot] = []
+        for index, (name, hue) in enumerate((*named, *((hue, hue) for hue in PICKER_HUES))):
+            dot = ColourDot(hue, name)
+            dot.clicked.connect(self._dot_pressed)
+            self.dots.append(dot)
+            grid.addWidget(dot, index // PICKER_PER_ROW, index % PICKER_PER_ROW)
+        box.addLayout(grid)
+        line = QHBoxLayout()
+        line.addWidget(_label("Code", "fieldLabel"))
+        self.code = QLineEdit()
+        self.code.setObjectName("colourCode")
+        self.code.setMaxLength(7)
+        self.code.setFixedWidth(120)
+        self.code.setAccessibleName("Colour code")
+        self.code.textEdited.connect(self._typed)
+        line.addWidget(self.code)
+        self.chip = QFrame()
+        self.chip.setObjectName("colourChip")
+        self.chip.setFixedSize(28, 28)
+        line.addWidget(self.chip)
+        line.addStretch(1)
+        box.addLayout(line)
+        self.use = sheet_button(PICKER_USE, "", "colourUse")
+        self.use.setDefault(True)
+        self.use.clicked.connect(self.accept)
+        cancel = sheet_button("Cancel", "outlined", "colourCancel")
+        cancel.clicked.connect(self.reject)
+        sheet_footer(box, cancel, self.use)
+        box.addWidget(WhyOff(self.use, PICKER_CODE_HINT))
+        self._show(colour)
+
+    def colour(self) -> str:
+        return self._colour
+
+    def _dot_pressed(self) -> None:
+        # Its colour is read off the swatch pressed: a lambda naming the sheet kept it from being freed.
+        colour = self.sender().fill
+        self._show(colour)
+        self.picked.emit(colour)
+
+    def _typed(self, text: str) -> None:
+        colour = hex_colour(text)
+        self.use.setEnabled(colour is not None)
+        if colour is not None:
+            self._colour = colour
+            self._ring(colour)
+            self.chip.setStyleSheet(self._chip(colour))
+            self.picked.emit(colour)
+
+    def _show(self, colour: str) -> None:
+        self._colour = colour
+        self.code.setText(colour)
+        self.use.setEnabled(True)
+        self._ring(colour)
+        self.chip.setStyleSheet(self._chip(colour))
+
+    def _ring(self, colour: str) -> None:
+        for dot in self.dots:
+            dot.setChecked(dot.fill.lower() == colour.lower())
+
+    @staticmethod
+    def _chip(colour: str) -> str:
+        return (
+            f"QFrame#colourChip {{ background: {colour}; border: 1px solid rgba(0, 0, 0, 90); "
+            "border-radius: 6px; padding: 0; }"
+        )
+
+
 class ColourField(QWidget):
     """A colour, shown as a swatch that opens the colour chooser and as a hex code that can be typed."""
 
@@ -453,13 +591,12 @@ class ColourField(QWidget):
             self.hex.style().polish(self.hex)
 
     def _choose(self) -> None:
-        """The system's colour chooser, the look following each colour tried; Cancel puts it back."""
+        """The colour sheet, the look following each colour tried; Cancel puts it back."""
         before = self._colour
-        chooser = QColorDialog(QColor(before), self)
-        chooser.setWindowTitle(self._name)
-        chooser.currentColorChanged.connect(lambda colour: self.picked.emit(colour.name()))
+        chooser = ColourSheet(self, before)
+        chooser.picked.connect(self.picked)
         if chooser.exec() == QDialog.DialogCode.Accepted:
-            self.picked.emit(chooser.selectedColor().name())
+            self.picked.emit(chooser.colour())
         else:
             self.picked.emit(before)
         chooser.deleteLater()
@@ -1466,26 +1603,9 @@ class LookEditor(QWidget):
         """"save", "keep" or "discard", or None to stay in the editor."""
         draft = self._draft
         name = draft.saved_as or str(draft.look.get("name") or UNNAMED)
-        box = QMessageBox(self)
-        box.setObjectName("confirmBox")
-        box.setIcon(QMessageBox.Icon.NoIcon)
-        box.setWindowTitle(LEAVE_TITLE)
-        box.setText((LEAVE_SAVED if draft.saved_as else LEAVE_NEW).format(name=name))
-        box.setInformativeText(LEAVE_NOTE)
-        answers = {}
-        for words, answer, prop, role in (
-            (SAVE, "save", "", QMessageBox.ButtonRole.AcceptRole),
-            (KEEP, "keep", "quiet", QMessageBox.ButtonRole.ActionRole),
-            (DISCARD, "discard", "danger", QMessageBox.ButtonRole.DestructiveRole),
-        ):
-            button = QPushButton(words, box)
-            if prop:
-                button.setProperty(prop, True)
-            box.addButton(button, role)
-            answers[button] = answer
-        box.setDefaultButton(next(iter(answers)))
-        box.exec()
-        return answers.get(box.clickedButton())
+        sheet = leave_sheet(self, name, draft.saved_as is not None)
+        sheet.exec()
+        return sheet.answer if sheet.answer in ("save", "keep", "discard") else None
 
     def _close(self, look: dict | None = None) -> None:
         if self._soon.isActive():

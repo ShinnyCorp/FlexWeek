@@ -22,6 +22,7 @@ from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, Qt, QVa
 from PySide6.QtGui import (
     QColor,
     QContextMenuEvent,
+    QFocusEvent,
     QFont,
     QFontMetrics,
     QFontMetricsF,
@@ -36,6 +37,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QScrollArea, QWidget
 
+from backend.slots import SLOT_MIN
 from desktop.native import icons
 from desktop.native.calendar import DAYS, category_icon, create_click_range
 from desktop.native.fonts import at_scale, caption, time_font, weighted
@@ -83,6 +85,16 @@ BOOK = "book-open"
 FREE_HINT = "+ drag to create, or click"
 # How much of the text colour washes today's column when a week is shown (decision 13 of 0.17).
 TODAY_WASH = 0.03
+
+# The ring that shows where the keyboard is: two pixels wide, two pixels clear of what it rings.
+RING_PX, RING_GAP = 2.0, 2.0
+# Each arrow key as (steps along a column, steps across the columns).
+ARROWS = {
+    Qt.Key.Key_Up: (-1, 0),
+    Qt.Key.Key_Down: (1, 0),
+    Qt.Key.Key_Left: (0, -1),
+    Qt.Key.Key_Right: (0, 1),
+}
 
 # A block as the canvas knows it between renders: its id and the day it is drawn on.
 Key = tuple[str, int]
@@ -223,25 +235,33 @@ class BlockPainter:
         visible: QRectF | None = None,
     ) -> None:
         """Hours beside the first track, in caption: to its left down a column, above it across a
-        lane. Down a column, a label the edge of `visible`, the part on screen, would cut is left
-        out, as is one the time now takes the place of; moved inside, it named the wrong rule.
-        Across a lane it is moved inside, where it still sits over its own hour."""
+        lane. A label the edge of `visible`, the part on screen, would cut is moved inside it, where it
+        still sits beside its own rule, so the first and last hour on screen are always named; one whose
+        rule is off screen is left out, as is one the time now takes the place of."""
         font = at_scale(time_font(painter.font()), "caption", self.scale(painter.font()))
         painter.setFont(font)
         painter.setPen(self.c("muted"))
         metrics = QFontMetricsF(font)
         tall = metrics.height() + 2
+        shown: list[tuple[QRectF, str, Qt.AlignmentFlag, bool]] = []
         for minute in range(((track.first + every - 1) // every) * every, track.last + 1, every):
             if minute == track.last and not self.end_label:
                 continue
             at = track.offset(minute)
             words = clock_label(minute)
+            moved = False
             if track.axis is Axis.DOWN:
                 box = QRectF(track.area.left() - room, track.area.top() + at - tall / 2, room - 8, tall)
                 align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                if visible is not None and (box.top() < visible.top() or box.bottom() > visible.bottom()):
-                    continue
-                near_now = self.now_minute is not None and abs(at - track.offset(self.now_minute)) < tall
+                if visible is not None:
+                    rule = track.area.top() + at
+                    if not visible.top() <= rule <= visible.bottom():
+                        continue
+                    kept = box.top()
+                    box.moveTop(min(max(kept, visible.top()), visible.bottom() - tall))
+                    moved = box.top() != kept
+                centre = box.center().y() - track.area.top()
+                near_now = self.now_minute is not None and abs(centre - track.offset(self.now_minute)) < tall
                 if self.now_in_gutter and near_now:
                     continue
             else:
@@ -250,7 +270,11 @@ class BlockPainter:
                 align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom
                 if visible is not None and box.right() > visible.left() and box.left() < visible.right():
                     box.moveLeft(max(min(box.left(), visible.right() - wide), visible.left()))
-            painter.drawText(box, align, words)
+            shown.append((box, words, align, moved))
+        # A label moved in from the edge keeps its place; a neighbour it now touches gives way.
+        for box, words, align, moved in shown:
+            if moved or not any(other[3] and other[0].intersects(box) for other in shown):
+                painter.drawText(box, align, words)
 
     def fills(self, drawn: Drawn) -> tuple[QColor, QColor, QColor | None, QColor | None]:
         """Fill, ink, outline and edge for a block: the Blocks look knob and the category."""
@@ -305,8 +329,15 @@ class BlockPainter:
         shape = QPainterPath()
         shape.addRoundedRect(rect, RADIUS_BLOCK, RADIUS_BLOCK)
         painter.fillPath(shape, fill)
-        if outline is not None:
-            painter.setPen(QPen(outline, 2))
+        # Homework FlexWeek planned has a dashed edge, since the next plan may move it. One the student
+        # placed, or is holding to place, has a solid one, since no plan will.
+        homework = drawn.work and not drawn.done
+        if outline is not None or homework:
+            if outline is None:
+                mark = category_paint(drawn.category, self.colours)[1]
+                outline = QColor(mark or self.colours["block_edge"])
+            dashed = homework and not (drawn.pinned or drawn.held)
+            painter.setPen(QPen(outline, 2, Qt.PenStyle.DashLine if dashed else Qt.PenStyle.SolidLine))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), RADIUS_BLOCK - 1, RADIUS_BLOCK - 1)
         if edge is not None:
@@ -928,6 +959,10 @@ class HoursCanvas(QWidget):
         self.short_words = False
         self._hover: tuple[LinearTrack, int] | None = None
         self._wheel = 0
+        # The slot the keyboard is on, as (day, start minute), and whether it is drawn: the ring shows
+        # for keyboard focus only, never after a click.
+        self._cursor: tuple[int, int] | None = None
+        self._ring = False
         # Where each block was drawn at the last render, in the canvas's own coordinates, and, while
         # they settle, where the moved ones started and which are new.
         self._last_rects: dict[Key, QRectF] = {}
@@ -1211,6 +1246,17 @@ class HoursCanvas(QWidget):
                 with _fresh(painter):
                     self.painter.day_name(painter, box, self._names(track.day), track.day == self.today)
         self._paint_label(painter)
+        self._paint_ring(painter)
+
+    def _paint_ring(self, painter: QPainter) -> None:
+        rect = self.focus_rect() if self.ring_shown else None
+        if rect is None:
+            return
+        with _fresh(painter):
+            painter.setPen(QPen(self.painter.c("accent"), RING_PX))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            out = RING_GAP + RING_PX / 2
+            painter.drawRoundedRect(rect.adjusted(-out, -out, out, out), RING_GAP + 1, RING_GAP + 1)
 
     def _visible(self) -> QRectF:
         """The part of the hours on screen. Not the part being repainted: a long block's name is kept
@@ -1315,9 +1361,9 @@ class HoursCanvas(QWidget):
         self.hand.press(self, held, at, tap=lambda: self._quick_create(track, anchor), home=(self, track))
 
     def _step_at(self, track: LinearTrack, point: QPointF) -> int:
-        """The start of the step the pointer is in. Less half a step, so rounding floors."""
-        step = self.hand.step
-        return min(max(snap(track.minute_at(point) - step / 2, step), track.first), track.last - step)
+        """The quarter hour nearest the pointer, whatever the drag step: a click or a menu makes something
+        at a slot, and the start of the step the pointer was in put a click just short of 08:00 at 07:55."""
+        return min(max(snap(track.minute_at(point), SLOT_MIN), track.first), track.last - SLOT_MIN)
 
     def _edge_kind(self, rect: QRectF, upright: QPointF, track: LinearTrack) -> Gesture:
         """Resize from within a few pixels of the start or end edge of a block long enough to have
@@ -1374,30 +1420,6 @@ class HoursCanvas(QWidget):
         else:
             self.hand.ask_spot_menu(track.day, self._step_at(track, point), event.globalPos())
 
-    def _ask_spot_menu(self) -> bool:
-        """Shift+F10 and the Menu key: the free-time menu at the first free step of the chosen block's
-        day, or today's, or the first day shown. False when there is nothing to ask it about."""
-        chosen = self.hand.selection
-        track = (
-            (self.track_for(chosen[1]) if chosen is not None else None)
-            or (self.track_for(self.today) if self.today is not None else None)
-            or next(iter(self.tracks), None)
-        )
-        if self.hand.busy or track is None:
-            return False
-        step = self.hand.step
-        taken = [(item.start, item.end) for item in self.occurrences if item.day == track.day]
-        minute = -(-track.first // step) * step
-        while minute + step <= track.last and any(
-            start < minute + step and minute < end for start, end in taken
-        ):
-            minute += step
-        minute = min(minute, track.last - step)
-        if not self.in_view(track.day, minute):
-            self.reveal(track.day, minute, minute + step)
-        self.hand.ask_spot_menu(track.day, minute, self.mapToGlobal(track.point_for(minute).toPoint()))
-        return True
-
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if self.hand.busy:
             return
@@ -1445,21 +1467,181 @@ class HoursCanvas(QWidget):
             self.zoom_asked.emit(steps, event.position())
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
-        """Enter opens the chosen block; Shift+F10 and the Menu key ask for the free-time menu.
+        """The arrow keys move between slots, a quarter hour at a time and a day at a time; Enter opens
+        the block at the slot or asks what free time can be; Shift+F10 and the Menu key ask for its menu.
         Everything else goes to the window's shortcuts, zoom included."""
-        asks = event.key() == Qt.Key.Key_Menu or (
-            event.key() == Qt.Key.Key_F10 and event.modifiers() == Qt.KeyboardModifier.ShiftModifier
+        key, mods = event.key(), event.modifiers()
+        asks = key == Qt.Key.Key_Menu or (key == Qt.Key.Key_F10 and mods == Qt.KeyboardModifier.ShiftModifier)
+        plain = not mods & ~Qt.KeyboardModifier.KeypadModifier
+        enter = key in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and plain
+        arrow = key in ARROWS and plain
+        if not (asks or enter or arrow) or self.hand.busy or not self.tracks:
+            event.ignore()
+            return
+        event.accept()
+        self._ring = True
+        first_touch = self._cursor is None
+        here = self._here()
+        if here is None:
+            return
+        if arrow:
+            if not first_touch:
+                self._step(*ARROWS[key])
+            else:
+                self._arrive()
+        elif asks:
+            self._ask_here()
+        else:
+            block = self.focus_block()
+            if block is not None:
+                self.hand.open(block[0])
+            else:
+                self._ask_here()
+
+    def focusInEvent(self, event: QFocusEvent) -> None:  # noqa: N802
+        super().focusInEvent(event)
+        reason = event.reason()
+        if reason == Qt.FocusReason.MouseFocusReason:
+            self._ring = False
+        elif reason in (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason):
+            self._ring = True
+            if self._here() is not None:
+                self._arrive()
+        self.update()
+
+    def focusOutEvent(self, event: QFocusEvent) -> None:  # noqa: N802
+        super().focusOutEvent(event)
+        self.update()
+
+    # Where the keyboard is
+
+    @property
+    def ring_shown(self) -> bool:
+        return self._ring and self.hasFocus()
+
+    def focus_slot(self) -> tuple[int, int] | None:
+        """The day and start minute of the slot the keyboard is on, if it is on one."""
+        return self._cursor
+
+    def focus_block(self) -> Key | None:
+        """The block at the slot the keyboard is on: the first to start where blocks share a time."""
+        if self._cursor is None:
+            return None
+        day, minute = self._cursor
+        here = [item for item in self.occurrences if item.day == day and item.start <= minute < item.end]
+        first = min(here, key=lambda item: (item.start, item.block_id), default=None)
+        return (first.block_id, day) if first is not None else None
+
+    def focus_rect(self) -> QRectF | None:
+        """What the ring goes round, in the canvas's own coordinates: the focused block, else the slot."""
+        if self._cursor is None:
+            return None
+        day, minute = self._cursor
+        track = self.track_for(day, minute)
+        if track is None:
+            return None
+        block = self.focus_block()
+        if block is not None:
+            for drawn, rect in self.drawn(track):
+                if drawn.block_id == block[0] and not drawn.held:
+                    return track.transform.mapRect(rect)
+        a, b = track.offset(minute), track.offset(minute + SLOT_MIN)
+        if track.axis is Axis.DOWN:
+            slot = QRectF(track.area.left() + 1, track.area.top() + a, track.area.width() - 2, b - a)
+        else:
+            slot = QRectF(track.area.left() + a, track.area.top() + 1, b - a, track.area.height() - 2)
+        return track.transform.mapRect(slot)
+
+    def take_focus(self, ring: bool, placed: tuple[str, int, int] | None = None) -> None:
+        """Bring the keyboard here: onto `placed`, a block's id, day and start, which the hours may not
+        show yet, else where it was. The ring is drawn when the student was using the keyboard."""
+        self._ring = ring
+        self.setFocus(Qt.FocusReason.OtherFocusReason)
+        if placed is not None:
+            self._cursor = (placed[1], placed[2])
+            self.hand.select(placed[0], placed[1])
+            if not self.in_view(placed[1], placed[2]):
+                self.reveal(placed[1], placed[2], placed[2] + SLOT_MIN)
+        elif ring and self._here() is not None:
+            self._arrive()
+        self.update()
+
+    def _taken(self, day: int, minute: int) -> bool:
+        return any(
+            item.day == day and item.start < minute + SLOT_MIN and minute < item.end
+            for item in self.occurrences
         )
-        if asks and self._ask_spot_menu():
-            event.accept()
-            return
+
+    def _first_free(self, track: LinearTrack, minute: int) -> int:
+        minute = max(-(-minute // SLOT_MIN) * SLOT_MIN, -(-track.first // SLOT_MIN) * SLOT_MIN)
+        while minute + SLOT_MIN <= track.last and self._taken(track.day, minute):
+            minute += SLOT_MIN
+        return min(minute, track.last - SLOT_MIN)
+
+    def _here(self) -> tuple[int, int] | None:
+        """The slot the keyboard is on. With none yet: the chosen block's, else the next free quarter hour
+        after now today, else the first free one at the top of what shows."""
+        if self._cursor is not None or not self.tracks:
+            return self._cursor
         chosen = self.hand.selection
-        mine = chosen is not None and any(item.block_id == chosen[0] for item in self.occurrences)
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and chosen is not None and mine:
-            self.hand.open(chosen[0])
-            event.accept()
+        picked = next((item for item in self.occurrences if (item.block_id, item.day) == chosen), None)
+        today = self.track_for(self.today) if self.today is not None else None
+        if picked is not None:
+            self._cursor = (picked.day, picked.start)
+        elif today is not None and self.now_min is not None:
+            self._cursor = (today.day, self._first_free(today, self.now_min))
+        else:
+            track = self.tracks[0]
+            top = track.minute_at(QPointF(track.area.center().x(), self._visible().top()))
+            self._cursor = (track.day, self._first_free(track, max(int(top), track.first)))
+        return self._cursor
+
+    def _step(self, along: int, across: int) -> None:
+        """Move by an arrow's quarter hours and days, stopping at the ends of the day and of the week.
+        Where time runs across, left and right are the quarter hours and up and down the days."""
+        assert self._cursor is not None
+        day, minute = self._cursor
+        track = self.track_for(day, minute) or self.track_for(day)
+        if track is None:
             return
-        event.ignore()
+        quarters, days_by = (along, across) if track.axis is Axis.DOWN else (across, along)
+        days = sorted({item.day for item in self.tracks})
+        day = days[min(max(days.index(day) + days_by, 0), len(days) - 1)]
+        into = self.track_for(day, minute) or self.track_for(day)
+        if into is None:
+            return
+        low, high = -(-into.first // SLOT_MIN) * SLOT_MIN, into.last - SLOT_MIN
+        self._cursor = (day, min(max(minute + quarters * SLOT_MIN, low), high))
+        self._arrive()
+
+    def _arrive(self) -> None:
+        """The slot is chosen: its block, if any, is the one chosen, and it is shown."""
+        assert self._cursor is not None
+        day, minute = self._cursor
+        block = self.focus_block()
+        if block is not None:
+            self.hand.select(*block)
+        else:
+            self.hand.clear_selection()
+        if not self.in_view(day, minute):
+            self.reveal(day, minute, minute + SLOT_MIN)
+        self.update()
+
+    def _ask_here(self) -> None:
+        """The menu for the block at the slot, else for free time there, shown at the slot, or at the
+        top of what shows when the slot is out of sight: it never scrolls to it."""
+        assert self._cursor is not None
+        day, minute = self._cursor
+        rect, visible = self.focus_rect(), self._visible()
+        if rect is not None and visible.intersects(rect):
+            at = self.mapToGlobal(rect.intersected(visible).center().toPoint())
+        else:
+            at = self.mapToGlobal(visible.topLeft().toPoint() + QPoint(24, 24))
+        block = self.focus_block()
+        if block is not None:
+            self.hand.ask_menu(block[0], day, at)
+        else:
+            self.hand.ask_spot_menu(day, minute, at)
 
     def _name_at(self, point: QPointF) -> int | None:
         for track in self.tracks:

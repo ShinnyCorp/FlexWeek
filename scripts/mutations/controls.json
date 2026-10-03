@@ -57,9 +57,9 @@
  },
  {
   "file": "desktop/native/look.py",
-  "name": "a disabled button grey again",
-  "old": "            f\"{selector}:disabled {{ background: {mix(solid, page, 0.4)}; color: {mix(words, page, 0.4)}; }}\",\n",
-  "new": "            f\"{selector}:disabled {{ background: {palette['hairline_strong']}; color: {palette['muted']}; }}\",\n",
+  "name": "a disabled main button grey with faint words again",
+  "old": "        f\"QPushButton:disabled {{ background: {off_fill}; color: {off_words}; }}\",\n",
+  "new": "        f\"QPushButton:disabled {{ background: {palette['hairline_strong']}; color: {palette['muted']}; }}\",\n",
   "test": "desktop/tests/test_top_bar.py::test_every_button_answers_hover_press_and_disabled"
  },
  {

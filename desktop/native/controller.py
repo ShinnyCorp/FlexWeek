@@ -53,6 +53,7 @@ from desktop.native.focus import (
     now_next_line,
     pause_state,
     persist_payload,
+    phase_duration_ms,
     remaining_ms,
     restore_state,
     set_phase,
@@ -91,7 +92,6 @@ from desktop.native.reuse import (
     routine_rows,
     routine_source_blocks,
     routine_template,
-    row_conflict,
     running_late_block,
     running_late_refusal,
     session_days,
@@ -141,6 +141,15 @@ def _week_write(week_start: str, blocks: list[dict], revision: int) -> dict:
         "blocks": [TimeBlock.model_validate(block).model_dump(mode="json") for block in blocks],
         "revision": revision,
     }
+
+
+def _revision_after_deletes(stored_blocks: list[dict], revision: int, deleted: set[str]) -> int:
+    """The server takes a deleted homework's blocks out of every week before it writes the week sent
+    with it, and each deleted homework that had blocks there moves that week up by one. A week written
+    in the same save has to carry the revision it will have by then."""
+    return revision + sum(
+        1 for item_id in deleted if any(block.get("assignment_id") == item_id for block in stored_blocks)
+    )
 
 
 def _keep_step_revisions(step: dict, data: dict) -> None:
@@ -205,6 +214,7 @@ class NativeSession(QObject):
         self.selected_block_id: str | None = None
         self.selected_occurrence_day: int | None = None
         self._ticket = 0
+        self._plan_ticket: int | None = None
         self._day_ticket = 0
         self._month_ticket = 0
         self._undo: list[dict] = []
@@ -276,11 +286,17 @@ class NativeSession(QObject):
         self.message = text
         self.status.emit(text)
 
-    def _begin(self) -> int:
+    def _begin(self, planning: bool = False) -> int:
         self._ticket += 1
+        self._plan_ticket = self._ticket if planning else None
         self.busy = True
         self.busy_changed.emit(True)
         return self._ticket
+
+    @property
+    def planning(self) -> bool:
+        """A plan was asked for and its result is not back yet."""
+        return self.busy and self._plan_ticket == self._ticket
 
     def _alive(self, ticket: int) -> bool:
         return ticket == self._ticket
@@ -861,6 +877,8 @@ class NativeSession(QObject):
                 session["category"] = body["category"]
             if days is not None and len(sessions) == 1 and not session.get("start"):
                 session["days"] = days
+            if "fixed_at" in assignment and not session.get("completed"):
+                self._fix_session(session, assignment["fixed_at"])
             blocks.append(TimeBlock.model_validate(session).model_dump(mode="json"))
         if not sessions:
             session = {
@@ -874,6 +892,8 @@ class NativeSession(QObject):
                 "assignment_id": body["id"],
                 "category": body.get("category"),
             }
+            if assignment.get("fixed_at"):
+                self._fix_session(session, assignment["fixed_at"])
             blocks.append(TimeBlock.model_validate(session).model_dump(mode="json"))
         finished = bool(body.get("completed"))
         label = "editing " + body["title"]
@@ -893,6 +913,15 @@ class NativeSession(QObject):
         self.blocks = blocks
         edited = {session["id"] for session in blocks if session.get("assignment_id") == body["id"]}
         self._touch(label, keep=edited)
+
+    def _fix_session(self, session: dict, fixed_at: dict | None) -> None:
+        """Pin `session` at the day and start the student chose with "Do it at", or with None let
+        FlexWeek move it again, as "Let FlexWeek pick a time" does."""
+        if fixed_at is None:
+            session.pop("pinned", None)
+            return
+        session.update(start=fixed_at["start"], days=[fixed_at["day"]], pinned=True)
+        self.needs_time.pop(session["id"], None)
 
     def apply_times(self, block_id: str, start_min: int, end_min: int, day: int | None = None) -> bool:
         block = next((item for item in self.blocks if item["id"] == block_id), None)
@@ -1453,8 +1482,10 @@ class NativeSession(QObject):
             if extra:
                 self._post_travel_weeks(extra, writes, operation_id, snapshot_label)
                 return
+            deleted = {entry["id"] for entry in writes if entry["assignment"] is None}
+            revision = _revision_after_deletes(self._committed_blocks, self.revision, deleted)
             self.pending_save = {
-                "weeks": [_week_write(self.week_start, self.blocks, self.revision)],
+                "weeks": [_week_write(self.week_start, self.blocks, revision)],
                 "assignments": writes,
                 "operation_id": operation_id or str(uuid4()),
             }
@@ -1578,6 +1609,7 @@ class NativeSession(QObject):
             # A plan waiting on this save must not fire after some later, unrelated one.
             self._plan_after_save = set()
             self._join_step = False
+            refused_travel = bool(self._traveling) and error.status == 409
             if self._traveling and self._travel_step is not None:
                 if error.status != 409:
                     self.blocks = deepcopy(self._committed_blocks)
@@ -1603,6 +1635,18 @@ class NativeSession(QObject):
             self._say("Not saved. " + error.message)
             self.save_finished.emit(False, self.message)
             self.week_changed.emit()
+            if refused_travel:
+                # The week on screen is the undone one, which the server never stored. Showing it
+                # would leave Undo greyed over a week that is not the saved one.
+                self.pending_save = None
+                self.dirty = False
+                self.conflict = False
+                self.dirty_assignments.clear()
+                self.load_week(
+                    self.week_start,
+                    discard=True,
+                    said="Undo did not go through. Your week was reloaded as it is saved.",
+                )
 
         self.client.request("POST", "/api/changes", deepcopy(payload), ok, err)
 
@@ -1616,6 +1660,8 @@ class NativeSession(QObject):
         `everything` is Replan all my homework. `only` finds new times for named work. Nothing is
         placed before now.
         """
+        if self.planning:
+            return
         if self.pending_save is not None or self.conflict:
             self._say("Wait a moment: your last change is still saving. Then plan again.")
             return
@@ -1629,7 +1675,7 @@ class NativeSession(QObject):
         if not targets:
             self._say("All your homework already has a time.")
             return
-        ticket = self._begin()
+        ticket = self._begin(planning=True)
         self._say("Planning…")
 
         def ok(data: dict) -> None:
@@ -1946,17 +1992,11 @@ class NativeSession(QObject):
         if self.account is None or self.conflict:
             return False
         checked = [row for row in rows if row.get("checked")]
-        dest_weeks = {row.get("week_start") for row in rows}
-        if existing is not None:
-            existing_blocks = existing
-        elif dest_weeks == {self.week_start}:
-            existing_blocks = self.blocks
-        else:
-            existing_blocks = []
-        if not checked or any(
-            row.get("invalid") or row_conflict(row, rows, existing_blocks) for row in checked
-        ):
-            self._say("Resolve conflicts or select at least one item before saving.")
+        if not checked:
+            self._say("Select at least one item before saving.")
+            return False
+        if any(row.get("invalid") for row in checked):
+            self._say("Uncheck what cannot be added before saving.")
             return False
         op_id = operation_id or (self._operation(attempt_key) if attempt_key else str(uuid4()))
         groups = merge_preview_rows(rows, op_id)
@@ -2659,6 +2699,15 @@ class NativeSession(QObject):
     def reset_focus(self) -> None:
         self._reset_focus()
 
+    def focus_elapsed_min(self) -> int:
+        """Whole minutes of the work session running or paused on this week, which are credited to
+        the homework only when it ends."""
+        state = self.focus
+        if state is None or state.get("phase") != "work" or state.get("weekStart") != self.week_start:
+            return 0
+        spent = phase_duration_ms("work", self.preferences) - remaining_ms(state, self.now_ms())
+        return max(0, spent) // 60_000
+
     def tick_focus(self) -> None:
         if self.focus is None or not self.focus.get("running"):
             return
@@ -2822,15 +2871,21 @@ class NativeSession(QObject):
     def _due_block_alerts(
         self, blocks: list[dict], trace: dict | None, clock: dict, prefs: dict
     ) -> tuple[list[dict], list[dict]]:
-        """Today's reminders, and the songs of blocks with a Spotify link that are starting."""
+        """Today's reminders, and the songs of blocks that are starting."""
         notices: list[dict] = []
+        lead = reminder_lead_min(prefs)
+        # A bad saved link is left out here, as it is when the alarm rings.
+        default_link = self.spotify_url(prefs.get("default_spotify_url") or "") or None
+        sound_is_spotify = prefs.get("alarm_tone") == "spotify"
         due = due_reminders(
             blocks=blocks,
             trace=trace,
             today_iso=clock["iso"],
             now_min=clock["minute"],
-            lead_min=reminder_lead_min(prefs),
+            lead_min=lead,
             fired=self.fired_reminders,
+            default_link=default_link,
+            sound_is_spotify=sound_is_spotify,
         )
         for item in due:
             self.fired_reminders.add(item["key"])
@@ -2840,7 +2895,10 @@ class NativeSession(QObject):
             trace=trace,
             today_iso=clock["iso"],
             now_min=clock["minute"],
+            lead_min=lead,
             played=self.played_songs,
+            default_link=default_link,
+            sound_is_spotify=sound_is_spotify,
         )
         self.played_songs.update(song["id"] for song in songs)
         return notices, songs

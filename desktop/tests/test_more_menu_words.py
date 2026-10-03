@@ -69,7 +69,7 @@ TOOLTIPS = {
     ),
     "Help": "What each screen is for, and the keyboard shortcuts.",
     "About FlexWeek": "The version, and where your plans are saved.",
-    "Log out": "Sign out on this computer. Your plans stay saved in your account.",
+    "Sign out": "Sign out on this computer. Your plans stay saved in your account.",
     "Undo": "Nothing to undo yet.",
     "Redo": "Nothing to redo.",
     "Copy": "Copy the selected block to paste into another day. Ctrl+C",
@@ -219,7 +219,7 @@ def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_
     said = [label.text() for label in dialog.findChildren(QLabel) if label.text()]
     assert said == [
         "About FlexWeek",
-        "FlexWeek 0.18.0",
+        "FlexWeek 0.18.1",
         "FlexWeek plans your homework around school, sports and everything else in your week.",
         "Your plans are saved on this computer.",
     ]
@@ -474,7 +474,7 @@ def test_every_row_under_more_has_an_icon_and_log_out_stands_apart(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
-    """Decision 22: icons on the More menu, "Advanced" named for what it holds, and Log out after a
+    """Decision 22: icons on the More menu, "Advanced" named for what it holds, and Sign out after a
     line of its own, never with Help and About."""
     from desktop.native.menus import ICON, Menu
 
@@ -491,5 +491,5 @@ def test_every_row_under_more_has_an_icon_and_log_out_stands_apart(
         for action in menu.actions()
         if action.isVisible() and not action.menu() and not isinstance(action, QWidgetAction)
     ]
-    assert rows[-5:] == ["---", "Help", "About FlexWeek", "---", "Log out"]
+    assert rows[-5:] == ["---", "Help", "About FlexWeek", "---", "Sign out"]
     assert all(action.property(ICON) for action in window.add_menu.actions()[:3]), "the Add menu's three"

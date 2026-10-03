@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from uuid import uuid4
 
 from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTime, QTimer, Signal
@@ -20,7 +21,6 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
-    QDateTimeEdit,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -37,15 +37,14 @@ from PySide6.QtWidgets import (
 )
 
 from backend.models import valid_spotify_url
-from backend.slots import SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm
+from backend.slots import hhmm_to_minutes, minutes_to_hhmm
 from desktop.native import icons
 from desktop.native.calendar import (
     SETUP_ACTIVITY_PREFIX,
     SETUP_SCHOOL_ID,
     is_setup_block,
-    sunday_due,
 )
-from desktop.native.fields import QUICK_LENGTHS, ClockField, DayPicker, Stepper
+from desktop.native.fields import END_OF_DAY, QUICK_LENGTHS, ClockField, DayPicker, Stepper
 from desktop.native.fonts import numeral
 from desktop.native.hours.geometry import drag_step
 from desktop.native.layouts.registry import (
@@ -68,6 +67,7 @@ from desktop.native.look import (
 )
 from desktop.native.motion import appear, fade_away, glide, hold_picture, switch_page
 from desktop.native.previews import Previews
+from desktop.native.remind import reminder_lead_min
 from desktop.native.settings import (
     DRAG_STEP_CHOICES,
     DRAG_STEP_QUESTION,
@@ -86,6 +86,7 @@ from desktop.native.widgets import (
     ChoiceCard,
     DueField,
     FlowLayout,
+    fill_cutoff,
     rounded_picture,
 )
 from desktop.native.work_windows import WorkWindowsEditor
@@ -118,7 +119,10 @@ NOTES = {
     COLOURS: "The picture follows what you pick.",
     WEEK: "Fixed times the planner works around. Skip anything you don't have.",
     HOMEWORK: "You can change this any time in Settings, under Planning.",
-    REMINDERS: "One sound for reminders, alarms and the end of a focus session.",
+    REMINDERS: (
+        "Pick the sound for reminders, alarms and the end of a focus session. A Spotify song plays for"
+        " alarms and when a block starts; the rest play Chime."
+    ),
     FIRST: "Add up to three. You can add the rest any time.",
     DONE: "Everything here is also in Settings. Run setup again from Settings, under This computer.",
 }
@@ -127,7 +131,6 @@ SKIP_STEP_LABEL, SKIP_ALL_LABEL = "Skip this step", "Skip setup"
 OWN_LOOK_LABEL = "Choose my own look instead"
 MAX_ACTIVITIES = 8
 MAX_FIRST_HOMEWORK = 3
-CUTOFFS = ("20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00")
 # A tap adds one of these rather than making the student type hours for the usual answers.
 TEXT_SIZES = (("small", "Small"), ("normal", "Normal"), ("large", "Large"))
 SPACINGS = (("comfortable", "Comfortable"), ("compact", "Compact"))
@@ -420,31 +423,18 @@ class Chips(QWidget):
 
 
 class QuarterTime(ClockField):
-    """A time of day, typed. The arrow keys and the wheel move the minutes a quarter hour at a time; a
-    time typed between quarters keeps its minute, as the block editor does."""
+    """A time of day, typed. The arrow keys and the wheel move it a quarter hour at a time; a time typed
+    between quarters keeps its minute, as the block editor does."""
 
-    def __init__(self, hhmm: str) -> None:
-        super().__init__(QTime.fromString(hhmm, "HH:mm"))
+    def __init__(self, hhmm: str, *, end: bool = False) -> None:
+        # QTime holds no 24:00; an end box reads 00:00 as the end of the day.
+        super().__init__(QTime(0, 0) if hhmm == "24:00" else QTime.fromString(hhmm, "HH:mm"), end=end)
         self.setObjectName("setupTime")
         self.setCorrectionMode(QAbstractSpinBox.CorrectionMode.CorrectToNearestValue)
 
-    def minutes(self) -> int:
-        time = self.time()
-        return time.hour() * 60 + time.minute()
-
     def set_minutes(self, minutes: int) -> None:
-        minutes = max(0, min(minutes, 24 * 60 - 1))
-        self.setTime(QTime(minutes // 60, minutes % 60))
-
-    def stepBy(self, steps: int) -> None:  # noqa: N802
-        if self.currentSection() == QDateTimeEdit.Section.MinuteSection:
-            base = self.minutes() - self.minutes() % SLOT_MIN
-            # Up from 08:07 is 08:15 and down is 08:00: the quarter hour on each side.
-            if steps < 0 and self.minutes() % SLOT_MIN:
-                steps += 1
-            self.set_minutes(base + steps * SLOT_MIN)
-            return
-        super().stepBy(steps)
+        minutes = max(0, min(minutes, END_OF_DAY if self._end else END_OF_DAY - 1))
+        self.setTime(QTime(minutes // 60 % 24, minutes % 60))
 
     def hhmm(self) -> str:
         return minutes_to_hhmm(self.minutes())
@@ -459,7 +449,7 @@ class TimeRange(QWidget):
         line.setSpacing(6)
         self.start = QuarterTime(start)
         self.start.setAccessibleName(f"{name} starts")
-        self.end = QuarterTime(end)
+        self.end = QuarterTime(end, end=True)
         self.end.setAccessibleName(f"{name} ends")
         line.addWidget(_label("from", "setupFieldLabel", wrap=False))
         line.addWidget(self.start)
@@ -467,8 +457,7 @@ class TimeRange(QWidget):
         line.addWidget(self.end)
 
     def span(self) -> tuple[str, int]:
-        start = hhmm_to_minutes(self.start.hhmm())
-        return self.start.hhmm(), hhmm_to_minutes(self.end.hhmm()) - start
+        return self.start.hhmm(), self.end.minutes() - self.start.minutes()
 
     def set_span(self, start: str, minutes: int) -> None:
         begin = hhmm_to_minutes(start)
@@ -517,11 +506,24 @@ class ActivityRow(QFrame):
         box.addLayout(bottom)
 
 
+def next_school_day(school_days: list[int], today: date | None = None) -> str:
+    """The first day after today that is a school day, as the day first homework is most likely due:
+    the default of Sunday was a day with no school. With no school days picked, tomorrow."""
+    today = today or date.today()
+    for ahead in range(1, 8):
+        day = today + timedelta(days=ahead)
+        if not school_days or day.weekday() in school_days:
+            return day.isoformat()
+    return (today + timedelta(days=1)).isoformat()
+
+
 class HomeworkRow(QFrame):
     removed = Signal(object)
 
     def __init__(self, due: str) -> None:
         super().__init__()
+        # What the date was made as, so a date the student never touched can follow the school days.
+        self.default_due = due
         self.setObjectName("setupGroup")
         grid = QGridLayout(self)
         grid.setContentsMargins(12, 10, 12, 10)
@@ -832,9 +834,7 @@ class SetupPage(QWidget):
         self.cutoff = QComboBox()
         self.cutoff.setObjectName("setupCutoff")
         self.cutoff.setAccessibleName("No homework after")
-        self.cutoff.addItem("No limit", None)
-        for hhmm in CUTOFFS:
-            self.cutoff.addItem(hhmm_text(hhmm), hhmm)
+        fill_cutoff(self.cutoff, None)
         box.addWidget(_row(_label("No homework after", "setupFieldLabel", wrap=False), self.cutoff))
         return content
 
@@ -922,10 +922,12 @@ class SetupPage(QWidget):
         self.tones.addButton(spotify)
         self.tone_buttons["spotify"] = spotify
         box.addWidget(spotify)
+        self.spotify_label = _label("Default Spotify link", "setupFieldLabel", wrap=False)
+        box.addWidget(self.spotify_label)
         self.spotify = QLineEdit()
         self.spotify.setObjectName("setupSpotify")
         self.spotify.setPlaceholderText("Paste a link from Spotify: open.spotify.com/track/… or /playlist/…")
-        self.spotify.setAccessibleName("Spotify link")
+        self.spotify.setAccessibleName("Default Spotify link")
         self.spotify_note = _label(SPOTIFY_TONE_NOTE, "setupHint")
         box.addWidget(self.spotify)
         box.addWidget(self.spotify_note)
@@ -1058,8 +1060,7 @@ class SetupPage(QWidget):
                 )
         if not self.activities:
             self._add_activity()
-        cutoff = self._state.preferences.get("day_cutoff")
-        self.cutoff.setCurrentIndex(max(0, self.cutoff.findData(cutoff)))
+        fill_cutoff(self.cutoff, self._state.preferences.get("day_cutoff"))
         self._follow_school()
 
     def _follow_school(self) -> None:
@@ -1075,7 +1076,7 @@ class SetupPage(QWidget):
     def _fill_reminders(self) -> None:
         prefs = self._state.preferences
         self.reminders.setChecked(prefs.get("reminders_enabled", True) is not False)
-        self.lead.setValue(int(prefs.get("reminder_lead_min", 10) if not self._state.first_run else 10))
+        self.lead.setValue(reminder_lead_min(None if self._state.first_run else prefs))
         self.lead.setEnabled(self.reminders.isChecked())
         tone = str(prefs.get("alarm_tone") or FALLBACK)
         self.tone_buttons.get(tone, self.tone_buttons[FALLBACK]).setChecked(True)
@@ -1172,8 +1173,19 @@ class SetupPage(QWidget):
                 card.select(layout_id == self._layout["main"])
         if step == COLOURS:
             self._fill_colours()
+        if step == FIRST:
+            self._follow_school_days()
         if step == DONE:
             self._fill_summary()
+
+    def _follow_school_days(self) -> None:
+        """The school days may have changed since this page's date was made; one still as it was made
+        moves to the new next school day."""
+        fresh = next_school_day(self.school_days.days())
+        for row in self.homework_rows:
+            if row.due.value() == row.default_due:
+                row.default_due = fresh
+                row.due.set_value(fresh)
 
     def _sync_chrome(self) -> None:
         self.back.setVisible(self._step != STYLE)
@@ -1402,6 +1414,7 @@ class SetupPage(QWidget):
     def _follow_tone(self) -> None:
         spotify = self._tone() == "spotify"
         self.spotify.setEnabled(spotify)
+        self.spotify_label.setVisible(spotify)
         self.spotify_note.setVisible(spotify)
 
     def _spotify_link(self) -> str | None:
@@ -1428,9 +1441,7 @@ class SetupPage(QWidget):
     def _add_homework_row(self, focus: bool = False) -> None:
         if len(self.homework_rows) >= MAX_FIRST_HOMEWORK:
             return
-        row = HomeworkRow(
-            sunday_due(self._state.week_start) if self._state.week_start else "2026-01-04T23:59"
-        )
+        row = HomeworkRow(next_school_day(self.school_days.days()))
         row.removed.connect(self._remove_homework_row)
         self.homework_box.addWidget(row)
         self.homework_rows.append(row)
@@ -1583,7 +1594,7 @@ class SetupPage(QWidget):
         tone = str(prefs.get("alarm_tone") or FALLBACK)
         sound = "Spotify" if tone == "spotify" else TONE_NAMES.get(tone, tone.title())
         if prefs.get("reminders_enabled"):
-            reminders = f"{prefs.get('reminder_lead_min', 5)} min before things start · {sound}"
+            reminders = f"{reminder_lead_min(prefs)} min before things start · {sound}"
         else:
             reminders = f"Off · alarms ring {sound}"
         values = (
