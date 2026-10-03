@@ -700,7 +700,8 @@ def _block_words(
     """What a block says in `room`, and where (decision 14 of 0.17). The first way that fits with no
     word cut: the title on up to two lines, its times, its length; then without the length; the
     title on one line and its times; "Dinner 18:30" on one line. A short block keeps its start with
-    its name, cutting the title first, rather than dropping the start. Only if none of those fits
+    its name, cutting the title first, rather than dropping the start. The range stays on one line;
+    stacked start and end with no dash read as two events. Only if none of those fits
     does the title stand alone, giving way with "…" when it must. With no room for three of its
     letters, nothing: the block's colour says it is there. A wide day puts the length at the right of
     the title. `shown` is whether the look shows times and lengths; a flag such as Finished stays
@@ -769,16 +770,19 @@ def _block_words(
         flags = " · ".join(word for flag, word in said if flag)
         times = drawn.times if shown[0] else ""
         length = drawn.length if shown[1] else flags
+        # Two title lines in a full column; one when the block shares the column, so a leftover
+        # word of the title is not read as another event beside the neighbour.
+        title_lines = 1 if drawn.columns > 1 else 2
         time_ways = [
-            lambda cut: stack(2, tuple(part for part in (times, length) if part), cut),
-            lambda cut: stack(2, tuple(part for part in (times,) if part), cut),
+            lambda cut, most=title_lines: stack(most, tuple(part for part in (times, length) if part), cut),
+            lambda cut, most=title_lines: stack(most, tuple(part for part in (times,) if part), cut),
             lambda cut: stack(1, tuple(part for part in (times,) if part), cut),
-            lambda cut: stack(2, (clock_label(drawn.span.start), clock_label(drawn.span.end))
-                              if shown[0] else (), cut),
+            lambda cut, most=title_lines: stack(most, (start,) if start else (), cut),
+            lambda cut: stack(1, (start,) if start else (), cut),
             lambda cut: one_line(start, cut) if start else None,
         ]
         name_ways = [
-            lambda cut: stack(2, (), cut),
+            lambda cut, most=title_lines: stack(most, (), cut),
             lambda cut: stack(1, (), cut),
         ]
     # The start stays with the name. Title-only used to win when the full name would not fit beside
