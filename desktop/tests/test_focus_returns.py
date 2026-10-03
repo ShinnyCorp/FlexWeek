@@ -180,8 +180,11 @@ def test_every_window_reads_the_one_record_of_the_last_press(
 ) -> None:
     """A filter for each window made every event wait on all of them, which slowed whole test runs and
     left animations unfinished when a test looked."""
+    key(window, Qt.Key.Key_Shift)
+    assert window._last_input.keyboard
     second = NativeWindow(server.origin)
     try:
         assert second._last_input is window._last_input is LastInput.shared()
+        assert not second._last_input.keyboard, "a new window starts with the pointer as the last input"
     finally:
         free(second)

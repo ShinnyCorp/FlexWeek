@@ -558,6 +558,7 @@ class NativeWindow(QMainWindow):
         self.session.status.connect(self._on_status)
         self._busy_guard = BusyGuard(self, lambda: self.session.busy)
         self._last_input = LastInput.shared()
+        self._last_input.keyboard = False
         self._relaying = False
         QApplication.instance().focusChanged.connect(self._watch_field)
         self._busy_look = QTimer(self)
