@@ -9,16 +9,16 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "the menu key and Shift+F10 do nothing",
-  "old": "        if asks and self._ask_spot_menu():\n",
-  "new": "        if False and asks and self._ask_spot_menu():\n",
-  "test": "desktop/tests/test_context_menu.py::test_the_menu_key_and_shift_f10_ask_at_the_days_first_free_time"
+  "old": "        asks = key == Qt.Key.Key_Menu or (key == Qt.Key.Key_F10 and mods == Qt.KeyboardModifier.ShiftModifier)\n",
+  "new": "        asks = False\n",
+  "test": "desktop/tests/test_grid_keyboard.py::test_the_menu_keys_ask_at_the_next_free_quarter_hour_after_now_without_scrolling"
  },
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "the keyboard menu starts on a taken step",
-  "old": "        while minute + step <= track.last and any(\n",
-  "new": "        while False and minute + step <= track.last and any(\n",
-  "test": "desktop/tests/test_context_menu.py::test_the_menu_key_and_shift_f10_ask_at_the_days_first_free_time"
+  "old": "        while minute + SLOT_MIN <= track.last and self._taken(track.day, minute):\n",
+  "new": "        while False and minute + SLOT_MIN <= track.last and self._taken(track.day, minute):\n",
+  "test": "desktop/tests/test_grid_keyboard.py::test_the_menu_key_skips_slots_that_are_taken"
  },
  {
   "file": "desktop/native/window.py",
