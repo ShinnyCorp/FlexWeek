@@ -234,21 +234,22 @@ def test_a_blocked_running_late_toasts_why(qapp: QApplication, window: NativeWin
 def test_the_notice_sits_under_the_bar_on_one_line(qapp: QApplication, window: NativeWindow) -> None:
     """A notice short enough for one line stays on one line, and it never covers the bar. Sized from
     a wrapped label it broke after "locked. 2". It sits over the foot of the hours now, far below the
-    bar at either text size."""
+    bar at either text size. This one is longer than the pill's 420 pixels allow on one line at either
+    text size, so it takes two and the pill grows to them: the old one-line height cut the second."""
     said = "Running late: 16:30–17:00 is now locked. 2 moved."
     for text in ("normal", "large"):
         window._look = {**window._look, "knobs": {**(window._look.get("knobs") or {}), "text": text}}
         window._apply_appearance()
         settled(qapp, window)
         window.toast.show_message("OK")
-        one_line = window.toast.height()
         window.toast.show_message(said)
         settled(qapp, window)
         bar_bottom = max(
             button.mapTo(window, button.rect().bottomLeft()).y()
             for button in (window.solve_button, window.more_button, window.settings_gear)
         )
-        assert (text, window.toast.height()) == (text, one_line)
+        label = window.toast.label
+        assert label.height() >= label.heightForWidth(label.width()), f"{text}: the second line is cut"
         assert window.toast.y() > bar_bottom, text
 
 

@@ -513,6 +513,7 @@ TOAST_SHADOW = 4
 # Between the toast's bottom edge and the foot of the hours, and between its words and its button.
 TOAST_FOOT = 16
 TOAST_GAP = 12
+TOAST_MIN_HEIGHT = 44
 
 
 class FittedLabel(QLabel):
@@ -721,6 +722,7 @@ class Toast(QWidget):
         self.card.setObjectName("toast")
         self.card.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.card.setMinimumHeight(TOAST_MIN_HEIGHT)
         around.addWidget(self.card)
         row = QHBoxLayout(self.card)
         row.setContentsMargins(0, 0, 0, 0)
@@ -812,6 +814,10 @@ class Toast(QWidget):
         self.label.setWordWrap(True)
         room = max(120, min(TOAST_MAX_WIDTH, area.width() - 2 * TOAST_FOOT) + 2 * TOAST_SHADOW)
         width = min(max(natural, TOAST_MIN_WIDTH), room)
+        # Wrapping was switched back on a moment ago; asked before this, the layouts still gave the
+        # height of one unwrapped line and the second line was cut.
+        self.card.layout().invalidate()
+        self.layout().invalidate()
         height = max(self.heightForWidth(width), self.minimumSizeHint().height())
         # Bottom right of the page, 16 pixels in from its corner, and never past the window's foot.
         # A design with a bar of its own along the foot (Retro's taskbar) is kept clear of.
