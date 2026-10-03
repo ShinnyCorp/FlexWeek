@@ -17,6 +17,7 @@ from weakref import WeakKeyDictionary
 
 import flexweek_engine  # type: ignore[import-untyped]
 
+from backend.slots import SLOT_MIN
 from desktop.native.wire import plain, restore
 
 SLACK_WORDS = {"danger": "Cutting it close", "tight": "Tight", "ok": "Plenty of time"}
@@ -43,6 +44,13 @@ _clock = {"24h": True}
 def set_clock_24h(on: bool) -> bool:
     """Whether this changed the clock, so the caller knows to redraw."""
     return flexweek_engine.week_set_clock(on, _clock)
+
+
+def next_slot(minute: int, first: int = 0, last: int = END_OF_DAY - SLOT_MIN) -> tuple[int, int]:
+    """Where a new thing starts when asked for at `minute`: (days ahead, minute) of the next quarter hour,
+    now rounded up, kept between `first` and `last`. With none left today, the first one tomorrow."""
+    slot = max(-(-minute // SLOT_MIN) * SLOT_MIN, first)
+    return (0, slot) if slot <= last else (1, first)
 
 
 def clock_text(minute: int) -> str:

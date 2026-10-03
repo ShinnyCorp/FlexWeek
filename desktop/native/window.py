@@ -141,6 +141,7 @@ from desktop.native.weekmodel import (
     dated_words,
     hhmm_text,
     moved_words,
+    next_slot,
     set_clock_24h,
 )
 from desktop.native.widgets import (
@@ -2097,7 +2098,19 @@ class NativeWindow(QMainWindow):
         category = self.session.armed_category
         if category in FLEX_CATEGORIES:
             category = None
-        self._commit_block(BlockDialog(self, category=category))
+        self._commit_block(self._new_event(category))
+
+    def _new_event(self, category: str | None) -> BlockDialog:
+        """A new event opens on the next quarter hour still ahead today, or with none left, the first one
+        tomorrow. The usual start stays for another week, which has no "now", and for tomorrow when that is
+        a day of the next week, which the open one cannot hold."""
+        today, minute = self._clock_in_week()
+        if today is None or minute is None:
+            return BlockDialog(self, category=category)
+        ahead, slot = next_slot(minute)
+        if today + ahead > 6:
+            return BlockDialog(self, category=category)
+        return BlockDialog(self, day=today + ahead, start=minutes_to_hhmm(slot), category=category)
 
     def _add_fixed_at(self, day: int, minute: int) -> None:
         category = self.session.armed_category
@@ -2392,7 +2405,7 @@ class NativeWindow(QMainWindow):
         if category in FLEX_CATEGORIES:
             self._commit_homework(HomeworkDialog(self, today=self._today(), category=category))
             return
-        self._commit_block(BlockDialog(self, category=category))
+        self._commit_block(self._new_event(category))
 
     def _create_by_drag(self, span: Span) -> None:
         before = {item["id"] for item in self.session.blocks}
@@ -2473,7 +2486,9 @@ class NativeWindow(QMainWindow):
         days = list(block["days"])
         clock = clock_parts(self.session.now_ms())
         today = clock["day"] if monday_of(clock["iso"]) == self.session.week_start else None
-        dialog = ChooseTimeDialog(self, block, self.session.week_start, days, self.session.blocks, due, today)
+        dialog = ChooseTimeDialog(
+            self, block, self.session.week_start, days, self.session.blocks, due, today, clock["minute"]
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         day, start = dialog.choice()

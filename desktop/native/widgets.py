@@ -118,7 +118,7 @@ from desktop.native.reuse import (
     row_conflict,
 )
 from desktop.native.tokens import SHADOW_LARGE, SPACING, WEIGHT_REGULAR, WEIGHT_STRONG, Shadow, type_pt
-from desktop.native.weekmodel import due_label, hhmm_text, length_label
+from desktop.native.weekmodel import due_label, hhmm_text, length_label, next_slot
 from desktop.native.work_windows import WorkWindowsEditor
 
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -3398,6 +3398,7 @@ class ChooseTimeDialog(Dialog):
         blocks: list[dict],
         due: tuple[int, int] | None,
         today: int | None = None,
+        minute: int | None = None,
     ) -> None:
         super().__init__(parent, sheet=True)
         self.setObjectName("chooseTimeDialog")
@@ -3420,6 +3421,15 @@ class ChooseTimeDialog(Dialog):
         self.start.setMinimumTime(QTime(6, 0))
         latest = DAY_END_MIN - self._duration
         self.start.setMaximumTime(QTime(latest // 60, latest % 60))
+        if today in days and minute is not None:
+            # The next quarter hour today, or with none left, the first one tomorrow when homework can go
+            # there and the last one today when it cannot: 16:00 had often passed already.
+            ahead, slot = next_slot(minute, first=6 * 60, last=latest)
+            if ahead and today + ahead in days:
+                self.day.setCurrentIndex(days.index(today + ahead))
+            elif ahead:
+                slot = latest
+            self.start.setTime(QTime(slot // 60, slot % 60))
         form.addRow("Start", self.start)
         form.addRow("Length", QLabel(length_label(self._duration)))
         layout.addLayout(form)
