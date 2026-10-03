@@ -87,6 +87,7 @@ from desktop.native.widgets import (
     ChoiceCard,
     DueField,
     FlowLayout,
+    fill_cutoff,
     rounded_picture,
 )
 from desktop.native.work_windows import WorkWindowsEditor
@@ -131,7 +132,6 @@ SKIP_STEP_LABEL, SKIP_ALL_LABEL = "Skip this step", "Skip setup"
 OWN_LOOK_LABEL = "Choose my own look instead"
 MAX_ACTIVITIES = 8
 MAX_FIRST_HOMEWORK = 3
-CUTOFFS = ("20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00")
 # A tap adds one of these rather than making the student type hours for the usual answers.
 TEXT_SIZES = (("small", "Small"), ("normal", "Normal"), ("large", "Large"))
 SPACINGS = (("comfortable", "Comfortable"), ("compact", "Compact"))
@@ -836,9 +836,7 @@ class SetupPage(QWidget):
         self.cutoff = QComboBox()
         self.cutoff.setObjectName("setupCutoff")
         self.cutoff.setAccessibleName("No homework after")
-        self.cutoff.addItem("No limit", None)
-        for hhmm in CUTOFFS:
-            self.cutoff.addItem(hhmm_text(hhmm), hhmm)
+        fill_cutoff(self.cutoff, None)
         box.addWidget(_row(_label("No homework after", "setupFieldLabel", wrap=False), self.cutoff))
         return content
 
@@ -1064,8 +1062,7 @@ class SetupPage(QWidget):
                 )
         if not self.activities:
             self._add_activity()
-        cutoff = self._state.preferences.get("day_cutoff")
-        self.cutoff.setCurrentIndex(max(0, self.cutoff.findData(cutoff)))
+        fill_cutoff(self.cutoff, self._state.preferences.get("day_cutoff"))
         self._follow_school()
 
     def _follow_school(self) -> None:

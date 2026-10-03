@@ -2973,6 +2973,20 @@ class HomeworkDialog(Dialog):
         return deepcopy(self._result if self._result is not None else self._original)
 
 
+# The evenings "No homework after" offers, in Setup and in Availability alike.
+CUTOFFS = ("20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00")
+
+
+def fill_cutoff(box: QComboBox, current: str | None) -> None:
+    """No limit and the CUTOFFS, with the saved time chosen. A time saved before the list was shortened
+    stays on it, so opening the page and saving does not quietly drop it."""
+    box.clear()
+    box.addItem("No limit", None)
+    for hhmm in sorted({*CUTOFFS, *([current] if current else [])}):
+        box.addItem(hhmm_text(hhmm), hhmm)
+    box.setCurrentIndex(max(0, box.findData(current)))
+
+
 def _grid_starts() -> list[str]:
     return [minutes_to_hhmm(minute) for minute in range(DAY_START_MIN, DAY_END_MIN, SLOT_MIN)]
 
@@ -3778,15 +3792,11 @@ class AvailabilityDialog(Dialog):
         add_study.setProperty("quiet", True)
         add_study.clicked.connect(self._add_study)
         form.addWidget(add_study)
+        form.addWidget(QLabel("No homework after"))
         self.cutoff = QComboBox()
         self.cutoff.setObjectName("availabilityCutoff")
-        self.cutoff.addItem("No cutoff", None)
-        for start in _grid_starts():
-            if start < "06:15":
-                continue
-            self.cutoff.addItem(hhmm_text(start), start)
-        current = preferences.get("day_cutoff")
-        self.cutoff.setCurrentIndex(max(0, self.cutoff.findData(current)))
+        self.cutoff.setAccessibleName("No homework after")
+        fill_cutoff(self.cutoff, preferences.get("day_cutoff"))
         form.addWidget(self.cutoff)
         form.addWidget(QLabel("When may FlexWeek plan homework?"))
         self.work_editor = WorkWindowsEditor(preferences.get("work_windows") or [], subjects, body)

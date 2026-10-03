@@ -25,7 +25,8 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.calendar import monday_of
     from desktop.native.layouts.registry import sanitize_layout
     from desktop.native.settings import SPOTIFY_TONE_NOTE, SettingsPage
-    from desktop.native.setup import NOTES, REMINDERS, SetupPage, SetupState
+    from desktop.native.setup import NOTES, REMINDERS, WEEK, SetupPage, SetupState
+    from desktop.native.widgets import AvailabilityDialog
 
 ALERTS = 3
 HINT = "Used by alarms and by blocks that start without a link of their own."
@@ -188,3 +189,42 @@ def test_every_page_follows_the_default_when_it_changes(qapp: QApplication, lead
 def summary_reminders(page: SetupPage) -> str:
     page._fill_summary()
     return page.summary_text()[3]
+
+
+# The homework cutoff
+
+
+def test_setup_and_availability_offer_the_same_cutoffs(qapp: QApplication) -> None:
+    setup_box = setup_page(qapp).cutoff
+    availability = AvailabilityDialog(None, {})
+    assert [words for words, _ in texts(setup_box)] == NO_HOMEWORK_AFTER
+    assert texts(availability.cutoff) == texts(setup_box)
+    assert texts(setup_box)[0] == ("No limit", None)
+    assert texts(setup_box)[1:] == [(hhmm, hhmm) for hhmm in NO_HOMEWORK_AFTER[1:]]
+    availability.close()
+
+
+def test_the_availability_cutoff_says_what_it_is_for(qapp: QApplication) -> None:
+    availability = AvailabilityDialog(None, {})
+    availability.show()
+    qapp.processEvents()
+    assert availability.cutoff.accessibleName() == "No homework after"
+    labels = [label for label in availability.findChildren(QLabel) if label.text() == "No homework after"]
+    assert len(labels) == 1 and labels[0].isVisible()
+    above = labels[0].mapTo(availability, labels[0].rect().topLeft()).y()
+    assert above < availability.cutoff.mapTo(availability, availability.cutoff.rect().topLeft()).y()
+    availability.close()
+
+
+def test_a_cutoff_saved_off_the_list_is_kept_not_dropped(qapp: QApplication) -> None:
+    # Availability used to offer every quarter hour, so a saved 22:15 is real and must survive a save.
+    availability = AvailabilityDialog(None, {"day_cutoff": "22:15"})
+    assert availability.day_cutoff() == "22:15"
+    assert [words for words, _ in texts(availability.cutoff)] == [
+        "No limit", "20:00", "20:30", "21:00", "21:30", "22:00", "22:15", "22:30", "23:00",
+    ]  # fmt: skip
+    availability.close()
+    page = setup_page(qapp, preferences={"day_cutoff": "22:15"})
+    page._show(WEEK)
+    assert page.cutoff.currentData() == "22:15"
+    page.close()
