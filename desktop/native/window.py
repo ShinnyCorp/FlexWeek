@@ -6,6 +6,7 @@ import contextlib
 import json
 from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -1271,8 +1272,13 @@ class NativeWindow(QMainWindow):
         surface = "week"
         if not self._day_mode and layout_id in VIEW_CLASSES and session.planner_view in {"day", "month"}:
             surface = session.planner_view
+        week = build_week(session.week_start, session.blocks, session.assignments, session.trace)
+        running = session.focus_elapsed_min()
+        if running:
+            # A running session counts as it goes; the homework is credited only when it ends.
+            week = replace(week, focus_min=week.focus_min + running)
         return Scene(
-            week=build_week(session.week_start, session.blocks, session.assignments, session.trace),
+            week=week,
             today=clock["day"] if monday_of(clock["iso"]) == session.week_start else None,
             minute=clock["minute"],
             options=options,

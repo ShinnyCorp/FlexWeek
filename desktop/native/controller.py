@@ -53,6 +53,7 @@ from desktop.native.focus import (
     now_next_line,
     pause_state,
     persist_payload,
+    phase_duration_ms,
     remaining_ms,
     restore_state,
     set_phase,
@@ -2691,6 +2692,15 @@ class NativeSession(QObject):
 
     def reset_focus(self) -> None:
         self._reset_focus()
+
+    def focus_elapsed_min(self) -> int:
+        """Whole minutes of the work session running or paused on this week, which are credited to
+        the homework only when it ends."""
+        state = self.focus
+        if state is None or state.get("phase") != "work" or state.get("weekStart") != self.week_start:
+            return 0
+        spent = phase_duration_ms("work", self.preferences) - remaining_ms(state, self.now_ms())
+        return max(0, spent) // 60_000
 
     def tick_focus(self) -> None:
         if self.focus is None or not self.focus.get("running"):
