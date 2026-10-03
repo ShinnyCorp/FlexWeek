@@ -1,6 +1,14 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-02, `engine/delete-twins` (from `engine/full-port` plus the clock-twin drop): 259 Python
+  tests are deleted because their Rust twin was red under a break (16 files whole, 11 in part). The
+  Python tests that still guard Python-only code stay: `backend/models.py`'s Spotify and due-date
+  copies, the `CATEGORIES` table in `calendar.py` (3 tests), `TYPE_PT` in `tokens.py`, and
+  `test_set_clock_says_whether_it_changed`. Eight mutation cases that named deleted tests now run
+  `cargo:` twins. Gate: 3722 passed in 7 min 38 s. The differential tests, `engine_ref/` and `desk_ref/`
+  are untouched and go after the release. `backend/tests/fixtures/engine_recorded_calls.json` can no
+  longer be re-recorded from the deleted tests. Not pushed.
 - 2026-10-02, `engine/full-port` (from 6e5ba72): the review's remaining fixes. An empty `start` is
   not placed in Day and Month (`plan.rs` `has_start`); a custom accent's Fix fits against the grid
   too; a study window's start is read with `int()`'s rules; `install_kind` resolves paths in the
@@ -813,6 +821,9 @@ Recorded `operation_id` values make a retried write return the first result.
   suspect was a CSS `backdrop-filter` that Qt widgets cannot draw.
 
 ## Session Handoff
+- 2026-10-02, `engine/delete-twins`: the twins are deleted (see Current State). Merges after the
+  pre-release test run on `engine/full-port`. Next: release 0.18.0, then delete the differential
+  tests and the frozen copies.
 - 2026-10-02, `engine/full-port`: review fixes above pushed for PR 35's CI (Jonathan's word). Next:
   CI on Linux and Windows, then the alarm-test cleanup error and the release steps. Not done here:
   the intermittent parity failure where an assignment estimate past 2^63 raises an OverflowError in
