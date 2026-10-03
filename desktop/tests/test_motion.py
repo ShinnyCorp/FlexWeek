@@ -17,8 +17,8 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QPoint, QRect, QRectF, Qt
-    from PySide6.QtGui import QColor, QImage, QPalette
+    from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, Qt
+    from PySide6.QtGui import QColor, QImage, QPalette, QPixmap
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import (
         QApplication,
@@ -300,6 +300,39 @@ def test_the_page_sliding_in_is_painted_once_not_on_every_frame(qapp: QApplicati
     assert Counted.paints <= 3, f"the page painted {Counted.paints} times over {frames} frames"
     assert stack.currentWidget() is second and second.graphicsEffect() is None
     stack.close()
+
+
+def test_the_design_pictures_wait_until_settings_has_slid_in(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """J12: each design's picture takes over 100 ms to draw, and they were drawn one after another
+    from the moment Settings was built, so the first slide in got three frames. The first is held
+    until a slide at the slowest level has landed."""
+    from desktop.native.layouts import dialog
+    from desktop.native.layouts.dialog import DesignPicker
+
+    drawn: list[float] = []
+    started = time.monotonic()
+
+    class Counting:
+        def get(self, *_args: object) -> QPixmap:
+            drawn.append(time.monotonic() - started)
+            return QPixmap(4, 4)
+
+    monkeypatch.setattr(dialog, "Previews", Counting)
+    picker = DesignPicker("plan", "designs", "Design", "slate")
+    assert picker.cards
+    picker.show()
+    slide = duration(OVER_MS, "extra") / 1000
+    while time.monotonic() - started < slide:
+        qapp.processEvents()
+        QTest.qWait(5)
+    assert drawn == [], "nothing is drawn while the page could still be sliding in"
+    assert within(3, lambda: len(drawn) == len(picker.cards)), "then every picture is drawn"
+    assert drawn[0] >= slide
+    picker.close()
+    picker.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def test_under_reduce_settings_fades_through_rather_than_over_the_page(qapp: QApplication) -> None:
