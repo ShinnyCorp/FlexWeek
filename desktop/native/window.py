@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from backend.slots import minutes_to_hhmm
+from backend.slots import DAY_END_MIN, SLOT_MIN, minutes_to_hhmm
 from desktop.native import autostart, icons
 from desktop.native.calendar import (
     CATEGORIES,
@@ -68,7 +68,7 @@ from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import FocusScreen
 from desktop.native.fonts import load_fonts
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
-from desktop.native.hours.geometry import Span, drag_step
+from desktop.native.hours.geometry import Span, drag_step, next_slot
 from desktop.native.hours.hand import Create, Hand, Move, MoveDate, Place, span_words
 from desktop.native.hours.hand import Verdict as HandVerdict
 from desktop.native.hours.month import MonthGrid
@@ -2097,7 +2097,19 @@ class NativeWindow(QMainWindow):
         category = self.session.armed_category
         if category in FLEX_CATEGORIES:
             category = None
-        self._commit_block(BlockDialog(self, category=category))
+        self._commit_block(self._new_event(category))
+
+    def _new_event(self, category: str | None) -> BlockDialog:
+        """A new event opens on the next quarter hour still ahead today, or with none left, the first one
+        tomorrow. The usual start stays for another week, which has no "now", and for tomorrow when that is
+        a day of the next week, which the open one cannot hold."""
+        today, minute = self._clock_in_week()
+        if today is None or minute is None:
+            return BlockDialog(self, category=category)
+        ahead, slot = next_slot(minute)
+        if today + ahead > 6:
+            return BlockDialog(self, category=category)
+        return BlockDialog(self, day=today + ahead, start=minutes_to_hhmm(slot), category=category)
 
     def _add_fixed_at(self, day: int, minute: int) -> None:
         category = self.session.armed_category
@@ -2392,7 +2404,7 @@ class NativeWindow(QMainWindow):
         if category in FLEX_CATEGORIES:
             self._commit_homework(HomeworkDialog(self, today=self._today(), category=category))
             return
-        self._commit_block(BlockDialog(self, category=category))
+        self._commit_block(self._new_event(category))
 
     def _create_by_drag(self, span: Span) -> None:
         before = {item["id"] for item in self.session.blocks}
@@ -2473,7 +2485,9 @@ class NativeWindow(QMainWindow):
         days = list(block["days"])
         clock = clock_parts(self.session.now_ms())
         today = clock["day"] if monday_of(clock["iso"]) == self.session.week_start else None
-        dialog = ChooseTimeDialog(self, block, self.session.week_start, days, self.session.blocks, due, today)
+        dialog = ChooseTimeDialog(
+            self, block, self.session.week_start, days, self.session.blocks, due, today, clock["minute"]
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         day, start = dialog.choice()
@@ -2774,10 +2788,16 @@ class NativeWindow(QMainWindow):
         if refusal:
             self.session._say(refusal)
             return
-        from_start = late_from_start(now.hour * 60 + now.minute)
+        # Rounded up: a start in the quarter hour that has already begun was a time gone by. After 23:45
+        # there is no quarter left today, so it stays the last one.
+        ahead, minute = next_slot(now.hour * 60 + now.minute)
+        if ahead:
+            minute = DAY_END_MIN - SLOT_MIN
+        starting = now.replace(hour=minute // 60, minute=minute % 60, second=0, microsecond=0)
+        from_start = late_from_start(minute)
         dialog = LateDialog(self, f"Starting from {hhmm_text(from_start)} today ({DAY_FULL[now.weekday()]}).")
         dialog.preview_requested.connect(
-            lambda: self.session.preview_running_late(dialog.chosen_minutes(), now)
+            lambda: self.session.preview_running_late(dialog.chosen_minutes(), starting)
         )
         self._late_dialog = dialog
         self.session.status.connect(dialog.error.setText)

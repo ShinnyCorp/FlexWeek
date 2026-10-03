@@ -106,6 +106,7 @@ from desktop.native.calendar import (
 from desktop.native.elevation import lift
 from desktop.native.fields import QUICK_LENGTHS, ClockField, DateField, DayPicker, Stepper
 from desktop.native.fonts import time_font, weighted
+from desktop.native.hours.geometry import next_slot
 from desktop.native.icons import pixmap as icon_pixmap
 from desktop.native.menus import Menu
 from desktop.native.motion import OUT, SEGMENT_MS, app_level, appear, between, duration, moves, settle, vanish
@@ -2285,7 +2286,9 @@ class BlockDialog(Dialog):
         # Start and End are what a student knows ("08:00 to 14:30"); the length is worked out from
         # them. A Duration box beside End was a second way to say the same thing, and could disagree.
         self._length = int(self._original["duration_min"])
-        self.end = ClockField(self._minutes_clock(self._clock_minutes(self.start.time()) + self._length))
+        self.end = ClockField(
+            self._minutes_clock(self._clock_minutes(self.start.time()) + self._length), end=True
+        )
         self.end.setObjectName("blockEnd")
         form.add_pair(("Start", self.start), ("End", self.end))
         self.duration_line = QLabel()
@@ -2363,7 +2366,7 @@ class BlockDialog(Dialog):
         return QTime(minutes // 60, minutes % 60)
 
     def _span(self) -> int:
-        return self._clock_minutes(self.end.time()) - self._clock_minutes(self.start.time())
+        return self.end.minutes() - self.start.minutes()
 
     def _span_problem(self) -> str:
         return "End must be after Start." if self._span() <= 0 else ""
@@ -3410,6 +3413,7 @@ class ChooseTimeDialog(Dialog):
         blocks: list[dict],
         due: tuple[int, int] | None,
         today: int | None = None,
+        minute: int | None = None,
     ) -> None:
         super().__init__(parent, sheet=True)
         self.setObjectName("chooseTimeDialog")
@@ -3432,6 +3436,15 @@ class ChooseTimeDialog(Dialog):
         self.start.setMinimumTime(QTime(6, 0))
         latest = DAY_END_MIN - self._duration
         self.start.setMaximumTime(QTime(latest // 60, latest % 60))
+        if today in days and minute is not None:
+            # The next quarter hour today, or with none left, the first one tomorrow when homework can go
+            # there and the last one today when it cannot: 16:00 had often passed already.
+            ahead, slot = next_slot(minute, first=6 * 60, last=latest)
+            if ahead and today + ahead in days:
+                self.day.setCurrentIndex(days.index(today + ahead))
+            elif ahead:
+                slot = latest
+            self.start.setTime(QTime(slot // 60, slot % 60))
         form.addRow("Start", self.start)
         form.addRow("Length", QLabel(length_label(self._duration)))
         layout.addLayout(form)
@@ -3774,7 +3787,7 @@ class AvailabilityDialog(Dialog):
         study_row = QHBoxLayout()
         self.study_start = ClockField(QTime(19, 0))
         self.study_start.setObjectName("studyStart")
-        self.study_end = ClockField(QTime(21, 0))
+        self.study_end = ClockField(QTime(21, 0), end=True)
         self.study_end.setObjectName("studyEnd")
         self.study_subject = QComboBox()
         self.study_subject.setObjectName("studySubject")
@@ -3865,11 +3878,10 @@ class AvailabilityDialog(Dialog):
         if len(self._study) >= AVAILABILITY_LIMIT:
             self.error.setText("Up to 21 study windows.")
             return
-        start = self.study_start.time().hour() * 60 + self.study_start.time().minute()
-        end = self.study_end.time().hour() * 60 + self.study_end.time().minute()
+        start, end = self.study_start.minutes(), self.study_end.minutes()
         start, end = start - start % SLOT_MIN, end - end % SLOT_MIN
         if end - start < SLOT_MIN or start < DAY_START_MIN or end > DAY_END_MIN:
-            self.error.setText("A study window runs between 06:00 and 23:00 and ends after it starts.")
+            self.error.setText("Pick a study window that ends after it starts.")
             return
         window: dict = {"days": [0, 1, 2, 3, 4], "start": minutes_to_hhmm(start), "duration_min": end - start}
         typed = self.study_subject.currentText().strip()
