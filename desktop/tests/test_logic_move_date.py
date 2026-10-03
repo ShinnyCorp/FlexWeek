@@ -4,16 +4,11 @@ from __future__ import annotations
 
 import importlib.util
 from copy import deepcopy
-from datetime import date, timedelta
-
-import pytest
 
 from desktop.native.calendar import date_for_day
 from desktop.tests import logic_support
 
-pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("PySide6") is None, reason="Desktop dependencies absent"
-)
+pytestmark = logic_support.NEEDS_DESKTOP
 qapp = logic_support.qapp
 server = logic_support.server
 
@@ -23,11 +18,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.calendar import sunday_due
     from desktop.native.controller import NativeSession
     from desktop.server import LocalServer
-    from desktop.tests.logic_support import PASSWORD, fixed, settled, signed_in
-
-
-def week_after(week_start: str) -> str:
-    return (date.fromisoformat(week_start) + timedelta(days=7)).isoformat()
+    from desktop.tests.logic_support import PASSWORD, fixed, settled, signed_in, titles, week_after
 
 
 def read_week(qapp: QApplication, session: NativeSession, week_start: str) -> dict:
@@ -43,10 +34,6 @@ def read_week(qapp: QApplication, session: NativeSession, week_start: str) -> di
     settled(qapp, session)
     assert "week" in got, got.get("error")
     return got["week"]
-
-
-def titles(blocks: list[dict]) -> list[str]:
-    return [block["title"] for block in blocks]
 
 
 def test_move_to_date_keeps_the_time_on_another_day_of_the_same_week(

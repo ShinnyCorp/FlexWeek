@@ -5,37 +5,31 @@ from __future__ import annotations
 import importlib.util
 from copy import deepcopy
 
-import pytest
-
 from desktop.tests import logic_support
 
-pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("PySide6") is None, reason="Desktop dependencies absent"
-)
+pytestmark = logic_support.NEEDS_DESKTOP
 qapp = logic_support.qapp
 server = logic_support.server
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtWidgets import QApplication
 
-    from desktop.native.calendar import sunday_due
     from desktop.native.controller import NativeSession
     from desktop.native.reuse import copied_homework_block
     from desktop.server import LocalServer
-    from desktop.tests.logic_support import settled, signed_in
+    from desktop.tests.logic_support import (
+        essay,
+        place_on_monday,
+        settled,
+        signed_in,
+        start_focus_on_first_block,
+        tick_focus_after_half_an_hour,
+    )
 
 
 def spread_essay(qapp: QApplication, session: NativeSession) -> list[tuple]:
     """One 90 minute essay held as three 30 minute sessions, the shape Spread and homework paste save."""
-    session.add_homework(
-        {
-            "id": "essay",
-            "title": "Essay",
-            "due": sunday_due(session.week_start),
-            "estimate_min": 90,
-            "revision": 0,
-        }
-    )
+    session.add_homework(essay(session, 90))
     session.save()
     settled(qapp, session)
     sessions = []
@@ -101,15 +95,7 @@ def test_completing_homework_keeps_its_sessions(qapp: QApplication, server: Loca
 
 def test_a_single_whole_session_still_follows_a_new_estimate(qapp: QApplication, server: LocalServer) -> None:
     session = signed_in(qapp, server.origin, "alice", create=True)
-    session.add_homework(
-        {
-            "id": "essay",
-            "title": "Essay",
-            "due": sunday_due(session.week_start),
-            "estimate_min": 60,
-            "revision": 0,
-        }
-    )
+    session.add_homework(essay(session))
     session.save()
     settled(qapp, session)
     session.add_homework({**session.assignments["essay"], "estimate_min": 90})
@@ -118,15 +104,7 @@ def test_a_single_whole_session_still_follows_a_new_estimate(qapp: QApplication,
 
 def test_a_partial_session_is_not_stretched_to_the_estimate(qapp: QApplication, server: LocalServer) -> None:
     session = signed_in(qapp, server.origin, "alice", create=True)
-    session.add_homework(
-        {
-            "id": "essay",
-            "title": "Essay",
-            "due": sunday_due(session.week_start),
-            "estimate_min": 120,
-            "revision": 0,
-        }
-    )
+    session.add_homework(essay(session, 120))
     session.blocks[0]["duration_min"] = 60
     session.save()
     settled(qapp, session)
@@ -138,26 +116,12 @@ def test_an_edit_from_an_older_copy_keeps_focus_credit_and_saves(
     qapp: QApplication, server: LocalServer
 ) -> None:
     session = signed_in(qapp, server.origin, "alice", create=True)
-    session.add_homework(
-        {
-            "id": "essay",
-            "title": "Essay",
-            "due": sunday_due(session.week_start),
-            "estimate_min": 60,
-            "revision": 0,
-        }
-    )
-    session.blocks[0]["start"] = "16:00"
-    session.blocks[0]["days"] = [0]
-    session.save()
-    settled(qapp, session)
-    session.now_ms = lambda: 1_000_000
-    assert session.start_focus(session.blocks[0]["id"], 0) is True
+    session.add_homework(essay(session))
+    place_on_monday(qapp, session)
+    start_focus_on_first_block(session)
     # The homework dialog deep-copies the assignment when it opens and stays open across the tick.
     opened = deepcopy(session.assignments["essay"])
-    session.now_ms = lambda: 1_000_000 + 30 * 60_000
-    session.tick_focus()
-    settled(qapp, session)
+    tick_focus_after_half_an_hour(qapp, session)
     assert session.assignments["essay"]["focus_minutes"] == 30
     opened["checklist"] = [{"id": "step-1", "text": "Outline", "done": True}]
     session.add_homework(opened)
