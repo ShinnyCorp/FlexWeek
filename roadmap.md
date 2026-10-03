@@ -66,6 +66,37 @@ lane entry carries the number so nothing is lost between sessions.
   past midnight in general is not included. → 0.18.1 time entry.
 - J2 (2026-10-02): Duplicate stops on an overlap while drag only warns. →
   decision above; 0.18.1 grid and keyboard.
+- J3 (2026-10-02): the Spotify link has six surfaces and three rules. Settings
+  Reminders, Setup's Reminders page, the alarm form, the fixed-block editor,
+  the homework editor and the Focus screen all take a link; reminders never
+  play it, alarms use the default link, a block start uses only its own link,
+  Focus uses the default. The Settings Play button previews what reminders
+  never do, and the "one sound for everything" note is untrue for Spotify.
+  Decision open: (1) a block start plays its own link, else the default when
+  Sound is Spotify, reminders stay Chime, field relabelled, window widened to
+  the lead; (2) keep the behaviour, move the Spotify sound and link into
+  Alarms; (3) every block start plays the default link. → "one source per
+  setting" lane once decided.
+- J4 (2026-10-02): the reminder lead has three defaults: Setup's first run
+  sets 10 min, Settings and the backend default to 5, Setup's summary line
+  says 5 when the key is missing. → one source per setting.
+- J5 (2026-10-02): the homework cutoff has two pickers: Setup offers 20:00 to
+  23:00 in half hours, Availability's unlabelled dropdown every quarter hour
+  from 06:15 to 23:45. → one source per setting.
+- J6 (2026-10-02): the snooze length and the reminder window are defined in
+  both the Python reminder module and the engine's Rust one; the snooze
+  button label reads one copy, the logic runs the other. → one source per
+  setting (the Python copies read the engine's).
+- J7 (2026-10-02): three overlapping ways to say when homework may go:
+  Setup's Homework time writes the planning hours; Availability shows
+  "Preferred study hours" as a second list, then the planning hours again
+  under "When may FlexWeek plan homework?", then a cutoff. Both lists reach
+  the solver, and Setup fills only one. Audit finding 54 saw the symptom.
+  Decision open: keep both with clear names, or merge preferred into
+  allowed. → Availability work (0.18.2 sheets lane) once decided.
+- Noted, no new item: appearance lives on the account (pack and accent from
+  short lists) and on the device (look, any-colour accent, knobs); this is
+  the open decision about looks following the account.
 
 ### 0.18.1 — Broken things
 Twenty Fix-first findings, the engine leftovers, and eight Next-patch items
@@ -80,6 +111,7 @@ that share code with a Fix-first one.
 | Sheets | #49 seven OS windows become sheets; #70 Manage account layout; #34 Add homework scrolls inside itself; #48 conflict line; #91 disabled buttons unreadable; #79 clipped buttons; coupled #50 recovery codes save folder and warning, #76 Sign out as a sheet |
 | Deadlines and dates | #32 Due by and Do it at; #2 Setup's blank calendar; #35 typed date jumps a year |
 | Update prompt | #64 offers the running version (re-check first: the code moved to Rust in 0.18.0) |
+| One source per setting | J3 Spotify link rules (after the decision); J4 reminder lead default; J5 one cutoff picker; J6 snooze and window constants read from the engine |
 
 Order: plumbing → time entry, Plan and Undo, update prompt in parallel → grid
 and keyboard → sheets and deadlines after mockup round 1 (the seven sheets,
