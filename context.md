@@ -1,9 +1,9 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-10-02. The Rust engine is on `main` (PR 35 merged at c451f59). Version 0.17.2 is the last
-  release; 0.18.0 is being prepared on `engine/release-0.18.0`: version, dated changelog and release
-  notes done, and the Python twin deletion is on top. Nothing a student sees changes in 0.18.0.
+- 2026-10-03. v0.18.0 (the Rust engine) is the last release. 0.18.1 is built on `release/0.18.1` and
+  waits for Jonathan's word to push: the 20 Fix-first findings of the 0.17.2 audit, his J1-J6, and
+  the engine leftovers (see CHANGELOG.md and roadmap.md).
 - Rust (`engine/`, contract `docs/engine/contract.md`, wrappers `docs/engine/adapters.md`): the
   planner and solver, slots, weeks, day, month, explain, restore, recovery codes, the store's SQL
   helpers and database connection, and the desktop's Qt-free logic (`desk`: calendar, custom looks
