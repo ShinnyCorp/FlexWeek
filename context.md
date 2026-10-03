@@ -1,9 +1,9 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-10-02. The Rust engine is on `main` (PR 35 merged at c451f59). Version 0.17.2 is the last
-  release; 0.18.0 is being prepared on `engine/release-0.18.0`: version, dated changelog and release
-  notes done, and the Python twin deletion is on top. Nothing a student sees changes in 0.18.0.
+- 2026-10-02. v0.18.0 is released as latest (PR 39 merged at c50f264; the package workflow attached
+  all eight assets). Nothing a student sees changed in 0.18.0. roadmap.md was rewritten to the open
+  items plus the 0.18.x series planned from the Grok audit of 0.17.2 (102 findings).
 - Rust (`engine/`, contract `docs/engine/contract.md`, wrappers `docs/engine/adapters.md`): the
   planner and solver, slots, weeks, day, month, explain, restore, recovery codes, the store's SQL
   helpers and database connection, and the desktop's Qt-free logic (`desk`: calendar, custom looks
@@ -128,9 +128,7 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-02, `engine/release-0.18.0` (from `engine/delete-twins`): 0.18.0 is being prepared. Version,
-  dated changelog and release-notes Fixed list are committed; this file is pruned. Not pushed. Next:
-  the pre-release test run's result on the other branch, then Jonathan's word to push and release
-  v0.18.0 as latest.
-- 2026-10-02, `engine/delete-twins`: the 259 twin tests are deleted (see Current State); merged into
-  the release branch. Mutation cases that named deleted tests now run `cargo:` twins.
+- 2026-10-02, `docs/roadmap-0-18-x` (from `main` at c50f264): v0.18.0 published; roadmap.md rewritten
+  (history removed, 0.18.x series added); this file's Current State updated. Not pushed. Next: Jonathan's
+  go for 0.18.1 (plumbing lane first, then the re-check pass and mockup round 1) and his pick on the
+  Duplicate-overlap question recorded in roadmap.md.
