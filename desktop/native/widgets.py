@@ -2285,7 +2285,9 @@ class BlockDialog(Dialog):
         # Start and End are what a student knows ("08:00 to 14:30"); the length is worked out from
         # them. A Duration box beside End was a second way to say the same thing, and could disagree.
         self._length = int(self._original["duration_min"])
-        self.end = ClockField(self._minutes_clock(self._clock_minutes(self.start.time()) + self._length))
+        self.end = ClockField(
+            self._minutes_clock(self._clock_minutes(self.start.time()) + self._length), end=True
+        )
         self.end.setObjectName("blockEnd")
         form.add_pair(("Start", self.start), ("End", self.end))
         self.duration_line = QLabel()
@@ -2363,7 +2365,7 @@ class BlockDialog(Dialog):
         return QTime(minutes // 60, minutes % 60)
 
     def _span(self) -> int:
-        return self._clock_minutes(self.end.time()) - self._clock_minutes(self.start.time())
+        return self.end.minutes() - self.start.minutes()
 
     def _span_problem(self) -> str:
         return "End must be after Start." if self._span() <= 0 else ""
@@ -3760,7 +3762,7 @@ class AvailabilityDialog(Dialog):
         study_row = QHBoxLayout()
         self.study_start = ClockField(QTime(19, 0))
         self.study_start.setObjectName("studyStart")
-        self.study_end = ClockField(QTime(21, 0))
+        self.study_end = ClockField(QTime(21, 0), end=True)
         self.study_end.setObjectName("studyEnd")
         self.study_subject = QComboBox()
         self.study_subject.setObjectName("studySubject")
@@ -3855,11 +3857,10 @@ class AvailabilityDialog(Dialog):
         if len(self._study) >= AVAILABILITY_LIMIT:
             self.error.setText("Up to 21 study windows.")
             return
-        start = self.study_start.time().hour() * 60 + self.study_start.time().minute()
-        end = self.study_end.time().hour() * 60 + self.study_end.time().minute()
+        start, end = self.study_start.minutes(), self.study_end.minutes()
         start, end = start - start % SLOT_MIN, end - end % SLOT_MIN
         if end - start < SLOT_MIN or start < DAY_START_MIN or end > DAY_END_MIN:
-            self.error.setText("A study window runs between 06:00 and 23:00 and ends after it starts.")
+            self.error.setText("Pick a study window that ends after it starts.")
             return
         window: dict = {"days": [0, 1, 2, 3, 4], "start": minutes_to_hhmm(start), "duration_min": end - start}
         typed = self.study_subject.currentText().strip()

@@ -445,7 +445,7 @@ class TimeRange(QWidget):
         line.setSpacing(6)
         self.start = QuarterTime(start)
         self.start.setAccessibleName(f"{name} starts")
-        self.end = QuarterTime(end)
+        self.end = QuarterTime(end, end=True)
         self.end.setAccessibleName(f"{name} ends")
         line.addWidget(_label("from", "setupFieldLabel", wrap=False))
         line.addWidget(self.start)
@@ -453,8 +453,7 @@ class TimeRange(QWidget):
         line.addWidget(self.end)
 
     def span(self) -> tuple[str, int]:
-        start = hhmm_to_minutes(self.start.hhmm())
-        return self.start.hhmm(), hhmm_to_minutes(self.end.hhmm()) - start
+        return self.start.hhmm(), self.end.minutes() - self.start.minutes()
 
     def set_span(self, start: str, minutes: int) -> None:
         begin = hhmm_to_minutes(start)
