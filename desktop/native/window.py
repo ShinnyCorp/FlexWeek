@@ -68,6 +68,7 @@ from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import FocusScreen
 from desktop.native.fonts import load_fonts
+from desktop.native.hours.canvas import HoursCanvas
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
 from desktop.native.hours.geometry import Span, drag_step, next_slot
 from desktop.native.hours.hand import Create, Hand, Move, MoveDate, Place, span_words
@@ -1167,6 +1168,7 @@ class NativeWindow(QMainWindow):
         self.hand.menu_requested.connect(self._block_menu)
         self.hand.spot_menu_requested.connect(self._spot_menu)
         self.hand.selected.connect(self.session.select_block)
+        self.hand.cleared.connect(lambda: self.session.select_block(None, None))
         self.hand.holding.connect(self._hold_renders)
         self.hand.date_judge = self._date_judge
         # Today's app, as Daily Scheduler draws it: a Week that scrolls and a full-width Day.
@@ -3584,6 +3586,14 @@ class NativeWindow(QMainWindow):
             return
         super().closeEvent(event)
 
+    def _focus_top_bar(self) -> None:
+        """Esc in the hours: the keyboard goes up to the button for the view shown, which does nothing
+        when pressed by mistake."""
+        name = {"day": "viewDay", "month": "viewMonth"}.get(self.session.planner_view, "viewWeek")
+        button = self.findChild(QPushButton, name)
+        if button is not None:
+            button.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if self.session.account is None or QApplication.activeModalWidget() is not None:
             super().keyPressEvent(event)
@@ -3601,6 +3611,10 @@ class NativeWindow(QMainWindow):
             return
         key = event.key()
         mods = event.modifiers()
+        if key == Qt.Key.Key_Escape and not mods and isinstance(focus, HoursCanvas) and not self._day_mode:
+            self._focus_top_bar()
+            event.accept()
+            return
         planning = self._stack.currentWidget() in (self.focus_screen, self.findChild(QWidget, "weekPage"))
         if self._stack.currentWidget() is self.focus_screen:
             if key == Qt.Key.Key_Escape:

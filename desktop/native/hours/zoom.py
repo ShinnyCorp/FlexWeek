@@ -204,6 +204,8 @@ class HoursScroll(QScrollArea):
         self._row.addWidget(self.buttons, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.header.installEventFilter(self)
         self.setFrameShape(QFrame.Shape.NoFrame)
+        # The hours inside it are the Tab stop; the sheet around them is not a second one.
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         overlay_scroll_bars(self)
         self.setWidgetResizable(True)
         across = Qt.ScrollBarPolicy.ScrollBarAlwaysOff
