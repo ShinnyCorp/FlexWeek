@@ -4,13 +4,6 @@
   "name": "night not ranked last",
   "old": "        keyed.push((night, study, match_energy, day, slot));\n    }\n    keyed.sort();\n    Ok(keyed.into_iter().map(|k| (k.3, k.4)).collect())\n",
   "new": "        keyed.push((study, match_energy, day, slot, night));\n    }\n    keyed.sort();\n    Ok(keyed.into_iter().map(|k| (k.2, k.3)).collect())\n",
-  "test": "backend/tests/test_solver.py::test_a_low_session_skips_midnight_when_the_morning_is_free"
- },
- {
-  "file": "engine/engine/src/solver.rs",
-  "name": "night not ranked last, caught by the Rust twin",
-  "old": "        keyed.push((night, study, match_energy, day, slot));\n    }\n    keyed.sort();\n    Ok(keyed.into_iter().map(|k| (k.3, k.4)).collect())\n",
-  "new": "        keyed.push((study, match_energy, day, slot, night));\n    }\n    keyed.sort();\n    Ok(keyed.into_iter().map(|k| (k.2, k.3)).collect())\n",
   "test": "cargo:flexweek-engine:test_solver:test_a_low_session_skips_midnight_when_the_morning_is_free"
  },
  {
@@ -32,7 +25,7 @@
   "name": "the planner floors a block's end",
   "old": "    let last = -(-(end_min - DAY_START_MIN)).div_euclid(SLOT_MIN);\n",
   "new": "    let last = (end_min - DAY_START_MIN).div_euclid(SLOT_MIN);\n",
-  "test": "backend/tests/test_solver.py::test_homework_is_never_planned_in_a_quarter_hour_a_block_at_any_minute_touches"
+  "test": "cargo:flexweek-engine:test_solver:test_homework_is_never_planned_in_a_quarter_hour_a_block_at_any_minute_touches"
  },
  {
   "file": "backend/models.py",

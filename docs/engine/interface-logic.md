@@ -1528,8 +1528,8 @@ Reading the test column. `desktop/tests/<file>::<test>` is a test that calls the
 
 | Function | What it decides | Test |
 |---|---|---|
-| `is_newer` | Compares two release numbers number by number (padding the shorter with zeros) and says false when either cannot be read. | desktop/tests/test_update.py::test_version_ordering_is_by_number_not_by_text; desktop/tests/test_update.py::test_a_tag_this_build_cannot_read_is_not_an_update |
-| `parse` | Reads a release number as 1 to 4 whole numbers, allowing a leading v, and refuses anything with a suffix. | desktop/tests/test_update.py::test_a_tag_this_build_cannot_read_is_not_an_update |
+| `is_newer` | Compares two release numbers number by number (padding the shorter with zeros) and says false when either cannot be read. | engine/engine/tests/desk_update.rs::test_version_ordering_is_by_number_not_by_text; engine/engine/tests/desk_update.rs::test_a_tag_this_build_cannot_read_is_not_an_update |
+| `parse` | Reads a release number as 1 to 4 whole numbers, allowing a leading v, and refuses anything with a suffix. | engine/engine/tests/desk_update.rs::test_a_tag_this_build_cannot_read_is_not_an_update |
 
 ## `desktop/native/elevation.py`
 

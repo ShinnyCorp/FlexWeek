@@ -23,12 +23,6 @@ fn block() -> Value {
 /// `set_clock_24h` in the wrapper: `week_set_clock` in the binding keeps what the window last passed,
 /// says whether this call differs from it, and tells the engine. The "changed" answer is the
 /// binding's, not the engine's: `weekmodel::set_clock_24h` returns nothing.
-fn set_clock(last: &mut bool, on: bool) -> bool {
-    let changed = *last != on;
-    *last = on;
-    set_clock_24h(on);
-    changed
-}
 
 #[test]
 fn test_clock_text_on_both_clocks() {
@@ -49,16 +43,6 @@ fn test_clock_text_on_both_clocks() {
         assert_eq!(clock_text(minute), on_12, "{minute} on the 12-hour clock");
         assert_eq!(clock_label(minute), on_12, "{minute} on the 12-hour clock");
     }
-}
-
-#[test]
-fn test_set_clock_says_whether_it_changed() {
-    let _clock = clock_lock();
-    let mut last = true;
-    assert!(!set_clock(&mut last, true));
-    assert!(set_clock(&mut last, false));
-    assert!(!set_clock(&mut last, false));
-    assert!(set_clock(&mut last, true));
 }
 
 #[test]

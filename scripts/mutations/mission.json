@@ -95,7 +95,7 @@
   "name": "focus counted from every homework on the account",
   "old": "    let mut worked: Vec<Value> = Vec::new();\n    for block in iterate(blocks)? {\n        let key = field(&block, \"assignment_id\")?;\n        crate::desk::pyops::hashable(&key, \"set element\")?;\n        if !key.is_null() && !worked.iter().any(|held| eq(held, &key)) {\n            worked.push(key);\n        }\n    }\n    let mut focus: i128 = 0;\n    for key in &worked {\n        let entry = or_default(dict_get(&homework, key)?, json!({}));\n        focus += to_int(&or_default(get(&entry, \"focus_minutes\")?, json!(0)))?;\n    }\n",
   "new": "    let mut focus: i128 = 0;\n    if let Value::Object(map) = &homework {\n        for item in map.values() {\n            focus += to_int(&or_default(get(item, \"focus_minutes\")?, json!(0)))?;\n        }\n    }\n",
-  "test": "desktop/tests/test_weekmodel.py::test_focus_is_what_the_timer_credited_to_this_weeks_homework_and_blocks"
+  "test": "cargo:flexweek-engine:desk_weekmodel:test_focus_is_what_the_timer_credited_to_this_weeks_homework_and_blocks"
  },
  {
   "file": "desktop/native/layouts/colourways.py",
