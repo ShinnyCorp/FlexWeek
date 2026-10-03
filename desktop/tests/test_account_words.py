@@ -3,7 +3,7 @@
 Sign-in said "Check the required fields, dates, times and lengths" for an empty password, a short
 one and a mistyped username alike, and "Your changes may not have been saved" when the server was
 gone. Sign-up repeated the hint already on screen for an empty password, so nothing seemed to
-happen. Log out and Delete account went ahead on one click.
+happen. Sign out and Delete account went ahead on one click.
 """
 
 from __future__ import annotations
@@ -134,16 +134,15 @@ def asked_with(monkeypatch: pytest.MonkeyPatch, answer: bool) -> list[tuple[str,
     return asked
 
 
-LOG_OUT = (
-    "Log out",
-    "Log out of FlexWeek on this computer? Your plans stay saved in your account. You'll need your "
-    "password to sign in again.",
-    "Log out",
+SIGN_OUT = (
+    "Sign out",
+    "Your week stays saved on this computer. Sign in again to see it.",
+    "Sign out",
     False,  # Nothing is lost, so the answer is not drawn red.
 )
 
 
-def test_log_out_asks_first_and_stays_signed_in_when_refused(
+def test_sign_out_asks_first_and_stays_signed_in_when_refused(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
     monkeypatch: pytest.MonkeyPatch,
@@ -151,12 +150,12 @@ def test_log_out_asks_first_and_stays_signed_in_when_refused(
     asked = asked_with(monkeypatch, False)
     window.findChild(QPushButton, "signOut").click()
     qapp.processEvents()
-    assert asked == [LOG_OUT]
+    assert asked == [SIGN_OUT]
     assert window.session.account is not None and window._stack.currentWidget().objectName() == "weekPage"
     asked = asked_with(monkeypatch, True)
     window.findChild(QPushButton, "signOut").click()
     wait_until(qapp, lambda: window.session.account is None)
-    assert asked == [LOG_OUT]
+    assert asked == [SIGN_OUT]
 
 
 def open_account_and_delete(window: NativeWindow, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811

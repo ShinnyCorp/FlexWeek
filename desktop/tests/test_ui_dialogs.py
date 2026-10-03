@@ -521,7 +521,7 @@ def test_every_dialog_is_freed_once_it_has_closed_and_is_let_go(qapp: QApplicati
 
     from PySide6.QtCore import QTimer
 
-    from desktop.native import settings, widgets
+    from desktop.native import look_editor, settings, widgets
 
     homework = {"id": "essay", "title": "Essay", "due": "2026-09-27T23:59", "estimate_min": 60, "revision": 0}
     pasted = {
@@ -532,6 +532,16 @@ def test_every_dialog_is_freed_once_it_has_closed_and_is_let_go(qapp: QApplicati
     }
     made = {
         widgets.Dialog: [lambda host: widgets.Dialog(host)],
+        widgets.ConfirmSheet: [
+            lambda host: widgets.ConfirmSheet(
+                host,
+                "Sign out",
+                "Sure?",
+                (("stay", "Cancel", "outlined"), ("yes", "Sign out", "")),
+                default="stay",
+            )
+        ],
+        look_editor.ColourSheet: [lambda host: look_editor.ColourSheet(host, "#3d6fc4")],
         widgets.BlockDialog: [lambda host: widgets.BlockDialog(host, school(), occurrence_day=1)],
         widgets.HomeworkDialog: [
             lambda host: widgets.HomeworkDialog(host, homework, "2026-09-21", waiting=True, pinned=True),

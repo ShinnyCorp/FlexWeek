@@ -243,12 +243,16 @@ def test_the_question_before_deleting_draws_its_answer_red_and_cancel_plain(
 ) -> None:
     pack, dark, accent = window._look_inputs()
     red = QColor(resolved_palette(pack, dark, window._look, accent)["error"])
-    box = widgets.confirm_box(window, "Delete event", "Delete Soccer practice? You can undo this.", "Delete")
+    question = "Delete Soccer practice? You can undo this."
+    box = widgets.confirm_sheet(window, "Delete event", question, "Delete")
     box.show()
     qapp.processEvents()
-    yes = box.findChild(QPushButton, "confirmYes")
-    cancel = box.findChild(QPushButton, "confirmCancel")
-    assert sorted(button.text() for button in box.buttons() if button.isVisible()) == ["Cancel", "Delete"]
+    still(box)
+    yes = box.buttons["yes"]
+    cancel = box.buttons["stay"]
+    shown_buttons = [button.text() for button in box.buttons.values() if button.isVisible()]
+    assert sorted(shown_buttons) == ["Cancel", "Delete"]
+    assert cancel.isDefault() and not yes.isDefault(), "Enter pressed out of habit changes nothing"
     picture = box.grab().toImage()
 
     def fill(button: QPushButton) -> QColor:
@@ -256,13 +260,14 @@ def test_the_question_before_deleting_draws_its_answer_red_and_cancel_plain(
         return picture.pixelColor(at.x(), at.y())
 
     assert fill(yes) == red, fill(yes).name()
-    assert fill(cancel) == picture.pixelColor(2, 2), "Cancel is plain"
+    assert fill(cancel) != red and not cancel.property("danger"), "Cancel is plain"
     box.close()
-    leave = widgets.confirm_box(window, "Log out", "Log out?", "Log out", danger=False)
+    leave = widgets.confirm_sheet(window, "Sign out", "Sure?", "Sign out", danger=False)
     leave.show()
     qapp.processEvents()
+    still(leave)
     picture = leave.grab().toImage()
-    answer = leave.findChild(QPushButton, "confirmYes")
+    answer = leave.buttons["yes"]
     at = answer.mapTo(leave, QPoint(answer.width() // 2, 4))
-    assert picture.pixelColor(at.x(), at.y()) not in (red, picture.pixelColor(2, 2)), "filled, not red"
+    assert picture.pixelColor(at.x(), at.y()) != red, "filled in the accent, not red"
     leave.close()

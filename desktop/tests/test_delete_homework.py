@@ -170,6 +170,6 @@ def test_each_unfinished_row_has_its_own_delete(qapp: QApplication) -> None:
     asked: list[str] = []
     panel.delete_requested.connect(asked.append)
     delete = panel.findChild(QPushButton, "deleteUnfinished-essay")
-    assert delete is not None and delete.property("quiet") is True
+    assert delete is not None and delete.property("outlined") is True and not delete.property("quiet")
     delete.click()
     assert asked == ["essay"]

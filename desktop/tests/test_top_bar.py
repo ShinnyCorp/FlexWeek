@@ -250,7 +250,10 @@ def test_every_button_answers_hover_press_and_disabled(qapp: QApplication, host:
         assert near(fill(button), mix(text, rest, 0.10)), f"{button.text()} pressed"
         button.setDown(False)
         button.setEnabled(False)
-        assert near(fill(button), mix(rest, page, 0.4)), f"{button.text()} disabled"
+        # A filled button off is a pale tint of the text colour with its words readable (#91); a tinted
+        # one is at 40 %.
+        off = mix(text, palette["panel"], 0.12) if button is primary else mix(rest, page, 0.4)
+        assert near(fill(button), off), f"{button.text()} disabled"
         button.setEnabled(True)
     quiet.setDown(True)
     pressed = fill(quiet)

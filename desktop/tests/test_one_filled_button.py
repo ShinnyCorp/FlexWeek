@@ -25,7 +25,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtGui import QColor
     from PySide6.QtWidgets import QApplication, QDialog, QPushButton, QWidget
 
-    from desktop.native import settings, widgets
+    from desktop.native import look_editor, settings, widgets
     from desktop.native.look import pack_stylesheet, resolved_palette
     from desktop.native.widgets import control_art
     from desktop.tests.test_ui_dialogs import _dialog_classes, school
@@ -80,6 +80,16 @@ def makers() -> dict[type, list[Callable[[QWidget], QDialog]]]:
             lambda host: widgets.SchoolHoursDialog(host, None),
         ],
         widgets.Dialog: [lambda host: widgets.Dialog(host)],
+        widgets.ConfirmSheet: [
+            lambda host: widgets.ConfirmSheet(
+                host,
+                "Sign out",
+                "Sure?",
+                (("stay", "Cancel", "outlined"), ("yes", "Sign out", "")),
+                default="stay",
+            )
+        ],
+        look_editor.ColourSheet: [lambda host: look_editor.ColourSheet(host, "#3d6fc4")],
         settings.RestoreDialog: [
             lambda host: settings.RestoreDialog(host, [RESTORE_POINT], None, None)
         ],

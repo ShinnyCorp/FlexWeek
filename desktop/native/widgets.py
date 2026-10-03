@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from copy import deepcopy
 from datetime import date, timedelta
+from functools import partial
 from pathlib import Path
 from uuid import uuid4
 
@@ -64,7 +65,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMenu,
-    QMessageBox,
     QPlainTextEdit,
     QProxyStyle,
     QPushButton,
@@ -83,6 +83,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QWidgetAction,
 )
+from shiboken6 import isValid
 
 from backend.explain import REASON_COPY
 from backend.models import ESTIMATE_MAX_MIN, Assignment, TimeBlock, WeekRequest, due_is_timed, parse_due
@@ -108,6 +109,7 @@ from desktop.native.fields import QUICK_LENGTHS, ClockField, DateField, DayPicke
 from desktop.native.fonts import time_font, weighted
 from desktop.native.hours.geometry import next_slot
 from desktop.native.icons import pixmap as icon_pixmap
+from desktop.native.look import CONFLICT_TEXT
 from desktop.native.menus import Menu
 from desktop.native.motion import OUT, SEGMENT_MS, app_level, appear, between, duration, moves, settle, vanish
 from desktop.native.reuse import (
@@ -145,7 +147,8 @@ HOMEWORK_PROBLEMS = {
 }
 HOMEWORK_REFUSED = "Check the homework details and try again."
 PLAN_REVIEW_MAX = 132
-UNFINISHED_MAX = 132
+# How many rows of Unfinished homework show before the list scrolls: the half row says there is more.
+UNFINISHED_ROWS = 3.5
 REPEAT_NOTE = "Tick more days to repeat it this week."
 SCHOOL_HOURS_NOTE = "The days and times you are at school, so nothing is planned then."
 ROUTINE_LIST_HEIGHT = 104
@@ -153,6 +156,9 @@ REPLAN_TIP = (
     "Find new times for all of this week's homework, as if none had a time yet. Homework you placed "
     "yourself stays put. Use it when your week has changed a lot."
 )
+LATE_WAIT = "Press Preview first to see what moves."
+PREVIEW_NONE = "Tick at least one item to save."
+PREVIEW_CLASH = "Fix the clash first, or untick that item."
 DAY_FULL = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
@@ -1269,6 +1275,80 @@ def sheet_section(box: QVBoxLayout, title: str, note: str) -> None:
     box.addWidget(sheet_note(note))
 
 
+def footer_line() -> QFrame:
+    """A 1-pixel line across a sheet, between its scrolled body and the answers under it."""
+    line = QFrame()
+    line.setObjectName("sheetFooterLine")
+    line.setFixedHeight(1)
+    return line
+
+
+def sheet_footer(
+    box: QVBoxLayout, *answers: QWidget, left: QWidget | None = None, divided: bool = False
+) -> QHBoxLayout:
+    """A sheet's answers in a row at its bottom right, the quietest first and the filled one last, as
+    the mock-ups draw them. `left` is a step before them, at the left edge. `divided` puts the thin line
+    over the row, for a sheet whose body scrolls."""
+    if divided:
+        box.addWidget(footer_line())
+    else:
+        box.addSpacing(SPACING[1])
+    row = QHBoxLayout()
+    row.setSpacing(SPACING[2])
+    if left is not None:
+        row.addWidget(left)
+    row.addStretch(1)
+    for answer in answers:
+        row.addWidget(answer)
+    box.addLayout(row)
+    return row
+
+
+def sheet_button(words: str, kind: str = "", name: str = "") -> QPushButton:
+    """A sheet's answer: filled by default, else `kind`, any of quiet, outlined, danger and tonal said
+    together ("outlined danger"). Never the Enter key's, unless the sheet makes it so."""
+    button = QPushButton(words)
+    if name:
+        button.setObjectName(name)
+    button.setAutoDefault(False)
+    for word in kind.split():
+        button.setProperty(word, True)
+    return button
+
+
+class WhyOff(QLabel):
+    """One line under a main button that says why it cannot be pressed yet. It shows while the button
+    is off and goes when it is on, so a button that looks off is never left unexplained (#91)."""
+
+    def __init__(
+        self,
+        button: QAbstractButton,
+        words: str,
+        align: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignRight,
+    ) -> None:
+        super().__init__(words)
+        self.setObjectName("whyOff")
+        self.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
+        self._button = button
+        button.installEventFilter(self)
+        self._follow()
+
+    def say(self, words: str) -> None:
+        self.setText(words)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self._button and event.type() == QEvent.Type.EnabledChange:
+            self._follow()
+        return False
+
+    def _follow(self) -> None:
+        self.setVisible(not self._button.isEnabled())
+        # A sheet is as tall as what it holds, so it grows and shrinks by this line.
+        sheet = self.window()
+        if isinstance(sheet, Dialog) and sheet.isVisible():
+            sheet.refit()
+
+
 class Switch(QCheckBox):
     """On or off, drawn as a toggle by the style sheet. Still a check box, so it is read, set and
     announced as one.
@@ -1548,40 +1628,6 @@ class Swatches(Choices):
     def _show(self, index: int) -> None:
         for at, button in enumerate(self._buttons):
             button.setChecked(at == index)
-
-
-def confirm_box(
-    parent: QWidget | None, title: str, question: str, yes: str, *, danger: bool = True
-) -> QMessageBox:
-    """A question before something that cannot be taken back lightly. The answer buttons say what
-    they do, and Cancel is the default, so Enter pressed out of habit changes nothing. The answer is
-    red only when it destroys something; logging out keeps everything, so it is not."""
-    box = QMessageBox(parent)
-    box.setObjectName("confirmBox")
-    box.setIcon(QMessageBox.Icon.NoIcon)
-    box.setWindowTitle(title)
-    box.setText(question)
-    # Looks set before the box adds them: it styles a button as it adds it, so Delete set red afterwards
-    # was drawn in the accent colour. Given the box as parent, since PySide does not hand a button added
-    # this way to the box, and it was freed with the last Python name for it.
-    go = QPushButton(yes, box)
-    go.setObjectName("confirmYes")
-    go.setProperty("danger", danger)
-    stay = QPushButton("Cancel", box)
-    stay.setObjectName("confirmCancel")
-    stay.setProperty("quiet", True)
-    box.addButton(go, QMessageBox.ButtonRole.DestructiveRole)
-    box.addButton(stay, QMessageBox.ButtonRole.RejectRole)
-    box.setDefaultButton(stay)
-    box.setEscapeButton(stay)
-    return box
-
-
-def confirm(parent: QWidget | None, title: str, question: str, yes: str, *, danger: bool = True) -> bool:
-    box = confirm_box(parent, title, question, yes, danger=danger)
-    box.exec()
-    chosen = box.clickedButton()
-    return chosen is not None and chosen.objectName() == "confirmYes"
 
 
 def add_heading(menu: QMenu, text: str) -> QWidgetAction:
@@ -2015,9 +2061,20 @@ SHEET_ROOM = SHADOW_LARGE.y + SHADOW_LARGE.blur
 SHEET_GAP = SPACING[4]
 SHEET_PAD = SPACING[4]
 SHEET_DIM = 0.4
+# A sheet is as tall as its content, up to this much of its window's height, and scrolls past that.
+SHEET_MOST = 0.9
 # One width scale for every sheet's card (5.1 A of 0.17.2): forms, and lists such as Routines and Help.
 SHEET_FORM = 440
 SHEET_LIST = 600
+# A row of a preview holds a tick, three choices and a sentence about it.
+SHEET_PREVIEW = 720
+
+
+def _give_focus_back(widget: QWidget) -> None:
+    """Put the keyboard back on `widget` once the sheet over it has closed, if it is still there."""
+    if isValid(widget) and widget.isVisible():
+        widget.window().activateWindow()
+        widget.setFocus(Qt.FocusReason.OtherFocusReason)
 
 
 class SheetShade(QWidget):
@@ -2045,6 +2102,10 @@ class Dialog(QDialog):
 
     _appeared = False
     _shade: SheetShade | None = None
+    # How much of its window's height a sheet may take before it scrolls; None is the window less its gap.
+    _most_share: float | None = None
+    # Where the keyboard was when the sheet opened, and goes back to when it closes.
+    _came_from: QWidget | None = None
 
     def __init__(self, parent: QWidget | None = None, *, sheet: bool = False) -> None:
         super().__init__(parent)
@@ -2102,6 +2163,9 @@ class Dialog(QDialog):
         return inner
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        if self.sheet and self._came_from is None:
+            came = QApplication.focusWidget()
+            self._came_from = came if came is not None and not self.isAncestorOf(came) else None
         super().showEvent(event)
         even_fields(self)
         if self.sheet:
@@ -2132,6 +2196,9 @@ class Dialog(QDialog):
 
     def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802
         super().hideEvent(event)
+        if self._came_from is not None:
+            QTimer.singleShot(0, partial(_give_focus_back, self._came_from))
+            self._came_from = None
         if self._shade is not None:
             self._shade.deleteLater()
             self._shade = None
@@ -2172,7 +2239,12 @@ class Dialog(QDialog):
         host = self.parentWidget().window()
         room = host.geometry()
         most_w = room.width() - 2 * SHEET_GAP + 2 * SHEET_ROOM
-        most_h = room.height() - 2 * SHEET_GAP + 2 * SHEET_ROOM
+        share = self._most_share
+        most_h = (
+            round(room.height() * share) + 2 * SHEET_ROOM
+            if share is not None
+            else room.height() - 2 * SHEET_GAP + 2 * SHEET_ROOM
+        )
         # Measured from the card itself: the dialog's layout keeps the card's size from before its fonts
         # arrived.
         card = self.card
@@ -2212,6 +2284,87 @@ class Dialog(QDialog):
         ):
             self._over_window()
         return super().eventFilter(watched, event)
+
+
+class ConfirmSheet(Dialog):
+    """A question as a sheet over its window: what is asked, and an answer for each way out. Esc and the
+    close button are "stay", so nothing is answered. The answer pressed is `self.answer`, its key."""
+
+    def __init__(
+        self,
+        parent: QWidget | None,
+        title: str,
+        question: str,
+        answers: tuple[tuple[str, str, str], ...],
+        *,
+        default: str | None = None,
+        note: str = "",
+        width: int = SHEET_FORM,
+        left: tuple[str, str, str] | None = None,
+    ) -> None:
+        """`answers` are (key, words, kind) from the quietest to the filled one; `kind` as `sheet_button`
+        takes it. `default` is the key Enter presses; none, so Enter changes nothing."""
+        super().__init__(parent, sheet=True)
+        self.setObjectName("confirmSheet")
+        self.answer: str | None = None
+        self._default = default
+        box = self.card_body(title, width)
+        self.question = QLabel(question)
+        self.question.setObjectName("confirmQuestion")
+        self.question.setWordWrap(True)
+        box.addWidget(self.question)
+        if note:
+            box.addWidget(sheet_note(note))
+        self.buttons: dict[str, QPushButton] = {}
+
+        def made(key: str, words: str, kind: str) -> QPushButton:
+            button = sheet_button(words, kind, f"confirm-{key}")
+            # The key is read off the button that was pressed: a lambda naming the sheet kept it from
+            # being freed once closed.
+            button.setProperty("answer", key)
+            button.clicked.connect(self._pressed)
+            button.setDefault(key == default)
+            button.setAutoDefault(key == default)
+            self.buttons[key] = button
+            return button
+
+        sheet_footer(
+            box,
+            *(made(*answer) for answer in answers),
+            left=made(*left) if left is not None else None,
+        )
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        super().showEvent(event)
+        # The keyboard starts on the answer Enter gives, not on whichever button is first.
+        if self._default in self.buttons:
+            self.buttons[self._default].setFocus()
+
+    def _pressed(self) -> None:
+        self.answer = self.sender().property("answer")
+        self.accept()
+
+
+def confirm_sheet(
+    parent: QWidget | None, title: str, question: str, yes: str, *, danger: bool = True
+) -> ConfirmSheet:
+    """A question before something that cannot be taken back lightly, as a sheet. The answers say what
+    they do, and Cancel is the default and the one Esc gives, so Enter pressed out of habit changes
+    nothing. The answer is red only when it destroys something; signing out keeps everything, so it is
+    not."""
+    return ConfirmSheet(
+        parent,
+        title,
+        question,
+        (("stay", "Cancel", "outlined"), ("yes", yes, "danger" if danger else "")),
+        default="stay",
+    )
+
+
+def confirm(parent: QWidget | None, title: str, question: str, yes: str, *, danger: bool = True) -> bool:
+    sheet = confirm_sheet(parent, title, question, yes, danger=danger)
+    sheet.exec()
+    return sheet.answer == "yes"
 
 
 class BlockDialog(Dialog):
@@ -2613,6 +2766,8 @@ class DueField(QWidget):
 
 
 class HomeworkDialog(Dialog):
+    _most_share = SHEET_MOST
+
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -2804,11 +2959,15 @@ class HomeworkDialog(Dialog):
         details.setVisible(open_details)
         # The sheet grows with the details, up to the room its window has.
         self.more_details.toggled.connect(self.refit)
+        # A time box shown under the date makes the body taller: the sheet is fitted again, not scrolled.
+        self.due.timed.toggled.connect(self.refit)
         area = FitScroll(body, "homeworkScroll")
         layout.addWidget(area, 1)
         self._scroll = area
         # Delete is not one of the dialog's answers: quiet words at the left, away from Save, as the
-        # block editor has it. Only homework that exists can go.
+        # block editor has it. Only homework that exists can go. The answers stay put under a line while
+        # the body scrolls.
+        layout.addWidget(footer_line())
         row = QHBoxLayout()
         self.delete_button = QPushButton("Delete")
         self.delete_button.setObjectName("deleteHomework")
@@ -3009,40 +3168,28 @@ class PreviewDialog(Dialog):
         rows: list[dict],
         existing: list[dict],
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent, sheet=True)
         self.setObjectName("stage3PreviewDialog")
-        self.setWindowTitle(title)
         self._rows = deepcopy(rows)
         self._existing = existing
         self._first = True
         self._rebuilding = False
-        layout = QVBoxLayout(self)
-        card, box = plain_card()
-        heading = QLabel(title)
-        heading.setObjectName("stage3PreviewTitle")
-        box.addWidget(heading)
-        note = QLabel(summary)
-        note.setObjectName("stage3PreviewSummary")
-        note.setWordWrap(True)
-        box.addWidget(note)
+        box = self.card_body(title, SHEET_PREVIEW)
+        if summary:
+            box.addWidget(sheet_note(summary))
         self._list = QWidget()
         self._list_layout = QVBoxLayout(self._list)
         self._list_layout.setContentsMargins(0, 0, 0, 0)
         box.addWidget(FitScroll(self._list, "stage3PreviewScroll"), 1)
-        self.error = _error_label()
-        self.error.setObjectName("stage3PreviewError")
-        box.addWidget(self.error)
-        layout.addWidget(card, 1)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
-        )
-        self.confirm = buttons.button(QDialogButtonBox.StandardButton.Save)
-        self.confirm.setObjectName("stage3PreviewConfirm")
-        self.confirm.setText("Save preview")
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setProperty("quiet", True)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        self.confirm = sheet_button("Save preview", "", "stage3PreviewConfirm")
+        self.confirm.setDefault(True)
+        self.confirm.clicked.connect(self.accept)
+        cancel = sheet_button("Cancel", "outlined")
+        cancel.clicked.connect(self.reject)
+        sheet_footer(box, cancel, self.confirm, divided=True)
+        # Whichever it is that keeps the button off, said under it.
+        self.why_off = WhyOff(self.confirm, "")
+        box.addWidget(self.why_off)
         self._refresh()
 
     def rows(self) -> list[dict]:
@@ -3066,10 +3213,7 @@ class PreviewDialog(Dialog):
         selected = [row for row in self._rows if row.get("checked")]
         self.confirm.setEnabled(bool(selected) and not conflicted)
         even_fields(self)
-        if conflicted:
-            self.error.setText("Resolve conflicts or select at least one item before saving.")
-        else:
-            self.error.setText("")
+        self.why_off.say(PREVIEW_CLASH if conflicted else PREVIEW_NONE)
         self._rebuilding = False
 
     def _row_widget(self, index: int, row: dict, conflict: str | None) -> QWidget:
@@ -3198,27 +3342,53 @@ class UnfinishedPanel(QWidget):
             row_layout.addWidget(text, 1)
             button = QPushButton("Plan here")
             button.setObjectName(f"planUnfinished-{item['id']}")
+            # The row's answer, drawn as a tint beside the outlined Delete, each with room round its words.
+            button.setProperty("tonal", True)
+            button.setProperty("roomy", True)
             button.clicked.connect(
                 lambda _checked=False, item_id=item["id"]: self.plan_requested.emit(item_id)
             )
             row_layout.addWidget(button)
             delete = QPushButton("Delete")
             delete.setObjectName(f"deleteUnfinished-{item['id']}")
-            delete.setProperty("quiet", True)
+            delete.setProperty("outlined", True)
+            delete.setProperty("roomy", True)
             delete.setToolTip("Delete this homework and its times in every week. You can undo this.")
             delete.clicked.connect(
                 lambda _checked=False, item_id=item["id"]: self.delete_requested.emit(item_id)
             )
             row_layout.addWidget(delete)
             wrapper = QListWidgetItem()
-            wrapper.setSizeHint(row.sizeHint())
             self.list.addItem(wrapper)
             self.list.setItemWidget(wrapper, row)
-        # As tall as its rows, as the plan review is: one row in a box eight rows deep read as empty.
-        if items:
-            height = sum(self.list.sizeHintForRow(index) for index in range(self.list.count()))
-            self.list.setFixedHeight(min(height + 2 * self.list.frameWidth() + 4, UNFINISHED_MAX))
+        self._fit_rows()
         self.setVisible(bool(items))
+
+    def _fit_rows(self) -> None:
+        """Each row as tall as its buttons are once the look has styled them, and the list as tall as
+        its rows up to about three and a half, so a fourth shows it scrolls (#79). The rows were measured
+        before the look reached their buttons, so every button was cut top and bottom."""
+        rows = []
+        for index in range(self.list.count()):
+            wrapper = self.list.item(index)
+            row = self.list.itemWidget(wrapper)
+            for part in (row, *row.findChildren(QWidget)):
+                part.ensurePolished()
+            wrapper.setSizeHint(row.sizeHint())
+            rows.append(row.sizeHint().height())
+        if rows:
+            # As tall as its rows, as the plan review is: one row in a box eight rows deep read as empty.
+            room = round(UNFINISHED_ROWS * max(rows))
+            self.list.setFixedHeight(min(sum(rows), room) + 2 * self.list.frameWidth() + 4)
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._fit_rows()
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.StyleChange:
+            self._fit_rows()
 
 
 class AlertStrip(QWidget):
@@ -3459,10 +3629,21 @@ class ChooseTimeDialog(Dialog):
         self.problem.setWordWrap(True)
         layout.addWidget(self.problem)
         # Another block at that time is allowed, as on the calendar; this says which, so it is a choice.
+        self.beside_row = QFrame()
+        self.beside_row.setObjectName("conflictRow")
+        beside_line = QHBoxLayout(self.beside_row)
+        beside_line.setContentsMargins(SPACING[2] + 4, SPACING[2], SPACING[2] + 4, SPACING[2])
+        beside_line.setSpacing(SPACING[2])
+        mark = QLabel()
+        mark.setObjectName("conflictMark")
+        ratio = self.devicePixelRatioF()
+        mark.setPixmap(icon_pixmap("triangle-alert", CONFLICT_TEXT, 16, ratio))
+        beside_line.addWidget(mark, 0, Qt.AlignmentFlag.AlignTop)
         self.beside = QLabel()
         self.beside.setObjectName("chooseTimeBeside")
         self.beside.setWordWrap(True)
-        layout.addWidget(self.beside)
+        beside_line.addWidget(self.beside, 1)
+        layout.addWidget(self.beside_row)
         choices = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         self.buttons = QDialogButtonBox(choices)
         self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setProperty("quiet", True)
@@ -3485,7 +3666,7 @@ class ChooseTimeDialog(Dialog):
         self.problem.setVisible(problem is not None)
         clash = span_clash(self._blocks, self._block["id"], day, start, end) if problem is None else None
         self.beside.setText(f"{clash} is at that time too. Both will show, side by side." if clash else "")
-        self.beside.setVisible(clash is not None)
+        self.beside_row.setVisible(clash is not None)
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(problem is None)
 
 
@@ -3677,6 +3858,7 @@ class LateDialog(Dialog):
         answers = QDialogButtonBox()
         self.accept_button = answers.addButton("Accept late start", QDialogButtonBox.ButtonRole.AcceptRole)
         self.accept_button.setObjectName("lateAccept")
+        self.accept_button.setProperty("roomy", True)
         self.accept_button.setEnabled(False)
         cancel = answers.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
         cancel.setProperty("quiet", True)
@@ -3686,6 +3868,7 @@ class LateDialog(Dialog):
         buttons.addStretch(1)
         buttons.addWidget(answers)
         layout.addLayout(buttons)
+        layout.addWidget(WhyOff(self.accept_button, LATE_WAIT))
 
     def chosen_minutes(self) -> int:
         return int(self.minutes.currentData())
@@ -3759,21 +3942,17 @@ class SpreadDialog(Dialog):
 
 class AvailabilityDialog(Dialog):
     def __init__(self, parent: QWidget | None, preferences: dict, subjects: list[str] | None = None) -> None:
-        super().__init__(parent)
+        super().__init__(parent, sheet=True)
         self.setObjectName("availabilityDialog")
-        self.setWindowTitle("Availability")
-        self.setMinimumWidth(640)
         self._protected = deepcopy(preferences.get("protected") or [])
         self._study = deepcopy(preferences.get("study_windows") or [])
-        layout = QVBoxLayout(self)
-        card, box = plain_card()
+        layout = self.card_body("Availability", SHEET_LIST)
         body = QWidget()
         self._body = body
         body.installEventFilter(self)
         form = QVBoxLayout(body)
         form.setContentsMargins(0, 0, 0, 0)
-        box.addWidget(FitScroll(body, "availabilityScroll"))
-        layout.addWidget(card, 1)
+        layout.addWidget(FitScroll(body, "availabilityScroll"), 1)
         form.addWidget(QLabel("Protected time"))
         self.protected_list = QListWidget()
         self.protected_list.setObjectName("protectedWindows")
@@ -3824,16 +4003,19 @@ class AvailabilityDialog(Dialog):
         form.addWidget(self.work_editor)
         self.error = _error_label()
         form.addWidget(self.error)
-        buttons = _buttons(self)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        save = sheet_button("Save", "", "availabilitySave")
+        save.setDefault(True)
+        save.clicked.connect(self.accept)
+        cancel = sheet_button("Cancel", "outlined")
+        cancel.clicked.connect(self.reject)
+        sheet_footer(layout, cancel, save, divided=True)
         self._render()
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         super().showEvent(event)
         self._fit_width()
-        fit_scroll_dialog(self, min_height=600)
+        if not self.sheet:
+            fit_scroll_dialog(self, min_height=600)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         # A work window's row added later can be wider than the dialog opened. The scrolled body
@@ -3845,8 +4027,12 @@ class AvailabilityDialog(Dialog):
     def _fit_width(self) -> None:
         """Wide enough for every row, so the dialog only ever scrolls up and down."""
         even_fields(self)
-        wanted = self._body.minimumSizeHint().width() + 2 * self.layout().contentsMargins().left() + 64
-        if wanted > self.minimumWidth():
+        wanted = self._body.minimumSizeHint().width() + 2 * SHEET_PAD + 64
+        if self.sheet:
+            if wanted > self.card_width:
+                self.card_width = wanted
+                self.refit()
+        elif wanted > self.minimumWidth():
             self.setMinimumWidth(wanted)
 
     def accept(self) -> None:

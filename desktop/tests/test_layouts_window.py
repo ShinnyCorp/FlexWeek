@@ -859,7 +859,7 @@ def test_plan_and_more_stay_on_the_bar_in_every_layout(qapp: QApplication, windo
     # Every group under a heading (T23 of the 0.17.0 audit).
     assert more_sections(window) == ["Planning", "Edit", "Help and info", "Account"]
     assert not {"Add homework", "Add fixed time", "School hours"} & set(offered), "adding is under Add"
-    wanted = {"Running late", "Routines", "Reload", "Undo", "Redo", "Undo, copy and save", "Log out"}
+    wanted = {"Running late", "Routines", "Reload", "Undo", "Redo", "Undo, copy and save", "Sign out"}
     assert wanted <= set(offered)
     assert "Settings" not in offered
     assert "Account" not in offered
@@ -1263,7 +1263,9 @@ def test_every_dialog_fits_a_laptop_screen(qapp: QApplication, window: NativeWin
         qapp.processEvents()
         dialog.adjustSize()
         qapp.processEvents()
-        sizes[measure.name] = (dialog.width(), dialog.height())
+        # A sheet's window is its card and the room round it for the shadow; the card is what is seen.
+        seen = dialog.card if getattr(dialog, "sheet", False) else dialog
+        sizes[measure.name] = (seen.width(), seen.height())
         dialog.hide()
         return QDialog.DialogCode.Rejected
 
@@ -1472,7 +1474,7 @@ def test_the_week_toolbar_keeps_only_what_is_reached_for(qapp: QApplication, win
     sections = more_sections(window)
     items = more_actions(window)
     assert sections == ["Planning", "Edit", "Help and info", "Account"]
-    wanted = {"Undo", "Redo", "Duplicate", "Running late", "Routines", "Undo, copy and save", "Log out"}
+    wanted = {"Undo", "Redo", "Duplicate", "Running late", "Routines", "Undo, copy and save", "Sign out"}
     assert wanted <= set(items)
     assert "Settings" not in items
     assert "Account" not in items
