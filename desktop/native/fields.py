@@ -7,12 +7,13 @@ it."""
 from __future__ import annotations
 
 from PySide6.QtCore import QDate, QEvent, QObject, QRect, QRectF, Qt, QTime, Signal
-from PySide6.QtGui import QColor, QPainter, QPalette, QPen, QTextCharFormat
+from PySide6.QtGui import QColor, QKeyEvent, QPainter, QPalette, QPen, QTextCharFormat
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QAbstractSpinBox,
     QCalendarWidget,
     QDateEdit,
+    QDateTimeEdit,
     QHBoxLayout,
     QPushButton,
     QSizePolicy,
@@ -135,6 +136,23 @@ class LookCalendar(QCalendarWidget):
             arrow = self.findChild(QToolButton, name)
             if arrow is not None:
                 arrow.setIcon(icons.icon(icon, text.name()))
+        self._dress_year()
+
+    def _dress_year(self) -> None:
+        """The box that replaces the year when it is clicked, in the month button's own words and height:
+        Qt's stock spin box was half as tall again as the header, with arrows that cut its digits."""
+        year = self.findChild(QSpinBox, "qt_calendar_yearedit")
+        month = self.findChild(QToolButton, "qt_calendar_monthbutton")
+        if year is None or month is None:
+            return
+        year.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        year.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        year.setFont(month.font())
+        year.setStyleSheet(
+            "QSpinBox#qt_calendar_yearedit { background: transparent; border: none; padding: 4px 8px; "
+            "min-height: 0; }"
+        )
+        year.setFixedHeight(month.sizeHint().height())
 
     def paintCell(self, painter: QPainter, rect: QRect, day: QDate) -> None:  # noqa: N802
         text, ground, accent, ink = self.colours()
@@ -183,6 +201,10 @@ class DateField(QDateEdit):
 
     def __init__(self, day: QDate | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        # The day a typed date is counted from; the window's clock where it has one.
+        self.today: QDate | None = None
+        self._typed = False
+        self.editingFinished.connect(self._next_matching_date)
         self.setCalendarPopup(True)
         # Made with this field as its parent, so Qt owns it, not Python's garbage collector.
         self.setCalendarWidget(LookCalendar(self))
@@ -194,6 +216,24 @@ class DateField(QDateEdit):
         popup.installEventFilter(PopupCard(self))
         if day is not None:
             self.setDate(day)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 - Qt virtual
+        if event.text().strip() and event.text().isprintable():
+            # Typing in the year gives a year; typing a day or a month leaves it to the field.
+            self._typed = self.currentSection() != QDateTimeEdit.Section.YearSection
+        super().keyPressEvent(event)
+
+    def _next_matching_date(self) -> None:
+        """A date typed with no year is the next one that day and month come round, not one already
+        gone: a typed day or month kept the year the field had, which left it in the past."""
+        typed, self._typed = self._typed, False
+        today = self.today or QDate.currentDate()
+        day = self.date()
+        if not typed or day >= today:
+            return
+        while day < today:
+            day = day.addYears(1)
+        self.setDate(day)
 
 
 class ClockField(QTimeEdit):

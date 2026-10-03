@@ -2543,7 +2543,15 @@ class DueField(QWidget):
 
     changed = Signal()
 
-    def __init__(self, due: str, name: str, *, stacked: bool = False, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        due: str,
+        name: str,
+        *,
+        stacked: bool = False,
+        today: str | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         # Stacked puts the time under the date, for a form too narrow to hold them side by side.
         outer = QVBoxLayout(self)
@@ -2557,6 +2565,8 @@ class DueField(QWidget):
         self.date.setMinimumDate(QDate(2000, 1, 1))
         self.date.setMaximumDate(QDate(2099, 12, 31))
         self.date.setAccessibleName("Due date")
+        if today:
+            self.date.today = QDate.fromString(today, "yyyy-MM-dd")
         self.date.calendarWidget().parentWidget().installEventFilter(self)
         # "At a set time" read like "do it at", and it sets the time the work must be done by.
         self.timed = Switch("Due by")
@@ -2672,7 +2682,7 @@ class HomeworkDialog(Dialog):
         # Homework saved with no category is still homework, so it gets the same hint.
         self.title.setPlaceholderText((info or CATEGORIES["assignments"])["label"])
         form.addRow("Title", self.title)
-        self.due = DueField(self._original["due"], "homeworkDue", stacked=True)
+        self.due = DueField(self._original["due"], "homeworkDue", stacked=True, today=today)
         form.addRow("Due", self.due)
         self.due.changed.connect(self._clear_due_problem)
         self._add_when(form)
