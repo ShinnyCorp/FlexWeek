@@ -243,11 +243,13 @@ class BlockPainter:
         painter.setPen(self.c("muted"))
         metrics = QFontMetricsF(font)
         tall = metrics.height() + 2
+        shown: list[tuple[QRectF, str, Qt.AlignmentFlag, bool]] = []
         for minute in range(((track.first + every - 1) // every) * every, track.last + 1, every):
             if minute == track.last and not self.end_label:
                 continue
             at = track.offset(minute)
             words = clock_label(minute)
+            moved = False
             if track.axis is Axis.DOWN:
                 box = QRectF(track.area.left() - room, track.area.top() + at - tall / 2, room - 8, tall)
                 align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -255,8 +257,11 @@ class BlockPainter:
                     rule = track.area.top() + at
                     if not visible.top() <= rule <= visible.bottom():
                         continue
-                    box.moveTop(min(max(box.top(), visible.top()), visible.bottom() - tall))
-                near_now = self.now_minute is not None and abs(at - track.offset(self.now_minute)) < tall
+                    kept = box.top()
+                    box.moveTop(min(max(kept, visible.top()), visible.bottom() - tall))
+                    moved = box.top() != kept
+                centre = box.center().y() - track.area.top()
+                near_now = self.now_minute is not None and abs(centre - track.offset(self.now_minute)) < tall
                 if self.now_in_gutter and near_now:
                     continue
             else:
@@ -265,7 +270,11 @@ class BlockPainter:
                 align = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom
                 if visible is not None and box.right() > visible.left() and box.left() < visible.right():
                     box.moveLeft(max(min(box.left(), visible.right() - wide), visible.left()))
-            painter.drawText(box, align, words)
+            shown.append((box, words, align, moved))
+        # A label moved in from the edge keeps its place; a neighbour it now touches gives way.
+        for box, words, align, moved in shown:
+            if moved or not any(other[3] and other[0].intersects(box) for other in shown):
+                painter.drawText(box, align, words)
 
     def fills(self, drawn: Drawn) -> tuple[QColor, QColor, QColor | None, QColor | None]:
         """Fill, ink, outline and edge for a block: the Blocks look knob and the category."""
