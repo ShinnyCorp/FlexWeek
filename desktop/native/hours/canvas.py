@@ -306,8 +306,15 @@ class BlockPainter:
         shape = QPainterPath()
         shape.addRoundedRect(rect, RADIUS_BLOCK, RADIUS_BLOCK)
         painter.fillPath(shape, fill)
-        if outline is not None:
-            painter.setPen(QPen(outline, 2))
+        # Homework FlexWeek planned has a dashed edge, since the next plan may move it. One the student
+        # placed, or is holding to place, has a solid one, since no plan will.
+        homework = drawn.work and not drawn.done
+        if outline is not None or homework:
+            if outline is None:
+                mark = category_paint(drawn.category, self.colours)[1]
+                outline = QColor(mark or self.colours["block_edge"])
+            dashed = homework and not (drawn.pinned or drawn.held)
+            painter.setPen(QPen(outline, 2, Qt.PenStyle.DashLine if dashed else Qt.PenStyle.SolidLine))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), RADIUS_BLOCK - 1, RADIUS_BLOCK - 1)
         if edge is not None:

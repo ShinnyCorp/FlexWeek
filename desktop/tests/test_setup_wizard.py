@@ -9,7 +9,7 @@ import json
 import os
 import time
 from collections.abc import Callable, Iterator
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -44,6 +44,14 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.widgets import AvailabilityDialog
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
+
+def next_school_day() -> str:
+    """The first Monday-to-Friday after today, which is when first homework starts out due."""
+    day = date.today() + timedelta(days=1)
+    while day.weekday() > 4:
+        day += timedelta(days=1)
+    return day.isoformat()
+
 
 PASSWORD = "a-long-test-password"
 SPOTIFY = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
@@ -230,7 +238,7 @@ def test_every_page_is_kept_when_the_student_leaves_it(qapp: QApplication, serve
     written(qapp, window)
     essay = next(item for item in window.session.assignments.values() if item["title"] == "History essay")
     assert essay["estimate_min"] == 90
-    assert essay["due"] == sunday_due(monday_of(window.session.week_start))[:10], "that Sunday, no time"
+    assert essay["due"] == next_school_day(), "the next school day, no time"
     sessions = [block for block in window.session.blocks if block.get("assignment_id") == essay["id"]]
     assert sessions and all(block.get("start") for block in sessions), "Plan it for me gave it a time"
 
@@ -530,9 +538,9 @@ def test_a_first_homework_due_at_a_set_time_keeps_it_and_one_without_has_none(
     setup.homework_rows[1].name.setText("Reading log")
     setup.next.click()
     written(qapp, window)
-    sunday = sunday_due(window.session.week_start)[:10]
+    day = next_school_day()
     dues = {item["title"]: item["due"] for item in window.session.assignments.values()}
-    assert dues == {"French oral": f"{sunday}T09:00", "Reading log": sunday}
+    assert dues == {"French oral": f"{day}T09:00", "Reading log": day}
     close(qapp, window)
 
 
@@ -686,7 +694,7 @@ def test_first_homework_takes_up_to_three(qapp: QApplication) -> None:
     assert len(setup.homework_rows) == 3, "a fourth is refused however it is asked for"
     due = setup.homework_rows[0].due
     assert due.date.calendarPopup()
-    assert due.value() == sunday_due(monday_of("2026-09-23"))[:10], "due that Sunday, with no time"
+    assert due.value() == next_school_day(), "due the next school day, with no time"
     setup.close()
 
 
