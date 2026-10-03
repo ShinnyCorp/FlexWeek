@@ -169,9 +169,9 @@ def test_waiting_homework_is_a_hand_chip_and_due_soon_says_where_each_is(qapp: Q
     # Soonest due first: Chem due tonight, the essay tomorrow, the poster on Sunday and not placed.
     # Where each is placed says so, and is never read as when it is due, which the figure says.
     assert texts(view, "bentoDueMeta") == [
-        "1 h 30 · placed Thu 20:00",
-        "1 h · placed Thu 18:45",
-        "2 h · Not placed",
+        "placed Thu 20:00",
+        "placed Thu 18:45",
+        "Not placed",
     ]
     rows = [view.findChild(QPushButton, f"bentoDue{index}") for index in range(3)]
     assert [row.property("block_id") for row in rows] == ["chem-1", "essay-1", "poster-1"]
@@ -254,7 +254,7 @@ def test_the_load_tile_charts_the_weeks_homework_by_day(qapp: QApplication) -> N
     view = shown(qapp)
     labels = [item.text() for item in view.findChild(QWidget, "bentoLoad").findChildren(QLabel)]
     # Monday's finished Math worksheet and Thursday's essay and Chem report, placed; the poster to go.
-    assert {"3 h 15 min", "placed, 2 h to go"} <= set(labels)
+    assert {"3 h 15 min", "placed, 2h to go"} <= set(labels)
     assert view.findChild(LoadBars, "bentoLoadBars").minutes == [45, 0, 0, 150, 0, 0, 0]
 
 

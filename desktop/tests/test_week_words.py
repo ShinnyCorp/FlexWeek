@@ -183,3 +183,27 @@ def test_the_rail_timer_list_keeps_the_time_whole(qapp: QApplication) -> None:
     ink = next(where for text, where in Said.inks if text == when)
     row = QRectF(option.rect)
     assert row.left() - 0.5 <= ink.left() and ink.right() <= row.right() + 0.5, (when, ink, row)
+
+
+def test_a_short_homework_length_is_hours_and_minutes_not_a_time_of_day() -> None:
+    """Friday's header at 810 px and Bento's day cards said "2 h 15", which reads like a time of day.
+    The short form is "2h 15m" at every width."""
+    from desktop.native.layouts.base import short_length
+
+    assert short_length(135) == "2h 15m"
+    assert short_length(90) == "1h 30m"
+    assert short_length(60) == "1h"
+    assert short_length(45) == "45 min"
+
+
+def test_fridays_header_says_2h_15m_when_the_column_is_narrow(qapp: QApplication) -> None:
+    """The day's homework length under Friday must not look like 2:15."""
+    from desktop.native.hours.classic import DayName
+
+    name = DayName(4)
+    name.show_day("Fri", "18", 135, False)
+    name.resize(48, 80)
+    words = name.homework_words()
+    assert words in ("2 h 15 min", "2h 15m"), words
+    assert ":" not in words
+    assert words != "2 h 15"

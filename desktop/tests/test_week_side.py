@@ -122,7 +122,7 @@ def test_a_days_homework_length_is_never_cut_at_any_window_width(
             qapp.processEvents()
         label.show_day("Mon", "28", 90, False)
         words = label.homework_words()
-        assert words in ("1 h 30 min", "1 h 30", "1:30"), (width, words)
+        assert words in ("1 h 30 min", "1h 30m"), (width, words)
         icon = round(QFontMetricsF(label._fonts()[2]).ascent())
         room = label.width() - label._homework_left(icon)
         fits = QFontMetricsF(label._fonts()[2]).horizontalAdvance(words) <= room
