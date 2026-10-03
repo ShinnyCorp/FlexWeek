@@ -327,7 +327,7 @@ fn test_a_window_start_that_is_not_a_time_is_an_error_not_midnight() {
     assert!(study_rank(&windows, None, 0, 0, 60).is_err());
 }
 
-// Expected values below come from running the Python reference (backend/tests/engine_ref) on the
+// Expected values below come from running the Python reference (`backend/tests/engine_ref` at v0.18.0, since deleted) on the
 // same blocks. Python tests `not block.get("start")`, so "" means not placed yet, like a missing start.
 fn unplaced_essay() -> serde_json::Value {
     json!({
