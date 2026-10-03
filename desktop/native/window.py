@@ -150,6 +150,7 @@ from desktop.native.widgets import (
     AvailabilityDialog,
     BlockDialog,
     ChooseTimeDialog,
+    ConfirmSheet,
     EndsLayout,
     FittedButton,
     FittedLabel,
@@ -165,6 +166,7 @@ from desktop.native.widgets import (
     SpreadDialog,
     Toast,
     UnfinishedPanel,
+    WhyOff,
     add_heading,
     confirm,
     control_art,
@@ -298,10 +300,10 @@ GREYED_TIPS = {
     "pasteBlock": "Copy a block or a day first.",
 }
 WAIT_TIP = "Wait a moment: FlexWeek is still saving or planning."
-LOG_OUT_QUESTION = (
-    "Log out of FlexWeek on this computer? Your plans stay saved in your account. You'll need your "
-    "password to sign in again."
-)
+SIGN_OUT_QUESTION = "Your week stays saved on {where}. Sign in again to see it."
+RECOVERY_KEEP = "Keep this file somewhere private. Anyone who has it can reset your password."
+RECOVERY_CHOOSE = "Choose where to save"
+RECOVERY_WAIT = "Tick the box above to continue."
 # What they say on a top bar with no room for the whole words.
 PLAN_SHORT = "Plan"
 SUGGEST_SHORT = "Suggest"
@@ -845,6 +847,7 @@ class NativeWindow(QMainWindow):
         self.recovery_continue.setEnabled(False)
         self.recovery_continue.clicked.connect(self._finish_recovery)
         layout.addWidget(self.recovery_continue)
+        layout.addWidget(WhyOff(self.recovery_continue, RECOVERY_WAIT, Qt.AlignmentFlag.AlignHCenter))
 
     def _build_week(self) -> None:
         page = QWidget()
@@ -912,7 +915,7 @@ class NativeWindow(QMainWindow):
         self.account_name.setObjectName("accountName")
         self.account_name.setVisible(False)
         self._bar_views.addWidget(self.account_name)
-        sign_out = QPushButton("Log out")
+        sign_out = QPushButton("Sign out")
         sign_out.setObjectName("signOut")
         sign_out.clicked.connect(self._log_out)
         sign_out.setVisible(False)
@@ -1633,10 +1636,25 @@ class NativeWindow(QMainWindow):
         self._recovery_said.start()
 
     def _choose_recovery_file(self) -> str:
-        """Its own method so a test can answer it without a file dialog on screen."""
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save recovery codes", RECOVERY_FILE, "Text (*.txt)"
+        """Its own method so a test can answer it without a sheet on screen. The sheet says what the file
+        is before the system's file dialog, which is the system's to show, picks where it goes."""
+        sheet = ConfirmSheet(
+            self,
+            "Save recovery codes",
+            RECOVERY_KEEP,
+            (("stay", "Cancel", "outlined"), ("choose", RECOVERY_CHOOSE, "")),
+            default="choose",
         )
+        sheet.exec()
+        if sheet.answer != "choose":
+            return ""
+        return self._pick_recovery_file()
+
+    def _pick_recovery_file(self) -> str:
+        """The file dialog, opened on Documents (#50); a test answers it with a path."""
+        documents = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
+        start = str(Path(documents or Path.home()) / RECOVERY_FILE)
+        path, _ = QFileDialog.getSaveFileName(self, "Save recovery codes", start, "Text (*.txt)")
         return path
 
     def _reset_recovery_buttons(self) -> None:
@@ -3268,7 +3286,12 @@ class NativeWindow(QMainWindow):
                 self.session.apply_restore_point(dialog.selected_id)
 
     def _log_out(self) -> None:
-        if confirm(self, "Log out", LOG_OUT_QUESTION, "Log out", danger=False):
+        where = (
+            "your FlexWeek server"
+            if (self.session.storage_info or {}).get("mode") == "hosted"
+            else "this computer"
+        )
+        if confirm(self, "Sign out", SIGN_OUT_QUESTION.format(where=where), "Sign out", danger=False):
             self.session.logout()
 
     def _open_help(self) -> None:
