@@ -236,10 +236,11 @@ def _length(px: int) -> int:
     return 24 * px + LEAD + TAIL
 
 
-def lanes_end(items: Sequence[Occurrence]) -> int:
-    """The minute the lanes open with at their right edge: 22:00, or the end of the last block if
-    that is later, so the evening shows and a name is not cut off at the edge."""
-    return min(max([EVENING, *(item.end for item in items)]) + END_ROOM, 24 * 60)
+def lanes_end(items: Sequence[Occurrence], now: int | None = None) -> int:
+    """The minute the lanes open with at their right edge: 22:00, or the end of the last block or now
+    if that is later, so the evening shows, a name is not cut off at the edge and now is not past it."""
+    later = [now] if now is not None else []
+    return min(max([EVENING, *(item.end for item in items), *later]) + END_ROOM, 24 * 60)
 
 
 class MissionPainter(BlockPainter):
@@ -904,7 +905,7 @@ class MissionView(LayoutView):
         at_now = scene.today is not None and scene.minute is not None and (not is_day or day == scene.today)
         scroll.open_at(
             (week.week_start, day) if is_day else week.week_start,
-            lanes_end(items),
+            lanes_end(items, scene.minute if at_now else None),
             end=True,
             keep=scene.minute if at_now else None,
         )

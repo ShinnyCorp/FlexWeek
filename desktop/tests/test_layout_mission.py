@@ -444,6 +444,20 @@ def test_now_and_the_evening_both_show_when_they_fit(
     assert last == pytest.approx(22 * 60 + 30, abs=2), f"{surface}: the lanes end at {last:.0f}"
 
 
+@pytest.mark.parametrize("minute", ["22:48", "23:50"])
+@pytest.mark.parametrize("size", [(1280, 800), (810, 800)])
+@pytest.mark.parametrize(("surface", "name", "chosen"), SURFACES)
+def test_now_is_on_screen_when_it_is_later_than_the_evening(
+    qapp: QApplication, size: tuple[int, int], surface: str, name: str, chosen: dict, minute: str
+) -> None:
+    """Audit #12: opened at 22:48 the lanes showed about 09:00 to 21:00 or ended at 22:30, with now off
+    the right edge. The lanes open with now in view at any time of day."""
+    view = shown(qapp, size=size, surface=surface, minute=minute, **chosen)
+    first, last = minutes_shown(view, name)
+    now = int(minute[:2]) * 60 + int(minute[3:])
+    assert first <= now <= last, f"{surface}: now {now} is outside {first:.0f} to {last:.0f}"
+
+
 def test_the_day_after_today_opens_through_the_evening_whatever_the_time_now(qapp: QApplication) -> None:
     """Now is not in the day shown when it is another day's, so the evening rule holds for it."""
     view = shown(qapp, size=(1280, 800), surface="day", iso_day="2026-09-18", minute="08:00")
