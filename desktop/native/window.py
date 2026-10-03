@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid
 
 from backend.slots import DAY_END_MIN, SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm
 from desktop.native import autostart, icons
@@ -394,12 +395,21 @@ class BusyGuard(QObject):
 
 class LastInput(QObject):
     """Whether the student's last press was a key or the pointer, so keyboard focus put back on the
-    week is shown with its ring after a key and without one after a click."""
+    week is shown with its ring after a key and without one after a click. One for the whole
+    application: a filter for each window slowed every event down by the number of windows made."""
+
+    _shared: LastInput | None = None
 
     def __init__(self, parent: QObject) -> None:
         super().__init__(parent)
         self.keyboard = False
         QApplication.instance().installEventFilter(self)
+
+    @classmethod
+    def shared(cls) -> LastInput:
+        if cls._shared is None or not isValid(cls._shared):
+            cls._shared = cls(QApplication.instance())
+        return cls._shared
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         kind = event.type()
@@ -547,7 +557,7 @@ class NativeWindow(QMainWindow):
         self.session.week_changed.connect(self._on_week)
         self.session.status.connect(self._on_status)
         self._busy_guard = BusyGuard(self, lambda: self.session.busy)
-        self._last_input = LastInput(self)
+        self._last_input = LastInput.shared()
         self._relaying = False
         QApplication.instance().focusChanged.connect(self._watch_field)
         self._busy_look = QTimer(self)

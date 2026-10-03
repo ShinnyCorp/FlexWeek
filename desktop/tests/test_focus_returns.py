@@ -15,7 +15,8 @@ from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
 from desktop.native.calendar import sunday_due
 from desktop.native.widgets import BlockDialog
-from desktop.native.window import NativeWindow
+from desktop.native.window import LastInput, NativeWindow
+from desktop.server import LocalServer
 from desktop.tests.grid_support import (  # noqa: F401
     NONE,
     WEDNESDAY,
@@ -27,6 +28,7 @@ from desktop.tests.grid_support import (  # noqa: F401
     window,
 )
 from desktop.tests.window_support import (  # noqa: F401
+    free,
     qapp,
     server,
     settled,
@@ -171,3 +173,15 @@ def test_a_sheet_that_closes_leaves_the_keyboard_on_the_week_not_on_the_button_t
     window._add_fixed()
     assert window.focusWidget() is grid(window)
     assert grid(window).ring_shown
+
+
+def test_every_window_reads_the_one_record_of_the_last_press(
+    qapp: QApplication, window: NativeWindow, server: LocalServer
+) -> None:
+    """A filter for each window made every event wait on all of them, which slowed whole test runs and
+    left animations unfinished when a test looked."""
+    second = NativeWindow(server.origin)
+    try:
+        assert second._last_input is window._last_input is LastInput.shared()
+    finally:
+        free(second)
