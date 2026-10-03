@@ -7,6 +7,7 @@ import importlib.util
 import os
 import time
 from collections.abc import Iterator
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -17,12 +18,17 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
 
+    from desktop.native.calendar import sunday_due
     from desktop.native.client import _error
     from desktop.native.controller import NativeSession
     from desktop.server import LocalServer
 
 PASSWORD = "a-long-test-password"
 HELD: list[object] = []
+FOCUS_START_MS = 1_000_000
+NEEDS_DESKTOP = pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="Desktop dependencies absent"
+)
 
 
 @pytest.fixture(scope="module")
@@ -118,3 +124,40 @@ def fixed(block_id: str, title: str, day: int, start: str) -> dict:
         "days": [day],
         "start": start,
     }
+
+
+def week_after(week_start: str) -> str:
+    return (date.fromisoformat(week_start) + timedelta(days=7)).isoformat()
+
+
+def titles(blocks: list[dict]) -> list[str]:
+    return [block["title"] for block in blocks]
+
+
+def essay(session: NativeSession, estimate_min: int = 60) -> dict:
+    return {
+        "id": "essay",
+        "title": "Essay",
+        "due": sunday_due(session.week_start),
+        "estimate_min": estimate_min,
+        "revision": 0,
+    }
+
+
+def place_on_monday(qapp: QApplication, session: NativeSession) -> None:
+    """Give the first block a Monday 16:00 start and save it."""
+    session.blocks[0]["start"] = "16:00"
+    session.blocks[0]["days"] = [0]
+    session.save()
+    settled(qapp, session)
+
+
+def start_focus_on_first_block(session: NativeSession) -> None:
+    session.now_ms = lambda: FOCUS_START_MS
+    assert session.start_focus(session.blocks[0]["id"], 0) is True
+
+
+def tick_focus_after_half_an_hour(qapp: QApplication, session: NativeSession) -> None:
+    session.now_ms = lambda: FOCUS_START_MS + 30 * 60_000
+    session.tick_focus()
+    settled(qapp, session)
