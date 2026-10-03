@@ -2994,6 +2994,11 @@ def _grid_starts() -> list[str]:
     return [minutes_to_hhmm(minute) for minute in range(DAY_START_MIN, DAY_END_MIN, SLOT_MIN)]
 
 
+def beside_words(clash: str) -> str:
+    """What a time says when another block is already there: it is allowed, and both are drawn."""
+    return f"{clash} is at that time too. Both will show, side by side."
+
+
 class PreviewDialog(Dialog):
     def __init__(
         self,
@@ -3049,21 +3054,16 @@ class PreviewDialog(Dialog):
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
-        conflicted = False
         for index, row in enumerate(self._rows):
             conflict = row_conflict(row, self._rows, self._existing)
-            if self._first and (conflict or row.get("invalid")):
+            if self._first and row.get("invalid"):
                 row["checked"] = False
-            conflicted = conflicted or bool(row.get("checked") and (conflict or row.get("invalid")))
             self._list_layout.addWidget(self._row_widget(index, row, conflict))
         self._first = False
         selected = [row for row in self._rows if row.get("checked")]
-        self.confirm.setEnabled(bool(selected) and not conflicted)
+        self.confirm.setEnabled(bool(selected))
         even_fields(self)
-        if conflicted:
-            self.error.setText("Resolve conflicts or select at least one item before saving.")
-        else:
-            self.error.setText("")
+        self.error.setText("" if selected else "Select at least one item before saving.")
         self._rebuilding = False
 
     def _row_widget(self, index: int, row: dict, conflict: str | None) -> QWidget:
@@ -3114,7 +3114,11 @@ class PreviewDialog(Dialog):
             length.setProperty("row", index)
             length.currentIndexChanged.connect(self._set_duration)
             row_layout.addWidget(length)
-        detail = QLabel(preview_conflict_message(row, self._rows, self._existing))
+        # Another block at that time is allowed, as on the calendar; the row says which, so it is a choice.
+        beside = conflict and not row.get("invalid")
+        detail = QLabel(
+            beside_words(conflict) if beside else preview_conflict_message(row, self._rows, self._existing)
+        )
         detail.setObjectName(f"previewDetail{index}")
         detail.setWordWrap(True)
         row_layout.addWidget(detail, 1)
@@ -3478,7 +3482,7 @@ class ChooseTimeDialog(Dialog):
         self.problem.setText((problem or "").replace(", so it stayed where it was", ""))
         self.problem.setVisible(problem is not None)
         clash = span_clash(self._blocks, self._block["id"], day, start, end) if problem is None else None
-        self.beside.setText(f"{clash} is at that time too. Both will show, side by side." if clash else "")
+        self.beside.setText(beside_words(clash) if clash else "")
         self.beside.setVisible(clash is not None)
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(problem is None)
 

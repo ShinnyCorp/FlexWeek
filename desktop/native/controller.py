@@ -91,7 +91,6 @@ from desktop.native.reuse import (
     routine_rows,
     routine_source_blocks,
     routine_template,
-    row_conflict,
     running_late_block,
     running_late_refusal,
     session_days,
@@ -1946,17 +1945,11 @@ class NativeSession(QObject):
         if self.account is None or self.conflict:
             return False
         checked = [row for row in rows if row.get("checked")]
-        dest_weeks = {row.get("week_start") for row in rows}
-        if existing is not None:
-            existing_blocks = existing
-        elif dest_weeks == {self.week_start}:
-            existing_blocks = self.blocks
-        else:
-            existing_blocks = []
-        if not checked or any(
-            row.get("invalid") or row_conflict(row, rows, existing_blocks) for row in checked
-        ):
-            self._say("Resolve conflicts or select at least one item before saving.")
+        if not checked:
+            self._say("Select at least one item before saving.")
+            return False
+        if any(row.get("invalid") for row in checked):
+            self._say("Uncheck what cannot be added before saving.")
             return False
         op_id = operation_id or (self._operation(attempt_key) if attempt_key else str(uuid4()))
         groups = merge_preview_rows(rows, op_id)
