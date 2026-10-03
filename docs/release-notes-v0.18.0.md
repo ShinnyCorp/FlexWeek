@@ -13,6 +13,14 @@ Places homework around school and sports. Download, open a window, create an acc
 - **Faster planning.** Placing a week takes about a third of the time it did, and less still while the app is busy drawing. Drawing and scrolling are as they were.
 - **Your account carries over.** Your homework, weeks, routines, looks and password are untouched. There is nothing to export or sign in to again.
 
+## Fixed
+- A homework you saved without a start time now counts as not placed yet, so its Day page opens and Month lists it as unscheduled.
+- A study window typed with digits from another script, such as Arabic-Indic, is read at its real time.
+- A custom look's Fix for the accent now checks the calendar grid as well as the page and cards.
+- Restore previews show unusual saved titles, such as "True" or "None", as they were saved.
+- A look saved with a category hue of 0 no longer comes back as -0.0, and the update check reads checksum files with unusual line breaks as before.
+- If one of your changes fails to save, FlexWeek keeps the real error and undoes the half-finished change.
+
 ## For people building from source
 - Building FlexWeek now needs Rust as well as Python. The README has the one extra command.
 
