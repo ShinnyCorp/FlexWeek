@@ -49,12 +49,12 @@ Decisions taken 2026-10-02:
   and 0.18.3, the "maybe on purpose" items decided at 0.18.3.
 - Finding 32: rename "At a set time" to "Due by" on the Due row, refuse a past
   deadline, AND add a separate, clearly named "Do it at" choice.
+- Overlaps: one rule everywhere. Duplicate and the paste preview stop on an
+  overlap ("Resolve conflicts…") while drag and the editor only warn ("Both
+  will show, side by side"). The preview gets the same warning line and Save
+  stays enabled; copy day and apply routine follow the same rule. Goes in the
+  0.18.1 grid and keyboard lane with finding 20.
 
-Open decision:
-- Duplicate stops on an overlap ("Resolve conflicts…") while drag and the
-  editor only warn ("Both will show, side by side"). Options: warn everywhere;
-  block only bulk pastes (copy day, apply routine); place the copy in the next
-  free slot. Goes with finding 20 in the 0.18.1 grid lane once chosen.
 
 ### 0.18.1 — Broken things
 Twenty Fix-first findings, the engine leftovers, and eight Next-patch items
@@ -64,7 +64,7 @@ that share code with a Fix-first one.
 |---|---|
 | Plumbing | Bell GC teardown error; the three adapter tests; the today.json mutation survivor; the interface-test tidy (T4); delete the differential tests, `desk_ref/` and `backend/tests/engine_ref/`; spec.md drift line for the CI desk step |
 | Time entry | #1 retyping a time fails; #33 Choose a time and New event default to the past; coupled #6 drop lands a step early, #7 pointer times off the grid, #53 Running late rounds down |
-| Grid and keyboard | #8 right-click rarely opens; #9 Shift+F10 at 00:00; #87 Tab never reaches a block; #39 focus jumps to ‹; #11 last hour unlabelled; coupled #42 Ctrl+Z after Plan |
+| Grid and keyboard | #8 right-click rarely opens; #9 Shift+F10 at 00:00; #87 Tab never reaches a block; #39 focus jumps to ‹; #11 last hour unlabelled; coupled #42 Ctrl+Z after Plan; Duplicate and paste previews warn on overlap instead of blocking Save (decision above) |
 | Plan and Undo | #38 Undo twice locks the week; #40 toast clipped at 1024; #10 rail says everything has a time; #12 Mission opens without now; coupled #46 Plan not locked while planning |
 | Sheets | #49 seven OS windows become sheets; #70 Manage account layout; #34 Add homework scrolls inside itself; #48 conflict line; #91 disabled buttons unreadable; #79 clipped buttons; coupled #50 recovery codes save folder and warning, #76 Sign out as a sheet |
 | Deadlines and dates | #32 Due by and Do it at; #2 Setup's blank calendar; #35 typed date jumps a year |

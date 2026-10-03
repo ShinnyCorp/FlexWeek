@@ -130,5 +130,5 @@ values make a retried write return the first result.
 ## Session Handoff
 - 2026-10-02, `docs/roadmap-0-18-x` (from `main` at c50f264): v0.18.0 published; roadmap.md rewritten
   (history removed, 0.18.x series added); this file's Current State updated. Not pushed. Next: Jonathan's
-  go for 0.18.1 (plumbing lane first, then the re-check pass and mockup round 1) and his pick on the
-  Duplicate-overlap question recorded in roadmap.md.
+  go for 0.18.1 (plumbing lane first, then the re-check pass and mockup round 1), and his yes or no on
+  reading an End of 00:00 as 24:00 (proposed for the time-entry lane).
