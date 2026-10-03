@@ -3,6 +3,88 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.1] - 2026-10-03
+
+### Added
+- Add and Edit homework have a "When" choice under Due: "Let FlexWeek pick a
+  time" or "Do it at", with a day and a time. Do it at places the homework
+  there and Plan works round it; dragging a homework block on the hours does
+  the same, and reopening it shows Do it at with that day and time. Choosing
+  Let FlexWeek pick a time hands it back to Plan. A planned homework block has
+  a dashed edge and one placed by hand a solid edge, in Today's app, Timeline
+  and Mission control.
+- The Week grid is one Tab stop. Inside it the arrow keys move a quarter hour
+  up and down and a day left and right, onto a block when one is there. Enter
+  opens the block or the free-time menu, Shift+F10 or the Menu key opens the
+  menu for the slot in focus, Delete deletes the block in focus, and Esc goes
+  back to the top bar. The slot or block in focus has a ring.
+
+### Changed
+- "At a set time" in Add and Edit homework is now "Due by", on the Due row,
+  with "FlexWeek plans it before this time." under it. A deadline that has
+  already passed is refused with "That time has already passed."
+- Every time box takes typing like a text box. Typing replaces what is
+  selected, Backspace clears, and "1515", "15:15", "3:15 pm" and "315p" all
+  mean 15:15 on either clock. Text that is not a time puts back the time from
+  before. The arrow keys and the wheel step a quarter hour.
+- An End of 00:00 means the end of the day and is written 24:00 (12:00 AM on
+  the 12-hour clock), in the block editor, Setup's school and activity hours,
+  the School hours sheet and study hours. It was refused as "End must be after
+  Start".
+- New event and Choose a time open on the next quarter hour still ahead, not
+  on a time that has passed. Running late starts from the next quarter hour.
+- A click, a right-click and the start of a new block on the hours land on
+  the nearest quarter hour, and the free-time menu names that time.
+- Availability, Plan unfinished homework, the "Any colour" picker, Leave the
+  look editor, Manage account, Save recovery codes and every question the app
+  asks (Sign out, deleting an account, homework, an event or a look) open as
+  sheets inside the window, not as separate windows. The colour picker is a
+  grid of swatches with a box for a colour code. Recovery codes save to
+  Documents by default, with a line to keep the file somewhere private.
+- Sheets have one filled main button and an outlined Cancel. "Plan here" is a
+  tinted button and "Delete" an outlined one in the Unfinished panel, both at
+  least 36 px tall. A main button that cannot be pressed yet writes its words
+  in the text colour and has a line under it saying why.
+- Choose a time's warning that something else is at that time is a tinted row
+  with a mark, not plain text.
+- Duplicate, paste, copy day and apply routine no longer stop on an overlap.
+  The preview shows "... is at that time too. Both will show, side by side."
+  on that row and Save stays on, as a drag already did.
+- A block that starts plays its own Spotify link, or the Settings link when
+  the sound is Spotify. The field is "Default Spotify link". Reminders before
+  a block and the end of a focus session still play Chime. A start caught a
+  few minutes late still plays, for as long as the reminder lead.
+- The reminder lead starts at 5 minutes everywhere; Setup used to set 10.
+  "No homework after" offers the same times in Setup and in Availability.
+- The app says "Sign in" and "Sign out" everywhere.
+
+### Fixed
+- Undo after Plan, when one save had changed a fixed block and homework
+  together, no longer ends in "Not saved" with an empty week. If an Undo or
+  Redo is refused, the saved week is loaded again and Undo is offered again.
+- Plan takes one click: more clicks while it is planning do nothing.
+- A notice with two lines is no longer cut at the top and bottom of its pill.
+- Mission control opens with the time now in view late in the evening, and
+  its focus minutes count while a session runs.
+- Right-clicking free time in Week opens its menu every time; it used to miss
+  when the pointer moved a few pixels between press and release.
+- After Plan, Undo, Redo, leaving Focus, dropping a block or closing a sheet,
+  the keyboard goes back to the week instead of the previous-week arrow.
+- Ctrl+Z and Ctrl+Y undo the week from any box on its page that has nothing
+  typed in it.
+- The first and last hour on screen in Week are always labelled.
+- Manage account no longer draws New password over Current password, and its
+  delete action shows in full.
+- Add homework no longer scrolls inside itself when the due time is on; the
+  sheet grows to the window first, and Save and Cancel stay at its foot.
+- Setup's First homework calendar draws its days, and starts on the next
+  school day rather than Sunday.
+- Typing a due date without a year means the next time that date comes.
+
+### Removed
+- The tests that compared the engine with the frozen copies of the original
+  Python, and those copies (`desk_ref/`, `backend/tests/engine_ref/`).
+
 ## [0.18.0] - 2026-10-02
 
 ### Changed
