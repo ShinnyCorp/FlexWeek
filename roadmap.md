@@ -111,10 +111,14 @@ lane entry carries the number so nothing is lost between sessions.
 - J11 (2026-10-02): the now line stops 3 px short of a block's words and
   icon and resumes after them, which reads as the line being cut. Decided:
   one continuous line drawn under the text. → 0.18.2 Week behaviour lane.
-- J12 (2026-10-02): the Settings slide-in moves the real page through a
-  graphics effect, redrawing the whole page each frame, so it stutters; the
-  slide back already moves a snapshot. Fix: slide a snapshot in, then swap
-  the real page. → 0.18.2 Plan lane with #98 (same motion code).
+- J12 (2026-10-02): the Settings slide-in stuttered. Done in 0.18.1: a
+  picture of the page slides instead of the page drawn through an effect
+  (13 paints a slide became at most 3), and the design preview pictures wait
+  until the slide has landed (the first open went from 3 or 4 frames to 13).
+  Left, decided 2026-10-03 for 0.18.2: Settings takes about 170 ms to build
+  before the slide can start, on every open, because the page is rebuilt each
+  time; build it ahead or keep it between opens. → 0.18.2 Plan lane with #98
+  (same motion code).
 - Noted, no new item: appearance lives on the account (pack and accent from
   short lists) and on the device (look, any-colour accent, knobs); this is
   the open decision about looks following the account.
@@ -166,7 +170,7 @@ ones a solid edge.
 | Narrow widths and Large text | #80 times lose meaning; #81 "2 h 15"; #82 bare "Not placed yet"; #83 "Plan" shrink rule; #84 Large text squeeze; #85 12-hour School stacks; from 0.17.3: Clay and Retro 12-hour cuts at Large 810, Bento header "F 2" |
 | Designs | J8 Timeline draggable fold; J9 Mission short blocks as bars; J10 Clay neighbours dimmed, front card scrolls, drag to switch; from 0.17.3: Bento's now pill inside today's column; Mission names crossed by the now line; Clay's Day card hourless for 100 ms; Mission's 00:00 label 6 px left |
 | Add/Edit homework | #36 defaults, hints, empty boxes; #37 Spread hard to find |
-| Plan | J12 Settings slide moves a snapshot; #43 two filled buttons, "Placed" wording; #44 misleading reason late in the day; #45 Undo menu item; #98 panel pops in |
+| Plan | J12 Settings built ahead so its slide starts at once; #43 two filled buttons, "Placed" wording; #44 misleading reason late in the day; #45 Undo menu item; #98 panel pops in |
 | Sheets | #51 Choose a time controls; #52 New event title and fields; #53 (rest) Running late buttons and refusal; #54 Availability layout; #55 sheets don't match; J7 one Study hours list |
 | Settings | #65 Remove alarm keyboard selection; #66 (Settings part); #67 Appearance layout and wording; #68 forms don't line up |
 | Account | #71 buttons don't look like buttons; #72 errors carry over; #73 sign-in error; #75 where data lives |
