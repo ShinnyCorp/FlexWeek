@@ -224,9 +224,9 @@ class BlockPainter:
         visible: QRectF | None = None,
     ) -> None:
         """Hours beside the first track, in caption: to its left down a column, above it across a
-        lane. Down a column, a label the edge of `visible`, the part on screen, would cut is left
-        out, as is one the time now takes the place of; moved inside, it named the wrong rule.
-        Across a lane it is moved inside, where it still sits over its own hour."""
+        lane. A label the edge of `visible`, the part on screen, would cut is moved inside it, where it
+        still sits beside its own rule, so the first and last hour on screen are always named; one whose
+        rule is off screen is left out, as is one the time now takes the place of."""
         font = at_scale(time_font(painter.font()), "caption", self.scale(painter.font()))
         painter.setFont(font)
         painter.setPen(self.c("muted"))
@@ -240,8 +240,11 @@ class BlockPainter:
             if track.axis is Axis.DOWN:
                 box = QRectF(track.area.left() - room, track.area.top() + at - tall / 2, room - 8, tall)
                 align = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                if visible is not None and (box.top() < visible.top() or box.bottom() > visible.bottom()):
-                    continue
+                if visible is not None:
+                    rule = track.area.top() + at
+                    if not visible.top() <= rule <= visible.bottom():
+                        continue
+                    box.moveTop(min(max(box.top(), visible.top()), visible.bottom() - tall))
                 near_now = self.now_minute is not None and abs(at - track.offset(self.now_minute)) < tall
                 if self.now_in_gutter and near_now:
                     continue
