@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
-    QDateTimeEdit,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -37,7 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from backend.models import valid_spotify_url
-from backend.slots import SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm
+from backend.slots import hhmm_to_minutes, minutes_to_hhmm
 from desktop.native import icons
 from desktop.native.calendar import (
     SETUP_ACTIVITY_PREFIX,
@@ -45,7 +44,7 @@ from desktop.native.calendar import (
     is_setup_block,
     sunday_due,
 )
-from desktop.native.fields import QUICK_LENGTHS, ClockField, DayPicker, Stepper
+from desktop.native.fields import END_OF_DAY, QUICK_LENGTHS, ClockField, DayPicker, Stepper
 from desktop.native.fonts import numeral
 from desktop.native.hours.geometry import drag_step
 from desktop.native.layouts.registry import (
@@ -420,31 +419,18 @@ class Chips(QWidget):
 
 
 class QuarterTime(ClockField):
-    """A time of day, typed. The arrow keys and the wheel move the minutes a quarter hour at a time; a
-    time typed between quarters keeps its minute, as the block editor does."""
+    """A time of day, typed. The arrow keys and the wheel move it a quarter hour at a time; a time typed
+    between quarters keeps its minute, as the block editor does."""
 
-    def __init__(self, hhmm: str) -> None:
-        super().__init__(QTime.fromString(hhmm, "HH:mm"))
+    def __init__(self, hhmm: str, *, end: bool = False) -> None:
+        # QTime holds no 24:00; an end box reads 00:00 as the end of the day.
+        super().__init__(QTime(0, 0) if hhmm == "24:00" else QTime.fromString(hhmm, "HH:mm"), end=end)
         self.setObjectName("setupTime")
         self.setCorrectionMode(QAbstractSpinBox.CorrectionMode.CorrectToNearestValue)
 
-    def minutes(self) -> int:
-        time = self.time()
-        return time.hour() * 60 + time.minute()
-
     def set_minutes(self, minutes: int) -> None:
-        minutes = max(0, min(minutes, 24 * 60 - 1))
-        self.setTime(QTime(minutes // 60, minutes % 60))
-
-    def stepBy(self, steps: int) -> None:  # noqa: N802
-        if self.currentSection() == QDateTimeEdit.Section.MinuteSection:
-            base = self.minutes() - self.minutes() % SLOT_MIN
-            # Up from 08:07 is 08:15 and down is 08:00: the quarter hour on each side.
-            if steps < 0 and self.minutes() % SLOT_MIN:
-                steps += 1
-            self.set_minutes(base + steps * SLOT_MIN)
-            return
-        super().stepBy(steps)
+        minutes = max(0, min(minutes, END_OF_DAY if self._end else END_OF_DAY - 1))
+        self.setTime(QTime(minutes // 60 % 24, minutes % 60))
 
     def hhmm(self) -> str:
         return minutes_to_hhmm(self.minutes())
