@@ -699,10 +699,12 @@ def _block_words(
 ) -> list[Written]:
     """What a block says in `room`, and where (decision 14 of 0.17). The first way that fits with no
     word cut: the title on up to two lines, its times, its length; then without the length; the
-    title on one line and its times; "Dinner 18:30" on one line; the title alone. Only if none fits
-    whole does the title give way with "…". With no room for three of its letters, nothing: the
-    block's colour says it is there. A wide day puts the length at the right of the title. `shown`
-    is whether the look shows times and lengths; a flag such as Finished stays either way.
+    title on one line and its times; "Dinner 18:30" on one line. A short block keeps its start with
+    its name, cutting the title first, rather than dropping the start. Only if none of those fits
+    does the title stand alone, giving way with "…" when it must. With no room for three of its
+    letters, nothing: the block's colour says it is there. A wide day puts the length at the right of
+    the title. `shown` is whether the look shows times and lengths; a flag such as Finished stays
+    either way.
 
     `tight` is the block's room with less kept from its top and bottom, for one line on a block too
     short for the usual margins, as a half-hour Dinner is on the week."""
@@ -757,35 +759,40 @@ def _block_words(
         written.append(Written(after, False, QRectF(at, line_top + _beside(tm, sm), after_width + 1, sl)))
         return written
 
+    start = short_clock(drawn.span.start) if shown[0] else ""
     if drawn.short:
-        # Short of room the window asked for names only: "Soccer practice" whole over two lines
-        # says more than "Soccer …" and its times.
-        ways = [lambda cut: stack(3, (), cut), lambda cut: stack(1, (), cut)]
+        # A short column still says when the block starts. Names only looked like the start was missing.
+        time_ways = [lambda cut: one_line(start, cut)] if start else []
+        name_ways = [lambda cut: stack(3, (), cut), lambda cut: stack(1, (), cut)]
     else:
         said = ((drawn.done, "Finished"), (drawn.missed, "Missed"))
         flags = " · ".join(word for flag, word in said if flag)
         times = drawn.times if shown[0] else ""
         length = drawn.length if shown[1] else flags
-        ways = [
+        time_ways = [
             lambda cut: stack(2, tuple(part for part in (times, length) if part), cut),
             lambda cut: stack(2, tuple(part for part in (times,) if part), cut),
             lambda cut: stack(1, tuple(part for part in (times,) if part), cut),
             lambda cut: stack(2, (clock_label(drawn.span.start), clock_label(drawn.span.end))
                               if shown[0] else (), cut),
-            lambda cut: one_line(short_clock(drawn.span.start) if shown[0] else "", cut),
+            lambda cut: one_line(start, cut) if start else None,
+        ]
+        name_ways = [
             lambda cut: stack(2, (), cut),
             lambda cut: stack(1, (), cut),
         ]
-    for way in ways:
-        found = way(False)
-        if found is not None:
-            return found
-    # Nothing says the title whole: it gives way, and the name comes before its start on one line,
-    # "Math works…" rather than "Mat… 19:00".
-    for way in ways[:4] + ways[5:] + ways[4:5]:
-        found = way(True)
-        if found is not None:
-            return found
+    # The start stays with the name. Title-only used to win when the full name would not fit beside
+    # the time, so a 45-minute block said "Math worksheet" and hid 17:00.
+    for cut in (False, True):
+        for way in time_ways:
+            found = way(cut)
+            if found is not None:
+                return found
+    for cut in (False, True):
+        for way in name_ways:
+            found = way(cut)
+            if found is not None:
+                return found
     return []
 
 
