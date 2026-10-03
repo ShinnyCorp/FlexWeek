@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from uuid import uuid4
 
 from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTime, QTimer, Signal
@@ -43,7 +44,6 @@ from desktop.native.calendar import (
     SETUP_ACTIVITY_PREFIX,
     SETUP_SCHOOL_ID,
     is_setup_block,
-    sunday_due,
 )
 from desktop.native.fields import QUICK_LENGTHS, ClockField, DayPicker, Stepper
 from desktop.native.fonts import numeral
@@ -517,11 +517,24 @@ class ActivityRow(QFrame):
         box.addLayout(bottom)
 
 
+def next_school_day(school_days: list[int], today: date | None = None) -> str:
+    """The first day after today that is a school day, as the day first homework is most likely due:
+    the default of Sunday was a day with no school. With no school days picked, tomorrow."""
+    today = today or date.today()
+    for ahead in range(1, 8):
+        day = today + timedelta(days=ahead)
+        if not school_days or day.weekday() in school_days:
+            return day.isoformat()
+    return (today + timedelta(days=1)).isoformat()
+
+
 class HomeworkRow(QFrame):
     removed = Signal(object)
 
     def __init__(self, due: str) -> None:
         super().__init__()
+        # What the date was made as, so a date the student never touched can follow the school days.
+        self.default_due = due
         self.setObjectName("setupGroup")
         grid = QGridLayout(self)
         grid.setContentsMargins(12, 10, 12, 10)
@@ -1172,8 +1185,19 @@ class SetupPage(QWidget):
                 card.select(layout_id == self._layout["main"])
         if step == COLOURS:
             self._fill_colours()
+        if step == FIRST:
+            self._follow_school_days()
         if step == DONE:
             self._fill_summary()
+
+    def _follow_school_days(self) -> None:
+        """The school days may have changed since this page's date was made; one still as it was made
+        moves to the new next school day."""
+        fresh = next_school_day(self.school_days.days())
+        for row in self.homework_rows:
+            if row.due.value() == row.default_due:
+                row.default_due = fresh
+                row.due.set_value(fresh)
 
     def _sync_chrome(self) -> None:
         self.back.setVisible(self._step != STYLE)
@@ -1428,9 +1452,7 @@ class SetupPage(QWidget):
     def _add_homework_row(self, focus: bool = False) -> None:
         if len(self.homework_rows) >= MAX_FIRST_HOMEWORK:
             return
-        row = HomeworkRow(
-            sunday_due(self._state.week_start) if self._state.week_start else "2026-01-04T23:59"
-        )
+        row = HomeworkRow(next_school_day(self.school_days.days()))
         row.removed.connect(self._remove_homework_row)
         self.homework_box.addWidget(row)
         self.homework_rows.append(row)

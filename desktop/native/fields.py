@@ -101,12 +101,13 @@ class LookCalendar(QCalendarWidget):
         self.setHorizontalHeaderFormat(QCalendarWidget.HorizontalHeaderFormat.SingleLetterDayNames)
         for day in (Qt.DayOfWeek.Saturday, Qt.DayOfWeek.Sunday):
             self.setWeekdayTextFormat(day, QTextCharFormat())
-        self._view = self.findChild(QAbstractItemView, "qt_calendar_calendarview")
 
     def colours(self) -> tuple[QColor, QColor, QColor, QColor]:
         """The words, the card under them, the accent and the words on the accent, as the look's style
         sheet gives them to the month's grid."""
-        colours = self._view.palette()
+        # Looked up each time: Qt makes the month's grid again when the popup opens, and the one found
+        # in __init__ was gone by then, so no day number was drawn.
+        colours = self.findChild(QAbstractItemView, "qt_calendar_calendarview").palette()
         return (
             colours.color(QPalette.ColorRole.Text),
             colours.color(QPalette.ColorRole.Base),
