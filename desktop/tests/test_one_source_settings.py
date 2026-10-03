@@ -3,7 +3,9 @@ length each have one place that decides them, and every page that shows them rea
 
 from __future__ import annotations
 
+import ast
 import importlib.util
+import inspect
 import os
 from collections.abc import Iterator
 
@@ -20,11 +22,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QStandardPaths
-    from PySide6.QtWidgets import QApplication, QComboBox, QLabel
+    from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QPushButton
 
     from desktop.native.calendar import monday_of
     from desktop.native.layouts.registry import sanitize_layout
-    from desktop.native.settings import SPOTIFY_TONE_NOTE, SettingsPage
+    from desktop.native.settings import SPOTIFY_TONE_NOTE, AlarmRingDialog, SettingsPage
     from desktop.native.setup import NOTES, REMINDERS, WEEK, SetupPage, SetupState
     from desktop.native.widgets import AvailabilityDialog
 
@@ -228,3 +230,32 @@ def test_a_cutoff_saved_off_the_list_is_kept_not_dropped(qapp: QApplication) -> 
     page._show(WEEK)
     assert page.cutoff.currentData() == "22:15"
     page.close()
+
+
+# The constants
+
+
+def test_python_keeps_no_copy_of_the_engines_constants() -> None:
+    tree = ast.parse(inspect.getsource(remind))
+    assigned = {
+        target.id: node.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    for name in ("REMINDER_WINDOW_MIN", "REMINDER_LEAD_DEFAULT_MIN", "ALARM_SNOOZE_MIN", "ALARM_SNOOZE_MS"):
+        value = assigned[name]
+        assert isinstance(value, ast.Attribute), f"{name} is written down again, not read"
+        assert isinstance(value.value, ast.Name) and value.value.id == "flexweek_engine", name
+        assert getattr(remind, name) == getattr(flexweek_engine, name)
+
+
+def test_the_snooze_button_and_the_snooze_length_agree(qapp: QApplication) -> None:
+    dialog = AlarmRingDialog(None, {"name": "Wake up", "time": "06:45"}, "")
+    button = dialog.findChild(QPushButton, "alarmSnooze")
+    assert isinstance(button, QPushButton)
+    snoozed_for = remind.snooze_until(1_000_000) - 1_000_000
+    assert snoozed_for % 60_000 == 0
+    assert button.text() == f"Snooze {snoozed_for // 60_000} minutes"
+    dialog.close()

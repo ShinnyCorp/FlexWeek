@@ -8,10 +8,11 @@ from datetime import datetime
 
 import flexweek_engine  # type: ignore[import-untyped]
 
-REMINDER_WINDOW_MIN = 2
+# The engine runs these rules, so the numbers are read from it rather than written down again.
+REMINDER_WINDOW_MIN = flexweek_engine.REMINDER_WINDOW_MIN
 REMINDER_LEAD_DEFAULT_MIN = flexweek_engine.REMINDER_LEAD_DEFAULT_MIN
-ALARM_SNOOZE_MIN = 5
-ALARM_SNOOZE_MS = ALARM_SNOOZE_MIN * 60_000
+ALARM_SNOOZE_MIN = flexweek_engine.ALARM_SNOOZE_MIN
+ALARM_SNOOZE_MS = flexweek_engine.ALARM_SNOOZE_MS
 REMINDER_POLL_MS = 30_000
 
 
