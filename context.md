@@ -30,11 +30,10 @@
   (NaN, lone surrogates) in stored rows; an assignment estimate past 2^63 raises `OverflowError` in
   the engine where Python returned a number (seen once under hypothesis); `build_month` returns a
   month where Python raised `TypeError` on a finished session with no start.
-- Open, for 0.18.1 on Jonathan's word: `test_tests_ring_at_no_volume` leaves a Qt `Bell` for garbage
-  collection (teardown error); the three adapter tests; one survivor in the `today.json` mutation
-  baseline; the interface-test tidy (T4). `backend/tests/fixtures/engine_recorded_calls.json` can
-  no longer be re-recorded from the deleted tests. Then: delete the differential tests, `desk_ref/`
-  and `backend/tests/engine_ref/`.
+- 0.18.1 plumbing done on `release/0.18.1`: the Bell teardown, the three adapter tests, the
+  `today.json` baseline and the deletion of the differential tests, `desk_ref/` and
+  `backend/tests/engine_ref/`. About 100 cases those tests pinned have no Rust test of the same case
+  (list in the scratch report); `hypothesis` is now used by no test and awaits Jonathan's word to go.
 - spec.md drift: its CI desk step says "the desk parity files and the wrapper modules' tests"; it now
   runs the parity files plus `test_tokens.py` and `test_update.py`.
 - Open for 0.17.3 (design polish, from 0.17.2): Bento's now pill inside today's column; Mission's
@@ -128,9 +127,12 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-02, `engine/release-0.18.0` (from `engine/delete-twins`): 0.18.0 is being prepared. Version,
-  dated changelog and release-notes Fixed list are committed; this file is pruned. Not pushed. Next:
-  the pre-release test run's result on the other branch, then Jonathan's word to push and release
-  v0.18.0 as latest.
-- 2026-10-02, `engine/delete-twins`: the 259 twin tests are deleted (see Current State); merged into
-  the release branch. Mutation cases that named deleted tests now run `cargo:` twins.
+- 2026-10-02 late, `release/0.18.1` (integration branch, from `main` at c50f264, not pushed): v0.18.0 is
+  published. 0.18.1 is in progress per roadmap.md on `docs/roadmap-0-18-x` (pushed). Merged here: the
+  plumbing (restored adapter tests, NaN import test, Bell fixture, wheel settle, same-version updater
+  test, frozen references and differential tests deleted) and the one-source-per-setting lane (J3-J6).
+  Lane branches still being written in `~/.worktrees/flexweek-0181-*`: `fix/time-entry`,
+  `fix/plan-undo`, `fix/sheets`, `fix/deadlines-dates`, `test/logic-tidy`; `fix/grid-keyboard` starts
+  after time entry merges (brief in the scratch plan folder). Integration tests run in the venv at
+  `~/.flexweek-ui-harness/venv-0181` (this branch's engine); the checkout's own `.venv` holds main's
+  engine for the lanes. Next: review and merge each lane, one gate, rig, then Jonathan's word to push.
