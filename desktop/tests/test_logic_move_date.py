@@ -374,8 +374,8 @@ def test_a_move_into_a_week_that_already_has_blocks_keeps_them(
 def test_undo_of_a_move_refuses_when_the_other_week_changed_elsewhere(
     qapp: QApplication, server: LocalServer
 ) -> None:
-    """A later save to the other week, not on this undo stack, is kept. Undo is a 409 and both
-    weeks stay as they are."""
+    """A later save to the other week, not on this undo stack, is kept. Undo is a 409, the week is
+    reloaded as it is saved, and both weeks stay as they are."""
     alice = signed_in(qapp, server.origin, "alice", create=True)
     first = alice.week_start
     second = week_after(first)
@@ -398,10 +398,8 @@ def test_undo_of_a_move_refuses_when_the_other_week_changed_elsewhere(
     settled(qapp, bob)
     alice.undo()
     settled(qapp, alice)
-    assert alice.conflict is True
-    assert alice.message == (
-        "Not saved. The saved data changed or that name is already in use. Reload and try again."
-    )
+    assert alice.conflict is False
+    assert alice.message == "Undo did not go through. Your week was reloaded as it is saved."
     source = read_week(qapp, alice, first)
     dest = read_week(qapp, alice, second)
     assert titles(source["blocks"]) == []
