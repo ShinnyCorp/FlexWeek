@@ -23,6 +23,7 @@ Places homework around school and sports. Download, open a window, create an acc
 - New event and Choose a time no longer open on a time that has passed.
 - Mission control opens with the time now in view late in the evening.
 - The first and last hour in Week are always labelled.
+- Settings slides in smoothly instead of stuttering.
 - Manage account's fields no longer overlap, and Add homework no longer scrolls inside itself.
 - Setup's first homework calendar draws its days.
 - The reminder lead starts at 5 minutes everywhere, and "No homework after" offers the same times in Setup and Availability.

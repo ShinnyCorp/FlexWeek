@@ -63,6 +63,8 @@ OVER_MS, OVER_DIM = 200, 0.2
 # The segmented control's selection sliding to the segment chosen (decision 32).
 SEGMENT_MS = 160
 FADE_NAME = "motionFade"
+# The picture of a page sliding in over another, as Settings does.
+SLIDE_NAME = "motionSlide"
 OUT = QEasingCurve(QEasingCurve.Type.OutCubic)
 
 # The level the whole app runs at, for what has no window to ask: dialogs, designs, painted hours.
@@ -211,7 +213,11 @@ def clear_fades(host: QWidget) -> None:
     """Drop pictures still fading over `host`, and dimming left from Settings sliding away, so a new
     picture never captures an old one."""
     direct = Qt.FindChildOption.FindDirectChildrenOnly
-    for leftover in (*host.findChildren(QLabel, FADE_NAME, direct), *host.findChildren(Dim, options=direct)):
+    for leftover in (
+        *host.findChildren(QLabel, FADE_NAME, direct),
+        *host.findChildren(QLabel, SLIDE_NAME, direct),
+        *host.findChildren(Dim, options=direct),
+    ):
         leftover.hide()
         leftover.deleteLater()
 
@@ -243,8 +249,12 @@ def trim_picture(picture: QLabel, area: QRect) -> None:
     whole = picture.pixmap()
     ratio = whole.devicePixelRatio()
     kept = whole.copy(
-        QRect(round(inside.x() * ratio), round(inside.y() * ratio),
-              round(inside.width() * ratio), round(inside.height() * ratio))
+        QRect(
+            round(inside.x() * ratio),
+            round(inside.y() * ratio),
+            round(inside.width() * ratio),
+            round(inside.height() * ratio),
+        )
     )
     kept.setDevicePixelRatio(ratio)
     picture.setPixmap(kept)
@@ -360,18 +370,32 @@ def slide_over(stack: QStackedWidget, page: QWidget, level: str, *, back: bool =
     dim = Dim(stack if back else picture)
     dim.setGeometry(stack.rect() if back else picture.rect())
     dim.show()
-    # What moves: the picture of the page going away, or the page coming in, over the one that stays.
-    moving = picture if back else page
+    # What moves is a picture either way: of the page going away, or of the page coming in. The page
+    # coming in used to move itself, drawn through an effect, which painted the whole of Settings
+    # again for every frame and made it stutter in.
     if back:
+        moving = picture
         dim.stackUnder(picture)
+        effect = Shift(moving, far)
+        moving.setGraphicsEffect(effect)
     else:
-        picture.stackUnder(page)
-    effect = Shift(moving, far)
-    moving.setGraphicsEffect(effect)
+        moving = QLabel(stack)
+        moving.setObjectName(SLIDE_NAME)
+        moving.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        moving.setPixmap(page.grab())
+        # The page lies under both pictures until the slide ends. Qt would still paint it for every
+        # frame the picture above it moves, so its painting waits for the landing.
+        page.setUpdatesEnabled(False)
+        moving.setGeometry(stack.rect().translated(far))
+        moving.show()
+        moving.raise_()
 
     def step(at: float) -> None:
         share = _along(at, 0, length)
-        effect.set(1.0, far * (share if back else 1 - share))
+        if back:
+            effect.set(1.0, far * share)
+        else:
+            moving.move(round(far.x() * (1 - share)), 0)
         dim.share = 1 - share if back else share
         dim.update()
 
@@ -379,9 +403,11 @@ def slide_over(stack: QStackedWidget, page: QWidget, level: str, *, back: bool =
         dim.deleteLater()
         picture.deleteLater()
         if not back:
-            page.setGraphicsEffect(None)
+            page.setUpdatesEnabled(True)
+            moving.deleteLater()
 
-    _run(moving, length, step, done)
+    # The clock is the page's when it comes in, so settling the page ends its slide.
+    _run(picture if back else page, length, step, done)
 
 
 def glide(widget: QWidget, target: QRect, level: str, *, ms: int = EASE_MS + 60) -> None:

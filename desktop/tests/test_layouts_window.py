@@ -2256,10 +2256,14 @@ def test_settings_slide_in_over_the_week_and_away_again(qapp: QApplication, wind
     window._open_settings()
     settings = window._settings
     assert window._stack.currentWidget() is settings
-    assert settings.graphicsEffect().offset.x() == window._stack.width(), "from the right edge"
+    from desktop.native.motion import SLIDE_NAME
+
+    (coming,) = [label for label in window._stack.findChildren(QLabel, SLIDE_NAME) if label.isVisible()]
+    assert coming.x() == window._stack.width(), "from the right edge"
     (week,) = _fades(window._stack)
     faded_in()
     assert _fades(window) == [] and settings.graphicsEffect() is None
+    assert window._stack.findChildren(QLabel, SLIDE_NAME) == [] or not coming.isVisible()
     settings.close_page()
     assert window._stack.currentWidget().objectName() == "weekPage", "the week is live at once"
     (leaving,) = _fades(window._stack)

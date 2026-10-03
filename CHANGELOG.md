@@ -73,6 +73,8 @@ All notable changes to FlexWeek are documented here. Format follows
 - Ctrl+Z and Ctrl+Y undo the week from any box on its page that has nothing
   typed in it.
 - The first and last hour on screen in Week are always labelled.
+- Settings slides in smoothly. The page was painted again for every frame of
+  the slide; a picture of it slides now, and the page is painted once it lands.
 - Manage account no longer draws New password over Current password, and its
   delete action shows in full.
 - Add homework no longer scrolls inside itself when the due time is on; the
