@@ -8,11 +8,14 @@ desktop units, the 0.10.1 and 0.11 polish, the web client's retirement, the
 first implementation slice) was removed from this file on 2026-10-02. It is in
 this file's git history, in `CHANGELOG.md`, and in `docs/cac-build-plan.md`.
 
-## Where things stand (2026-10-02)
-- v0.18.0 is released as latest: the Rust engine under the same app. Nothing a
-  student sees changed.
-- The Grok team's audit of 0.17.2 (102 findings) is the backlog for the 0.18.x
-  series below.
+## Where things stand (2026-10-03)
+- v0.18.1 is released as latest: the 20 Fix-first findings of the 0.17.2
+  audit, Jonathan's J1 to J6 and the engine leftovers. v0.18.0 brought the
+  Rust engine.
+- 0.18.2 is next. Batch A (six lanes, no mockups) is written by Grok and
+  reviewed by Claude; batch B waits for mockup round 2. Then 0.18.3.
+- Decisions left open by 0.18.1 are listed under "Open after 0.18.1".
+- 22 days to the contest submission (Phase 8).
 
 ## Phase 8 — Contest delivery (Oct 25, 2026)
 - README with account setup, both contributors and the AI-assistance disclosure.
@@ -49,16 +52,21 @@ Decisions taken 2026-10-02:
   and 0.18.3, the "maybe on purpose" items decided at 0.18.3.
 - Finding 32: rename "At a set time" to "Due by" on the Due row, refuse a past
   deadline, AND add a separate, clearly named "Do it at" choice.
+- J3 (Spotify): a block start plays its own link, else the Settings link when
+  Sound is Spotify; reminders stay Chime. J7: preferred study hours merge into
+  allowed as one Study hours list. (Both 2026-10-02.)
+- 0.18.2 is written by Grok and reviewed by Claude (2026-10-03).
 - Overlaps: one rule everywhere. Duplicate and the paste preview stop on an
   overlap ("Resolve conflicts…") while drag and the editor only warn ("Both
   will show, side by side"). The preview gets the same warning line and Save
   stays enabled; copy day and apply routine follow the same rule. Goes in the
   0.18.1 grid and keyboard lane with finding 20.
 
-
 ### From Jonathan while using the app (running list)
 Gripes reported in conversation. Each gets a J-number here, then a lane; the
 lane entry carries the number so nothing is lost between sessions.
+J1 to J6 shipped in 0.18.1, with the first two parts of J12. J7 to J12 are
+in 0.18.2.
 - J1 (2026-10-02): an End of 00:00 is refused ("End must be after Start") in
   the block editor, Setup's school and activity hours, the School hours sheet
   and study hours. Read it as 24:00, drawn as "24:00" (12:00 AM on the 12-hour
@@ -123,81 +131,435 @@ lane entry carries the number so nothing is lost between sessions.
   short lists) and on the device (look, any-colour accent, knobs); this is
   the open decision about looks following the account.
 
-### 0.18.1 — Broken things
-Twenty Fix-first findings, the engine leftovers, and eight Next-patch items
-that share code with a Fix-first one.
+### 0.18.1 — Broken things (released 2026-10-03)
+The 20 Fix-first findings, J1 to J6, the engine leftovers and eight coupled
+Next-patch items (#6, #7, #42, #46, #50, #53 rounding, #76 sheet), plus the
+first two parts of J12. Built in eight lanes on `release/0.18.1`, merged as PR
+40, published as latest; `CHANGELOG.md` lists every change.
+- Re-checked away with evidence: #64 (the code never offered the running
+  version; a test now pins it), #10 (rail and panel agree; guard test added),
+  #6 as worded (a carried block lands where it is dropped; a new block's start
+  was fixed with #7).
+- Status: [x] released 2026-10-03. Gate 2790 passed; rig passed on classic,
+  Timeline, Mission, Clay, Bento and Retro; CI green including the whole
+  mutation job.
 
-| Lane | Findings and work |
-|---|---|
-| Plumbing | Bell GC teardown error; the three adapter tests; the today.json mutation survivor; the interface-test tidy (T4); delete the differential tests, `desk_ref/` and `backend/tests/engine_ref/`; spec.md drift line for the CI desk step |
-| Time entry | #1 retyping a time fails; #33 Choose a time and New event default to the past; coupled #6 drop lands a step early, #7 pointer times off the grid, #53 Running late rounds down; J1 an End of 00:00 reads as 24:00 |
-| Grid and keyboard | #8 right-click rarely opens; #9 Shift+F10 at 00:00; #87 Tab never reaches a block; #39 focus jumps to ‹; #11 last hour unlabelled; coupled #42 Ctrl+Z after Plan; Duplicate and paste previews warn on overlap instead of blocking Save (decision above) |
-| Plan and Undo | #38 Undo twice locks the week; #40 toast clipped at 1024; #10 rail says everything has a time; #12 Mission opens without now; coupled #46 Plan not locked while planning |
-| Sheets | #49 seven OS windows become sheets; #70 Manage account layout; #34 Add homework scrolls inside itself; #48 conflict line; #91 disabled buttons unreadable; #79 clipped buttons; coupled #50 recovery codes save folder and warning, #76 Sign out as a sheet |
-| Deadlines and dates | #32 Due by and Do it at; #2 Setup's blank calendar; #35 typed date jumps a year |
-| Update prompt | #64 offers the running version (re-check first: the code moved to Rust in 0.18.0) |
-| One source per setting | J3 Spotify link rules; J4 reminder lead default; J5 one cutoff picker; J6 snooze and window constants read from the engine |
+### Open after 0.18.1 (decisions and checks for Jonathan)
+Decisions, each with the recommendation:
+- **Typed dates.** A date typed without a year means the next time it comes,
+  so typing 1 Oct on 2 Oct gives 2027, the symptom #35 complained about.
+  Recommended: keep this year for a date just passed and let "That time has
+  already passed." speak instead.
+- **Two placement buttons in Edit homework.** "Choose a time…" and "Let
+  FlexWeek move it" now double the When row in other words. Recommended:
+  remove both, after moving the conflict warning into the When row. (Goes
+  with batch B's Add/Edit homework lane.)
+- **Delete key.** It deletes the focused block at once with Undo in the
+  toast; the menu's Delete asks first. Keep, or make the key ask.
+- **Drag step.** Clicks, the free-time menu and new blocks snap to 15 minutes;
+  moving and resizing follow the 5 or 15 setting. Keep, or snap all to 15 and
+  drop the setting.
+- **Blocks that share a time.** The arrow keys reach only the first; add a way
+  to cycle (for example Tab inside the slot), or leave.
+- **Amber conflict row in dark looks.** It keeps its light fill: readable but
+  bright. Keep, or a dark amber in dark looks.
+- **Running late notice.** The toast's 420 px maximum is unchanged, so
+  "Running late: 16:30–17:00 is now locked. 2 moved." takes two lines. Widen
+  the toast, or keep.
+- **Setup's First homework page** has no Save on the date, so the
+  past-deadline refusal does not cover it. Add it there, or leave.
+- **`hypothesis`** is used by no test since the differential tests went.
+  Remove it from `requirements-dev.txt`, or keep.
+- **Lost cover.** About 100 cases the deleted differential tests pinned have
+  no Rust test of the same case. By module: solver (subject windows and case
+  folding in the reschedulers; empty work and study windows; a clock error
+  after the first reading); casefold (no tests at all); slots and weeks (year
+  9999 bound, Arabic-digit and full-width inputs); plan (`due_from_latest`,
+  `completed_at_for_block`, `prepare_solve` outputs); restore and transfer
+  (`canonical` on 2^64, `diff_snapshots`, `diff_transfer`, the 300 000-byte
+  limit); explain (`slack_sentence` pairs); store migration (22 odd stored-row
+  cases); store helpers (weeks, assignments, routines, preferences, restore
+  points, operations, `replace_account`, recovery codes, sessions,
+  `delete_account`); desktop logic (`release_from_page` hostile tags, DST
+  `clock_parts`, the alarm window, pasted series day order, planner titles in
+  Berlin and New York, deep-nested week files). Port a chosen subset to Rust
+  tests, or accept the gap. Recommended: port the solver, store-helper and
+  `release_from_page` cases.
+- **Test tidy.** The logic tests' shared helpers are merged; cutting
+  overlapping and slow tests by break-it was not done. Do it, or drop it.
 
-Order: plumbing → time entry, Plan and Undo, update prompt, one source per
-setting in parallel → grid and keyboard → sheets and deadlines after mockup
-round 1. Mockup round 1 (2026-10-02, pictures in the scratch mockups folder):
-Jonathan approved as shown the sheet footer (filled main action, outlined
-Cancel), the swatch-grid colour picker, Sign out as a sheet, the amber
-conflict row, the disabled button in the text colour with a hint, and tonal
-"Plan here" at 36 px; dark is checked in the rig, not mocked. The Due row
-("Due by" plus "Do it at") was approved from a six-frame demo: "Do it at"
-and a hand drag are the same pin the solver already has; dragging pins,
-"Let FlexWeek pick a time" unpins; planned blocks get a dashed edge, pinned
-ones a solid edge.
-- Complete when: every finding above is closed on the shipped build or
-  re-checked away with evidence; the differential tests and frozen references
-  are deleted; gate, rig and mutation runs green; CHANGELOG, release notes and
-  context.md updated; v0.18.1 published as latest.
-- Status: [~] built on `release/0.18.1` 2026-10-03, not pushed. Gate 2790
-  passed; rig passed on classic, Timeline, Mission, Clay, Bento and Retro;
-  the ten mutation cases the lanes outdated are repointed and RED (the whole
-  mutation run is left to CI). Re-checked away: #64 (the code never offered
-  the running version), #10 (rail and panel agree; guard test added), #6 as
-  worded (a carried block lands where it is dropped; a new block's start is
-  fixed with #7). Not done: the test tidy's cutting of overlapping tests (its
-  helper merge is in). Open for Jonathan: see context.md.
+spec.md drift, proposed wording awaiting approval (spec.md is changed only
+with Jonathan's word):
+- Validation, the CI desk step: "the desktop engine suites offscreen (the
+  token and updater tests, `test_tokens.py` and `test_update.py`, which do not
+  depend on fonts)".
+- Reminders: "A block that starts plays its own Spotify link; with none, the
+  Settings 'Default Spotify link' if Sound is Spotify. Reminder notices before
+  a block, and the end of a focus session, always play Chime. The song window
+  is the reminder lead, never under 2 minutes."
+- "The reminder lead defaults to 5 minutes everywhere; the engine owns that
+  number."
+- "'No homework after' offers No limit and 20:00 to 23:00 in half hours, in
+  Setup and in Availability."
+
+Not yet checked on real hardware: the Windows installers on a real PC (Phase
+8); the right-click fix on a real X11 or Wayland session; alarm sound and
+Spotify on a real speaker; the new time box and the keyboard grid under real
+hands.
 
 ### 0.18.2 — Behaviour and layout
-| Lane | Findings |
-|---|---|
-| Setup | #3 typed sport defaults to Activity; #4 Style page cut; #5 pages don't line up; #66 (Setup part) content under the footer |
-| Week behaviour | J11 continuous now line; #13 short blocks lose their start; #14 due vs placed mixed; #15 drops into the past, ghost colour; #16 empty next week has no prompt; #17 top stack eats the grid; #18 timer card in Today's app; #19 Focus controls and rail timer list; #20 block menu vs free-time menu; #24 Bento and Timeline contradict |
-| Narrow widths and Large text | #80 times lose meaning; #81 "2 h 15"; #82 bare "Not placed yet"; #83 "Plan" shrink rule; #84 Large text squeeze; #85 12-hour School stacks; from 0.17.3: Clay and Retro 12-hour cuts at Large 810, Bento header "F 2" |
-| Designs | J8 Timeline draggable fold; J9 Mission short blocks as bars; J10 Clay neighbours dimmed, front card scrolls, drag to switch; from 0.17.3: Bento's now pill inside today's column; Mission names crossed by the now line; Clay's Day card hourless for 100 ms; Mission's 00:00 label 6 px left |
-| Add/Edit homework | #36 defaults, hints, empty boxes; #37 Spread hard to find |
-| Plan | J12 Settings built ahead so its slide starts at once; #43 two filled buttons, "Placed" wording; #44 misleading reason late in the day; #45 Undo menu item; #98 panel pops in |
-| Sheets | #51 Choose a time controls; #52 New event title and fields; #53 (rest) Running late buttons and refusal; #54 Availability layout; #55 sheets don't match; J7 one Study hours list |
-| Settings | #65 Remove alarm keyboard selection; #66 (Settings part); #67 Appearance layout and wording; #68 forms don't line up |
-| Account | #71 buttons don't look like buttons; #72 errors carry over; #73 sign-in error; #75 where data lives |
-| Keyboard | #88 F1 and Ctrl+N; #89 Ctrl+K palette |
-| Errors | #99 offline messages |
-| Decision | #41 Plan packs weekdays and leaves weekends empty: a solver change in the engine (daily cap, spread toward the due date). Jonathan decides; if yes, its own lane with Rust tests. |
+Decided 2026-10-03: Grok 4.7 writes the code; Claude writes Grok's prompts,
+reviews every branch (reads the diff, reruns lint, types and tests) and
+merges into `release/0.18.2`; Jonathan decides what ships. Batch A needs no
+mockups and goes first. Batch B waits for mockup round 2. Branches:
+`grok/0182-<lane>`. Each finding is reproduced by a failing test before it is
+fixed; one that does not reproduce on the current build is closed with that
+test.
 
-Mockup round 2 before the Add/Edit, Plan, Sheets, Settings and Account lanes.
-- Complete when: the lanes above are closed on the shipped build, #41 has a
-  recorded decision, gate and rig green, v0.18.2 published as latest.
-- Status: [ ] not started.
+#### Batch A, lane 1: times and words on blocks
+- #13 In Today's app, Paper and Timeline a 45-minute "Math worksheet"
+  (17:00–17:45) shows its name only; Clay and Retro show "Math worksheet
+  17:00". Done when every design writes a short block as its name, then its
+  start.
+- #80, #85 At 810 px wide, and in the 12-hour Week, a block shows "08:30" and
+  "14:15" (or "8:30 AM" / "2:15 PM") on two lines with no dash, which reads as
+  two events; overlapping blocks read "Soccer | Pract… extra"; the rail's
+  timer list clips "Mon 06:0(". Done when the time stays whole and the title
+  is cut first: the range on one line ("08:30–14:15", "8:30 AM–2:15 PM"), the
+  duration dropped first, then the start alone; never two stacked times.
+- #81 Friday's header at 810 px and Bento's day cards show "2 h 15", which
+  reads like a time of day. Done when it is "2h 15m" at every width.
+- #14 Timeline's "Due this week" and Day list placed times ("History essay
+  Fri 15:30" though it is due Sun 4 Oct); "Unfinished homework from earlier
+  weeks" lists items due today and tomorrow. Done when a deadline reads "due
+  Sun 4 Oct" and a block "placed Fri 15:30", as Bento and Retro do, and the
+  Unfinished list holds only overdue items.
+- J11 The now line stops 3 px short of a block's words and icon and resumes
+  after them, which reads as the line being cut. Done when it is one
+  continuous line drawn under the block's text and icon, in every design that
+  draws through the shared hours canvas.
+
+#### Batch A, lane 2: week behaviour (after lane 1; both touch the canvas)
+- #15 A block can be dropped onto a past day with no warning; the drag ghost is
+  tan and cuts "Math worksh…" with room to spare; the placed block loses its
+  book icon. Done when a drop in the past is refused with "That's in the past."
+  and the block goes back, the ghost takes its category's colour and writes
+  the whole name when it fits, and the icon stays.
+- #16 An empty week shows no prompt, and the Routines sheet is a blank list.
+  Done when an empty week offers "Copy last week's fixed times" and "Use a
+  routine", and an empty Routines list says "No routines saved yet."
+- #17 The Unfinished card, the "Hide" row and the plan panel take the top
+  300 px, so an 800 px tall window shows about 3 hours of Day. Done when the
+  Unfinished card collapses to a one-line badge after its first showing in a
+  session, and the badge opens it again.
+- #18 While a timer runs, Today's app shows a three-line rail card saying
+  "focus" four times; other designs show a one-line strip. Done when Today's
+  app shows the same strip ("Session · 29:42 left · Focus screen").
+- #20 The block menu has both "Delete" and "Delete homework", a "Finished" tick
+  that looks checked, no Copy (though Paste's hint says "Copy a block or a day
+  first."), and is 155 px wide against 390 px for the free-time menu. Done
+  when both menus share one width and keycap style, there is one Delete (for
+  homework it asks which, as the editor does), and Copy is there.
+- #82 Below 1100 px "Not placed yet: 1" is a bare bold line that does not look
+  clickable. Done when it is a chip with the book icon and a chevron.
+- #83 "Plan my homework" shrinks to "Plan" at Large text and at 1100 px but not
+  at 900 px. Done when one rule holds at every width and text size: the label
+  keeps its words while they fit, then "More" collapses to its icon, then the
+  label drops "my".
+
+#### Batch A, lane 3: designs
+- J9 Mission draws any block of 30 minutes or less as a tick, named only on
+  hover, in its day and week lanes. Done when every block keeps its bar and
+  icon down to a minimum width, the title cut first, and a tick appears only
+  when the bar would be under 8 px.
+- From the 0.17.3 list: Bento's now pill sits inside today's column; Mission's
+  names beside a block are crossed by the now line; Clay's Day card has no
+  hours for about 100 ms as it slides in; Mission's 00:00 label sits 6 px left
+  of the canvas; 12-hour times are cut at Large text and 810 px in Clay's Day
+  summary and Retro's deadlines; Bento's header shortens to "F 2" there. Done
+  when each is gone.
+- #24 Bento shows "8 h 15 min planned" twice and counts School and Soccer while
+  Mission says "Planned today 0 min"; Bento says "Nothing free before 22:00" at
+  22:49; Timeline's "0 not placed yet" repeats "Nothing is waiting for a
+  time." Done when "planned" means placed homework time in every design,
+  counted in one place; after the last study hour it says "Nothing free now";
+  and each doubled line is said once.
+
+#### Batch A, lane 4: keys
+- #88 F1 opens no Help and Ctrl+N does not open Add homework. Done when both
+  work from the week page and both are listed in Help and in Ctrl+K.
+- #89 The Ctrl+K palette is cut at the window's bottom; the hovered row and the
+  Enter row look the same; it says "Customise look…"; typed letters are not
+  highlighted; "choose" finds nothing. Done when the list fits the window,
+  hover is a lighter tint than the Enter row, matches are highlighted, it lists
+  Alerts, This computer and Choose a time, and the look entry uses the app's
+  word for it.
+
+#### Batch A, lane 5: messages (may change the engine)
+- #44 Late in the day Plan says "That does not fit in the times you set aside
+  for work." when today's hours are over or the deadline has passed; the
+  nothing-placed toast reads "Planned 0 homework blocks. 1 still needs a
+  time." Done when a passed deadline says "That time has already passed.", due
+  today with no study time left says "Due today and no study time is left
+  today.", and nothing placed says "Nothing placed. 1 still needs a time." The
+  first two are new reasons from the engine, with Rust tests.
+- #99 Offline, Plan says "Could not reach FlexWeek. Your changes may not have
+  been saved. Try again." though Plan changed nothing; Save says "Not saved.
+  … may not have been saved." Done when Plan says "Can't reach FlexWeek, so
+  nothing was planned. Try again." and Save says "Not saved yet. Your changes
+  are kept on this computer, and FlexWeek will try again."
+- #72 "Wrong username or password…" shows on Reset your password before
+  anything is typed; "Incorrect username or recovery code." follows back to
+  Sign in; "Signed out." stays on the Reset page. Done when a page's message
+  clears whenever the page changes.
+- #75 About and Manage account say "Your plans are saved on this computer.",
+  Create account says "Your week is saved to your account.", Sign out says
+  "Your week stays saved on this computer." Done when one true sentence is used
+  everywhere: the week is saved on this computer, under this account.
+- #45 More › "Undo, copy and save" showed Undo greyed right after a replan
+  though the toast offered Undo; the submenu says "Save / Restore / Reload"
+  without saying what. Done when the menu's Undo is enabled exactly when the
+  toast's is, and each action is named in full ("Save a copy of this week…").
+- #3 A new row in Setup's "Sports, clubs and jobs" defaults to Activity, so a
+  typed "Soccer" gets the Activity colour everywhere. Done when common sport
+  names in the title (soccer, football, basketball, swim, track, tennis,
+  volleyball, baseball, hockey, practice, …) make it Sports, else Activity,
+  and the student can still change it.
+
+#### Batch A, lane 6: opening Settings and the plan panel
+- J12 (rest) Settings takes about 170 ms to build before its slide can start,
+  on every open, because closing deletes the page and opening builds it again.
+  Done when the slide starts within one frame of the click (build ahead while
+  idle, or keep the page between opens), it still shows what the account holds
+  when it opens, and another account never sees the previous one's settings.
+  Measured before and after.
+- #98 After Plan the toast appears, then the plan panel pops in with "Got it"
+  drawn as a blank grey bar for one frame, pushing the week down about 78 px.
+  Done when the panel slides in over the space it takes, drawn whole in the
+  same frame, at the app's motion level (no movement at Off).
+- #65 In Settings › Alerts the alarm list shows no focus or selection with Tab
+  or the arrow keys, so a keyboard user cannot tell what Remove will remove.
+  Done when alarm rows show a focus ring and a selection.
+
+#### Batch B (after mockup round 2)
+Mockup round 2: Setup's Style page and page layout; Add and Edit homework with
+Spread beside Estimated time, the Placed line and the empty link and step
+lists; the Placed panel; Choose a time; Add fixed time; Availability with one
+Study hours list; Help, Routines and About as one sheet family; the Appearance
+page; the Settings forms; the sign-in error and the password eye; the Focus
+screen's controls; Timeline's fold handle; Clay's dimmed neighbours. Drawn
+with the app's own widgets and stylesheet; Jonathan picks; behaviour inside
+them waits for the pick.
+
+- **Setup.** #4 At 1280×800 the second row of style cards (Dashboard, Retro)
+  is cut by the footer with no fade, the default card shows no selected state,
+  each card shows two names, and only two columns are used. Done when the page
+  scrolls with a fade above the footer, each card has one name, and the
+  default is marked chosen. #5 The left edge shifts a few pixels between pages
+  and each page mixes styles (day pills 10 px above the time fields, Bedtime
+  not in a card, dropdowns with arrows and a black "Remove", "Takes" centred
+  oddly, "Today's app in System", mixed ";" and "·"). Done when every Setup
+  page has one content column and left edge, the same time box, and Remove and
+  Skip outlined. #66 (Setup part) The planning-hours card on Homework time runs
+  under the fixed footer. Done with a fade above the footer and bottom padding
+  equal to its height.
+- **Add and Edit homework.** #36 Due defaults to today even at 22:41, and the
+  due time to 09:00 for something due today at 23:21; the "multiple of 15"
+  hint leaves "45." alone on a line and stays when 60 is picked; the checkbox
+  sits 6 px from the date; the title placeholder is "Homework" where Setup
+  says "e.g. History essay"; Edit does not say when the block is placed; Notes
+  has no label; two big empty boxes under "Add link" and "Add step" look like
+  fields. Done when due defaults to tomorrow and the time to the end of the
+  school day; Edit shows "Placed Fri 15:30" under the title; the toggle reads
+  "More details ⌄" / "Fewer details ⌃"; Notes has a label; the gap to the
+  scrollbar is 16 px; the year shows only when it is not this year; the hint
+  shows only for an invalid value, in the error colour; and the link and step
+  lists are hidden until they have entries (or one grey line, "No links yet").
+  #37 Spread across days is offered only in Edit, at the bottom of More
+  details. Done when a tinted "Spread across days" button sits next to
+  Estimated time whenever the estimate is 60 minutes or more, in Add and Edit,
+  its preview uses the unsaved values, and it comes after Estimated time in the
+  Tab order. Plus the 0.18.1 decision on the two old placement buttons.
+- **Placed panel.** #43 "+ Add" and "Got it" are both filled (both yellow in
+  High contrast), and the panel repeats the toast with another verb ("Placed 2
+  · 1 without a time" against "Planned 2 homework blocks. 1 still needs a
+  time."). Done when Got it is tinted, + Add is the only filled button, and
+  both places say "Placed".
+- **Sheets.** #51 Choose a time: Day is a dropdown instead of day pills, Start
+  is a borderless field, "Length 45 min" cannot be changed, and the button says
+  "OK". Done with Mon–Sun pills, the outlined field, a "− 60 min +" stepper with
+  length pills, the button "Choose this time", and one outlined input style
+  with an accent focus ring. #52 New event: the menus say "Add fixed time…" but
+  the sheet is titled "New event", its help says "Tick more days" though the
+  days are pills, the "1 h" duration has no label, Category defaults to None,
+  and there is a Spotify field. Done when it is titled "Add fixed time", says
+  "Pick more days to repeat it", labels the duration and guesses the category
+  from the time of day. #53 (rest) Running late's Preview is plain text, and
+  while viewing next week it refuses with "Open this week before using Running
+  late." though the menu item is enabled. Done when Preview is outlined and
+  the item either jumps to this week or is greyed with the reason. #54 and J7
+  Availability: "Protected time" and "Preferred study hours" are big empty
+  boxes with no hint, the add buttons are borderless text, a "From 19:00 to
+  21:00 Any subject" row floats between sections with no remove control, and
+  Preferred study hours is empty though Setup set planning hours. Decided
+  2026-10-02 (J7): merge preferred into allowed, one list named Study hours,
+  filled by Setup and edited here; the solver gets one input (an engine change
+  with Rust tests, and saved preferred windows carried into the one list);
+  protected time and the cutoff stay. Done when each question sits above its
+  control, empty lists have a grey hint, add buttons are outlined, and the one
+  list shows what Setup set. #55 Help, Routines and About open at different
+  heights and Help's last row touches the bottom; Routines repeats its heading
+  as its button, writes "Mon, Tue, Wed, Thu, Fri" not "Mon–Fri", and shows
+  Apply and Delete with no routines; School hours mixes inline "from/to" with
+  labels above. Done with one top offset, bottom padding, a reworded Routines
+  heading, day ranges, and labels above fields.
+- **Settings.** #66 (Settings part) The Alerts form, the "Use the accent on
+  category chips" row and the accent names at 1024 px run under the fixed
+  footer. Done with a fade and padding. #67 Appearance: "Wearing Poster" sits
+  under the grid instead of under the chosen card, and nothing shows for Light
+  or System; the grids leave 75–190 px empty on the right; the button says
+  "Customise…"; Today's app's description says "Its colours are the Look
+  menu." Done when the chosen card is ringed, the grids stretch, the button
+  reads "Edit your own look…", and the sentence is fixed. #68 In Focus the
+  steppers are about 205 px wide while "Timer preset" is 115 px and sits below
+  the values it sets; Alerts' widths are uneven and "No alarms yet." is black
+  between grey hints; This computer's value column drifts. Done with one
+  control width per column, the preset first, and every hint grey.
+- **Account.** #71 Manage account's other actions looked like plain text and
+  its password fields have no show/hide eye, unlike Sign in. Re-check the
+  buttons after 0.18.1's sheets; done when the eye is there. #73 The sign-in
+  error sits under the two links in plain black, grows the card, and reads
+  "Wrong username or password. FlexWeek doesn't say which, so no one can find
+  out who has an account." Done with a short red line with an icon under the
+  password field and a "Why doesn't it say which?" link.
+- **Focus.** #19 Before Start the ring is pale blue on white; Skip and Finish
+  are plain text beside a filled Pause; Finish ends the session with no
+  question; "Quick focus" hops 4 px on Start; the rail timer is bold mono; the
+  rail's "Start a focus timer" list is a tiny scrolling box clipping "Fri
+  17:0(". Done when the ring is at least 3:1, Skip and Finish are outlined,
+  Finish asks "End this session?", and the rail list grows to its content.
+- **Large text.** #84 The rail shows "Math worksh…", the block "Math…",
+  "History / essay" wraps, and Week's day names are cramped; in High contrast
+  the title sits 9 px from the view switcher and "High contrast" wraps in the
+  look grid. Done when rail names wrap to two lines, the title keeps 16 px
+  from the switcher, and look cards are as wide as their names.
+- **Designs.** J8 Timeline's fold is fixed at half the width, Mon–Wed left and
+  Thu–Sun right. Decided: a draggable fold, remembered per design, with a rule
+  for which day moves pages as it slides; mocked up first. J10 Clay's day cards
+  share one scroll, so scrolling the front card scrolls its neighbours, and the
+  neighbours peek at full strength. Decided: neighbours dimmed and still, only
+  the front card scrolls, and a horizontal drag on the row switches days as
+  the arrows do; mocked up first.
+- **Decision #41.** On a 60-item week Plan put 9 h 45 min of homework on
+  Monday and 10 h on Friday, back to back from 06:00 to 23:00, while Saturday
+  had 5 h and Sunday 5 h 30 min with empty evenings; work due Sunday went on
+  Friday night. A fix spreads work toward the due date with a daily cap: a
+  solver change in the engine. Jonathan decides; if yes, its own lane with
+  Rust tests.
+
+- Complete when: batch A and batch B are closed on the shipped build (or
+  re-checked away with a test), #41 and the "Open after 0.18.1" decisions each
+  have a recorded answer, the gate, the rig and CI's mutation job are green,
+  `CHANGELOG.md` and the release notes are written, and v0.18.2 is published
+  as latest.
+- Status: [~] batch A prompt written for Grok 2026-10-03; mockup round 2 not
+  started.
 
 ### 0.18.3 — Consistency and polish
-| Lane | Findings |
-|---|---|
-| Designs | #21 Clay tails and hour scale; #22 Retro leftovers; #25 Day view, Day dial, One thing; #26 category icons; #60 Paper edges and icons |
-| Look editor | #57 preview not darkened; #58 single-row Fix; #59 layout loose ends |
-| Buttons and contrast | #90 plain-text actions; #92 focus ring 1.8:1; #93 Month past-day chips; #94 "Changed" chip; #95 "Homework" placeholder |
-| Sign-in pages | #74 pages don't match; #77 centred paragraph |
-| Motion | #96 Animations levels; #97 mid-switch frames |
-| Wording | #101 wording sweep; #102 date formats (if decided) |
-| Decisions ("maybe on purpose") | #23 Retro top bar; #27 zoom hit area; #28 Month last row at 1024; #29 rail drop on Month and My day; #30 homework red in Dark; #31 stale help line; #56 Save/Cancel order; #61 Poster borders; #69 Settings as a page; #86 weekend width at 810; #102 date formats; #41 if not taken in 0.18.2 |
+Mockup round 3 before the Designs, Buttons and Sign-in lanes: the Day dial and
+One thing (#25), the icons (#26), Paper's edges (#60), the sign-in pages
+(#74), the focus ring (#92), outlined secondary actions (#90).
 
-Mockup round 3 before the Designs, Buttons and Sign-in lanes.
+- **Designs.** #21 Clay: Soccer's visible sliver is a bare bar and Friday's
+  side card an outlined bar with no name; the side cards use a smaller hour
+  scale (27 against 38 px per hour), so rows do not line up. Done when every
+  sliver writes its name and the cards share one hour scale (or the side cards
+  become lists). #22 Retro: Week.exe's grid ends at "24:00" where every other
+  design ends at 23:00, the Notepad's last line is cut, and "History…" and
+  "Math…" are cut with no times. Done when it ends at 23:00, the Notepad
+  scrolls, and a cut name shows its start. #25 Day: "Hours" is blue while
+  "Agenda" is black, and the zoom − and + are greyed with no reason; Day dial:
+  12 at the top, an unexplained dark wedge, unlabelled arcs, and an oversized
+  "Nothing else scheduled today"; One thing: the empty state draws a full
+  minute ring and an unlabelled bottom bar. Done when the wedge and arcs are
+  labelled or gone, the heading is smaller, the bottom bar has times and
+  labels, and the greyed zoom says why (midnight or noon at the dial's top is a
+  choice to make). #26 "School hours…" in the Add menu uses a school building
+  while School blocks use a faint light-blue house on pale blue, and "Replan
+  all my homework" uses Activity's sparkles. Done with one School icon at 3:1
+  or better and Replan's own icon. #60 Paper's cards are about 1.05:1 against
+  the page, so their edges vanish; block icons are tiny and pale; timer digits
+  are sans or mono in a serif look. Done with a 1 px warm-grey card edge at
+  about 3:1 and darker icons.
+- **Look editor.** #57 While a readability warning stands, the preview draws
+  "Replan all my homework" and "Hide details" in lime at about 1:1, though the
+  0.17.2 notes said a pale accent is drawn darker until fixed; and "Plan button
+  words is 4.1:1" is ungrammatical. Done when affected words are drawn in the
+  darkened colour while the warning stands and it reads "The Plan button's
+  words are 4.1:1". #58 A single row's Fix darkens only enough for that row, so
+  another row can still fail, and it can turn a pale colour into a hueless
+  grey. Done when each Fix aims for the hardest check and changes lightness
+  only. #59 The "Any colour" swatch and code box do not line up with the
+  Page/Cards/Text/Lines column; Reset all, Export and Import have no outline;
+  "Start from" is a plain dropdown; the "…follow from these four" note is cut
+  by the footer. Done with one label column, outlined buttons and the preview
+  grid for Start from (re-check after 0.18.1's colour picker sheet).
+- **Buttons and contrast.** #90 Many actions are still plain text ("Hide",
+  "Skip this step", Availability's add buttons, Running late's Preview, Focus's
+  Skip and Finish), and "Plan my homework" is a third, tinted style. Done when
+  every secondary action is outlined, one button per page is filled, and the
+  tinted style is written into spec.md (re-check what 0.18.1 already
+  outlined). #92 The focus ring on ‹ previous week is #b7bece on #f2f5ff, about
+  1.8:1. Done with a 2 px accent ring and a 2 px gap everywhere, as the week
+  grid got in 0.18.1. #93 Month's past-day chips are about 3.0:1 at 15 px. Done
+  when the fill is dimmed instead of the text (about 6:1). #94 The look
+  editor's "Changed" chip is #809dce on #e6e9f3, 2.3:1. Done in the accent text
+  colour (about 5:1). #95 The title placeholder is #89898d on white, 3.5:1, and
+  says "Homework". Done at #6e6c76 (about 5:1) with "e.g. History essay".
+- **Sign-in pages.** #74 After a restart the page is grey and after Sign out
+  it is lavender; headings switch between "Welcome to FlexWeek" and "Welcome
+  back"; the wordmark jumps about 30 px between pages; Create account's hints
+  sit halfway between fields; the password eye is tiny and faint. Done with one
+  background, a fixed wordmark, hints under their own field, and a 24 px eye at
+  3:1 or better. #77 The recovery codes paragraph is centred over four lines
+  above left-aligned codes. Done when it is left-aligned.
+- **Motion.** #96 Normal, More and Reduce look much alike (a Normal switch
+  about 0.3 s, More about 0.23 s); with Off, Settings still slides for about two
+  frames and Week to Month flashes an empty "Loading month…" grid. Done when
+  Off moves nothing anywhere, the new page is drawn before the old one goes,
+  and More is clearly longer (about 0.45 s). #97 Both titles overlap mid-fade;
+  on the Month and My day rail toggle the plan panel and Unfinished card are
+  drawn twice; the dim backdrop lingers a frame after a sheet closes; the Undo
+  toast vanishes on the first view switch. Done when the title snaps, the
+  panels stay anchored, the backdrop fades with its sheet, and the toast
+  survives a view switch.
+- **Wording.** #101 The look is named four ways ("Customise…", "Customise
+  look…", "Look and colours", "Appearance & layout"), study time four ways,
+  and Plan uses both "Planned" and "Placed"; Help reads "Ctrl + = - 0" as one
+  chord; the Plan toast has no final full stop; Retro's description uses the
+  "Windows 98" trademark. Done with one term per idea ("Look", "Study hours",
+  "Placed") and one punctuation pass.
+- **Decisions ("maybe on purpose"), each to be recorded built or left:**
+  #23 Retro keeps the modern top bar and Start opens the modern menu (leave
+  unless an immersive Retro is wanted); #27 the zoom − and + are about 16 px,
+  under the 24 px target (give each a 24×24 hit area if the look stays); #28
+  with the plan panel open at 1024×640, Month's last row is half cut and a
+  scrollbar appears (shrink rows, or hide the plan panel in Month); #29 Month
+  and My day drop the rail, so the page jumps sideways (slide instead of jump);
+  #30 homework is red with red due dots, hard to see under the mini month in
+  Dark (at most a lighter red in Dark); #31 the help's "opens at now every time"
+  line is stale (reword); #56 sheets put Save right of Cancel, the platform
+  order (leave); #61 Poster's 2 px borders against its 10 px corners (leave);
+  #69 Settings is a full page, not a sheet (leave); #86 at 810 px empty Sat and
+  Sun keep full width while weekdays truncate (narrow to about 60 %, or keep);
+  #102 dates are written many ways ("October 2026", "28 Sep – 4 Oct",
+  "Thursday 1 October", "Thu 1 Oct 2026", "Fri 2", "Monday, October 5"), even
+  two on My day (one short and one long format per locale, or leave); #41 if
+  not taken in 0.18.2.
+
 - Complete when: the lanes above are closed on the shipped build, every
-  "maybe on purpose" item has a recorded decision (built or left), gate and
-  rig green, v0.18.3 published as latest.
+  "maybe on purpose" item has a recorded decision, gate, rig and CI green,
+  v0.18.3 published as latest.
 - Status: [ ] not started.
 
 ### Closed, no work ("Deliberate, leave it")
