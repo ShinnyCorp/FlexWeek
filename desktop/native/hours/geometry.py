@@ -19,7 +19,7 @@ from typing import Protocol
 from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtGui import QTransform
 
-from backend.slots import DAY_END_MIN, DAY_START_MIN
+from backend.slots import DAY_END_MIN, DAY_START_MIN, SLOT_MIN
 
 FIRST, LAST = DAY_START_MIN, DAY_END_MIN
 # The minutes a student can have a drag move by; the first is what an account starts with.
@@ -48,6 +48,13 @@ class Span:
 
 def snap(minute: float, step: int) -> int:
     return round(minute / step) * step
+
+
+def next_slot(minute: int, first: int = FIRST, last: int = LAST - SLOT_MIN) -> tuple[int, int]:
+    """Where a new thing starts when asked for at `minute`: (days ahead, minute) of the next quarter hour,
+    now rounded up, kept between `first` and `last`. With none left today, the first one tomorrow."""
+    slot = max(-(-minute // SLOT_MIN) * SLOT_MIN, first)
+    return (0, slot) if slot <= last else (1, first)
 
 
 def drag_step(chosen: object) -> int:

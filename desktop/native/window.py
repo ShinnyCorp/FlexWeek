@@ -68,7 +68,7 @@ from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import FocusScreen
 from desktop.native.fonts import load_fonts
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
-from desktop.native.hours.geometry import Span, drag_step
+from desktop.native.hours.geometry import Span, drag_step, next_slot
 from desktop.native.hours.hand import Create, Hand, Move, MoveDate, Place, span_words
 from desktop.native.hours.hand import Verdict as HandVerdict
 from desktop.native.hours.month import MonthGrid
@@ -141,7 +141,6 @@ from desktop.native.weekmodel import (
     dated_words,
     hhmm_text,
     moved_words,
-    next_slot,
     set_clock_24h,
 )
 from desktop.native.widgets import (

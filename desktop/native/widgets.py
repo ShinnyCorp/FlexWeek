@@ -106,6 +106,7 @@ from desktop.native.calendar import (
 from desktop.native.elevation import lift
 from desktop.native.fields import QUICK_LENGTHS, ClockField, DateField, DayPicker, Stepper
 from desktop.native.fonts import time_font, weighted
+from desktop.native.hours.geometry import next_slot
 from desktop.native.icons import pixmap as icon_pixmap
 from desktop.native.menus import Menu
 from desktop.native.motion import OUT, SEGMENT_MS, app_level, appear, between, duration, moves, settle, vanish
@@ -118,7 +119,7 @@ from desktop.native.reuse import (
     row_conflict,
 )
 from desktop.native.tokens import SHADOW_LARGE, SPACING, WEIGHT_REGULAR, WEIGHT_STRONG, Shadow, type_pt
-from desktop.native.weekmodel import due_label, hhmm_text, length_label, next_slot
+from desktop.native.weekmodel import due_label, hhmm_text, length_label
 from desktop.native.work_windows import WorkWindowsEditor
 
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")

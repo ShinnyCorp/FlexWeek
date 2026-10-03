@@ -12,7 +12,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication, QDialog
 
-from desktop.native.weekmodel import next_slot
+from desktop.native.hours.geometry import next_slot
 from desktop.native.widgets import BlockDialog, ChooseTimeDialog
 from desktop.native.window import NativeWindow
 from desktop.tests.test_drag_results import qapp, session_of, settled, wait_until, window  # noqa: F401
