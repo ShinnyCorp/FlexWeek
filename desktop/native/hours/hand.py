@@ -173,6 +173,8 @@ class Hand(QObject):
     refused = Signal(str)
     opened = Signal(str)
     selected = Signal(str, int)
+    # The keyboard moved off a block onto free time, so nothing is chosen.
+    cleared = Signal()
     # A block's menu asked for: its id, its day (-1 for homework with no time yet), where to show it.
     menu_requested = Signal(str, int, QPoint)
     # An empty spot's menu asked for: its day, the minute under the pointer, where to show it.
@@ -251,6 +253,11 @@ class Hand(QObject):
     def select(self, block_id: str, day: int) -> None:
         self.selection = (block_id, day)
         self.selected.emit(block_id, day)
+        self.preview_changed.emit()
+
+    def clear_selection(self) -> None:
+        self.selection = None
+        self.cleared.emit()
         self.preview_changed.emit()
 
     def open(self, block_id: str, second_click: bool = False) -> None:

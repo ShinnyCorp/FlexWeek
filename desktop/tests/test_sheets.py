@@ -663,7 +663,7 @@ def test_the_preview_save_is_off_with_a_line_saying_why_until_something_is_ticke
     preview = shown(qapp, PreviewDialog(parent, "Paste", "", rows, []))
     hint = preview.findChild(QLabel, "whyOff")
     assert not preview.confirm.isEnabled() and hint.isVisible()
-    assert hint.text() == "Tick at least one item to save."
+    assert hint.text() == "Select at least one item before saving."
     words, fill = label_and_fill(preview, preview.confirm)
     assert contrast(words, fill) >= 7.0
     preview.findChild(QCheckBox, "previewInclude0").setChecked(True)

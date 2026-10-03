@@ -14,6 +14,7 @@ from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, QStandardPaths
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
+    QContextMenuEvent,
     QDesktopServices,
     QGuiApplication,
     QIcon,
@@ -45,8 +46,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid
 
-from backend.slots import DAY_END_MIN, SLOT_MIN, minutes_to_hhmm
+from backend.slots import DAY_END_MIN, SLOT_MIN, hhmm_to_minutes, minutes_to_hhmm
 from desktop.native import autostart, icons
 from desktop.native.calendar import (
     CATEGORIES,
@@ -68,6 +70,7 @@ from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import FocusScreen
 from desktop.native.fonts import load_fonts
+from desktop.native.hours.canvas import HoursCanvas
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
 from desktop.native.hours.geometry import Span, drag_step, next_slot
 from desktop.native.hours.hand import Create, Hand, Move, MoveDate, Place, span_words
@@ -186,6 +189,8 @@ TRAVEL_WAIT_MS = 900
 # milliseconds, and greying for them flashed the whole top bar (Grok Bot's 0.17.0 audit, T7). They
 # take no clicks, keys or shortcuts from the moment it is busy (BusyGuard).
 BUSY_LOOK_MS = 250
+# Boxes that keep Ctrl+Z for the text typed in them.
+EDITABLE = (QLineEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)
 BUSY_BUTTONS = (
     "createAccount",
     "signIn",
@@ -391,6 +396,33 @@ class BusyGuard(QObject):
         return event.type() in self.SWALLOWED and self._busy()
 
 
+class LastInput(QObject):
+    """Whether the student's last press was a key or the pointer, so keyboard focus put back on the
+    week is shown with its ring after a key and without one after a click. One for the whole
+    application: a filter for each window slowed every event down by the number of windows made."""
+
+    _shared: LastInput | None = None
+
+    def __init__(self, parent: QObject) -> None:
+        super().__init__(parent)
+        self.keyboard = False
+        QApplication.instance().installEventFilter(self)
+
+    @classmethod
+    def shared(cls) -> LastInput:
+        if cls._shared is None or not isValid(cls._shared):
+            cls._shared = cls(QApplication.instance())
+        return cls._shared
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        kind = event.type()
+        if kind == QEvent.Type.KeyPress:
+            self.keyboard = True
+        elif kind == QEvent.Type.MouseButtonPress:
+            self.keyboard = False
+        return False
+
+
 class PasswordField(QLineEdit):
     """A password box with an eye inside its right edge that shows what is typed and hides it again.
     A Show button beside the box made it 76 pixels narrower than the username box above it."""
@@ -528,6 +560,10 @@ class NativeWindow(QMainWindow):
         self.session.week_changed.connect(self._on_week)
         self.session.status.connect(self._on_status)
         self._busy_guard = BusyGuard(self, lambda: self.session.busy)
+        self._last_input = LastInput.shared()
+        self._last_input.keyboard = False
+        self._relaying = False
+        QApplication.instance().focusChanged.connect(self._watch_field)
         self._busy_look = QTimer(self)
         self._busy_look.setSingleShot(True)
         self._busy_look.setInterval(BUSY_LOOK_MS)
@@ -1169,6 +1205,7 @@ class NativeWindow(QMainWindow):
         self.hand.menu_requested.connect(self._block_menu)
         self.hand.spot_menu_requested.connect(self._spot_menu)
         self.hand.selected.connect(self.session.select_block)
+        self.hand.cleared.connect(lambda: self.session.select_block(None, None))
         self.hand.holding.connect(self._hold_renders)
         self.hand.date_judge = self._date_judge
         # Today's app, as Daily Scheduler draws it: a Week that scrolls and a full-width Day.
@@ -1885,6 +1922,8 @@ class NativeWindow(QMainWindow):
         return GREYED_TIPS.get(name, "")
 
     def _on_busy(self, busy: bool) -> None:
+        if busy:
+            self._leave_greyed_button()
         for name in BUSY_BUTTONS:
             button = self.findChild(QPushButton, name)
             if button is not None and button.property("busyGuard") is None:
@@ -1921,8 +1960,17 @@ class NativeWindow(QMainWindow):
             # A moment later, so a plan that finished just now saves its week before setup writes.
             QTimer.singleShot(0, self._flush_setup)
 
+    def _leave_greyed_button(self) -> None:
+        """A button greyed with the keyboard on it hands the keyboard to the next one along, such as the
+        previous-week arrow; it goes to the week instead."""
+        focus = QApplication.focusWidget()
+        if isinstance(focus, QPushButton) and focus.objectName() in BUSY_BUTTONS:
+            self._focus_week()
+
     def _grey_while_busy(self) -> None:
         busy = self.session.busy
+        if busy:
+            self._leave_greyed_button()
         for name in BUSY_BUTTONS:
             button = self.findChild(QPushButton, name)
             if button is not None:
@@ -2069,8 +2117,15 @@ class NativeWindow(QMainWindow):
         monday = date.fromisoformat(self.session.week_start) + timedelta(days=days)
         self.session.load_week(monday.isoformat())
 
+    def _run_sheet(self, dialog: QDialog) -> bool:
+        """Open a sheet and wait for it. Once it is closed the keyboard is back on the week, not on the
+        button that opened it."""
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        self._focus_week()
+        return accepted
+
     def _commit_block(self, dialog: BlockDialog) -> None:
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        if not self._run_sheet(dialog):
             return
         if dialog.deleted():
             self._delete_block(dialog.block(), dialog.scope(), dialog.occurrence_day())
@@ -2093,7 +2148,7 @@ class NativeWindow(QMainWindow):
         self.session.save()
 
     def _commit_homework(self, dialog: HomeworkDialog, days: list[int] | None = None) -> None:
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        if not self._run_sheet(dialog):
             return
         if dialog.spread_requested():
             self._open_spread(dialog.assignment()["id"])
@@ -2311,9 +2366,11 @@ class NativeWindow(QMainWindow):
         if isinstance(change, Move):
             span = change.span
             self._move_block(change.block_id, change.from_day, span.day, span.start, span.end)
+            self._focus_week((change.block_id, span.day, span.start))
         elif isinstance(change, Place):
             span = change.span
             self._move_block(change.block_id, -1, span.day, span.start, span.end)
+            self._focus_week((change.block_id, span.day, span.start))
         elif isinstance(change, Create):
             span = change.span
             # After the release has been handled: Add is a dialog with its own event loop.
@@ -2376,9 +2433,19 @@ class NativeWindow(QMainWindow):
         self._notice_step = None
         self.toast.show_message(text, button, callback)
 
+    def _first_placed(self) -> tuple[str, int, int] | None:
+        """The block the plan placed first: its id, the day it is on and where it starts."""
+        placed = (self.session.trace or {}).get("placed") or []
+        for item in placed:
+            block = next((b for b in self.session.blocks if b["id"] == item.get("id")), None)
+            if block is not None and block.get("start") and block.get("days"):
+                return block["id"], block["days"][0], hhmm_to_minutes(block["start"])
+        return None
+
     def _undo_from_notice(self) -> None:
         self._notice_step = None
         self.session.undo()
+        self._focus_week()
 
     def _say_when_saved(self, words: str) -> None:
         """`words` say what the save now on its way changes, once it lands, with Undo. A change that
@@ -2408,6 +2475,7 @@ class NativeWindow(QMainWindow):
         self._telling = False
         self._set_notice(said, "Undo", self._undo_from_notice)
         self._notice_step = self.session.last_step()
+        self._focus_week(self._first_placed())
 
     def _on_plan_conflicts(self, lost: list) -> None:
         if not lost:
@@ -2674,7 +2742,7 @@ class NativeWindow(QMainWindow):
             rows,
             existing if existing is not None else self.session.blocks,
         )
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        if not self._run_sheet(dialog):
             return
         chosen = [row for row in dialog.rows() if row.get("checked")]
         what = chosen[0]["block"]["title"] if len(chosen) == 1 else f"{len(chosen)} blocks"
@@ -2956,6 +3024,7 @@ class NativeWindow(QMainWindow):
     def _close_focus_screen(self) -> None:
         if self._stack.currentWidget() is self.focus_screen:
             self._show_page("weekPage")
+            self._focus_week()
 
     def _stop_focus(self) -> None:
         self.session.reset_focus()
@@ -3576,6 +3645,26 @@ class NativeWindow(QMainWindow):
             self._tray_icon.hide()
         QApplication.quit()
 
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
+        """Qt gives a right-click's context menu to the widget under the pointer only when the pointer
+        did not move between the press and the release. A hand or a touchpad nearly always moves a few
+        pixels, and the menu then came to the window instead, so a block's or free time's menu opened about
+        one time in ten. It goes on to the widget the pointer is over."""
+        target = QApplication.widgetAt(event.globalPos())
+        by_mouse = event.reason() == QContextMenuEvent.Reason.Mouse
+        if not by_mouse or target is None or target is self or self._relaying:
+            super().contextMenuEvent(event)
+            return
+        self._relaying = True
+        try:
+            relayed = QContextMenuEvent(
+                QContextMenuEvent.Reason.Mouse, target.mapFromGlobal(event.globalPos()), event.globalPos()
+            )
+            QApplication.sendEvent(target, relayed)
+        finally:
+            self._relaying = False
+        event.setAccepted(relayed.isAccepted())
+
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         tray = self._tray_icon
         prefs = self.session.preferences or {}
@@ -3594,6 +3683,58 @@ class NativeWindow(QMainWindow):
             return
         super().closeEvent(event)
 
+    def _week_surfaces(self) -> list[HoursCanvas]:
+        page = self.planner.currentWidget()
+        if page is None or self._stack.currentWidget() is not self._week_page:
+            return []
+        return [hours for hours in page.findChildren(HoursCanvas) if hours.isVisible()]
+
+    def _focus_week(self, placed: tuple[str, int, int] | None = None) -> None:
+        """Keyboard focus back on the week: on `placed` (a block's id, day and start) when it is shown,
+        else on the hours. Left alone it falls to whatever button comes next in the top bar, and a stray
+        Space or Enter then turns the page. The ring is drawn when the student was last on the keyboard,
+        never after a click."""
+        surfaces = self._week_surfaces()
+        if not surfaces:
+            return
+        shown = next(
+            (hours for hours in surfaces if placed and hours.track_for(placed[1], placed[2])), surfaces[0]
+        )
+        shown.take_focus(self._last_input.keyboard, placed)
+
+    def _focus_top_bar(self) -> None:
+        """Esc in the hours: the keyboard goes up to the button for the view shown, which does nothing
+        when pressed by mistake."""
+        name = {"day": "viewDay", "month": "viewMonth"}.get(self.session.planner_view, "viewWeek")
+        button = self.findChild(QPushButton, name)
+        if button is not None:
+            button.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def _watch_field(self, _old: QWidget | None, now: QWidget | None) -> None:
+        """A box on the week page that takes keys of its own is watched, so Ctrl+Z and Ctrl+Y reach the
+        week through it while it has nothing typed to undo."""
+        if (
+            isinstance(now, EDITABLE)
+            and not now.property("undoWatched")
+            and self._week_page.isAncestorOf(now)
+        ):
+            now.setProperty("undoWatched", True)
+            now.installEventFilter(self)
+
+    @staticmethod
+    def _undo_passes(box: QWidget, event: QKeyEvent) -> bool:
+        """Whether Ctrl+Z or Ctrl+Y in `box` belongs to the week: the box has no typed text of its own
+        to undo or redo."""
+        control = event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier)
+        if not control or event.key() not in (Qt.Key.Key_Z, Qt.Key.Key_Y):
+            return False
+        line = box.findChild(QLineEdit) if isinstance(box, (QAbstractSpinBox, QComboBox)) else box
+        if isinstance(line, QLineEdit):
+            return not (line.isUndoAvailable() or line.isRedoAvailable())
+        if isinstance(line, QPlainTextEdit):
+            return not (line.document().isUndoAvailable() or line.document().isRedoAvailable())
+        return True
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if self.session.account is None or QApplication.activeModalWidget() is not None:
             super().keyPressEvent(event)
@@ -3606,11 +3747,15 @@ class NativeWindow(QMainWindow):
             super().keyPressEvent(event)
             return
         focus = QApplication.focusWidget()
-        if isinstance(focus, (QLineEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)):
-            super().keyPressEvent(event)
-            return
         key = event.key()
         mods = event.modifiers()
+        if isinstance(focus, EDITABLE) and not self._undo_passes(focus, event):
+            super().keyPressEvent(event)
+            return
+        if key == Qt.Key.Key_Escape and not mods and isinstance(focus, HoursCanvas) and not self._day_mode:
+            self._focus_top_bar()
+            event.accept()
+            return
         planning = self._stack.currentWidget() in (self.focus_screen, self.findChild(QWidget, "weekPage"))
         if self._stack.currentWidget() is self.focus_screen:
             if key == Qt.Key.Key_Escape:
@@ -3689,6 +3834,12 @@ class NativeWindow(QMainWindow):
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() != QEvent.Type.KeyPress:
+            return super().eventFilter(watched, event)
+        if isinstance(watched, EDITABLE):
+            # Only Ctrl+Z and Ctrl+Y, and only past a box with nothing of its own to undo.
+            if watched.property("undoWatched") and self._undo_passes(watched, event):
+                self.keyPressEvent(event)
+                return True
             return super().eventFilter(watched, event)
         key = event.key()
         mods = event.modifiers()

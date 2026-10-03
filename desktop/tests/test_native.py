@@ -591,7 +591,7 @@ def test_copy_paste_does_not_use_the_os_clipboard(qapp: QApplication, server: Lo
     assert clip.text() == "sentinel-os"
 
 
-def test_paste_onto_the_same_slot_stays_unchecked_until_the_time_changes(
+def test_paste_onto_the_same_slot_lands_on_top_of_the_block_as_a_drag_would(
     qapp: QApplication, server: LocalServer
 ) -> None:
     session = signed_in(qapp, server.origin, "alice", create=True)
@@ -605,12 +605,10 @@ def test_paste_onto_the_same_slot_stays_unchecked_until_the_time_changes(
     from desktop.native.reuse import row_conflict
 
     assert row_conflict(rows[0], rows, session.blocks) == "Soccer"
-    assert session.confirm_preview(rows, label="the copied block") is False
-    assert "Resolve conflicts" in session.message
-    rows[0]["block"]["start"] = "18:00"
-    rows[0]["checked"] = True
+    assert rows[0]["checked"]
     assert session.confirm_preview(rows, label="the copied block")
     wait_until(qapp, lambda: not session.busy and len(session.blocks) == 2)
+    assert [(block["days"], block["start"]) for block in session.blocks] == [([0], "16:00")] * 2
 
 
 def test_a_hundredth_block_refuses_a_paste(qapp: QApplication, server: LocalServer) -> None:
@@ -951,7 +949,7 @@ def test_availability_round_trips_protected_time(qapp: QApplication, server: Loc
     assert session.preferences["work_windows"][0]["start"] == "08:00"
 
 
-def test_preview_dialog_leaves_a_collision_unchecked(qapp: QApplication, server: LocalServer) -> None:
+def test_preview_dialog_keeps_a_collision_checked_and_warns(qapp: QApplication, server: LocalServer) -> None:
     from PySide6.QtWidgets import QCheckBox
 
     from desktop.native.widgets import PreviewDialog
@@ -984,7 +982,8 @@ def test_preview_dialog_leaves_a_collision_unchecked(qapp: QApplication, server:
     qapp.processEvents()
     box = dialog.findChild(QCheckBox, "previewInclude0")
     assert box is not None
-    assert box.isChecked() is False
+    assert box.isChecked() is True
+    assert dialog.confirm.isEnabled()
     dialog.close()
 
 

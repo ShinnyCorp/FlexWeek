@@ -15,7 +15,6 @@ from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QContextMenuEvent, QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication, QDialog, QPushButton, QWidget
 
-from backend.slots import minutes_to_hhmm
 from desktop.native import window as window_module
 from desktop.native.calendar import sunday_due
 from desktop.native.hours.chips import TrayChip
@@ -401,24 +400,34 @@ def press(widget: QWidget, key: Qt.Key, mods: Qt.KeyboardModifier = Qt.KeyboardM
     ("key", "mods"),
     [(Qt.Key.Key_Menu, Qt.KeyboardModifier.NoModifier), (Qt.Key.Key_F10, Qt.KeyboardModifier.ShiftModifier)],
 )
-def test_the_menu_key_and_shift_f10_ask_at_the_days_first_free_time(
+def test_the_menu_key_and_shift_f10_ask_for_the_chosen_blocks_menu(
     qapp: QApplication, window: NativeWindow, menus: dict, key: Qt.Key, mods: Qt.KeyboardModifier
 ) -> None:
     hours = window.week_table.hours
-    track = hours.track_for(3)
-    # Thursday is taken from the top of the hours to 10:00, and School runs on to 14:30.
-    taken = {
-        "id": "early", "kind": "locked", "title": "Early", "category": "class", "days": [3],
-        "start": minutes_to_hhmm(track.first), "duration_min": 600 - track.first,
-    }
-    window.session.add_block(taken)
-    window.session.save()
-    settled(qapp, window)
-    hours.hand.select("early", 3)
+    hours.hand.select("school", 3)
+    hours.setFocus()
+    press(hours, key, mods)
+    assert [rows[0] for rows in menus["shown"]] == ["Open\tEnter"]
+
+
+@pytest.mark.parametrize(
+    ("key", "mods"),
+    [(Qt.Key.Key_Menu, Qt.KeyboardModifier.NoModifier), (Qt.Key.Key_F10, Qt.KeyboardModifier.ShiftModifier)],
+)
+def test_the_menu_key_and_shift_f10_ask_at_the_next_free_time_after_now_when_nothing_is_chosen(
+    qapp: QApplication, window: NativeWindow, menus: dict, key: Qt.Key, mods: Qt.KeyboardModifier
+) -> None:
+    # School runs to 14:30 on weekdays, so from Thursday 14:07 the next free quarter hour is 14:30.
+    thursday = datetime.fromisoformat(window.session.week_start) + timedelta(days=3, hours=14, minutes=7)
+    window.session.now_ms = lambda: int(thursday.timestamp() * 1000)
+    window._fill_classic()
+    qapp.processEvents()
+    hours = window.week_table.hours
+    hours.hand.clear_selection()
     hours.setFocus()
     press(hours, key, mods)
     assert [rows[0] for rows in menus["shown"]] == ["Add fixed time at 14:30"]
-    assert window.session.selected_occurrence_day == 3
+    assert hours.focus_slot() == (3, 14 * 60 + 30)
 
 
 @pytest.mark.parametrize("design", ["timeline", "mission", "bento", "retro", "clay"])
