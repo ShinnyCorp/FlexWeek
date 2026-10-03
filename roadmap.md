@@ -72,11 +72,11 @@ lane entry carries the number so nothing is lost between sessions.
   play it, alarms use the default link, a block start uses only its own link,
   Focus uses the default. The Settings Play button previews what reminders
   never do, and the "one sound for everything" note is untrue for Spotify.
-  Decision open: (1) a block start plays its own link, else the default when
-  Sound is Spotify, reminders stay Chime, field relabelled, window widened to
-  the lead; (2) keep the behaviour, move the Spotify sound and link into
-  Alarms; (3) every block start plays the default link. → "one source per
-  setting" lane once decided.
+  Decided 2026-10-02: a block start plays its own link, else the Settings
+  link when Sound is Spotify; reminder notices stay Chime; the field is
+  relabelled as the default link for alarms and block starts; Play previews
+  that; the start window widens to the reminder lead. → 0.18.1 one source
+  per setting.
 - J4 (2026-10-02): the reminder lead has three defaults: Setup's first run
   sets 10 min, Settings and the backend default to 5, Setup's summary line
   says 5 when the key is missing. → one source per setting.
@@ -92,8 +92,9 @@ lane entry carries the number so nothing is lost between sessions.
   "Preferred study hours" as a second list, then the planning hours again
   under "When may FlexWeek plan homework?", then a cutoff. Both lists reach
   the solver, and Setup fills only one. Audit finding 54 saw the symptom.
-  Decision open: keep both with clear names, or merge preferred into
-  allowed. → Availability work (0.18.2 sheets lane) once decided.
+  Decided 2026-10-02: merge preferred into allowed. One list named Study
+  hours, filled by Setup and edited in Availability; the solver gets one
+  input; protected time and the cutoff stay. → 0.18.2 sheets lane with #54.
 - Noted, no new item: appearance lives on the account (pack and accent from
   short lists) and on the device (look, any-colour accent, knobs); this is
   the open decision about looks following the account.
@@ -111,7 +112,7 @@ that share code with a Fix-first one.
 | Sheets | #49 seven OS windows become sheets; #70 Manage account layout; #34 Add homework scrolls inside itself; #48 conflict line; #91 disabled buttons unreadable; #79 clipped buttons; coupled #50 recovery codes save folder and warning, #76 Sign out as a sheet |
 | Deadlines and dates | #32 Due by and Do it at; #2 Setup's blank calendar; #35 typed date jumps a year |
 | Update prompt | #64 offers the running version (re-check first: the code moved to Rust in 0.18.0) |
-| One source per setting | J3 Spotify link rules (after the decision); J4 reminder lead default; J5 one cutoff picker; J6 snooze and window constants read from the engine |
+| One source per setting | J3 Spotify link rules; J4 reminder lead default; J5 one cutoff picker; J6 snooze and window constants read from the engine |
 
 Order: plumbing → time entry, Plan and Undo, update prompt in parallel → grid
 and keyboard → sheets and deadlines after mockup round 1 (the seven sheets,
@@ -132,7 +133,7 @@ colour, tonal "Plan here", the Due row).
 | Designs (from 0.17.3) | Bento's now pill inside today's column; Mission names crossed by the now line; Clay's Day card hourless for 100 ms; Mission's 00:00 label 6 px left |
 | Add/Edit homework | #36 defaults, hints, empty boxes; #37 Spread hard to find |
 | Plan | #43 two filled buttons, "Placed" wording; #44 misleading reason late in the day; #45 Undo menu item; #98 panel pops in |
-| Sheets | #51 Choose a time controls; #52 New event title and fields; #53 (rest) Running late buttons and refusal; #54 Availability layout; #55 sheets don't match |
+| Sheets | #51 Choose a time controls; #52 New event title and fields; #53 (rest) Running late buttons and refusal; #54 Availability layout; #55 sheets don't match; J7 one Study hours list |
 | Settings | #65 Remove alarm keyboard selection; #66 (Settings part); #67 Appearance layout and wording; #68 forms don't line up |
 | Account | #71 buttons don't look like buttons; #72 errors carry over; #73 sign-in error; #75 where data lives |
 | Keyboard | #88 F1 and Ctrl+N; #89 Ctrl+K palette |
