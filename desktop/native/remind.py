@@ -10,7 +10,6 @@ import flexweek_engine  # type: ignore[import-untyped]
 
 # The engine runs these rules, so the numbers are read from it rather than written down again.
 REMINDER_WINDOW_MIN = flexweek_engine.REMINDER_WINDOW_MIN
-REMINDER_LEAD_DEFAULT_MIN = flexweek_engine.REMINDER_LEAD_DEFAULT_MIN
 ALARM_SNOOZE_MIN = flexweek_engine.ALARM_SNOOZE_MIN
 ALARM_SNOOZE_MS = flexweek_engine.ALARM_SNOOZE_MS
 REMINDER_POLL_MS = 30_000
@@ -18,8 +17,7 @@ REMINDER_POLL_MS = 30_000
 
 def reminder_lead_min(prefs: dict | None, default: int | None = None) -> int:
     """The saved lead, else `default`, else the engine's own default."""
-    fallback = REMINDER_LEAD_DEFAULT_MIN if default is None else default
-    return int(flexweek_engine.remind_lead_min(json.dumps(prefs), fallback))
+    return int(flexweek_engine.remind_lead_min(json.dumps(prefs), default))
 
 
 def start_alert_due(start_min: int, now_min: int, lead: int) -> bool:

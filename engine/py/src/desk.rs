@@ -496,8 +496,9 @@ fn pomo_split_solved(
 }
 
 #[pyfunction]
-fn remind_lead_min(prefs: &str, default: i64) -> PyResult<i128> {
+fn remind_lead_min(prefs: &str, default: Option<i64>) -> PyResult<i128> {
     let prefs = parse(prefs)?;
+    let default = default.unwrap_or(remind::REMINDER_LEAD_DEFAULT_MIN);
     guard(|| remind::reminder_lead_min(&prefs, default).map_err(raise))
 }
 

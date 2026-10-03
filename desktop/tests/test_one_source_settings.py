@@ -145,12 +145,18 @@ def test_play_says_it_previews_a_block_start(qapp: QApplication) -> None:
 
 @pytest.fixture()
 def lead_of_seven(monkeypatch: pytest.MonkeyPatch) -> int:
-    monkeypatch.setattr(remind, "REMINDER_LEAD_DEFAULT_MIN", 7)
+    """The engine's default moved to 7: every page has to ask the engine rather than hold its own 5."""
+    real = flexweek_engine.remind_lead_min
+    monkeypatch.setattr(
+        flexweek_engine,
+        "remind_lead_min",
+        lambda prefs, default: real(prefs, 7 if default is None else default),
+    )
     return 7
 
 
 def test_the_default_lead_is_the_engines_and_is_five() -> None:
-    assert remind.REMINDER_LEAD_DEFAULT_MIN == flexweek_engine.REMINDER_LEAD_DEFAULT_MIN == 5
+    assert flexweek_engine.REMINDER_LEAD_DEFAULT_MIN == 5
     assert remind.reminder_lead_min({}) == 5
     assert remind.reminder_lead_min({"reminder_lead_min": None}) == 5
     assert remind.reminder_lead_min({"reminder_lead_min": 12}) == 12
@@ -244,7 +250,7 @@ def test_python_keeps_no_copy_of_the_engines_constants() -> None:
         for target in node.targets
         if isinstance(target, ast.Name)
     }
-    for name in ("REMINDER_WINDOW_MIN", "REMINDER_LEAD_DEFAULT_MIN", "ALARM_SNOOZE_MIN", "ALARM_SNOOZE_MS"):
+    for name in ("REMINDER_WINDOW_MIN", "ALARM_SNOOZE_MIN", "ALARM_SNOOZE_MS"):
         value = assigned[name]
         assert isinstance(value, ast.Attribute), f"{name} is written down again, not read"
         assert isinstance(value.value, ast.Name) and value.value.id == "flexweek_engine", name
