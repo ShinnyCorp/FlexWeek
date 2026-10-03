@@ -114,7 +114,7 @@
  {
   "file": "desktop/native/layouts/mission.py",
   "name": "lanes open before the evening",
-  "old": "    return min(max([EVENING, *(item.end for item in items)]) + END_ROOM, 24 * 60)\n",
+  "old": "    return min(max([EVENING, *(item.end for item in items), *later]) + END_ROOM, 24 * 60)\n",
   "new": "    return 16 * 60\n",
   "test": "desktop/tests/test_layout_mission.py::test_the_lanes_of_another_week_open_through_the_evening"
  },
