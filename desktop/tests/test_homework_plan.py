@@ -646,3 +646,51 @@ def test_homework_editor_refuses_each_field_in_its_own_words(
         assert "Value error" not in dialog.error.text()
     finally:
         dialog.close()
+
+
+def held_solves(window: NativeWindow) -> tuple[list[dict], list[Callable[[], None]]]:
+    """Every /api/solve the window sends is kept, unanswered, until a test releases it."""
+    sent: list[dict] = []
+    waiting: list[Callable[[], None]] = []
+    real = window.session.client.request
+
+    def request(verb, target, payload, on_success, on_error):
+        if verb == "POST" and target == "/api/solve":
+            sent.append(payload)
+            waiting.append(lambda: real(verb, target, payload, on_success, on_error))
+            return None
+        return real(verb, target, payload, on_success, on_error)
+
+    window.session.client.request = request  # type: ignore[method-assign]
+    return sent, waiting
+
+
+def test_twelve_fast_clicks_on_plan_make_one_plan(qapp: QApplication, window: NativeWindow) -> None:
+    sent, waiting = held_solves(window)
+    plan = window.findChild(QPushButton, "solveButton")
+    said: list[str] = []
+    window.session.status.connect(said.append)
+    for _ in range(12):
+        plan.click()
+        qapp.processEvents()
+    assert not plan.isEnabled(), "disabled from the first click, not after the busy look's delay"
+    assert len(sent) == 1
+    assert said.count("Planning…") == 1
+    waiting[0]()
+    settled(qapp, window)
+    assert plan.isEnabled(), "back once the result is in"
+    assert len(sent) == 1
+
+
+def test_plan_asked_for_in_other_ways_while_one_is_running_is_ignored(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    sent, waiting = held_solves(window)
+    window.session.solve()
+    for _ in range(11):
+        window.session.solve()
+        window.session.solve(everything=True)
+    assert len(sent) == 1
+    waiting[0]()
+    settled(qapp, window)
+    assert len(sent) == 1

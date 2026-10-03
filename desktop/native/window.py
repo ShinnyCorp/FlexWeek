@@ -1868,6 +1868,9 @@ class NativeWindow(QMainWindow):
                 button.installEventFilter(self._busy_guard)
         if busy:
             self._busy_look.start()
+            if self.session.planning:
+                # At once, not after the busy look's delay: a second click in that gap was a second plan.
+                self.solve_button.setEnabled(False)
         else:
             self._busy_look.stop()
             self._grey_while_busy()

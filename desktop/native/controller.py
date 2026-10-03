@@ -214,6 +214,7 @@ class NativeSession(QObject):
         self.selected_block_id: str | None = None
         self.selected_occurrence_day: int | None = None
         self._ticket = 0
+        self._plan_ticket: int | None = None
         self._day_ticket = 0
         self._month_ticket = 0
         self._undo: list[dict] = []
@@ -285,11 +286,17 @@ class NativeSession(QObject):
         self.message = text
         self.status.emit(text)
 
-    def _begin(self) -> int:
+    def _begin(self, planning: bool = False) -> int:
         self._ticket += 1
+        self._plan_ticket = self._ticket if planning else None
         self.busy = True
         self.busy_changed.emit(True)
         return self._ticket
+
+    @property
+    def planning(self) -> bool:
+        """A plan was asked for and its result is not back yet."""
+        return self.busy and self._plan_ticket == self._ticket
 
     def _alive(self, ticket: int) -> bool:
         return ticket == self._ticket
@@ -1640,6 +1647,8 @@ class NativeSession(QObject):
         `everything` is Replan all my homework. `only` finds new times for named work. Nothing is
         placed before now.
         """
+        if self.planning:
+            return
         if self.pending_save is not None or self.conflict:
             self._say("Wait a moment: your last change is still saving. Then plan again.")
             return
@@ -1653,7 +1662,7 @@ class NativeSession(QObject):
         if not targets:
             self._say("All your homework already has a time.")
             return
-        ticket = self._begin()
+        ticket = self._begin(planning=True)
         self._say("Planning…")
 
         def ok(data: dict) -> None:
