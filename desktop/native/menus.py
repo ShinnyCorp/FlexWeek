@@ -37,6 +37,7 @@ DANGER = "danger"
 ICON_PX = 16
 PAD = 8
 GAP = 8
+MENU_MIN_WIDTH = 312
 
 
 @dataclass(frozen=True)
@@ -148,7 +149,7 @@ class Menu(QMenu):
             if action.menu() is not None or action.isCheckable():
                 wide += GAP + ICON_PX
             widest = max(widest, wide)
-        self.setMinimumWidth(widest + 2 * (MENU_EDGE + 4))
+        self.setMinimumWidth(max(widest + 2 * (MENU_EDGE + 4), MENU_MIN_WIDTH))
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         # Before the window is on screen: Qt placed the whole window where the panel belongs.
