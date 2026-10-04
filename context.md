@@ -3,8 +3,10 @@
 ## Current State
 - 2026-10-04, `release/0.18.2` (local, not pushed): all of batch A is merged (lanes 0-6 and the
   test-memory repair); CHANGELOG has its `[Unreleased]` entry. Ruff and mypy clean; every test file
-  a lane touched passes, one file per process. The whole suite and the rigs have not run on it with
-  everything merged. Test cleanup deletes the windows each test made, so a 4-worker whole suite
+  a lane touched passes, one file per process. Whole suite (4 workers): 2882 passed, 5 failed, two of
+  them stale tests since fixed; two are a #82 regression (no drag from the folded rail's popup) and
+  one intermittent. Rigs: 5 of 7 in full; timeline day fails `day-small-large` (#83, the top bar
+  wraps at 1150 px Large); all of these are with Grok (round 3 prompt). Test cleanup deletes the windows each test made, so a 4-worker whole suite
   takes about 1.4 GB (it was about 9 GB). `test_ui_dialogs.py`'s work-windows test fails when its
   file runs alone (sheet 622 px, wants 640), on main too; `test_more_menu_words.py`'s Unfinished in
   Timeline test failed once in five runs of its file.
@@ -125,5 +127,6 @@ values make a retried write return the first result.
 ## Session Handoff
 - 2026-10-04, `release/0.18.2` in `~/.worktrees/flexweek-0182-release` (`.venv` is
   `venv-0182-engine`, the engine with the new reason codes). Batch A merged and its CHANGELOG
-  written. Next: the whole suite and the rigs on release, Jonathan's look at #98's sliding plan
-  panel, then the PR. Batch B waits for mockup round 2.
+  written, the whole suite and the rigs run. Next: review and merge Grok's round 3
+  (`~/.flexweek-ui-harness/scratch/0.18.x/grok-0182-prompt-round3.md`), rerun the suite and the
+  timeline day rig, Jonathan's look at #98's sliding plan panel, then the PR. Batch B waits for mockup round 2.

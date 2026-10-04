@@ -360,12 +360,17 @@ test.
   Done when alarm rows show a focus ring and a selection.
 
 #### Batch A: still open before 0.18.2 ships
-- The whole suite and the rigs have not run on `release/0.18.2` with every
-  lane merged; each lane's own test files pass one file at a time.
+- Whole suite on `release/0.18.2` with every lane merged (2026-10-04, 4 workers): 2882 passed,
+  5 failed; two were stale tests, fixed. Rigs: classic, timeline, mission and bento week and clay
+  day passed in full; timeline day 13/14, retro week 16/17.
+- #82 regression: with the rail folded (below 1100 px) a waiting homework in the "Not placed yet"
+  popup cannot be dragged onto the hours; `test_layouts_window.py`'s two drop tests fail.
+- #83 regression: at 1150 px with Large text the top bar wraps onto a second row instead of
+  shortening More and Plan, and Timeline Day's second waiting chip falls off screen (rig
+  `day-small-large`; passes on main).
+- `test_more_menu_words.py::test_unfinished_opens_its_list_in_any_design` fails now and then
+  ("Timeline showed nothing"); retro week's rig `week-small-large` failed once and passed alone.
 - #98's sliding plan panel needs Jonathan's look on a real screen.
-- `test_more_menu_words.py::test_unfinished_opens_its_list_in_any_design`
-  failed once in five runs of its file ("Timeline showed nothing"); not
-  pinned.
 - `test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings`
   fails when its file runs alone (622 px against 640), on main too.
 
