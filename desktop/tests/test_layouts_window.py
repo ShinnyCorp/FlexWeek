@@ -2417,6 +2417,9 @@ def _drop(qapp: QApplication, window: NativeWindow, block_id: str, hhmm: str, da
     minute = int(hhmm[:2]) * 60 + int(hhmm[3:])
     hours.reveal(day, max(minute - 60, 0), minute + 90)
     qapp.processEvents()
+    if window.rail.folded:
+        window.rail.waiting_chip.click()
+        qapp.processEvents()
     chip = next(
         widget
         for widget in window.findChildren(QPushButton)
@@ -2504,10 +2507,11 @@ def test_homework_dropped_on_the_calendar_gets_that_time_and_keeps_it(
 ) -> None:
     waiting = _waiting_math(qapp, window)
     assert not waiting.get("start")
-    _drop(qapp, window, waiting["id"], "16:00", 2)
+    # Friday: the clock is Thursday 19:00, and a drop on a day already past is refused (#15).
+    _drop(qapp, window, waiting["id"], "16:00", 4)
     settled(qapp, window)
     placed = next(block for block in window.session.blocks if block["id"] == waiting["id"])
-    assert (placed["days"], placed["start"], placed.get("pinned")) == ([2], "16:00", True)
+    assert (placed["days"], placed["start"], placed.get("pinned")) == ([4], "16:00", True)
     window.session.undo()
     settled(qapp, window)
     back = next(block for block in window.session.blocks if block["id"] == waiting["id"])
@@ -2517,7 +2521,7 @@ def test_homework_dropped_on_the_calendar_gets_that_time_and_keeps_it(
     window.session.solve(everything=True)
     settled(qapp, window)
     replanned = next(block for block in window.session.blocks if block["id"] == waiting["id"])
-    assert (replanned["days"], replanned["start"]) == ([2], "16:00"), "Replan all leaves it where it was put"
+    assert (replanned["days"], replanned["start"]) == ([4], "16:00"), "Replan all leaves it where it was put"
 
 
 def test_a_drop_over_school_sits_beside_it_and_no_plan_moves_it_off(
@@ -2526,19 +2530,20 @@ def test_a_drop_over_school_sits_beside_it_and_no_plan_moves_it_off(
     """As in Daily Scheduler: two blocks at one time is allowed, side by side, and said. It was put
     there by hand, so the planner that makes way for School leaves it where it is."""
     waiting = _waiting_math(qapp, window)
-    _drop(qapp, window, waiting["id"], "10:00", 1)
+    # Friday's School: the clock is Thursday 19:00, and a drop on a day already past is refused (#15).
+    _drop(qapp, window, waiting["id"], "10:00", 4)
     settled(qapp, window)
     placed = next(block for block in window.session.blocks if block["id"] == waiting["id"])
-    assert (placed["days"], placed["start"], placed.get("pinned")) == ([1], "10:00", True)
-    tuesday = {
+    assert (placed["days"], placed["start"], placed.get("pinned")) == ([4], "10:00", True)
+    friday = {
         item.block_id: item.columns
-        for item, _rect in _hours(window).drawn(_hours(window).track_for(1, 10 * 60))
+        for item, _rect in _hours(window).drawn(_hours(window).track_for(4, 10 * 60))
     }
-    assert tuesday == {"school": 2, waiting["id"]: 2}, "side by side, each marked"
+    assert friday == {"school": 2, waiting["id"]: 2}, "side by side, each marked"
     window.session.solve(everything=True)
     settled(qapp, window)
     replanned = next(block for block in window.session.blocks if block["id"] == waiting["id"])
-    assert (replanned["days"], replanned["start"]) == ([1], "10:00")
+    assert (replanned["days"], replanned["start"]) == ([4], "10:00")
 
 
 def test_a_block_held_on_the_week_goes_back_when_the_student_switches_to_day(

@@ -740,6 +740,26 @@ def child_main(args: argparse.Namespace) -> int:
             f"math is {got['days']} {got.get('start')}",
         )
 
+    def week_folded_waiting(r: Rig) -> Step:
+        """At 800 px the rail is folded: open Not placed yet with the pointer, then drag homework on."""
+        yield from r.tab("week")
+        window.resize(800, 820)
+        yield ("wait", 400)
+        chip = window.findChild(QPushButton, "railWaitingChip")
+        expect(chip is not None and chip.isVisible(), "the folded Not placed yet chip is missing")
+        yield from r.click(chip.mapToGlobal(chip.rect().center()))
+        # Friday: the clock is Thursday 15:40, and a drop on a day already past is refused.
+        yield from r.reveal(4, 15 * 60, 18 * 60)
+        yield from r.drag(r.chip(ids["math"]), r.at(4, 16 * 60))
+        yield from r.settled()
+        got = block(ids["math"])
+        expect(
+            (got["days"], got.get("start"), got.get("pinned")) == ([4], "16:00", True),
+            f"math is {got['days']} {got.get('start')}",
+        )
+        window.resize(1280, 820)
+        yield ("wait", 200)
+
     def week_past_due(r: Rig) -> Step:
         yield from r.tab("week")
         yield from r.reveal(5, 16 * 60 + 30, 18 * 60 + 30)
@@ -1524,6 +1544,7 @@ def child_main(args: argparse.Namespace) -> int:
         Scenario("week-create", "week", week_create),
         Scenario("week-series-one-day", "week", week_series),
         Scenario("week-beside", "week", week_beside),
+        Scenario("week-folded-waiting", "week", week_folded_waiting, only=("classic",)),
         Scenario("week-past-due", "week", week_past_due),
         Scenario("week-open-day", "week", week_open_day),
         Scenario("week-reach", "week", week_reach),
