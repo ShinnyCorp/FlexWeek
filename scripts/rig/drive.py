@@ -136,6 +136,37 @@ class Waited(AssertionError):
     """Something the scenario waited for never happened. Never a pass."""
 
 
+def report_run(
+    plan: list[tuple[str, str, str]],
+    results: list[dict],
+    finished: bool,
+    python_error: str | None = None,
+    stopped_in: str | None = None,
+) -> tuple[str, int, list[dict]]:
+    """The line printed at the end, the exit code, and results.json including scenarios that did not run."""
+    ran = {(item["design"], item["scenario"]) for item in results}
+    skipped = [
+        {"design": design, "tab": tab, "scenario": name, "result": "SKIPPED"}
+        for design, tab, name in plan
+        if (design, name) not in ran
+    ]
+    payload = [*results, *skipped]
+    passed = sum(1 for item in results if item["result"] == "PASS")
+    failures = any(item.get("result") not in {"PASS"} for item in results)
+    where = stopped_in or (results[-1]["scenario"] if results else (plan[0][2] if plan else ""))
+    if python_error:
+        return f"STOPPED in {where}: {python_error}", 1, payload
+    if finished and not skipped and results and failures:
+        return f"{passed}/{len(plan)} passed, {len(results) - passed} failed.", 1, payload
+    if not finished or skipped or not results or failures or passed != len(plan):
+        return (
+            f"STOPPED in {where}: {len(results)}/{len(plan)} ran, {len(skipped)} did not run.",
+            1,
+            payload,
+        )
+    return f"{passed}/{len(plan)} passed.", 0, payload
+
+
 def child_main(args: argparse.Namespace) -> int:
     from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QSize, QStandardPaths, Qt, QTimer
     from PySide6.QtGui import QColor, QCursor, QPainter, QPen
@@ -143,6 +174,14 @@ def child_main(args: argparse.Namespace) -> int:
 
     QStandardPaths.setTestModeEnabled(True)
     app = QApplication(["flexweek-rig"])
+    python_errors: list[str] = []
+
+    def on_error(kind: type, value: BaseException, tb: object) -> None:
+        python_errors.append(f"{getattr(kind, '__name__', kind)}: {value}")
+        traceback.print_exception(kind, value, tb)
+        app.quit()
+
+    sys.excepthook = on_error
 
     from desktop.native.calendar import sunday_due
     from desktop.native.client import _error
@@ -1670,8 +1709,9 @@ def child_main(args: argparse.Namespace) -> int:
                 finished.append(True)
                 app.quit()
                 return
-            except Exception:  # noqa: BLE001 - the rig reports and stops rather than hanging
+            except Exception as broken:  # noqa: BLE001 - the rig reports and stops rather than hanging
                 traceback.print_exc()
+                python_errors.append(f"{type(broken).__name__}: {broken}")
                 app.quit()
                 return
             dispatch(command)
@@ -1694,11 +1734,17 @@ def child_main(args: argparse.Namespace) -> int:
     app.lastWindowClosed.connect(lambda: print("The last window closed.", flush=True))
     QTimer.singleShot(300, lambda: drive(run_all()))
     app.exec()
-    (out / "results.json").write_text(json.dumps(results, indent=1))
+    line, code, payload = report_run(
+        [(design, scenario.tab, scenario.name) for design, scenario in plan],
+        results,
+        bool(finished),
+        python_error=python_errors[0] if python_errors else None,
+        stopped_in=None if finished else (rig.scenario or None),
+    )
+    (out / "results.json").write_text(json.dumps(payload, indent=1))
     server.stop()
-    passed = sum(1 for item in results if item["result"] == "PASS")
-    print(f"\n{passed}/{len(results)} passed. Screenshots, videos and results.json in {out}")
-    return 0 if finished and results and passed == len(results) else 1
+    print(f"\n{line} Screenshots, videos and results.json in {out}")
+    return code
 
 
 def main() -> int:
