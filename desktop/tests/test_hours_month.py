@@ -170,6 +170,22 @@ def test_a_chip_carried_to_another_date_is_one_date_move(qapp: QApplication) -> 
     assert stage.opened == []
 
 
+def test_a_month_chip_puts_its_date_on_held_from_iso_not_category(qapp: QApplication) -> None:
+    """Month's press builds Held with the cell ISO as the eighth positional value, after grab.
+    That slot is from_iso. Category is empty here because Month does not pass one. If category
+    sits before from_iso, the ISO fills category and the drop has no origin date."""
+    stage = Stage(qapp)
+    seen: list[tuple[str, str]] = []
+
+    def look() -> None:
+        held = stage.hand.preview_held()
+        assert held is not None
+        seen.append((held.from_iso, held.category))
+
+    stage.carry(stage.canvas.chip_point("essay-1", "2026-09-24"), stage.canvas.cell_point("2026-09-26"), look)
+    assert seen == [("2026-09-24", "")]
+
+
 def test_a_refused_date_shows_while_held_and_moves_nothing(qapp: QApplication) -> None:
     words = "That ends after it is due, so it stayed where it was."
     stage = Stage(qapp, lambda block_id, from_iso, to_iso: Verdict(to_iso < "2026-09-27", words))
