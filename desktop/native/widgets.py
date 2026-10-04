@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from copy import deepcopy
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from functools import partial
 from pathlib import Path
 from uuid import uuid4
@@ -2818,6 +2818,7 @@ class HomeworkDialog(Dialog):
         *,
         waiting: bool = False,
         pinned: bool = False,
+        now: datetime | None = None,
     ) -> None:
         super().__init__(parent, sheet=True)
         info = CATEGORIES.get(category or "")
@@ -2841,6 +2842,7 @@ class HomeworkDialog(Dialog):
             }
         )
         self._today = today
+        self._clock = now
         self._result: dict | None = None
         self._spread = False
         # "choose" to pick a time for a session that needs one, "unpin" to let FlexWeek move it again.
@@ -3255,9 +3257,15 @@ class HomeworkDialog(Dialog):
         return before if parse_due(chosen) == parse_due(before) else chosen
 
     def _now(self) -> datetime:
-        """Now on the window's clock when it has one."""
+        """Now on one clock: the one given to the dialog, else the window's, else the dialog's today."""
+        if self._clock is not None:
+            return self._clock
         session = getattr(self.parent(), "session", None)
-        return datetime.fromtimestamp(session.now_ms() / 1000) if session is not None else datetime.now()
+        if session is not None:
+            return datetime.fromtimestamp(session.now_ms() / 1000)
+        if self._today:
+            return datetime.combine(date.fromisoformat(self._today), time.min)
+        return datetime.now()
 
     def _due_passed(self) -> bool:
         """Whether the student set a deadline that is already over. A saved deadline they did not
@@ -3273,8 +3281,7 @@ class HomeworkDialog(Dialog):
             # Not a date: the saved homework's own check says so, in its words.
             return False
         now = self._now()
-        today = date.fromisoformat(self._today) if self._today else now.date()
-        return (day, minute) < (today, now.hour * 60 + now.minute)
+        return (day, minute) < (now.date(), now.hour * 60 + now.minute)
 
     def _clear_due_problem(self) -> None:
         self.due.show_problem("")
