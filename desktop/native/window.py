@@ -1795,7 +1795,10 @@ class NativeWindow(QMainWindow):
             # a skip included, is written with them.
             QTimer.singleShot(0, self._flush_setup)
         on_focus = self._stack.currentWidget() is self.focus_screen
-        if not self._setup_active and not on_focus and self._settings is None:
+        # Settings stays built between opens, so whether it is on screen is the question, not whether
+        # it exists.
+        on_settings = self._settings is not None and self._stack.currentWidget() is self._settings
+        if not self._setup_active and not on_focus and not on_settings:
             self._show_page("weekPage")
         self._maybe_prepare_settings()
         if self.plan_review.isVisible():
