@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
+    QApplication,
     QVBoxLayout,
     QWidget,
 )
@@ -36,6 +37,7 @@ from desktop.native.calendar import DAYS
 from desktop.native.fonts import at_scale, time_font, weighted
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.hand import Hand
+from desktop.native.layouts.base import NARROW_WIDTH
 from desktop.native.look import category_paint, mix, text_scale
 from desktop.native.tokens import RADIUS_CONTROL, SPACING, WEIGHT_STRONG
 from desktop.native.weekmodel import (
@@ -653,6 +655,11 @@ class Rail(QFrame):
         self.line.setFont(time_font(self.line.font()))
         self.line.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.flow.addWidget(self.line)
+        self.waiting_chip = QPushButton()
+        self.waiting_chip.setObjectName("railWaitingChip")
+        self.waiting_chip.setProperty("quiet", True)
+        self.waiting_chip.clicked.connect(self._open_waiting)
+        self.flow.addWidget(self.waiting_chip)
         outer.addWidget(self.strip)
         self.set_folded(False)
 
@@ -829,13 +836,29 @@ class Rail(QFrame):
         if has_next:
             heading, title, when, _then = self.next.shown
             said.append(f"{heading}: {title}, {when}")
-        if self._chips:
-            said.append(f"Not placed yet: {len(self._chips)}")
+        count = len(self._chips)
+        if count and self.folded:
+            self.waiting_chip.setText(f"Not placed yet · {count}")
+            self.waiting_chip.setIcon(icons.icon("book-open", self.colours.muted))
+            self.waiting_chip.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+            self.waiting_chip.setVisible(True)
+        else:
+            self.waiting_chip.hide()
         self.line.setText(" · ".join(said))
         self.line.setVisible(self.folded and bool(said))
         self.line.setMinimumHeight(max((chip.sizeHint().height() for chip in self._chips), default=0))
         # Folded with nothing to say, it takes no room at all.
-        self.strip.setVisible(self.folded and bool(said))
+        self.strip.setVisible(self.folded and (bool(said) or count))
+
+    def _open_waiting(self) -> None:
+        """Folded rail: open the full waiting list beside the week."""
+        host = self.window()
+        if host is not None and hasattr(host, "resize"):
+            host.resize(max(host.width(), NARROW_WIDTH + 1), host.height())
+            qapp = QApplication.instance()
+            if qapp is not None:
+                for _ in range(4):
+                    qapp.processEvents()
 
     def _start_item(self, item: QListWidgetItem) -> None:
         payload = item.data(Qt.ItemDataRole.UserRole) or {}
