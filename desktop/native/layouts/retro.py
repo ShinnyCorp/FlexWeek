@@ -488,7 +488,7 @@ def up_next(scene: Scene) -> UpNext:
 
 
 def planned_words(items: tuple[Occurrence, ...], ahead: int | None) -> str:
-    """ "9 h 45 min planned, 3 still to come.", or without what is to come on a day that is not today."""
+    """ "2 h 30 min planned, 3 still to come.", homework only, or without what is to come on another day."""
     minutes = sum(item.minutes for item in items if item.work)
     if not minutes:
         return "Nothing planned."
