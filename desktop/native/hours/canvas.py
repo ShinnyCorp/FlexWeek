@@ -872,7 +872,10 @@ def held_layout(
     indent = _book_room(tm) if book else 0.0
     if room.height() + 0.5 < tm.height() or room.width() < indent + 8:
         return []
-    name = tm.elidedText(title, Qt.TextElideMode.ElideRight, room.width() - indent)
+    name_room = room.width() - indent
+    name = title if tm.horizontalAdvance(title) <= name_room else tm.elidedText(
+        title, Qt.TextElideMode.ElideRight, name_room
+    )
     tl, sl = tm.lineSpacing(), sm.lineSpacing()
     box = QRectF(room.left() + indent, room.top(), room.width() - indent, tl)
     out = [Written(name, True, box, book=book)]
@@ -1140,7 +1143,9 @@ class HoursCanvas(QWidget):
         ):
             span = preview.span
             if span.day == track.day and span.end > track.first and span.start < track.last:
-                category = next((o.category for o in self.occurrences if o.block_id == held.block_id), "")
+                category = held.category or next(
+                    (o.category for o in self.occurrences if o.block_id == held.block_id), "assignments"
+                )
                 work = next(
                     (o.work for o in self.occurrences if o.block_id == held.block_id),
                     held.kind is Gesture.PLACE,
@@ -1356,6 +1361,7 @@ class HoursCanvas(QWidget):
                 drawn.span.day,
                 drawn.span,
                 round(minute - edge),
+                category=drawn.category or "",
             )
             self.hand.select(drawn.block_id, drawn.span.day)
             # A click opens it; a drag moves or resizes it.

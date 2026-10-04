@@ -25,7 +25,9 @@ class TrayChip(QPushButton):
         super().__init__(self._words, parent)
         self.hand = hand
         self.block_id = waiting.block_id
-        self.held = Held(Gesture.PLACE, waiting.title, waiting.minutes, waiting.block_id)
+        self.held = Held(
+            Gesture.PLACE, waiting.title, waiting.minutes, waiting.block_id, category=waiting.category
+        )
         self.setProperty("block_id", waiting.block_id)
         self.setProperty("tray", True)
         self.setCursor(Qt.CursorShape.OpenHandCursor)

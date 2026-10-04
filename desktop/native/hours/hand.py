@@ -71,6 +71,7 @@ class Held:
     from_day: int = -1
     origin: Span | None = None
     grab: int = 0
+    category: str = ""
     # For a Month chip: the date it was lifted from.
     from_iso: str = ""
 
