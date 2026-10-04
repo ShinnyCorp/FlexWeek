@@ -164,8 +164,8 @@ def test_due_before_the_week_is_deadline_miss(alice: TestClient) -> None:
     body = response.json()
     assert [block["id"] for block in body["unplaced"]] == ["mon"]
     assert body["placed"] == []
-    assert {move["reason"] for move in body["moves"]} == {"DEADLINE_MISS"}
-    assert "DEADLINE_MISS" in body["failed_constraints"]
+    assert {move["reason"] for move in body["moves"]} == {"DEADLINE_PASSED"}
+    assert "DEADLINE_PASSED" in body["failed_constraints"]
 
 
 def test_finished_assignment_keeps_completed_slots_and_drops_open_sessions(alice: TestClient) -> None:
@@ -211,7 +211,7 @@ def test_a_due_time_bounds_the_solver_at_that_minute(alice: TestClient) -> None:
     assert late.status_code == 200, late.text
     missed = late.json()
     assert [block["id"] for block in missed["unplaced"]] == ["mon"]
-    assert {move["reason"] for move in missed["moves"]} == {"DEADLINE_MISS"}
+    assert {move["reason"] for move in missed["moves"]} == {"DEADLINE_PASSED"}
     on_time = solve(alice, [session("mon", days=[0], earliest="Monday 08:00")], WEEK_ONE)
     assert on_time.status_code == 200, on_time.text
     placed = on_time.json()

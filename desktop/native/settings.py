@@ -197,7 +197,7 @@ FINE_TUNE_LOOK = "Show shape, spacing and type"
 OWN_LOOK = "Your own look"
 SECTION_GAP = 14
 ABOUT_LINE = "FlexWeek plans your homework around school, sports and everything else in your week."
-ABOUT_HERE = "Your plans are saved on this computer."
+ABOUT_HERE = "Your week is saved on this computer, under this account."
 LOGO = Path(__file__).resolve().parents[1] / "assets" / "logo.png"
 ABOUT_LOGO_PX = 56
 # How far the words fade out at a scroll edge with more past it.
@@ -214,6 +214,8 @@ HELP_KEYS = (
     ("[T]", "My day"),
     ("[B] or [Esc]", "Back from My day"),
     ("[F]", "Focus screen"),
+    ("[F1]", "Help"),
+    ("[Ctrl]+[N]", "Add homework"),
     ("[Ctrl]+[K]", "Command bar"),
     ("[Ctrl]+[Z]", "Undo"),
     ("[Ctrl]+[Y] or [Ctrl]+[Shift]+[Z]", "Redo"),
@@ -1581,7 +1583,8 @@ class AccountDialog(Dialog):
         layout = self.card_body("Manage account", SHEET_FORM)
         where = "your FlexWeek server" if (storage or {}).get("mode") == "hosted" else "this computer"
         info = QLabel(
-            f"Signed in as {(storage or {}).get('username') or ''}. Your plans are saved on {where}."
+            f"Signed in as {(storage or {}).get('username') or ''}. "
+            f"Your week is saved on {where}, under this account."
         )
         info.setWordWrap(True)
         info.setObjectName("accountLocation")
@@ -1849,7 +1852,8 @@ class AboutDialog(Dialog):
         layout.addWidget(_line(ABOUT_LINE, "aboutWhat"))
         if (storage or {}).get("mode") == "hosted":
             saved = _line(
-                f"Your plans are saved on your FlexWeek server, {(storage or {}).get('origin') or ''}.",
+                "Your week is saved on your FlexWeek server, "
+                f"{(storage or {}).get('origin') or ''}, under this account.",
                 "aboutWhere",
             )
             saved.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)

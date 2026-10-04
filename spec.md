@@ -39,7 +39,7 @@ Contract for the finished app:
 - The solver stays day-index pure. Before solving, the backend turns an
   assignment's `due` into the week's bound: a due time inside the week bounds
   that day, a due date after the week adds no bound, and a due date before the
-  week leaves the session unplaced with `DEADLINE_MISS`.
+  week leaves the session unplaced with `DEADLINE_PASSED`.
 - Focus minutes never complete anything. Finishing an assignment, or adding time
   to it, is the student's explicit choice when a session ends.
 - Old weekday deadlines (`latest`, `"Thursday 21:00"` or `"21:00"`) migrate once
@@ -64,9 +64,15 @@ Contract for the finished app:
 - Energy windows (`high` / `medium` / `low`) are a soft preference on value
   order, never a hard constraint.
 - Every unplaced block and every move carries a machine reason code, rendered as
-  a plain-English sentence: `LOCKED_OVERLAP`, `DEADLINE_MISS`, `NO_SLOT_LEFT`,
-  `PRIORITY_PREEMPT`, `ENERGY_MISMATCH` (soft), `SLEEP_GUARD`,
-  `RESHUFFLE_AFTER_MISS`.
+  a plain-English sentence: `LOCKED_OVERLAP`, `DEADLINE_MISS`, `DEADLINE_PASSED`,
+  `NO_SLOT_LEFT`, `PRIORITY_PREEMPT`, `ENERGY_MISMATCH` (soft), `SLEEP_GUARD`,
+  `WORK_WINDOW_MISS`, `NO_STUDY_TIME_TODAY`, `RESHUFFLE_AFTER_MISS`.
+  `DEADLINE_PASSED`: not even 15 minutes can start before the due time on an
+  otherwise empty day, so the due time has already gone (a due date before the
+  week included). `NO_STUDY_TIME_TODAY`: due today, and today's remaining work
+  windows have no 15-minute slot left, though the session would fit in the open
+  day. `DEADLINE_MISS`: the deadline has not gone, but the time before it is too
+  short (T5).
 - Work windows bound where the planner places homework. Until the student sets
   any, the whole day is open, and the planner ranks the night (23:00–06:00)
   last, so it is used only when the rest of the day is full. Placing a block by
