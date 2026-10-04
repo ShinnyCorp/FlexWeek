@@ -180,7 +180,7 @@ def day_kinds(week: WeekModel, day: int) -> list[tuple[str, int]]:
 def left_today(week: WeekModel, day: int, minute: int) -> tuple[int, int, Occurrence | None]:
     """What is still ahead today until 22:00: the minutes planned, the minutes free, and what is next."""
     ahead = [item for item in week.on_day(day) if item.live and item.end > minute]
-    planned = _covered(ahead, minute, DAY_TO)
+    planned = _covered([item for item in ahead if item.work], minute, DAY_TO)
     coming = min((item for item in ahead if item.start > minute), key=lambda item: item.start, default=None)
     return planned, max(DAY_TO - minute - planned, 0), coming
 
@@ -957,6 +957,9 @@ class Row(QWidget):
     def _slid(self, value: object) -> None:
         share = float(value)
         self._put({day: between(self._from.get(day, rect), rect, share) for day, rect in self._to.items()})
+        scroll = self.hours
+        if scroll is not None:
+            scroll.canvas.update()
 
     def _targets(self) -> dict[int, QRectF]:
         return slots(self.width(), self.height(), self._front, self.scale, wide=self._open)

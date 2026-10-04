@@ -52,6 +52,7 @@ from desktop.native.hours.canvas import (
     HOMEWORK_CATEGORIES,
     TEXT_LEFT,
     TEXT_RIGHT,
+    BlockPainter,
     Drawn,
     HoursCanvas,
     Started,
@@ -59,7 +60,7 @@ from desktop.native.hours.canvas import (
 )
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.classic import ClassicPainter, Share, day_shares, open_hours
-from desktop.native.hours.geometry import FIRST, LAST, LinearTrack
+from desktop.native.hours.geometry import FIRST, LAST, Axis, LinearTrack
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import OPENS, HoursScroll, Scale
 from desktop.native.layouts.base import (
@@ -70,13 +71,14 @@ from desktop.native.layouts.base import (
     css,
     empty,
     family,
+    homework_planned,
     label,
     plural,
     rules,
     scrolling,
     short_length,
 )
-from desktop.native.look import category_paint, look_measures
+from desktop.native.look import category_paint, look_measures, readable_ink
 from desktop.native.motion import duration, moves
 from desktop.native.tokens import (
     RADIUS_CARD,
@@ -759,7 +761,7 @@ class DayHead(QPushButton):
         said = next(
             (
                 words_
-                for words_ in (DAYS[self.day], DAYS[self.day][0], "")
+                for words_ in (DAYS[self.day], "")
                 if words.horizontalAdvance(words_) + gap + date_wide <= box.width() - 4
             ),
             "",
@@ -1119,6 +1121,33 @@ class BentoPainter(ClassicPainter):
         # The week's narrow columns say a block's name and times; a day says its length too.
         return {**look_measures(None), "show_lengths": self.wide}
 
+    def hour_labels(
+        self,
+        painter: QPainter,
+        track: LinearTrack,
+        room: float,
+        every: int = 60,
+        visible: QRectF | None = None,
+    ) -> None:
+        """The now pill stays in the gutter, clear of today's column."""
+        BlockPainter.hour_labels(self, painter, track, room, every, visible)
+        if self.now_minute is None or track.axis is not Axis.DOWN or self.wide:
+            return
+        font = time_font(QFont(painter.font()))
+        font = at_scale(font, "caption", self.scale(painter.font()), WEIGHT_STRONG)
+        metrics = QFontMetricsF(font)
+        words = clock_label(self.now_minute)
+        width, height = metrics.horizontalAdvance(words) + 10, metrics.height() + 4
+        at = track.area.top() + track.offset(self.now_minute)
+        pill = QRectF(0, at - height / 2, width, height)
+        pill.moveRight(track.area.left() - 4)
+        painter.setPen(QPen(self.c("panel") if "panel" in self.colours else self.c("window"), 2))
+        painter.setBrush(self.c("now"))
+        painter.drawRoundedRect(pill, height / 2, height / 2)
+        painter.setPen(QColor(readable_ink(self.colours.get("now", self.colours["accent"]))))
+        painter.setFont(font)
+        painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, words)
+
     def track(self, painter: QPainter, track: LinearTrack, today: bool) -> None:
         """Hour rules across the day and today's wash, with no rule between the days, as drawn; the
         time now crosses the rest of the week faintly."""
@@ -1373,7 +1402,7 @@ class BentoView(LayoutView):
             self._hours_into(body, scene, self._hours(scene, "day", day))
             body.addWidget(self._day_side(scene, day, DAY_SIDE))
         else:
-            total = sum(item.minutes for item in scene.week.occurrences)
+            total = homework_planned(scene.week.occurrences)
             hero, body = self._hero(scene, "This week", planned_words(total), "calendar-days", legend=True)
             self._hours_into(body, scene, self._hours(scene, "week", day))
         tiles = [
@@ -1419,7 +1448,7 @@ class BentoView(LayoutView):
     def _day_line(self, scene: Scene, day: int) -> str:
         """ "3 still to come · 1 homework" today, "9 h 45 min planned · 1 homework" on another day."""
         items = scene.week.on_day(day)
-        planned = sum(item.minutes for item in items)
+        planned = homework_planned(items)
         work = sum(1 for item in items if item.work)
         parts = []
         ahead = (
@@ -1812,7 +1841,7 @@ class BentoView(LayoutView):
         head = QHBoxLayout()
         head.addWidget(_say("Your day", "bentoSumLabel", "label"))
         head.addStretch(1)
-        planned = sum(item.minutes for item in items)
+        planned = homework_planned(items)
         head.addWidget(
             _say(
                 f"{length_label(planned)} planned" if planned else "Nothing planned",
@@ -1845,9 +1874,12 @@ class BentoView(LayoutView):
             "bentoFreeRow",
         )
         if not slots:
-            box.addWidget(
-                _say(f"Nothing free before {clock_label(DAY_END)}", "bentoFreeNone", "muted", wrap=True)
+            none = (
+                "Nothing free now"
+                if today and scene.minute >= DAY_END
+                else f"Nothing free before {clock_label(DAY_END)}"
             )
+            box.addWidget(_say(none, "bentoFreeNone", "muted", wrap=True))
 
     def _rows(self, scene: Scene, box: QVBoxLayout, rows: list[tuple[QPixmap, str, str]], name: str) -> None:
         listed = QVBoxLayout()
@@ -1907,7 +1939,7 @@ class BentoView(LayoutView):
             head.addStretch(1)
             head.addWidget(
                 _say(
-                    planned_words(sum(item.minutes for item in scene.week.occurrences)),
+                    planned_words(homework_planned(scene.week.occurrences)),
                     "bentoGlancePlanned",
                     "muted",
                 )
@@ -1984,7 +2016,7 @@ class BentoView(LayoutView):
             items[0] if items else None,
             max(len(items) - 1, 0),
             tuple(day_parts(week, day, scene.tokens, ink.track)),
-            sum(item.minutes for item in items),
+            homework_planned(items),
             sum(1 for item in items if item.work),
             due_here(week, day),
             day == scene.today,
