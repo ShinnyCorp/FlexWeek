@@ -115,8 +115,8 @@ FOCUS_NOW = {"focusing": "Focusing now", "paused": "Focus paused", "break": "On 
 END_ROOM = 30
 # Clear space kept between the now pill and an hour label beside it.
 LABEL_CLEAR = 4
-# A block this short is a tick in its category's colour, named on hover.
-TICK = 30
+# A block narrower than this is a tick in its category's colour, named on hover.
+MIN_BAR = 8
 # Hours of lanes the table leaves at the least before it goes under them.
 BESIDE_HOURS = 8
 MONO = [face.strip() for face in FONT_FAMILIES["mono"].split(",")]
@@ -245,7 +245,7 @@ def lanes_end(items: Sequence[Occurrence], now: int | None = None) -> int:
 
 class MissionPainter(BlockPainter):
     """Lanes as cards with a rule at each hour, today's washed and edged in the accent. Blocks are the
-    category's fill with its mark down the start edge; one of half an hour or less is a tick. A block
+    category's fill with its mark down the start edge; one too narrow for a bar is a tick. A block
     shows as much of itself as it can without cutting a word; a name that cannot fit goes beside the
     block where the lane is free, then its first word, then its colour alone. The hours are named
     every other hour over the first lane, and the time now is a pill there, a faint line down every
@@ -341,7 +341,8 @@ class MissionPainter(BlockPainter):
                          metrics.height())
             moved = False
             if visible is not None and box.right() > visible.left() and box.left() < visible.right():
-                inside = max(min(box.left(), visible.right() - wide), visible.left())
+                least = track.area.left() + LEAD
+                inside = max(min(box.left(), visible.right() - wide), visible.left(), least)
                 moved = inside != box.left()
                 box.moveLeft(inside)
             if pill is None or not box.intersects(pill.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0)):
@@ -374,8 +375,11 @@ class MissionPainter(BlockPainter):
             return paper, muted, self.c("hairline"), QColor(mark)
         return QColor(fill), QColor(self.tokens["text"]), None, QColor(mark)
 
+    def _tick(self, rect: QRectF, drawn: Drawn) -> bool:
+        return not drawn.held and rect.width() < MIN_BAR
+
     def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:
-        if drawn.held or drawn.span.minutes > TICK:
+        if not self._tick(rect, drawn):
             super().block(painter, rect, drawn, visible)
             return
         mark = QColor(_paint(self.tokens, drawn.category)[1])
@@ -423,10 +427,13 @@ class MissionPainter(BlockPainter):
         fill: QColor | None = None,
         edge: QColor | None = None,
     ) -> list[QRectF]:
-        if drawn.held or self._whole(painter.font(), rect, drawn, visible):
+        if (drawn.held or not self._tick(rect, drawn)) and (
+            drawn.held or self._whole(painter.font(), rect, drawn, visible)
+        ):
             return super().words(painter, rect, drawn, ink, visible, fill, edge)
-        if self._beside(painter, rect, drawn, visible):
-            return self._bare(painter, rect, drawn, ink, fill, edge)
+        beside = self._beside(painter, rect, drawn, visible)
+        if beside:
+            return [*beside, *self._bare(painter, rect, drawn, ink, fill, edge)]
         first = replace(drawn, title=drawn.title.split()[0] if drawn.title.split() else drawn.title)
         if self._whole(painter.font(), rect, first, visible):
             return super().words(painter, rect, first, ink, visible, fill, edge)
@@ -473,13 +480,13 @@ class MissionPainter(BlockPainter):
         painter.drawPixmap(at, icons.pixmap(icon_name, colour.name(), size, ratio))
         return QRectF(at.x(), at.y(), size, size)
 
-    def _beside(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> bool:
+    def _beside(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> list[QRectF]:
         """The name, and its start if there is room, written beside the block where its row of the
         lane is free, as a Gantt chart labels a short bar: after it, else before it. On up to two
         lines, with no word broken, and clear of the lane's edges and of the edges of what shows."""
         found = self.taken.get(drawn.span.day)
         if found is None:
-            return False
+            return []
         first, last, taken = found
         first, last = max(first, visible.left()), min(last, visible.right())
         title, small = self.fonts(painter.font())
@@ -506,17 +513,20 @@ class MissionPainter(BlockPainter):
                 align = Qt.AlignmentFlag.AlignLeft if right else Qt.AlignmentFlag.AlignRight
                 painter.setPen(self.c("text"))
                 painter.setFont(title)
+                written: list[QRectF] = []
                 for at, line in enumerate(lines):
                     box = QRectF(left, top + at * tm.lineSpacing(), wide, tm.height())
                     painter.drawText(box, align | Qt.AlignmentFlag.AlignTop, line)
+                    written.append(box)
                 if with_time:
                     painter.setPen(self.c("muted"))
                     painter.setFont(small)
                     box = QRectF(left, top + len(lines) * tm.lineSpacing(), wide, sm.height())
                     painter.drawText(box, align | Qt.AlignmentFlag.AlignTop, start)
+                    written.append(box)
                 taken.append(QRectF(left - 5, rect.top(), wide + 10, rect.height()))
-                return True
-        return False
+                return written
+        return []
 
 
 def _whole_lines(text: str, metrics: QFontMetricsF, width: float, most: int = 2) -> list[str]:

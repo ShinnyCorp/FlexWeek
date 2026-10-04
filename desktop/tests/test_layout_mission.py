@@ -357,9 +357,9 @@ def test_homework_past_due_says_so_in_the_danger_colour(qapp: QApplication) -> N
     assert table_rows(view)[0][0] == "Essay-1"
 
 
-def test_half_an_hour_or_less_is_a_tick_and_longer_a_filled_block(qapp: QApplication) -> None:
-    """Dinner is a mark in its colour down the middle of its half hour, with the lane on either
-    side; a quiz of three quarters of an hour is filled."""
+def test_a_block_keeps_its_bar_until_it_would_be_narrower_than_eight_pixels(qapp: QApplication) -> None:
+    """Dinner's half hour is still a filled bar at the week's zoom; only a block too narrow for 8 px
+    is a tick."""
     view = shown(qapp, blocks=[*BLOCKS, block("quiz", "locked", [4], "10:00", 45)])
     hours = view.findChild(MissionCanvas, "missionHours")
     image = hours.grab().toImage()
@@ -367,16 +367,33 @@ def test_half_an_hour_or_less_is_a_tick_and_longer_a_filled_block(qapp: QApplica
     meals_fill, meals_mark = category_paint("meals", {"family": "light", "panel": surface})
     class_fill, _ = category_paint("class", {"family": "light", "panel": surface})
     dinner = next(rect for item, rect in hours.drawn(hours.track_for(3)) if item.block_id == "dinner")
+    assert dinner.width() >= 8
     middle = dinner.center().toPoint()
-    assert image.pixelColor(middle).name() == meals_mark
-    assert image.pixelColor(QPoint(round(dinner.left()) + 3, middle.y())).name() != meals_fill
+    assert image.pixelColor(QPoint(round(dinner.left()) + 6, round(dinner.bottom()) - 4)).name() == meals_fill
+    assert image.pixelColor(middle).name() != meals_mark
     quiz = next(rect for item, rect in hours.drawn(hours.track_for(4)) if item.block_id == "quiz")
     assert image.pixelColor(QPoint(round(quiz.left()) + 6, round(quiz.bottom()) - 4)).name() == class_fill
 
 
-def test_the_line_for_now_crosses_a_tick_it_lies_on(qapp: QApplication) -> None:
-    """At 18:15 now is the middle of Dinner's half hour, where its tick is drawn. The line goes over
-    the tick, as it goes over a filled block's colour: under it, now had a gap at Dinner."""
+def test_a_block_narrower_than_eight_pixels_is_a_tick(qapp: QApplication) -> None:
+    """A five-minute block zoomed out until its bar would be under 8 px is a tick, not a sliver bar."""
+    tiny = block("bell", "locked", [3], "12:00", 5, title="Bell", category="extra")
+    view = shown(qapp, blocks=[*BLOCKS, tiny])
+    hours = view.findChild(MissionCanvas, "missionHours")
+    scroll = view.findChild(HoursScroll, "missionWeekScroll")
+    while scroll.px > 40:
+        scroll.zoom_by(-1)
+    rect = next(r for item, r in hours.drawn(hours.track_for(3)) if item.block_id == "bell")
+    assert rect.width() < 8
+    surface = view.scene.tokens["surface"]
+    _, mark = category_paint("extra", {"family": "light", "panel": surface})
+    middle = rect.center().toPoint()
+    assert hours.grab().toImage().pixelColor(middle).name() == mark
+
+
+def test_the_line_for_now_crosses_a_block_it_lies_on(qapp: QApplication) -> None:
+    """At 18:15 now is the middle of Dinner's half hour. The line goes over the block's colour:
+    under it, now had a gap at Dinner."""
     view = shown(qapp, minute="18:15")
     hours = view.findChild(MissionCanvas, "missionHours")
     image = hours.grab().toImage()
@@ -544,14 +561,15 @@ def test_the_now_pill_covers_no_hour_label_at_any_zoom(
 def test_the_line_for_now_stops_short_of_a_ticks_icon(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Dinner's tick carries its clock above the mark. At 18:15 the line for now crosses the tick and
-    stops short of the clock, as it stops short of a block's words, and resumes on the mark."""
+    """A tick carries its icon above the mark. At 18:02 the line for now crosses the tick and stops
+    short of the icon, as it stops short of a block's words, and resumes on the mark."""
     from PySide6.QtCore import QRectF
     from PySide6.QtGui import QPainter
 
     from desktop.native.hours import canvas as canvas_module
 
     drawn: list[QRectF] = []
+    bell = block("bell", "locked", [3], "18:00", 5, title="Bell", category="extra")
 
     class Pictures(QPainter):
         def drawPixmap(self, *args):  # noqa: N802
@@ -561,12 +579,17 @@ def test_the_line_for_now_stops_short_of_a_ticks_icon(
 
     monkeypatch.setattr(canvas_module, "QPainter", Pictures)
     images = []
-    for minute in ("12:00", "18:15"):
-        hours = shown(qapp, minute=minute).findChild(MissionCanvas, "missionHours")
+    for minute in ("12:00", "18:02"):
+        view = shown(qapp, blocks=[*BLOCKS, bell], minute=minute)
+        scroll = view.findChild(HoursScroll, "missionWeekScroll")
+        while scroll.px > 40:
+            scroll.zoom_by(-1)
+        hours = view.findChild(MissionCanvas, "missionHours")
         drawn.clear()
         images.append(hours.grab().toImage())
-    dinner = next(rect for item, rect in hours.drawn(hours.track_for(3)) if item.block_id == "dinner")
-    (icon,) = [box for box in drawn if dinner.contains(box.center())]
+    tick = next(rect for item, rect in hours.drawn(hours.track_for(3)) if item.block_id == "bell")
+    assert tick.width() < 8
+    (icon,) = [box for box in drawn if tick.contains(box.center())]
     near = icon.adjusted(-2, -2, 2, 2).toAlignedRect()
     bare, lit = images
     changed = [
