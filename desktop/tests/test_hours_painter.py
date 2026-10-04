@@ -658,11 +658,10 @@ def test_a_short_block_at_large_text_keeps_its_title_first_and_whole_words(qapp:
         return [line.text for line in block_layout(drawn, title, small, room, tight=tight, book=homework)]
 
     piano = said("Piano lesson", False)
-    assert piano[0].startswith("Pian")
-    assert "19:00" in piano
+    assert piano[0] == "Piano lesson"
     math = said("Math worksheet", True)
     assert math[0] == "Math…"
-    assert "19:00" in math
+    assert any("19:00" in line for line in math)
     # Qt's elide keeps a letter of the next word ("Math w…"); the title gives way at a space.
     metrics = QFontMetricsF(title)
     assert word_elide("Math worksheet", metrics, 77) == "Math…"

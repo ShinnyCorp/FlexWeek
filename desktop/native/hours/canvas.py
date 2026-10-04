@@ -717,6 +717,8 @@ def _block_words(
         return []
     # One line starts where the usual margin puts it, or higher on a block too short for that.
     line_top = room.top() if height + 0.5 >= tl else tight.top()
+    # A 45-minute block's usual margin leaves no second line; the tight room is the block itself.
+    budget = max(height, tight.height())
     lines, whole = _wrap(drawn.title, tm, width, indent)
     if wide:
         return _wide_layout(drawn, tm, sm, room, line_top, indent, book)
@@ -725,10 +727,11 @@ def _block_words(
         if any(sm.horizontalAdvance(extra) > width for extra in extras):
             return None
         count = min(len(lines), most)
+        need = tl * count + sl * len(extras)
         if count > 1 or extras:
-            if tl * count + sl * len(extras) > height + 0.5:
+            if need > budget + 0.5:
                 return None
-            top = room.top()
+            top = room.top() if height + 0.5 >= need else tight.top()
         else:
             top = line_top
         if not cut and (not whole or len(lines) > most):
@@ -761,8 +764,8 @@ def _block_words(
 
     start = short_clock(drawn.span.start) if shown[0] else ""
     if drawn.short:
-        # A short column still says when the block starts. Names only looked like the start was missing.
-        time_ways = [lambda cut: one_line(start, cut)] if start else []
+        # Hours too narrow for the name and its times: the name whole, times left to the editor.
+        time_ways = []
         name_ways = [lambda cut: stack(3, (), cut), lambda cut: stack(1, (), cut)]
     else:
         said = ((drawn.done, "Finished"), (drawn.missed, "Missed"))
@@ -784,18 +787,48 @@ def _block_words(
             lambda cut, most=title_lines: stack(most, (), cut),
             lambda cut: stack(1, (), cut),
         ]
-    # The start stays with the name. Title-only used to win when the full name would not fit beside
-    # the time, so a 45-minute block said "Math worksheet" and hid 17:00.
-    for cut in (False, True):
-        for way in time_ways:
-            found = way(cut)
-            if found is not None:
-                return found
-    for cut in (False, True):
+
+    def kept(lay: list[Written] | None) -> int:
+        if not lay:
+            return 0
+        return name_kept([line.text for line in lay if line.title], drawn.title)
+
+    # Uncut times, then an uncut wrapped name while two title lines fit (Swimming / gala), then a
+    # start kept by shortening the title at a word. Cutting inside a word to keep the start used to
+    # beat dropping the icon, so "Piano lesson" became "Pian…".
+    wrap = budget + 0.5 >= 2 * tl
+    shortened = word_elide(drawn.title, tm, width)
+    name_at_a_word = name_kept([shortened], drawn.title) >= 2
+    for way in time_ways:
+        found = way(False)
+        if found is not None:
+            return found
+    if wrap:
         for way in name_ways:
-            found = way(cut)
+            found = way(False)
             if found is not None:
                 return found
+    for way in time_ways:
+        found = way(True)
+        if found is not None and kept(found) >= 2:
+            return found
+    for way in name_ways:
+        found = way(False)
+        if found is not None:
+            return found
+    if name_at_a_word:
+        for way in name_ways:
+            found = way(True)
+            if found is not None and kept(found) >= 2:
+                return found
+    for way in time_ways:
+        found = way(True)
+        if found is not None:
+            return found
+    for way in name_ways:
+        found = way(True)
+        if found is not None:
+            return found
     return []
 
 
