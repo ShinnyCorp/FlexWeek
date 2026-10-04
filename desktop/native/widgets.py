@@ -1124,8 +1124,10 @@ class ChoiceCard(QFrame):
         self.note = QLabel(note)
         self.note.setObjectName("setupChoiceNote")
         self.note.setWordWrap(True)
-        self.note.setVisible(bool(note))
         box.addWidget(self.note)
+        # Only once it has a parent: shown before, it opens as a window of its own for a moment and
+        # takes the keyboard from FlexWeek's window.
+        self.note.setVisible(bool(note))
         box.addStretch(1)
         # Under the note, so names line up across a row whether or not a card carries one.
         if tag:
@@ -1344,8 +1346,18 @@ class WhyOff(QLabel):
             self._follow()
         return False
 
+    def event(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.ParentChange:
+            self._follow()
+        return super().event(event)
+
     def _follow(self) -> None:
-        self.setVisible(not self._button.isEnabled())
+        off = not self._button.isEnabled()
+        if off and self.parentWidget() is None:
+            # Shown before it is in a sheet, it opens as a window of its own for a moment and takes
+            # the keyboard from FlexWeek's window. It follows the button again once it has a parent.
+            return
+        self.setVisible(off)
         # A sheet is as tall as what it holds, so it grows and shrinks by this line.
         sheet = self.window()
         if isinstance(sheet, Dialog) and sheet.isVisible():
