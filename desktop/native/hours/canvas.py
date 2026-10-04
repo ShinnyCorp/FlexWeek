@@ -77,7 +77,8 @@ SHARED_TRIM = 2
 NARROW_BLOCK = 64
 # The most a now line's dot or pill reaches either side of the line.
 NOW_REACH = 12
-# How far short of a block's words and icon the now line stops, and how far past them it resumes.
+# How far short of a tick's icon Mission stops the now line. Shared hours draw the line under
+# the words instead, with no gap.
 NOW_CLEAR = 3
 # Homework: a block of it carries a book as well as its colour, for a student who cannot tell the colours.
 HOMEWORK_CATEGORIES = ("assignments", "homework")
@@ -288,17 +289,15 @@ class BlockPainter:
         )
 
     def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:
-        """A block's colour, its words, then the time now where it crosses the block, around the
-        words. Under the colour the line was hidden for as long as the block ran, and a student
-        could not see how far into it they were; through the words, over them or under them, it
-        read as crossing them out."""
+        """A block's colour, the time now across it, then its words over the line. Under the colour
+        the line was hidden for as long as the block ran; a gap round the words read as the line
+        being cut."""
         self.body(painter, rect, drawn)
         fill, ink, _outline, edge = self.fills(drawn)
         font = QFont(painter.font())
-        written = self.words(painter, rect, drawn, ink, visible, fill, edge)
-        # The marker is drawn again in the canvas's font, not the small one the words left set.
+        self.crossing(painter, rect)
         painter.setFont(font)
-        self.crossing(painter, rect, written)
+        self.words(painter, rect, drawn, ink, visible, fill, edge)
 
     def crossing(self, painter: QPainter, rect: QRectF, around: list[QRectF] | None = None) -> None:
         """The time now drawn again inside `rect`, over what a block has painted there, when the
