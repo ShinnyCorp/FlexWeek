@@ -741,13 +741,15 @@ def child_main(args: argparse.Namespace) -> int:
         )
 
     def week_folded_waiting(r: Rig) -> Step:
-        """At 800 px the rail is folded: open Not placed yet with the pointer, then drag homework on."""
+        """At 800 px the rail is folded: open Not placed yet in place, then drag homework on."""
         yield from r.tab("week")
         window.resize(800, 820)
         yield ("wait", 400)
         chip = window.findChild(QPushButton, "railWaitingChip")
         expect(chip is not None and chip.isVisible(), "the folded Not placed yet chip is missing")
         yield from r.click(chip.mapToGlobal(chip.rect().center()))
+        row = window.findChild(QWidget, "railWaitingRow")
+        expect(row is not None and row.isVisible(), "the waiting homework row did not open")
         # Friday: the clock is Thursday 15:40, and a drop on a day already past is refused.
         yield from r.reveal(4, 15 * 60, 18 * 60)
         yield from r.drag(r.chip(ids["math"]), r.at(4, 16 * 60))
