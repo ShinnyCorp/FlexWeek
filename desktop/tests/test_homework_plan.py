@@ -36,7 +36,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.calendar import date_for_day, sunday_due
     from desktop.native.controller import plan_sentence
     from desktop.native.look import sanitize_look
-    from desktop.native.reuse import plan_start
+    from desktop.native.reuse import plan_start, solve_request
     from desktop.native.setup import FIRST
     from desktop.native.widgets import DueField, HomeworkDialog, Toast
     from desktop.native.window import NativeWindow
@@ -266,6 +266,38 @@ def test_a_plan_starts_at_now_rounded_up_to_the_next_quarter_hour() -> None:
     assert at(27, 23, 55) == (7, 0), "past Sunday: the week is over"
     assert at(20, 22, 0) is None, "the whole week is still ahead"
 
+
+def test_plan_sends_earliest_from_not_before_not_a_stored_session_field() -> None:
+    """DEADLINE_PASSED compares due to earliest; Plan sets earliest from now via not_before."""
+    blocks = [
+        {
+            "id": "essay",
+            "title": "Essay",
+            "kind": "flexible",
+            "duration_min": 60,
+            "days": [0],
+            "priority": 3,
+            "energy": "medium",
+            "assignment_id": "essay-a",
+        }
+    ]
+    assignments = {
+        "essay-a": {
+            "id": "essay-a",
+            "title": "Essay",
+            "due": "2026-09-08T23:59",
+            "estimate_min": 60,
+            "focus_minutes": 0,
+            "revision": 0,
+        }
+    }
+    payload, targets = solve_request(
+        blocks, assignments, "2026-09-07", not_before=(0, 10 * 60 + 30)
+    )
+    assert targets == {"essay"}
+    placed = next(block for block in payload if block["id"] == "essay")
+    assert placed["earliest"] == "Monday 10:30"
+    assert blocks[0].get("earliest") is None
 
 
 def test_plan_on_a_thursday_leaves_monday_to_wednesday_and_the_hours_before_now_alone(
