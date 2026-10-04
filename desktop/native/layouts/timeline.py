@@ -227,6 +227,7 @@ class TimelinePainter(BlockPainter):
                 "error": tokens["danger"],
                 "text": tokens["text"],
                 "muted": tokens["muted"],
+                "block_edge": tokens["block_edge"],
             },
             wide=wide,
         )

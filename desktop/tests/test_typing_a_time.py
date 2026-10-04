@@ -4,6 +4,8 @@ lane). The field's own behaviour is in test_clock_field.py; these say each place
 # ruff: noqa: F811  (pytest fixtures imported by name)
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -84,7 +86,9 @@ def test_the_block_editor_keeps_the_typed_times(qapp: QApplication, host: QWidge
 @CLOCKS
 def test_add_homework_keeps_the_typed_due_time(qapp: QApplication, host: QWidget, twenty_four: bool) -> None:
     set_clock_24h(twenty_four)
-    dialog = HomeworkDialog(host, today="2026-09-24", category="assignments")
+    dialog = HomeworkDialog(
+        host, today="2026-09-24", category="assignments", now=datetime(2026, 9, 24, 10, 0)
+    )
     dialog.title.setText("Essay")
     dialog.due.timed.setChecked(True)
     type_over(dialog.due.time, "3:15 pm")

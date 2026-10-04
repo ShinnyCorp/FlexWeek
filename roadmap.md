@@ -216,6 +216,22 @@ mockups and goes first. Batch B waits for mockup round 2. Branches:
 fixed; one that does not reproduce on the current build is closed with that
 test.
 
+#### Batch A, lane 0: repairs to what 0.18.1 shipped (merged 2026-10-04)
+- Homework blocks in Timeline, Mission, Bento, Retro, Clay and One thing lost
+  their time line and edge, and the hours stopped painting after them (the
+  now line ended at that day): their colour tables had no `block_edge`. Done:
+  every design's table has one, and a test paints planned and pinned homework
+  through every design's painter in light and dark.
+- The rig printed "4/4 passed" after stopping at scenario 5 of 17 on that
+  error, which is how it shipped. Done: a run that ends early or logs a Python
+  error says STOPPED, names the scenario, exits 1 and lists the scenarios that
+  did not run.
+- Add homework's past-deadline check took the date from one clock and the time
+  of day from another, so a test failed every afternoon. Done: one clock.
+- Still open: `test_every_field_in_a_forms_column_starts_at_the_same_left_edge`
+  fails only in the whole suite (something an earlier test leaves behind);
+  not pinned.
+
 #### Batch A, lane 1: times and words on blocks
 - #13 In Today's app, Paper and Timeline a 45-minute "Math worksheet"
   (17:00–17:45) shows its name only; Clay and Retro show "Math worksheet

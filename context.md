@@ -1,6 +1,11 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-04, `release/0.18.2` (local, not pushed): lane 0 repairs, lane 6 settings-open (J12,
+  #98, #65) and the test-memory repair are merged. Test cleanup now deletes the windows each test
+  made: a 4-worker whole suite took about 1.4 GB at most (it was about 9 GB). Whole suite: 2833
+  passed, 1 failed, the tooltip test fixed since (c45333c). `test_ui_dialogs.py`'s work-windows
+  test fails when its file runs alone (sheet 622 px, wants 640); passes in the whole suite.
 - 2026-10-03. v0.18.1 is the latest release (PR 40, 907fa4b): the 20 Fix-first findings of the
   0.17.2 audit, Jonathan's J1-J6 and the engine leftovers. 0.18.2 is planned in full in roadmap.md
   (batch A for Grok, batch B after mockup round 2), as is 0.18.3; the decisions 0.18.1 left open are
@@ -20,8 +25,6 @@
   `release/0.18.1`: 2790 passed in 7 min 8 s (`fwtest gate --workers 4`). The differential tests and
   the frozen Python copies are deleted; the Python tests that remain guard Python-only code and the
   interface.
-- CI on PR 35 at b0b2040 was green: verify, rig, Linux and Windows builds, CodeQL and the engine
-  mutation job (32 cases). The packaged app after the engine has had only those builds.
 - Speed (`log.tsv`, pr35 review at 2e2f76a): placing the probe week 1.1 ms (0.17.2: 2.9 ms; with a
   busy second thread 1.0 ms against 8.0). Drawing a frame of the hours 10.2 ms median (0.17.2:
   9.1 ms; the limit is 16 ms).
@@ -46,8 +49,6 @@ engine/engine/          pure Rust core: plan, solve, day, month, restore, desk m
 engine/store/           Rust SQL helpers per table (assignments, ledger, prefs, routines, weeks, rules)
 engine/py/              PyO3 binding built as `flexweek_engine` (`pip install ./engine/py`)
 engine/clippy.toml      forbids key-reordering removes; `Cargo.toml` builds the engine at opt-level 2 in debug
-desk_ref/               frozen Python originals of the desktop modules, for the differential tests only
-backend/tests/engine_ref/ frozen Python originals of the backend modules, same use
 docs/engine/            contract.md, adapters.md (every wrapper's class), interface-logic.md
 tools/fwtest/           Rust test runner: gate, mutate, rig, run, clean; builds with cargo
 scripts/mutations/      mutation specs (JSON); engine cases point at `cargo:` tests
@@ -92,8 +93,6 @@ values make a retried write return the first result.
   not a crate.
 - The engine crate builds at opt-level 2 in debug so the solver's 150 ms budget holds under load
   (Jonathan's choice).
-- `desk_ref/` and `backend/tests/engine_ref/` stay until after 0.18.0 on purpose: the differential
-  tests need them. The Python tests of Python-only code stay too (see Current State).
 - A week's identity is its Monday. Blocks store a day index and derive their date. `weeks` pins the
   ISO shape before parsing, because `date.fromisoformat` also accepts "20260907" and "2026-W37-1".
 - GET /api/week 422s a non-Monday rather than snapping it, so client and server cannot disagree about
@@ -126,11 +125,7 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-03, `docs/roadmap-0-18-2` (from `main` at 907fa4b): roadmap.md now holds every plan item,
-  with each audit finding described in full, since the audit report is not in the repo. Jonathan is
-  moving to Windows for a while and works from the roadmap there.
-- Next: 0.18.2 batch A, six lanes, from roadmap.md's "Batch A" sections (Grok writes on
-  `grok/0182-<lane>` branches; Claude reviews and merges into `release/0.18.2`). Mockup round 2 for
-  batch B. Jonathan's answers to "Open after 0.18.1".
-- To build on a fresh machine: README's setup, then `pip install ./engine/py
-  --config-settings=build-args="--features audit"` so the audit tests run as CI runs them.
+- 2026-10-04, `release/0.18.2` in `~/.worktrees/flexweek-0182-release`. Merged: repairs, settings-open,
+  test memory. Waiting on Grok's fixes to keys, messages, designs, week-words and week-behaviour
+  (prompt: `~/.flexweek-ui-harness/scratch/0.18.x/grok-0182-prompt-fixes.md`); review and merge each,
+  then spec.md's two new reason codes (approved) with messages, CHANGELOG, and the PR on Jonathan's word.
