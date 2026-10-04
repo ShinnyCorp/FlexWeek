@@ -293,7 +293,10 @@ MORE_TIPS = {
     "duplicateBlock": "Make a copy of the selected block, with a preview first. Ctrl+D",
     "copyDay": "Copy every block on the selected day to paste into another day.",
     "saveButton": "Save now. FlexWeek already saves after every change. Ctrl+S",
-    "restoreButton": "Go back to an earlier copy of your plans. FlexWeek keeps one before big changes.",
+    "restoreButton": (
+        "Save a copy of this week, or go back to an earlier one. FlexWeek keeps a restore point "
+        "before big changes."
+    ),
     "reloadWeek": "Load this week again as it is saved. Use it if something looks out of date.",
     "helpButton": "What each screen is for, and the keyboard shortcuts.",
     "aboutButton": "The version, and where your plans are saved.",
@@ -307,7 +310,7 @@ GREYED_TIPS = {
     "pasteBlock": "Copy a block or a day first.",
 }
 WAIT_TIP = "Wait a moment: FlexWeek is still saving or planning."
-SIGN_OUT_QUESTION = "Your week stays saved on {where}. Sign in again to see it."
+SIGN_OUT_QUESTION = "Your week is saved on {where}, under this account. Sign in again to see it."
 RECOVERY_KEEP = "Keep this file somewhere private. Anyone who has it can reset your password."
 RECOVERY_CHOOSE = "Choose where to save"
 RECOVERY_WAIT = "Tick the box above to continue."
@@ -321,7 +324,10 @@ AUTH_CARD_WIDTH = 420
 FIRST_GREETING = "Welcome"
 AGAIN_GREETING = "Welcome back"
 CREATE_HEADING = "Create your account"
-CREATE_NOTE = "FlexWeek fits homework around school and sports. Your week is saved to your account."
+CREATE_NOTE = (
+    "FlexWeek fits homework around school and sports. "
+    "Your week is saved on this computer, under this account."
+)
 RESET_HEADING = "Reset your password"
 RESET_NOTE = "Use one of the recovery codes you saved when you made your account."
 # What the sign-in card is for at the moment.
@@ -499,6 +505,7 @@ class NativeWindow(QMainWindow):
         self._opened_on_preference = False
         self._views: dict[str, LayoutView] = {}
         self._entry_mode = SIGN_IN
+        self._auth_mode_shown: str | None = None
         self._updates = sanitize_updates(None)
         self._zoom: dict[str, int] = {}
         # The student's own looks, kept by name (custom_look.py); Settings will list them.
@@ -654,11 +661,22 @@ class NativeWindow(QMainWindow):
         self._entry_mode = RESET
         self._sync_auth_mode()
 
+    def _clear_auth_status(self) -> None:
+        self.auth_status.clear()
+        self.auth_status.setVisible(False)
+
     def _sync_auth_mode(self) -> None:
         """Sign in is the door, and creating an account is the small print under it: a student signs
         in many times and creates an account once. A forgotten password is the card's third use, with
         its own heading and its own one filled button, rather than a second form under Sign in."""
         mode = self._entry_mode
+        showing = (
+            self._stack.currentWidget() is not None
+            and self._stack.currentWidget().objectName() == "authPage"
+        )
+        if showing and self._auth_mode_shown not in (None, mode):
+            self._clear_auth_status()
+        self._auth_mode_shown = mode
         kept = self.session.kept
         back = kept is not None and kept.signed_in_before()
         greeting = AGAIN_GREETING if back else FIRST_GREETING
@@ -711,6 +729,12 @@ class NativeWindow(QMainWindow):
                 if page is not leaving:
                     # What the toast said was about the page the student is leaving.
                     self.toast.hide()
+                    left = "" if leaving is None else leaving.objectName()
+                    if left == "authPage":
+                        self._clear_auth_status()
+                    if left == "recoveryPage":
+                        self.recovery_status.clear()
+                        self.recovery_status.setVisible(False)
                 if name == "settingsPage":
                     slide_over(self._stack, page, self._motion)
                 elif leaving is not None and leaving.objectName() == "settingsPage":
@@ -1024,13 +1048,13 @@ class NativeWindow(QMainWindow):
         replan = QPushButton("Replan all my homework")
         replan.setObjectName("replanAll")
         replan.clicked.connect(lambda: self.session.solve(everything=True))
-        save = QPushButton("Save")
+        save = QPushButton("Save this week now")
         save.setObjectName("saveButton")
         save.clicked.connect(self.session.save)
         retry = QPushButton("Retry save")
         retry.setObjectName("retrySave")
         retry.clicked.connect(self.session.retry_save)
-        reload_week = QPushButton("Reload")
+        reload_week = QPushButton("Reload this week as it is saved")
         reload_week.setObjectName("reloadWeek")
         reload_week.clicked.connect(self.session.reload)
         copy_block = QPushButton("Copy")
@@ -1060,7 +1084,7 @@ class NativeWindow(QMainWindow):
         settings = QPushButton("Settings")
         settings.setObjectName("settingsButton")
         settings.clicked.connect(self._open_settings)
-        restore = QPushButton("Restore")
+        restore = QPushButton("Copies of this week…")
         restore.setObjectName("restoreButton")
         restore.clicked.connect(self._open_restore)
         account = QPushButton("Account")
@@ -1815,7 +1839,7 @@ class NativeWindow(QMainWindow):
         undo = self.findChild(QPushButton, "undoButton")
         redo = self.findChild(QPushButton, "redoButton")
         if undo is not None:
-            undo.setEnabled(self.session.can_undo())
+            self._sync_undo_enabled()
         if redo is not None:
             redo.setEnabled(self.session.can_redo())
         clip = self.session.clipboard
@@ -1912,7 +1936,16 @@ class NativeWindow(QMainWindow):
         if self.toast.isVisible() and self.toast.text() == self._reminder_said:
             self.toast.hide()
 
+    def _toast_offers_undo(self) -> bool:
+        return self.toast.isVisible() and self.toast.button.isVisible() and self.toast.button.text() == "Undo"
+
+    def _sync_undo_enabled(self) -> None:
+        undo = self.findChild(QPushButton, "undoButton")
+        if undo is not None:
+            undo.setEnabled(not self.session.busy and (self.session.can_undo() or self._toast_offers_undo()))
+
     def _sync_more_menu(self) -> None:
+        self._sync_undo_enabled()
         unfinished = self.findChild(QPushButton, "unfinishedOpen")
         if unfinished is not None:
             # Worked out as the menu opens: the busy flag turns every action back on when a save
@@ -1964,7 +1997,7 @@ class NativeWindow(QMainWindow):
         undo = self.findChild(QPushButton, "undoButton")
         redo = self.findChild(QPushButton, "redoButton")
         if undo is not None:
-            undo.setEnabled(not busy and self.session.can_undo())
+            self._sync_undo_enabled()
         if redo is not None:
             redo.setEnabled(not busy and self.session.can_redo())
         on_recovery = self.findChild(QWidget, "recoveryPage") is self._stack.currentWidget()
@@ -2494,6 +2527,7 @@ class NativeWindow(QMainWindow):
         # The answer to Plan my homework, so no later status is taken for it.
         self._telling = False
         self._set_notice(said, "Undo", self._undo_from_notice)
+        self._sync_undo_enabled()
         self._notice_step = self.session.last_step()
         self._focus_week(self._first_placed())
 

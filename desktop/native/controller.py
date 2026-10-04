@@ -118,7 +118,10 @@ def first_placed(trace: dict, targets: object) -> tuple[int, int] | None:
 
 def plan_sentence(placed: int, waiting: int) -> str:
     """How much homework a plan placed, counting homework only."""
-    said = f"Planned {placed} homework block{'s' if placed != 1 else ''}."
+    if placed == 0:
+        said = "Nothing placed."
+    else:
+        said = f"Planned {placed} homework block{'s' if placed != 1 else ''}."
     if waiting:
         said += f" {waiting} still need{'s' if waiting == 1 else ''} a time."
     return said
@@ -309,8 +312,12 @@ class NativeSession(QObject):
         return True
 
     def _fail(self, ticket: int, error: ApiError) -> None:
+        planning = self.planning
         if self._idle(ticket):
-            self._say(error.message)
+            if planning and error.status == 0:
+                self._say("Can't reach FlexWeek, so nothing was planned. Try again.")
+            else:
+                self._say(error.message)
 
     def _clear_local(self) -> None:
         if self.account is not None:
@@ -1632,7 +1639,12 @@ class NativeSession(QObject):
                 self._attempts.pop(self._move_attempt, None)
                 self._move_attempt = None
             self._save_status = None
-            self._say("Not saved. " + error.message)
+            if error.status == 0:
+                self._say(
+                    "Not saved: FlexWeek can't be reached. Your changes are still here. Choose Retry save."
+                )
+            else:
+                self._say("Not saved. " + error.message)
             self.save_finished.emit(False, self.message)
             self.week_changed.emit()
             if refused_travel:

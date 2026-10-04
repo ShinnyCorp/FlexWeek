@@ -119,7 +119,7 @@ def test_account_says_where_the_plans_are_saved_in_a_sentence(
     wait_until(qapp, lambda: window.session.storage_info is not None)
     dialog = AccountDialog(window, window.session.recovery_remaining, window.session.storage_info)
     assert dialog.findChild(QLabel, "accountLocation").text() == (
-        "Signed in as words_student. Your plans are saved on this computer."
+        "Signed in as words_student. Your week is saved on this computer, under this account."
     )
 
 
@@ -136,7 +136,7 @@ def asked_with(monkeypatch: pytest.MonkeyPatch, answer: bool) -> list[tuple[str,
 
 SIGN_OUT = (
     "Sign out",
-    "Your week stays saved on this computer. Sign in again to see it.",
+    "Your week is saved on this computer, under this account. Sign in again to see it.",
     "Sign out",
     False,  # Nothing is lost, so the answer is not drawn red.
 )
@@ -213,3 +213,51 @@ def test_the_recovery_codes_left_are_an_ordinary_fact_until_none_are(
         label.ensurePolished()
         assert label.palette().color(label.foregroundRole()).name() == colour, remaining
         dialog.close()
+
+
+def test_a_sign_in_error_does_not_follow_onto_reset_your_password(
+    qapp: QApplication,  # noqa: F811
+    returning: NativeWindow,
+) -> None:
+    press(qapp, returning, "signIn", USERNAME, "not-the-right-password")
+    assert returning.auth_status.text() == WRONG
+    returning.findChild(QPushButton, "forgotPassword").click()
+    qapp.processEvents()
+    assert returning.auth_heading.text() == "Reset your password"
+    assert returning.auth_status.text() == ""
+    assert not returning.auth_status.isVisible()
+
+
+def test_signed_out_does_not_stay_on_reset_your_password(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked_with(monkeypatch, True)
+    window.findChild(QPushButton, "signOut").click()
+    wait_until(qapp, lambda: window.session.account is None and not window.session.busy)
+    assert window.auth_status.text() == "Signed out."
+    window.findChild(QPushButton, "forgotPassword").click()
+    qapp.processEvents()
+    assert window.auth_heading.text() == "Reset your password"
+    assert window.auth_status.text() == ""
+    assert not window.auth_status.isVisible()
+
+
+def test_a_recovery_error_does_not_follow_back_to_sign_in(
+    qapp: QApplication,  # noqa: F811
+    returning: NativeWindow,
+) -> None:
+    returning.findChild(QPushButton, "forgotPassword").click()
+    qapp.processEvents()
+    returning.username.setText(USERNAME)
+    returning.recovery_code.setText("not-a-code")
+    returning.new_recovery_password.setText(PASSWORD)
+    returning.findChild(QPushButton, "recoverAccount").click()
+    wait_until(qapp, lambda: not returning.session.busy and bool(returning.auth_status.text()))
+    assert returning.auth_status.text() == "Incorrect username or recovery code."
+    returning.findChild(QPushButton, "authSwitch").click()
+    qapp.processEvents()
+    assert returning.auth_heading.text() in {"Welcome", "Welcome back"}
+    assert returning.auth_status.text() == ""
+    assert not returning.auth_status.isVisible()

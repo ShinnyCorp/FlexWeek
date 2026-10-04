@@ -34,16 +34,17 @@ if importlib.util.find_spec("PySide6") is not None:
     )
 
     from desktop.native.calendar import date_for_day, sunday_due
+    from desktop.native.controller import plan_sentence
     from desktop.native.look import sanitize_look
-    from desktop.native.reuse import plan_start
+    from desktop.native.reuse import plan_start, solve_request
     from desktop.native.setup import FIRST
     from desktop.native.widgets import DueField, HomeworkDialog, Toast
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
-    from desktop.tests.logic_support import past_setup
+    from desktop.tests.logic_support import fail_once, past_setup
 
 PASSWORD = "a-long-test-password"
-TOO_LATE = "There is not enough time left before it is due, even with nothing else planned."
+TOO_LATE = "That time has already passed."
 PAST_WEEK = "This week is over, so nothing was planned. Plan this week or a later one."
 
 
@@ -166,6 +167,13 @@ def press(dialog: QDialog, name: str) -> int:
     return QDialog.DialogCode.Accepted
 
 
+def test_nothing_placed_says_nothing_placed_not_planned_zero() -> None:
+    assert plan_sentence(0, 1) == "Nothing placed. 1 still needs a time."
+    assert plan_sentence(0, 2) == "Nothing placed. 2 still need a time."
+    assert plan_sentence(1, 1) == "Planned 1 homework block. 1 still needs a time."
+    assert plan_sentence(3, 0) == "Planned 3 homework blocks."
+
+
 # Due today
 
 
@@ -258,6 +266,38 @@ def test_a_plan_starts_at_now_rounded_up_to_the_next_quarter_hour() -> None:
     assert at(27, 23, 55) == (7, 0), "past Sunday: the week is over"
     assert at(20, 22, 0) is None, "the whole week is still ahead"
 
+
+def test_plan_sends_earliest_from_not_before_not_a_stored_session_field() -> None:
+    """DEADLINE_PASSED compares due to earliest; Plan sets earliest from now via not_before."""
+    blocks = [
+        {
+            "id": "essay",
+            "title": "Essay",
+            "kind": "flexible",
+            "duration_min": 60,
+            "days": [0],
+            "priority": 3,
+            "energy": "medium",
+            "assignment_id": "essay-a",
+        }
+    ]
+    assignments = {
+        "essay-a": {
+            "id": "essay-a",
+            "title": "Essay",
+            "due": "2026-09-08T23:59",
+            "estimate_min": 60,
+            "focus_minutes": 0,
+            "revision": 0,
+        }
+    }
+    payload, targets = solve_request(
+        blocks, assignments, "2026-09-07", not_before=(0, 10 * 60 + 30)
+    )
+    assert targets == {"essay"}
+    placed = next(block for block in payload if block["id"] == "essay")
+    assert placed["earliest"] == "Monday 10:30"
+    assert blocks[0].get("earliest") is None
 
 
 def test_plan_on_a_thursday_leaves_monday_to_wednesday_and_the_hours_before_now_alone(
@@ -695,6 +735,40 @@ def test_plan_asked_for_in_other_ways_while_one_is_running_is_ignored(
     settled(qapp, window)
     assert len(sent) == 1
 
+
+PLAN_UNREACHABLE = "Can't reach FlexWeek, so nothing was planned. Try again."
+SAVE_UNREACHABLE = (
+    "Not saved: FlexWeek can't be reached. Your changes are still here. Choose Retry save."
+)
+
+
+def test_plan_when_the_server_is_unreachable_says_nothing_was_planned(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    fail_once(window.session, "POST", "/api/solve", 0)
+    window.session.solve()
+    wait_until(qapp, lambda: not window.session.busy)
+    assert window.session.message == PLAN_UNREACHABLE
+
+
+def test_save_when_the_server_is_unreachable_says_changes_are_kept(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    session = window.session
+    session.blocks = [*session.blocks, {
+        "id": "club",
+        "title": "Club",
+        "kind": "locked",
+        "category": "extra",
+        "start": "16:00",
+        "duration_min": 60,
+        "days": [3],
+    }]
+    session.dirty = True
+    fail_once(session, "POST", "/api/changes", 0)
+    session.save()
+    wait_until(qapp, lambda: not session.busy)
+    assert session.message == SAVE_UNREACHABLE
 
 
 def test_the_rail_and_the_plan_panel_count_the_same_homework_without_a_time(

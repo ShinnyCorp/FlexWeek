@@ -422,7 +422,17 @@ def test_every_advanced_action_says_what_it_did_when_it_is_done(
 
     monkeypatch.setattr(window.toast, "show_message", noted)
     said = []
-    for words in ("Copy", "Paste", "Duplicate", "Copy Thursday", "Save", "Undo", "Redo", "Restore", "Reload"):
+    for words in (
+        "Copy",
+        "Paste",
+        "Duplicate",
+        "Copy Thursday",
+        "Save this",
+        "Undo",
+        "Redo",
+        "Copies of",
+        "Reload this",
+    ):
         window.toast.hide()
         shown.clear()
         advanced(window, words)
@@ -435,11 +445,11 @@ def test_every_advanced_action_says_what_it_did_when_it_is_done(
         ("Paste", "Pasted Piano."),
         ("Duplicate", "Duplicated Piano."),
         ("Copy Thursday", "Thursday · 3 items copied. Choose a destination and paste."),
-        ("Save", "Saved."),
+        ("Save this", "Saved."),
         ("Undo", "Undid duplicating Piano."),
         ("Redo", "Redid duplicating Piano."),
-        ("Restore", "Saved restore point Before exams."),
-        ("Reload", "Reloaded this week."),
+        ("Copies of", "Saved restore point Before exams."),
+        ("Reload this", "Reloaded this week."),
     ]
 
 
