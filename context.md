@@ -127,6 +127,7 @@ values make a retried write return the first result.
 ## Session Handoff
 - 2026-10-04, `release/0.18.2` in `~/.worktrees/flexweek-0182-release` (`.venv` is
   `venv-0182-engine`, the engine with the new reason codes). Batch A merged and its CHANGELOG
-  written, the whole suite and the rigs run. Next: review and merge Grok's round 3
-  (`~/.flexweek-ui-harness/scratch/0.18.x/grok-0182-prompt-round3.md`), rerun the suite and the
-  timeline day rig, Jonathan's look at #98's sliding plan panel, then the PR. Batch B waits for mockup round 2.
+  written. Round 3 merged (folded-rail drag, one-row top bar); second whole suite 2888 passed, 1
+  intermittent. Next: Grok's round 4 (`~/.flexweek-ui-harness/scratch/0.18.x/grok-0182-prompt-round4.md`:
+  the folded chip expands in place, page margins back, the intermittent test), then the suite and
+  rigs again, Jonathan's look at #98's sliding plan panel, then the PR.

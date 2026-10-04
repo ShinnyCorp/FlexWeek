@@ -364,10 +364,11 @@ test.
   5 failed; two were stale tests, fixed. Rigs: classic, timeline, mission and bento week and clay
   day passed in full; timeline day 13/14, retro week 16/17.
 - #82 regression: with the rail folded (below 1100 px) a waiting homework in the "Not placed yet"
-  popup cannot be dragged onto the hours; `test_layouts_window.py`'s two drop tests fail.
-- #83 regression: at 1150 px with Large text the top bar wraps onto a second row instead of
-  shortening More and Plan, and Timeline Day's second waiting chip falls off screen (rig
-  `day-small-large`; passes on main).
+  popup cannot be dragged onto the hours with a real pointer, and the chip reads "No ⌄" at 800 px.
+  Jonathan chose (2026-10-04): no popup; the chip expands the waiting chips in place under the
+  folded line.
+- #83: the top bar now stays one row at 1150 px Large text (timeline day and retro week rigs pass),
+  but the fix removed the week page's margins in every design; Jonathan wants them back.
 - `test_more_menu_words.py::test_unfinished_opens_its_list_in_any_design` fails now and then
   ("Timeline showed nothing"); retro week's rig `week-small-large` failed once and passed alone.
 - #98's sliding plan panel needs Jonathan's look on a real screen.
