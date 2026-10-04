@@ -221,10 +221,12 @@ class CommandRow(QStyledItemDelegate):
             item.icon().paint(painter, QRect(left, row.center().y() - 8, 16, 16))
             left += 22
         metrics = QFontMetrics(font)
+        # Same 56 px the unmatched path keeps clear of the key caps.
+        limit = row.right() - 56
         if not spans:
             painter.setPen(QColor(self.text))
             painter.drawText(
-                QRect(left, row.top(), row.right() - left - 56, row.height()),
+                QRect(left, row.top(), max(0, limit - left), row.height()),
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                 label,
             )
@@ -244,7 +246,7 @@ class CommandRow(QStyledItemDelegate):
                     continue
                 painter.setPen(QColor(colour))
                 painter.drawText(
-                    QRect(x, row.top(), row.right() - x, row.height()),
+                    QRect(x, row.top(), max(0, limit - x), row.height()),
                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                     piece,
                 )

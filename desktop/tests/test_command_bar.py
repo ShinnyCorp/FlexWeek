@@ -15,7 +15,7 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import QPoint, QStandardPaths, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDialog, QPushButton
+from PySide6.QtWidgets import QApplication, QDialog, QPushButton, QWidget
 
 from desktop.native.calendar import sunday_due
 from desktop.native.command_bar import (
@@ -23,6 +23,7 @@ from desktop.native.command_bar import (
     KEY_ROLE,
     KEYS_ROLE,
     Command,
+    CommandBar,
     grouped,
     match_rank,
     match_span,
@@ -131,6 +132,37 @@ def test_match_span_marks_initials_as_themselves_and_word_starts() -> None:
     assert match_span("plan", "Plan my homework") == [(0, 4)]
     assert match_span("home", "Plan my homework") == [(8, 12)]
     assert match_span("home", "Add homework") == [(4, 8)]
+
+
+def test_highlighted_text_keeps_56_pixels_clear_of_the_key_caps(qapp: QApplication) -> None:
+    host = QWidget()
+    host.resize(640, 400)
+    host.show()
+    bar = CommandBar(host)
+    bar.open(
+        [
+            Command(
+                "plan",
+                "Plan my homework after school on Friday afternoon",
+                group="Homework",
+                keys="Ctrl+K",
+            )
+        ]
+    )
+    QTest.keyClicks(bar.input, "p")
+    qapp.processEvents()
+    item = next(bar.list.item(row) for row in range(bar.list.count()) if bar.list.item(row).data(KEY_ROLE))
+    row = bar.list.visualItemRect(item)
+    picture = bar.list.viewport().grab().toImage()
+    text, accent = QColor(bar.rows.text), QColor(bar.rows.accent)
+    ink = 0
+    for x in range(row.right() - 56, row.right()):
+        for y in range(row.top(), row.bottom()):
+            colour = picture.pixelColor(x, y)
+            if colour in (text, accent):
+                ink += 1
+    host.hide()
+    assert ink == 0, "highlighted words keep the same 56 px clear that unmatched text keeps"
 
 
 def test_ctrl_k_opens_a_centred_box_listing_what_can_be_done(
