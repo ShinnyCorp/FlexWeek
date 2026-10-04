@@ -994,14 +994,16 @@ class NativeSession(QObject):
         self._touch("moving " + block["title"] + " on one day", keep={made})
         return True
 
-    def span_drop_problem(self, block_id: str, day: int, start: int, end: int) -> str | None:
-        """Why a block cannot land here, including days already past in this week."""
+    def span_drop_problem(
+        self, block_id: str, day: int, start: int, end: int, from_day: int = -1
+    ) -> str | None:
+        """Why a block cannot land here, including a drop onto a different day already past."""
         try:
             target = date.fromisoformat(self.week_start) + timedelta(days=day)
         except ValueError:
             target = None
         now = datetime.fromtimestamp(self.now_ms() / 1000)
-        if target is not None and target < now.date():
+        if target is not None and target < now.date() and day != from_day:
             return PAST_DROP
         block = next((item for item in self.blocks if item["id"] == block_id), None)
         if block is None:

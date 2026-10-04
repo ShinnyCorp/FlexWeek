@@ -2643,7 +2643,7 @@ class NativeWindow(QMainWindow):
         block = next((item for item in self.session.blocks if item["id"] == block_id), None)
         if block is None:
             return HandVerdict(False, "")
-        problem = self.session.span_drop_problem(block_id, day, start, end)
+        problem = self.session.span_drop_problem(block_id, day, start, end, from_day)
         if problem is not None:
             return HandVerdict(False, problem)
         clash = span_clash(self.session.blocks, block_id, day, start, end)

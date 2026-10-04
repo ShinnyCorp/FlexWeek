@@ -79,25 +79,51 @@ def essay_on_past_day(window: NativeWindow) -> None:
 def test_a_drop_on_a_past_day_is_refused_and_says_why(
     qapp: QApplication, window: NativeWindow  # noqa: F811
 ) -> None:
+    essay_on_past_day(window)
+    essay = next(b for b in window.session.blocks if b.get("assignment_id") == "math")
+    before = [dict(b) for b in window.session.blocks]
+    # Wednesday → Monday: a different day already past. Synthetic moves never leave the origin
+    # column (Hand asks widgetAt), so the judge is the drop rule the window uses on release.
+    verdict = window._judge_span(essay["id"], 2, 0, 17 * 60, 17 * 60 + 45)
+    assert (verdict.ok, verdict.words) == (False, PAST_REFUSAL)
+    window._move_block(essay["id"], 2, 0, 17 * 60, 17 * 60 + 45)
+    assert window.session.blocks == before
+    assert essay["days"] == [2]
+
+
+def test_moving_one_day_of_a_series_on_a_past_day_still_splits(
+    qapp: QApplication, window: NativeWindow  # noqa: F811
+) -> None:
+    """A drop onto a different past day is refused. Changing Wednesday's School time, with the clock
+    on Thursday, still splits that day's occurrence — the week-series-one-day gesture."""
     from PySide6.QtCore import QEvent
 
     essay_on_past_day(window)
+    session = window.session
+    session.add_block(
+        {
+            "id": "school",
+            "title": "School",
+            "kind": "locked",
+            "category": "class",
+            "start": "08:00",
+            "duration_min": 390,
+            "days": [0, 1, 2, 3, 4],
+        }
+    )
+    session.save()
+    settled(qapp, window)
     hours = window.week_table.hours
-    hours.reveal(2, 17 * 60, 19 * 60)
-    said: list[tuple[str, str]] = []
-    window.hand.refused.connect(lambda words: said.append(("refused", words)))
-    before = [dict(b) for b in window.session.blocks]
-    start = hours.point_for(2, 17 * 60)
-    end = hours.point_for(0, 17 * 60)
+    hours.reveal(2, 8 * 60, 11 * 60)
+    start = hours.point_for(2, 9 * 60)
+    end = hours.point_for(2, 10 * 60)
     send_mouse(hours, QEvent.Type.MouseButtonPress, start, True)
     for step in range(1, 9):
         send_mouse(hours, QEvent.Type.MouseMove, start + (end - start) * step / 8, True)
-    assert hours.held_words() == PAST_REFUSAL
     send_mouse(hours, QEvent.Type.MouseButtonRelease, end, False)
-    assert said == [("refused", PAST_REFUSAL)]
-    assert window.session.blocks == before
-    essay = next(b for b in window.session.blocks if b.get("assignment_id") == "math")
-    assert essay["days"] == [2]
+    settled(qapp, window)
+    school = sorted((tuple(b["days"]), b["start"]) for b in session.blocks if b["title"] == "School")
+    assert school == [((0, 1, 3, 4), "08:00"), ((2,), "09:00")]
 
 
 def test_an_empty_next_week_offers_copy_last_week_and_use_a_routine(
