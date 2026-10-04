@@ -41,7 +41,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.widgets import DueField, HomeworkDialog, Toast
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
-    from desktop.tests.logic_support import past_setup
+    from desktop.tests.logic_support import fail_once, past_setup
 
 PASSWORD = "a-long-test-password"
 TOO_LATE = "That time has already passed."
@@ -703,6 +703,40 @@ def test_plan_asked_for_in_other_ways_while_one_is_running_is_ignored(
     settled(qapp, window)
     assert len(sent) == 1
 
+
+PLAN_UNREACHABLE = "Can't reach FlexWeek, so nothing was planned. Try again."
+SAVE_UNREACHABLE = (
+    "Not saved yet. Your changes are kept on this computer, and FlexWeek will try again."
+)
+
+
+def test_plan_when_the_server_is_unreachable_says_nothing_was_planned(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    fail_once(window.session, "POST", "/api/solve", 0)
+    window.session.solve()
+    wait_until(qapp, lambda: not window.session.busy)
+    assert window.session.message == PLAN_UNREACHABLE
+
+
+def test_save_when_the_server_is_unreachable_says_changes_are_kept(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    session = window.session
+    session.blocks = [*session.blocks, {
+        "id": "club",
+        "title": "Club",
+        "kind": "locked",
+        "category": "extra",
+        "start": "16:00",
+        "duration_min": 60,
+        "days": [3],
+    }]
+    session.dirty = True
+    fail_once(session, "POST", "/api/changes", 0)
+    session.save()
+    wait_until(qapp, lambda: not session.busy)
+    assert session.message == SAVE_UNREACHABLE
 
 
 def test_the_rail_and_the_plan_panel_count_the_same_homework_without_a_time(
