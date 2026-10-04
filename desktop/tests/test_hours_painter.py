@@ -489,7 +489,7 @@ def test_a_half_of_a_column_names_its_block_to_the_last_word_it_has_room_for(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Homework dropped on Soccer leaves each of them half a column. A half that has room for
-    "Math…" says that, not "M…"."""
+    "Math…" says that, not "M…", and then its start, as every short block does (#13)."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
     load_fonts()
     blocks = BlockPainter(resolved_palette("system", False, None))
@@ -502,10 +502,11 @@ def test_a_half_of_a_column_names_its_block_to_the_last_word_it_has_room_for(
     drawn = Drawn("math", "Math worksheet", "homework", True, Span(1, 16 * 60 + 15, 17 * 60), 1, 2)
     paint = Said(image)
     paint.setFont(QFont("Inter", 11))
-    Said.words = []
+    Said.words, Said.inks = [], []
     blocks.block(paint, QRectF(20, 20, wide, 33), drawn, page)
     paint.end()
-    assert [text for text, _where in Said.words] == ["Math…"]
+    assert [text for text, _where in Said.words] == ["Math…", "16:15"]
+    assert all(ink.right() <= 20 + wide for _text, ink in Said.inks), "a word runs out of the half"
 
 
 def rows(palette: dict, today: bool) -> QImage:

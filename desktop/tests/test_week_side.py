@@ -182,7 +182,8 @@ def test_a_running_timer_is_the_rails_first_card(
     tops = {name: widget.mapTo(rail, QPoint(0, 0)).y() for name, widget in
             (("timer", panel), ("month", rail.month), ("next", rail.next))}
     assert tops["timer"] < tops["month"] < tops["next"], tops
-    assert panel.width() <= RAIL_PX and panel.task.text() == "History essay"
+    # #18: Today's app shows the one-line strip the other designs show, not the homework's name.
+    assert panel.width() <= RAIL_PX and panel.task.text() == "Session · 30:00 left"
     window.session.reset_focus()
     wait_until(qapp, lambda: window.session.focus is None)
 
@@ -232,11 +233,15 @@ def test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_keep_their_time
     line_foot = rail.mapTo(window, rail.rect().bottomLeft()).y()
     assert line_foot < hours.mapTo(window, hours.rect().topLeft()).y(), "the line sits above the hours"
     assert rail.height() < 80, "one slim line"
-    assert rail.line.text() == "Next: Soccer practice, 16:00 · in 20 min · Not placed yet: 1"
+    # #82: what waits is a chip with the book and a chevron after the line, not words in it.
+    assert rail.line.text() == "Next: Soccer practice, 16:00 · in 20 min"
     assert not rail.tasks.isVisible() and not rail.month.isVisible()
-    chip = chips(window)[0]
-    assert chip.geometry().top() == rail.line.geometry().top(), "the chips follow the line"
-    assert window.rect().contains(chip.mapTo(window, chip.rect().bottomRight()))
+    waiting = rail.waiting_chip
+    assert waiting.isVisible()
+    assert waiting.findChild(QLabel, "railWaitingWords").text() == "Not placed yet · 1"
+    assert waiting.geometry().top() == rail.line.geometry().top(), "the chip follows the line"
+    assert window.rect().contains(waiting.mapTo(window, waiting.rect().bottomRight()))
+    chip = rail.chips()[0]
     window.resize(1280, 860)
     for _ in range(5):
         qapp.processEvents()
