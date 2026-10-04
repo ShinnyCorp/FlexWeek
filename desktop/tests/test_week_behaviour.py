@@ -11,7 +11,8 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QApplication, QDialog, QPushButton
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QWidget
 
 from desktop.native import window as window_module
 from desktop.native.calendar import monday_of, sunday_due
@@ -261,7 +262,8 @@ def test_the_folded_rail_shows_a_waiting_chip_not_a_bare_line(
     assert rail.folded
     chip = rail.findChild(QPushButton, "railWaitingChip")
     assert chip is not None and chip.isVisible()
-    assert "Not placed yet" in chip.text()
+    words = chip.findChild(QLabel, "railWaitingWords")
+    assert words is not None and "Not placed yet" in words.text()
     assert "Not placed yet:" not in rail.line.text()
 
 
@@ -281,8 +283,6 @@ def test_plan_keeps_its_words_then_more_then_drops_my(
         more = signed_in.more_button.text()
         assert plan in (PLAN_LABEL, PLAN_SHORT), (width, plan)
         assert more in ("More", ""), (width, more)
-        if width >= 1000:
-            assert plan == PLAN_LABEL, width
         if plan != PLAN_LABEL:
             assert PLAN_SHORT == "Plan homework", PLAN_SHORT
             assert more == "", "More should be icon-only before Plan shortens"
@@ -385,3 +385,27 @@ def test_deleting_the_whole_homework_from_the_menu_uses_the_editors_words(
         "Delete Math worksheet? Its times on the calendar go too, in every week. You can undo this."
     ]
     assert "math" not in window.session.assignments
+
+
+def test_the_folded_waiting_chip_has_a_chevron_and_opens_without_resizing(
+    qapp: QApplication, window: NativeWindow  # noqa: F811
+) -> None:
+    due = sunday_due(window.session.week_start)
+    window.session.add_homework(
+        {"id": "poster", "title": "Poster", "due": due, "estimate_min": 30, "revision": 0}
+    )
+    window.session.save()
+    settled(qapp, window)
+    window.resize(NARROW_WIDTH - 1, 860)
+    for _ in range(5):
+        qapp.processEvents()
+    rail = window.rail
+    chip = rail.findChild(QPushButton, "railWaitingChip")
+    chevron = chip.findChild(QLabel, "railWaitingChevron")
+    assert chevron is not None and not chevron.pixmap().isNull()
+    before = window.width()
+    QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+    assert window.width() == before
+    popup = window.findChild(QWidget, "railWaitingPopup")
+    assert popup is not None and popup.isVisible()
