@@ -819,8 +819,10 @@ class DayDialView(LayoutView):
             back.clicked.connect(self.back_requested.emit)
             made.append(back)
         said = label(kicker, "dialKicker")
-        # Said once: a heading that only repeats the title goes.
-        said.setVisible(kicker != title)
+        # Said once: a heading that only repeats the title goes. Only ever hidden here: the row has no
+        # parent yet, and shown now the label would open as a window of its own for a moment.
+        if kicker == title:
+            said.hide()
         top.addWidget(said)
         top.addStretch()
         if pill:
