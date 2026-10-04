@@ -582,8 +582,15 @@ class FocusPanel(QWidget):
         if running:
             self.now_next.setVisible(False)
         self.more.setEnabled(bool(choices))
-        for label in (self.task, self.phase, self.time):
-            label.setVisible(bool(label.text()))
+        if running and self._compact:
+            left = format_countdown(remaining_ms(state, session.now_ms()))
+            self.task.setText(f"Session · {left} left")
+            self.task.setVisible(True)
+            self.phase.setVisible(False)
+            self.time.setVisible(False)
+        else:
+            for label in (self.task, self.phase, self.time):
+                label.setVisible(bool(label.text()))
 
 
 class SettingsPage(QWidget):
