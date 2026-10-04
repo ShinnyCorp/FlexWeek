@@ -943,7 +943,6 @@ class TimelineView(LayoutView):
         box.addWidget(label("Not placed yet", "timelineTrayLabel"))
         waiting = scene.week.waiting
         if not waiting:
-            box.addWidget(label("Nothing is waiting for a time.", "timelineHint", wrap=True))
             return
         notes = FlowLayout(gap=scene.px(12))
         tilts = (-1.4, 1.0) if square else (-1.2, 0.9)

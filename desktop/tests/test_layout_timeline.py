@@ -507,7 +507,7 @@ def test_the_weeks_figures_count_homework_whole_not_its_sessions() -> None:
 
 def test_with_nothing_waiting_and_nothing_due_the_foot_says_so(qapp: QApplication) -> None:
     view = shown(qapp, blocks=[BLOCKS[0], BLOCKS[1]], homework={})
-    assert texts(view, "timelineHint") == ["Nothing is waiting for a time.", "Nothing is due this week."]
+    assert texts(view, "timelineHint") == ["Nothing is due this week."]
     assert view.findChildren(TrayChip) == []
 
 
