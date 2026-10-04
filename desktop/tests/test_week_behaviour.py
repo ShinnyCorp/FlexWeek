@@ -10,7 +10,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, QPointF, Qt
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QContextMenuEvent, QMouseEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QWidget
 
@@ -141,8 +141,9 @@ def test_an_empty_next_week_offers_copy_last_week_and_use_a_routine(
     wait_until(qapp, lambda: not session.busy)
     settled(qapp, signed_in)
     assert session.blocks == []
+    assert signed_in.planner.currentWidget() is signed_in.week_table
     card = signed_in.empty_week
-    assert signed_in.planner.currentWidget() is card
+    assert card.isVisible()
     buttons = [b.text() for b in card.findChildren(QPushButton) if b.isVisible()]
     assert EMPTY_COPY_LAST in buttons and EMPTY_USE_ROUTINE in buttons
 
@@ -443,3 +444,39 @@ def test_the_folded_waiting_chip_has_a_chevron_and_opens_without_resizing(
     assert window.width() == before
     popup = window.findChild(QWidget, "railWaitingPopup")
     assert popup is not None and popup.isVisible()
+
+
+def test_a_click_on_the_grid_beside_the_empty_week_card_opens_the_free_time_menu(
+    qapp: QApplication, signed_in: NativeWindow, menus: dict  # noqa: F811
+) -> None:
+    session = signed_in.session
+    signed_in._layout = {"main": "classic", "day": "one", "options": {}}
+    session.add_homework(
+        {
+            "id": "essay",
+            "title": "History essay",
+            "due": sunday_due(session.week_start),
+            "estimate_min": 60,
+            "revision": 0,
+        }
+    )
+    session.save()
+    wait_until(qapp, lambda: not session.busy)
+    signed_in.findChild(QPushButton, "nextWeek").click()
+    wait_until(qapp, lambda: not session.busy)
+    settled(qapp, signed_in)
+    assert signed_in.planner.currentWidget() is signed_in.week_table
+    card = signed_in.empty_week
+    assert card.isVisible() and EMPTY_COPY_LAST in [
+        button.text() for button in card.findChildren(QPushButton) if button.isVisible()
+    ]
+    hours = signed_in.week_table.hours
+    hours.reveal(1, 17 * 60, 17 * 60 + 30)
+    qapp.processEvents()
+    at = hours.point_for(1, 17 * 60)
+    parent = card.parentWidget()
+    assert parent is signed_in.week_table
+    assert not card.geometry().contains(parent.mapFromGlobal(at))
+    local = hours.mapFromGlobal(at)
+    QApplication.sendEvent(hours, QContextMenuEvent(QContextMenuEvent.Reason.Mouse, local, at))
+    assert menus["rows"] and any("Add fixed time" in row for row in menus["rows"][0])

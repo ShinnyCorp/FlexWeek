@@ -1266,19 +1266,63 @@ class NativeWindow(QMainWindow):
         instead of empty hours.
         """
         if self._day_mode:
+            self._hide_empty_card()
             return self._layout_view(self._layout["day"])
         main = self._layout["main"]
         if main in VIEW_CLASSES and view in {"week", "day", "month"}:
+            self._hide_empty_card()
             return self._layout_view(main)
         session = self.session
         if view in {"week", "day"} and self._layout["main"] == "classic":
             week = build_week(session.week_start, session.blocks, session.assignments, session.trace)
             if not session.blocks:
-                self.empty_week.set_blank(
-                    not start_here_week(week, session.assignments, session.week_start, session.saved_weeks)
-                )
-                return self.empty_week
+                start = start_here_week(week, session.assignments, session.week_start, session.saved_weeks)
+                self.empty_week.set_blank(not start)
+                if start:
+                    self._host_empty_week(self.planner)
+                    return self.empty_week
+                host = self.day_view if view == "day" else self.week_table
+                self._host_empty_week(host)
+                return host
+        self._hide_empty_card()
         return {"day": self.day_view, "month": self.month_grid}.get(view, self.week_table)
+
+    def _host_empty_week(self, host: QWidget) -> None:
+        card = self.empty_week
+        over = host is not self.planner
+        card.set_over_hours(over)
+        if over:
+            if card.parent() is not host:
+                card.setParent(host)
+            if not host.property("emptyCardWatched"):
+                host.setProperty("emptyCardWatched", True)
+                host.installEventFilter(self)
+            card.show()
+            card.raise_()
+            self._center_empty_card()
+            return
+        if card.parent() is not self.planner:
+            self.planner.addWidget(card)
+        card.show()
+
+    def _hide_empty_card(self) -> None:
+        card = self.empty_week
+        parent = card.parentWidget()
+        if parent in (self.week_table, self.day_view):
+            card.hide()
+            card.set_over_hours(False)
+            self.planner.addWidget(card)
+
+    def _center_empty_card(self) -> None:
+        card = self.empty_week
+        host = card.parentWidget()
+        if host is None or host is self.planner:
+            return
+        card.adjustSize()
+        card.move(
+            max(0, (host.width() - card.width()) // 2),
+            max(0, (host.height() - card.height()) // 2),
+        )
 
     def _layout_view(self, layout_id: str) -> LayoutView:
         view = self._views.get(layout_id)
@@ -4033,6 +4077,8 @@ class NativeWindow(QMainWindow):
         super().keyPressEvent(event)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() == QEvent.Type.Resize and watched in (self.week_table, self.day_view):
+            self._center_empty_card()
         if event.type() != QEvent.Type.KeyPress:
             return super().eventFilter(watched, event)
         if isinstance(watched, EDITABLE):

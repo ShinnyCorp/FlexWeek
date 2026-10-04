@@ -6,8 +6,8 @@ one thing and offers one button, and the hours come back as soon as the week has
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtWidgets import QLabel, QPushButton, QSizePolicy, QSpacerItem, QVBoxLayout, QWidget
 
 from desktop.native.weekmodel import WeekModel
 
@@ -45,7 +45,8 @@ class EmptyWeek(QWidget):
         super().__init__(parent)
         self.setObjectName("emptyWeek")
         layout = QVBoxLayout(self)
-        layout.addStretch(2)
+        self._top = QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+        layout.addItem(self._top)
         self.heading = QLabel(EMPTY_HEADING)
         self.heading.setObjectName("emptyWeekHeading")
         self.line = QLabel(EMPTY_LINE)
@@ -66,8 +67,27 @@ class EmptyWeek(QWidget):
         self.use_routine.clicked.connect(self.routine_requested.emit)
         for button in (self.add, self.copy_last, self.use_routine):
             layout.addWidget(button, 0, Qt.AlignmentFlag.AlignHCenter)
-        layout.addStretch(3)
+        self._bottom = QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+        layout.addItem(self._bottom)
         self.set_blank(False)
+
+    def set_over_hours(self, over: bool) -> None:
+        """A later empty week sits as a card on the grid; a new account still fills the page."""
+        stretch = QSizePolicy.Policy.Ignored if over else QSizePolicy.Policy.Expanding
+        self._top.changeSize(0, 0, QSizePolicy.Policy.Minimum, stretch)
+        self._bottom.changeSize(0, 0, QSizePolicy.Policy.Minimum, stretch)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Fixed if over else QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed if over else QSizePolicy.Policy.Preferred,
+        )
+        self.layout().invalidate()
+        if over:
+            self.adjustSize()
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        if self.copy_last.isVisible():
+            return QSize(max(280, super().sizeHint().width()), 200)
+        return super().sizeHint()
 
     def set_blank(self, blank: bool) -> None:
         """A brand-new account, or a later empty week that already has homework somewhere."""

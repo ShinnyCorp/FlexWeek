@@ -129,7 +129,8 @@ def test_a_student_with_homework_keeps_the_hours_on_an_empty_week(
     wait_until(qapp, lambda: not session.busy)
     settled(qapp, window)
     assert session.blocks == []
-    assert shown(window) is window.empty_week
+    assert shown(window) is window.week_table
+    assert window.empty_week.isVisible()
 
 
 def test_a_design_of_its_own_draws_its_own_empty_week(
