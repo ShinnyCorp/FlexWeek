@@ -119,7 +119,7 @@ def test_account_says_where_the_plans_are_saved_in_a_sentence(
     wait_until(qapp, lambda: window.session.storage_info is not None)
     dialog = AccountDialog(window, window.session.recovery_remaining, window.session.storage_info)
     assert dialog.findChild(QLabel, "accountLocation").text() == (
-        "Signed in as words_student. Your plans are saved on this computer."
+        "Signed in as words_student. Your week is saved on this computer, under this account."
     )
 
 
@@ -136,7 +136,7 @@ def asked_with(monkeypatch: pytest.MonkeyPatch, answer: bool) -> list[tuple[str,
 
 SIGN_OUT = (
     "Sign out",
-    "Your week stays saved on this computer. Sign in again to see it.",
+    "Your week is saved on this computer, under this account. Sign in again to see it.",
     "Sign out",
     False,  # Nothing is lost, so the answer is not drawn red.
 )

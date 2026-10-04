@@ -306,7 +306,7 @@ GREYED_TIPS = {
     "pasteBlock": "Copy a block or a day first.",
 }
 WAIT_TIP = "Wait a moment: FlexWeek is still saving or planning."
-SIGN_OUT_QUESTION = "Your week stays saved on {where}. Sign in again to see it."
+SIGN_OUT_QUESTION = "Your week is saved on {where}, under this account. Sign in again to see it."
 RECOVERY_KEEP = "Keep this file somewhere private. Anyone who has it can reset your password."
 RECOVERY_CHOOSE = "Choose where to save"
 RECOVERY_WAIT = "Tick the box above to continue."
@@ -320,7 +320,10 @@ AUTH_CARD_WIDTH = 420
 FIRST_GREETING = "Welcome"
 AGAIN_GREETING = "Welcome back"
 CREATE_HEADING = "Create your account"
-CREATE_NOTE = "FlexWeek fits homework around school and sports. Your week is saved to your account."
+CREATE_NOTE = (
+    "FlexWeek fits homework around school and sports. "
+    "Your week is saved on this computer, under this account."
+)
 RESET_HEADING = "Reset your password"
 RESET_NOTE = "Use one of the recovery codes you saved when you made your account."
 # What the sign-in card is for at the moment.

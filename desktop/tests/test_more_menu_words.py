@@ -221,7 +221,7 @@ def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_
         "About FlexWeek",
         "FlexWeek 0.18.1",
         "FlexWeek plans your homework around school, sports and everything else in your week.",
-        "Your plans are saved on this computer.",
+        "Your week is saved on this computer, under this account.",
     ]
     assert dialog.windowTitle() == "About FlexWeek"
     logo = dialog.findChild(QLabel, "aboutLogo")
@@ -241,7 +241,9 @@ def test_about_on_a_server_names_the_server_and_has_no_folder_to_open(
 ) -> None:
     dialog = settings.AboutDialog(host, {"mode": "hosted", "origin": "https://plans.example.org"}, "/nowhere")
     said = [label.text() for label in dialog.findChildren(QLabel)]
-    assert said[-1] == "Your plans are saved on your FlexWeek server, https://plans.example.org."
+    assert said[-1] == (
+        "Your week is saved on your FlexWeek server, https://plans.example.org, under this account."
+    )
     assert dialog.findChild(QPushButton, "aboutOpenFolder") is None
 
 
