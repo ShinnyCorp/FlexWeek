@@ -551,7 +551,9 @@ class FittedLabel(QLabel):
 
     def sizeHint(self) -> QSize:  # noqa: N802
         margins = self.contentsMargins()
-        width = self.fontMetrics().horizontalAdvance(self._full) + margins.left() + margins.right() + 2
+        shown = self.text() or self._full
+        words = self._short if self._short and shown == self._short else self._full
+        width = self.fontMetrics().horizontalAdvance(words) + margins.left() + margins.right() + 2
         return QSize(width, super().sizeHint().height())
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
@@ -629,11 +631,8 @@ class PlanButton(FittedButton):
     """Plan my homework: the window shrinks More to its icon before this shortens."""
 
     def _fit(self) -> None:
-        host = self.window()
-        if host is not None and hasattr(host, "_fit_plan_and_more"):
-            host._fit_plan_and_more()
-            return
-        super()._fit()
+        # NativeWindow._fit_plan_and_more sets both labels; a resize mid-layout must not reset them.
+        return
 
 
 class MoreButton(FittedButton):
@@ -645,16 +644,8 @@ class MoreButton(FittedButton):
         icons.tint(self, "ellipsis")
 
     def _fit(self) -> None:
-        host = self.window()
-        if host is not None and hasattr(host, "_fit_plan_and_more"):
-            host._fit_plan_and_more()
-            return
-        if self.width() >= self._wide(self._full):
-            if self.text() != self._full:
-                self.setText(self._full)
-            return
-        if self.text():
-            self.setText("")
+        # NativeWindow._fit_plan_and_more sets both labels; a resize mid-layout must not reset them.
+        return
 
 
 class EndsLayout(QLayout):

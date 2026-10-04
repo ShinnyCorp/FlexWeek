@@ -25,9 +25,10 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtWidgets import QApplication, QPushButton
 
     from desktop.native.calendar import monday_of, sunday_due
+    from desktop.native.layouts.registry import sanitize_layout
     from desktop.native.look import sanitize_look
     from desktop.native.reuse import planner_title
-    from desktop.native.window import NativeWindow
+    from desktop.native.window import PLAN_LABEL, PLAN_SHORT, NativeWindow
     from desktop.server import LocalServer
     from desktop.tests.logic_support import fail_once, fixed, past_setup
 
@@ -189,6 +190,24 @@ def test_the_top_bar_is_never_cut_mid_word(qapp: QApplication, window: NativeWin
     title_foot = window.week_title.mapTo(window, QPoint(0, window.week_title.height())).y()
     assert window.solve_button.mapTo(window, QPoint(0, 0)).y() < title_foot, "at 1150 the bar is one row"
     assert cut_on_the_bar(window) == [], "at 1150 pixels"
+
+
+def test_at_1150_large_text_timeline_day_keeps_the_top_bar_on_one_row(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Rig day-small-large on Timeline day: a wrapped bar ate ~55 px and pushed Due chips off screen."""
+    text_size(window, "large")
+    window._layout = sanitize_layout({"main": "timeline", "day": "one"})
+    window._day_mode = True
+    window._on_week()
+    window.resize(1150, 768)
+    for _ in range(6):
+        qapp.processEvents()
+    title_foot = window.week_title.mapTo(window, QPoint(0, window.week_title.height())).y()
+    assert window.solve_button.mapTo(window, QPoint(0, 0)).y() < title_foot
+    assert window.more_button.text() in ("More", "")
+    assert window.solve_button.text() in (PLAN_LABEL, PLAN_SHORT)
+    assert cut_on_the_bar(window) == []
 
 
 def test_retry_save_shows_only_after_a_save_fails(qapp: QApplication, window: NativeWindow) -> None:
