@@ -10,7 +10,7 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, QStandardPaths, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QMargins, QObject, QPoint, QRect, QSize, QStandardPaths, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -917,6 +917,7 @@ class NativeWindow(QMainWindow):
         page = QWidget()
         page.setObjectName("weekPage")
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
         # Where you are at the left, what to show and do at the right; on a narrow window the second
         # goes under the first rather than both being cut.
         bar = EndsLayout()
@@ -1486,22 +1487,59 @@ class NativeWindow(QMainWindow):
                 scroll.canvas.update()
         return changed
 
-    def _fit_plan_and_more(self) -> None:
+    def _bar_actions_width(self, plan_words: str, more_words: str) -> int:
+        plan, more = self.solve_button, self.more_button
+        plan.setText(plan_words)
+        more.setText(more_words)
+        for widget in (plan, more):
+            widget.ensurePolished()
+        self._bar_views.invalidate()
+        self._bar_views.activate()
+        return self._bar_views.sizeHint().width()
+
+    def _fit_plan_and_more(self, total_width: int | None = None) -> None:
         """More loses its words before Plan my homework shortens, at every width and text size."""
         if getattr(self, "_fitting_plan_row", False):
             return
         self._fitting_plan_row = True
+        bar = self._top_bar
         more, plan = self.more_button, self.solve_button
-        more.setText(more._full)
-        plan.setText(plan._full)
-        row = plan.parentWidget()
-        if row is not None and row.layout() is not None:
-            row.layout().activate()
-        if plan.width() < plan._wide(plan._full):
+        page = self._week_page
+        page_layout = page.layout()
+        page_margins = page_layout.contentsMargins() if page_layout is not None else QMargins()
+        if page.width() > 0:
+            width = page.width()
+        elif total_width is not None:
+            width = total_width
+        else:
+            width = self.width()
+        margins = bar.contentsMargins()
+        inner = width - page_margins.left() - page_margins.right() - margins.left() - margins.right()
+        first = bar.itemAt(0)
+        title = self.week_title
+        if title._short:
+            title.setText(title._short)
+        first_w = first.sizeHint().width() if first is not None else 0
+        chosen = (plan._short, "")
+        for plan_words, more_words in (
+            (plan._full, more._full),
+            (plan._full, ""),
+            (plan._short, ""),
+        ):
+            if first_w + bar._gap + self._bar_actions_width(plan_words, more_words) <= inner:
+                chosen = (plan_words, more_words)
+                break
+        plan.setText(chosen[0])
+        more.setText(chosen[1])
+        if chosen == (plan._full, more._full):
+            title._fit()
+        elif title._short:
+            title.setText(title._short)
+        if plan.width() > 0 and plan.width() < plan._wide(plan.text()):
             more.setText("")
-            if row is not None and row.layout() is not None:
-                row.layout().activate()
-            plan.setText(plan._full if plan.width() >= plan._wide(plan._full) else plan._short)
+            if plan.width() < plan._wide(plan._full):
+                plan.setText(plan._short)
+        bar.invalidate()
         self._fitting_plan_row = False
 
     def _keep_bar_whole(self) -> None:
@@ -1587,10 +1625,11 @@ class NativeWindow(QMainWindow):
         self.session.finish_recovery()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        super().resizeEvent(event)
         self.week_table.set_narrow(False)
         self._place_rail(self._rail_shown())
-        self._fit_plan_and_more()
+        self._fit_plan_and_more(event.size().width())
+        super().resizeEvent(event)
+        self._fit_plan_and_more(event.size().width())
         if self.toast.isVisible():
             self.toast.reposition()
         if self.plan_review.isVisible():
