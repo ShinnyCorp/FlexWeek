@@ -498,6 +498,7 @@ class NativeWindow(QMainWindow):
         self._opened_on_preference = False
         self._views: dict[str, LayoutView] = {}
         self._entry_mode = SIGN_IN
+        self._auth_mode_shown: str | None = None
         self._updates = sanitize_updates(None)
         self._zoom: dict[str, int] = {}
         # The student's own looks, kept by name (custom_look.py); Settings will list them.
@@ -652,11 +653,22 @@ class NativeWindow(QMainWindow):
         self._entry_mode = RESET
         self._sync_auth_mode()
 
+    def _clear_auth_status(self) -> None:
+        self.auth_status.clear()
+        self.auth_status.setVisible(False)
+
     def _sync_auth_mode(self) -> None:
         """Sign in is the door, and creating an account is the small print under it: a student signs
         in many times and creates an account once. A forgotten password is the card's third use, with
         its own heading and its own one filled button, rather than a second form under Sign in."""
         mode = self._entry_mode
+        showing = (
+            self._stack.currentWidget() is not None
+            and self._stack.currentWidget().objectName() == "authPage"
+        )
+        if showing and self._auth_mode_shown not in (None, mode):
+            self._clear_auth_status()
+        self._auth_mode_shown = mode
         kept = self.session.kept
         back = kept is not None and kept.signed_in_before()
         greeting = AGAIN_GREETING if back else FIRST_GREETING
@@ -709,6 +721,12 @@ class NativeWindow(QMainWindow):
                 if page is not leaving:
                     # What the toast said was about the page the student is leaving.
                     self.toast.hide()
+                    left = "" if leaving is None else leaving.objectName()
+                    if left == "authPage":
+                        self._clear_auth_status()
+                    if left == "recoveryPage":
+                        self.recovery_status.clear()
+                        self.recovery_status.setVisible(False)
                 if name == "settingsPage":
                     slide_over(self._stack, page, self._motion)
                 elif leaving is not None and leaving.objectName() == "settingsPage":

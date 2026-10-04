@@ -213,3 +213,51 @@ def test_the_recovery_codes_left_are_an_ordinary_fact_until_none_are(
         label.ensurePolished()
         assert label.palette().color(label.foregroundRole()).name() == colour, remaining
         dialog.close()
+
+
+def test_a_sign_in_error_does_not_follow_onto_reset_your_password(
+    qapp: QApplication,  # noqa: F811
+    returning: NativeWindow,
+) -> None:
+    press(qapp, returning, "signIn", USERNAME, "not-the-right-password")
+    assert returning.auth_status.text() == WRONG
+    returning.findChild(QPushButton, "forgotPassword").click()
+    qapp.processEvents()
+    assert returning.auth_heading.text() == "Reset your password"
+    assert returning.auth_status.text() == ""
+    assert not returning.auth_status.isVisible()
+
+
+def test_signed_out_does_not_stay_on_reset_your_password(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked_with(monkeypatch, True)
+    window.findChild(QPushButton, "signOut").click()
+    wait_until(qapp, lambda: window.session.account is None and not window.session.busy)
+    assert window.auth_status.text() == "Signed out."
+    window.findChild(QPushButton, "forgotPassword").click()
+    qapp.processEvents()
+    assert window.auth_heading.text() == "Reset your password"
+    assert window.auth_status.text() == ""
+    assert not window.auth_status.isVisible()
+
+
+def test_a_recovery_error_does_not_follow_back_to_sign_in(
+    qapp: QApplication,  # noqa: F811
+    returning: NativeWindow,
+) -> None:
+    returning.findChild(QPushButton, "forgotPassword").click()
+    qapp.processEvents()
+    returning.username.setText(USERNAME)
+    returning.recovery_code.setText("not-a-code")
+    returning.new_recovery_password.setText(PASSWORD)
+    returning.findChild(QPushButton, "recoverAccount").click()
+    wait_until(qapp, lambda: not returning.session.busy and bool(returning.auth_status.text()))
+    assert returning.auth_status.text() == "Incorrect username or recovery code."
+    returning.findChild(QPushButton, "authSwitch").click()
+    qapp.processEvents()
+    assert returning.auth_heading.text() in {"Welcome", "Welcome back"}
+    assert returning.auth_status.text() == ""
+    assert not returning.auth_status.isVisible()
