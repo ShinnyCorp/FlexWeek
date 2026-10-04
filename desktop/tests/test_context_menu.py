@@ -93,7 +93,7 @@ def click(widget: QWidget, at: QPoint, double: bool = False) -> None:
 
 
 # A placed homework's menu: what changes it, a line, then the two deletes.
-EVERY_ROW = ["Open\tEnter", "Duplicate\tCtrl+D", "Finished", "---", "Delete\tDel", "Delete homework"]
+EVERY_ROW = ["Open\tEnter", "Duplicate\tCtrl+D", "Copy\tCtrl+C", "Finished", "---", "Delete\tDel"]
 
 
 @pytest.fixture()
@@ -150,7 +150,7 @@ def test_a_right_click_offers_four_things_and_finished_only_for_homework(
     chosen = (window.session.selected_block_id, window.session.selected_occurrence_day)
     assert chosen == (essay_id(window), 2)
     right_click(hours, centre(window, "school", 3))
-    assert menus["shown"][-1] == ["Open\tEnter", "Duplicate\tCtrl+D", "---", "Delete\tDel"]
+    assert menus["shown"][-1] == ["Open\tEnter", "Duplicate\tCtrl+D", "Copy\tCtrl+C", "---", "Delete\tDel"]
     assert window.session.selected_occurrence_day == 3
     assert window.session.blocks == before, "choosing nothing changes nothing"
 
@@ -210,7 +210,7 @@ def test_homework_with_no_time_has_a_menu_too(qapp: QApplication, window: Native
     ]
     right_click(chips[0], chips[0].mapToGlobal(chips[0].rect().center()))
     # Nothing to duplicate until it has a time, and no one time to delete: the homework is the entry.
-    assert menus["shown"] == [["Open\tEnter", "Finished", "---", "Delete homework"]]
+    assert menus["shown"] == [["Open\tEnter", "Finished", "---", "Delete\tDel"]]
 
 
 def test_delete_homework_asks_first_and_takes_it_away_with_an_undo(
@@ -224,7 +224,7 @@ def test_delete_homework_asks_first_and_takes_it_away_with_an_undo(
 
     monkeypatch.setattr(window_module, "confirm", answer)
     chip = next(chip for chip in window.findChildren(TrayChip) if chip.isVisible())
-    menus["choose"] = "blockMenuDeleteHomework"
+    menus["choose"] = "blockMenuDelete"
     right_click(chip, chip.mapToGlobal(chip.rect().center()))
     settled(qapp, window)
     assert asked == ["Delete homework"]
@@ -271,7 +271,7 @@ def test_the_menu_has_an_icon_on_every_row_and_red_only_for_deleting(
     rows = [action for action in menus["rows"][0] if not action.isSeparator()]
     assert all(action.property(ICON) for action in rows), [action.text() for action in rows]
     red = [action.text() for action in rows if action.property(DANGER)]
-    assert red == ["Delete\tDel", "Delete homework"]
+    assert red == ["Delete\tDel"]
 
 
 def test_a_delete_row_is_painted_red_and_the_rest_in_the_text_colour(
@@ -308,7 +308,7 @@ def test_a_delete_row_is_painted_red_and_the_rest_in_the_text_colour(
 
 
 # What an empty spot offers: nothing is copied yet, so Paste is greyed and says why on its row.
-SPOT_ROWS = ["Add fixed time at 17:00", "Add homework due this day", "Paste\tCopy a block or a day first."]
+SPOT_ROWS = ["Add fixed time at 17:00", "Add homework due this day", "Paste"]
 
 
 def free_spot(hours: object, minute: int = 17 * 60 + 5) -> QPoint:
@@ -333,7 +333,7 @@ def test_a_right_click_on_free_time_offers_what_can_be_added_there(
     assert menus["shown"][-1][0] == "Add fixed time at 17:15"
     assert window.session.blocks == before, "choosing nothing changes nothing"
     right_click(hours, centre(window, "school", 3))
-    assert menus["shown"][-1] == ["Open\tEnter", "Duplicate\tCtrl+D", "---", "Delete\tDel"]
+    assert menus["shown"][-1] == ["Open\tEnter", "Duplicate\tCtrl+D", "Copy\tCtrl+C", "---", "Delete\tDel"]
 
 
 def test_add_fixed_time_opens_the_sheet_on_that_day_at_that_time(

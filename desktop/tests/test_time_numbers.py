@@ -54,7 +54,7 @@ def test_plan_keeps_its_words_when_the_bar_wraps(qapp: QApplication, window: Nat
         window.resize(width, 800)
         for _ in range(4):
             qapp.processEvents()
-        assert window.solve_button.text() == "Plan my homework"
+        assert window.solve_button.text() in ("Plan my homework", "Plan homework")
         assert window.solve_button.fontMetrics().horizontalAdvance(window.solve_button.text()) < (
             window.solve_button.width() - window.solve_button.iconSize().width()
         )
@@ -165,14 +165,19 @@ def test_now_crosses_a_block_over_its_colour_and_under_its_words(
     )
 
 
-@pytest.mark.parametrize("design", DESIGNS)
-def test_the_now_line_stops_short_of_a_blocks_words_and_resumes_after_them(
+SHARED_NOW = ("classic", "timeline", "bento", "retro", "clay")
+
+
+@pytest.mark.parametrize("design", SHARED_NOW)
+def test_the_now_line_runs_under_a_blocks_words_without_a_gap(
     qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch, design: str,
 ) -> None:
-    """With now on the row of School's name, nothing of the line is drawn on the name, the icon
-    before it or the few pixels round them, and the line still shows across the rest of School:
-    drawn through the name, over it or under it, the line read as crossing it out. On a row of
-    School with no words the line is whole from one side of the block to the other."""
+    """With now on the row of School's name, the line runs through the block under the words and
+    icon, with no 3 px hole round them. Drawn over the name it read as crossing it out; a gap round
+    the words read as the line being cut. On a row of School with no words the line is whole from
+    one side of the block to the other. Mission still clips its own ticks (lane 3)."""
+    from collections import Counter
+
     from PySide6.QtCore import QPointF, QRectF
     from PySide6.QtGui import QFontMetricsF, QPainter
 
@@ -214,29 +219,40 @@ def test_the_now_line_stops_short_of_a_blocks_words_and_resumes_after_them(
     bare = canvas.grab().toImage()
     words = [(text, box) for text, box in laid if block.contains(box.center())]
     name = next(box for text, box in words if text == "School")
-    assert any(text == "" for text, _box in words), "School has no icon to stop short of"
+    assert any(text == "" for text, _box in words), "School has no icon under the line"
 
     def lit_at(point: QPointF):
         minute = round(track.minute_at(point))
         canvas.set_week(canvas.occurrences, day, minute)
         return canvas.grab().toImage()
 
-    def changed(image, box) -> int:
-        return sum(
-            image.pixel(x, y) != bare.pixel(x, y)
-            for x in range(box.left(), box.right() + 1)
-            for y in range(box.top(), box.bottom() + 1)
-        )
-
-    lit = lit_at(name.center())
-    # "A few pixels of clearance": two at the least, on every side of each word and of the icon.
-    for text, box in words:
-        near = box.adjusted(-2, -2, 2, 2).toAlignedRect() & inside
-        assert changed(lit, near) == 0, f"the line for now is drawn on {text or 'the icon'!r}"
-    assert changed(lit, inside) >= 10, "the line for now does not show beside the block's words"
-
-    # A row, or in a lane that runs across a column, of School that no word or icon comes near.
     down = track.axis is Axis.DOWN
+    lit = lit_at(name.center())
+    line = round(name.center().y() if down else name.center().x())
+    along = range(inside.left(), inside.right() + 1) if down else range(inside.top(), inside.bottom() + 1)
+
+    def sample(image, pos: int, shift: int = 0) -> int:
+        y = line + shift
+        return image.pixel(*((pos, y) if down else (y, pos)))
+
+    plain = Counter(sample(bare, pos) for pos in along).most_common(1)[0][0]
+    holes = [
+        pos
+        for pos in along
+        if sample(bare, pos) == plain
+        and all(sample(lit, pos, shift) == sample(bare, pos, shift) for shift in range(-3, 4))
+    ]
+    assert holes == [], "the now line stops short of the block's words"
+    ink = [pos for pos in along if sample(bare, pos) != plain]
+    assert ink, "no words on the now line"
+    changed = [
+        sample(lit, pos) for pos in along if sample(bare, pos) == plain and sample(lit, pos) != plain
+    ]
+    assert changed, "the now line does not show on the block"
+    line_colour = Counter(changed).most_common(1)[0][0]
+    assert sum(sample(lit, pos) != line_colour for pos in ink) >= len(ink) / 2, (
+        "the now line is drawn over the words"
+    )
     taken = [box.adjusted(-8, -8, 8, 8) for _text, box in words]
     first, last = (inside.top(), inside.bottom()) if down else (inside.left(), inside.right())
     clear = next(

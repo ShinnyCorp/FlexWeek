@@ -165,7 +165,7 @@ def test_the_top_bar_is_never_cut_mid_word(qapp: QApplication, window: NativeWin
                 assert title.fontMetrics().horizontalAdvance(title.text()) <= room, where
                 assert window.solve_button in bar_widgets(window), where
                 assert cut_on_the_bar(window) == [], f"{where}: cut {cut_on_the_bar(window)}"
-                assert window.solve_button.text() in ("Plan my homework", "Plan"), where
+                assert window.solve_button.text() in ("Plan my homework", "Plan homework"), where
                 right = max(item.mapTo(window, item.rect().topRight()).x() for item in bar_widgets(window))
                 assert right < window.width(), f"{where}: the bar runs to {right}"
     # Suggest times and Retry save, which widen the bar, are never cut at the narrowest window.

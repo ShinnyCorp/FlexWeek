@@ -12,13 +12,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from PySide6.QtCore import QEvent, QModelIndex, QPersistentModelIndex, QPointF, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import (
+    QEvent,
+    QModelIndex,
+    QPersistentModelIndex,
+    QPoint,
+    QPointF,
+    QRectF,
+    QSize,
+    Qt,
+    Signal,
+)
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QMouseEvent, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLayout,
     QListWidget,
     QListWidgetItem,
     QPushButton,
@@ -30,6 +39,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid
 
 from desktop.native import icons
 from desktop.native.calendar import DAYS
@@ -573,6 +583,7 @@ class Rail(QFrame):
         self._tasks: tuple = ()
         self._waiting: tuple[Waiting, ...] = ()
         self._chips: list[RailChip] = []
+        self._waiting_popup: QFrame | None = None
         self._due: frozenset[str] = frozenset()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -653,6 +664,23 @@ class Rail(QFrame):
         self.line.setFont(time_font(self.line.font()))
         self.line.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.flow.addWidget(self.line)
+        self.waiting_chip = QPushButton()
+        self.waiting_chip.setObjectName("railWaitingChip")
+        self.waiting_chip.setProperty("quiet", True)
+        self.waiting_chip.clicked.connect(self._open_waiting)
+        chip_row = QHBoxLayout(self.waiting_chip)
+        chip_row.setContentsMargins(8, 4, 8, 4)
+        chip_row.setSpacing(6)
+        self._wait_book = QLabel()
+        self._wait_book.setObjectName("railWaitingBook")
+        self._wait_words = QLabel()
+        self._wait_words.setObjectName("railWaitingWords")
+        self._wait_chevron = QLabel()
+        self._wait_chevron.setObjectName("railWaitingChevron")
+        chip_row.addWidget(self._wait_book)
+        chip_row.addWidget(self._wait_words, 1)
+        chip_row.addWidget(self._wait_chevron)
+        self.flow.addWidget(self.waiting_chip)
         outer.addWidget(self.strip)
         self.set_folded(False)
 
@@ -770,9 +798,16 @@ class Rail(QFrame):
         return list(self._chips)
 
     def _place_chips(self) -> None:
-        home: QLayout = self.flow if self.folded else self.tray
+        if not isValid(self):
+            return
+        tray, flow = self.tray, self.flow
+        if not isValid(tray) or not isValid(flow):
+            return
+        home = tray
         for chip in self._chips:
-            for layout in (self.tray, self.flow):
+            if not isValid(chip):
+                continue
+            for layout in (tray, flow):
                 layout.removeWidget(chip)
             home.addWidget(chip)
             chip.show()
@@ -829,13 +864,47 @@ class Rail(QFrame):
         if has_next:
             heading, title, when, _then = self.next.shown
             said.append(f"{heading}: {title}, {when}")
-        if self._chips:
-            said.append(f"Not placed yet: {len(self._chips)}")
+        count = len(self._chips)
+        if count and self.folded:
+            self._wait_words.setText(f"Not placed yet · {count}")
+            ratio = self.devicePixelRatioF()
+            self._wait_book.setPixmap(icons.pixmap("book-open", self.colours.muted, 16, ratio))
+            self._wait_chevron.setPixmap(icons.pixmap("chevron-down", self.colours.muted, 16, ratio))
+            self.waiting_chip.setVisible(True)
+        else:
+            self.waiting_chip.hide()
         self.line.setText(" · ".join(said))
         self.line.setVisible(self.folded and bool(said))
         self.line.setMinimumHeight(max((chip.sizeHint().height() for chip in self._chips), default=0))
         # Folded with nothing to say, it takes no room at all.
-        self.strip.setVisible(self.folded and bool(said))
+        self.strip.setVisible(self.folded and (bool(said) or count))
+
+    def _open_waiting(self) -> None:
+        """Folded rail: the waiting chips as a popup under the chip, without resizing the window."""
+        if not self._chips:
+            return
+        host = self.window()
+        popup = QFrame(host, Qt.WindowType.Popup)
+        popup.setObjectName("railWaitingPopup")
+        box = QVBoxLayout(popup)
+        box.setContentsMargins(8, 8, 8, 8)
+        for chip in self._chips:
+            box.addWidget(chip)
+        popup.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        popup.adjustSize()
+        at = self.waiting_chip.mapToGlobal(QPoint(0, self.waiting_chip.height()))
+        popup.move(at)
+        popup.installEventFilter(self)
+        self._waiting_popup = popup
+        popup.show()
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        popup = self._waiting_popup
+        # Hide/Close run while the rail still exists; destroyed ran after its layouts were gone.
+        if popup is not None and watched is popup and event.type() in (QEvent.Type.Hide, QEvent.Type.Close):
+            self._waiting_popup = None
+            self._place_chips()
+        return super().eventFilter(watched, event)
 
     def _start_item(self, item: QListWidgetItem) -> None:
         payload = item.data(Qt.ItemDataRole.UserRole) or {}

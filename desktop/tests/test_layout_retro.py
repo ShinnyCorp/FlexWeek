@@ -451,9 +451,9 @@ def test_notepad_lists_the_homework_under_its_deadline_with_its_length_and_time(
     ]
     rows = [view.findChild(QPushButton, name) for name in ("retroNote0", "retroNote1", "retroNoteWaiting0")]
     assert [row.lines for row in rows] == [
-        ["Chem-1    1 h 30  placed Thu 20:00"],
-        ["Essay-1   1 h     placed Thu 18:45"],
-        [f"Poster-1  2 h     {NOT_PLACED}"],
+        ["Chem-1    1h 30m  placed Thu 20:00"],
+        ["Essay-1   1h      placed Thu 18:45"],
+        [f"Poster-1  2h      {NOT_PLACED}"],
     ]
     chip = view.findChild(TrayChip, "retroNoteWaiting0")
     assert chip.block_id == "poster-1"
@@ -499,7 +499,7 @@ def test_a_notepad_line_short_of_room_puts_its_length_and_time_under_its_title(q
     assert len(essay.lines) == 2, essay.lines
     assert "History essay on the causes of the war".startswith(essay.lines[0].removesuffix("…"))
     # Under the title, in from the edge; "placed" leaves this narrow page no title column.
-    assert essay.lines[1].split() == ["1", "h", "placed", "Thu", "18:45"] and essay.lines[1].startswith("  ")
+    assert essay.lines[1].split() == ["1h", "placed", "Thu", "18:45"] and essay.lines[1].startswith("  ")
     for row in view.findChildren(QPushButton):
         if row.property("role") != "note":
             continue

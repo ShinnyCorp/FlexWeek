@@ -132,11 +132,12 @@ def family_fill(category: str, tokens: dict[str, str]) -> str:
 
 
 def short_length(minutes: int) -> str:
-    """A length where room is short: "1 h 30", "45 min", "2 h"."""
+    """A length where room is short: "1h 30m", "45 min", "2h". Spaces around h made "2 h 15" look
+    like a time of day."""
     hours, rest = divmod(max(minutes, 0), 60)
     if not hours:
         return f"{rest} min"
-    return f"{hours} h {rest}" if rest else f"{hours} h"
+    return f"{hours}h {rest}m" if rest else f"{hours}h"
 
 
 def free_stretches(items: Sequence[Occurrence], start: int, end: int) -> list[tuple[int, int]]:

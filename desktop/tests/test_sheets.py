@@ -688,7 +688,10 @@ def panel_with(qapp: QApplication, text: str, count: int) -> tuple[QWidget, Unfi
     panel = UnfinishedPanel(parent)
     panel.move(20, 20)
     panel.resize(900, 600)
-    items = [{"id": f"a{n}", "title": f"History essay {n}", "remaining_min": 60} for n in range(count)]
+    items = [
+        {"id": f"a{n}", "title": f"History essay {n}", "remaining_min": 60, "due": "2000-01-15T12:00"}
+        for n in range(count)
+    ]
     panel.set_items(items)
     settle_layout(qapp)
     return parent, panel
@@ -747,7 +750,7 @@ def test_the_unfinished_rows_are_measured_again_when_the_look_reaches_them(
     parent.show()
     panel = UnfinishedPanel(parent)
     panel.resize(900, 600)
-    panel.set_items([{"id": "a0", "title": "History essay", "remaining_min": 60}])
+    panel.set_items([{"id": "a0", "title": "History essay", "remaining_min": 60, "due": "2000-01-15T12:00"}])
     settle_layout(qapp)
     parent.setStyleSheet(looks.styleSheet())
     settle_layout(qapp)

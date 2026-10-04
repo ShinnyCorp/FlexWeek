@@ -625,6 +625,38 @@ class FittedButton(QPushButton):
             self.setText(words)
 
 
+class PlanButton(FittedButton):
+    """Plan my homework: the window shrinks More to its icon before this shortens."""
+
+    def _fit(self) -> None:
+        host = self.window()
+        if host is not None and hasattr(host, "_fit_plan_and_more"):
+            host._fit_plan_and_more()
+            return
+        super()._fit()
+
+
+class MoreButton(FittedButton):
+    """More in the top bar: its words, then its icon alone when the row is tighter still."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("More", "", parent)
+        self.setIconSize(QSize(20, 20))
+        icons.tint(self, "ellipsis")
+
+    def _fit(self) -> None:
+        host = self.window()
+        if host is not None and hasattr(host, "_fit_plan_and_more"):
+            host._fit_plan_and_more()
+            return
+        if self.width() >= self._wide(self._full):
+            if self.text() != self._full:
+                self.setText(self._full)
+            return
+        if self.text():
+            self.setText("")
+
+
 class EndsLayout(QLayout):
     """Two groups on one row, the first at its left and the second at its right, each as wide as it
     asks while there is room. Short of room, the first gives way first, down to its smallest, then
@@ -3524,9 +3556,27 @@ class PreviewDialog(Dialog):
         self._refresh()
 
 
+def overdue_unfinished(items: list[dict], now: datetime | None = None) -> list[dict]:
+    """Homework whose deadline is already past. The engine's unfinished list also holds work due
+    today or tomorrow; this list is only what is late."""
+    moment = datetime.now() if now is None else now
+    return [item for item in items if _deadline_passed(item.get("due"), moment)]
+
+
+def _deadline_passed(due: object, now: datetime) -> bool:
+    if not isinstance(due, str) or not due:
+        return False
+    try:
+        day, minute = parse_due(due)
+    except ValueError:
+        return False
+    return datetime.combine(day, datetime.min.time()) + timedelta(minutes=minute) <= now
+
+
 class UnfinishedPanel(QWidget):
     plan_requested = Signal(str)
     delete_requested = Signal(str)
+    collapsed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -3542,13 +3592,18 @@ class UnfinishedPanel(QWidget):
         dismiss = QPushButton("Hide")
         dismiss.setObjectName("unfinishedDismiss")
         dismiss.setProperty("quiet", True)
-        dismiss.clicked.connect(self.hide)
+        dismiss.clicked.connect(self._collapse)
         row.addWidget(dismiss)
         row.addStretch(1)
         layout.addLayout(row)
         self.hide()
 
-    def set_items(self, items: list[dict]) -> None:
+    def _collapse(self) -> None:
+        self.collapsed.emit()
+        self.hide()
+
+    def set_items(self, items: list[dict], now: datetime | None = None) -> None:
+        items = overdue_unfinished(items, now)
         self.list.clear()
         for item in items:
             row = QWidget()
