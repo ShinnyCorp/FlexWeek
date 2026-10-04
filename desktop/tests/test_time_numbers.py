@@ -54,7 +54,7 @@ def test_plan_keeps_its_words_when_the_bar_wraps(qapp: QApplication, window: Nat
         window.resize(width, 800)
         for _ in range(4):
             qapp.processEvents()
-        assert window.solve_button.text() == "Plan my homework"
+        assert window.solve_button.text() in ("Plan my homework", "Plan homework")
         assert window.solve_button.fontMetrics().horizontalAdvance(window.solve_button.text()) < (
             window.solve_button.width() - window.solve_button.iconSize().width()
         )

@@ -115,8 +115,8 @@ def test_a_student_with_homework_keeps_the_hours_on_an_empty_week(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,
 ) -> None:
-    """Every week nobody has saved is empty, so next week is empty for everyone. It keeps its hours
-    once the student has homework anywhere."""
+    """Every week nobody has saved is empty, so next week is empty for everyone. It offers last week
+    and routines once the student has homework anywhere."""
     session = window.session
     session.add_homework(
         {"id": "essay", "title": "History essay", "due": sunday_due(session.week_start),
@@ -129,7 +129,7 @@ def test_a_student_with_homework_keeps_the_hours_on_an_empty_week(
     wait_until(qapp, lambda: not session.busy)
     settled(qapp, window)
     assert session.blocks == []
-    assert shown(window) is window.week_table
+    assert shown(window) is window.empty_week
 
 
 def test_a_design_of_its_own_draws_its_own_empty_week(

@@ -1,0 +1,270 @@
+"""0.18.2 batch A lane 2: week behaviour (#15–#18, #20, #82, #83)."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from datetime import date, datetime, timedelta
+
+import pytest
+
+pytest.importorskip("PySide6")
+
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QContextMenuEvent
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QDialog, QPushButton
+
+from desktop.native import window as window_module
+from desktop.native.calendar import sunday_due
+from desktop.native.hours.chips import TrayChip
+from desktop.native.hours.geometry import Span
+from desktop.native.hours.hand import Gesture, Held, Verdict
+from desktop.native.layouts.base import NARROW_WIDTH
+from desktop.native.layouts.empty import EMPTY_COPY_LAST, EMPTY_USE_ROUTINE
+from desktop.native.menus import Menu
+from desktop.native.widgets import RoutineDialog
+from desktop.native.window import PLAN_LABEL, PLAN_SHORT, NativeWindow
+from PySide6.QtCore import QPointF
+from PySide6.QtGui import QMouseEvent
+
+from desktop.tests.test_hours_hand import Rig
+from desktop.tests.window_support import (  # noqa: F401
+    qapp,
+    server,
+    settled,
+    signed_out,
+    wait_until,
+)
+from desktop.tests.window_support import window as signed_in  # noqa: F401
+
+PAST_REFUSAL = "That's in the past."
+
+
+def send_mouse(widget, kind, at: QPoint, held: bool) -> None:
+    local = QPointF(widget.mapFromGlobal(at))
+    buttons = Qt.MouseButton.LeftButton if held else Qt.MouseButton.NoButton
+    event = QMouseEvent(
+        kind, local, QPointF(at), Qt.MouseButton.LeftButton, buttons, Qt.KeyboardModifier.NoModifier
+    )
+    QApplication.sendEvent(widget, event)
+
+
+@pytest.fixture()
+def window(qapp: QApplication, signed_in: NativeWindow) -> Iterator[NativeWindow]:  # noqa: F811
+    session = signed_in.session
+    signed_in.resize(1280, 860)
+    signed_in._layout = {"main": "classic", "day": "one", "options": {}}
+    due = sunday_due(session.week_start)
+    session.add_homework(
+        {"id": "math", "title": "Math worksheet", "due": due, "estimate_min": 45, "revision": 0}
+    )
+    block = next(b for b in session.blocks if b.get("assignment_id") == "math")
+    session.place_session(block["id"], 2, 17 * 60)
+    session.save()
+    settled(qapp, signed_in)
+    signed_in.findChild(QPushButton, "viewWeek").click()
+    settled(qapp, signed_in)
+    yield signed_in
+
+
+def essay_on_past_day(window: NativeWindow) -> None:
+    """Clock on Thursday; essay sits Wednesday so dragging it to Monday is in the past."""
+    session = window.session
+    thursday = datetime.fromisoformat(session.week_start) + timedelta(days=3, hours=12)
+    session.now_ms = lambda: int(thursday.timestamp() * 1000)
+    session.save()
+    settled(QApplication.instance(), window)
+
+
+def test_a_drop_on_a_past_day_is_refused_and_says_why(
+    qapp: QApplication, window: NativeWindow  # noqa: F811
+) -> None:
+    from PySide6.QtCore import QEvent
+
+    essay_on_past_day(window)
+    hours = window.week_table.hours
+    hours.reveal(2, 17 * 60, 19 * 60)
+    said: list[tuple[str, str]] = []
+    window.hand.refused.connect(lambda words: said.append(("refused", words)))
+    before = [dict(b) for b in window.session.blocks]
+    start = hours.point_for(2, 17 * 60)
+    end = hours.point_for(0, 17 * 60)
+    send_mouse(hours, QEvent.Type.MouseButtonPress, start, True)
+    for step in range(1, 9):
+        send_mouse(hours, QEvent.Type.MouseMove, start + (end - start) * step / 8, True)
+    assert hours.held_words() == PAST_REFUSAL
+    send_mouse(hours, QEvent.Type.MouseButtonRelease, end, False)
+    assert said == [("refused", PAST_REFUSAL)]
+    assert window.session.blocks == before
+    essay = next(b for b in window.session.blocks if b.get("assignment_id") == "math")
+    assert essay["days"] == [2]
+
+
+def test_an_empty_next_week_offers_copy_last_week_and_use_a_routine(
+    qapp: QApplication, signed_in: NativeWindow  # noqa: F811
+) -> None:
+    session = signed_in.session
+    signed_in._layout = {"main": "classic", "day": "one", "options": {}}
+    session.add_block(
+        {
+            "id": "school",
+            "title": "School",
+            "kind": "locked",
+            "category": "class",
+            "start": "08:00",
+            "duration_min": 390,
+            "days": [0, 1, 2, 3, 4],
+        }
+    )
+    session.save()
+    settled(qapp, signed_in)
+    signed_in.findChild(QPushButton, "nextWeek").click()
+    wait_until(qapp, lambda: not session.busy)
+    settled(qapp, signed_in)
+    assert session.blocks == []
+    card = signed_in.empty_week
+    assert signed_in.planner.currentWidget() is card
+    buttons = [b.text() for b in card.findChildren(QPushButton) if b.isVisible()]
+    assert EMPTY_COPY_LAST in buttons and EMPTY_USE_ROUTINE in buttons
+
+
+def test_routines_with_none_saved_says_so(qapp: QApplication) -> None:  # noqa: F811
+    dialog = RoutineDialog(None, {}, [], "2026-09-21")
+    dialog.show()
+    qapp.processEvents()
+    empty = dialog.findChild(type(dialog.empty), "routineEmpty")
+    assert empty.text() == "No routines saved yet." and empty.isVisible()
+    assert not dialog.list.isVisible()
+    dialog.close()
+    dialog.deleteLater()
+    qapp.processEvents()
+
+
+def test_unfinished_collapses_to_a_badge_after_the_first_showing(
+    qapp: QApplication, signed_in: NativeWindow  # noqa: F811
+) -> None:
+    session = signed_in.session
+    current = session.week_start
+    previous = (date.fromisoformat(current) - timedelta(days=7)).isoformat()
+    session.load_week(previous)
+    wait_until(qapp, lambda: session.week_start == previous and not session.busy)
+    session.add_homework(
+        {
+            "id": "late",
+            "title": "Late essay",
+            "due": previous + "T21:00",
+            "estimate_min": 60,
+            "revision": 0,
+        }
+    )
+    session.save()
+    wait_until(qapp, lambda: not session.busy)
+    session.load_week(current)
+    wait_until(qapp, lambda: session.week_start == current and not session.busy)
+    settled(qapp, signed_in)
+    items = session.unfinished()
+    assert items
+    panel = signed_in.unfinished_panel
+    badge = signed_in.findChild(QPushButton, "unfinishedBadge")
+    assert badge is not None
+    panel.set_items(items)
+    assert panel.isVisible()
+    panel.findChild(QPushButton, "unfinishedDismiss").click()
+    qapp.processEvents()
+    assert not panel.isVisible() and badge.isVisible()
+    badge.click()
+    qapp.processEvents()
+    assert panel.isVisible()
+
+
+def test_a_running_timer_in_todays_app_is_one_line_in_the_rail(
+    qapp: QApplication, window: NativeWindow  # noqa: F811
+) -> None:
+    essay = next(b for b in window.session.blocks if b.get("assignment_id") == "math")
+    window.session.start_focus(essay["id"], 2)
+    wait_until(qapp, lambda: window.session.focus is not None)
+    window._on_week()
+    qapp.processEvents()
+    panel = window.focus_panel
+    assert panel.isVisible() and window.rail.isAncestorOf(panel)
+    assert panel.task.isVisible()
+    assert not panel.phase.isVisible() and not panel.time.isVisible()
+    line = panel.task.text()
+    assert line.startswith("Session · ") and " left" in line
+    assert [b.text() for b in panel.findChildren(QPushButton) if b.isVisible()] == ["Focus screen"]
+
+
+@pytest.fixture()
+def menus(monkeypatch: pytest.MonkeyPatch) -> dict:
+    seen: dict = {"widths": [], "rows": []}
+
+    class Shown(Menu):
+        def exec(self, at: QPoint | None = None, *_rest: object) -> object:
+            seen["widths"].append(self.minimumWidth())
+            seen["rows"].append([a.text() or "---" for a in self.actions()])
+            return None
+
+    monkeypatch.setattr(window_module, "Menu", Shown)
+    return seen
+
+
+def test_the_block_menu_matches_free_time_and_includes_copy(
+    qapp: QApplication, window: NativeWindow, menus: dict  # noqa: F811
+) -> None:
+    hours = window.week_table.hours
+    essay = next(b for b in window.session.blocks if b.get("assignment_id") == "math")
+    box = hours.block_rect(essay["id"], 2)
+    assert box is not None
+    window._block_menu(essay["id"], 2, box.center())
+    hours.hand.step = 15
+    hours.reveal(1, 17 * 60, 17 * 60 + 30)
+    qapp.processEvents()
+    window._spot_menu(1, 17 * 60, hours.point_for(1, 17 * 60))
+    assert len(menus["widths"]) == 2 and menus["widths"][0] == menus["widths"][1]
+    block_rows = menus["rows"][0]
+    assert "Copy\tCtrl+C" in block_rows
+    assert "Delete homework" not in block_rows
+    assert sum("Delete" in r for r in block_rows) == 1
+
+
+def test_the_folded_rail_shows_a_waiting_chip_not_a_bare_line(
+    qapp: QApplication, window: NativeWindow  # noqa: F811
+) -> None:
+    due = sunday_due(window.session.week_start)
+    window.session.add_homework(
+        {"id": "poster", "title": "Poster", "due": due, "estimate_min": 30, "revision": 0}
+    )
+    window.session.save()
+    settled(qapp, window)
+    window.resize(NARROW_WIDTH - 1, 860)
+    for _ in range(5):
+        qapp.processEvents()
+    rail = window.rail
+    assert rail.folded
+    chip = rail.findChild(QPushButton, "railWaitingChip")
+    assert chip is not None and chip.isVisible()
+    assert "Not placed yet" in chip.text()
+    assert "Not placed yet:" not in rail.line.text()
+
+
+def test_plan_keeps_its_words_then_more_then_drops_my(
+    qapp: QApplication, signed_in: NativeWindow  # noqa: F811
+) -> None:
+    from desktop.native.look import sanitize_look
+
+    signed_in._look = sanitize_look({"preset": "default", "knobs": {"text": "large"}})
+    signed_in._apply_appearance()
+    signed_in._sync_chrome()
+    for width in (1280, 1100, 1000, 900, 800):
+        signed_in.resize(width, 800)
+        for _ in range(4):
+            qapp.processEvents()
+        plan = signed_in.solve_button.text()
+        more = signed_in.more_button.text()
+        assert plan in (PLAN_LABEL, PLAN_SHORT), (width, plan)
+        assert more in ("More", ""), (width, more)
+        if width >= 1000:
+            assert plan == PLAN_LABEL, width
+        if plan != PLAN_LABEL:
+            assert PLAN_SHORT == "Plan homework", PLAN_SHORT
+            assert more == "", "More should be icon-only before Plan shortens"
