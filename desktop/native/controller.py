@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from copy import deepcopy
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -71,6 +71,7 @@ from desktop.native.remind import (
     snooze_until,
 )
 from desktop.native.reuse import (
+    copied_fixed_block,
     MAX_WEEK_BLOCKS,
     apply_plan,
     available_homework_minutes,
@@ -79,6 +80,7 @@ from desktop.native.reuse import (
     clear_stale_pins,
     clipboard_fingerprint,
     clipboard_item,
+    copied_fixed_block,
     copied_homework_block,
     copy_label,
     due_point,
@@ -122,6 +124,9 @@ def plan_sentence(placed: int, waiting: int) -> str:
     if waiting:
         said += f" {waiting} still need{'s' if waiting == 1 else ''} a time."
     return said
+
+
+PAST_DROP = "That's in the past."
 
 
 def _assignment_write(item_id: str, item: dict | None, revision: int) -> dict:
@@ -988,6 +993,58 @@ class NativeSession(QObject):
         self.blocks = [{**item, "days": [to_day]} if item["id"] == made else item for item in blocks]
         self._touch("moving " + block["title"] + " on one day", keep={made})
         return True
+
+    def span_drop_problem(self, block_id: str, day: int, start: int, end: int) -> str | None:
+        """Why a block cannot land here, including days already past in this week."""
+        try:
+            target = date.fromisoformat(self.week_start) + timedelta(days=day)
+        except ValueError:
+            target = None
+        now = datetime.fromtimestamp(self.now_ms() / 1000)
+        if target is not None and target < now.date():
+            return PAST_DROP
+        block = next((item for item in self.blocks if item["id"] == block_id), None)
+        if block is None:
+            return None
+        due = due_point((self.assignments.get(block.get("assignment_id") or "") or {}).get("due"), self.week_start)
+        return span_problem(self.blocks, block_id, day, start, end, due)
+
+    def copy_last_week_fixed_rows(self) -> list[dict] | None:
+        """Fixed times from the previous Monday, offered on a blank week."""
+        if self.account is None:
+            return None
+        try:
+            previous = monday_of((date.fromisoformat(self.week_start) - timedelta(days=7)).isoformat())
+        except ValueError:
+            return None
+        source = self._week_local(previous)
+        if source is None:
+            return None
+        blocks = [
+            item
+            for item in source.get("blocks") or []
+            if item.get("kind") == "locked" and item.get("start") and not is_setup_block(item)
+        ]
+        if not blocks:
+            return None
+        rows = []
+        for item in blocks:
+            days = [int(day) for day in item.get("days") or []]
+            if not days:
+                continue
+            copy = copied_fixed_block(item, days, str(uuid4()))
+            rows.append(
+                {
+                    "week_start": self.week_start,
+                    "day": days[0],
+                    "fixed": True,
+                    "block": copy,
+                    "group_id": copy["id"],
+                    "checked": True,
+                    "invalid": "",
+                }
+            )
+        return rows or None
 
     def date_problem(
         self,
