@@ -1423,20 +1423,16 @@ class NativeWindow(QMainWindow):
             return
         self._fitting_plan_row = True
         more, plan = self.more_button, self.solve_button
-        if self.width() >= 1000:
-            plan.setText(plan._full)
-            more.setText(more._full)
-            if plan.width() < plan._wide(plan._full):
-                more.setText("")
-            self._fitting_plan_row = False
-            return
         more.setText(more._full)
-        if plan.width() >= plan._wide(plan._full):
-            plan.setText(plan._full)
-            self._fitting_plan_row = False
-            return
-        more.setText("")
-        plan.setText(plan._short if plan.width() >= plan._wide(plan._short) else plan._short)
+        plan.setText(plan._full)
+        row = plan.parentWidget()
+        if row is not None and row.layout() is not None:
+            row.layout().activate()
+        if plan.width() < plan._wide(plan._full):
+            more.setText("")
+            if row is not None and row.layout() is not None:
+                row.layout().activate()
+            plan.setText(plan._full if plan.width() >= plan._wide(plan._full) else plan._short)
         self._fitting_plan_row = False
 
     def _keep_bar_whole(self) -> None:

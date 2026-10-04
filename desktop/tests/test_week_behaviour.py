@@ -288,6 +288,40 @@ def test_plan_keeps_its_words_then_more_then_drops_my(
             assert more == "", "More should be icon-only before Plan shortens"
 
 
+def test_plan_follows_one_shortening_rule_at_every_width_and_text_size(
+    qapp: QApplication, signed_in: NativeWindow  # noqa: F811
+) -> None:
+    from desktop.native.look import sanitize_look
+
+    for size in ("normal", "large"):
+        signed_in._look = sanitize_look({"preset": "default", "knobs": {"text": size}})
+        signed_in._apply_appearance()
+        signed_in._sync_chrome()
+        for width in (810, 900, 1100, 1400):
+            signed_in.solve_button.setMaximumWidth(16777215)
+            signed_in.resize(width, 800)
+            for _ in range(6):
+                qapp.processEvents()
+            plan = signed_in.solve_button
+            more = signed_in.more_button
+            assert plan.text() in (PLAN_LABEL, PLAN_SHORT), (size, width, plan.text())
+            assert more.text() in ("More", ""), (size, width, more.text())
+            if plan.text() == PLAN_SHORT:
+                assert more.text() == ""
+            room = max(0, plan.contentsRect().width() - plan.iconSize().width() - 16)
+            ink = plan.fontMetrics().horizontalAdvance(plan.text())
+            assert ink <= max(room, plan.width()), (size, width, plan.text(), ink, room)
+        signed_in.resize(1100, 800)
+        for _ in range(4):
+            qapp.processEvents()
+        plan = signed_in.solve_button
+        plan.setMaximumWidth(plan._wide(PLAN_SHORT) + 20)
+        signed_in._fit_plan_and_more()
+        qapp.processEvents()
+        assert plan.text() == PLAN_SHORT, (size, plan.text(), plan.width())
+        plan.setMaximumWidth(16777215)
+
+
 LAST_WEEK_FIXED = {
     "id": "soccer",
     "kind": "locked",
