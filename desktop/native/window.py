@@ -2600,6 +2600,7 @@ class NativeWindow(QMainWindow):
             if waiting:
                 self._choose_time(assignment["id"])
                 return
+        self.session._say("All your homework already has a time.")
 
     def _choose_time(self, assignment_id: str) -> None:
         """A time for this homework's first session that needs one, picked rather than dragged."""

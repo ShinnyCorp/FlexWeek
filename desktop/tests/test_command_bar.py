@@ -30,7 +30,7 @@ from desktop.native.command_bar import (
     ranked,
 )
 from desktop.native.settings import HELP_KEYS
-from desktop.native.widgets import HomeworkDialog
+from desktop.native.widgets import ChooseTimeDialog, HomeworkDialog
 from desktop.native.window import NativeWindow
 from desktop.server import LocalServer
 from desktop.tests.logic_support import past_setup
@@ -249,6 +249,31 @@ def test_a_click_on_a_row_runs_it(qapp: QApplication, window: NativeWindow) -> N
     row = bar.list.visualItemRect(focus).center()
     QTest.mouseClick(bar.list.viewport(), Qt.MouseButton.LeftButton, pos=row)
     assert window._stack.currentWidget() is window.focus_screen
+
+
+def test_choose_a_time_with_nothing_waiting_says_so(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    waiting = [
+        block
+        for block in window.session.blocks
+        if block.get("assignment_id") and not block.get("start")
+    ]
+    for index, block in enumerate(waiting):
+        assert window.session.place_session(block["id"], 2 + index, 16 * 60)
+    window.session.save()
+    settled(qapp, window)
+    def must_not_open(self: ChooseTimeDialog) -> int:
+        raise AssertionError("Choose a time should not open")
+
+    monkeypatch.setattr(ChooseTimeDialog, "exec", must_not_open)
+    open_bar(window)
+    bar = window.command_bar
+    QTest.keyClicks(bar.input, "choose a time")
+    assert bar.shown_words() == ["Choose a time…"]
+    QTest.keyClick(bar.input, Qt.Key.Key_Return)
+    qapp.processEvents()
+    assert window.toast.text() == "All your homework already has a time."
 
 
 def test_plan_says_suggest_times_for_a_student_who_plans_by_hand(
