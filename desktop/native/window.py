@@ -58,7 +58,6 @@ from desktop.native.calendar import (
     is_series,
     monday_of,
     span_clash,
-    span_problem,
     sunday_due,
 )
 from desktop.native.client import PASSWORD_LENGTH_HINT, USERNAME_HINT, sign_in_problem, sign_up_problem
@@ -156,13 +155,12 @@ from desktop.native.widgets import (
     ChooseTimeDialog,
     ConfirmSheet,
     EndsLayout,
-    FittedButton,
-    MoreButton,
-    PlanButton,
     FittedLabel,
     FlowLayout,
     HomeworkDialog,
     LateDialog,
+    MoreButton,
+    PlanButton,
     PlanReview,
     PreviewDialog,
     RoutineDialog,

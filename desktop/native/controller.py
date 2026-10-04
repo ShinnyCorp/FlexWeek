@@ -71,7 +71,6 @@ from desktop.native.remind import (
     snooze_until,
 )
 from desktop.native.reuse import (
-    copied_fixed_block,
     MAX_WEEK_BLOCKS,
     apply_plan,
     available_homework_minutes,
@@ -1008,7 +1007,10 @@ class NativeSession(QObject):
         block = next((item for item in self.blocks if item["id"] == block_id), None)
         if block is None:
             return None
-        due = due_point((self.assignments.get(block.get("assignment_id") or "") or {}).get("due"), self.week_start)
+        due = due_point(
+            (self.assignments.get(block.get("assignment_id") or "") or {}).get("due"),
+            self.week_start,
+        )
         return span_problem(self.blocks, block_id, day, start, end, due)
 
     def copy_last_week_fixed_rows(self) -> list[dict] | None:

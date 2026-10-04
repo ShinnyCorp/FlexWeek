@@ -9,25 +9,17 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QContextMenuEvent
-from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDialog, QPushButton
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtWidgets import QApplication, QPushButton
 
 from desktop.native import window as window_module
 from desktop.native.calendar import sunday_due
-from desktop.native.hours.chips import TrayChip
-from desktop.native.hours.geometry import Span
-from desktop.native.hours.hand import Gesture, Held, Verdict
 from desktop.native.layouts.base import NARROW_WIDTH
 from desktop.native.layouts.empty import EMPTY_COPY_LAST, EMPTY_USE_ROUTINE
 from desktop.native.menus import Menu
 from desktop.native.widgets import RoutineDialog
 from desktop.native.window import PLAN_LABEL, PLAN_SHORT, NativeWindow
-from PySide6.QtCore import QPointF
-from PySide6.QtGui import QMouseEvent
-
-from desktop.tests.test_hours_hand import Rig
 from desktop.tests.window_support import (  # noqa: F401
     qapp,
     server,
