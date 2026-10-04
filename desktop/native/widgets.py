@@ -625,6 +625,38 @@ class FittedButton(QPushButton):
             self.setText(words)
 
 
+class PlanButton(FittedButton):
+    """Plan my homework: the window shrinks More to its icon before this shortens."""
+
+    def _fit(self) -> None:
+        host = self.window()
+        if host is not None and hasattr(host, "_fit_plan_and_more"):
+            host._fit_plan_and_more()
+            return
+        super()._fit()
+
+
+class MoreButton(FittedButton):
+    """More in the top bar: its words, then its icon alone when the row is tighter still."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("More", "", parent)
+        self.setIconSize(QSize(20, 20))
+        icons.tint(self, "ellipsis")
+
+    def _fit(self) -> None:
+        host = self.window()
+        if host is not None and hasattr(host, "_fit_plan_and_more"):
+            host._fit_plan_and_more()
+            return
+        if self.width() >= self._wide(self._full):
+            if self.text() != self._full:
+                self.setText(self._full)
+            return
+        if self.text():
+            self.setText("")
+
+
 class EndsLayout(QLayout):
     """Two groups on one row, the first at its left and the second at its right, each as wide as it
     asks while there is room. Short of room, the first gives way first, down to its smallest, then
@@ -3525,6 +3557,7 @@ def _deadline_passed(due: object, now: datetime) -> bool:
 class UnfinishedPanel(QWidget):
     plan_requested = Signal(str)
     delete_requested = Signal(str)
+    collapsed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -3540,10 +3573,14 @@ class UnfinishedPanel(QWidget):
         dismiss = QPushButton("Hide")
         dismiss.setObjectName("unfinishedDismiss")
         dismiss.setProperty("quiet", True)
-        dismiss.clicked.connect(self.hide)
+        dismiss.clicked.connect(self._collapse)
         row.addWidget(dismiss)
         row.addStretch(1)
         layout.addLayout(row)
+        self.hide()
+
+    def _collapse(self) -> None:
+        self.collapsed.emit()
         self.hide()
 
     def set_items(self, items: list[dict], now: datetime | None = None) -> None:
