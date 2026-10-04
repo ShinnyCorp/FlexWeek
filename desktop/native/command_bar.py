@@ -102,35 +102,43 @@ def match_rank(query: str, words: str, tip: str = "") -> int | None:
     return None
 
 
-def match_span(query: str, words: str) -> tuple[int, int] | None:
-    """Where in `words` the typed letters show up, for highlighting in the list."""
+def _word_starts(text: str) -> list[int]:
+    starts: list[int] = []
+    looking = True
+    for index, char in enumerate(text):
+        if char.isspace():
+            looking = True
+        elif looking:
+            starts.append(index)
+            looking = False
+    return starts
+
+
+def match_span(query: str, words: str) -> list[tuple[int, int]]:
+    """Where in `words` the typed letters show up, for highlighting in the list.
+
+    Word starts, then a run of letters, then the initials themselves — each initial its own
+    span, never one run across words.
+    """
     wanted = " ".join(query.casefold().split())
     if not wanted:
-        return None
+        return []
     text = words.casefold()
     if text.startswith(wanted):
-        return 0, len(wanted)
-    for part in text.split():
+        return [(0, len(wanted))]
+    starts = _word_starts(text)
+    for start in starts:
+        part = text[start:].split(None, 1)[0]
         if part.startswith(wanted):
-            start = text.index(part)
-            return start, start + len(wanted)
+            return [(start, start + len(wanted))]
     if wanted in text:
         start = text.index(wanted)
-        return start, start + len(wanted)
+        return [(start, start + len(wanted))]
     letters = wanted.replace(" ", "")
-    if letters and "".join(part[0] for part in text.split()).startswith(letters):
-        start = 0
-        need = list(letters)
-        end = 0
-        for index, char in enumerate(text):
-            if need and char == need[0]:
-                if not start and index:
-                    start = index
-                need.pop(0)
-                end = index + 1
-                if not need:
-                    return start, end
-    return None
+    initials = "".join(text[start] for start in starts)
+    if letters and initials.startswith(letters):
+        return [(start, start + 1) for start in starts[: len(letters)]]
+    return []
 
 
 def ranked(query: str, commands: list[Command]) -> list[Command]:
@@ -203,7 +211,7 @@ class CommandRow(QStyledItemDelegate):
         font = caption(option.font)
         painter.setFont(font)
         label = index.data(Qt.ItemDataRole.DisplayRole) or ""
-        span = match_span(self.query, str(label))
+        spans = match_span(self.query, str(label))
         left = row.left() + 8
         item = None
         parent = self.parent()
@@ -213,7 +221,7 @@ class CommandRow(QStyledItemDelegate):
             item.icon().paint(painter, QRect(left, row.center().y() - 8, 16, 16))
             left += 22
         metrics = QFontMetrics(font)
-        if span is None:
+        if not spans:
             painter.setPen(QColor(self.text))
             painter.drawText(
                 QRect(left, row.top(), row.right() - left - 56, row.height()),
@@ -221,10 +229,17 @@ class CommandRow(QStyledItemDelegate):
                 label,
             )
         else:
-            start, end = span
-            before, hit, after = label[:start], label[start:end], label[end:]
+            pieces: list[tuple[str, str]] = []
+            cursor = 0
+            for start, end in spans:
+                if start > cursor:
+                    pieces.append((label[cursor:start], self.text))
+                pieces.append((label[start:end], self.accent))
+                cursor = end
+            if cursor < len(label):
+                pieces.append((label[cursor:], self.text))
             x = left
-            for piece, colour in ((before, self.text), (hit, self.accent), (after, self.text)):
+            for piece, colour in pieces:
                 if not piece:
                     continue
                 painter.setPen(QColor(colour))

@@ -18,7 +18,16 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
 from desktop.native.calendar import sunday_due
-from desktop.native.command_bar import BAR_WIDTH, KEY_ROLE, KEYS_ROLE, Command, grouped, match_rank, ranked
+from desktop.native.command_bar import (
+    BAR_WIDTH,
+    KEY_ROLE,
+    KEYS_ROLE,
+    Command,
+    grouped,
+    match_rank,
+    match_span,
+    ranked,
+)
 from desktop.native.settings import HELP_KEYS
 from desktop.native.widgets import HomeworkDialog
 from desktop.native.window import NativeWindow
@@ -111,6 +120,17 @@ def test_typing_filters_by_letters_in_order_then_by_first_letters() -> None:
     assert [command.key for command in ranked("pmh", commands)] == ["p"]
     assert [command.key for command in ranked("orks", commands)] == ["math"]
     assert match_rank("zz", "Math worksheet") is None
+
+
+def test_match_span_marks_initials_as_themselves_and_word_starts() -> None:
+    """#89: "pmh" was (5, 9) "my h"; initials must not mark one run across words."""
+    assert match_span("pmh", "Plan my homework") == [(0, 1), (5, 6), (8, 9)]
+    assert match_span("pmh", "Plan my homework") != (5, 9)
+    assert match_span("aft", "Add fixed time") == [(0, 1), (4, 5), (10, 11)]
+    assert match_span("aft", "Add fixed time") != [(4, 11)]
+    assert match_span("plan", "Plan my homework") == [(0, 4)]
+    assert match_span("home", "Plan my homework") == [(8, 12)]
+    assert match_span("home", "Add homework") == [(4, 8)]
 
 
 def test_ctrl_k_opens_a_centred_box_listing_what_can_be_done(
