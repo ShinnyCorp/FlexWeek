@@ -27,8 +27,10 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.look import resolved_palette
     from desktop.native.tokens import WEIGHT_STRONG
     from desktop.native.weekmodel import set_clock_24h
-    from desktop.tests.test_layout_bento import shown as bento_shown, text
-    from desktop.tests.test_layout_mission import BLOCKS, block, shown as mission_shown
+    from desktop.tests.test_layout_bento import shown as bento_shown
+    from desktop.tests.test_layout_bento import text
+    from desktop.tests.test_layout_mission import BLOCKS, block
+    from desktop.tests.test_layout_mission import shown as mission_shown
 
 
 @pytest.fixture(scope="module")

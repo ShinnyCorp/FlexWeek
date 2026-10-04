@@ -597,7 +597,7 @@ def test_the_line_for_now_stops_short_of_a_ticks_icon(
         if bare.pixel(x, y) != lit.pixel(x, y)
     ]
     assert changed == [], "the line for now is drawn on the tick's icon"
-    middle = dinner.center().toPoint()
+    middle = tick.center().toPoint()
     across = {lit.pixelColor(x, middle.y()).name() for x in range(middle.x() - 2, middle.x() + 3)}
     assert hours.painter.c("now").name() in across
 
