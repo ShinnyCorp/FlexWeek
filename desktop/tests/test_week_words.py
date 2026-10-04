@@ -195,14 +195,18 @@ def test_a_short_homework_length_is_hours_and_minutes_not_a_time_of_day() -> Non
 
 
 def test_fridays_header_says_2h_15m_when_the_column_is_narrow(qapp: QApplication) -> None:
-    """The day's homework length under Friday must not look like 2:15."""
+    """The day's homework length under Friday must not look like 2:15. Finding #81: "2h 15m" at
+    every width, including a Friday column as wide as it is in an 810 px window."""
     from desktop.native.hours.classic import DayName
+    from desktop.native.window import WINDOW_MIN_WIDTH
 
     name = DayName(4)
     name.show_day("Fri", "18", 135, False)
-    name.resize(48, 80)
-    words = name.homework_words()
-    assert words in ("2 h 15 min", "2h 15m"), words
-    assert ":" not in words
-    assert words != "2 h 15"
+    for width in (48, 77, 96, 120):
+        name.resize(width, 80)
+        words = name.homework_words()
+        assert words == "2h 15m", (width, words)
+        assert ":" not in words
+        assert words != "2 h 15"
+    assert WINDOW_MIN_WIDTH == 800
 
