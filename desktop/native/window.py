@@ -2768,9 +2768,22 @@ class NativeWindow(QMainWindow):
         if len(sessions) <= 1:
             self._delete_homework(assignment["id"])
             return
-        day_name = DAY_FULL[on] if on is not None else "this day"
-        if confirm(self, "Delete", f"Delete {title} on {day_name}? You can undo this.", "This time"):
+        sheet = ConfirmSheet(
+            self,
+            "Delete homework",
+            f"Delete {title}? Its times on the calendar go too, in every week. You can undo this.",
+            (
+                ("stay", "Cancel", "outlined"),
+                ("time", "This time", ""),
+                ("all", "Delete", "danger"),
+            ),
+            default="stay",
+        )
+        sheet.exec()
+        if sheet.answer == "time":
             self._delete_block(block, "occurrence", on)
+        elif sheet.answer == "all":
+            self._delete_homework(assignment["id"], ask=False)
 
     def _spot_menu(self, day: int, minute: int, at: QPoint) -> None:
         """What an empty spot in the hours offers: fixed time at the step under the pointer, homework

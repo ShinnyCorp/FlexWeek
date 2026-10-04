@@ -18,7 +18,7 @@ from desktop.native.calendar import monday_of, sunday_due
 from desktop.native.layouts.base import NARROW_WIDTH
 from desktop.native.layouts.empty import EMPTY_COPY_LAST, EMPTY_USE_ROUTINE
 from desktop.native.menus import Menu
-from desktop.native.widgets import PreviewDialog, RoutineDialog
+from desktop.native.widgets import ConfirmSheet, PreviewDialog, RoutineDialog
 from desktop.native.window import PLAN_LABEL, PLAN_SHORT, NativeWindow
 from desktop.tests.window_support import (  # noqa: F401
     qapp,
@@ -331,3 +331,57 @@ def test_copying_last_weeks_fixed_times_does_not_park_it_as_unsaved(
     wait_until(qapp, lambda: session.week_start == previous and not session.busy)
     assert "Soccer" in [block["title"] for block in session.blocks]
     assert previous not in session.unsaved_weeks()
+
+
+def two_essay_sessions(window: NativeWindow) -> tuple[dict, dict]:
+    from copy import deepcopy
+
+    session = window.session
+    first = next(item for item in session.blocks if item.get("assignment_id") == "math")
+    extra = deepcopy(first)
+    extra["id"] = "math-2"
+    extra["days"] = [4]
+    extra["start"] = "16:00"
+    session.blocks.append(extra)
+    return first, session.assignments["math"]
+
+
+def test_deleting_one_time_of_homework_from_the_menu_asks_which(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+) -> None:
+    block, assignment = two_essay_sessions(window)
+
+    def run(sheet: ConfirmSheet) -> int:
+        words = {button.text() for button in sheet.buttons.values()}
+        assert "This time" in words and "Delete" in words
+        chosen = next(key for key, button in sheet.buttons.items() if button.text() == "This time")
+        sheet.buttons[chosen].click()
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(ConfirmSheet, "exec", run)
+    window._delete_from_block_menu(block, assignment, 2)
+    settled(qapp, window)
+    kept = [item for item in window.session.blocks if item.get("assignment_id") == "math"]
+    assert len(kept) == 1 and kept[0]["days"] == [4]
+    assert "math" in window.session.assignments
+
+
+def test_deleting_the_whole_homework_from_the_menu_uses_the_editors_words(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+) -> None:
+    block, assignment = two_essay_sessions(window)
+    questions: list[str] = []
+
+    def run(sheet: ConfirmSheet) -> int:
+        questions.append(sheet.question.text())
+        chosen = next(key for key, button in sheet.buttons.items() if button.text() == "Delete")
+        sheet.buttons[chosen].click()
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(ConfirmSheet, "exec", run)
+    window._delete_from_block_menu(block, assignment, 2)
+    settled(qapp, window)
+    assert questions == [
+        "Delete Math worksheet? Its times on the calendar go too, in every week. You can undo this."
+    ]
+    assert "math" not in window.session.assignments
