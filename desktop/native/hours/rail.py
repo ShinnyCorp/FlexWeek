@@ -668,6 +668,7 @@ class Rail(QFrame):
         self.waiting_chip.setObjectName("railWaitingChip")
         self.waiting_chip.setProperty("quiet", True)
         self.waiting_chip.clicked.connect(self._open_waiting)
+        self.hand.active_changed.connect(self._hide_waiting_on_drag)
         chip_row = QHBoxLayout(self.waiting_chip)
         chip_row.setContentsMargins(8, 4, 8, 4)
         chip_row.setSpacing(6)
@@ -897,6 +898,23 @@ class Rail(QFrame):
         popup.installEventFilter(self)
         self._waiting_popup = popup
         popup.show()
+
+    def _hide_waiting_on_drag(self, active: bool) -> None:
+        if active:
+            self._dismiss_waiting_popup()
+
+    def _dismiss_waiting_popup(self) -> None:
+        popup = self._waiting_popup
+        if popup is None or not isValid(popup):
+            self._waiting_popup = None
+            return
+        # Chips must leave the popup before it is deleted, or the press that started the drag dies.
+        # Hide now: close() waits for the event loop, and tests send the drop before that.
+        self._waiting_popup = None
+        popup.removeEventFilter(self)
+        self._place_chips()
+        popup.hide()
+        popup.close()
 
     def eventFilter(self, watched, event):  # noqa: N802
         popup = self._waiting_popup

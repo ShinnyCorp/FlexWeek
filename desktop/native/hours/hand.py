@@ -310,7 +310,13 @@ class Hand(QObject):
             if event.key() == Qt.Key.Key_Escape:
                 self._end(silent=True)
                 return True
-        elif kind in (QEvent.Type.ApplicationDeactivate, QEvent.Type.WindowDeactivate):
+        elif kind == QEvent.Type.ApplicationDeactivate:
+            self._end(silent=True)
+        elif kind == QEvent.Type.WindowDeactivate:
+            # The folded rail's waiting list is a Qt.Popup. Closing it deactivates that popup,
+            # which must not cancel a drag that has already started from a chip inside it.
+            if isinstance(watched, QWidget) and watched.windowFlags() & Qt.WindowType.Popup:
+                return False
             self._end(silent=True)
         return False
 

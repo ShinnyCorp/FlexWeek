@@ -426,6 +426,54 @@ def test_deleting_the_whole_homework_from_the_menu_uses_the_editors_words(
     assert "math" not in window.session.assignments
 
 
+def test_the_folded_waiting_popup_is_gone_once_a_drag_has_started(
+    qapp: QApplication, window: NativeWindow  # noqa: F811
+) -> None:
+    due = sunday_due(window.session.week_start)
+    window.session.add_homework(
+        {"id": "poster", "title": "Poster", "due": due, "estimate_min": 30, "revision": 0}
+    )
+    window.session.save()
+    settled(qapp, window)
+    window.move(0, 0)
+    window.resize(800, 720)
+    for _ in range(5):
+        qapp.processEvents()
+    assert window.rail.folded
+    window.rail.waiting_chip.click()
+    qapp.processEvents()
+    popup = window.findChild(QWidget, "railWaitingPopup")
+    assert popup is not None and popup.isVisible()
+    waiting = next(block for block in window.session.blocks if block.get("assignment_id") == "poster")
+    chip = next(
+        widget
+        for widget in window.findChildren(QPushButton)
+        if widget.property("block_id") == waiting["id"] and widget.property("tray") and widget.isVisible()
+    )
+    hours = window.week_table.hours
+    if not hours.tracks:
+        hours.resize(980, 640)
+        hours.relayout()
+    hours.reveal(2, 15 * 60, 18 * 60)
+    qapp.processEvents()
+    start = chip.mapToGlobal(chip.rect().center())
+    end = hours.point_for(2, 16 * 60)
+    send_mouse(chip, QEvent.Type.MouseButtonPress, start, True)
+    for step in range(1, 9):
+        moved = QPoint(
+            start.x() + (end.x() - start.x()) * step // 8,
+            start.y() + (end.y() - start.y()) * step // 8,
+        )
+        send_mouse(hours, QEvent.Type.MouseMove, moved, True)
+        if window.hand.active:
+            break
+    qapp.processEvents()
+    assert window.hand.active
+    shown = window.findChild(QWidget, "railWaitingPopup")
+    assert shown is None or not shown.isVisible()
+    window.hand.cancel()
+
+
 def test_the_folded_waiting_chip_has_a_chevron_and_opens_without_resizing(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,
