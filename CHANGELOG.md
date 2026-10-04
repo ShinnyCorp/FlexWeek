@@ -3,6 +3,83 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- An empty week shows a card over the hours offering "Copy last week's fixed
+  times" and "Use a routine". The hours round it can still be clicked and
+  dragged on, and the card goes once something is added. An empty Routines
+  list says "No routines saved yet."
+- F1 opens Help and Ctrl+N opens Add homework from the week. Both are listed
+  in Help and in Ctrl+K.
+- Ctrl+K lists Alerts, This computer and Choose a time…. Choose a time with
+  nothing waiting says "All your homework already has a time."
+- Plan gives two new reasons. A deadline that has already passed says "That
+  time has already passed.", and homework due today with no study time left
+  says "Due today and no study time is left today."
+- The alarm list in Settings › Alerts shows which alarm has the keyboard and
+  which is selected.
+
+### Changed
+- A short block shows its name, then its start, in every design. A time range
+  stays on one line ("08:30–14:15", "8:30 AM–2:15 PM"), the title is cut
+  before the time, and a length reads "2h 15m" at every width.
+- The line for now runs on under a block's words and icon instead of stopping
+  short of them.
+- Timeline writes a deadline as "due Sun 4 Oct" and a placed block as "placed
+  Fri 15:30". Unfinished lists only homework whose deadline has passed, and is
+  greyed when there is none. After its first showing in a session the
+  Unfinished card folds into a one-line badge that opens it again.
+- Mission control keeps a block's bar and icon down to 8 px wide, the title
+  cut first, and draws a tick only below that.
+- "Planned" means placed homework time in every design. Bento says "Nothing
+  free now" after the last study hour, Clay's "Free until" leaves out
+  everything still ahead, and lines that said the same thing twice say it
+  once.
+- While a timer runs, Today's app shows the one-line strip the other designs
+  show ("Session · 29:42 left · Focus screen").
+- The block menu and the free-time menu are the same width and style. The
+  block menu has Copy and one Delete, which for homework with more than one
+  time asks whether to delete this time or the whole homework.
+- Below 1100 px wide, "Not placed yet · 1" is a chip with the book icon and a
+  chevron. It opens the list under it and no longer widens the window.
+- "Plan my homework" keeps its words while they fit; then More shrinks to its
+  icon, then the label drops "my", at every width and text size.
+- Plan's review panel slides in over the week, drawn whole, instead of popping
+  in and pushing the week down.
+- Settings opens without a pause: the page stays built between opens and
+  shows what the signed-in account holds.
+- Offline, Plan says "Can't reach FlexWeek, so nothing was planned. Try
+  again." and Save says "Not saved: FlexWeek can't be reached. Your changes
+  are still here. Choose Retry save." Plan that places nothing says "Nothing
+  placed. 1 still needs a time."
+- About, Manage account, Create account and Sign out say the same thing about
+  where the week is kept: on this computer (or the server), under this
+  account.
+- More's Undo is on whenever the toast offers Undo. Save, Restore and Reload
+  are "Save this week now", "Copies of this week…" and "Reload this week as it
+  is saved".
+- A new row in Setup's "Sports, clubs and jobs" named after a common sport
+  (soccer, swim, track, tennis and others) starts as Sports; anything else,
+  such as "Piano practice", starts as Activity. Either can still be changed.
+
+### Fixed
+- A block dropped on a past day is refused with "That's in the past." and goes
+  back. The drag ghost takes the block's colour, writes the whole name when it
+  fits, and the placed block keeps its icon.
+- The sign-in card's message clears when the card changes to another page.
+- Homework blocks in Timeline, Mission control, Bento, Retro, Clay and One
+  thing had no time line or edge, and the hours stopped painting after the
+  first one.
+- Add homework's past-deadline check took the date and the time of day from
+  different clocks.
+- Going back a week after Copy last week's fixed times could stop the app.
+- Bento's now pill sat inside today's column, Mission's names beside a block
+  were crossed by the line for now, Mission's 00:00 label sat 6 px left of the
+  hours, Clay's Day card had no hours while it slid in, Bento's header read
+  "F 2", and 12-hour times were cut in Clay's Day summary and Retro's
+  deadlines at Large text and 810 px.
+
 ## [0.18.1] - 2026-10-03
 
 ### Added

@@ -1,11 +1,13 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-10-04, `release/0.18.2` (local, not pushed): lane 0 repairs, lane 6 settings-open (J12,
-  #98, #65) and the test-memory repair are merged. Test cleanup now deletes the windows each test
-  made: a 4-worker whole suite took about 1.4 GB at most (it was about 9 GB). Whole suite: 2833
-  passed, 1 failed, the tooltip test fixed since (c45333c). `test_ui_dialogs.py`'s work-windows
-  test fails when its file runs alone (sheet 622 px, wants 640); passes in the whole suite.
+- 2026-10-04, `release/0.18.2` (local, not pushed): all of batch A is merged (lanes 0-6 and the
+  test-memory repair); CHANGELOG has its `[Unreleased]` entry. Ruff and mypy clean; every test file
+  a lane touched passes, one file per process. The whole suite and the rigs have not run on it with
+  everything merged. Test cleanup deletes the windows each test made, so a 4-worker whole suite
+  takes about 1.4 GB (it was about 9 GB). `test_ui_dialogs.py`'s work-windows test fails when its
+  file runs alone (sheet 622 px, wants 640), on main too; `test_more_menu_words.py`'s Unfinished in
+  Timeline test failed once in five runs of its file.
 - 2026-10-03. v0.18.1 is the latest release (PR 40, 907fa4b): the 20 Fix-first findings of the
   0.17.2 audit, Jonathan's J1-J6 and the engine leftovers. 0.18.2 is planned in full in roadmap.md
   (batch A for Grok, batch B after mockup round 2), as is 0.18.3; the decisions 0.18.1 left open are
@@ -38,10 +40,6 @@
   (list in the scratch report); `hypothesis` is now used by no test and awaits Jonathan's word to go.
 - spec.md drift: its CI desk step says "the desk parity files and the wrapper modules' tests"; it now
   runs the parity files plus `test_tokens.py` and `test_update.py`.
-- Open for 0.17.3 (design polish, from 0.17.2): Bento's now pill inside today's column; Mission's
-  beside-block names crossed by the now line; Clay's Day card with no hours for about 100 ms while it
-  slides in; 12-hour times cut at Large 810 in Clay's Day summary and Retro's deadlines; Bento's
-  header "F 2" at Large 810; Mission's 00:00 label 6 px left of the canvas.
 
 ## Repo Landmarks
 ```
@@ -125,7 +123,7 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-04, `release/0.18.2` in `~/.worktrees/flexweek-0182-release`. Merged: repairs, settings-open,
-  test memory. Waiting on Grok's fixes to keys, messages, designs, week-words and week-behaviour
-  (prompt: `~/.flexweek-ui-harness/scratch/0.18.x/grok-0182-prompt-fixes.md`); review and merge each,
-  then spec.md's two new reason codes (approved) with messages, CHANGELOG, and the PR on Jonathan's word.
+- 2026-10-04, `release/0.18.2` in `~/.worktrees/flexweek-0182-release` (`.venv` is
+  `venv-0182-engine`, the engine with the new reason codes). Batch A merged and its CHANGELOG
+  written. Next: the whole suite and the rigs on release, Jonathan's look at #98's sliding plan
+  panel, then the PR. Batch B waits for mockup round 2.

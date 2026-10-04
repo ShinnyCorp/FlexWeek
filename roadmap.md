@@ -228,11 +228,13 @@ test.
   did not run.
 - Add homework's past-deadline check took the date from one clock and the time
   of day from another, so a test failed every afternoon. Done: one clock.
-- Still open: `test_every_field_in_a_forms_column_starts_at_the_same_left_edge`
-  fails only in the whole suite (something an earlier test leaves behind);
-  not pinned.
+- `test_every_field_in_a_forms_column_starts_at_the_same_left_edge` failed
+  only in the whole suite: after a test that cached the design pictures it
+  read the page while Settings was still sliding in. Done: it waits for the
+  slide to finish. Each test's windows are now deleted after it, which kept a
+  4-worker run to about 1.4 GB.
 
-#### Batch A, lane 1: times and words on blocks
+#### Batch A, lane 1: times and words on blocks (merged 2026-10-04)
 - #13 In Today's app, Paper and Timeline a 45-minute "Math worksheet"
   (17:00–17:45) shows its name only; Clay and Retro show "Math worksheet
   17:00". Done when every design writes a short block as its name, then its
@@ -255,7 +257,7 @@ test.
   continuous line drawn under the block's text and icon, in every design that
   draws through the shared hours canvas.
 
-#### Batch A, lane 2: week behaviour (after lane 1; both touch the canvas)
+#### Batch A, lane 2: week behaviour (after lane 1; both touch the canvas) (merged 2026-10-04)
 - #15 A block can be dropped onto a past day with no warning; the drag ghost is
   tan and cuts "Math worksh…" with room to spare; the placed block loses its
   book icon. Done when a drop in the past is refused with "That's in the past."
@@ -283,7 +285,7 @@ test.
   keeps its words while they fit, then "More" collapses to its icon, then the
   label drops "my".
 
-#### Batch A, lane 3: designs
+#### Batch A, lane 3: designs (merged 2026-10-04)
 - J9 Mission draws any block of 30 minutes or less as a tick, named only on
   hover, in its day and week lanes. Done when every block keeps its bar and
   icon down to a minimum width, the title cut first, and a tick appears only
@@ -301,7 +303,7 @@ test.
   counted in one place; after the last study hour it says "Nothing free now";
   and each doubled line is said once.
 
-#### Batch A, lane 4: keys
+#### Batch A, lane 4: keys (merged 2026-10-04)
 - #88 F1 opens no Help and Ctrl+N does not open Add homework. Done when both
   work from the week page and both are listed in Help and in Ctrl+K.
 - #89 The Ctrl+K palette is cut at the window's bottom; the hovered row and the
@@ -311,7 +313,7 @@ test.
   Alerts, This computer and Choose a time, and the look entry uses the app's
   word for it.
 
-#### Batch A, lane 5: messages (may change the engine)
+#### Batch A, lane 5: messages (may change the engine) (merged 2026-10-04)
 - #44 Late in the day Plan says "That does not fit in the times you set aside
   for work." when today's hours are over or the deadline has passed; the
   nothing-placed toast reads "Planned 0 homework blocks. 1 still needs a
@@ -342,7 +344,7 @@ test.
   volleyball, baseball, hockey, practice, …) make it Sports, else Activity,
   and the student can still change it.
 
-#### Batch A, lane 6: opening Settings and the plan panel
+#### Batch A, lane 6: opening Settings and the plan panel (merged 2026-10-04)
 - J12 (rest) Settings takes about 170 ms to build before its slide can start,
   on every open, because closing deletes the page and opening builds it again.
   Done when the slide starts within one frame of the click (build ahead while
@@ -356,6 +358,16 @@ test.
 - #65 In Settings › Alerts the alarm list shows no focus or selection with Tab
   or the arrow keys, so a keyboard user cannot tell what Remove will remove.
   Done when alarm rows show a focus ring and a selection.
+
+#### Batch A: still open before 0.18.2 ships
+- The whole suite and the rigs have not run on `release/0.18.2` with every
+  lane merged; each lane's own test files pass one file at a time.
+- #98's sliding plan panel needs Jonathan's look on a real screen.
+- `test_more_menu_words.py::test_unfinished_opens_its_list_in_any_design`
+  failed once in five runs of its file ("Timeline showed nothing"); not
+  pinned.
+- `test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings`
+  fails when its file runs alone (622 px against 640), on main too.
 
 #### Batch B (after mockup round 2)
 Mockup round 2: Setup's Style page and page layout; Add and Edit homework with
