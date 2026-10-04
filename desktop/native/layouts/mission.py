@@ -266,6 +266,7 @@ class MissionPainter(BlockPainter):
                 "error": tokens["danger"],
                 "text": tokens["text"],
                 "muted": tokens["muted"],
+                "block_edge": tokens["block_edge"],
             }
         )
         self.tokens = tokens
