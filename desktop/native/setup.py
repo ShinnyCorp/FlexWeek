@@ -477,7 +477,6 @@ SPORT_WORDS = frozenset(
         "volleyball",
         "baseball",
         "hockey",
-        "practice",
         "lacrosse",
         "softball",
         "golf",

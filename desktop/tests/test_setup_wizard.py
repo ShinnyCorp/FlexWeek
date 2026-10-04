@@ -867,7 +867,9 @@ def test_setup_saves_the_chosen_sports_category_and_restores_it(qapp: QApplicati
 
 def test_a_typed_sport_name_is_sports_and_the_student_can_still_change_it(qapp: QApplication) -> None:
     assert activity_category_for("Soccer") == "exercise"
-    assert activity_category_for("swim practice") == "exercise"
+    assert activity_category_for("swim practice") == "extra"
+    assert activity_category_for("Piano practice") == "extra"
+    assert activity_category_for("Band practice") == "extra"
     assert activity_category_for("Band") == "extra"
     row = ActivityRow()
     assert row.category.currentData() == "extra"
