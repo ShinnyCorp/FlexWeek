@@ -1,10 +1,11 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-10-04, `chatgpt/0182-test-memory`: desktop test cleanup deletes new Python-owned windows,
-  including hidden ones. The same 181-test group passes before and after; peak sampled RSS falls
-  from 3,696 to 589 MiB, ending with zero live windows and six shared application QObjects.
-  Settings' column-alignment test now settles its opening slide before reading pixels.
+- 2026-10-04, `release/0.18.2` (local, not pushed): lane 0 repairs, lane 6 settings-open (J12,
+  #98, #65) and the test-memory repair are merged. Test cleanup now deletes the windows each test
+  made: a 4-worker whole suite took about 1.4 GB at most (it was about 9 GB). Whole suite: 2833
+  passed, 1 failed, the tooltip test fixed since (c45333c). `test_ui_dialogs.py`'s work-windows
+  test fails when its file runs alone (sheet 622 px, wants 640); passes in the whole suite.
 - 2026-10-03. v0.18.1 is the latest release (PR 40, 907fa4b): the 20 Fix-first findings of the
   0.17.2 audit, Jonathan's J1-J6 and the engine leftovers. 0.18.2 is planned in full in roadmap.md
   (batch A for Grok, batch B after mockup round 2), as is 0.18.3; the decisions 0.18.1 left open are
@@ -124,11 +125,7 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-04, `chatgpt/0182-test-memory`, from `release/0.18.2` at fba3c0b. Window retention is
-  measured and repaired in test fixtures; the separate alignment failure is reproduced with cached
-  previews and repaired by completing Settings' animation before capture. App and engine unchanged.
-- Scoped validation: 181 desktop tests passed after cleanup; lifecycle and alignment deliberate
-  breaks failed their assertions; restored alignment, tooltip and all 17 Settings tests pass.
-  Ruff and mypy pass.
-- Full gate, rig and Windows are unverified. The report and per-test CSVs are in
-  `~/.flexweek-ui-harness/scratch/0.18.x/test-memory/`. Nothing pushed or merged.
+- 2026-10-04, `release/0.18.2` in `~/.worktrees/flexweek-0182-release`. Merged: repairs, settings-open,
+  test memory. Waiting on Grok's fixes to keys, messages, designs, week-words and week-behaviour
+  (prompt: `~/.flexweek-ui-harness/scratch/0.18.x/grok-0182-prompt-fixes.md`); review and merge each,
+  then spec.md's two new reason codes (approved) with messages, CHANGELOG, and the PR on Jonathan's word.
