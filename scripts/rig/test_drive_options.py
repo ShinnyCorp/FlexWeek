@@ -136,3 +136,43 @@ def test_drive_keeps_an_empty_caller_bus_when_the_live_one_changes(monkeypatch):
     monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/private")
     monkeypatch.setenv("FLEXWEEK_CALLER_BUS", "")
     assert drive.session_from_fwtest() == (":71", "unix:path=/private", "abc-1")
+
+
+def test_a_run_that_stops_before_the_last_scenario_is_a_failure():
+    plan = [
+        ("timeline", "week", "week-move-day"),
+        ("timeline", "week", "week-resize-top"),
+        ("timeline", "week", "week-create"),
+    ]
+    results = [
+        {"design": "timeline", "tab": "week", "scenario": "week-move-day", "result": "PASS"},
+        {"design": "timeline", "tab": "week", "scenario": "week-resize-top", "result": "PASS"},
+    ]
+    line, code, payload = drive.report_run(plan, results, finished=False, stopped_in="week-create")
+    assert code == 1
+    assert "passed" not in line.lower()
+    assert "STOPPED" in line and "week-create" in line
+    skipped = [item for item in payload if item["result"] == "SKIPPED"]
+    assert skipped == [{"design": "timeline", "tab": "week", "scenario": "week-create", "result": "SKIPPED"}]
+
+
+def test_a_python_error_from_the_app_is_a_failure():
+    plan = [("timeline", "week", "week-beside")]
+    results = [{"design": "timeline", "tab": "week", "scenario": "week-beside", "result": "PASS"}]
+    line, code, payload = drive.report_run(
+        plan, results, finished=True, python_error="KeyError: 'block_edge'", stopped_in="week-beside"
+    )
+    assert code == 1
+    assert "passed" not in line.lower()
+    assert "STOPPED" in line and "week-beside" in line
+    assert "KeyError" in line
+    assert payload == results
+
+
+def test_a_finished_run_where_every_scenario_passed_still_says_passed():
+    plan = [("bento", "week", "week-move-day")]
+    results = [{"design": "bento", "tab": "week", "scenario": "week-move-day", "result": "PASS"}]
+    line, code, payload = drive.report_run(plan, results, finished=True)
+    assert code == 0
+    assert line == "1/1 passed."
+    assert payload == results
