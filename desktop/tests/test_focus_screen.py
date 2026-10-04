@@ -133,7 +133,9 @@ def test_quick_focus_fills_the_window_and_esc_comes_back(qapp: QApplication, win
     assert window.session.focus is not None, "going back leaves the timer running"
     assert window._scene_for("mission").focus == "focusing", "a design is told the timer runs"
     panel = window.focus_panel
-    assert panel.time.isVisible() and panel.task.text() == "Quick focus"
+    # #18: in Today's app's rail the timer is one line, its time in the words.
+    line = panel.task.text()
+    assert panel.task.isVisible() and line.startswith("Session · ") and line.endswith(" left")
     assert visible_buttons(panel) == ["Focus screen"], "the strip keeps its line and one way back"
     QTest.mouseClick(panel.screen, LEFT)
     assert on_screen(window) == "focusPage"
