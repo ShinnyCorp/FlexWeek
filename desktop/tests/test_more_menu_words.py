@@ -12,7 +12,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPoint, QStandardPaths, QUrl
+from PySide6.QtCore import QEvent, QPoint, QStandardPaths, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QFontMetrics, QImage, QRegion
 from PySide6.QtWidgets import (
     QApplication,
@@ -454,8 +454,11 @@ def test_a_description_is_as_large_as_the_text_the_student_chose(
         qapp.processEvents()
         tip = next(w for w in qapp.topLevelWidgets() if w.objectName() == "qtooltip_label" and w.isVisible())
         assert tip.font().pointSizeF() == type_pt("body", text), text
-        QToolTip.hideText()
-        qapp.processEvents()
+        # Gone at once, as Qt does when a tip times out: hideText() only hides after a moment, and the
+        # same words on the same button again are then taken as the tip already showing, which hides.
+        tip.close()
+        tip.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def test_help_and_about_are_under_more(

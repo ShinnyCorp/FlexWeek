@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TESTS = '''
 import pytest
 from PySide6.QtWidgets import QApplication, QWidget
+from shiboken6 import isValid
 
 APP = QApplication.instance() or QApplication(["flexweek-windows-between-tests"])
 # Held here as a view's own signals hold it, so the window outlives the test that showed it.
@@ -34,21 +35,35 @@ def board():
     shown.hide()
 
 
+@pytest.fixture(scope="module")
+def hidden_board():
+    hidden = QWidget()
+    yield hidden
+    hidden.deleteLater()
+
+
 def showing():
     return sorted(window.objectName() for window in QApplication.topLevelWidgets() if window.isVisible())
 
 
-def test_a_view_shown_on_its_own_is_left_showing(board):
+def test_a_view_shown_on_its_own_is_left_showing(board, hidden_board):
     view = QWidget()
     view.setObjectName("stray")
     view.resize(1366, 760)
     view.show()
-    KEPT.append(view)
+    child = QWidget(view)
+    hidden = QWidget()
+    hidden.setObjectName("hidden")
+    KEPT.extend((view, child, hidden))
     assert showing() == ["board", "stray"]
 
 
-def test_the_next_test_finds_only_what_its_module_opened(board):
+def test_the_next_test_finds_only_what_its_module_opened(board, hidden_board):
     assert showing() == ["board"]
+    assert isValid(board), "a module fixture's window was deleted"
+    assert isValid(hidden_board), "a module fixture's hidden window was deleted"
+    assert len(KEPT) == 3, "the preceding test did not retain its widgets"
+    assert all(not isValid(widget) for widget in KEPT), "a test's widget was hidden but left alive"
 '''
 
 

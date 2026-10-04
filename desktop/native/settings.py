@@ -22,6 +22,7 @@ from PySide6.QtGui import (
     QShowEvent,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QBoxLayout,
     QButtonGroup,
     QComboBox,
@@ -613,6 +614,7 @@ class SettingsPage(QWidget):
         self.setObjectName("settingsPage")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWindowTitle("Settings")
+        self.account_id = 0
         self._preferences = deepcopy(preferences)
         self._look = sanitize_look(look)
         chosen_layout = sanitize_layout(week_layout)
@@ -857,6 +859,9 @@ class SettingsPage(QWidget):
         alarms_form.addRow(self.alarm_empty)
         self.alarm_list = QListWidget()
         self.alarm_list.setObjectName("alarmList")
+        self.alarm_list.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.alarm_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.alarm_list.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         # As tall as its alarms, up to about three, and never wider than the page: a line that does not
         # fit wraps rather than hiding the days behind a sideways scroll.
         self.alarm_list.setSizeAdjustPolicy(QListWidget.SizeAdjustPolicy.AdjustToContents)
@@ -1102,6 +1107,13 @@ class SettingsPage(QWidget):
             self.nav.sizeHintForColumn(0) + margins.left() + margins.right() + 2 * self.nav.frameWidth()
             + PREFS_NAV_PAD
         )
+        ring = palette["accent"]
+        self.alarm_list.setStyleSheet(
+            f"QListWidget#alarmList {{ border: 2px solid transparent; border-radius: 8px; padding: 2px; }}"
+            f"QListWidget#alarmList:focus {{ border-color: {ring}; }}"
+            f"QListWidget#alarmList::item:selected {{ background: {palette['accent']}; "
+            f"color: {palette['accent_ink']}; }}"
+        )
 
     def _even_focus(self) -> None:
         """Timer preset as wide as the − value + fields above and below it (T20 of the 0.17.0 audit);
@@ -1142,6 +1154,40 @@ class SettingsPage(QWidget):
         before the window saves what is left."""
         self._round_if_splitting()
         self.closed.emit()
+
+    def sync_open(
+        self,
+        preferences: dict,
+        look: dict,
+        week_layout: dict | None,
+        saved_looks: list[dict] | None,
+        reminder_limits: dict,
+    ) -> None:
+        """What the account and this device hold now, before Settings is shown again."""
+        self.blockSignals(True)
+        self._preferences = deepcopy(preferences)
+        self._look = sanitize_look(look)
+        self.saved_looks = sanitize_saved(saved_looks)
+        self._alarms = [deepcopy(item) for item in preferences.get("alarms") or []]
+        self._pack = known_pack(preferences.get("theme_pack"))
+        self._accent_chosen = preferences.get("accent") or "default"
+        self.accent.setCurrentIndex(max(0, self.accent.findData(self._accent_chosen)))
+        self._motion_chosen = preferences.get("motion")
+        self._show_motion(self._look)
+        self._show_look_settings()
+        layout = sanitize_layout(week_layout)
+        for section in self.layout_sections:
+            section.pick.setCurrentIndex(max(0, section.pick.findData(layout[section.slot])))
+        self.reminders.setChecked(preferences.get("reminders_enabled", True) is not False)
+        self.lead.setValue(reminder_lead_min(preferences))
+        tone = preferences.get("alarm_tone") or FALLBACK
+        self.alarm_tone.setCurrentIndex(max(0, self.alarm_tone.findData(tone)))
+        self._render_alarms()
+        limits = self.findChild(QLabel, "reminderLimits")
+        if limits is not None:
+            keys = ("spotify", "duplicate")
+            limits.setText(" ".join(reminder_limits.get(key, "") for key in keys))
+        self.blockSignals(False)
 
     def _split_lengths(self, on: bool, say: bool = True) -> None:
         """The server refuses splitting with lengths off the 15-minute grid. There is no OK left to
@@ -1212,6 +1258,8 @@ class SettingsPage(QWidget):
         self._alarms_form.setRowVisible(self.alarm_empty, not self._alarms)
         # Nothing to remove until there is an alarm.
         self.remove_alarm.setVisible(bool(self._alarms))
+        if self._alarms:
+            self.alarm_list.setCurrentRow(0)
 
     def _add_alarm(self) -> None:
         if len(self._alarms) >= 20:

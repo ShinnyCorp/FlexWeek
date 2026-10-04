@@ -65,6 +65,7 @@ class BarPainter(BlockPainter):
                 "accent_ink": tokens["accent_ink"],
                 "error": tokens["danger"],
                 "tick": tokens["bg_ink"],
+                "block_edge": tokens["block_edge"],
             }
         )
         self.chosen = chosen

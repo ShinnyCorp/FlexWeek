@@ -285,13 +285,16 @@ def complete(tokens: dict[str, str]) -> dict[str, str]:
         f"card_{name}": _tint(tokens["accent"], tokens["surface"], share, inks, tokens["bg"])
         for name, share in zip("abcd", (0.10, 0.16, 0.22, 0.13), strict=True)
     }
-    return {
+    filled = {
         "cta": tokens["accent"],
         "cta_ink": tokens["accent_ink"],
         "fill": _fill(tokens["accent"], tokens["surface"]),
         **cards,
         **tokens,
     }
+    # Homework's dashed or solid outline reads this when the category has no mark of its own.
+    filled.setdefault("block_edge", mix(filled["muted"], filled["surface"], 0.75))
+    return filled
 
 
 def match_tokens(palette: dict) -> dict[str, str]:

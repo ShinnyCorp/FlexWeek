@@ -18,17 +18,29 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QRectF
-    from PySide6.QtGui import QColor, QImage, QPainter
+    from PySide6.QtGui import QColor, QFont, QImage, QPainter
     from PySide6.QtWidgets import QApplication
 
     from desktop.native.hours.canvas import BlockPainter, Drawn
+    from desktop.native.hours.classic import ClassicPainter
     from desktop.native.hours.geometry import Span
+    from desktop.native.layouts.bento import BentoPainter
+    from desktop.native.layouts.clay import ClayPainter
+    from desktop.native.layouts.dial import DialFace
+    from desktop.native.layouts.mission import MissionPainter
+    from desktop.native.layouts.one_thing import BarPainter
+    from desktop.native.layouts.registry import LAYOUTS, MATCH, tokens_for
+    from desktop.native.layouts.retro import RetroPainter, scheme
+    from desktop.native.layouts.timeline import TimelinePainter
     from desktop.native.look import category_paint, resolved_palette
+    from desktop.native.weekmodel import Occurrence
 
 RECT = QRectF(20, 20, 140, 100)
 PALETTE = resolved_palette("light-frost", False, None, "default")
 CATEGORY = "assignments"
 LOOKS = {"filled or edged": None, "outlined": {"preset": "default", "knobs": {"blocks": "outline"}}}
+# Light and dark, so a design that only ships a table on one axis still has to carry block_edge.
+DESIGN_LOOKS = {"light": ("light-frost", False), "dark": ("dark-frost", True)}
 
 
 @pytest.fixture(scope="module")
@@ -98,3 +110,72 @@ def test_a_fixed_block_and_finished_homework_have_neither_edge(
     drawn: Drawn,
 ) -> None:
     assert share(top_edge(drawn, None), mark_colour()) < 0.03
+
+
+def design_painter(design: str, palette: dict) -> BlockPainter | None:
+    """The painter that design actually hands the hours, in that look's colours. Dial has no hours
+    painter: it draws homework on the ring."""
+    if design == "classic":
+        return ClassicPainter(palette)
+    if design == "dial":
+        return None
+    tokens = tokens_for(design, MATCH, palette)
+    if design == "timeline":
+        return TimelinePainter(tokens)
+    if design == "mission":
+        return MissionPainter(tokens)
+    if design == "bento":
+        return BentoPainter(tokens)
+    if design == "clay":
+        return ClayPainter(tokens, full=True)
+    if design == "retro":
+        return RetroPainter(scheme(tokens))
+    if design == "one":
+        return BarPainter(tokens, None)
+    raise AssertionError(f"no painter wired for {design}")
+
+
+@pytest.mark.parametrize("design", list(LAYOUTS))
+@pytest.mark.parametrize("look", DESIGN_LOOKS, ids=list(DESIGN_LOOKS))
+@pytest.mark.parametrize("pinned", [False, True], ids=["planned", "pinned"])
+def test_each_design_paints_homework_in_its_own_colours(
+    qapp: QApplication,  # noqa: F811
+    design: str,
+    look: str,
+    pinned: bool,
+) -> None:
+    """Timeline, Mission and Bento used to raise KeyError: 'block_edge' on every homework block."""
+    pack, dark = DESIGN_LOOKS[look]
+    palette = resolved_palette(pack, dark, None)
+    painter = design_painter(design, palette)
+    drawn = block(pinned=pinned)
+    if painter is None:
+        face = DialFace(0, False)
+        face.resize(240, 240)
+        item = Occurrence(
+            "essay",
+            "History essay",
+            CATEGORY,
+            0,
+            17 * 60,
+            18 * 60 + 30,
+            True,
+            False,
+            False,
+            None,
+            None,
+            None,
+            pinned,
+        )
+        face.set_day((item,), 0, tokens_for("dial", MATCH, palette))
+        face.grab()
+        return
+    image = QImage(200, 140, QImage.Format.Format_ARGB32)
+    image.fill(QColor("white"))
+    paint = QPainter(image)
+    paint.setFont(QFont("Inter", 12))
+    try:
+        painter.block(paint, RECT, drawn, RECT.adjusted(-4, -4, 4, 4))
+    finally:
+        paint.end()
+    assert "block_edge" in painter.colours
