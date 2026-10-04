@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from copy import deepcopy
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from functools import partial
 from pathlib import Path
 from uuid import uuid4
@@ -3245,11 +3245,15 @@ class HomeworkDialog(Dialog):
         return before if parse_due(chosen) == parse_due(before) else chosen
 
     def _now(self) -> datetime:
-        """Now on one clock: the one given to the dialog, else the window's, else the machine's."""
+        """Now on one clock: the one given to the dialog, else the window's, else the dialog's today."""
         if self._clock is not None:
             return self._clock
         session = getattr(self.parent(), "session", None)
-        return datetime.fromtimestamp(session.now_ms() / 1000) if session is not None else datetime.now()
+        if session is not None:
+            return datetime.fromtimestamp(session.now_ms() / 1000)
+        if self._today:
+            return datetime.combine(date.fromisoformat(self._today), time.min)
+        return datetime.now()
 
     def _due_passed(self) -> bool:
         """Whether the student set a deadline that is already over. A saved deadline they did not
