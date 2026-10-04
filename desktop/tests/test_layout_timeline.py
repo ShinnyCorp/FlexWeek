@@ -52,6 +52,7 @@ if importlib.util.find_spec("PySide6") is not None:
         TimelineCanvas,
         TimelinePainter,
         TimelineView,
+        _due_words,
         due_this_week,
         week_figures,
     )
@@ -462,13 +463,21 @@ def test_the_right_pages_foot_holds_the_notes_and_what_is_due_this_week(qapp: QA
         for row in view.findChildren(QWidget, "timelineDueRow")
         if row.isVisible()
     ]
+    assert notes[0].due == "due Sun 20 Sep"
     assert [(title, when.text()) for title, when in rows] == [
-        ("Poster-1", "Not placed yet"),
-        ("Math-1", "Mon 15:45"),
-        ("Essay-1", "Thu 18:45"),
-        ("Chem-1", "Thu 20:00"),
+        ("Poster-1", "due Sun 20 Sep · Not placed yet"),
+        ("Math-1", "due Tue 15 Sep · placed Mon 15:45"),
+        ("Essay-1", "due Fri 18 Sep · placed Thu 18:45"),
+        ("Chem-1", "due Thu 17 Sep · placed Thu 20:00"),
     ]
     assert [bool(when.property("open")) for _title, when in rows] == [True, False, False, False]
+
+
+def test_a_deadline_reads_due_weekday_day_and_month() -> None:
+    """#14: a due date is the weekday, the day number and the month, never the day number alone."""
+    assert _due_words("2026-10-04") == "due Sun 4 Oct"
+    assert _due_words("2026-10-04T15:30") == "due Sun 4 Oct"
+    assert _due_words(None) == ""
 
 
 def test_what_waits_is_listed_first_and_what_is_due_later_is_left_out() -> None:
@@ -484,10 +493,10 @@ def test_what_waits_is_listed_first_and_what_is_due_later_is_left_out() -> None:
     }
     listed = due_this_week(build_week(WEEK, blocks, homework, TRACE))
     assert listed == [
-        Due("Essay-2", None),
-        Due("Poster-1", None),
-        Due("Math-1", (0, 15 * 60 + 45)),
-        Due("Chem-1", (3, 20 * 60)),
+        Due("Essay-2", None, "2026-09-18T21:00"),
+        Due("Poster-1", None, "2026-09-20T20:00"),
+        Due("Math-1", (0, 15 * 60 + 45), "2026-09-15T08:00"),
+        Due("Chem-1", (3, 20 * 60), "2026-09-17T23:59"),
     ]
 
 
@@ -556,6 +565,12 @@ def test_day_sums_the_day_up_says_what_is_next_and_lists_what_is_due_with_nothin
     assert shares == [("School", "6 h 30 min"), ("Meals", "30 min"), ("Homework", "2 h 30 min")]
     (line,) = view.findChildren(QLabel, "timelineNext")
     assert plain(line) == "Dinner at 18:00, in 4 h 20 min"
+    assert [when.text() for when in view.findChildren(QLabel, "timelineDueWhen") if when.isVisible()] == [
+        "due Sun 20 Sep · Not placed yet",
+        "due Tue 15 Sep · placed Mon 15:45",
+        "due Fri 18 Sep · placed Thu 18:45",
+        "due Thu 17 Sep · placed Thu 20:00",
+    ]
     # No ruled space for notes: it looked writable and kept nothing.
     assert view.findChild(QWidget, "timelineRuled") is None
     assert [chip.held.title for chip in view.findChildren(TrayChip) if chip.isVisible()] == ["Poster-1"]

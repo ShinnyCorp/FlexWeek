@@ -3505,6 +3505,23 @@ class PreviewDialog(Dialog):
         self._refresh()
 
 
+def overdue_unfinished(items: list[dict], now: datetime | None = None) -> list[dict]:
+    """Homework whose deadline is already past. The engine's unfinished list also holds work due
+    today or tomorrow; this list is only what is late."""
+    moment = datetime.now() if now is None else now
+    return [item for item in items if _deadline_passed(item.get("due"), moment)]
+
+
+def _deadline_passed(due: object, now: datetime) -> bool:
+    if not isinstance(due, str) or not due:
+        return False
+    try:
+        day, minute = parse_due(due)
+    except ValueError:
+        return False
+    return datetime.combine(day, datetime.min.time()) + timedelta(minutes=minute) <= now
+
+
 class UnfinishedPanel(QWidget):
     plan_requested = Signal(str)
     delete_requested = Signal(str)
@@ -3529,7 +3546,8 @@ class UnfinishedPanel(QWidget):
         layout.addLayout(row)
         self.hide()
 
-    def set_items(self, items: list[dict]) -> None:
+    def set_items(self, items: list[dict], now: datetime | None = None) -> None:
+        items = overdue_unfinished(items, now)
         self.list.clear()
         for item in items:
             row = QWidget()

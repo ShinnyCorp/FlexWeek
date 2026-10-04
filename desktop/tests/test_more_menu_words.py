@@ -182,7 +182,7 @@ def test_unfinished_opens_its_list_in_any_design(
     session.add_block({"id": "school", "title": "School", "kind": "locked", "start": "08:00",
                        "duration_min": 390, "days": [0, 1, 2, 3, 4]})
     session.add_homework({"id": "essay", "title": "History essay", "estimate_min": 120, "revision": 0,
-                          "due": (week + timedelta(days=10)).isoformat() + "T23:59"})
+                          "due": (date.today() - timedelta(days=3)).isoformat() + "T12:00"})
     session.save()
     settled(qapp, window)
     planned = next(block for block in session.blocks if block.get("assignment_id") == "essay")
