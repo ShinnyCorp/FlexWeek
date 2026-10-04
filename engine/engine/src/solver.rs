@@ -138,28 +138,7 @@ fn default_work_windows() -> Vec<WorkWindow> {
 // --- `backend/explain.py` ---
 
 fn sentence(code: &str) -> String {
-    match code {
-        "LOCKED_OVERLAP" => {
-            "Your fixed plans and finished work leave no gap long enough for it before it is due."
-                .into()
-        }
-        "DEADLINE_MISS" => {
-            "There is not enough time left before it is due, even with nothing else planned.".into()
-        }
-        "NO_SLOT_LEFT" => {
-            "Your plans and other homework already fill every gap long enough for it.".into()
-        }
-        "PRIORITY_PREEMPT" => {
-            "Work with a higher priority used the free time before it is due.".into()
-        }
-        "ENERGY_MISMATCH" => "Planned outside its preferred time of day.".into(),
-        "SLEEP_GUARD" => "It does not fit in the day on the days left for it.".into(),
-        "WORK_WINDOW_MISS" => "That does not fit in the times you set aside for work.".into(),
-        "RESHUFFLE_AFTER_MISS" => {
-            "Moved because you missed a day, so the rest of the week still fits.".into()
-        }
-        other => other.into(),
-    }
+    crate::plan::sentence(code).unwrap_or_else(|_| code.into())
 }
 
 fn amount(minutes: i64) -> String {
@@ -355,6 +334,19 @@ fn domain(
         }
     }
     Ok(out)
+}
+
+fn has_slot(
+    block: &TimeBlock,
+    duration_min: i64,
+    occ: &[u128],
+    deadline: Option<(i64, i64)>,
+    earliest: Option<(i64, i64)>,
+    work_windows: &[WorkWindow],
+) -> EngineResult<bool> {
+    let mut probe = block.clone();
+    probe.duration_min = duration_min;
+    Ok(!domain(&probe, occ, deadline, earliest, work_windows)?.is_empty())
 }
 
 fn order_values(
@@ -584,19 +576,33 @@ fn reason_for(
     }
     let unconstrained = domain(block, &empty, deadline, earliest_pt, work_windows)?;
     if unconstrained.is_empty() {
+        let open = default_work_windows();
+        if deadline.is_some()
+            && !has_slot(block, SLOT_MIN, &empty, deadline, earliest_pt, &open)?
+            && has_slot(block, SLOT_MIN, &empty, None, earliest_pt, &open)?
+        {
+            return Ok("DEADLINE_PASSED".into());
+        }
         if deadline.is_some() && !domain(block, &empty, None, earliest_pt, work_windows)?.is_empty()
         {
             return Ok("DEADLINE_MISS".into());
         }
-        if !domain(
+        if has_slot(
             block,
+            block.duration_min,
             &empty,
             deadline,
             earliest_pt,
-            &default_work_windows(),
-        )?
-        .is_empty()
-        {
+            &open,
+        )? {
+            let due_today = matches!(
+                (deadline, earliest_pt),
+                (Some((due_day, _)), Some((now_day, _))) if due_day == now_day
+            );
+            if due_today && !has_slot(block, SLOT_MIN, &empty, deadline, earliest_pt, work_windows)?
+            {
+                return Ok("NO_STUDY_TIME_TODAY".into());
+            }
             return Ok("WORK_WINDOW_MISS".into());
         }
         return Ok("SLEEP_GUARD".into());

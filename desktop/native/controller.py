@@ -118,7 +118,10 @@ def first_placed(trace: dict, targets: object) -> tuple[int, int] | None:
 
 def plan_sentence(placed: int, waiting: int) -> str:
     """How much homework a plan placed, counting homework only."""
-    said = f"Planned {placed} homework block{'s' if placed != 1 else ''}."
+    if placed == 0:
+        said = "Nothing placed."
+    else:
+        said = f"Planned {placed} homework block{'s' if placed != 1 else ''}."
     if waiting:
         said += f" {waiting} still need{'s' if waiting == 1 else ''} a time."
     return said

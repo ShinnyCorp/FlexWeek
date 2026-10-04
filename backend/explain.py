@@ -10,11 +10,13 @@ REASON_COPY: dict[ReasonCode, str] = {
     for code in (
         "LOCKED_OVERLAP",
         "DEADLINE_MISS",
+        "DEADLINE_PASSED",
         "NO_SLOT_LEFT",
         "PRIORITY_PREEMPT",
         "ENERGY_MISMATCH",
         "SLEEP_GUARD",
         "WORK_WINDOW_MISS",
+        "NO_STUDY_TIME_TODAY",
         "RESHUFFLE_AFTER_MISS",
     )
 }

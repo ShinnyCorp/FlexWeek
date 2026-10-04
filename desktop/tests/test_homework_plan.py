@@ -34,6 +34,7 @@ if importlib.util.find_spec("PySide6") is not None:
     )
 
     from desktop.native.calendar import date_for_day, sunday_due
+    from desktop.native.controller import plan_sentence
     from desktop.native.look import sanitize_look
     from desktop.native.reuse import plan_start
     from desktop.native.setup import FIRST
@@ -43,7 +44,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.tests.logic_support import past_setup
 
 PASSWORD = "a-long-test-password"
-TOO_LATE = "There is not enough time left before it is due, even with nothing else planned."
+TOO_LATE = "That time has already passed."
 PAST_WEEK = "This week is over, so nothing was planned. Plan this week or a later one."
 
 
@@ -164,6 +165,13 @@ def opened_with(
 def press(dialog: QDialog, name: str) -> int:
     dialog.findChild(QPushButton, name).click()
     return QDialog.DialogCode.Accepted
+
+
+def test_nothing_placed_says_nothing_placed_not_planned_zero() -> None:
+    assert plan_sentence(0, 1) == "Nothing placed. 1 still needs a time."
+    assert plan_sentence(0, 2) == "Nothing placed. 2 still need a time."
+    assert plan_sentence(1, 1) == "Planned 1 homework block. 1 still needs a time."
+    assert plan_sentence(3, 0) == "Planned 3 homework blocks."
 
 
 # Due today
