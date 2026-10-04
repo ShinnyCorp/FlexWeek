@@ -89,6 +89,7 @@ from desktop.native.layouts.base import (
     empty,
     family,
     free_stretches,
+    homework_planned,
     label,
     rules,
     scrolling,
@@ -489,7 +490,7 @@ def up_next(scene: Scene) -> UpNext:
 
 def planned_words(items: tuple[Occurrence, ...], ahead: int | None) -> str:
     """ "2 h 30 min planned, 3 still to come.", homework only, or without what is to come on another day."""
-    minutes = sum(item.minutes for item in items if item.work)
+    minutes = homework_planned(items)
     if not minutes:
         return "Nothing planned."
     words = f"{unbroken(length_label(minutes))} planned"
