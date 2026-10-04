@@ -37,7 +37,7 @@ from desktop.native.update import WINDOWS_SETUP, available
 from desktop.native.version import VERSION
 from desktop.native.widgets import Segmented, Switch
 from desktop.native.window import NativeWindow
-from desktop.tests.window_support import qapp, server, signed_out, window  # noqa: F401
+from desktop.tests.window_support import qapp, server, signed_out, still, window  # noqa: F401
 
 
 def prefs(window: NativeWindow, layout: dict | None = None) -> SettingsPage:  # noqa: F811
@@ -85,6 +85,7 @@ def test_every_field_in_a_forms_column_starts_at_the_same_left_edge(
     """A segmented control's track starts where the text fields, steppers, dropdowns and buttons in its
     column do: at the widget's box, and as painted, since a track can be drawn inset from its box."""
     dialog = prefs(window)
+    still(dialog)
     seen: list[str] = []
     for row in range(5):
         dialog.nav.setCurrentRow(row)

@@ -1036,7 +1036,6 @@ def test_a_settings_change_shows_before_settings_closes(qapp: QApplication, wind
     page.accent.setCurrentIndex(page.accent.findData("sea"))
     assert (window.session.preferences or {}).get("accent") == "sea"
     page.close_page()
-    assert window._settings is None
     assert window._stack.currentWidget().objectName() == "weekPage"
     assert window._layout["main"] == "bento"
 
@@ -1055,10 +1054,10 @@ def test_settings_is_a_page_the_gear_opens_and_done_or_esc_closes(
     QTest.keyClick(page.nav, Qt.Key.Key_M)
     assert window.session.planner_view == view and window._stack.currentWidget() is page
     page.done.click()
-    assert window._settings is None and window._stack.currentWidget().objectName() == "weekPage"
+    assert window._stack.currentWidget().objectName() == "weekPage"
     page = open_settings(window)
     QTest.keyClick(page.nav, Qt.Key.Key_Escape)
-    assert window._settings is None and window._stack.currentWidget().objectName() == "weekPage"
+    assert window._stack.currentWidget().objectName() == "weekPage"
 
 
 def test_settings_saves_once_after_a_burst_and_closing_saves_it_at_once(

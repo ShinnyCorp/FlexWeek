@@ -410,6 +410,22 @@ def slide_over(stack: QStackedWidget, page: QWidget, level: str, *, back: bool =
     _run(picture if back else page, length, step, done)
 
 
+def slide_down(widget: QWidget, level: str, *, ms: int = EASE_MS) -> None:
+    """Slide `widget` down into `target` from just above it. The widget keeps its full height on every
+    frame, over what stays underneath, instead of opening layout room first."""
+    settle(widget)
+    target = widget.geometry()
+    length = duration(ms, level)
+    if length == 0 or not moves(level) or target.height() <= 0:
+        widget.setGeometry(target)
+        widget.show()
+        return
+    start = QRect(target.x(), target.y() - target.height(), target.width(), target.height())
+    widget.setGeometry(start)
+    widget.show()
+    glide(widget, target, level, ms=ms)
+
+
 def glide(widget: QWidget, target: QRect, level: str, *, ms: int = EASE_MS + 60) -> None:
     """Move and resize `widget` to `target`, easing there rather than jumping where things may
     travel."""
