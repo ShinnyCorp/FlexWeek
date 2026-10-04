@@ -1043,13 +1043,13 @@ class NativeWindow(QMainWindow):
         replan = QPushButton("Replan all my homework")
         replan.setObjectName("replanAll")
         replan.clicked.connect(lambda: self.session.solve(everything=True))
-        save = QPushButton("Save")
+        save = QPushButton("Save this week now")
         save.setObjectName("saveButton")
         save.clicked.connect(self.session.save)
         retry = QPushButton("Retry save")
         retry.setObjectName("retrySave")
         retry.clicked.connect(self.session.retry_save)
-        reload_week = QPushButton("Reload")
+        reload_week = QPushButton("Reload this week as it is saved")
         reload_week.setObjectName("reloadWeek")
         reload_week.clicked.connect(self.session.reload)
         copy_block = QPushButton("Copy")
@@ -1079,7 +1079,7 @@ class NativeWindow(QMainWindow):
         settings = QPushButton("Settings")
         settings.setObjectName("settingsButton")
         settings.clicked.connect(self._open_settings)
-        restore = QPushButton("Restore")
+        restore = QPushButton("Save a copy of this week…")
         restore.setObjectName("restoreButton")
         restore.clicked.connect(self._open_restore)
         account = QPushButton("Account")
@@ -1821,7 +1821,7 @@ class NativeWindow(QMainWindow):
         undo = self.findChild(QPushButton, "undoButton")
         redo = self.findChild(QPushButton, "redoButton")
         if undo is not None:
-            undo.setEnabled(self.session.can_undo())
+            self._sync_undo_enabled()
         if redo is not None:
             redo.setEnabled(self.session.can_redo())
         clip = self.session.clipboard
@@ -1916,7 +1916,16 @@ class NativeWindow(QMainWindow):
         if self.toast.isVisible() and self.toast.text() == self._reminder_said:
             self.toast.hide()
 
+    def _toast_offers_undo(self) -> bool:
+        return self.toast.isVisible() and self.toast.button.isVisible() and self.toast.button.text() == "Undo"
+
+    def _sync_undo_enabled(self) -> None:
+        undo = self.findChild(QPushButton, "undoButton")
+        if undo is not None:
+            undo.setEnabled(not self.session.busy and (self.session.can_undo() or self._toast_offers_undo()))
+
     def _sync_more_menu(self) -> None:
+        self._sync_undo_enabled()
         unfinished = self.findChild(QPushButton, "unfinishedOpen")
         if unfinished is not None:
             # Worked out as the menu opens: the busy flag turns every action back on when a save
@@ -1968,7 +1977,7 @@ class NativeWindow(QMainWindow):
         undo = self.findChild(QPushButton, "undoButton")
         redo = self.findChild(QPushButton, "redoButton")
         if undo is not None:
-            undo.setEnabled(not busy and self.session.can_undo())
+            self._sync_undo_enabled()
         if redo is not None:
             redo.setEnabled(not busy and self.session.can_redo())
         on_recovery = self.findChild(QWidget, "recoveryPage") is self._stack.currentWidget()
@@ -2498,6 +2507,7 @@ class NativeWindow(QMainWindow):
         # The answer to Plan my homework, so no later status is taken for it.
         self._telling = False
         self._set_notice(said, "Undo", self._undo_from_notice)
+        self._sync_undo_enabled()
         self._notice_step = self.session.last_step()
         self._focus_week(self._first_placed())
 

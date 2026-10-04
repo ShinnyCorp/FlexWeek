@@ -859,7 +859,15 @@ def test_plan_and_more_stay_on_the_bar_in_every_layout(qapp: QApplication, windo
     # Every group under a heading (T23 of the 0.17.0 audit).
     assert more_sections(window) == ["Planning", "Edit", "Help and info", "Account"]
     assert not {"Add homework", "Add fixed time", "School hours"} & set(offered), "adding is under Add"
-    wanted = {"Running late", "Routines", "Reload", "Undo", "Redo", "Undo, copy and save", "Sign out"}
+    wanted = {
+        "Running late",
+        "Routines",
+        "Reload this week as it is saved",
+        "Undo",
+        "Redo",
+        "Undo, copy and save",
+        "Sign out",
+    }
     assert wanted <= set(offered)
     assert "Settings" not in offered
     assert "Account" not in offered

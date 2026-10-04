@@ -76,9 +76,13 @@ TOOLTIPS = {
     "Paste into (the selected day)": "Copy a block or a day first.",
     "Duplicate": "Make a copy of the selected block, with a preview first. Ctrl+D",
     "Copy (the selected day)": "Copy every block on the selected day to paste into another day.",
-    "Save": "Save now. FlexWeek already saves after every change. Ctrl+S",
-    "Restore": "Go back to an earlier copy of your plans. FlexWeek keeps one before big changes.",
-    "Reload": "Load this week again as it is saved. Use it if something looks out of date.",
+    "Save this week now": "Save now. FlexWeek already saves after every change. Ctrl+S",
+    "Save a copy of this week…": (
+        "Go back to an earlier copy of your plans. FlexWeek keeps one before big changes."
+    ),
+    "Reload this week as it is saved": (
+        "Load this week again as it is saved. Use it if something looks out of date."
+    ),
 }
 PLAN = (
     "Find a time for homework that has none, around your fixed times and before it is due. Homework "
@@ -495,3 +499,21 @@ def test_every_row_under_more_has_an_icon_and_log_out_stands_apart(
     ]
     assert rows[-5:] == ["---", "Help", "About FlexWeek", "---", "Sign out"]
     assert all(action.property(ICON) for action in window.add_menu.actions()[:3]), "the Add menu's three"
+
+
+def test_more_undo_is_enabled_when_the_toast_offers_undo(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window._set_notice("Planned 1 homework block.", "Undo", lambda: None)
+    qapp.processEvents()
+    monkeypatch.setattr(window.session, "can_undo", lambda: False)
+    menu = opened_more(window)
+    undo = next(action for action in actions(menu) if action.text() == "Undo")
+    assert undo.isEnabled()
+    window.toast.hide()
+    qapp.processEvents()
+    menu = opened_more(window)
+    undo = next(action for action in actions(menu) if action.text() == "Undo")
+    assert not undo.isEnabled()
