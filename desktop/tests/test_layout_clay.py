@@ -395,7 +395,7 @@ def test_day_opens_the_card_wider_with_its_hours_by_kind_and_what_is_left_today(
         ("Meals", "30 min"),
         ("Free", "4 h 30 min"),
         ("Planned", "2 h 30 min"),
-        ("Free until 22:00", "5 h 50 min"),
+        ("Free until 22:00", "4 h 30 min"),
         ("Next at 18:00", "in 4 h 20 min"),
     ]
     assert summary.geometry().left() > visible_scrolls(view)[0].geometry().right()

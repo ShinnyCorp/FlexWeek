@@ -181,8 +181,9 @@ def left_today(week: WeekModel, day: int, minute: int) -> tuple[int, int, Occurr
     """What is still ahead today until 22:00: the minutes planned, the minutes free, and what is next."""
     ahead = [item for item in week.on_day(day) if item.live and item.end > minute]
     planned = _covered([item for item in ahead if item.work], minute, DAY_TO)
+    busy = _covered(ahead, minute, DAY_TO)
     coming = min((item for item in ahead if item.start > minute), key=lambda item: item.start, default=None)
-    return planned, max(DAY_TO - minute - planned, 0), coming
+    return planned, max(DAY_TO - minute - busy, 0), coming
 
 
 def slots(width: float, height: float, front: int, scale: float, *, wide: bool) -> dict[int, QRectF]:
