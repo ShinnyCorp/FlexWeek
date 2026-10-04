@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid
 
 from desktop.native import icons
 from desktop.native.calendar import DAYS
@@ -582,6 +583,7 @@ class Rail(QFrame):
         self._tasks: tuple = ()
         self._waiting: tuple[Waiting, ...] = ()
         self._chips: list[RailChip] = []
+        self._waiting_popup: QFrame | None = None
         self._due: frozenset[str] = frozenset()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -796,9 +798,16 @@ class Rail(QFrame):
         return list(self._chips)
 
     def _place_chips(self) -> None:
-        home = self.tray
+        if not isValid(self):
+            return
+        tray, flow = self.tray, self.flow
+        if not isValid(tray) or not isValid(flow):
+            return
+        home = tray
         for chip in self._chips:
-            for layout in (self.tray, self.flow):
+            if not isValid(chip):
+                continue
+            for layout in (tray, flow):
                 layout.removeWidget(chip)
             home.addWidget(chip)
             chip.show()
@@ -885,9 +894,17 @@ class Rail(QFrame):
         popup.adjustSize()
         at = self.waiting_chip.mapToGlobal(QPoint(0, self.waiting_chip.height()))
         popup.move(at)
-        popup.destroyed.connect(lambda *_: self._place_chips())
+        popup.installEventFilter(self)
         self._waiting_popup = popup
         popup.show()
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        popup = self._waiting_popup
+        # Hide/Close run while the rail still exists; destroyed ran after its layouts were gone.
+        if popup is not None and watched is popup and event.type() in (QEvent.Type.Hide, QEvent.Type.Close):
+            self._waiting_popup = None
+            self._place_chips()
+        return super().eventFilter(watched, event)
 
     def _start_item(self, item: QListWidgetItem) -> None:
         payload = item.data(Qt.ItemDataRole.UserRole) or {}

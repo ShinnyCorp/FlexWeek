@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
 
@@ -9,10 +10,11 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QContextMenuEvent, QMouseEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QWidget
+from shiboken6 import isValid
 
 from desktop.native import window as window_module
 from desktop.native.calendar import monday_of, sunday_due
@@ -21,7 +23,9 @@ from desktop.native.layouts.empty import EMPTY_COPY_LAST, EMPTY_USE_ROUTINE
 from desktop.native.menus import Menu
 from desktop.native.widgets import ConfirmSheet, PreviewDialog, RoutineDialog
 from desktop.native.window import PLAN_LABEL, PLAN_SHORT, NativeWindow
+from desktop.tests import window_support as window_support_mod
 from desktop.tests.window_support import (  # noqa: F401
+    free,
     qapp,
     server,
     settled,
@@ -423,7 +427,9 @@ def test_deleting_the_whole_homework_from_the_menu_uses_the_editors_words(
 
 
 def test_the_folded_waiting_chip_has_a_chevron_and_opens_without_resizing(
-    qapp: QApplication, window: NativeWindow  # noqa: F811
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     due = sunday_due(window.session.week_start)
     window.session.add_homework(
@@ -444,6 +450,49 @@ def test_the_folded_waiting_chip_has_a_chevron_and_opens_without_resizing(
     assert window.width() == before
     popup = window.findChild(QWidget, "railWaitingPopup")
     assert popup is not None and popup.isVisible()
+    popup.close()
+    qapp.processEvents()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
+    assert window.findChild(QWidget, "railWaitingPopup") is None
+    for waiting in rail.chips():
+        assert waiting.parent() is rail.waiting
+    QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+    popup = window.findChild(QWidget, "railWaitingPopup")
+    assert popup is not None and popup.isVisible()
+    caught: list[BaseException] = []
+    previous_hook = sys.excepthook
+    previous_unraisable = sys.unraisablehook
+
+    def hook(kind, value, traceback) -> None:
+        caught.append(value)
+        previous_hook(kind, value, traceback)
+
+    def unraisable(args) -> None:
+        if args.exc_value is not None:
+            caught.append(args.exc_value)
+        previous_unraisable(args)
+
+    def safe_hide(*_args, **_kwargs) -> None:
+        if isValid(window):
+            QWidget.hide(window)
+
+    def safe_free(widget: QWidget) -> None:
+        if isValid(widget):
+            free(widget)
+
+    monkeypatch.setattr(window, "hide", safe_hide)
+    monkeypatch.setattr(window_support_mod, "free", safe_free)
+    sys.excepthook = hook
+    sys.unraisablehook = unraisable
+    try:
+        window.close()
+        free(window)
+    finally:
+        sys.excepthook = previous_hook
+        sys.unraisablehook = previous_unraisable
+    assert caught == []
 
 
 def test_a_click_on_the_grid_beside_the_empty_week_card_opens_the_free_time_menu(
