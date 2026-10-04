@@ -153,6 +153,11 @@ def free_stretches(items: Sequence[Occurrence], start: int, end: int) -> list[tu
     return free
 
 
+def homework_planned(items: Sequence[Occurrence]) -> int:
+    """Minutes of placed homework in `items`, not school, meals or other fixed time."""
+    return sum(item.minutes for item in items if item.work)
+
+
 def work_left(scene: Scene) -> int:
     """Placed homework minutes still ahead today. Running late is only offered while there are some."""
     if scene.today is None:

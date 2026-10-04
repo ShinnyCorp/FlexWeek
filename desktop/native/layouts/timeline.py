@@ -940,12 +940,11 @@ class TimelineView(LayoutView):
 
     def _waiting(self, scene: Scene, box: QVBoxLayout, *, square: bool) -> None:
         """Not placed yet, as sticky notes set a little askew each way in turn."""
-        box.setSpacing(scene.px(8))
-        box.addWidget(label("Not placed yet", "timelineTrayLabel"))
         waiting = scene.week.waiting
         if not waiting:
-            box.addWidget(label("Nothing is waiting for a time.", "timelineHint", wrap=True))
             return
+        box.setSpacing(scene.px(8))
+        box.addWidget(label("Not placed yet", "timelineTrayLabel"))
         notes = FlowLayout(gap=scene.px(12))
         tilts = (-1.4, 1.0) if square else (-1.2, 0.9)
         for index, item in enumerate(waiting):
