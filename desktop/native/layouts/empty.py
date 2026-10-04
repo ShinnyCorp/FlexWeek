@@ -14,6 +14,10 @@ from desktop.native.weekmodel import WeekModel
 EMPTY_HEADING = "Nothing here yet."
 EMPTY_LINE = "Add your first homework and FlexWeek will find it a time."
 EMPTY_BUTTON = "Add your first homework"
+BLANK_HEADING = "This week is empty."
+BLANK_LINE = "Copy school and sports from last week, or bring in a routine you saved."
+EMPTY_COPY_LAST = "Copy last week's fixed times"
+EMPTY_USE_ROUTINE = "Use a routine"
 
 
 def nothing_yet(week: WeekModel, assignments: dict) -> bool:
@@ -25,25 +29,50 @@ def nothing_yet(week: WeekModel, assignments: dict) -> bool:
     return not assignments and week.leftover_kind(None) == "no_homework"
 
 
+def start_here_week(week: WeekModel, assignments: dict, week_start: str, saved_weeks: list[str]) -> bool:
+    """The one-button card for a brand-new account, not the copy/routine card for a later empty week."""
+    if not nothing_yet(week, assignments):
+        return False
+    return not any(saved != week_start for saved in saved_weeks)
+
+
 class EmptyWeek(QWidget):
     add_requested = Signal()
+    copy_last_requested = Signal()
+    routine_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("emptyWeek")
         layout = QVBoxLayout(self)
         layout.addStretch(2)
-        heading = QLabel(EMPTY_HEADING)
-        heading.setObjectName("emptyWeekHeading")
-        line = QLabel(EMPTY_LINE)
-        line.setObjectName("emptyWeekLine")
-        line.setWordWrap(True)
-        for label in (heading, line):
+        self.heading = QLabel(EMPTY_HEADING)
+        self.heading.setObjectName("emptyWeekHeading")
+        self.line = QLabel(EMPTY_LINE)
+        self.line.setObjectName("emptyWeekLine")
+        self.line.setWordWrap(True)
+        for label in (self.heading, self.line):
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(label)
         layout.addSpacing(16)
         self.add = QPushButton(EMPTY_BUTTON)
         self.add.setObjectName("emptyWeekAdd")
         self.add.clicked.connect(self.add_requested.emit)
-        layout.addWidget(self.add, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.copy_last = QPushButton(EMPTY_COPY_LAST)
+        self.copy_last.setObjectName("emptyWeekCopyLast")
+        self.copy_last.clicked.connect(self.copy_last_requested.emit)
+        self.use_routine = QPushButton(EMPTY_USE_ROUTINE)
+        self.use_routine.setObjectName("emptyWeekRoutine")
+        self.use_routine.clicked.connect(self.routine_requested.emit)
+        for button in (self.add, self.copy_last, self.use_routine):
+            layout.addWidget(button, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch(3)
+        self.set_blank(False)
+
+    def set_blank(self, blank: bool) -> None:
+        """A brand-new account, or a later empty week that already has homework somewhere."""
+        self.heading.setText(BLANK_HEADING if blank else EMPTY_HEADING)
+        self.line.setText(BLANK_LINE if blank else EMPTY_LINE)
+        self.add.setVisible(not blank)
+        self.copy_last.setVisible(blank)
+        self.use_routine.setVisible(blank)
