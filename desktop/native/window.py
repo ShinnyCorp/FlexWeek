@@ -292,7 +292,10 @@ MORE_TIPS = {
     "duplicateBlock": "Make a copy of the selected block, with a preview first. Ctrl+D",
     "copyDay": "Copy every block on the selected day to paste into another day.",
     "saveButton": "Save now. FlexWeek already saves after every change. Ctrl+S",
-    "restoreButton": "Go back to an earlier copy of your plans. FlexWeek keeps one before big changes.",
+    "restoreButton": (
+        "Save a copy of this week, or go back to an earlier one. FlexWeek keeps a restore point "
+        "before big changes."
+    ),
     "reloadWeek": "Load this week again as it is saved. Use it if something looks out of date.",
     "helpButton": "What each screen is for, and the keyboard shortcuts.",
     "aboutButton": "The version, and where your plans are saved.",
@@ -1080,7 +1083,7 @@ class NativeWindow(QMainWindow):
         settings = QPushButton("Settings")
         settings.setObjectName("settingsButton")
         settings.clicked.connect(self._open_settings)
-        restore = QPushButton("Save a copy of this week…")
+        restore = QPushButton("Copies of this week…")
         restore.setObjectName("restoreButton")
         restore.clicked.connect(self._open_restore)
         account = QPushButton("Account")

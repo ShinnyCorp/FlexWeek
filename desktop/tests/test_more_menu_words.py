@@ -77,8 +77,9 @@ TOOLTIPS = {
     "Duplicate": "Make a copy of the selected block, with a preview first. Ctrl+D",
     "Copy (the selected day)": "Copy every block on the selected day to paste into another day.",
     "Save this week now": "Save now. FlexWeek already saves after every change. Ctrl+S",
-    "Save a copy of this week…": (
-        "Go back to an earlier copy of your plans. FlexWeek keeps one before big changes."
+    "Copies of this week…": (
+        "Save a copy of this week, or go back to an earlier one. FlexWeek keeps a restore point "
+        "before big changes."
     ),
     "Reload this week as it is saved": (
         "Load this week again as it is saved. Use it if something looks out of date."

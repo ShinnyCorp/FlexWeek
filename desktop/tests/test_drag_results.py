@@ -430,7 +430,7 @@ def test_every_advanced_action_says_what_it_did_when_it_is_done(
         "Save this",
         "Undo",
         "Redo",
-        "Save a copy",
+        "Copies of",
         "Reload this",
     ):
         window.toast.hide()
@@ -448,7 +448,7 @@ def test_every_advanced_action_says_what_it_did_when_it_is_done(
         ("Save this", "Saved."),
         ("Undo", "Undid duplicating Piano."),
         ("Redo", "Redid duplicating Piano."),
-        ("Save a copy", "Saved restore point Before exams."),
+        ("Copies of", "Saved restore point Before exams."),
         ("Reload this", "Reloaded this week."),
     ]
 
