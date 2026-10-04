@@ -206,6 +206,23 @@ def test_ma_then_enter_opens_math_worksheet(
     assert bar.isVisible() is False
 
 
+def test_resizing_the_window_keeps_the_focused_row(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    open_bar(window)
+    bar = window.command_bar
+    QTest.keyClick(bar.input, Qt.Key.Key_Down)
+    QTest.keyClick(bar.input, Qt.Key.Key_Down)
+    focused = bar.list.currentItem()
+    assert focused is not None
+    words = focused.text()
+    assert words != "Add homework"
+    window.resize(window.width() - 80, window.height() - 120)
+    qapp.processEvents()
+    assert bar.list.currentItem() is focused
+    assert bar.list.currentItem().text() == words
+
+
 def test_arrows_choose_and_enter_runs_what_is_chosen(qapp: QApplication, window: NativeWindow) -> None:
     open_bar(window)
     bar = window.command_bar

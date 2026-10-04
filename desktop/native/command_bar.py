@@ -411,6 +411,11 @@ class CommandBar(QWidget):
         self.nothing.setVisible(found == 0)
         if found:
             self._step_to(0, 1)
+        self._refit()
+
+    def _refit(self) -> None:
+        """Size the list to the current rows and the window, without rebuilding it."""
+        if self.shown_words():
             # Every row while the window has room for them, so a list that fits never scrolls; past
             # that, the list scrolls under the thin bar the rest of the app uses.
             height = sum(ROW_PX if item.data(KEY_ROLE) else LABEL_PX for item in self._items())
@@ -459,7 +464,7 @@ class CommandBar(QWidget):
         self.box.adjustSize()
         # A fixed top, so the box grows and shrinks downwards as typing filters the list.
         self.box.move((host.width() - width) // 2, self._top())
-        self._fit_box()
+        self._refit()
 
     def _run_item(self, item: QListWidgetItem) -> None:
         key = item.data(KEY_ROLE)
@@ -491,7 +496,6 @@ class CommandBar(QWidget):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize and watched is self.parentWidget() and self.isVisible():
             self._place()
-            self._fill(self.input.text())
         if watched is self.input and event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
             key = event.key()
             if key == Qt.Key.Key_Escape:
