@@ -153,7 +153,7 @@ def test_choose_finds_choose_a_time(qapp: QApplication, window: NativeWindow) ->
 
 
 def test_typed_letters_are_highlighted_in_the_row(qapp: QApplication, window: NativeWindow) -> None:
-    assert match_span("ma", "Math worksheet") == (0, 2)
+    assert match_span("ma", "Math worksheet") == [(0, 2)]
     QTest.keyClick(window.week_table.hours, Qt.Key.Key_K, CTRL)
     bar = window.command_bar
     QTest.keyClicks(bar.input, "hist")
