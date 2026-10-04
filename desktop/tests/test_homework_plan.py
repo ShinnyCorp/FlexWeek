@@ -706,7 +706,7 @@ def test_plan_asked_for_in_other_ways_while_one_is_running_is_ignored(
 
 PLAN_UNREACHABLE = "Can't reach FlexWeek, so nothing was planned. Try again."
 SAVE_UNREACHABLE = (
-    "Not saved yet. Your changes are kept on this computer, and FlexWeek will try again."
+    "Not saved: FlexWeek can't be reached. Your changes are still here. Choose Retry save."
 )
 
 

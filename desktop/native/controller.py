@@ -1641,7 +1641,7 @@ class NativeSession(QObject):
             self._save_status = None
             if error.status == 0:
                 self._say(
-                    "Not saved yet. Your changes are kept on this computer, and FlexWeek will try again."
+                    "Not saved: FlexWeek can't be reached. Your changes are still here. Choose Retry save."
                 )
             else:
                 self._say("Not saved. " + error.message)
