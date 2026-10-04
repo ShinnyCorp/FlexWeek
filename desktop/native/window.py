@@ -175,6 +175,7 @@ from desktop.native.widgets import (
     confirm,
     control_art,
     keyboard_focus_rings,
+    overdue_unfinished,
     steady_wheel,
     swatch,
     use_app_style,
@@ -1723,7 +1724,7 @@ class NativeWindow(QMainWindow):
             self.toast.hide()
         if self.unfinished_panel.isVisible():
             # A row deleted, planned or finished leaves the list, and an Undo brings it back.
-            self.unfinished_panel.set_items(self.session.unfinished())
+            self.unfinished_panel.set_items(overdue_unfinished(self.session.unfinished()))
         if self.session.dirty:
             # Every change reaches here, so this is where the clock on "stopped changing" restarts.
             self._changed_ms = self.session.now_ms()
@@ -1822,11 +1823,11 @@ class NativeWindow(QMainWindow):
                 paste.setText("Paste into a selected day")
             else:
                 paste.setText("Paste into " + DAY_FULL[destination[0]])
-        items = self.session.unfinished()
+        items = overdue_unfinished(self.session.unfinished())
         unfinished = self.findChild(QPushButton, "unfinishedOpen")
         if unfinished is not None:
             unfinished.setEnabled(bool(items))
-        prompt = self.session.consume_unfinished()
+        prompt = overdue_unfinished(self.session.consume_unfinished())
         if prompt:
             self.unfinished_panel.set_items(prompt)
         elif not items:
@@ -1900,7 +1901,9 @@ class NativeWindow(QMainWindow):
         if unfinished is not None:
             # Worked out as the menu opens: the busy flag turns every action back on when a save
             # ends, and left to that "Unfinished" was pressable with nothing to show.
-            unfinished.setEnabled(not self.session.busy and bool(self.session.unfinished()))
+            unfinished.setEnabled(
+                not self.session.busy and bool(overdue_unfinished(self.session.unfinished()))
+            )
         for action, button in self._more_pairs:
             action.setEnabled(button.isEnabled())
             tip = self._more_tip(button.objectName(), button.isEnabled())
@@ -2853,7 +2856,7 @@ class NativeWindow(QMainWindow):
             return
 
     def _show_unfinished(self) -> None:
-        items = self.session.unfinished()
+        items = overdue_unfinished(self.session.unfinished())
         if not items:
             self.session._say(NOTHING_UNFINISHED)
         self.unfinished_panel.set_items(items)

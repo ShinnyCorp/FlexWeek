@@ -207,6 +207,51 @@ def test_unfinished_opens_its_list_in_any_design(
     assert action.toolTip() == "Homework from earlier weeks that still needs time. Plan it into this week."
 
 
+def test_unfinished_is_greyed_when_every_item_is_not_yet_overdue(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#14: Unfinished listed work due today and tomorrow. The button stayed on while the panel
+    would be empty. It follows the overdue-only list the panel shows."""
+    from datetime import datetime
+
+    from desktop.native import widgets as widgets_module
+    from desktop.native import window as window_module
+
+    now = datetime(2026, 10, 3, 18, 0)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            return now
+
+    monkeypatch.setattr(widgets_module, "datetime", Clock)
+    monkeypatch.setattr(window_module, "datetime", Clock)
+    session = window.session
+    week = date.fromisoformat(session.week_start)
+    session.add_block({"id": "school", "title": "School", "kind": "locked", "start": "08:00",
+                       "duration_min": 390, "days": [0, 1, 2, 3, 4]})
+    session.add_homework({"id": "essay", "title": "History essay", "estimate_min": 120, "revision": 0,
+                          "due": "2026-10-04T15:30"})
+    session.save()
+    settled(qapp, window)
+    planned = next(block for block in session.blocks if block.get("assignment_id") == "essay")
+    session.delete_block(planned["id"])
+    session.save()
+    settled(qapp, window)
+    later = (week + timedelta(days=7)).isoformat()
+    session.load_week(later)
+    wait_until(qapp, lambda: session.week_start == later and not session.busy)
+    assert session.unfinished()
+    action = unfinished_action(window)
+    button = window.findChild(QPushButton, "unfinishedOpen")
+    assert action.isEnabled() is False
+    assert button is not None and button.isEnabled() is False
+    window._show_unfinished()
+    assert not window.unfinished_panel.isVisibleTo(window) or window.unfinished_panel.list.count() == 0
+
+
 def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_lives_in(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
