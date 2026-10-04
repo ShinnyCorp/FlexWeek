@@ -76,9 +76,14 @@ TOOLTIPS = {
     "Paste into (the selected day)": "Copy a block or a day first.",
     "Duplicate": "Make a copy of the selected block, with a preview first. Ctrl+D",
     "Copy (the selected day)": "Copy every block on the selected day to paste into another day.",
-    "Save": "Save now. FlexWeek already saves after every change. Ctrl+S",
-    "Restore": "Go back to an earlier copy of your plans. FlexWeek keeps one before big changes.",
-    "Reload": "Load this week again as it is saved. Use it if something looks out of date.",
+    "Save this week now": "Save now. FlexWeek already saves after every change. Ctrl+S",
+    "Copies of this week…": (
+        "Save a copy of this week, or go back to an earlier one. FlexWeek keeps a restore point "
+        "before big changes."
+    ),
+    "Reload this week as it is saved": (
+        "Load this week again as it is saved. Use it if something looks out of date."
+    ),
 }
 PLAN = (
     "Find a time for homework that has none, around your fixed times and before it is due. Homework "
@@ -221,7 +226,7 @@ def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_
         "About FlexWeek",
         "FlexWeek 0.18.1",
         "FlexWeek plans your homework around school, sports and everything else in your week.",
-        "Your plans are saved on this computer.",
+        "Your week is saved on this computer, under this account.",
     ]
     assert dialog.windowTitle() == "About FlexWeek"
     logo = dialog.findChild(QLabel, "aboutLogo")
@@ -241,7 +246,9 @@ def test_about_on_a_server_names_the_server_and_has_no_folder_to_open(
 ) -> None:
     dialog = settings.AboutDialog(host, {"mode": "hosted", "origin": "https://plans.example.org"}, "/nowhere")
     said = [label.text() for label in dialog.findChildren(QLabel)]
-    assert said[-1] == "Your plans are saved on your FlexWeek server, https://plans.example.org."
+    assert said[-1] == (
+        "Your week is saved on your FlexWeek server, https://plans.example.org, under this account."
+    )
     assert dialog.findChild(QPushButton, "aboutOpenFolder") is None
 
 
@@ -291,7 +298,9 @@ def test_help_draws_each_shortcut_as_keycaps(
     def parts(row: QWidget) -> list[tuple[str, str]]:
         return [(label.objectName(), label.text()) for label in row.findChildren(QLabel)]
 
-    assert parts(rows[4]) == [("helpKeycap", "Ctrl"), ("helpKeyJoin", "+"), ("helpKeycap", "K")]
+    assert parts(rows[4]) == [("helpKeycap", "F1")]
+    assert parts(rows[5]) == [("helpKeycap", "Ctrl"), ("helpKeyJoin", "+"), ("helpKeycap", "N")]
+    assert parts(rows[6]) == [("helpKeycap", "Ctrl"), ("helpKeyJoin", "+"), ("helpKeycap", "K")]
     assert parts(rows[2]) == [("helpKeycap", "B"), ("helpKeyJoin", "or"), ("helpKeycap", "Esc")]
     assert parts(rows[-1]) == [("helpKeycap", "Esc"), ("helpKeyJoin", "while dragging")]
 
@@ -496,3 +505,21 @@ def test_every_row_under_more_has_an_icon_and_log_out_stands_apart(
     ]
     assert rows[-5:] == ["---", "Help", "About FlexWeek", "---", "Sign out"]
     assert all(action.property(ICON) for action in window.add_menu.actions()[:3]), "the Add menu's three"
+
+
+def test_more_undo_is_enabled_when_the_toast_offers_undo(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window._set_notice("Planned 1 homework block.", "Undo", lambda: None)
+    qapp.processEvents()
+    monkeypatch.setattr(window.session, "can_undo", lambda: False)
+    menu = opened_more(window)
+    undo = next(action for action in actions(menu) if action.text() == "Undo")
+    assert undo.isEnabled()
+    window.toast.hide()
+    qapp.processEvents()
+    menu = opened_more(window)
+    undo = next(action for action in actions(menu) if action.text() == "Undo")
+    assert not undo.isEnabled()

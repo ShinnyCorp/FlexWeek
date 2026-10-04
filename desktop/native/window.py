@@ -119,6 +119,7 @@ from desktop.native.reuse import (
     week_label,
 )
 from desktop.native.settings import (
+    CUSTOMISE,
     SECTIONS,
     AboutDialog,
     AccountDialog,
@@ -292,7 +293,10 @@ MORE_TIPS = {
     "duplicateBlock": "Make a copy of the selected block, with a preview first. Ctrl+D",
     "copyDay": "Copy every block on the selected day to paste into another day.",
     "saveButton": "Save now. FlexWeek already saves after every change. Ctrl+S",
-    "restoreButton": "Go back to an earlier copy of your plans. FlexWeek keeps one before big changes.",
+    "restoreButton": (
+        "Save a copy of this week, or go back to an earlier one. FlexWeek keeps a restore point "
+        "before big changes."
+    ),
     "reloadWeek": "Load this week again as it is saved. Use it if something looks out of date.",
     "helpButton": "What each screen is for, and the keyboard shortcuts.",
     "aboutButton": "The version, and where your plans are saved.",
@@ -306,7 +310,7 @@ GREYED_TIPS = {
     "pasteBlock": "Copy a block or a day first.",
 }
 WAIT_TIP = "Wait a moment: FlexWeek is still saving or planning."
-SIGN_OUT_QUESTION = "Your week stays saved on {where}. Sign in again to see it."
+SIGN_OUT_QUESTION = "Your week is saved on {where}, under this account. Sign in again to see it."
 RECOVERY_KEEP = "Keep this file somewhere private. Anyone who has it can reset your password."
 RECOVERY_CHOOSE = "Choose where to save"
 RECOVERY_WAIT = "Tick the box above to continue."
@@ -320,7 +324,10 @@ AUTH_CARD_WIDTH = 420
 FIRST_GREETING = "Welcome"
 AGAIN_GREETING = "Welcome back"
 CREATE_HEADING = "Create your account"
-CREATE_NOTE = "FlexWeek fits homework around school and sports. Your week is saved to your account."
+CREATE_NOTE = (
+    "FlexWeek fits homework around school and sports. "
+    "Your week is saved on this computer, under this account."
+)
 RESET_HEADING = "Reset your password"
 RESET_NOTE = "Use one of the recovery codes you saved when you made your account."
 # What the sign-in card is for at the moment.
@@ -498,6 +505,7 @@ class NativeWindow(QMainWindow):
         self._opened_on_preference = False
         self._views: dict[str, LayoutView] = {}
         self._entry_mode = SIGN_IN
+        self._auth_mode_shown: str | None = None
         self._updates = sanitize_updates(None)
         self._zoom: dict[str, int] = {}
         # The student's own looks, kept by name (custom_look.py); Settings will list them.
@@ -653,11 +661,22 @@ class NativeWindow(QMainWindow):
         self._entry_mode = RESET
         self._sync_auth_mode()
 
+    def _clear_auth_status(self) -> None:
+        self.auth_status.clear()
+        self.auth_status.setVisible(False)
+
     def _sync_auth_mode(self) -> None:
         """Sign in is the door, and creating an account is the small print under it: a student signs
         in many times and creates an account once. A forgotten password is the card's third use, with
         its own heading and its own one filled button, rather than a second form under Sign in."""
         mode = self._entry_mode
+        showing = (
+            self._stack.currentWidget() is not None
+            and self._stack.currentWidget().objectName() == "authPage"
+        )
+        if showing and self._auth_mode_shown not in (None, mode):
+            self._clear_auth_status()
+        self._auth_mode_shown = mode
         kept = self.session.kept
         back = kept is not None and kept.signed_in_before()
         greeting = AGAIN_GREETING if back else FIRST_GREETING
@@ -710,6 +729,12 @@ class NativeWindow(QMainWindow):
                 if page is not leaving:
                     # What the toast said was about the page the student is leaving.
                     self.toast.hide()
+                    left = "" if leaving is None else leaving.objectName()
+                    if left == "authPage":
+                        self._clear_auth_status()
+                    if left == "recoveryPage":
+                        self.recovery_status.clear()
+                        self.recovery_status.setVisible(False)
                 if name == "settingsPage":
                     slide_over(self._stack, page, self._motion)
                 elif leaving is not None and leaving.objectName() == "settingsPage":
@@ -1023,13 +1048,13 @@ class NativeWindow(QMainWindow):
         replan = QPushButton("Replan all my homework")
         replan.setObjectName("replanAll")
         replan.clicked.connect(lambda: self.session.solve(everything=True))
-        save = QPushButton("Save")
+        save = QPushButton("Save this week now")
         save.setObjectName("saveButton")
         save.clicked.connect(self.session.save)
         retry = QPushButton("Retry save")
         retry.setObjectName("retrySave")
         retry.clicked.connect(self.session.retry_save)
-        reload_week = QPushButton("Reload")
+        reload_week = QPushButton("Reload this week as it is saved")
         reload_week.setObjectName("reloadWeek")
         reload_week.clicked.connect(self.session.reload)
         copy_block = QPushButton("Copy")
@@ -1059,7 +1084,7 @@ class NativeWindow(QMainWindow):
         settings = QPushButton("Settings")
         settings.setObjectName("settingsButton")
         settings.clicked.connect(self._open_settings)
-        restore = QPushButton("Restore")
+        restore = QPushButton("Copies of this week…")
         restore.setObjectName("restoreButton")
         restore.clicked.connect(self._open_restore)
         account = QPushButton("Account")
@@ -1814,7 +1839,7 @@ class NativeWindow(QMainWindow):
         undo = self.findChild(QPushButton, "undoButton")
         redo = self.findChild(QPushButton, "redoButton")
         if undo is not None:
-            undo.setEnabled(self.session.can_undo())
+            self._sync_undo_enabled()
         if redo is not None:
             redo.setEnabled(self.session.can_redo())
         clip = self.session.clipboard
@@ -1911,7 +1936,16 @@ class NativeWindow(QMainWindow):
         if self.toast.isVisible() and self.toast.text() == self._reminder_said:
             self.toast.hide()
 
+    def _toast_offers_undo(self) -> bool:
+        return self.toast.isVisible() and self.toast.button.isVisible() and self.toast.button.text() == "Undo"
+
+    def _sync_undo_enabled(self) -> None:
+        undo = self.findChild(QPushButton, "undoButton")
+        if undo is not None:
+            undo.setEnabled(not self.session.busy and (self.session.can_undo() or self._toast_offers_undo()))
+
     def _sync_more_menu(self) -> None:
+        self._sync_undo_enabled()
         unfinished = self.findChild(QPushButton, "unfinishedOpen")
         if unfinished is not None:
             # Worked out as the menu opens: the busy flag turns every action back on when a save
@@ -1963,7 +1997,7 @@ class NativeWindow(QMainWindow):
         undo = self.findChild(QPushButton, "undoButton")
         redo = self.findChild(QPushButton, "redoButton")
         if undo is not None:
-            undo.setEnabled(not busy and self.session.can_undo())
+            self._sync_undo_enabled()
         if redo is not None:
             redo.setEnabled(not busy and self.session.can_redo())
         on_recovery = self.findChild(QWidget, "recoveryPage") is self._stack.currentWidget()
@@ -2493,6 +2527,7 @@ class NativeWindow(QMainWindow):
         # The answer to Plan my homework, so no later status is taken for it.
         self._telling = False
         self._set_notice(said, "Undo", self._undo_from_notice)
+        self._sync_undo_enabled()
         self._notice_step = self.session.last_step()
         self._focus_week(self._first_placed())
 
@@ -2582,6 +2617,24 @@ class NativeWindow(QMainWindow):
         pinned = any(block.get("pinned") for block in sessions)
         dialog = HomeworkDialog(self, assignment, waiting=waiting, pinned=pinned)
         self._commit_homework(dialog)
+
+    def _choose_time_for_homework(self) -> None:
+        """The first homework this week that still needs a time, opened in Choose a time."""
+        for assignment in sorted(
+            self.session.assignments.values(),
+            key=lambda item: (bool(item.get("completed")), item.get("due") or "", item.get("title") or ""),
+        ):
+            waiting = [
+                block
+                for block in self.session.blocks
+                if block.get("assignment_id") == assignment["id"]
+                and not block.get("start")
+                and not block.get("completed")
+            ]
+            if waiting:
+                self._choose_time(assignment["id"])
+                return
+        self.session._say("All your homework already has a time.")
 
     def _choose_time(self, assignment_id: str) -> None:
         """A time for this homework's first session that needs one, picked rather than dragged."""
@@ -3058,7 +3111,7 @@ class NativeWindow(QMainWindow):
         manual = (self.session.preferences or {}).get("planning_style") == "manual"
         plan = SUGGEST_LABEL if manual else PLAN_LABEL
         made = [
-            Command("addHomework", "Add homework", MORE_TIPS["addHomework"], "Add", "book-open"),
+            Command("addHomework", "Add homework", MORE_TIPS["addHomework"], "Add", "book-open", "Ctrl+N"),
             Command("addFixed", "Add fixed time", MORE_TIPS["addFixed"], "Add", "clock"),
             Command("schoolHours", "School hours", MORE_TIPS["schoolHours"], "Add", "school"),
             Command("day", "Day", "One day as a list", "Go to", "list", "D"),
@@ -3067,11 +3120,18 @@ class NativeWindow(QMainWindow):
             Command("myDay", "My day", "Watch today", "Go to", "sun", "T"),
             Command("focus", "Focus screen", "The focus timer on its own, large.", "Go to", "timer", "F"),
             Command("settingsGear", "Settings", "", "Go to", "settings"),
-            Command("helpButton", "Help", MORE_TIPS["helpButton"], "Go to", "circle-question-mark"),
+            Command("helpButton", "Help", MORE_TIPS["helpButton"], "Go to", "circle-question-mark", "F1"),
             Command("solveButton", plan, SUGGEST_TIP if manual else PLAN_TIP, "Homework", "sparkles"),
+            Command(
+                "chooseTime",
+                "Choose a time…",
+                "Pick a time for homework that needs one",
+                "Homework",
+                "clock",
+            ),
             # Settings' pages by what they hold: "look" found nothing (Grok Bot's 0.17.0 audit, X1).
             Command("settings:0", "Look and colours", "Look, accent and design", "Settings", "palette"),
-            Command("customise", "Customise look…", "Make a look of your own", "Settings", "swatch-book"),
+            Command("customise", f"{CUSTOMISE}…", "Make a look of your own", "Settings", "swatch-book"),
             Command("settings:1", "Planning settings", "How homework gets a time", "Settings", "calendar"),
             Command("settings:2", "Focus settings", "The focus timer's lengths", "Settings", "timer"),
             Command("settings:3", "Alerts", "Reminders, alarms and sounds", "Settings", "bell"),
@@ -3110,6 +3170,8 @@ class NativeWindow(QMainWindow):
             self._enter_day()
         elif key == "focus":
             self._open_focus_screen()
+        elif key == "chooseTime":
+            self._choose_time_for_homework()
         elif key.startswith("settings:") or key == "customise":
             self._open_settings_at(0 if key == "customise" else int(key.removeprefix("settings:")))
             if key == "customise" and self._settings is not None:
@@ -3864,6 +3926,10 @@ class NativeWindow(QMainWindow):
                 self._open_command_bar()
                 event.accept()
                 return
+            if key == Qt.Key.Key_N and planning:
+                self._add_homework()
+                event.accept()
+                return
             if key == Qt.Key.Key_Z:
                 if mods & Qt.KeyboardModifier.ShiftModifier:
                     self._told(self.session.redo)
@@ -3903,6 +3969,10 @@ class NativeWindow(QMainWindow):
             return
         if key == Qt.Key.Key_T:
             self._enter_day()
+            event.accept()
+            return
+        if key == Qt.Key.Key_F1 and planning:
+            self._open_help()
             event.accept()
             return
         if key == Qt.Key.Key_F and planning:
@@ -3945,6 +4015,7 @@ class NativeWindow(QMainWindow):
             Qt.Key.Key_M,
             Qt.Key.Key_T,
             Qt.Key.Key_F,
+            Qt.Key.Key_F1,
             Qt.Key.Key_Delete,
         ):
             self.keyPressEvent(event)
@@ -3957,6 +4028,7 @@ class NativeWindow(QMainWindow):
             Qt.Key.Key_Y,
             Qt.Key.Key_S,
             Qt.Key.Key_K,
+            Qt.Key.Key_N,
         ):
             self.keyPressEvent(event)
             return True

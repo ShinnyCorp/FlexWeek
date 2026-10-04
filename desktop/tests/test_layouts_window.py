@@ -39,6 +39,7 @@ if importlib.util.find_spec("PySide6") is not None:
     )
 
     from desktop.native.calendar import sunday_due
+    from desktop.native.controller import plan_sentence
     from desktop.native.layouts.one_thing import OneThingView
     from desktop.native.layouts.registry import LAYOUTS, sanitize_layout
     from desktop.native.layouts.views import VIEW_CLASSES
@@ -859,7 +860,15 @@ def test_plan_and_more_stay_on_the_bar_in_every_layout(qapp: QApplication, windo
     # Every group under a heading (T23 of the 0.17.0 audit).
     assert more_sections(window) == ["Planning", "Edit", "Help and info", "Account"]
     assert not {"Add homework", "Add fixed time", "School hours"} & set(offered), "adding is under Add"
-    wanted = {"Running late", "Routines", "Reload", "Undo", "Redo", "Undo, copy and save", "Sign out"}
+    wanted = {
+        "Running late",
+        "Routines",
+        "Reload this week as it is saved",
+        "Undo",
+        "Redo",
+        "Undo, copy and save",
+        "Sign out",
+    }
     assert wanted <= set(offered)
     assert "Settings" not in offered
     assert "Account" not in offered
@@ -1349,8 +1358,6 @@ def test_the_plan_bar_counts_what_the_toast_counts(qapp: QApplication, window: N
     """Decision 18 of 0.17. The bar counted every block the solver's trace calls placed, School and
     homework already placed included, and said 2 placed under a toast that said 0. Both now say the
     homework this plan gave a time and the homework it could not."""
-    import re
-
     session = window.session
     session.add_block({"id": "school", "title": "School", "kind": "locked", "category": "class",
                        "start": "08:00", "duration_min": 390, "days": [0, 1, 2, 3, 4]})
@@ -1366,11 +1373,10 @@ def test_the_plan_bar_counts_what_the_toast_counts(qapp: QApplication, window: N
     wait_until(qapp, lambda: session.trace is not None and not session.busy)
     qapp.processEvents()
     assert len(session.trace.get("placed") or []) > 1, "the trace also lists School"
-    said = window.toast.text()
-    planned = re.match(r"Planned (\d+) homework blocks?\. (\d+) still needs? a time\.", said)
-    assert planned, said
+    placed, waiting = session.plan_counts
+    assert window.toast.text().startswith(plan_sentence(placed, waiting))
     assert window.plan_review.isVisible()
-    assert window.plan_review.heading.text() == f"Placed {planned[1]} · {planned[2]} without a time"
+    assert window.plan_review.heading.text() == f"Placed {placed} · {waiting} without a time"
 
 
 def test_a_commitment_over_planned_homework_offers_find_a_new_time(

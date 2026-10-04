@@ -79,6 +79,11 @@ def test_the_card_has_one_heading_and_create_account_hides_forgot_password(
     assert shown(window, "forgotPassword")
     window.auth_switch.click()
     assert window.auth_heading.text() == "Create your account"
+    assert window.auth_note.isVisibleTo(window)
+    assert window.auth_note.text() == (
+        "FlexWeek fits homework around school and sports. "
+        "Your week is saved on this computer, under this account."
+    )
     assert not shown(window, "forgotPassword"), "a new account has no password to forget"
     window.auth_switch.click()
     assert shown(window, "forgotPassword")

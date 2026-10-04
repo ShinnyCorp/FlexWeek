@@ -666,3 +666,78 @@ fn test_homework_is_never_planned_in_a_quarter_hour_a_block_at_any_minute_touche
         .collect();
     assert_eq!(starts, vec![Some("18:30".to_string())]);
 }
+
+fn unplaced_reason(trace: &flexweek_engine::solver::SolveTrace, id: &str) -> (String, String) {
+    let item = trace
+        .explanations
+        .iter()
+        .find(|item| item.block_id == id && item.reason.is_some())
+        .unwrap_or_else(|| panic!("no reason for {id}"));
+    (
+        item.reason.clone().unwrap_or_default(),
+        item.message.clone(),
+    )
+}
+
+#[test]
+fn test_a_deadline_that_has_already_passed_says_so() {
+    let hw = flex(
+        "hw",
+        "Essay",
+        60,
+        &[0],
+        3,
+        "medium",
+        Some("Monday 15:00"),
+        Some("Monday 16:00"),
+    );
+    let trace = solve_legacy(&[hw]);
+    assert_eq!(ids(&trace.unplaced), ["hw"]);
+    let (reason, message) = unplaced_reason(&trace, "hw");
+    assert_eq!(reason, "DEADLINE_PASSED");
+    assert_eq!(message, "That time has already passed.");
+    assert!(
+        trace
+            .failed_constraints
+            .iter()
+            .any(|item| item == "DEADLINE_PASSED")
+    );
+}
+
+#[test]
+fn test_due_today_with_no_study_time_left_says_so() {
+    let hw = flex(
+        "hw",
+        "Essay",
+        60,
+        &[0],
+        3,
+        "medium",
+        Some("Monday 23:00"),
+        Some("Monday 21:00"),
+    );
+    let windows = vec![work_span(&[0], "16:00", "20:00", None)];
+    let trace = solve_with(&[hw], None, None, Some(&windows), &real_clock());
+    assert_eq!(ids(&trace.unplaced), ["hw"]);
+    let (reason, message) = unplaced_reason(&trace, "hw");
+    assert_eq!(reason, "NO_STUDY_TIME_TODAY");
+    assert_eq!(message, "Due today and no study time is left today.");
+}
+
+#[test]
+fn test_a_window_that_is_too_short_today_is_still_a_work_window_miss() {
+    let hw = flex(
+        "hw",
+        "Essay",
+        90,
+        &[0],
+        3,
+        "medium",
+        Some("Monday 23:00"),
+        Some("Monday 16:00"),
+    );
+    let windows = vec![work_span(&[0], "16:00", "17:00", None)];
+    let trace = solve_with(&[hw], None, None, Some(&windows), &real_clock());
+    assert_eq!(ids(&trace.unplaced), ["hw"]);
+    assert_eq!(unplaced_reason(&trace, "hw").0, "WORK_WINDOW_MISS");
+}
