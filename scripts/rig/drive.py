@@ -156,6 +156,8 @@ def report_run(
     where = stopped_in or (results[-1]["scenario"] if results else (plan[0][2] if plan else ""))
     if python_error:
         return f"STOPPED in {where}: {python_error}", 1, payload
+    if finished and not skipped and results and failures:
+        return f"{passed}/{len(plan)} passed, {len(results) - passed} failed.", 1, payload
     if not finished or skipped or not results or failures or passed != len(plan):
         return (
             f"STOPPED in {where}: {len(results)}/{len(plan)} ran, {len(skipped)} did not run.",

@@ -169,6 +169,18 @@ def test_a_python_error_from_the_app_is_a_failure():
     assert payload == results
 
 
+def test_a_finished_run_with_a_failed_scenario_counts_it_and_is_not_called_stopped():
+    plan = [("bento", "week", "week-move-day"), ("bento", "week", "week-create")]
+    results = [
+        {"design": "bento", "tab": "week", "scenario": "week-move-day", "result": "PASS"},
+        {"design": "bento", "tab": "week", "scenario": "week-create", "result": "FAIL"},
+    ]
+    line, code, payload = drive.report_run(plan, results, finished=True)
+    assert code == 1
+    assert line == "1/2 passed, 1 failed."
+    assert payload == results
+
+
 def test_a_finished_run_where_every_scenario_passed_still_says_passed():
     plan = [("bento", "week", "week-move-day")]
     results = [{"design": "bento", "tab": "week", "scenario": "week-move-day", "result": "PASS"}]
