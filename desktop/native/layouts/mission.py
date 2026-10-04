@@ -333,7 +333,7 @@ class MissionPainter(BlockPainter):
         widest = max(metrics.horizontalAdvance(clock_label(minute)) for minute in (0, 12 * 60))
         room = widest + LABEL_CLEAR
         step = next((span for span in (120, 240, 360) if track.offset(span) - track.offset(0) >= room), 720)
-        written: list[tuple[QRectF, str, bool]] = []
+        written: list[tuple[QRectF, str, bool, int]] = []
         for minute in range(-(-track.first // step) * step, track.last + 1, step):
             words = clock_label(minute)
             wide = metrics.horizontalAdvance(words) + 2
@@ -346,12 +346,24 @@ class MissionPainter(BlockPainter):
                 moved = inside != box.left()
                 box.moveLeft(inside)
             if pill is None or not box.intersects(pill.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0)):
-                written.append((box, words, moved))
-        for box, words, moved in written:
-            # Moved in from the edge it sits over no hour of its own, so it gives way to a neighbour.
-            if moved and any(box.intersects(other.adjusted(-LABEL_CLEAR, 0, LABEL_CLEAR, 0))
-                             for other, _words, _moved in written if other is not box):
+                written.append((box, words, moved, minute))
+        # 00:00 is moved in from the left of the lanes. It used to give way to the next hour and
+        # disappear; it stays, and that neighbour gives way instead.
+        draw = [(box, words) for box, words, _moved, minute in written if minute == 0]
+        for box, words, moved, minute in written:
+            if minute == 0:
                 continue
+            pad = LABEL_CLEAR
+            hits_kept = any(box.intersects(other.adjusted(-pad, 0, pad, 0)) for other, _words in draw)
+            hits_any = any(
+                box.intersects(other.adjusted(-pad, 0, pad, 0))
+                for other, _words, _moved, other_minute in written
+                if other_minute != minute
+            )
+            if hits_kept or (moved and hits_any):
+                continue
+            draw.append((box, words))
+        for box, words in draw:
             painter.drawText(box, Qt.AlignmentFlag.AlignCenter, words)
         if pill is None:
             return
@@ -392,8 +404,11 @@ class MissionPainter(BlockPainter):
             fill, ink, _outline, edge = self.fills(drawn)
             colour = self._book_colour(drawn, ink, fill, edge) or ink
             at = QPointF(rect.center().x() - size / 2, top)
-            self._clear_of_now(painter, QRectF(at.x(), at.y(), size, size))
-            icon = [self._book(painter, at, size, colour, category_icon(drawn.category) or BOOK)]
+            # The line for now is already across the lane. Cover it, then paint the icon last so
+            # the line cannot sit on the icon's clear pixels. The mark below gets the line again.
+            cover = QRectF(at.x() - 4, at.y() - 4, size + 8, size + 8)
+            self._clear_of_now(painter, cover)
+            icon = [(at, size, colour, category_icon(drawn.category) or BOOK)]
             top += size + 3
         bar = QRectF(rect.center().x() - 3, top, 6, max(rect.bottom() - 8 - top, 6))
         if drawn.chosen:
@@ -403,7 +418,9 @@ class MissionPainter(BlockPainter):
         shape = QPainterPath()
         shape.addRoundedRect(bar, 3, 3)
         painter.fillPath(shape, mark)
-        self.crossing(painter, rect, icon)
+        self.crossing(painter, bar, [])
+        for at, size, colour, name in icon:
+            self._book(painter, at, size, colour, name)
 
     def _clear_of_now(self, painter: QPainter, icon: QRectF) -> None:
         """A tick leaves the lane showing round its icon, and the line for now, drawn across the lane
