@@ -11,14 +11,14 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
 from desktop.native import window as window_module
-from desktop.native.calendar import sunday_due
+from desktop.native.calendar import monday_of, sunday_due
 from desktop.native.layouts.base import NARROW_WIDTH
 from desktop.native.layouts.empty import EMPTY_COPY_LAST, EMPTY_USE_ROUTINE
 from desktop.native.menus import Menu
-from desktop.native.widgets import RoutineDialog
+from desktop.native.widgets import PreviewDialog, RoutineDialog
 from desktop.native.window import PLAN_LABEL, PLAN_SHORT, NativeWindow
 from desktop.tests.window_support import (  # noqa: F401
     qapp,
@@ -286,3 +286,48 @@ def test_plan_keeps_its_words_then_more_then_drops_my(
         if plan != PLAN_LABEL:
             assert PLAN_SHORT == "Plan homework", PLAN_SHORT
             assert more == "", "More should be icon-only before Plan shortens"
+
+
+LAST_WEEK_FIXED = {
+    "id": "soccer",
+    "kind": "locked",
+    "title": "Soccer",
+    "category": "sport",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [2],
+}
+
+
+def test_copying_last_weeks_fixed_times_does_not_park_it_as_unsaved(
+    qapp: QApplication, signed_in: NativeWindow, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+) -> None:
+    """Last week is fetched for the copy sheet, then opened again as saved work."""
+    window = signed_in
+    window._layout = {"main": "classic", "day": "one", "options": {}}
+    session = window.session
+    session.add_block(dict(LAST_WEEK_FIXED))
+    session.save()
+    wait_until(qapp, lambda: not session.busy)
+    source = session.week_start
+    window.findChild(QPushButton, "nextWeek").click()
+    wait_until(qapp, lambda: session.week_start != source and not session.busy)
+    settled(qapp, window)
+    previous = monday_of((date.fromisoformat(session.week_start) - timedelta(days=7)).isoformat())
+    assert previous == source
+    assert previous not in session._drafts
+    shown: list[bool] = []
+
+    def skip(dialog: PreviewDialog) -> int:
+        shown.append(True)
+        return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(PreviewDialog, "exec", skip)
+    window._copy_last_week_fixed()
+    wait_until(qapp, lambda: not session.busy and shown)
+    assert previous not in session._drafts
+    assert previous not in session.unsaved_weeks()
+    session.load_week(previous)
+    wait_until(qapp, lambda: session.week_start == previous and not session.busy)
+    assert "Soccer" in [block["title"] for block in session.blocks]
+    assert previous not in session.unsaved_weeks()

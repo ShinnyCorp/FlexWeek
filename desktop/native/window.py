@@ -2950,49 +2950,18 @@ class NativeWindow(QMainWindow):
         self.unfinished_panel.set_items(items)
 
     def _copy_last_week_fixed(self) -> None:
-        rows = self.session.copy_last_week_fixed_rows()
-        if not rows:
-            try:
-                previous = monday_of(
-                    (date.fromisoformat(self.session.week_start) - timedelta(days=7)).isoformat()
-                )
-            except ValueError:
-                self.session._say("There is nothing to copy from last week yet.")
+        def offer(rows: list[dict] | None) -> None:
+            if not rows:
                 return
+            self._show_preview(
+                "Copy last week's fixed times",
+                "Uncheck anything you do not want before saving.",
+                rows,
+                label="last week's fixed times",
+                existing=self.session.blocks,
+            )
 
-            def ok(data: dict) -> None:
-                blocks = list(data.get("blocks") or [])
-                self.session._drafts[previous] = {
-                    "blocks": blocks,
-                    "revision": data.get("revision", 0),
-                    "assignments": self.session.assignments,
-                    "trace": None,
-                    "dirty": True,
-                }
-                rows = self.session.copy_last_week_fixed_rows()
-                if rows:
-                    self._show_preview(
-                        "Copy last week's fixed times",
-                        "Uncheck anything you do not want before saving.",
-                        rows,
-                        label="last week's fixed times",
-                        existing=self.session.blocks,
-                    )
-                else:
-                    self.session._say("There is nothing to copy from last week yet.")
-
-            def err(error: object) -> None:
-                self.session._say(getattr(error, "message", str(error)))
-
-            self.session.client.request("GET", f"/api/week?week_start={previous}", None, ok, err)
-            return
-        self._show_preview(
-            "Copy last week's fixed times",
-            "Uncheck anything you do not want before saving.",
-            rows,
-            label="last week's fixed times",
-            existing=self.session.blocks,
-        )
+        self.session.copy_last_week_fixed_rows(offer)
 
     def _show_unfinished(self) -> None:
         items = overdue_unfinished(self.session.unfinished())

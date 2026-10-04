@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
@@ -1013,16 +1014,8 @@ class NativeSession(QObject):
         )
         return span_problem(self.blocks, block_id, day, start, end, due)
 
-    def copy_last_week_fixed_rows(self) -> list[dict] | None:
-        """Fixed times from the previous Monday, offered on a blank week."""
-        if self.account is None:
-            return None
-        try:
-            previous = monday_of((date.fromisoformat(self.week_start) - timedelta(days=7)).isoformat())
-        except ValueError:
-            return None
-        source = self._week_local(previous)
-        if source is None:
+    def _fixed_copy_rows(self, source: dict | None) -> list[dict] | None:
+        if not source:
             return None
         blocks = [
             item
@@ -1049,6 +1042,42 @@ class NativeSession(QObject):
                 }
             )
         return rows or None
+
+    def copy_last_week_fixed_rows(self, done: Callable[[list[dict] | None], None]) -> None:
+        """Fixed times from last week for the empty-week copy sheet. Never parks a draft."""
+        nothing = "There is nothing to copy from last week yet."
+        if self.account is None:
+            done(None)
+            return
+        try:
+            previous = monday_of((date.fromisoformat(self.week_start) - timedelta(days=7)).isoformat())
+        except ValueError:
+            self._say(nothing)
+            done(None)
+            return
+        local = self._week_local(previous)
+        if local is not None:
+            rows = self._fixed_copy_rows(local)
+            if not rows:
+                self._say(nothing)
+            done(rows)
+            return
+        ticket = self._begin()
+
+        def ok(data: dict) -> None:
+            if not self._idle(ticket):
+                return
+            rows = self._fixed_copy_rows(data)
+            if not rows:
+                self._say(nothing)
+            done(rows)
+
+        def fail(error: ApiError) -> None:
+            if self._idle(ticket):
+                self._say(error.message)
+                done(None)
+
+        self.client.request("GET", f"/api/week?week_start={previous}", None, ok, fail)
 
     def date_problem(
         self,
