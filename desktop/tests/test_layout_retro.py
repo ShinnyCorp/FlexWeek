@@ -498,7 +498,7 @@ def test_a_notepad_line_short_of_room_puts_its_length_and_time_under_its_title(q
     assert len(essay.lines) == 2, essay.lines
     assert "History essay on the causes of the war".startswith(essay.lines[0].removesuffix("…"))
     # Under the title, in from the edge; "placed" leaves this narrow page no title column.
-    assert essay.lines[1].split() == ["1", "h", "placed", "Thu", "18:45"] and essay.lines[1].startswith("  ")
+    assert essay.lines[1].split() == ["1h", "placed", "Thu", "18:45"] and essay.lines[1].startswith("  ")
     for row in view.findChildren(QPushButton):
         if row.property("role") != "note":
             continue

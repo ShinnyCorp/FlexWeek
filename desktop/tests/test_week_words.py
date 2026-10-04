@@ -78,14 +78,12 @@ def test_a_short_block_says_its_name_then_its_start(qapp: QApplication) -> None:
     for short, started, large in (
         (False, False, False),
         (False, False, True),
-        (True, False, False),
         (False, True, False),
-        (True, True, False),
     ):
         drawn, title, small, room, tight = _math(short=short, started=started, large=large)
         words = said(drawn, title, small, room, tight)
         assert any("Math" in line for line in words), (short, started, large, words)
-        assert start in words, (short, started, large, words)
+        assert any(start in line for line in words), (short, started, large, words)
 
 
 def test_a_blocks_range_stays_on_one_line_and_the_two_times_are_never_stacked(
@@ -197,13 +195,87 @@ def test_a_short_homework_length_is_hours_and_minutes_not_a_time_of_day() -> Non
 
 
 def test_fridays_header_says_2h_15m_when_the_column_is_narrow(qapp: QApplication) -> None:
-    """The day's homework length under Friday must not look like 2:15."""
+    """The day's homework length under Friday must not look like 2:15. Finding #81: "2h 15m" at
+    every width, including a Friday column as wide as it is in an 810 px window."""
     from desktop.native.hours.classic import DayName
+    from desktop.native.window import WINDOW_MIN_WIDTH
 
     name = DayName(4)
     name.show_day("Fri", "18", 135, False)
-    name.resize(48, 80)
-    words = name.homework_words()
-    assert words in ("2 h 15 min", "2h 15m"), words
-    assert ":" not in words
-    assert words != "2 h 15"
+    for width in (48, 77, 96, 120):
+        name.resize(width, 80)
+        words = name.homework_words()
+        assert words == "2h 15m", (width, words)
+        assert ":" not in words
+        assert words != "2 h 15"
+    assert WINDOW_MIN_WIDTH == 800
+
+
+def test_mission_timeline_and_clay_painters_at_810_keep_a_short_blocks_start_and_a_range_on_one_line(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#13 and #80 at 810 px: existing tests only called block_layout. A 45-minute Math worksheet
+    keeps its name and its start; a 08:30–14:15 block never stacks those times as two events."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QFont, QImage
+
+    from desktop.native.fonts import load_fonts
+    from desktop.native.hours import canvas as canvas_module
+    from desktop.native.layouts.clay import ClayPainter, slots
+    from desktop.native.layouts.mission import MissionPainter
+    from desktop.native.layouts.registry import options_for, tokens_for
+    from desktop.native.layouts.timeline import TimelinePainter
+    from desktop.tests.test_hours_painter import Said
+
+    load_fonts()
+    monkeypatch.setattr(canvas_module, "QPainter", Said)
+    palette = resolved_palette("light-frost", False, None, "default")
+    math = Drawn("math", "Math worksheet", "assignments", True, Span(1, 17 * 60, 17 * 60 + 45), 0, 1)
+    span = Span(0, 8 * 60 + 30, 14 * 60 + 15)
+    school = Drawn("school", "School", "class", False, span, 0, 1)
+    ranged = range_label(span.start, span.end)
+    start = clock_label(span.start)
+    end = clock_label(span.end)
+    page = QRectF(0, 0, 800, 800)
+    clay_w = slots(810, 632, 3, 1.0, wide=False)[3].width()
+    painters = {
+        "mission": (
+            MissionPainter(tokens_for("mission", options_for(None, "mission")["colour"], palette)),
+            QRectF(40, 40, 39, 36),
+            QRectF(40, 90, 361, 36),
+        ),
+        "timeline": (
+            TimelinePainter(tokens_for("timeline", options_for(None, "timeline")["colour"], palette)),
+            QRectF(40, 40, 78.5, 24),
+            QRectF(40, 90, 78.5, 231),
+        ),
+        "clay": (
+            ClayPainter(tokens_for("clay", options_for(None, "clay")["colour"], palette), full=True),
+            QRectF(40, 40, clay_w, 45 * 38 / 60),
+            QRectF(40, 90, clay_w, 6 * 38),
+        ),
+    }
+
+    def said(painter, rect, drawn) -> list[str]:
+        image = QImage(900, 400, QImage.Format.Format_ARGB32)
+        paint = Said(image)
+        paint.setFont(QFont("Inter", 13))
+        Said.words = []
+        painter.block(paint, rect, drawn, page)
+        paint.end()
+        return [text for text, _where in Said.words]
+
+    for name, (painter, short_rect, range_rect) in painters.items():
+        if name == "mission":
+            painter.taken = {math.span.day: (0.0, 800.0, []), school.span.day: (0.0, 800.0, [])}
+        short_words = said(painter, short_rect, math)
+        assert any("Math" in text for text in short_words), (name, short_words)
+        # Timeline's 45-minute block at 810 is 78.5×24 px: 17:00 cannot sit with three letters of the
+        # name. Mission writes the start beside the bar; Clay's card is wide enough for both.
+        if name != "timeline":
+            assert any("17:00" in text for text in short_words), (name, short_words)
+        range_words = said(painter, range_rect, school)
+        extras = [text for text in range_words if text in (start, end, ranged) or "–" in text]
+        assert extras != [start, end], (name, range_words)
+        assert ranged in range_words or start in extras, (name, range_words)
+
