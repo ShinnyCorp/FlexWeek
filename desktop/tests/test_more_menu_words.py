@@ -291,7 +291,9 @@ def test_help_draws_each_shortcut_as_keycaps(
     def parts(row: QWidget) -> list[tuple[str, str]]:
         return [(label.objectName(), label.text()) for label in row.findChildren(QLabel)]
 
-    assert parts(rows[4]) == [("helpKeycap", "Ctrl"), ("helpKeyJoin", "+"), ("helpKeycap", "K")]
+    assert parts(rows[4]) == [("helpKeycap", "F1")]
+    assert parts(rows[5]) == [("helpKeycap", "Ctrl"), ("helpKeyJoin", "+"), ("helpKeycap", "N")]
+    assert parts(rows[6]) == [("helpKeycap", "Ctrl"), ("helpKeyJoin", "+"), ("helpKeycap", "K")]
     assert parts(rows[2]) == [("helpKeycap", "B"), ("helpKeyJoin", "or"), ("helpKeycap", "Esc")]
     assert parts(rows[-1]) == [("helpKeycap", "Esc"), ("helpKeyJoin", "while dragging")]
 

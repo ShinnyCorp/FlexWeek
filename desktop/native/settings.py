@@ -213,6 +213,8 @@ HELP_KEYS = (
     ("[T]", "My day"),
     ("[B] or [Esc]", "Back from My day"),
     ("[F]", "Focus screen"),
+    ("[F1]", "Help"),
+    ("[Ctrl]+[N]", "Add homework"),
     ("[Ctrl]+[K]", "Command bar"),
     ("[Ctrl]+[Z]", "Undo"),
     ("[Ctrl]+[Y] or [Ctrl]+[Shift]+[Z]", "Redo"),
