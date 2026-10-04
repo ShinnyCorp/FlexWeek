@@ -399,17 +399,19 @@ class MissionPainter(BlockPainter):
         if drawn.done or drawn.missed:
             mark = QColor(mix_oklab(mark.name(), self.tokens["surface"], 0.45))
         top = rect.top() + 8
-        icon = []
+        icon_paint = None
         if category_icon(drawn.category) is not None:
             size = round(QFontMetricsF(self.fonts(painter.font())[0]).ascent())
             fill, ink, _outline, edge = self.fills(drawn)
             colour = self._book_colour(drawn, ink, fill, edge) or ink
             at = QPointF(rect.center().x() - size / 2, top)
-            # The line for now is already across the lane. Cover it, then paint the icon last so
-            # the line cannot sit on the icon's clear pixels. The mark below gets the line again.
-            cover = QRectF(at.x() - 4, at.y() - 4, size + 8, size + 8)
-            self._clear_of_now(painter, cover)
-            icon = [(at, size, colour, category_icon(drawn.category) or BOOK)]
+            icon_box = QRectF(at.x(), at.y(), size, size)
+            pad = NOW_CLEAR + 3
+            backdrop = icon_box.adjusted(-pad, -pad, pad, pad)
+            if self.now_track is not None:
+                card = QColor(mix_oklab(self.tokens["text"], self.tokens["surface"], TODAY_WASH))
+                painter.fillRect(backdrop, card)
+            icon_paint = (at, size, colour, category_icon(drawn.category) or BOOK)
             top += size + 3
         bar = QRectF(rect.center().x() - 3, top, 6, max(rect.bottom() - 8 - top, 6))
         if drawn.chosen:
@@ -420,20 +422,9 @@ class MissionPainter(BlockPainter):
         shape.addRoundedRect(bar, 3, 3)
         painter.fillPath(shape, mark)
         self.crossing(painter, bar, [])
-        for at, size, colour, name in icon:
+        if icon_paint is not None:
+            at, size, colour, name = icon_paint
             self._book(painter, at, size, colour, name)
-
-    def _clear_of_now(self, painter: QPainter, icon: QRectF) -> None:
-        """A tick leaves the lane showing round its icon, and the line for now, drawn across the lane
-        before the blocks, ran through the icon there. The lane is laid again round the icon where
-        the line reaches it, so the line stops short of it as it does of a block's words."""
-        track, minute = self.now_track, self.now_minute
-        if track is None or minute is None:
-            return
-        room = icon.adjusted(-NOW_CLEAR, -NOW_CLEAR, NOW_CLEAR, NOW_CLEAR)
-        if room.left() <= track.area.left() + track.offset(minute) <= room.right():
-            # Today's lane, the only one the line is drawn on, washed as `track` washes it.
-            painter.fillRect(room, QColor(mix_oklab(self.tokens["text"], self.tokens["surface"], TODAY_WASH)))
 
     def words(
         self,
