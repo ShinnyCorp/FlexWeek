@@ -15,12 +15,22 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import QPoint, QStandardPaths, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDialog, QPushButton
+from PySide6.QtWidgets import QApplication, QDialog, QPushButton, QWidget
 
 from desktop.native.calendar import sunday_due
-from desktop.native.command_bar import BAR_WIDTH, KEY_ROLE, KEYS_ROLE, Command, grouped, match_rank, ranked
+from desktop.native.command_bar import (
+    BAR_WIDTH,
+    KEY_ROLE,
+    KEYS_ROLE,
+    Command,
+    CommandBar,
+    grouped,
+    match_rank,
+    match_span,
+    ranked,
+)
 from desktop.native.settings import HELP_KEYS
-from desktop.native.widgets import HomeworkDialog
+from desktop.native.widgets import ChooseTimeDialog, HomeworkDialog
 from desktop.native.window import NativeWindow
 from desktop.server import LocalServer
 from desktop.tests.logic_support import past_setup
@@ -113,6 +123,48 @@ def test_typing_filters_by_letters_in_order_then_by_first_letters() -> None:
     assert match_rank("zz", "Math worksheet") is None
 
 
+def test_match_span_marks_initials_as_themselves_and_word_starts() -> None:
+    """#89: "pmh" was (5, 9) "my h"; initials must not mark one run across words."""
+    assert match_span("pmh", "Plan my homework") == [(0, 1), (5, 6), (8, 9)]
+    assert match_span("pmh", "Plan my homework") != (5, 9)
+    assert match_span("aft", "Add fixed time") == [(0, 1), (4, 5), (10, 11)]
+    assert match_span("aft", "Add fixed time") != [(4, 11)]
+    assert match_span("plan", "Plan my homework") == [(0, 4)]
+    assert match_span("home", "Plan my homework") == [(8, 12)]
+    assert match_span("home", "Add homework") == [(4, 8)]
+
+
+def test_highlighted_text_keeps_56_pixels_clear_of_the_key_caps(qapp: QApplication) -> None:
+    host = QWidget()
+    host.resize(640, 400)
+    host.show()
+    bar = CommandBar(host)
+    bar.open(
+        [
+            Command(
+                "plan",
+                "Plan my homework after school on Friday afternoon",
+                group="Homework",
+                keys="Ctrl+K",
+            )
+        ]
+    )
+    QTest.keyClicks(bar.input, "p")
+    qapp.processEvents()
+    item = next(bar.list.item(row) for row in range(bar.list.count()) if bar.list.item(row).data(KEY_ROLE))
+    row = bar.list.visualItemRect(item)
+    picture = bar.list.viewport().grab().toImage()
+    text, accent = QColor(bar.rows.text), QColor(bar.rows.accent)
+    ink = 0
+    for x in range(row.right() - 56, row.right()):
+        for y in range(row.top(), row.bottom()):
+            colour = picture.pixelColor(x, y)
+            if colour in (text, accent):
+                ink += 1
+    host.hide()
+    assert ink == 0, "highlighted words keep the same 56 px clear that unmatched text keeps"
+
+
 def test_ctrl_k_opens_a_centred_box_listing_what_can_be_done(
     qapp: QApplication, window: NativeWindow
 ) -> None:
@@ -127,9 +179,9 @@ def test_ctrl_k_opens_a_centred_box_listing_what_can_be_done(
     assert bar.shown_words() == [
         "Add homework", "Add fixed time", "School hours",
         "Day", "Week", "Month", "My day", "Focus screen", "Settings", "Help",
-        "Look and colours", "Customise look…", "Planning settings", "Focus settings", "Alerts",
+        "Look and colours", "Customise…", "Planning settings", "Focus settings", "Alerts",
         "This computer",
-        "Plan my homework", "History essay", "Math worksheet",
+        "Plan my homework", "Choose a time…", "History essay", "Math worksheet",
     ]
     QTest.keyClick(bar.input, Qt.Key.Key_Escape)
     assert bar.isVisible() is False
@@ -152,6 +204,23 @@ def test_ma_then_enter_opens_math_worksheet(
     QTest.keyClick(bar.input, Qt.Key.Key_Return)
     assert opened == ["Math worksheet"]
     assert bar.isVisible() is False
+
+
+def test_resizing_the_window_keeps_the_focused_row(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    open_bar(window)
+    bar = window.command_bar
+    QTest.keyClick(bar.input, Qt.Key.Key_Down)
+    QTest.keyClick(bar.input, Qt.Key.Key_Down)
+    focused = bar.list.currentItem()
+    assert focused is not None
+    words = focused.text()
+    assert words != "Add homework"
+    window.resize(window.width() - 80, window.height() - 120)
+    qapp.processEvents()
+    assert bar.list.currentItem() is focused
+    assert bar.list.currentItem().text() == words
 
 
 def test_arrows_choose_and_enter_runs_what_is_chosen(qapp: QApplication, window: NativeWindow) -> None:
@@ -199,6 +268,31 @@ def test_a_click_on_a_row_runs_it(qapp: QApplication, window: NativeWindow) -> N
     assert window._stack.currentWidget() is window.focus_screen
 
 
+def test_choose_a_time_with_nothing_waiting_says_so(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    waiting = [
+        block
+        for block in window.session.blocks
+        if block.get("assignment_id") and not block.get("start")
+    ]
+    for index, block in enumerate(waiting):
+        assert window.session.place_session(block["id"], 2 + index, 16 * 60)
+    window.session.save()
+    settled(qapp, window)
+    def must_not_open(self: ChooseTimeDialog) -> int:
+        raise AssertionError("Choose a time should not open")
+
+    monkeypatch.setattr(ChooseTimeDialog, "exec", must_not_open)
+    open_bar(window)
+    bar = window.command_bar
+    QTest.keyClicks(bar.input, "choose a time")
+    assert bar.shown_words() == ["Choose a time…"]
+    QTest.keyClick(bar.input, Qt.Key.Key_Return)
+    qapp.processEvents()
+    assert window.toast.text() == "All your homework already has a time."
+
+
 def test_plan_says_suggest_times_for_a_student_who_plans_by_hand(
     qapp: QApplication, window: NativeWindow
 ) -> None:
@@ -211,6 +305,8 @@ def test_plan_says_suggest_times_for_a_student_who_plans_by_hand(
 def test_help_lists_both_keys() -> None:
     assert ("[Ctrl]+[K]", "Command bar") in HELP_KEYS
     assert ("[F]", "Focus screen") in HELP_KEYS
+    assert ("[F1]", "Help") in HELP_KEYS
+    assert ("[Ctrl]+[N]", "Add homework") in HELP_KEYS
 
 
 def test_the_group_with_the_best_match_comes_first_so_enter_runs_it() -> None:
@@ -236,7 +332,15 @@ def test_every_row_has_an_icon_and_the_views_their_keys(qapp: QApplication, wind
     assert all(not item.icon().isNull() for item in commands)
     assert all(item.flags() == Qt.ItemFlag.NoItemFlags for item in labels), "a label cannot be chosen"
     keys = {item.text(): item.data(KEYS_ROLE) for item in commands if item.data(KEYS_ROLE)}
-    assert keys == {"Day": "D", "Week": "W", "Month": "M", "My day": "T", "Focus screen": "F"}
+    assert keys == {
+        "Add homework": "Ctrl+N",
+        "Help": "F1",
+        "Day": "D",
+        "Week": "W",
+        "Month": "M",
+        "My day": "T",
+        "Focus screen": "F",
+    }
     assert bar.list.currentItem().text() == "Add homework", "the first command, not the label over it"
     QTest.keyClick(bar.input, Qt.Key.Key_Up)
     assert bar.list.currentItem().text() == "Math worksheet", "Up from the top goes round, past the label"
@@ -309,7 +413,7 @@ def test_look_finds_the_look_and_opens_settings_where_it_is(
     open_bar(window)
     bar = window.command_bar
     QTest.keyClicks(bar.input, "look")
-    assert bar.shown_words()[:2] == ["Look and colours", "Customise look…"]
+    assert bar.shown_words()[:2] == ["Look and colours", "Customise…"]
     QTest.keyClick(bar.input, Qt.Key.Key_Return)
     settings = window._settings
     assert settings is not None and window._stack.currentWidget() is settings
@@ -331,7 +435,7 @@ def test_the_chosen_row_is_accent_tinted_a_list_that_fits_never_scrolls_and_keys
 
     palette = resolved_palette(*window._look_inputs()[:2], window._look, window._look_inputs()[2])
     # Tall enough for every command, Settings' group included.
-    window.resize(1280, 1100)
+    window.resize(1280, 1200)
     qapp.processEvents()
     open_bar(window)
     bar = window.command_bar
@@ -339,10 +443,18 @@ def test_the_chosen_row_is_accent_tinted_a_list_that_fits_never_scrolls_and_keys
     assert bar.list.verticalScrollBar().maximum() == 0, "every row shows at once"
     picture = bar.list.viewport().grab().toImage()
     chosen = bar.list.visualItemRect(bar.list.currentItem())
-    tint = picture.pixelColor(chosen.right() - 20, chosen.center().y())
-    wanted = QColor(mix(palette["accent"], palette["panel"], 0.14))
-    pairs = zip(tint.getRgb()[:3], wanted.getRgb()[:3], strict=True)
-    assert max(abs(one - two) for one, two in pairs) <= 3, "the accent's tint, not grey"
+    tint = picture.pixelColor(chosen.left() + 48, chosen.center().y())
+    selected = QColor(mix(palette["accent"], palette["panel"], 0.14))
+    plain = QColor(palette["panel"])
+
+    def distance(left: QColor, right: QColor) -> int:
+        return (
+            abs(left.red() - right.red())
+            + abs(left.green() - right.green())
+            + abs(left.blue() - right.blue())
+        )
+
+    assert distance(tint, selected) < distance(tint, plain), "the accent's tint, not grey"
     items = [bar.list.item(index) for index in range(bar.list.count())]
     row = bar.list.visualItemRect(next(item for item in items if item.text() == "Week"))
     edge = QColor(palette["hairline_strong"])

@@ -119,6 +119,7 @@ from desktop.native.reuse import (
     week_label,
 )
 from desktop.native.settings import (
+    CUSTOMISE,
     SECTIONS,
     AboutDialog,
     AccountDialog,
@@ -2583,6 +2584,24 @@ class NativeWindow(QMainWindow):
         dialog = HomeworkDialog(self, assignment, waiting=waiting, pinned=pinned)
         self._commit_homework(dialog)
 
+    def _choose_time_for_homework(self) -> None:
+        """The first homework this week that still needs a time, opened in Choose a time."""
+        for assignment in sorted(
+            self.session.assignments.values(),
+            key=lambda item: (bool(item.get("completed")), item.get("due") or "", item.get("title") or ""),
+        ):
+            waiting = [
+                block
+                for block in self.session.blocks
+                if block.get("assignment_id") == assignment["id"]
+                and not block.get("start")
+                and not block.get("completed")
+            ]
+            if waiting:
+                self._choose_time(assignment["id"])
+                return
+        self.session._say("All your homework already has a time.")
+
     def _choose_time(self, assignment_id: str) -> None:
         """A time for this homework's first session that needs one, picked rather than dragged."""
         waiting = [
@@ -3058,7 +3077,7 @@ class NativeWindow(QMainWindow):
         manual = (self.session.preferences or {}).get("planning_style") == "manual"
         plan = SUGGEST_LABEL if manual else PLAN_LABEL
         made = [
-            Command("addHomework", "Add homework", MORE_TIPS["addHomework"], "Add", "book-open"),
+            Command("addHomework", "Add homework", MORE_TIPS["addHomework"], "Add", "book-open", "Ctrl+N"),
             Command("addFixed", "Add fixed time", MORE_TIPS["addFixed"], "Add", "clock"),
             Command("schoolHours", "School hours", MORE_TIPS["schoolHours"], "Add", "school"),
             Command("day", "Day", "One day as a list", "Go to", "list", "D"),
@@ -3067,11 +3086,18 @@ class NativeWindow(QMainWindow):
             Command("myDay", "My day", "Watch today", "Go to", "sun", "T"),
             Command("focus", "Focus screen", "The focus timer on its own, large.", "Go to", "timer", "F"),
             Command("settingsGear", "Settings", "", "Go to", "settings"),
-            Command("helpButton", "Help", MORE_TIPS["helpButton"], "Go to", "circle-question-mark"),
+            Command("helpButton", "Help", MORE_TIPS["helpButton"], "Go to", "circle-question-mark", "F1"),
             Command("solveButton", plan, SUGGEST_TIP if manual else PLAN_TIP, "Homework", "sparkles"),
+            Command(
+                "chooseTime",
+                "Choose a time…",
+                "Pick a time for homework that needs one",
+                "Homework",
+                "clock",
+            ),
             # Settings' pages by what they hold: "look" found nothing (Grok Bot's 0.17.0 audit, X1).
             Command("settings:0", "Look and colours", "Look, accent and design", "Settings", "palette"),
-            Command("customise", "Customise look…", "Make a look of your own", "Settings", "swatch-book"),
+            Command("customise", f"{CUSTOMISE}…", "Make a look of your own", "Settings", "swatch-book"),
             Command("settings:1", "Planning settings", "How homework gets a time", "Settings", "calendar"),
             Command("settings:2", "Focus settings", "The focus timer's lengths", "Settings", "timer"),
             Command("settings:3", "Alerts", "Reminders, alarms and sounds", "Settings", "bell"),
@@ -3110,6 +3136,8 @@ class NativeWindow(QMainWindow):
             self._enter_day()
         elif key == "focus":
             self._open_focus_screen()
+        elif key == "chooseTime":
+            self._choose_time_for_homework()
         elif key.startswith("settings:") or key == "customise":
             self._open_settings_at(0 if key == "customise" else int(key.removeprefix("settings:")))
             if key == "customise" and self._settings is not None:
@@ -3864,6 +3892,10 @@ class NativeWindow(QMainWindow):
                 self._open_command_bar()
                 event.accept()
                 return
+            if key == Qt.Key.Key_N and planning:
+                self._add_homework()
+                event.accept()
+                return
             if key == Qt.Key.Key_Z:
                 if mods & Qt.KeyboardModifier.ShiftModifier:
                     self._told(self.session.redo)
@@ -3903,6 +3935,10 @@ class NativeWindow(QMainWindow):
             return
         if key == Qt.Key.Key_T:
             self._enter_day()
+            event.accept()
+            return
+        if key == Qt.Key.Key_F1 and planning:
+            self._open_help()
             event.accept()
             return
         if key == Qt.Key.Key_F and planning:
@@ -3945,6 +3981,7 @@ class NativeWindow(QMainWindow):
             Qt.Key.Key_M,
             Qt.Key.Key_T,
             Qt.Key.Key_F,
+            Qt.Key.Key_F1,
             Qt.Key.Key_Delete,
         ):
             self.keyPressEvent(event)
@@ -3957,6 +3994,7 @@ class NativeWindow(QMainWindow):
             Qt.Key.Key_Y,
             Qt.Key.Key_S,
             Qt.Key.Key_K,
+            Qt.Key.Key_N,
         ):
             self.keyPressEvent(event)
             return True
