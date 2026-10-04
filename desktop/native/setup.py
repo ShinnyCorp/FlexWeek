@@ -465,12 +465,43 @@ class TimeRange(QWidget):
         self.end.set_minutes(begin + minutes)
 
 
+SPORT_WORDS = frozenset(
+    {
+        "soccer",
+        "football",
+        "basketball",
+        "swim",
+        "swimming",
+        "track",
+        "tennis",
+        "volleyball",
+        "baseball",
+        "hockey",
+        "practice",
+        "lacrosse",
+        "softball",
+        "golf",
+        "wrestling",
+        "cheer",
+        "cheerleading",
+        "rugby",
+        "gym",
+    }
+)
+
+
+def activity_category_for(title: str) -> str:
+    words = {part.strip(".,!?").lower() for part in title.split() if part.strip(".,!?")}
+    return "exercise" if words & SPORT_WORDS else "extra"
+
+
 class ActivityRow(QFrame):
     removed = Signal(object)
 
     def __init__(
         self, title: str = "", days: list[int] | None = None, start: str = "15:30", minutes: int = 90,
         category: str = "extra",
+        guess: bool = True,
     ) -> None:
         super().__init__()
         self.setObjectName("setupGroup")
@@ -491,6 +522,11 @@ class ActivityRow(QFrame):
         self.category.addItem("Activity", "extra")
         self.category.addItem("Sports", "exercise")
         self.category.setCurrentIndex(max(0, self.category.findData(category)))
+        self._category_touched = not guess
+        self.category.activated.connect(self._keep_category)
+        self.name.textChanged.connect(self._guess_category)
+        if guess and title:
+            self._guess_category(title)
         top = QHBoxLayout()
         top.addWidget(self.name, 1)
         top.addWidget(self.category)
@@ -504,6 +540,15 @@ class ActivityRow(QFrame):
         bottom.addWidget(self.days)
         bottom.addWidget(self.times)
         box.addLayout(bottom)
+
+    def _keep_category(self, _index: int = 0) -> None:
+        self._category_touched = True
+
+    def _guess_category(self, _text: str = "") -> None:
+        if self._category_touched:
+            return
+        wanted = activity_category_for(self.name.text())
+        self.category.setCurrentIndex(max(0, self.category.findData(wanted)))
 
 
 def next_school_day(school_days: list[int], today: date | None = None) -> str:
@@ -1057,6 +1102,7 @@ class SetupPage(QWidget):
                     start=str(block["start"]),
                     minutes=int(block["duration_min"]),
                     category=str(block.get("category") or "extra"),
+                    guess=False,
                 )
         if not self.activities:
             self._add_activity()
@@ -1345,10 +1391,11 @@ class SetupPage(QWidget):
         minutes: int = 90,
         focus: bool = False,
         category: str = "extra",
+        guess: bool = True,
     ) -> None:
         if len(self.activities) >= MAX_ACTIVITIES:
             return
-        row = ActivityRow(title, days, start, minutes, category)
+        row = ActivityRow(title, days, start, minutes, category, guess=guess)
         row.removed.connect(self._remove_activity)
         self.activity_box.addWidget(row)
         self.activities.append(row)
