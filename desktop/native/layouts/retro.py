@@ -529,6 +529,7 @@ class RetroPainter(BlockPainter):
                 "error": colours.danger,
                 "text": colours.ink,
                 "muted": colours.ink,
+                "block_edge": mix(colours.ink, colours.field, 0.75),
             },
             wide=wide,
         )
