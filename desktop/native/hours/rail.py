@@ -10,6 +10,7 @@ behind "Not placed yet" and opens on a wrapping row under that line.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -441,8 +442,11 @@ class RailChip(TrayChip):
     def sizeHint(self) -> QSize:  # noqa: N802
         body, small = self._fonts()
         tall = max(QFontMetricsF(body).height(), QFontMetricsF(small).height()) + 10
-        wide = 3 + 2 * SPACING[1] + BOOK_GAP + 16 + QFontMetricsF(body).horizontalAdvance(self._title)
-        return QSize(round(wide + QFontMetricsF(small).horizontalAdvance(self.length)), round(max(30, tall)))
+        # The room the paint gives the whole title: up to it, the gap, the length and the edge after.
+        title = QFontMetricsF(body).horizontalAdvance(self._title)
+        length = QFontMetricsF(small).horizontalAdvance(self.length)
+        wide = CHIP_TITLE_LEFT + title + TITLE_GAP + length + SPACING[1]
+        return QSize(math.ceil(wide), round(max(30, tall)))
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         return QSize(80, self.sizeHint().height())
@@ -839,12 +843,13 @@ class Rail(QFrame):
                 continue
             for layout in (tray, flow):
                 layout.removeWidget(chip)
-            if folded:
-                flow.addWidget(chip)
-                chip.show()
-            else:
-                tray.addWidget(chip)
-                chip.show()
+            # In the rail a chip takes the rail's width and its title gives way, so it ignores its
+            # own; on the folded row a layout gives an ignored width nothing, and the chips were
+            # there 0 pixels wide with nothing to drag. There each asks for its whole title.
+            across = QSizePolicy.Policy.Preferred if folded else QSizePolicy.Policy.Ignored
+            chip.setSizePolicy(across, QSizePolicy.Policy.Fixed)
+            (flow if folded else tray).addWidget(chip)
+            chip.show()
         self.waiting_row.setVisible(folded and self._waiting_open and bool(self._chips))
 
     def set_folded(self, folded: bool) -> None:
@@ -935,9 +940,10 @@ class Rail(QFrame):
         short = "Not placed yet"
         short_w = self._waiting_chip_width(short)
         full_w = self._waiting_chip_width(full)
-        self.waiting_chip.setMinimumWidth(short_w)
         room = self.head.width() or self.strip.width()
         words = full if room == 0 or room >= full_w else short
+        # As wide as the words it shows, the count too, or the chevron sits on them.
+        self.waiting_chip.setMinimumWidth(full_w if words == full else short_w)
         self._wait_words.setText(words)
         self._wait_words.setMinimumWidth(self._wait_words.fontMetrics().horizontalAdvance(words))
 

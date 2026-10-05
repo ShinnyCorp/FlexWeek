@@ -478,6 +478,13 @@ def test_the_folded_waiting_chip_opens_a_row_under_the_line(
     )
     assert waiting.parent() is row
     assert waiting.mapTo(rail, waiting.rect().topLeft()).y() >= chip.mapTo(rail, chip.rect().bottomLeft()).y()
+    # Something to take hold of: the rig found both chips on the row 0 pixels wide.
+    assert waiting.width() >= waiting.sizeHint().width(), (waiting.width(), waiting.sizeHint().width())
+    assert waiting.shown_title() == "Poster", "a chip on the folded row has room for its whole title"
+    words = chip.findChild(QLabel, "railWaitingWords")
+    chevron = chip.findChild(QLabel, "railWaitingChevron")
+    said = words.mapTo(chip, words.rect().topLeft()).x() + words.fontMetrics().horizontalAdvance(words.text())
+    assert said <= chevron.mapTo(chip, chevron.rect().topLeft()).x(), (words.text(), "runs under the chevron")
     QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
     qapp.processEvents()
     assert not row.isVisible()
