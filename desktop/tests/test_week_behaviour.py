@@ -16,10 +16,12 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QWidget
 from shiboken6 import isValid
 
+from desktop.native import icons
 from desktop.native import window as window_module
 from desktop.native.calendar import monday_of, sunday_due
 from desktop.native.layouts.base import NARROW_WIDTH
 from desktop.native.layouts.empty import EMPTY_COPY_LAST, EMPTY_USE_ROUTINE
+from desktop.native.look import sanitize_look
 from desktop.native.menus import Menu
 from desktop.native.widgets import ConfirmSheet, PreviewDialog, RoutineDialog
 from desktop.native.window import PLAN_LABEL, PLAN_SHORT, NativeWindow
@@ -426,89 +428,79 @@ def test_deleting_the_whole_homework_from_the_menu_uses_the_editors_words(
     assert "math" not in window.session.assignments
 
 
-def test_the_folded_waiting_popup_is_gone_once_a_drag_has_started(
-    qapp: QApplication, window: NativeWindow  # noqa: F811
-) -> None:
+def _add_waiting_poster(qapp: QApplication, window: NativeWindow) -> dict:  # noqa: F811
     due = sunday_due(window.session.week_start)
     window.session.add_homework(
         {"id": "poster", "title": "Poster", "due": due, "estimate_min": 30, "revision": 0}
     )
     window.session.save()
     settled(qapp, window)
-    window.move(0, 0)
-    window.resize(800, 720)
+    return next(block for block in window.session.blocks if block.get("assignment_id") == "poster")
+
+
+def _fold_week(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,
+    width: int = 800,
+    height: int = 860,
+) -> None:
+    window.resize(width, height)
     for _ in range(5):
         qapp.processEvents()
     assert window.rail.folded
-    window.rail.waiting_chip.click()
-    qapp.processEvents()
-    popup = window.findChild(QWidget, "railWaitingPopup")
-    assert popup is not None and popup.isVisible()
-    waiting = next(block for block in window.session.blocks if block.get("assignment_id") == "poster")
-    chip = next(
-        widget
-        for widget in window.findChildren(QPushButton)
-        if widget.property("block_id") == waiting["id"] and widget.property("tray") and widget.isVisible()
-    )
-    hours = window.week_table.hours
-    if not hours.tracks:
-        hours.resize(980, 640)
-        hours.relayout()
-    hours.reveal(2, 15 * 60, 18 * 60)
-    qapp.processEvents()
-    start = chip.mapToGlobal(chip.rect().center())
-    end = hours.point_for(2, 16 * 60)
-    send_mouse(chip, QEvent.Type.MouseButtonPress, start, True)
-    for step in range(1, 9):
-        moved = QPoint(
-            start.x() + (end.x() - start.x()) * step // 8,
-            start.y() + (end.y() - start.y()) * step // 8,
-        )
-        send_mouse(hours, QEvent.Type.MouseMove, moved, True)
-        if window.hand.active:
-            break
-    qapp.processEvents()
-    assert window.hand.active
-    shown = window.findChild(QWidget, "railWaitingPopup")
-    assert shown is None or not shown.isVisible()
-    window.hand.cancel()
 
 
-def test_the_folded_waiting_chip_has_a_chevron_and_opens_without_resizing(
+def _chevron(chip: QPushButton, name: str, rail) -> None:
+    mark = chip.findChild(QLabel, "railWaitingChevron")
+    assert mark is not None and not mark.pixmap().isNull()
+    want = icons.pixmap(name, rail.colours.muted, 16, chip.devicePixelRatioF())
+    assert mark.pixmap().toImage() == want.toImage(), name
+
+
+def test_the_folded_waiting_chip_opens_a_row_under_the_line(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    due = sunday_due(window.session.week_start)
-    window.session.add_homework(
-        {"id": "poster", "title": "Poster", "due": due, "estimate_min": 30, "revision": 0}
-    )
-    window.session.save()
-    settled(qapp, window)
-    window.resize(NARROW_WIDTH - 1, 860)
-    for _ in range(5):
-        qapp.processEvents()
+    _add_waiting_poster(qapp, window)
+    _fold_week(qapp, window, NARROW_WIDTH - 1)
     rail = window.rail
     chip = rail.findChild(QPushButton, "railWaitingChip")
-    chevron = chip.findChild(QLabel, "railWaitingChevron")
-    assert chevron is not None and not chevron.pixmap().isNull()
-    before = window.width()
-    QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
-    qapp.processEvents()
-    assert window.width() == before
-    popup = window.findChild(QWidget, "railWaitingPopup")
-    assert popup is not None and popup.isVisible()
-    popup.close()
-    qapp.processEvents()
-    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    qapp.processEvents()
+    row = rail.findChild(QWidget, "railWaitingRow")
+    assert chip is not None and chip.isVisible()
+    assert row is not None and not row.isVisible()
     assert window.findChild(QWidget, "railWaitingPopup") is None
-    for waiting in rail.chips():
-        assert waiting.parent() is rail.waiting
+    _chevron(chip, "chevron-down", rail)
+    before = (window.width(), window.height())
     QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
     qapp.processEvents()
-    popup = window.findChild(QWidget, "railWaitingPopup")
-    assert popup is not None and popup.isVisible()
+    assert (window.width(), window.height()) == before
+    assert row.isVisible()
+    assert window.findChild(QWidget, "railWaitingPopup") is None
+    _chevron(chip, "chevron-up", rail)
+    waiting = next(
+        widget
+        for widget in rail.chips()
+        if widget.property("block_id") and widget.property("tray") and widget.isVisible()
+    )
+    assert waiting.parent() is row
+    assert waiting.mapTo(rail, waiting.rect().topLeft()).y() >= chip.mapTo(rail, chip.rect().bottomLeft()).y()
+    QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+    assert not row.isVisible()
+    _chevron(chip, "chevron-down", rail)
+    QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
+    assert row.isVisible()
+    window.resize(1280, 860)
+    for _ in range(5):
+        qapp.processEvents()
+    assert not rail.folded
+    _fold_week(qapp, window, NARROW_WIDTH - 1)
+    assert not row.isVisible()
+    _chevron(chip, "chevron-down", rail)
+    QTest.mouseClick(chip, Qt.MouseButton.LeftButton)
+    qapp.processEvents()
     caught: list[BaseException] = []
     previous_hook = sys.excepthook
     previous_unraisable = sys.unraisablehook
@@ -541,6 +533,67 @@ def test_the_folded_waiting_chip_has_a_chevron_and_opens_without_resizing(
         sys.excepthook = previous_hook
         sys.unraisablehook = previous_unraisable
     assert caught == []
+
+
+def test_the_folded_waiting_chip_keeps_not_placed_yet_at_800(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,
+) -> None:
+    _add_waiting_poster(qapp, window)
+    for size in ("normal", "large"):
+        window._look = sanitize_look({"preset": "default", "knobs": {"text": size}})
+        window._apply_appearance()
+        window._sync_chrome()
+        _fold_week(qapp, window, 800)
+        chip = window.rail.findChild(QPushButton, "railWaitingChip")
+        words = chip.findChild(QLabel, "railWaitingWords")
+        count = len(window.rail.chips())
+        assert words.text() in {f"Not placed yet · {count}", "Not placed yet"}, (size, words.text())
+        assert words.fontMetrics().horizontalAdvance(words.text()) <= words.width() + 2, (
+            size,
+            words.text(),
+            words.width(),
+        )
+
+
+def test_a_drag_from_the_folded_waiting_row_starts(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,
+) -> None:
+    waiting = _add_waiting_poster(qapp, window)
+    window.move(0, 0)
+    _fold_week(qapp, window, 800, 720)
+    window.rail.waiting_chip.click()
+    qapp.processEvents()
+    row = window.findChild(QWidget, "railWaitingRow")
+    assert row is not None and row.isVisible()
+    assert window.findChild(QWidget, "railWaitingPopup") is None
+    chip = next(
+        widget
+        for widget in window.findChildren(QPushButton)
+        if widget.property("block_id") == waiting["id"] and widget.property("tray") and widget.isVisible()
+    )
+    hours = window.week_table.hours
+    if not hours.tracks:
+        hours.resize(980, 640)
+        hours.relayout()
+    hours.reveal(4, 15 * 60, 18 * 60)
+    qapp.processEvents()
+    start = chip.mapToGlobal(chip.rect().center())
+    end = hours.point_for(4, 16 * 60)
+    send_mouse(chip, QEvent.Type.MouseButtonPress, start, True)
+    for step in range(1, 9):
+        moved = QPoint(
+            start.x() + (end.x() - start.x()) * step // 8,
+            start.y() + (end.y() - start.y()) * step // 8,
+        )
+        send_mouse(hours, QEvent.Type.MouseMove, moved, True)
+        if window.hand.active:
+            break
+    qapp.processEvents()
+    assert window.hand.active
+    assert row.isVisible()
+    window.hand.cancel()
 
 
 def test_a_click_on_the_grid_beside_the_empty_week_card_opens_the_free_time_menu(
