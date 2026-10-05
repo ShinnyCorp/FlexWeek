@@ -10,7 +10,7 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QMargins, QObject, QPoint, QRect, QSize, QStandardPaths, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSize, QStandardPaths, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -317,6 +317,8 @@ RECOVERY_CHOOSE = "Choose where to save"
 RECOVERY_WAIT = "Tick the box above to continue."
 # What they say on a top bar with no room for the whole words.
 PLAN_SHORT = "Plan homework"
+# The last of #83's steps: Plan my homework, Plan homework, then this.
+PLAN_TINY = "Plan"
 SUGGEST_SHORT = "Suggest"
 # The top bar's icons, the larger of the system's two sizes (decision 7).
 BAR_ICON_PX = 20
@@ -917,7 +919,6 @@ class NativeWindow(QMainWindow):
         page = QWidget()
         page.setObjectName("weekPage")
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
         # Where you are at the left, what to show and do at the right; on a narrow window the second
         # goes under the first rather than both being cut.
         bar = EndsLayout()
@@ -1184,6 +1185,7 @@ class NativeWindow(QMainWindow):
         self._bar_views.addLayout(add_split)
         for shown in (solve, retry, more, gear):
             self._bar_views.addWidget(shown)
+        self._retry_bar_index = self._bar_views.indexOf(retry)
         self.solve_button = solve
         self.more_button = more
         self.settings_gear = gear
@@ -1193,6 +1195,7 @@ class NativeWindow(QMainWindow):
             hidden.setVisible(False)
         chrome.addLayout(actions)
         self.retry_button = retry
+        self._sync_retry_bar_slot()
         self.clipboard_summary = QLabel("Nothing copied")
         self.clipboard_summary.setObjectName("clipboardSummary")
         chrome.addWidget(self.clipboard_summary)
@@ -1460,6 +1463,8 @@ class NativeWindow(QMainWindow):
         # A student who places homework by hand asks for ideas; the plan is theirs.
         self.solve_button.set_texts(*((SUGGEST_LABEL, SUGGEST_SHORT) if manual else (PLAN_LABEL, PLAN_SHORT)))
         self.solve_button.setToolTip(SUGGEST_TIP if manual else PLAN_TIP)
+        # Retry save goes back in the row before the window's narrowest is measured from it.
+        self._sync_retry_bar_slot()
         self._keep_bar_whole()
         self._fit_plan_and_more()
         own = isinstance(self.planner.currentWidget(), LayoutView)
@@ -1487,58 +1492,56 @@ class NativeWindow(QMainWindow):
                 scroll.canvas.update()
         return changed
 
-    def _bar_actions_width(self, plan_words: str, more_words: str) -> int:
-        plan, more = self.solve_button, self.more_button
-        plan.setText(plan_words)
-        more.setText(more_words)
-        for widget in (plan, more):
-            widget.ensurePolished()
-        self._bar_views.invalidate()
-        self._bar_views.activate()
-        return self._bar_views.sizeHint().width()
+    def _sync_retry_bar_slot(self) -> None:
+        """Hidden Retry save must not reserve bar width; its minimum was keeping the row wrapped."""
+        retry = self.retry_button
+        row = self._bar_views
+        at = row.indexOf(retry)
+        if retry.isVisible():
+            if at < 0:
+                after = row.indexOf(self.solve_button)
+                row.insertWidget(after + 1 if after >= 0 else self._retry_bar_index, retry)
+        elif at >= 0:
+            row.takeAt(at)
+        self._top_bar.invalidate()
 
     def _fit_plan_and_more(self, total_width: int | None = None) -> None:
-        """More loses its words before Plan my homework shortens, at every width and text size."""
+        """#83's one order as the bar runs short of room: the date shortens, More drops to its icon,
+        Plan my homework drops "my", then reads "Plan". Each step's words are set and the bar's own
+        parts say what room they need; the first step that keeps the bar on one row is kept, and
+        with none the bar goes onto two rows at the last step."""
         if getattr(self, "_fitting_plan_row", False):
             return
         self._fitting_plan_row = True
         bar = self._top_bar
-        more, plan = self.more_button, self.solve_button
+        more, plan, title = self.more_button, self.solve_button, self.week_title
         page = self._week_page
-        page_layout = page.layout()
-        page_margins = page_layout.contentsMargins() if page_layout is not None else QMargins()
-        if page.width() > 0:
-            width = page.width()
-        elif total_width is not None:
-            width = total_width
-        else:
-            width = self.width()
+        width = total_width if total_width is not None else (page.width() or self.width())
+        page_margins = page.layout().contentsMargins()
         margins = bar.contentsMargins()
         inner = width - page_margins.left() - page_margins.right() - margins.left() - margins.right()
-        first = bar.itemAt(0)
-        title = self.week_title
-        if title._short:
-            title.setText(title._short)
-        first_w = first.sizeHint().width() if first is not None else 0
-        chosen = (plan._short, "")
-        for plan_words, more_words in (
-            (plan._full, more._full),
-            (plan._full, ""),
-            (plan._short, ""),
-        ):
-            if first_w + bar._gap + self._bar_actions_width(plan_words, more_words) <= inner:
-                chosen = (plan_words, more_words)
+        tiny = PLAN_TINY if plan._full == PLAN_LABEL else plan._short
+        long_date = title._full
+        short_date = title._short or title._full
+        steps = (
+            (long_date, plan._full, more._full),
+            (short_date, plan._full, more._full),
+            (short_date, plan._full, ""),
+            (short_date, plan._short, ""),
+            (short_date, tiny, ""),
+        )
+        first, second = bar.itemAt(0), bar.itemAt(1)
+        for date_words, plan_words, more_words in steps:
+            title.setText(date_words)
+            plan.setText(plan_words)
+            more.setText(more_words)
+            for widget in (title, plan, more):
+                widget.updateGeometry()
+            # Each group keeps its own size until told; the bar's invalidate does not reach them.
+            for part in (first, second, bar):
+                part.invalidate()
+            if first.sizeHint().width() + bar._gap + second.sizeHint().width() <= inner:
                 break
-        plan.setText(chosen[0])
-        more.setText(chosen[1])
-        if chosen == (plan._full, more._full):
-            title._fit()
-        elif title._short:
-            title.setText(title._short)
-        if plan.width() > 0 and plan.width() < plan._wide(plan.text()):
-            more.setText("")
-            if plan.width() < plan._wide(plan._full):
-                plan.setText(plan._short)
         bar.invalidate()
         self._fitting_plan_row = False
 
@@ -1551,7 +1554,11 @@ class NativeWindow(QMainWindow):
         self.findChild(QPushButton, "addArrow").setFixedHeight(add.sizeHint().height())
         self._bar_views.invalidate()
         margins = self._bar_views.parentWidget().layout().contentsMargins()
-        needed = self._bar_views.minimumSize().width() + margins.left() + margins.right()
+        plan = self.solve_button
+        # Measured with Plan at its last step, whatever it shows now: that is what the narrowest shows.
+        tiny = PLAN_TINY if plan._full == PLAN_LABEL else plan._short
+        least = self._bar_views.minimumSize().width() - plan.minimumSizeHint().width()
+        needed = least + plan._wide(tiny) + margins.left() + margins.right()
         self.setMinimumWidth(max(WINDOW_MIN_WIDTH, needed))
 
     def _choose_view(self, view: str) -> None:
@@ -1629,7 +1636,7 @@ class NativeWindow(QMainWindow):
         self._place_rail(self._rail_shown())
         self._fit_plan_and_more(event.size().width())
         super().resizeEvent(event)
-        self._fit_plan_and_more(event.size().width())
+        self._fit_plan_and_more()
         if self.toast.isVisible():
             self.toast.reposition()
         if self.plan_review.isVisible():
@@ -1952,6 +1959,7 @@ class NativeWindow(QMainWindow):
         if not self.session.busy:
             self.retry_button.setVisible(can_retry)
         self.retry_button.setEnabled(can_retry and not self.session.busy)
+        self._sync_retry_bar_slot()
         undo = self.findChild(QPushButton, "undoButton")
         redo = self.findChild(QPushButton, "redoButton")
         if undo is not None:

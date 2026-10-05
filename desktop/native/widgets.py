@@ -628,7 +628,19 @@ class FittedButton(QPushButton):
 
 
 class PlanButton(FittedButton):
-    """Plan my homework: the window shrinks More to its icon before this shortens."""
+    """Plan my homework: the window shrinks More to its icon before this shortens. The window picks
+    its words (`NativeWindow._fit_plan_and_more`), so it asks for the room the words shown take."""
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        return QSize(self._wide(self.text()), QPushButton.sizeHint(self).height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        # Shown as "Plan", shorter than its short form, it asks no more: the bar decides whether it
+        # has one row from its parts' smallest.
+        shown = self.text()
+        if shown and self._wide(shown) < self._wide(self._short):
+            return QSize(self._wide(shown), super().minimumSizeHint().height())
+        return super().minimumSizeHint()
 
     def _fit(self) -> None:
         # NativeWindow._fit_plan_and_more sets both labels; a resize mid-layout must not reset them.
@@ -642,6 +654,10 @@ class MoreButton(FittedButton):
         super().__init__("More", "", parent)
         self.setIconSize(QSize(20, 20))
         icons.tint(self, "ellipsis")
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        # As Plan's: the window picks the words, so this asks for the room of those shown.
+        return QSize(self._wide(self.text()), QPushButton.sizeHint(self).height())
 
     def _fit(self) -> None:
         # NativeWindow._fit_plan_and_more sets both labels; a resize mid-layout must not reset them.
