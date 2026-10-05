@@ -646,6 +646,19 @@ class PlanButton(FittedButton):
         # NativeWindow._fit_plan_and_more sets both labels; a resize mid-layout must not reset them.
         return
 
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        super().changeEvent(event)
+        _refit_bar(self, event)
+
+
+def _refit_bar(button: QPushButton, event: QEvent) -> None:
+    """Large text reaches Plan and More after the window has fitted the bar. Fitted again only on
+    the next resize, the bar's buttons moved under the pointer a moment after the change."""
+    if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+        host = button.window()
+        if hasattr(host, "_fit_plan_and_more"):
+            host._fit_plan_and_more()
+
 
 class MoreButton(FittedButton):
     """More in the top bar: its words, then its icon alone when the row is tighter still."""
@@ -662,6 +675,10 @@ class MoreButton(FittedButton):
     def _fit(self) -> None:
         # NativeWindow._fit_plan_and_more sets both labels; a resize mid-layout must not reset them.
         return
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        super().changeEvent(event)
+        _refit_bar(self, event)
 
 
 class EndsLayout(QLayout):
