@@ -359,20 +359,15 @@ test.
   or the arrow keys, so a keyboard user cannot tell what Remove will remove.
   Done when alarm rows show a focus ring and a selection.
 
-#### Batch A: still open before 0.18.2 ships
-- Whole suite on `release/0.18.2` with every lane merged (2026-10-04, 4 workers): 2882 passed,
-  5 failed; two were stale tests, fixed. Rigs: classic, timeline, mission and bento week and clay
-  day passed in full; timeline day 13/14, retro week 16/17.
-- #82 regression: with the rail folded (below 1100 px) a waiting homework in the "Not placed yet"
-  popup cannot be dragged onto the hours with a real pointer, and the chip reads "No ⌄" at 800 px.
-  Jonathan chose (2026-10-04): no popup; the chip expands the waiting chips in place under the
-  folded line.
-- #83: the top bar now stays one row at 1150 px Large text (timeline day and retro week rigs pass),
-  but the fix removed the week page's margins in every design; Jonathan wants them back.
-- `test_more_menu_words.py::test_unfinished_opens_its_list_in_any_design` fails now and then
-  ("Timeline showed nothing"); retro week's rig `week-small-large` failed once and passed alone.
-- #98's sliding plan panel needs Jonathan's look on a real screen.
-- `test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings`
+#### Batch A: checks before 0.18.2 ships (2026-10-04)
+- Fixed after the whole-suite and rig runs: with the rail folded, waiting homework opens in place
+  under the line (no popup) and can be dragged with a real pointer (its chips were 0 px wide);
+  the page margins are back, and the top bar shortens in one order (date, More, "Plan
+  homework", "Plan"), fitted as Large text arrives; Unfinished opened by the student stays open
+  when the week changes (the whole-suite failure of
+  `test_unfinished_opens_its_list_in_any_design`).
+- Left: a final whole suite and the seven rigs on `release/0.18.2`; Jonathan's look at #98's
+  sliding plan panel; `test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings`
   fails when its file runs alone (622 px against 640), on main too.
 
 #### Batch B (after mockup round 2)

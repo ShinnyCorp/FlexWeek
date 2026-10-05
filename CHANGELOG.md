@@ -42,9 +42,11 @@ All notable changes to FlexWeek are documented here. Format follows
   block menu has Copy and one Delete, which for homework with more than one
   time asks whether to delete this time or the whole homework.
 - Below 1100 px wide, "Not placed yet · 1" is a chip with the book icon and a
-  chevron. It opens the list under it and no longer widens the window.
-- "Plan my homework" keeps its words while they fit; then More shrinks to its
-  icon, then the label drops "my", at every width and text size.
+  chevron. A click opens the homework waiting for a time on a row under it,
+  ready to drag onto the hours, and no longer widens the window.
+- The top bar shortens in one order at every width and text size: the date,
+  then More to its icon, then "Plan my homework" to "Plan homework", then
+  "Plan".
 - Plan's review panel slides in over the week, drawn whole, instead of popping
   in and pushing the week down.
 - Settings opens without a pause: the page stays built between opens and

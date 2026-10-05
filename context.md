@@ -1,15 +1,13 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-10-04, `release/0.18.2` (local, not pushed): all of batch A is merged (lanes 0-6 and the
-  test-memory repair); CHANGELOG has its `[Unreleased]` entry. Ruff and mypy clean; every test file
-  a lane touched passes, one file per process. Whole suite (4 workers): 2882 passed, 5 failed, two of
-  them stale tests since fixed; two are a #82 regression (no drag from the folded rail's popup) and
-  one intermittent. Rigs: 5 of 7 in full; timeline day fails `day-small-large` (#83, the top bar
-  wraps at 1150 px Large); all of these are with Grok (round 3 prompt). Test cleanup deletes the windows each test made, so a 4-worker whole suite
-  takes about 1.4 GB (it was about 9 GB). `test_ui_dialogs.py`'s work-windows test fails when its
-  file runs alone (sheet 622 px, wants 640), on main too; `test_more_menu_words.py`'s Unfinished in
-  Timeline test failed once in five runs of its file.
+- 2026-10-04, `release/0.18.2` (local, not pushed): all of batch A is merged, with Grok's rounds
+  2-4 and Claude's fixes from the whole-suite and rig runs (folded rail drag, page margins and
+  the top bar's one order with "Plan" last, Unfinished staying open, the bar fitted as Large text
+  arrives). CHANGELOG has its `[Unreleased]` entry. Ruff and mypy clean; every touched file
+  passes alone; classic week 18/18, retro week 17/17, timeline day 14/14 after the fixes. Test
+  cleanup deletes each test's windows (a 4-worker suite takes about 1.5 GB). `test_ui_dialogs.py`'s
+  work-windows test fails when its file runs alone (sheet 622 px, wants 640), on main too.
 - 2026-10-03. v0.18.1 is the latest release (PR 40, 907fa4b): the 20 Fix-first findings of the
   0.17.2 audit, Jonathan's J1-J6 and the engine leftovers. 0.18.2 is planned in full in roadmap.md
   (batch A for Grok, batch B after mockup round 2), as is 0.18.3; the decisions 0.18.1 left open are
@@ -126,8 +124,6 @@ values make a retried write return the first result.
 
 ## Session Handoff
 - 2026-10-04, `release/0.18.2` in `~/.worktrees/flexweek-0182-release` (`.venv` is
-  `venv-0182-engine`, the engine with the new reason codes). Batch A merged and its CHANGELOG
-  written. Round 3 merged (folded-rail drag, one-row top bar); second whole suite 2888 passed, 1
-  intermittent. Next: Grok's round 4 (`~/.flexweek-ui-harness/scratch/0.18.x/grok-0182-prompt-round4.md`:
-  the folded chip expands in place, page margins back, the intermittent test), then the suite and
-  rigs again, Jonathan's look at #98's sliding plan panel, then the PR.
+  `venv-0182-engine`, the engine with the new reason codes). Batch A done pending checks. Next: a
+  final whole suite and the seven rigs, Jonathan's look at #98's sliding plan panel, then the PR
+  to main and the release on his word. Batch B waits for mockup round 2.
