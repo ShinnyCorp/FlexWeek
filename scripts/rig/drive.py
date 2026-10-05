@@ -1037,6 +1037,21 @@ def child_main(args: argparse.Namespace) -> int:
         )
         window._apply_appearance()
         yield ("wait", 500)
+        # The window manager's resize and the larger text can land after that wait, and the bar then
+        # moves: a click on Week found from where it had been landed beside Day. Wait until the
+        # window is the new size and the bar has kept still for 300 ms.
+        week = window.findChild(QPushButton, "viewWeek")
+        seen: dict = {"at": None, "since": 0.0}
+
+        def still() -> bool:
+            at = (window.size(), week.mapToGlobal(week.rect().center()))
+            now = time.monotonic()
+            if at != seen["at"]:
+                seen["at"], seen["since"] = at, now
+                return False
+            return window.size() == QSize(1150, 768) and now - seen["since"] >= 0.3
+
+        yield ("until", still, 5000, "the window and its top bar to settle at 1150 by 768")
 
     def on_screen(widget: QWidget) -> bool:
         frame = QRect(window.mapToGlobal(QPoint(0, 0)), window.size())
