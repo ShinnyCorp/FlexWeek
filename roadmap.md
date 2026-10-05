@@ -366,9 +366,12 @@ test.
   homework", "Plan"), fitted as Large text arrives; Unfinished opened by the student stays open
   when the week changes (the whole-suite failure of
   `test_unfinished_opens_its_list_in_any_design`).
-- Left: a final whole suite and the seven rigs on `release/0.18.2`; Jonathan's look at #98's
-  sliding plan panel; `test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings`
-  fails when its file runs alone (622 px against 640), on main too.
+- Final check (2026-10-04): whole suite 2893 passed, 0 failed; rigs classic week 18/18, timeline
+  week 17/17, timeline day 14/14, mission week 17/17, bento week 17/17, clay day 14/14, retro
+  week 17/17 (after the rig's Large-text step waited for the bar to settle).
+- Left: Jonathan's look at #98's sliding plan panel; then the PR and the release on his word.
+  `test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings` fails when
+  its file runs alone (622 px against 640), on main too.
 
 #### Batch B (after mockup round 2)
 Mockup round 2: Setup's Style page and page layout; Add and Edit homework with

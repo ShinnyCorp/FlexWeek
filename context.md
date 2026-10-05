@@ -4,8 +4,8 @@
 - 2026-10-04, `release/0.18.2` (local, not pushed): all of batch A is merged, with Grok's rounds
   2-4 and Claude's fixes from the whole-suite and rig runs (folded rail drag, page margins and
   the top bar's one order with "Plan" last, Unfinished staying open, the bar fitted as Large text
-  arrives). CHANGELOG has its `[Unreleased]` entry. Ruff and mypy clean; every touched file
-  passes alone; classic week 18/18, retro week 17/17, timeline day 14/14 after the fixes. Test
+  arrives). CHANGELOG has its `[Unreleased]` entry. Final check: whole suite 2893 passed, 0
+  failed; all seven rigs pass in full. Test
   cleanup deletes each test's windows (a 4-worker suite takes about 1.5 GB). `test_ui_dialogs.py`'s
   work-windows test fails when its file runs alone (sheet 622 px, wants 640), on main too.
 - 2026-10-03. v0.18.1 is the latest release (PR 40, 907fa4b): the 20 Fix-first findings of the
@@ -124,6 +124,5 @@ values make a retried write return the first result.
 
 ## Session Handoff
 - 2026-10-04, `release/0.18.2` in `~/.worktrees/flexweek-0182-release` (`.venv` is
-  `venv-0182-engine`, the engine with the new reason codes). Batch A done pending checks. Next: a
-  final whole suite and the seven rigs, Jonathan's look at #98's sliding plan panel, then the PR
-  to main and the release on his word. Batch B waits for mockup round 2.
+  `venv-0182-engine`, the engine with the new reason codes). Batch A done and checked. Next:
+  Jonathan's look at #98's sliding plan panel, then the PR to main and the release on his word. Batch B waits for mockup round 2.
