@@ -278,4 +278,3 @@ def test_mission_timeline_and_clay_painters_at_810_keep_a_short_blocks_start_and
         extras = [text for text in range_words if text in (start, end, ranged) or "–" in text]
         assert extras != [start, end], (name, range_words)
         assert ranged in range_words or start in extras, (name, range_words)
-

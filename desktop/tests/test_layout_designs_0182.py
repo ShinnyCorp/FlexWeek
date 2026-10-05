@@ -133,4 +133,3 @@ def test_bentos_week_header_does_not_shorten_to_a_single_letter_and_digit(qapp: 
 def test_bento_says_nothing_free_now_after_the_last_study_hour(qapp: QApplication) -> None:
     view = bento_shown(qapp, "day", clock="22:49")
     assert text(view, "bentoFreeNone") == "Nothing free now"
-
