@@ -169,9 +169,9 @@ def test_waiting_homework_is_a_hand_chip_and_due_soon_says_where_each_is(qapp: Q
     # Soonest due first: Chem due tonight, the essay tomorrow, the poster on Sunday and not placed.
     # Where each is placed says so, and is never read as when it is due, which the figure says.
     assert texts(view, "bentoDueMeta") == [
-        "1 h 30 · placed Thu 20:00",
-        "1 h · placed Thu 18:45",
-        "2 h · Not placed",
+        "placed Thu 20:00",
+        "placed Thu 18:45",
+        "Not placed",
     ]
     rows = [view.findChild(QPushButton, f"bentoDue{index}") for index in range(3)]
     assert [row.property("block_id") for row in rows] == ["chem-1", "essay-1", "poster-1"]
@@ -254,7 +254,7 @@ def test_the_load_tile_charts_the_weeks_homework_by_day(qapp: QApplication) -> N
     view = shown(qapp)
     labels = [item.text() for item in view.findChild(QWidget, "bentoLoad").findChildren(QLabel)]
     # Monday's finished Math worksheet and Thursday's essay and Chem report, placed; the poster to go.
-    assert {"3 h 15 min", "placed, 2 h to go"} <= set(labels)
+    assert {"3 h 15 min", "placed, 2h to go"} <= set(labels)
     assert view.findChild(LoadBars, "bentoLoadBars").minutes == [45, 0, 0, 150, 0, 0, 0]
 
 
@@ -266,7 +266,7 @@ def test_the_legend_names_only_the_categories_the_week_has(qapp: QApplication) -
 def test_day_puts_the_days_summary_and_its_free_time_beside_its_hours(qapp: QApplication) -> None:
     view = shown(qapp, "day", clock="15:40")
     # School 6 h 30 min, Dinner 30 min, the essay 1 h and the Chem report 1 h 30 min.
-    assert text(view, "bentoSumPlanned") == "9 h 30 min planned"
+    assert text(view, "bentoSumPlanned") == "2 h 30 min planned"
     # In the legend's order, the category's order in the app.
     assert texts(view, "bentoSumRowName") == ["School", "Homework", "Meals"]
     assert text(view, "bentoFreeLabel") == "Free from now"
@@ -375,9 +375,9 @@ def test_a_day_tile_says_its_first_item_its_load_its_homework_and_what_is_due(qa
 
     # Monday: School, the finished Math worksheet and Dinner. Friday: the essay is due. Sunday: the
     # poster is due and only Dinner is planned.
-    assert said(0) == "Monday 14, first School at 08:00, 7 h 45 min planned, 1 homework"
-    assert said(4) == "Friday 18, first School at 08:00, 7 h planned, 1 due"
-    assert said(6) == "Sunday 20, first Dinner at 18:00, 30 min planned, 1 due"
+    assert said(0) == "Monday 14, first School at 08:00, 45 min planned, 1 homework"
+    assert said(4) == "Friday 18, first School at 08:00, nothing planned, 1 due"
+    assert said(6) == "Sunday 20, first Dinner at 18:00, nothing planned, 1 due"
 
 
 def test_a_pointed_at_day_lifts_and_does_not_rise_with_animations_off_or_reduced(qapp: QApplication) -> None:

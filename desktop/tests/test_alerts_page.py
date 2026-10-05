@@ -18,7 +18,8 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QStandardPaths
+    from PySide6.QtCore import QStandardPaths, Qt
+    from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QLineEdit, QWidget
 
     from desktop.native.settings import SettingsPage
@@ -187,4 +188,26 @@ def test_a_new_alarm_starts_at_seven_names_its_spotify_field_and_offers_remove_o
     dialog.alarm_list.setCurrentRow(0)
     dialog.remove_alarm.click()
     assert dialog.remove_alarm.isHidden()
+    dialog.close()
+
+
+def test_alarm_rows_show_which_one_remove_will_take(qapp: QApplication) -> None:
+    """#65: Tab and the arrow keys gave no focus or selection on alarm rows."""
+    alarm = {
+        "id": "a",
+        "name": "Wake up",
+        "time": "07:00",
+        "days": WEEKDAYS,
+        "enabled": True,
+        "sound": "chime",
+    }
+    dialog = settings(qapp, alarms=[alarm])
+    dialog._dress()
+    dialog.alarm_list.setFocus()
+    assert dialog.alarm_list.hasFocus()
+    assert dialog.alarm_list.currentRow() == 0
+    assert dialog.alarm_list.item(0).isSelected()
+    assert "border-color" in dialog.alarm_list.styleSheet()
+    QTest.keyClick(dialog.alarm_list, Qt.Key.Key_Down)
+    assert dialog.alarm_list.currentRow() == 0 and dialog.alarm_list.item(0).isSelected()
     dialog.close()

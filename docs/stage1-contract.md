@@ -96,7 +96,7 @@ backend converts each session's assignment `due` against the week being solved:
 |---|---|---|
 | Inside the week | `(day_index, minutes)` of `due` | Existing rule `(day, end_min) <= bound`. 23:59 allows any slot that day; Tuesday 05:00 allows Monday but no Tuesday slot. |
 | After Sunday of the week | none | Same as no deadline today: any candidate day. |
-| Before Monday of the week | `(0, 0)` | Nothing fits; unplaced with `DEADLINE_MISS`. |
+| Before Monday of the week | `(0, 0)` | Nothing fits; unplaced with `DEADLINE_PASSED`. |
 
 - For a completed assignment, its completed sessions keep their slots as spent
   time under the existing rule, and its sessions that are not completed appear

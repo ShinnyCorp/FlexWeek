@@ -4,21 +4,40 @@ From the top: a running focus timer, when there is one; a mini month with the we
 today in the accent and a dot on each day homework is due; what is next, and what follows it; the
 homework not placed yet, as chips to drag onto the hours; and the homework to start a focus timer
 on, in time order. The month folds away from its header, and the choice is kept on this computer.
-On a window too narrow for a rail it folds into one line above the hours, with the chips after it.
+On a window too narrow for a rail it folds into one line above the hours. Waiting homework sits
+behind "Not placed yet" and opens on a wrapping row under that line.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from PySide6.QtCore import QEvent, QModelIndex, QPersistentModelIndex, QPointF, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QMouseEvent, QPainter, QPaintEvent, QPen
+from PySide6.QtCore import (
+    QEvent,
+    QModelIndex,
+    QPersistentModelIndex,
+    QPointF,
+    QRectF,
+    QSize,
+    Qt,
+    Signal,
+)
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetricsF,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLayout,
     QListWidget,
     QListWidgetItem,
     QPushButton,
@@ -30,6 +49,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid
 
 from desktop.native import icons
 from desktop.native.calendar import DAYS
@@ -422,8 +442,11 @@ class RailChip(TrayChip):
     def sizeHint(self) -> QSize:  # noqa: N802
         body, small = self._fonts()
         tall = max(QFontMetricsF(body).height(), QFontMetricsF(small).height()) + 10
-        wide = 3 + 2 * SPACING[1] + BOOK_GAP + 16 + QFontMetricsF(body).horizontalAdvance(self._title)
-        return QSize(round(wide + QFontMetricsF(small).horizontalAdvance(self.length)), round(max(30, tall)))
+        # The room the paint gives the whole title: up to it, the gap, the length and the edge after.
+        title = QFontMetricsF(body).horizontalAdvance(self._title)
+        length = QFontMetricsF(small).horizontalAdvance(self.length)
+        wide = CHIP_TITLE_LEFT + title + TITLE_GAP + length + SPACING[1]
+        return QSize(math.ceil(wide), round(max(30, tall)))
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         return QSize(80, self.sizeHint().height())
@@ -573,6 +596,7 @@ class Rail(QFrame):
         self._tasks: tuple = ()
         self._waiting: tuple[Waiting, ...] = ()
         self._chips: list[RailChip] = []
+        self._waiting_open = False
         self._due: frozenset[str] = frozenset()
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -644,15 +668,51 @@ class Rail(QFrame):
         self.sections.addStretch(1)
         self.scroll.setWidget(self.body)
         outer.addWidget(self.scroll)
-        # Folded: one line and the chips after it.
+        # Folded: the next-line plus Not placed yet, and waiting chips on a row under it when opened.
         self.strip = QWidget()
         self.strip.setObjectName("railStrip")
-        self.flow = FlowLayout(self.strip)
+        strip_box = QVBoxLayout(self.strip)
+        strip_box.setContentsMargins(0, 0, 0, 0)
+        strip_box.setSpacing(SPACING[0])
+        self.head = QWidget()
+        self.head.setObjectName("railStripHead")
+        head_box = QHBoxLayout(self.head)
+        head_box.setContentsMargins(0, 0, 0, 0)
+        head_box.setSpacing(6)
         self.line = QLabel()
         self.line.setObjectName("weekSideLine")
         self.line.setFont(time_font(self.line.font()))
         self.line.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        self.flow.addWidget(self.line)
+        self.line.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.line.setMinimumWidth(0)
+        head_box.addWidget(self.line, 1)
+        self.waiting_chip = QPushButton()
+        self.waiting_chip.setObjectName("railWaitingChip")
+        self.waiting_chip.setProperty("quiet", True)
+        self.waiting_chip.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        self.waiting_chip.clicked.connect(self._toggle_waiting)
+        chip_row = QHBoxLayout(self.waiting_chip)
+        chip_row.setContentsMargins(8, 4, 8, 4)
+        chip_row.setSpacing(6)
+        self._wait_book = QLabel()
+        self._wait_book.setObjectName("railWaitingBook")
+        self._wait_book.setFixedSize(16, 16)
+        self._wait_words = QLabel()
+        self._wait_words.setObjectName("railWaitingWords")
+        self._wait_words.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
+        self._wait_chevron = QLabel()
+        self._wait_chevron.setObjectName("railWaitingChevron")
+        self._wait_chevron.setFixedSize(16, 16)
+        chip_row.addWidget(self._wait_book)
+        chip_row.addWidget(self._wait_words)
+        chip_row.addWidget(self._wait_chevron)
+        head_box.addWidget(self.waiting_chip, 0)
+        strip_box.addWidget(self.head)
+        self.waiting_row = QWidget()
+        self.waiting_row.setObjectName("railWaitingRow")
+        self.flow = FlowLayout(self.waiting_row)
+        self.waiting_row.hide()
+        strip_box.addWidget(self.waiting_row)
         outer.addWidget(self.strip)
         self.set_folded(False)
 
@@ -673,6 +733,8 @@ class Rail(QFrame):
             chip.updateGeometry()
         self.next.card.set_edge(self._next_edge())
         self._fit_tasks()
+        if self.folded:
+            self._fit_waiting_words()
         self.update()
 
     def fonts(self) -> tuple[QFont, QFont]:
@@ -770,16 +832,31 @@ class Rail(QFrame):
         return list(self._chips)
 
     def _place_chips(self) -> None:
-        home: QLayout = self.flow if self.folded else self.tray
+        if not isValid(self):
+            return
+        tray, flow = self.tray, self.flow
+        if not isValid(tray) or not isValid(flow):
+            return
+        folded = self.folded
         for chip in self._chips:
-            for layout in (self.tray, self.flow):
+            if not isValid(chip):
+                continue
+            for layout in (tray, flow):
                 layout.removeWidget(chip)
-            home.addWidget(chip)
+            # In the rail a chip takes the rail's width and its title gives way, so it ignores its
+            # own; on the folded row a layout gives an ignored width nothing, and the chips were
+            # there 0 pixels wide with nothing to drag. There each asks for its whole title.
+            across = QSizePolicy.Policy.Preferred if folded else QSizePolicy.Policy.Ignored
+            chip.setSizePolicy(across, QSizePolicy.Policy.Fixed)
+            (flow if folded else tray).addWidget(chip)
             chip.show()
+        self.waiting_row.setVisible(folded and self._waiting_open and bool(self._chips))
 
     def set_folded(self, folded: bool) -> None:
-        """Folded on a window too narrow for a rail: one line above the hours, the chips after it."""
+        """Folded on a window too narrow for a rail: one line above the hours, waiting chips under it."""
         self.folded = folded
+        if not folded:
+            self._waiting_open = False
         if folded:
             self.setMinimumWidth(0)
             self.setMaximumWidth(16_777_215)
@@ -829,13 +906,59 @@ class Rail(QFrame):
         if has_next:
             heading, title, when, _then = self.next.shown
             said.append(f"{heading}: {title}, {when}")
-        if self._chips:
-            said.append(f"Not placed yet: {len(self._chips)}")
+        count = len(self._chips)
+        if count and self.folded:
+            ratio = self.devicePixelRatioF()
+            self._wait_book.setPixmap(icons.pixmap("book-open", self.colours.muted, 16, ratio))
+            mark = "chevron-up" if self._waiting_open else "chevron-down"
+            self._wait_chevron.setPixmap(icons.pixmap(mark, self.colours.muted, 16, ratio))
+            self.waiting_chip.setVisible(True)
+            self._fit_waiting_words()
+        else:
+            self.waiting_chip.hide()
+            self.waiting_row.hide()
+            self._waiting_open = False
         self.line.setText(" · ".join(said))
         self.line.setVisible(self.folded and bool(said))
         self.line.setMinimumHeight(max((chip.sizeHint().height() for chip in self._chips), default=0))
         # Folded with nothing to say, it takes no room at all.
-        self.strip.setVisible(self.folded and bool(said))
+        self.strip.setVisible(self.folded and (bool(said) or count))
+        self.waiting_row.setVisible(self.folded and self._waiting_open and bool(count))
+
+    def _waiting_chip_width(self, words: str) -> int:
+        metrics = self._wait_words.fontMetrics()
+        margins = self.waiting_chip.layout().contentsMargins()
+        spacing = self.waiting_chip.layout().spacing()
+        return margins.left() + margins.right() + 16 + 16 + 2 * spacing + metrics.horizontalAdvance(words) + 2
+
+    def _fit_waiting_words(self) -> None:
+        """Keep at least "Not placed yet"; drop the count only. The next-line shrinks first."""
+        count = len(self._chips)
+        if not count or not self.folded:
+            return
+        full = f"Not placed yet · {count}"
+        short = "Not placed yet"
+        short_w = self._waiting_chip_width(short)
+        full_w = self._waiting_chip_width(full)
+        room = self.head.width() or self.strip.width()
+        words = full if room == 0 or room >= full_w else short
+        # As wide as the words it shows, the count too, or the chevron sits on them.
+        self.waiting_chip.setMinimumWidth(full_w if words == full else short_w)
+        self._wait_words.setText(words)
+        self._wait_words.setMinimumWidth(self._wait_words.fontMetrics().horizontalAdvance(words))
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        if self.folded:
+            self._fit_waiting_words()
+
+    def _toggle_waiting(self) -> None:
+        """Folded rail: show or hide the waiting chips under the line, without resizing the window."""
+        if not self.folded or not self._chips:
+            return
+        self._waiting_open = not self._waiting_open
+        self._place_chips()
+        self._show()
 
     def _start_item(self, item: QListWidgetItem) -> None:
         payload = item.data(Qt.ItemDataRole.UserRole) or {}

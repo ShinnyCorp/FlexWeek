@@ -4,7 +4,7 @@ editor, from Unfinished and from its right-click menu. Weeks are read back from 
 from __future__ import annotations
 
 import importlib.util
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -18,7 +18,7 @@ qapp = logic_support.qapp
 server = logic_support.server
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
     from desktop.native import widgets
     from desktop.native.calendar import sunday_due
@@ -166,10 +166,37 @@ def test_the_editor_offers_delete_only_for_homework_that_exists(
 
 def test_each_unfinished_row_has_its_own_delete(qapp: QApplication) -> None:
     panel = UnfinishedPanel()
-    panel.set_items([{"id": "essay", "title": "History essay", "remaining_min": 60}])
+    panel.set_items(
+        [{"id": "essay", "title": "History essay", "remaining_min": 60, "due": "2000-01-15T12:00"}]
+    )
     asked: list[str] = []
     panel.delete_requested.connect(asked.append)
     delete = panel.findChild(QPushButton, "deleteUnfinished-essay")
     assert delete is not None and delete.property("outlined") is True and not delete.property("quiet")
     delete.click()
     assert asked == ["essay"]
+
+
+def test_the_unfinished_list_holds_only_overdue_homework(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#14: Unfinished listed work due today and tomorrow. It keeps only what is already late."""
+    now = datetime(2026, 10, 3, 18, 0)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            return now
+
+    monkeypatch.setattr(widgets, "datetime", Clock)
+    panel = UnfinishedPanel()
+    panel.set_items(
+        [
+            {"id": "late", "title": "History essay", "remaining_min": 60, "due": "2026-10-02T21:00"},
+            {"id": "today", "title": "Math worksheet", "remaining_min": 45, "due": "2026-10-03T23:59"},
+            {"id": "tomorrow", "title": "Chem lab", "remaining_min": 90, "due": "2026-10-04T15:30"},
+            {"id": "earlier_today", "title": "Quiz", "remaining_min": 30, "due": "2026-10-03T09:00"},
+        ]
+    )
+    rows = [label.text() for label in panel.findChildren(QLabel) if label.objectName() == "unfinishedRow"]
+    assert rows == ["History essay · 1 h left", "Quiz · 30 min left"]

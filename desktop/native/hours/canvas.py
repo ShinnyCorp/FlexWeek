@@ -77,7 +77,8 @@ SHARED_TRIM = 2
 NARROW_BLOCK = 64
 # The most a now line's dot or pill reaches either side of the line.
 NOW_REACH = 12
-# How far short of a block's words and icon the now line stops, and how far past them it resumes.
+# How far short of a tick's icon Mission stops the now line. Shared hours draw the line under
+# the words instead, with no gap.
 NOW_CLEAR = 3
 # Homework: a block of it carries a book as well as its colour, for a student who cannot tell the colours.
 HOMEWORK_CATEGORIES = ("assignments", "homework")
@@ -288,17 +289,15 @@ class BlockPainter:
         )
 
     def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:
-        """A block's colour, its words, then the time now where it crosses the block, around the
-        words. Under the colour the line was hidden for as long as the block ran, and a student
-        could not see how far into it they were; through the words, over them or under them, it
-        read as crossing them out."""
+        """A block's colour, the time now across it, then its words over the line. Under the colour
+        the line was hidden for as long as the block ran; a gap round the words read as the line
+        being cut."""
         self.body(painter, rect, drawn)
         fill, ink, _outline, edge = self.fills(drawn)
         font = QFont(painter.font())
-        written = self.words(painter, rect, drawn, ink, visible, fill, edge)
-        # The marker is drawn again in the canvas's font, not the small one the words left set.
+        self.crossing(painter, rect)
         painter.setFont(font)
-        self.crossing(painter, rect, written)
+        self.words(painter, rect, drawn, ink, visible, fill, edge)
 
     def crossing(self, painter: QPainter, rect: QRectF, around: list[QRectF] | None = None) -> None:
         """The time now drawn again inside `rect`, over what a block has painted there, when the
@@ -699,10 +698,13 @@ def _block_words(
 ) -> list[Written]:
     """What a block says in `room`, and where (decision 14 of 0.17). The first way that fits with no
     word cut: the title on up to two lines, its times, its length; then without the length; the
-    title on one line and its times; "Dinner 18:30" on one line; the title alone. Only if none fits
-    whole does the title give way with "…". With no room for three of its letters, nothing: the
-    block's colour says it is there. A wide day puts the length at the right of the title. `shown`
-    is whether the look shows times and lengths; a flag such as Finished stays either way.
+    title on one line and its times; "Dinner 18:30" on one line. A short block keeps its start with
+    its name, cutting the title first, rather than dropping the start. The range stays on one line;
+    stacked start and end with no dash read as two events. Only if none of those fits
+    does the title stand alone, giving way with "…" when it must. With no room for three of its
+    letters, nothing: the block's colour says it is there. A wide day puts the length at the right of
+    the title. `shown` is whether the look shows times and lengths; a flag such as Finished stays
+    either way.
 
     `tight` is the block's room with less kept from its top and bottom, for one line on a block too
     short for the usual margins, as a half-hour Dinner is on the week."""
@@ -715,6 +717,8 @@ def _block_words(
         return []
     # One line starts where the usual margin puts it, or higher on a block too short for that.
     line_top = room.top() if height + 0.5 >= tl else tight.top()
+    # A 45-minute block's usual margin leaves no second line; the tight room is the block itself.
+    budget = max(height, tight.height())
     lines, whole = _wrap(drawn.title, tm, width, indent)
     if wide:
         return _wide_layout(drawn, tm, sm, room, line_top, indent, book)
@@ -723,10 +727,11 @@ def _block_words(
         if any(sm.horizontalAdvance(extra) > width for extra in extras):
             return None
         count = min(len(lines), most)
+        need = tl * count + sl * len(extras)
         if count > 1 or extras:
-            if tl * count + sl * len(extras) > height + 0.5:
+            if need > budget + 0.5:
                 return None
-            top = room.top()
+            top = room.top() if height + 0.5 >= need else tight.top()
         else:
             top = line_top
         if not cut and (not whole or len(lines) > most):
@@ -757,32 +762,70 @@ def _block_words(
         written.append(Written(after, False, QRectF(at, line_top + _beside(tm, sm), after_width + 1, sl)))
         return written
 
+    start = short_clock(drawn.span.start) if shown[0] else ""
     if drawn.short:
-        # Short of room the window asked for names only: "Soccer practice" whole over two lines
-        # says more than "Soccer …" and its times.
-        ways = [lambda cut: stack(3, (), cut), lambda cut: stack(1, (), cut)]
+        # Hours too narrow for the name and its times: the name whole, times left to the editor.
+        time_ways = []
+        name_ways = [lambda cut: stack(3, (), cut), lambda cut: stack(1, (), cut)]
     else:
         said = ((drawn.done, "Finished"), (drawn.missed, "Missed"))
         flags = " · ".join(word for flag, word in said if flag)
         times = drawn.times if shown[0] else ""
         length = drawn.length if shown[1] else flags
-        ways = [
-            lambda cut: stack(2, tuple(part for part in (times, length) if part), cut),
-            lambda cut: stack(2, tuple(part for part in (times,) if part), cut),
+        # Two title lines in a full column; one when the block shares the column, so a leftover
+        # word of the title is not read as another event beside the neighbour.
+        title_lines = 1 if drawn.columns > 1 else 2
+        time_ways = [
+            lambda cut, most=title_lines: stack(most, tuple(part for part in (times, length) if part), cut),
+            lambda cut, most=title_lines: stack(most, tuple(part for part in (times,) if part), cut),
             lambda cut: stack(1, tuple(part for part in (times,) if part), cut),
-            lambda cut: stack(2, (clock_label(drawn.span.start), clock_label(drawn.span.end))
-                              if shown[0] else (), cut),
-            lambda cut: one_line(short_clock(drawn.span.start) if shown[0] else "", cut),
-            lambda cut: stack(2, (), cut),
+            lambda cut, most=title_lines: stack(most, (start,) if start else (), cut),
+            lambda cut: stack(1, (start,) if start else (), cut),
+            lambda cut: one_line(start, cut) if start else None,
+        ]
+        name_ways = [
+            lambda cut, most=title_lines: stack(most, (), cut),
             lambda cut: stack(1, (), cut),
         ]
-    for way in ways:
+
+    def kept(lay: list[Written] | None) -> int:
+        if not lay:
+            return 0
+        return name_kept([line.text for line in lay if line.title], drawn.title)
+
+    # Uncut times, then an uncut wrapped name while two title lines fit (Swimming / gala), then a
+    # start kept by shortening the title at a word. Cutting inside a word to keep the start used to
+    # beat dropping the icon, so "Piano lesson" became "Pian…".
+    wrap = budget + 0.5 >= 2 * tl
+    shortened = word_elide(drawn.title, tm, width)
+    name_at_a_word = name_kept([shortened], drawn.title) >= 2
+    for way in time_ways:
         found = way(False)
         if found is not None:
             return found
-    # Nothing says the title whole: it gives way, and the name comes before its start on one line,
-    # "Math works…" rather than "Mat… 19:00".
-    for way in ways[:4] + ways[5:] + ways[4:5]:
+    if wrap:
+        for way in name_ways:
+            found = way(False)
+            if found is not None:
+                return found
+    for way in time_ways:
+        found = way(True)
+        if found is not None and kept(found) >= 2:
+            return found
+    for way in name_ways:
+        found = way(False)
+        if found is not None:
+            return found
+    if name_at_a_word:
+        for way in name_ways:
+            found = way(True)
+            if found is not None and kept(found) >= 2:
+                return found
+    for way in time_ways:
+        found = way(True)
+        if found is not None:
+            return found
+    for way in name_ways:
         found = way(True)
         if found is not None:
             return found
@@ -862,7 +905,10 @@ def held_layout(
     indent = _book_room(tm) if book else 0.0
     if room.height() + 0.5 < tm.height() or room.width() < indent + 8:
         return []
-    name = tm.elidedText(title, Qt.TextElideMode.ElideRight, room.width() - indent)
+    name_room = room.width() - indent
+    name = title if tm.horizontalAdvance(title) <= name_room else tm.elidedText(
+        title, Qt.TextElideMode.ElideRight, name_room
+    )
     tl, sl = tm.lineSpacing(), sm.lineSpacing()
     box = QRectF(room.left() + indent, room.top(), room.width() - indent, tl)
     out = [Written(name, True, box, book=book)]
@@ -1130,7 +1176,9 @@ class HoursCanvas(QWidget):
         ):
             span = preview.span
             if span.day == track.day and span.end > track.first and span.start < track.last:
-                category = next((o.category for o in self.occurrences if o.block_id == held.block_id), "")
+                category = held.category or next(
+                    (o.category for o in self.occurrences if o.block_id == held.block_id), "assignments"
+                )
                 work = next(
                     (o.work for o in self.occurrences if o.block_id == held.block_id),
                     held.kind is Gesture.PLACE,
@@ -1346,6 +1394,7 @@ class HoursCanvas(QWidget):
                 drawn.span.day,
                 drawn.span,
                 round(minute - edge),
+                category=drawn.category or "",
             )
             self.hand.select(drawn.block_id, drawn.span.day)
             # A click opens it; a drag moves or resizes it.

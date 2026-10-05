@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from copy import deepcopy
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from functools import partial
 from pathlib import Path
 from uuid import uuid4
@@ -551,7 +551,9 @@ class FittedLabel(QLabel):
 
     def sizeHint(self) -> QSize:  # noqa: N802
         margins = self.contentsMargins()
-        width = self.fontMetrics().horizontalAdvance(self._full) + margins.left() + margins.right() + 2
+        shown = self.text() or self._full
+        words = self._short if self._short and shown == self._short else self._full
+        width = self.fontMetrics().horizontalAdvance(words) + margins.left() + margins.right() + 2
         return QSize(width, super().sizeHint().height())
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
@@ -623,6 +625,60 @@ class FittedButton(QPushButton):
         words = self._full if self.width() >= self._wide(self._full) else self._short
         if words != self.text():
             self.setText(words)
+
+
+class PlanButton(FittedButton):
+    """Plan my homework: the window shrinks More to its icon before this shortens. The window picks
+    its words (`NativeWindow._fit_plan_and_more`), so it asks for the room the words shown take."""
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        return QSize(self._wide(self.text()), QPushButton.sizeHint(self).height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        # Shown as "Plan", shorter than its short form, it asks no more: the bar decides whether it
+        # has one row from its parts' smallest.
+        shown = self.text()
+        if shown and self._wide(shown) < self._wide(self._short):
+            return QSize(self._wide(shown), super().minimumSizeHint().height())
+        return super().minimumSizeHint()
+
+    def _fit(self) -> None:
+        # NativeWindow._fit_plan_and_more sets both labels; a resize mid-layout must not reset them.
+        return
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        super().changeEvent(event)
+        _refit_bar(self, event)
+
+
+def _refit_bar(button: QPushButton, event: QEvent) -> None:
+    """Large text reaches Plan and More after the window has fitted the bar. Fitted again only on
+    the next resize, the bar's buttons moved under the pointer a moment after the change."""
+    if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+        host = button.window()
+        if hasattr(host, "_fit_plan_and_more"):
+            host._fit_plan_and_more()
+
+
+class MoreButton(FittedButton):
+    """More in the top bar: its words, then its icon alone when the row is tighter still."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("More", "", parent)
+        self.setIconSize(QSize(20, 20))
+        icons.tint(self, "ellipsis")
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        # As Plan's: the window picks the words, so this asks for the room of those shown.
+        return QSize(self._wide(self.text()), QPushButton.sizeHint(self).height())
+
+    def _fit(self) -> None:
+        # NativeWindow._fit_plan_and_more sets both labels; a resize mid-layout must not reset them.
+        return
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        super().changeEvent(event)
+        _refit_bar(self, event)
 
 
 class EndsLayout(QLayout):
@@ -1124,8 +1180,10 @@ class ChoiceCard(QFrame):
         self.note = QLabel(note)
         self.note.setObjectName("setupChoiceNote")
         self.note.setWordWrap(True)
-        self.note.setVisible(bool(note))
         box.addWidget(self.note)
+        # Only once it has a parent: shown before, it opens as a window of its own for a moment and
+        # takes the keyboard from FlexWeek's window.
+        self.note.setVisible(bool(note))
         box.addStretch(1)
         # Under the note, so names line up across a row whether or not a card carries one.
         if tag:
@@ -1344,8 +1402,18 @@ class WhyOff(QLabel):
             self._follow()
         return False
 
+    def event(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.ParentChange:
+            self._follow()
+        return super().event(event)
+
     def _follow(self) -> None:
-        self.setVisible(not self._button.isEnabled())
+        off = not self._button.isEnabled()
+        if off and self.parentWidget() is None:
+            # Shown before it is in a sheet, it opens as a window of its own for a moment and takes
+            # the keyboard from FlexWeek's window. It follows the button again once it has a parent.
+            return
+        self.setVisible(off)
         # A sheet is as tall as what it holds, so it grows and shrinks by this line.
         sheet = self.window()
         if isinstance(sheet, Dialog) and sheet.isVisible():
@@ -2806,6 +2874,7 @@ class HomeworkDialog(Dialog):
         *,
         waiting: bool = False,
         pinned: bool = False,
+        now: datetime | None = None,
     ) -> None:
         super().__init__(parent, sheet=True)
         info = CATEGORIES.get(category or "")
@@ -2829,6 +2898,7 @@ class HomeworkDialog(Dialog):
             }
         )
         self._today = today
+        self._clock = now
         self._result: dict | None = None
         self._spread = False
         # "choose" to pick a time for a session that needs one, "unpin" to let FlexWeek move it again.
@@ -3243,9 +3313,15 @@ class HomeworkDialog(Dialog):
         return before if parse_due(chosen) == parse_due(before) else chosen
 
     def _now(self) -> datetime:
-        """Now on the window's clock when it has one."""
+        """Now on one clock: the one given to the dialog, else the window's, else the dialog's today."""
+        if self._clock is not None:
+            return self._clock
         session = getattr(self.parent(), "session", None)
-        return datetime.fromtimestamp(session.now_ms() / 1000) if session is not None else datetime.now()
+        if session is not None:
+            return datetime.fromtimestamp(session.now_ms() / 1000)
+        if self._today:
+            return datetime.combine(date.fromisoformat(self._today), time.min)
+        return datetime.now()
 
     def _due_passed(self) -> bool:
         """Whether the student set a deadline that is already over. A saved deadline they did not
@@ -3261,8 +3337,7 @@ class HomeworkDialog(Dialog):
             # Not a date: the saved homework's own check says so, in its words.
             return False
         now = self._now()
-        today = date.fromisoformat(self._today) if self._today else now.date()
-        return (day, minute) < (today, now.hour * 60 + now.minute)
+        return (day, minute) < (now.date(), now.hour * 60 + now.minute)
 
     def _clear_due_problem(self) -> None:
         self.due.show_problem("")
@@ -3505,9 +3580,27 @@ class PreviewDialog(Dialog):
         self._refresh()
 
 
+def overdue_unfinished(items: list[dict], now: datetime | None = None) -> list[dict]:
+    """Homework whose deadline is already past. The engine's unfinished list also holds work due
+    today or tomorrow; this list is only what is late."""
+    moment = datetime.now() if now is None else now
+    return [item for item in items if _deadline_passed(item.get("due"), moment)]
+
+
+def _deadline_passed(due: object, now: datetime) -> bool:
+    if not isinstance(due, str) or not due:
+        return False
+    try:
+        day, minute = parse_due(due)
+    except ValueError:
+        return False
+    return datetime.combine(day, datetime.min.time()) + timedelta(minutes=minute) <= now
+
+
 class UnfinishedPanel(QWidget):
     plan_requested = Signal(str)
     delete_requested = Signal(str)
+    collapsed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -3523,13 +3616,18 @@ class UnfinishedPanel(QWidget):
         dismiss = QPushButton("Hide")
         dismiss.setObjectName("unfinishedDismiss")
         dismiss.setProperty("quiet", True)
-        dismiss.clicked.connect(self.hide)
+        dismiss.clicked.connect(self._collapse)
         row.addWidget(dismiss)
         row.addStretch(1)
         layout.addLayout(row)
         self.hide()
 
-    def set_items(self, items: list[dict]) -> None:
+    def _collapse(self) -> None:
+        self.collapsed.emit()
+        self.hide()
+
+    def set_items(self, items: list[dict], now: datetime | None = None) -> None:
+        items = overdue_unfinished(items, now)
         self.list.clear()
         for item in items:
             row = QWidget()

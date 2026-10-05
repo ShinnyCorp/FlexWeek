@@ -56,6 +56,7 @@ if importlib.util.find_spec("PySide6") is not None:
         glide,
         motion_level,
         moves,
+        slide_down,
         slide_over,
         switch_page,
     )
@@ -377,36 +378,40 @@ def opening_review(qapp: QApplication, level: str) -> tuple[QWidget, PlanReview,
     host.show()
     qapp.processEvents()
     review.set_trace(TRACE, TITLES, WEEK, (2, 1))
-    appear(review, level, grow=True)
+    slide_down(review, level)
     return host, review, below
 
 
-def test_the_plan_review_opens_down_and_the_page_below_moves_with_it(qapp: QApplication) -> None:
-    """The banner joined the column at full height in one frame, shoving the page below it, and only
-    then faded in."""
-    host, review, below = opening_review(qapp, "normal")
-    clock = review._motion_running[0]
-    clock.setCurrentTime(duration(EASE_MS, "normal") // 3)
-    full = review.sizeHint().height()
-    assert 0 <= review.maximumHeight() < full, "part way, its height is on its way up"
-    assert review.height() < full
-    effect = review.graphicsEffect()
-    assert effect is not None and effect.opacity < 1, "it fades in while it grows"
+def test_the_plan_review_slides_down_over_the_planner_without_pushing_it(qapp: QApplication) -> None:
+    """#98: the bar grew in the column, so Got it was a grey strip for a frame and the week jumped."""
+    host = QWidget()
+    host.resize(500, 400)
+    planner = QLabel("Week hours", host)
+    planner.setGeometry(0, 120, 500, 280)
+    review = PlanReview(host)
+    review.set_trace(
+        {"unplaced": [], "moves": [], "explanations": []},
+        {},
+        "2026-01-05",
+        (2, 0),
+    )
+    review.setGeometry(0, 40, 500, review.sizeHint().height())
+    host.show()
     qapp.processEvents()
-    partway = below.y()
-    clock.setCurrentTime(duration(EASE_MS, "normal"))
+    before = planner.y()
+    slide_down(review, "normal")
     qapp.processEvents()
-    assert review.maximumHeight() == 16777215, "no limit is left for a later resize or a second plan"
-    assert review.height() == full
-    assert review.graphicsEffect() is None
-    assert below.y() > partway, "the page below moves down with it"
+    assert planner.y() == before, "the planner stays put while the bar moves over it"
+    assert review.height() == review.sizeHint().height(), "the bar is drawn at full height from the start"
+    QTest.qWait(duration(EASE_MS, "normal") + 100)
+    assert planner.y() == before
     host.close()
 
 
 def test_the_plan_review_opened_again_before_it_finished_still_ends_free(qapp: QApplication) -> None:
     host, review, _below = opening_review(qapp, "normal")
     review._motion_running[0].setCurrentTime(40)
-    appear(review, "normal", grow=True)
+    slide_down(review, "normal")
     review._motion_running[0].setCurrentTime(duration(EASE_MS, "normal"))
     assert review.maximumHeight() == 16777215
     host.close()

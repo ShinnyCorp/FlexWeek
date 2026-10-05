@@ -39,6 +39,7 @@ if importlib.util.find_spec("PySide6") is not None:
     )
 
     from desktop.native.calendar import sunday_due
+    from desktop.native.controller import plan_sentence
     from desktop.native.layouts.one_thing import OneThingView
     from desktop.native.layouts.registry import LAYOUTS, sanitize_layout
     from desktop.native.layouts.views import VIEW_CLASSES
@@ -859,7 +860,15 @@ def test_plan_and_more_stay_on_the_bar_in_every_layout(qapp: QApplication, windo
     # Every group under a heading (T23 of the 0.17.0 audit).
     assert more_sections(window) == ["Planning", "Edit", "Help and info", "Account"]
     assert not {"Add homework", "Add fixed time", "School hours"} & set(offered), "adding is under Add"
-    wanted = {"Running late", "Routines", "Reload", "Undo", "Redo", "Undo, copy and save", "Sign out"}
+    wanted = {
+        "Running late",
+        "Routines",
+        "Reload this week as it is saved",
+        "Undo",
+        "Redo",
+        "Undo, copy and save",
+        "Sign out",
+    }
     assert wanted <= set(offered)
     assert "Settings" not in offered
     assert "Account" not in offered
@@ -1027,7 +1036,6 @@ def test_a_settings_change_shows_before_settings_closes(qapp: QApplication, wind
     page.accent.setCurrentIndex(page.accent.findData("sea"))
     assert (window.session.preferences or {}).get("accent") == "sea"
     page.close_page()
-    assert window._settings is None
     assert window._stack.currentWidget().objectName() == "weekPage"
     assert window._layout["main"] == "bento"
 
@@ -1046,10 +1054,10 @@ def test_settings_is_a_page_the_gear_opens_and_done_or_esc_closes(
     QTest.keyClick(page.nav, Qt.Key.Key_M)
     assert window.session.planner_view == view and window._stack.currentWidget() is page
     page.done.click()
-    assert window._settings is None and window._stack.currentWidget().objectName() == "weekPage"
+    assert window._stack.currentWidget().objectName() == "weekPage"
     page = open_settings(window)
     QTest.keyClick(page.nav, Qt.Key.Key_Escape)
-    assert window._settings is None and window._stack.currentWidget().objectName() == "weekPage"
+    assert window._stack.currentWidget().objectName() == "weekPage"
 
 
 def test_settings_saves_once_after_a_burst_and_closing_saves_it_at_once(
@@ -1350,8 +1358,6 @@ def test_the_plan_bar_counts_what_the_toast_counts(qapp: QApplication, window: N
     """Decision 18 of 0.17. The bar counted every block the solver's trace calls placed, School and
     homework already placed included, and said 2 placed under a toast that said 0. Both now say the
     homework this plan gave a time and the homework it could not."""
-    import re
-
     session = window.session
     session.add_block({"id": "school", "title": "School", "kind": "locked", "category": "class",
                        "start": "08:00", "duration_min": 390, "days": [0, 1, 2, 3, 4]})
@@ -1367,11 +1373,10 @@ def test_the_plan_bar_counts_what_the_toast_counts(qapp: QApplication, window: N
     wait_until(qapp, lambda: session.trace is not None and not session.busy)
     qapp.processEvents()
     assert len(session.trace.get("placed") or []) > 1, "the trace also lists School"
-    said = window.toast.text()
-    planned = re.match(r"Planned (\d+) homework blocks?\. (\d+) still needs? a time\.", said)
-    assert planned, said
+    placed, waiting = session.plan_counts
+    assert window.toast.text().startswith(plan_sentence(placed, waiting))
     assert window.plan_review.isVisible()
-    assert window.plan_review.heading.text() == f"Placed {planned[1]} · {planned[2]} without a time"
+    assert window.plan_review.heading.text() == f"Placed {placed} · {waiting} without a time"
 
 
 def test_a_commitment_over_planned_homework_offers_find_a_new_time(
@@ -2412,6 +2417,9 @@ def _drop(qapp: QApplication, window: NativeWindow, block_id: str, hhmm: str, da
     minute = int(hhmm[:2]) * 60 + int(hhmm[3:])
     hours.reveal(day, max(minute - 60, 0), minute + 90)
     qapp.processEvents()
+    if window.rail.folded:
+        window.rail.waiting_chip.click()
+        qapp.processEvents()
     chip = next(
         widget
         for widget in window.findChildren(QPushButton)
@@ -2499,10 +2507,11 @@ def test_homework_dropped_on_the_calendar_gets_that_time_and_keeps_it(
 ) -> None:
     waiting = _waiting_math(qapp, window)
     assert not waiting.get("start")
-    _drop(qapp, window, waiting["id"], "16:00", 2)
+    # Friday: the clock is Thursday 19:00, and a drop on a day already past is refused (#15).
+    _drop(qapp, window, waiting["id"], "16:00", 4)
     settled(qapp, window)
     placed = next(block for block in window.session.blocks if block["id"] == waiting["id"])
-    assert (placed["days"], placed["start"], placed.get("pinned")) == ([2], "16:00", True)
+    assert (placed["days"], placed["start"], placed.get("pinned")) == ([4], "16:00", True)
     window.session.undo()
     settled(qapp, window)
     back = next(block for block in window.session.blocks if block["id"] == waiting["id"])
@@ -2512,7 +2521,7 @@ def test_homework_dropped_on_the_calendar_gets_that_time_and_keeps_it(
     window.session.solve(everything=True)
     settled(qapp, window)
     replanned = next(block for block in window.session.blocks if block["id"] == waiting["id"])
-    assert (replanned["days"], replanned["start"]) == ([2], "16:00"), "Replan all leaves it where it was put"
+    assert (replanned["days"], replanned["start"]) == ([4], "16:00"), "Replan all leaves it where it was put"
 
 
 def test_a_drop_over_school_sits_beside_it_and_no_plan_moves_it_off(
@@ -2521,19 +2530,20 @@ def test_a_drop_over_school_sits_beside_it_and_no_plan_moves_it_off(
     """As in Daily Scheduler: two blocks at one time is allowed, side by side, and said. It was put
     there by hand, so the planner that makes way for School leaves it where it is."""
     waiting = _waiting_math(qapp, window)
-    _drop(qapp, window, waiting["id"], "10:00", 1)
+    # Friday's School: the clock is Thursday 19:00, and a drop on a day already past is refused (#15).
+    _drop(qapp, window, waiting["id"], "10:00", 4)
     settled(qapp, window)
     placed = next(block for block in window.session.blocks if block["id"] == waiting["id"])
-    assert (placed["days"], placed["start"], placed.get("pinned")) == ([1], "10:00", True)
-    tuesday = {
+    assert (placed["days"], placed["start"], placed.get("pinned")) == ([4], "10:00", True)
+    friday = {
         item.block_id: item.columns
-        for item, _rect in _hours(window).drawn(_hours(window).track_for(1, 10 * 60))
+        for item, _rect in _hours(window).drawn(_hours(window).track_for(4, 10 * 60))
     }
-    assert tuesday == {"school": 2, waiting["id"]: 2}, "side by side, each marked"
+    assert friday == {"school": 2, waiting["id"]: 2}, "side by side, each marked"
     window.session.solve(everything=True)
     settled(qapp, window)
     replanned = next(block for block in window.session.blocks if block["id"] == waiting["id"])
-    assert (replanned["days"], replanned["start"]) == ([1], "10:00")
+    assert (replanned["days"], replanned["start"]) == ([4], "10:00")
 
 
 def test_a_block_held_on_the_week_goes_back_when_the_student_switches_to_day(

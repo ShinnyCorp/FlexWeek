@@ -383,7 +383,7 @@ def test_with_the_days_either_side_hidden_only_the_front_is_hours(qapp: QApplica
 
 def test_day_opens_the_card_wider_with_its_hours_by_kind_and_what_is_left_today(qapp: QApplication) -> None:
     """Thursday at 13:40: School 08:00-14:30, Dinner 18:00-18:30, the essay 18:45-19:45 and chemistry
-    20:00-21:30. Until 22:00: 50 minutes of School, and all the rest, are still ahead."""
+    20:00-21:30. Planned is placed homework still ahead (the essay and chemistry, 2 h 30 min), not School."""
     view = shown(qapp, tab="day")
     assert [scroll.objectName() for scroll in visible_scrolls(view)] == ["clayDayScroll"]
     assert [(track.day, track.first, track.last) for track in front(view).tracks] == [(3, 0, 1440)]
@@ -394,11 +394,21 @@ def test_day_opens_the_card_wider_with_its_hours_by_kind_and_what_is_left_today(
         ("Homework", "2 h 30 min"),
         ("Meals", "30 min"),
         ("Free", "4 h 30 min"),
-        ("Planned", "3 h 50 min"),
+        ("Planned", "2 h 30 min"),
         ("Free until 22:00", "4 h 30 min"),
         ("Next at 18:00", "in 4 h 20 min"),
     ]
     assert summary.geometry().left() > visible_scrolls(view)[0].geometry().right()
+
+
+def test_planned_counts_only_what_is_left_of_homework_already_under_way() -> None:
+    """At 13:40 the essay from 13:00 to 14:00 has 20 minutes left, and chemistry's 90 at 20:00 are all
+    ahead: planned today is 1 h 50 min, not the essay's whole hour on top of chemistry."""
+    from desktop.native.layouts.clay import left_today
+
+    blocks = [dict(item, start="13:00") if item["id"] == "essay-1" else item for item in BLOCKS]
+    planned, _free, _coming = left_today(build_week(WEEK, blocks, HOMEWORK, TRACE), 3, minute_of("13:40"))
+    assert planned == 20 + 90
 
 
 def test_another_day_has_no_left_today(qapp: QApplication) -> None:

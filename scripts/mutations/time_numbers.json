@@ -30,8 +30,8 @@
   {
     "name": "Narrow blocks omit their stacked start and end",
     "file": "desktop/native/hours/canvas.py",
-    "old": "            lambda cut: stack(2, (clock_label(drawn.span.start), clock_label(drawn.span.end))\n                              if shown[0] else (), cut),",
-    "new": "            lambda cut: stack(2, (), cut),",
+    "old": "            lambda cut, most=title_lines: stack(most, (start,) if start else (), cut),\n            lambda cut: stack(1, (start,) if start else (), cut),",
+    "new": "            lambda cut, most=title_lines: stack(most, (), cut),\n            lambda cut: stack(1, (), cut),",
     "test": "desktop/tests/test_time_numbers.py::test_narrow_week_blocks_still_include_their_times"
   },
   {
@@ -44,7 +44,7 @@
   {
     "name": "Now is hidden under a block's colour",
     "file": "desktop/native/hours/canvas.py",
-    "old": "        self.crossing(painter, rect, written)\n",
+    "old": "        self.crossing(painter, rect)\n",
     "new": "",
     "test": "desktop/tests/test_time_numbers.py::test_now_crosses_a_block_over_its_colour_and_under_its_words[clay]"
   },
@@ -72,43 +72,43 @@
   {
     "name": "Mission's line for now is hidden under a tick",
     "file": "desktop/native/layouts/mission.py",
-    "old": "        self.crossing(painter, rect, icon)\n",
+    "old": "        self.crossing(painter, bar, [])\n",
     "new": "",
-    "test": "desktop/tests/test_layout_mission.py::test_the_line_for_now_crosses_a_tick_it_lies_on"
+    "test": "desktop/tests/test_layout_mission.py::test_the_line_for_now_stops_short_of_a_ticks_icon"
   },
   {
     "name": "The now line runs through a block's words",
     "file": "desktop/native/hours/canvas.py",
-    "old": "        for box in around or ():\n",
-    "new": "        for box in ():\n",
-    "test": "desktop/tests/test_time_numbers.py::test_the_now_line_stops_short_of_a_blocks_words_and_resumes_after_them[classic]"
+    "old": "        self.crossing(painter, rect)\n        painter.setFont(font)\n        self.words(painter, rect, drawn, ink, visible, fill, edge)\n",
+    "new": "        written = self.words(painter, rect, drawn, ink, visible, fill, edge)\n        painter.setFont(font)\n        self.crossing(painter, rect, written)\n",
+    "test": "desktop/tests/test_time_numbers.py::test_the_now_line_runs_under_a_blocks_words_without_a_gap[classic]"
   },
   {
     "name": "The now line stops right at a block's words",
     "file": "desktop/native/hours/canvas.py",
     "old": "NOW_CLEAR = 3\n",
     "new": "NOW_CLEAR = 0\n",
-    "test": "desktop/tests/test_time_numbers.py::test_the_now_line_stops_short_of_a_blocks_words_and_resumes_after_them[classic]"
+    "test": "desktop/tests/test_layout_mission.py::test_the_line_for_now_stops_short_of_a_ticks_icon"
   },
   {
     "name": "Clay's now line runs through its words",
     "file": "desktop/native/layouts/clay.py",
-    "old": "        return written\n",
-    "new": "        return []\n",
-    "test": "desktop/tests/test_time_numbers.py::test_the_now_line_stops_short_of_a_blocks_words_and_resumes_after_them[clay]"
+    "old": "        if too_short or width < least:\n            return []\n",
+    "new": "        return []\n        if too_short or width < least:\n            return []\n",
+    "test": "desktop/tests/test_time_numbers.py::test_the_now_line_runs_under_a_blocks_words_without_a_gap[clay]"
   },
   {
     "name": "Mission's now line runs over a tick's icon",
     "file": "desktop/native/layouts/mission.py",
-    "old": "        self.crossing(painter, rect, icon)\n",
-    "new": "        self.crossing(painter, rect)\n",
+    "old": "        self.crossing(painter, bar, [])\n",
+    "new": "        self.crossing(painter, rect, [])\n",
     "test": "desktop/tests/test_layout_mission.py::test_the_line_for_now_stops_short_of_a_ticks_icon"
   },
   {
     "name": "Mission's lane is not laid again round a tick's icon",
     "file": "desktop/native/layouts/mission.py",
-    "old": "            painter.fillRect(room, QColor(mix_oklab(",
-    "new": "            painter.fillRect(QRectF(), QColor(mix_oklab(",
+    "old": "                painter.fillRect(backdrop, card)\n",
+    "new": "                pass\n",
     "test": "desktop/tests/test_layout_mission.py::test_the_line_for_now_stops_short_of_a_ticks_icon"
   },
   {

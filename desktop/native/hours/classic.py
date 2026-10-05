@@ -206,12 +206,7 @@ class DayName(QLabel):
         return self.width() - self._homework_left(icon) - SPACING[1]
 
     def homework_words(self) -> str:
-        """The day's homework length whole, or in the shorter form where the column is too narrow for it."""
-        small = self._fonts()[2]
-        metrics = QFontMetricsF(small)
-        whole = length_label(self.homework)
-        if metrics.horizontalAdvance(whole) <= self._homework_room(round(metrics.ascent())):
-            return whole
+        """The day's homework length as hours and minutes stuck on, so "2h 15m" is never read as 2:15."""
         return short_length(self.homework)
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802

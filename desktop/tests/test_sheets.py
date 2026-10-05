@@ -419,11 +419,18 @@ def test_the_sign_out_sheet_says_where_the_week_lives_and_does_not_draw_sign_out
     wait_until(qapp, lambda: window.session.storage_info is not None)
     window.findChild(QPushButton, "signOut").click()
     assert asked == [
-        ("Sign out", "Your week stays saved on this computer. Sign in again to see it.", "Sign out", False)
+        (
+            "Sign out",
+            "Your week is saved on this computer, under this account. Sign in again to see it.",
+            "Sign out",
+            False,
+        )
     ]
     window.session.storage_info = {"mode": "hosted"}
     window.findChild(QPushButton, "signOut").click()
-    assert asked[-1][1] == "Your week stays saved on your FlexWeek server. Sign in again to see it."
+    assert asked[-1][1] == (
+        "Your week is saved on your FlexWeek server, under this account. Sign in again to see it."
+    )
 
 
 def test_the_app_says_sign_out_and_never_log_out(qapp: QApplication, window: NativeWindow) -> None:  # noqa: F811
@@ -681,7 +688,10 @@ def panel_with(qapp: QApplication, text: str, count: int) -> tuple[QWidget, Unfi
     panel = UnfinishedPanel(parent)
     panel.move(20, 20)
     panel.resize(900, 600)
-    items = [{"id": f"a{n}", "title": f"History essay {n}", "remaining_min": 60} for n in range(count)]
+    items = [
+        {"id": f"a{n}", "title": f"History essay {n}", "remaining_min": 60, "due": "2000-01-15T12:00"}
+        for n in range(count)
+    ]
     panel.set_items(items)
     settle_layout(qapp)
     return parent, panel
@@ -740,7 +750,7 @@ def test_the_unfinished_rows_are_measured_again_when_the_look_reaches_them(
     parent.show()
     panel = UnfinishedPanel(parent)
     panel.resize(900, 600)
-    panel.set_items([{"id": "a0", "title": "History essay", "remaining_min": 60}])
+    panel.set_items([{"id": "a0", "title": "History essay", "remaining_min": 60, "due": "2000-01-15T12:00"}])
     settle_layout(qapp)
     parent.setStyleSheet(looks.styleSheet())
     settle_layout(qapp)

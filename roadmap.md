@@ -8,14 +8,14 @@ desktop units, the 0.10.1 and 0.11 polish, the web client's retirement, the
 first implementation slice) was removed from this file on 2026-10-02. It is in
 this file's git history, in `CHANGELOG.md`, and in `docs/cac-build-plan.md`.
 
-## Where things stand (2026-10-03)
-- v0.18.1 is released as latest: the 20 Fix-first findings of the 0.17.2
-  audit, Jonathan's J1 to J6 and the engine leftovers. v0.18.0 brought the
-  Rust engine.
-- 0.18.2 is next. Batch A (six lanes, no mockups) is written by Grok and
-  reviewed by Claude; batch B waits for mockup round 2. Then 0.18.3.
+## Where things stand (2026-10-04)
+- v0.18.1 is released as latest. v0.18.0 brought the Rust engine.
+- 0.18.2 is batch A alone (seven lanes, written by Grok, reviewed and fixed
+  by Claude), versioned and checked on `release/0.18.2`: whole suite and all
+  seven rigs pass. It waits for Jonathan's look at #98 and his word to ship.
+- Batch B moves to 0.18.3 and still waits for mockup round 2.
 - Decisions left open by 0.18.1 are listed under "Open after 0.18.1".
-- 22 days to the contest submission (Phase 8).
+- 21 days to the contest submission (Phase 8).
 
 ## Phase 8 — Contest delivery (Oct 25, 2026)
 - README with account setup, both contributors and the AI-assistance disclosure.
@@ -214,9 +214,27 @@ merges into `release/0.18.2`; Jonathan decides what ships. Batch A needs no
 mockups and goes first. Batch B waits for mockup round 2. Branches:
 `grok/0182-<lane>`. Each finding is reproduced by a failing test before it is
 fixed; one that does not reproduce on the current build is closed with that
-test.
+test. Decided 2026-10-04: 0.18.2 ships batch A alone; batch B moves to 0.18.3.
 
-#### Batch A, lane 1: times and words on blocks
+#### Batch A, lane 0: repairs to what 0.18.1 shipped (merged 2026-10-04)
+- Homework blocks in Timeline, Mission, Bento, Retro, Clay and One thing lost
+  their time line and edge, and the hours stopped painting after them (the
+  now line ended at that day): their colour tables had no `block_edge`. Done:
+  every design's table has one, and a test paints planned and pinned homework
+  through every design's painter in light and dark.
+- The rig printed "4/4 passed" after stopping at scenario 5 of 17 on that
+  error, which is how it shipped. Done: a run that ends early or logs a Python
+  error says STOPPED, names the scenario, exits 1 and lists the scenarios that
+  did not run.
+- Add homework's past-deadline check took the date from one clock and the time
+  of day from another, so a test failed every afternoon. Done: one clock.
+- `test_every_field_in_a_forms_column_starts_at_the_same_left_edge` failed
+  only in the whole suite: after a test that cached the design pictures it
+  read the page while Settings was still sliding in. Done: it waits for the
+  slide to finish. Each test's windows are now deleted after it, which kept a
+  4-worker run to about 1.4 GB.
+
+#### Batch A, lane 1: times and words on blocks (merged 2026-10-04)
 - #13 In Today's app, Paper and Timeline a 45-minute "Math worksheet"
   (17:00–17:45) shows its name only; Clay and Retro show "Math worksheet
   17:00". Done when every design writes a short block as its name, then its
@@ -239,7 +257,7 @@ test.
   continuous line drawn under the block's text and icon, in every design that
   draws through the shared hours canvas.
 
-#### Batch A, lane 2: week behaviour (after lane 1; both touch the canvas)
+#### Batch A, lane 2: week behaviour (after lane 1; both touch the canvas) (merged 2026-10-04)
 - #15 A block can be dropped onto a past day with no warning; the drag ghost is
   tan and cuts "Math worksh…" with room to spare; the placed block loses its
   book icon. Done when a drop in the past is refused with "That's in the past."
@@ -267,7 +285,7 @@ test.
   keeps its words while they fit, then "More" collapses to its icon, then the
   label drops "my".
 
-#### Batch A, lane 3: designs
+#### Batch A, lane 3: designs (merged 2026-10-04)
 - J9 Mission draws any block of 30 minutes or less as a tick, named only on
   hover, in its day and week lanes. Done when every block keeps its bar and
   icon down to a minimum width, the title cut first, and a tick appears only
@@ -285,7 +303,7 @@ test.
   counted in one place; after the last study hour it says "Nothing free now";
   and each doubled line is said once.
 
-#### Batch A, lane 4: keys
+#### Batch A, lane 4: keys (merged 2026-10-04)
 - #88 F1 opens no Help and Ctrl+N does not open Add homework. Done when both
   work from the week page and both are listed in Help and in Ctrl+K.
 - #89 The Ctrl+K palette is cut at the window's bottom; the hovered row and the
@@ -295,7 +313,7 @@ test.
   Alerts, This computer and Choose a time, and the look entry uses the app's
   word for it.
 
-#### Batch A, lane 5: messages (may change the engine)
+#### Batch A, lane 5: messages (may change the engine) (merged 2026-10-04)
 - #44 Late in the day Plan says "That does not fit in the times you set aside
   for work." when today's hours are over or the deadline has passed; the
   nothing-placed toast reads "Planned 0 homework blocks. 1 still needs a
@@ -326,7 +344,7 @@ test.
   volleyball, baseball, hockey, practice, …) make it Sports, else Activity,
   and the student can still change it.
 
-#### Batch A, lane 6: opening Settings and the plan panel
+#### Batch A, lane 6: opening Settings and the plan panel (merged 2026-10-04)
 - J12 (rest) Settings takes about 170 ms to build before its slide can start,
   on every open, because closing deletes the page and opening builds it again.
   Done when the slide starts within one frame of the click (build ahead while
@@ -341,7 +359,21 @@ test.
   or the arrow keys, so a keyboard user cannot tell what Remove will remove.
   Done when alarm rows show a focus ring and a selection.
 
-#### Batch B (after mockup round 2)
+#### Batch A: checks before 0.18.2 ships (2026-10-04)
+- Fixed after the whole-suite and rig runs: with the rail folded, waiting homework opens in place
+  under the line (no popup) and can be dragged with a real pointer (its chips were 0 px wide);
+  the page margins are back, and the top bar shortens in one order (date, More, "Plan
+  homework", "Plan"), fitted as Large text arrives; Unfinished opened by the student stays open
+  when the week changes (the whole-suite failure of
+  `test_unfinished_opens_its_list_in_any_design`).
+- Final check (2026-10-04): whole suite 2893 passed, 0 failed; rigs classic week 18/18, timeline
+  week 17/17, timeline day 14/14, mission week 17/17, bento week 17/17, clay day 14/14, retro
+  week 17/17 (after the rig's Large-text step waited for the bar to settle).
+- Left: Jonathan's look at #98's sliding plan panel; then the PR and the release on his word.
+  `test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings` fails when
+  its file runs alone (622 px against 640), on main too.
+
+#### Batch B (moved to 0.18.3 on 2026-10-04; after mockup round 2)
 Mockup round 2: Setup's Style page and page layout; Add and Edit homework with
 Spread beside Estimated time, the Placed line and the empty link and step
 lists; the Placed panel; Choose a time; Add fixed time; Availability with one

@@ -136,6 +136,37 @@ class Waited(AssertionError):
     """Something the scenario waited for never happened. Never a pass."""
 
 
+def report_run(
+    plan: list[tuple[str, str, str]],
+    results: list[dict],
+    finished: bool,
+    python_error: str | None = None,
+    stopped_in: str | None = None,
+) -> tuple[str, int, list[dict]]:
+    """The line printed at the end, the exit code, and results.json including scenarios that did not run."""
+    ran = {(item["design"], item["scenario"]) for item in results}
+    skipped = [
+        {"design": design, "tab": tab, "scenario": name, "result": "SKIPPED"}
+        for design, tab, name in plan
+        if (design, name) not in ran
+    ]
+    payload = [*results, *skipped]
+    passed = sum(1 for item in results if item["result"] == "PASS")
+    failures = any(item.get("result") not in {"PASS"} for item in results)
+    where = stopped_in or (results[-1]["scenario"] if results else (plan[0][2] if plan else ""))
+    if python_error:
+        return f"STOPPED in {where}: {python_error}", 1, payload
+    if finished and not skipped and results and failures:
+        return f"{passed}/{len(plan)} passed, {len(results) - passed} failed.", 1, payload
+    if not finished or skipped or not results or failures or passed != len(plan):
+        return (
+            f"STOPPED in {where}: {len(results)}/{len(plan)} ran, {len(skipped)} did not run.",
+            1,
+            payload,
+        )
+    return f"{passed}/{len(plan)} passed.", 0, payload
+
+
 def child_main(args: argparse.Namespace) -> int:
     from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QSize, QStandardPaths, Qt, QTimer
     from PySide6.QtGui import QColor, QCursor, QPainter, QPen
@@ -143,6 +174,14 @@ def child_main(args: argparse.Namespace) -> int:
 
     QStandardPaths.setTestModeEnabled(True)
     app = QApplication(["flexweek-rig"])
+    python_errors: list[str] = []
+
+    def on_error(kind: type, value: BaseException, tb: object) -> None:
+        python_errors.append(f"{getattr(kind, '__name__', kind)}: {value}")
+        traceback.print_exception(kind, value, tb)
+        app.quit()
+
+    sys.excepthook = on_error
 
     from desktop.native.calendar import sunday_due
     from desktop.native.client import _error
@@ -701,6 +740,28 @@ def child_main(args: argparse.Namespace) -> int:
             f"math is {got['days']} {got.get('start')}",
         )
 
+    def week_folded_waiting(r: Rig) -> Step:
+        """At 800 px the rail is folded: open Not placed yet in place, then drag homework on."""
+        yield from r.tab("week")
+        window.resize(800, 820)
+        yield ("wait", 400)
+        chip = window.findChild(QPushButton, "railWaitingChip")
+        expect(chip is not None and chip.isVisible(), "the folded Not placed yet chip is missing")
+        yield from r.click(chip.mapToGlobal(chip.rect().center()))
+        row = window.findChild(QWidget, "railWaitingRow")
+        expect(row is not None and row.isVisible(), "the waiting homework row did not open")
+        # Friday: the clock is Thursday 15:40, and a drop on a day already past is refused.
+        yield from r.reveal(4, 15 * 60, 18 * 60)
+        yield from r.drag(r.chip(ids["math"]), r.at(4, 16 * 60))
+        yield from r.settled()
+        got = block(ids["math"])
+        expect(
+            (got["days"], got.get("start"), got.get("pinned")) == ([4], "16:00", True),
+            f"math is {got['days']} {got.get('start')}",
+        )
+        window.resize(1280, 820)
+        yield ("wait", 200)
+
     def week_past_due(r: Rig) -> Step:
         yield from r.tab("week")
         yield from r.reveal(5, 16 * 60 + 30, 18 * 60 + 30)
@@ -976,6 +1037,21 @@ def child_main(args: argparse.Namespace) -> int:
         )
         window._apply_appearance()
         yield ("wait", 500)
+        # The window manager's resize and the larger text can land after that wait, and the bar then
+        # moves: a click on Week found from where it had been landed beside Day. Wait until the
+        # window is the new size and the bar has kept still for 300 ms.
+        week = window.findChild(QPushButton, "viewWeek")
+        seen: dict = {"at": None, "since": 0.0}
+
+        def still() -> bool:
+            at = (window.size(), week.mapToGlobal(week.rect().center()))
+            now = time.monotonic()
+            if at != seen["at"]:
+                seen["at"], seen["since"] = at, now
+                return False
+            return window.size() == QSize(1150, 768) and now - seen["since"] >= 0.3
+
+        yield ("until", still, 5000, "the window and its top bar to settle at 1150 by 768")
 
     def on_screen(widget: QWidget) -> bool:
         frame = QRect(window.mapToGlobal(QPoint(0, 0)), window.size())
@@ -1485,6 +1561,7 @@ def child_main(args: argparse.Namespace) -> int:
         Scenario("week-create", "week", week_create),
         Scenario("week-series-one-day", "week", week_series),
         Scenario("week-beside", "week", week_beside),
+        Scenario("week-folded-waiting", "week", week_folded_waiting, only=("classic",)),
         Scenario("week-past-due", "week", week_past_due),
         Scenario("week-open-day", "week", week_open_day),
         Scenario("week-reach", "week", week_reach),
@@ -1670,8 +1747,9 @@ def child_main(args: argparse.Namespace) -> int:
                 finished.append(True)
                 app.quit()
                 return
-            except Exception:  # noqa: BLE001 - the rig reports and stops rather than hanging
+            except Exception as broken:  # noqa: BLE001 - the rig reports and stops rather than hanging
                 traceback.print_exc()
+                python_errors.append(f"{type(broken).__name__}: {broken}")
                 app.quit()
                 return
             dispatch(command)
@@ -1694,11 +1772,17 @@ def child_main(args: argparse.Namespace) -> int:
     app.lastWindowClosed.connect(lambda: print("The last window closed.", flush=True))
     QTimer.singleShot(300, lambda: drive(run_all()))
     app.exec()
-    (out / "results.json").write_text(json.dumps(results, indent=1))
+    line, code, payload = report_run(
+        [(design, scenario.tab, scenario.name) for design, scenario in plan],
+        results,
+        bool(finished),
+        python_error=python_errors[0] if python_errors else None,
+        stopped_in=None if finished else (rig.scenario or None),
+    )
+    (out / "results.json").write_text(json.dumps(payload, indent=1))
     server.stop()
-    passed = sum(1 for item in results if item["result"] == "PASS")
-    print(f"\n{passed}/{len(results)} passed. Screenshots, videos and results.json in {out}")
-    return 0 if finished and results and passed == len(results) else 1
+    print(f"\n{line} Screenshots, videos and results.json in {out}")
+    return code
 
 
 def main() -> int:

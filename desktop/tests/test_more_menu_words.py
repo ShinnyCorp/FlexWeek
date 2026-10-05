@@ -12,7 +12,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPoint, QStandardPaths, QUrl
+from PySide6.QtCore import QEvent, QPoint, QStandardPaths, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QFontMetrics, QImage, QRegion
 from PySide6.QtWidgets import (
     QApplication,
@@ -76,9 +76,14 @@ TOOLTIPS = {
     "Paste into (the selected day)": "Copy a block or a day first.",
     "Duplicate": "Make a copy of the selected block, with a preview first. Ctrl+D",
     "Copy (the selected day)": "Copy every block on the selected day to paste into another day.",
-    "Save": "Save now. FlexWeek already saves after every change. Ctrl+S",
-    "Restore": "Go back to an earlier copy of your plans. FlexWeek keeps one before big changes.",
-    "Reload": "Load this week again as it is saved. Use it if something looks out of date.",
+    "Save this week now": "Save now. FlexWeek already saves after every change. Ctrl+S",
+    "Copies of this week…": (
+        "Save a copy of this week, or go back to an earlier one. FlexWeek keeps a restore point "
+        "before big changes."
+    ),
+    "Reload this week as it is saved": (
+        "Load this week again as it is saved. Use it if something looks out of date."
+    ),
 }
 PLAN = (
     "Find a time for homework that has none, around your fixed times and before it is due. Homework "
@@ -182,7 +187,7 @@ def test_unfinished_opens_its_list_in_any_design(
     session.add_block({"id": "school", "title": "School", "kind": "locked", "start": "08:00",
                        "duration_min": 390, "days": [0, 1, 2, 3, 4]})
     session.add_homework({"id": "essay", "title": "History essay", "estimate_min": 120, "revision": 0,
-                          "due": (week + timedelta(days=10)).isoformat() + "T23:59"})
+                          "due": (date.today() - timedelta(days=3)).isoformat() + "T12:00"})
     session.save()
     settled(qapp, window)
     planned = next(block for block in session.blocks if block.get("assignment_id") == "essay")
@@ -207,6 +212,81 @@ def test_unfinished_opens_its_list_in_any_design(
     assert action.toolTip() == "Homework from earlier weeks that still needs time. Plan it into this week."
 
 
+def test_unfinished_stays_open_when_the_week_changes_after_it_is_opened(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """Opened from More, the list stayed open only until the next change to the week: a save or a
+    reload arriving a moment later folded it back into its badge. It stays open until closed."""
+    session = window.session
+    week = date.fromisoformat(session.week_start)
+    session.add_homework({"id": "essay", "title": "History essay", "estimate_min": 120, "revision": 0,
+                          "due": (date.today() - timedelta(days=3)).isoformat() + "T12:00"})
+    session.save()
+    settled(qapp, window)
+    planned = next(block for block in session.blocks if block.get("assignment_id") == "essay")
+    session.delete_block(planned["id"])
+    session.save()
+    settled(qapp, window)
+    later = (week + timedelta(days=7)).isoformat()
+    session.load_week(later)
+    wait_until(qapp, lambda: session.week_start == later and not session.busy)
+    window._on_week()
+    window.unfinished_panel.hide()
+    unfinished_action(window).trigger()
+    qapp.processEvents()
+    assert window.unfinished_panel.isVisibleTo(window)
+    window._on_week()
+    qapp.processEvents()
+    assert window.unfinished_panel.isVisibleTo(window), "a change to the week closed the list"
+    assert not window.unfinished_badge.isVisibleTo(window)
+
+
+def test_unfinished_is_greyed_when_every_item_is_not_yet_overdue(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#14: Unfinished listed work due today and tomorrow. The button stayed on while the panel
+    would be empty. It follows the overdue-only list the panel shows."""
+    from datetime import datetime
+
+    from desktop.native import widgets as widgets_module
+    from desktop.native import window as window_module
+
+    now = datetime(2026, 10, 3, 18, 0)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            return now
+
+    monkeypatch.setattr(widgets_module, "datetime", Clock)
+    monkeypatch.setattr(window_module, "datetime", Clock)
+    session = window.session
+    week = date.fromisoformat(session.week_start)
+    session.add_block({"id": "school", "title": "School", "kind": "locked", "start": "08:00",
+                       "duration_min": 390, "days": [0, 1, 2, 3, 4]})
+    session.add_homework({"id": "essay", "title": "History essay", "estimate_min": 120, "revision": 0,
+                          "due": "2026-10-04T15:30"})
+    session.save()
+    settled(qapp, window)
+    planned = next(block for block in session.blocks if block.get("assignment_id") == "essay")
+    session.delete_block(planned["id"])
+    session.save()
+    settled(qapp, window)
+    later = (week + timedelta(days=7)).isoformat()
+    session.load_week(later)
+    wait_until(qapp, lambda: session.week_start == later and not session.busy)
+    assert session.unfinished()
+    action = unfinished_action(window)
+    button = window.findChild(QPushButton, "unfinishedOpen")
+    assert action.isEnabled() is False
+    assert button is not None and button.isEnabled() is False
+    window._show_unfinished()
+    assert not window.unfinished_panel.isVisibleTo(window) or window.unfinished_panel.list.count() == 0
+
+
 def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_lives_in(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
@@ -219,9 +299,9 @@ def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_
     said = [label.text() for label in dialog.findChildren(QLabel) if label.text()]
     assert said == [
         "About FlexWeek",
-        "FlexWeek 0.18.1",
+        "FlexWeek 0.18.2",
         "FlexWeek plans your homework around school, sports and everything else in your week.",
-        "Your plans are saved on this computer.",
+        "Your week is saved on this computer, under this account.",
     ]
     assert dialog.windowTitle() == "About FlexWeek"
     logo = dialog.findChild(QLabel, "aboutLogo")
@@ -241,7 +321,9 @@ def test_about_on_a_server_names_the_server_and_has_no_folder_to_open(
 ) -> None:
     dialog = settings.AboutDialog(host, {"mode": "hosted", "origin": "https://plans.example.org"}, "/nowhere")
     said = [label.text() for label in dialog.findChildren(QLabel)]
-    assert said[-1] == "Your plans are saved on your FlexWeek server, https://plans.example.org."
+    assert said[-1] == (
+        "Your week is saved on your FlexWeek server, https://plans.example.org, under this account."
+    )
     assert dialog.findChild(QPushButton, "aboutOpenFolder") is None
 
 
@@ -291,7 +373,9 @@ def test_help_draws_each_shortcut_as_keycaps(
     def parts(row: QWidget) -> list[tuple[str, str]]:
         return [(label.objectName(), label.text()) for label in row.findChildren(QLabel)]
 
-    assert parts(rows[4]) == [("helpKeycap", "Ctrl"), ("helpKeyJoin", "+"), ("helpKeycap", "K")]
+    assert parts(rows[4]) == [("helpKeycap", "F1")]
+    assert parts(rows[5]) == [("helpKeycap", "Ctrl"), ("helpKeyJoin", "+"), ("helpKeycap", "N")]
+    assert parts(rows[6]) == [("helpKeycap", "Ctrl"), ("helpKeyJoin", "+"), ("helpKeycap", "K")]
     assert parts(rows[2]) == [("helpKeycap", "B"), ("helpKeyJoin", "or"), ("helpKeycap", "Esc")]
     assert parts(rows[-1]) == [("helpKeycap", "Esc"), ("helpKeyJoin", "while dragging")]
 
@@ -452,8 +536,11 @@ def test_a_description_is_as_large_as_the_text_the_student_chose(
         qapp.processEvents()
         tip = next(w for w in qapp.topLevelWidgets() if w.objectName() == "qtooltip_label" and w.isVisible())
         assert tip.font().pointSizeF() == type_pt("body", text), text
-        QToolTip.hideText()
-        qapp.processEvents()
+        # Gone at once, as Qt does when a tip times out: hideText() only hides after a moment, and the
+        # same words on the same button again are then taken as the tip already showing, which hides.
+        tip.close()
+        tip.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def test_help_and_about_are_under_more(
@@ -493,3 +580,21 @@ def test_every_row_under_more_has_an_icon_and_log_out_stands_apart(
     ]
     assert rows[-5:] == ["---", "Help", "About FlexWeek", "---", "Sign out"]
     assert all(action.property(ICON) for action in window.add_menu.actions()[:3]), "the Add menu's three"
+
+
+def test_more_undo_is_enabled_when_the_toast_offers_undo(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window._set_notice("Planned 1 homework block.", "Undo", lambda: None)
+    qapp.processEvents()
+    monkeypatch.setattr(window.session, "can_undo", lambda: False)
+    menu = opened_more(window)
+    undo = next(action for action in actions(menu) if action.text() == "Undo")
+    assert undo.isEnabled()
+    window.toast.hide()
+    qapp.processEvents()
+    menu = opened_more(window)
+    undo = next(action for action in actions(menu) if action.text() == "Undo")
+    assert not undo.isEnabled()

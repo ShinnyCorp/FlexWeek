@@ -178,15 +178,16 @@ def test_day_opens_week_exe_on_one_live_column(
 
 
 def test_day_has_the_folder_web_view_with_the_days_summary(qapp: QApplication) -> None:
-    """Thursday has School 08:00 to 14:30, Dinner 18:00, Essay-1 18:45 and Chem-1 20:00, 9 h 30 min in
-    all, three of them after 13:40; it is free from School's end to Dinner, and from Chem-1's end to
-    22:00. The quarter hours between Dinner, Essay-1 and Chem-1 are too short to list."""
+    """Thursday has School 08:00 to 14:30, Dinner 18:00, Essay-1 18:45 and Chem-1 20:00. Planned is
+    the homework only, 2 h 30 min, and three blocks start after 13:40. It is free from School's end
+    to Dinner, and from Chem-1's end to 22:00. The quarter hours between Dinner, Essay-1 and Chem-1
+    are too short to list."""
     view = shown(qapp, 1280, 820, surface="day", iso_day="2026-09-17")
     said = [label.text() for label in view.findChildren(QLabel) if label.objectName().startswith("retroWeb")]
     assert said == [
         "Thursday",
         "17 September",
-        f"9{NBSP}h{NBSP}30{NBSP}min planned, 3 still to come.",
+        f"2{NBSP}h{NBSP}30{NBSP}min planned, 3 still to come.",
         "Your day",
         "School",
         "6 h 30 min",
@@ -450,9 +451,9 @@ def test_notepad_lists_the_homework_under_its_deadline_with_its_length_and_time(
     ]
     rows = [view.findChild(QPushButton, name) for name in ("retroNote0", "retroNote1", "retroNoteWaiting0")]
     assert [row.lines for row in rows] == [
-        ["Chem-1    1 h 30  placed Thu 20:00"],
-        ["Essay-1   1 h     placed Thu 18:45"],
-        [f"Poster-1  2 h     {NOT_PLACED}"],
+        ["Chem-1    1h 30m  placed Thu 20:00"],
+        ["Essay-1   1h      placed Thu 18:45"],
+        [f"Poster-1  2h      {NOT_PLACED}"],
     ]
     chip = view.findChild(TrayChip, "retroNoteWaiting0")
     assert chip.block_id == "poster-1"
@@ -498,7 +499,7 @@ def test_a_notepad_line_short_of_room_puts_its_length_and_time_under_its_title(q
     assert len(essay.lines) == 2, essay.lines
     assert "History essay on the causes of the war".startswith(essay.lines[0].removesuffix("…"))
     # Under the title, in from the edge; "placed" leaves this narrow page no title column.
-    assert essay.lines[1].split() == ["1", "h", "placed", "Thu", "18:45"] and essay.lines[1].startswith("  ")
+    assert essay.lines[1].split() == ["1h", "placed", "Thu", "18:45"] and essay.lines[1].startswith("  ")
     for row in view.findChildren(QPushButton):
         if row.property("role") != "note":
             continue

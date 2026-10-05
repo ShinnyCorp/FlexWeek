@@ -489,7 +489,7 @@ def test_a_half_of_a_column_names_its_block_to_the_last_word_it_has_room_for(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Homework dropped on Soccer leaves each of them half a column. A half that has room for
-    "Math…" says that, not "M…"."""
+    "Math…" says that, not "M…", and then its start, as every short block does (#13)."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
     load_fonts()
     blocks = BlockPainter(resolved_palette("system", False, None))
@@ -502,10 +502,11 @@ def test_a_half_of_a_column_names_its_block_to_the_last_word_it_has_room_for(
     drawn = Drawn("math", "Math worksheet", "homework", True, Span(1, 16 * 60 + 15, 17 * 60), 1, 2)
     paint = Said(image)
     paint.setFont(QFont("Inter", 11))
-    Said.words = []
+    Said.words, Said.inks = [], []
     blocks.block(paint, QRectF(20, 20, wide, 33), drawn, page)
     paint.end()
-    assert [text for text, _where in Said.words] == ["Math…"]
+    assert [text for text, _where in Said.words] == ["Math…", "16:15"]
+    assert all(ink.right() <= 20 + wide for _text, ink in Said.inks), "a word runs out of the half"
 
 
 def rows(palette: dict, today: bool) -> QImage:
@@ -639,10 +640,10 @@ def test_a_custom_look_can_leave_out_a_blocks_times_or_its_length(
 
 
 def test_a_short_block_at_large_text_keeps_its_title_first_and_whole_words(qapp: QApplication) -> None:
-    """At Large text a 45-minute block on the week has room for one line. "Piano lesson" is said
-    whole; "Math worksheet", which cannot be, gives way at a space, "Math…", and its name comes before
-    its time: not "Mat… 19:00", nor "Math works…"."""
-    from desktop.native.hours.canvas import TEXT_LEFT, TEXT_RIGHT, TEXT_TOP, block_layout
+    """At Large text a 45-minute block on the week has room for one line. Its name comes before
+    its start; "Math worksheet", which cannot be said whole beside 19:00, gives way at a space,
+    "Math…", not "Mat… 19:00" or "Math works…"."""
+    from desktop.native.hours.canvas import TEXT_LEFT, TEXT_RIGHT, TEXT_TOP, block_layout, word_elide
     from desktop.native.hours.geometry import Span
 
     large = {"preset": "default", "knobs": {"text": "large"}}
@@ -657,8 +658,14 @@ def test_a_short_block_at_large_text_keeps_its_title_first_and_whole_words(qapp:
         drawn = Drawn(name, name, "assignments" if homework else "extra", homework, span, 0, 1)
         return [line.text for line in block_layout(drawn, title, small, room, tight=tight, book=homework)]
 
-    assert said("Piano lesson", False)[0] == "Piano lesson"
-    assert said("Math worksheet", True) == ["Math…"]
+    piano = said("Piano lesson", False)
+    assert piano[0] == "Piano lesson"
+    math = said("Math worksheet", True)
+    assert math[0] == "Math…"
+    assert any("19:00" in line for line in math)
+    # Qt's elide keeps a letter of the next word ("Math w…"); the title gives way at a space.
+    metrics = QFontMetricsF(title)
+    assert word_elide("Math worksheet", metrics, 77) == "Math…"
 
 
 def test_a_half_hour_in_high_contrast_says_its_name_on_the_week(

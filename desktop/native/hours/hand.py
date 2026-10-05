@@ -73,6 +73,7 @@ class Held:
     grab: int = 0
     # For a Month chip: the date it was lifted from.
     from_iso: str = ""
+    category: str = ""
 
 
 @dataclass(frozen=True)

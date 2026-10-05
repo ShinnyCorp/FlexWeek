@@ -22,12 +22,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QPoint, QStandardPaths
-    from PySide6.QtWidgets import QApplication, QPushButton
+    from PySide6.QtWidgets import QApplication, QPushButton, QStyle
 
     from desktop.native.calendar import monday_of, sunday_due
+    from desktop.native.layouts.registry import sanitize_layout
     from desktop.native.look import sanitize_look
     from desktop.native.reuse import planner_title
-    from desktop.native.window import NativeWindow
+    from desktop.native.window import PLAN_LABEL, PLAN_SHORT, PLAN_TINY, NativeWindow
     from desktop.server import LocalServer
     from desktop.tests.logic_support import fail_once, fixed, past_setup
 
@@ -165,7 +166,7 @@ def test_the_top_bar_is_never_cut_mid_word(qapp: QApplication, window: NativeWin
                 assert title.fontMetrics().horizontalAdvance(title.text()) <= room, where
                 assert window.solve_button in bar_widgets(window), where
                 assert cut_on_the_bar(window) == [], f"{where}: cut {cut_on_the_bar(window)}"
-                assert window.solve_button.text() in ("Plan my homework", "Plan"), where
+                assert window.solve_button.text() in ("Plan my homework", "Plan homework", "Plan"), where
                 right = max(item.mapTo(window, item.rect().topRight()).x() for item in bar_widgets(window))
                 assert right < window.width(), f"{where}: the bar runs to {right}"
     # Suggest times and Retry save, which widen the bar, are never cut at the narrowest window.
@@ -189,6 +190,53 @@ def test_the_top_bar_is_never_cut_mid_word(qapp: QApplication, window: NativeWin
     title_foot = window.week_title.mapTo(window, QPoint(0, window.week_title.height())).y()
     assert window.solve_button.mapTo(window, QPoint(0, 0)).y() < title_foot, "at 1150 the bar is one row"
     assert cut_on_the_bar(window) == [], "at 1150 pixels"
+
+
+def test_the_bar_is_fitted_as_large_text_arrives_not_later(qapp: QApplication, window: NativeWindow) -> None:
+    """The rig clicked Week where it had just been: Large text reached Plan and More after the bar was
+    fitted, and the bar was fitted again only on a later change, its buttons moving under the pointer."""
+    window.resize(1150, 768)
+    for _ in range(4):
+        qapp.processEvents()
+    text_size(window, "large")
+    qapp.processEvents()
+    week = window.findChild(QPushButton, "viewWeek")
+    seen = (window.solve_button.text(), window.more_button.text(), week.mapTo(window, QPoint(0, 0)))
+    window._fit_plan_and_more()
+    for _ in range(4):
+        qapp.processEvents()
+    assert (window.solve_button.text(), window.more_button.text(), week.mapTo(window, QPoint(0, 0))) == seen
+
+
+def test_the_week_page_keeps_its_layout_margins(qapp: QApplication, window: NativeWindow) -> None:
+    """0.18.1 inset the bar and planner from the window edge; zero margins on the page removed that."""
+    style = QApplication.style()
+    left = style.pixelMetric(QStyle.PixelMetric.PM_LayoutLeftMargin)
+    top = style.pixelMetric(QStyle.PixelMetric.PM_LayoutTopMargin)
+    right = style.pixelMetric(QStyle.PixelMetric.PM_LayoutRightMargin)
+    bottom = style.pixelMetric(QStyle.PixelMetric.PM_LayoutBottomMargin)
+    page = window._week_page.layout().contentsMargins()
+    assert (page.left(), page.top(), page.right(), page.bottom()) == (left, top, right, bottom)
+    assert left > 0 and right > 0
+
+
+def test_at_1150_large_text_timeline_day_keeps_the_top_bar_on_one_row(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """Rig day-small-large on Timeline day: a wrapped bar ate ~55 px and pushed Due chips off screen."""
+    text_size(window, "large")
+    window._layout = sanitize_layout({"main": "timeline", "day": "one"})
+    window._day_mode = True
+    window._on_week()
+    window.resize(1150, 768)
+    for _ in range(6):
+        qapp.processEvents()
+    title_foot = window.week_title.mapTo(window, QPoint(0, window.week_title.height())).y()
+    assert window.solve_button.mapTo(window, QPoint(0, 0)).y() < title_foot
+    assert window.more_button.text() in ("More", "")
+    # Jonathan's call: "Plan", the last of #83's steps, where it keeps the bar on one row.
+    assert window.solve_button.text() in (PLAN_LABEL, PLAN_SHORT, PLAN_TINY)
+    assert cut_on_the_bar(window) == []
 
 
 def test_retry_save_shows_only_after_a_save_fails(qapp: QApplication, window: NativeWindow) -> None:

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import html
 from dataclasses import dataclass
-from datetime import date
 from functools import cached_property, partial
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
@@ -77,6 +76,7 @@ from desktop.native.weekmodel import (
     Waiting,
     WeekModel,
     clock_label,
+    due_label,
     length_label,
     planned_line,
 )
@@ -134,6 +134,7 @@ class Due:
 
     title: str
     at: tuple[int, int] | None
+    due: str | None = None
 
 
 def due_this_week(week: WeekModel) -> list[Due]:
@@ -146,12 +147,12 @@ def due_this_week(week: WeekModel) -> list[Due]:
     waiting: dict[str, Due] = {}
     for item in week.waiting:
         if this_week(item.due):
-            waiting.setdefault(item.assignment_id or item.block_id, Due(item.title, None))
+            waiting.setdefault(item.assignment_id or item.block_id, Due(item.title, None, item.due))
     placed: dict[str, Due] = {}
     for entry in week.occurrences:
         key = entry.assignment_id or entry.block_id
         if entry.work and this_week(entry.due) and key not in waiting:
-            placed.setdefault(key, Due(entry.title, (entry.day, entry.start)))
+            placed.setdefault(key, Due(entry.title, (entry.day, entry.start), entry.due))
     return [*waiting.values(), *sorted(placed.values(), key=lambda due: due.at or (0, 0))]
 
 
@@ -187,11 +188,18 @@ def _when(entry: Occurrence, minute: int) -> str:
 
 
 def _due_words(due: str | None) -> str:
-    """When homework is due, as a sticky note says it: "due Sun 27"."""
+    """When homework is due: "due Sun 4 Oct", without a clock so it is not read as a placed time."""
     if not due:
         return ""
-    day = date.fromisoformat(due[:10])
-    return f"due {DAYS[day.weekday()]} {day.day}"
+    words = due_label(due, "")
+    return f"due {words.split(',')[0]}" if words else ""
+
+
+def _placed_words(at: tuple[int, int] | None) -> str:
+    """Where a session sits, in those words, so the time is not read as its deadline."""
+    if at is None:
+        return "Not placed yet"
+    return f"placed {DAYS[at[0]]} {clock_label(at[1])}"
 
 
 def _paint(tokens: dict[str, str], category: str) -> tuple[str, str]:
@@ -227,6 +235,7 @@ class TimelinePainter(BlockPainter):
                 "error": tokens["danger"],
                 "text": tokens["text"],
                 "muted": tokens["muted"],
+                "block_edge": tokens["block_edge"],
             },
             wide=wide,
         )
@@ -939,12 +948,11 @@ class TimelineView(LayoutView):
 
     def _waiting(self, scene: Scene, box: QVBoxLayout, *, square: bool) -> None:
         """Not placed yet, as sticky notes set a little askew each way in turn."""
-        box.setSpacing(scene.px(8))
-        box.addWidget(label("Not placed yet", "timelineTrayLabel"))
         waiting = scene.week.waiting
         if not waiting:
-            box.addWidget(label("Nothing is waiting for a time.", "timelineHint", wrap=True))
             return
+        box.setSpacing(scene.px(8))
+        box.addWidget(label("Not placed yet", "timelineTrayLabel"))
         notes = FlowLayout(gap=scene.px(12))
         tilts = (-1.4, 1.0) if square else (-1.2, 0.9)
         for index, item in enumerate(waiting):
@@ -961,7 +969,7 @@ class TimelineView(LayoutView):
         box.addWidget(host)
 
     def _due(self, scene: Scene, box: QVBoxLayout, *, big: bool) -> None:
-        """Homework due this week: where each is placed, or Not placed yet in the accent."""
+        """Homework due this week: when each is due, and where it is placed."""
         px = scene.px
         box.addWidget(label("Due this week", "timelineLabel"))
         box.addSpacing(px(6))
@@ -976,22 +984,25 @@ class TimelineView(LayoutView):
             row.setSpacing(px(6))
             line = _frame("timelineDueRow", row)
             line.setProperty("ruled", big)
-            line.setFixedHeight(px(26 if big else 19))
+            line.setFixedHeight(px(40 if big else 34))
             mark = QLabel()
             mark.setObjectName("timelineDueBook")
             mark.setPixmap(book)
-            row.addWidget(mark, 0, Qt.AlignmentFlag.AlignVCenter)
+            column = QVBoxLayout()
+            column.setSpacing(0)
+            column.setContentsMargins(0, 0, 0, 0)
             title = FittedLabel(minimum=px(40))
             title.setObjectName("timelineDueTitle")
             title.setProperty("big", big)
             title.set_full_text(due.title)
-            row.addWidget(title, 1, Qt.AlignmentFlag.AlignVCenter)
+            deadline, placed = _due_words(due.due), _placed_words(due.at)
+            where = label(" · ".join(part for part in (deadline, placed) if part), "timelineDueWhen")
             if due.at is None:
-                where = label("Not placed yet", "timelineDueWhen")
                 where.setProperty("open", True)
-            else:
-                where = label(f"{DAYS[due.at[0]]} {clock_label(due.at[1])}", "timelineDueWhen")
-            row.addWidget(where, 0, Qt.AlignmentFlag.AlignVCenter)
+            column.addWidget(title)
+            column.addWidget(where)
+            row.addWidget(mark, 0, Qt.AlignmentFlag.AlignVCenter)
+            row.addLayout(column, 1)
             box.addWidget(line)
 
     def _open_day(self, day: int) -> None:

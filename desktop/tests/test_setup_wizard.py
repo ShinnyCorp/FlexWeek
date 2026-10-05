@@ -37,9 +37,11 @@ if importlib.util.find_spec("PySide6") is not None:
         REMINDERS,
         STYLE,
         WEEK,
+        ActivityRow,
         QuarterTime,
         SetupPage,
         SetupState,
+        activity_category_for,
     )
     from desktop.native.widgets import AvailabilityDialog
     from desktop.native.window import NativeWindow
@@ -860,4 +862,38 @@ def test_setup_saves_the_chosen_sports_category_and_restores_it(qapp: QApplicati
     choice = setup.activities[0].findChild(QComboBox, "setupActivityCategory")
     choice.setCurrentIndex(choice.findData("extra"))
     assert next(block for block in setup.week_blocks() if block["title"] == "Band")["category"] == "extra"
+    setup.close()
+
+
+def test_a_typed_sport_name_is_sports_and_the_student_can_still_change_it(qapp: QApplication) -> None:
+    assert activity_category_for("Soccer") == "exercise"
+    assert activity_category_for("swim practice") == "exercise"
+    assert activity_category_for("Piano practice") == "extra"
+    assert activity_category_for("Band practice") == "extra"
+    assert activity_category_for("Band") == "extra"
+    row = ActivityRow()
+    assert row.category.currentData() == "extra"
+    row.name.setText("Soccer")
+    assert row.category.currentData() == "exercise"
+    row.category.setCurrentIndex(row.category.findData("extra"))
+    row.category.activated.emit(row.category.currentIndex())
+    row.name.setText("Football")
+    assert row.category.currentData() == "extra"
+    row.deleteLater()
+
+
+def test_a_restored_activity_keeps_the_category_the_student_chose(qapp: QApplication) -> None:
+    setup = opened(qapp)
+    setup._show(WEEK)
+    row = setup.activities[0]
+    row.name.setText("Soccer")
+    row.days.set_days([1])
+    choice = row.findChild(QComboBox, "setupActivityCategory")
+    assert choice.currentData() == "exercise"
+    choice.setCurrentIndex(choice.findData("extra"))
+    choice.activated.emit(choice.currentIndex())
+    setup._state.blocks = setup.week_blocks()
+    setup._fill_week()
+    assert setup.activities[0].name.text() == "Soccer"
+    assert setup.activities[0].findChild(QComboBox, "setupActivityCategory").currentData() == "extra"
     setup.close()

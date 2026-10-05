@@ -37,7 +37,7 @@ from desktop.native.update import WINDOWS_SETUP, available
 from desktop.native.version import VERSION
 from desktop.native.widgets import Segmented, Switch
 from desktop.native.window import NativeWindow
-from desktop.tests.window_support import qapp, server, signed_out, window  # noqa: F401
+from desktop.tests.window_support import qapp, server, signed_out, still, window  # noqa: F401
 
 
 def prefs(window: NativeWindow, layout: dict | None = None) -> SettingsPage:  # noqa: F811
@@ -85,6 +85,7 @@ def test_every_field_in_a_forms_column_starts_at_the_same_left_edge(
     """A segmented control's track starts where the text fields, steppers, dropdowns and buttons in its
     column do: at the widget's box, and as painted, since a track can be drawn inset from its box."""
     dialog = prefs(window)
+    still(dialog)
     seen: list[str] = []
     for row in range(5):
         dialog.nav.setCurrentRow(row)
@@ -120,22 +121,22 @@ def test_every_field_in_a_forms_column_starts_at_the_same_left_edge(
     dialog.close_page()
 
 
-def test_this_build_says_0_18_1_and_is_not_offered_0_18_0(
+def test_this_build_says_0_18_2_and_is_not_offered_0_18_1(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
-    assert VERSION == "0.18.1"
+    assert VERSION == "0.18.2"
     release = {
-        "tag_name": "v0.18.0",
+        "tag_name": "v0.18.1",
         "assets": [
             {"name": name, "browser_download_url": f"https://example.invalid/{name}"}
             for name in (WINDOWS_SETUP, WINDOWS_SETUP + ".sha256")
         ],
     }
     assert available(release, "windows") is None
-    assert available({**release, "tag_name": "v0.18.2"}, "windows")["version"] == "0.18.2"
+    assert available({**release, "tag_name": "v0.18.3"}, "windows")["version"] == "0.18.3"
     dialog = prefs(window)
-    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.18.1"
+    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.18.2"
     dialog.close_page()
 
 

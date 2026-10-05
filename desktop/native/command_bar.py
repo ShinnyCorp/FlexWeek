@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QVBoxLayout,
@@ -38,6 +39,7 @@ from PySide6.QtWidgets import (
 from desktop.native import icons
 from desktop.native.elevation import lift
 from desktop.native.fonts import caption, weighted
+from desktop.native.look import mix
 from desktop.native.motion import EASE_MS, RISE_PX, appear, distance, glide, settle
 from desktop.native.tokens import WEIGHT_STRONG, Shadow
 from desktop.native.widgets import overlay_scroll_bars
@@ -65,31 +67,86 @@ class Command:
     keys: str = ""
 
 
-def match_rank(query: str, words: str) -> int | None:
-    """How well `words` answers what was typed, best first, or None when it does not.
-
-    The whole name starting with it, then a word starting with it, then anywhere in it, then the
-    first letters of its words, so "pmh" finds Plan my homework.
-    """
+def _rank_in_text(query: str, text: str) -> int | None:
     wanted = " ".join(query.casefold().split())
     if not wanted:
         return 0
-    text = words.casefold()
-    parts = text.split()
-    if text.startswith(wanted):
+    lowered = text.casefold()
+    parts = lowered.split()
+    if lowered.startswith(wanted):
         return 0
     if any(part.startswith(wanted) for part in parts):
         return 1
-    if wanted in text:
+    if wanted in lowered:
         return 2
     if "".join(part[0] for part in parts).startswith(wanted.replace(" ", "")):
         return 3
     return None
 
 
+def match_rank(query: str, words: str, tip: str = "") -> int | None:
+    """How well `words` answers what was typed, best first, or None when it does not.
+
+    The whole name starting with it, then a word starting with it, then anywhere in it, then the
+    first letters of its words, so "pmh" finds Plan my homework. The tip is checked too, so "look"
+    still finds Customise… from its description.
+    """
+    wanted = " ".join(query.casefold().split())
+    if not wanted:
+        return 0
+    word_rank = _rank_in_text(query, words)
+    if word_rank is not None:
+        return word_rank
+    if tip and len(wanted) >= 3 and wanted in tip.casefold():
+        return 2
+    return None
+
+
+def _word_starts(text: str) -> list[int]:
+    starts: list[int] = []
+    looking = True
+    for index, char in enumerate(text):
+        if char.isspace():
+            looking = True
+        elif looking:
+            starts.append(index)
+            looking = False
+    return starts
+
+
+def match_span(query: str, words: str) -> list[tuple[int, int]]:
+    """Where in `words` the typed letters show up, for highlighting in the list.
+
+    Word starts, then a run of letters, then the initials themselves — each initial its own
+    span, never one run across words.
+    """
+    wanted = " ".join(query.casefold().split())
+    if not wanted:
+        return []
+    text = words.casefold()
+    if text.startswith(wanted):
+        return [(0, len(wanted))]
+    starts = _word_starts(text)
+    for start in starts:
+        part = text[start:].split(None, 1)[0]
+        if part.startswith(wanted):
+            return [(start, start + len(wanted))]
+    if wanted in text:
+        start = text.index(wanted)
+        return [(start, start + len(wanted))]
+    letters = wanted.replace(" ", "")
+    initials = "".join(text[start] for start in starts)
+    if letters and initials.startswith(letters):
+        return [(start, start + 1) for start in starts[: len(letters)]]
+    return []
+
+
 def ranked(query: str, commands: list[Command]) -> list[Command]:
-    scored = [(rank, index) for index, command in enumerate(commands)
-              if (rank := match_rank(query, command.words)) is not None]
+    scored = [
+        (rank, index)
+        for index, command in enumerate(commands)
+        if (rank := match_rank(query, command.words, command.tip)) is not None
+    ]
     return [commands[index] for _, index in sorted(scored)]
 
 
@@ -99,7 +156,7 @@ def grouped(query: str, commands: list[Command]) -> list[tuple[str, list[Command
     best: dict[str, int] = {}
     rows: dict[str, list[Command]] = {}
     for command in ranked(query, commands):
-        rank = match_rank(query, command.words) or 0
+        rank = match_rank(query, command.words, command.tip) or 0
         best.setdefault(command.group, rank)
         rows.setdefault(command.group, []).append(command)
     def place(group: str) -> tuple[int, int]:
@@ -121,6 +178,10 @@ class CommandRow(QStyledItemDelegate):
         super().__init__(parent)
         self.muted = "#5b6474"
         self.edge = "#d0d5dd"
+        self.text = "#1a1a1a"
+        self.accent = "#3d6fc4"
+        self.panel = "#ffffff"
+        self.query = ""
 
     def sizeHint(  # noqa: N802
         self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
@@ -140,7 +201,57 @@ class CommandRow(QStyledItemDelegate):
             painter.drawText(words, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, index.data())
             painter.restore()
             return
-        super().paint(painter, option, index)
+        state = option.state
+        row = option.rect
+        if state & QStyle.StateFlag.State_Selected:
+            painter.fillRect(row, QColor(mix(self.accent, self.panel, 0.14)))
+        elif state & QStyle.StateFlag.State_MouseOver:
+            painter.fillRect(row, QColor(mix(self.accent, self.panel, 0.06)))
+        painter.save()
+        font = caption(option.font)
+        painter.setFont(font)
+        label = index.data(Qt.ItemDataRole.DisplayRole) or ""
+        spans = match_span(self.query, str(label))
+        left = row.left() + 8
+        item = None
+        parent = self.parent()
+        if isinstance(parent, QListWidget):
+            item = parent.itemFromIndex(index)
+        if item is not None and not item.icon().isNull():
+            item.icon().paint(painter, QRect(left, row.center().y() - 8, 16, 16))
+            left += 22
+        metrics = QFontMetrics(font)
+        # Same 56 px the unmatched path keeps clear of the key caps.
+        limit = row.right() - 56
+        if not spans:
+            painter.setPen(QColor(self.text))
+            painter.drawText(
+                QRect(left, row.top(), max(0, limit - left), row.height()),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                label,
+            )
+        else:
+            pieces: list[tuple[str, str]] = []
+            cursor = 0
+            for start, end in spans:
+                if start > cursor:
+                    pieces.append((label[cursor:start], self.text))
+                pieces.append((label[start:end], self.accent))
+                cursor = end
+            if cursor < len(label):
+                pieces.append((label[cursor:], self.text))
+            x = left
+            for piece, colour in pieces:
+                if not piece:
+                    continue
+                painter.setPen(QColor(colour))
+                painter.drawText(
+                    QRect(x, row.top(), max(0, limit - x), row.height()),
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                    piece,
+                )
+                x += metrics.horizontalAdvance(piece)
+        painter.restore()
         keys = index.data(KEYS_ROLE)
         if keys:
             self._paint_keys(painter, option.rect, caption(option.font), keys)
@@ -215,6 +326,8 @@ class CommandBar(QWidget):
         overlay_scroll_bars(self.list)
         self.rows = CommandRow(self.list)
         self.list.setItemDelegate(self.rows)
+        self.list.setMouseTracking(True)
+        self.list.viewport().setMouseTracking(True)
         self.list.itemClicked.connect(self._run_item)
         self.nothing = QLabel(NOTHING_MATCHES)
         self.nothing.setObjectName("commandNothing")
@@ -228,6 +341,14 @@ class CommandBar(QWidget):
         self._icon_colour = palette["muted"]
         self.rows.muted = palette["muted"]
         self.rows.edge = palette["hairline_strong"]
+        self.rows.text = palette["text"]
+        self.rows.accent = palette["accent"]
+        self.rows.panel = palette["panel"]
+        self.list.setStyleSheet(
+            "QListWidget::item { background: transparent; border: none; }"
+            "QListWidget::item:selected { background: transparent; }"
+            "QListWidget::item:hover { background: transparent; }"
+        )
         self._search.setIcon(icons.icon("search", self._icon_colour))
         if shadow is None:
             self.box.setGraphicsEffect(None)
@@ -270,6 +391,7 @@ class CommandBar(QWidget):
     def _fill(self, query: str) -> None:
         # Typing lands the box where it belongs, since the list's height sizes it from here on.
         settle(self.box)
+        self.rows.query = query
         self.list.clear()
         for group, commands in grouped(query, self._commands):
             label = QListWidgetItem(group)
@@ -289,11 +411,17 @@ class CommandBar(QWidget):
         self.nothing.setVisible(found == 0)
         if found:
             self._step_to(0, 1)
+        self._refit()
+
+    def _refit(self) -> None:
+        """Size the list to the current rows and the window, without rebuilding it."""
+        if self.shown_words():
             # Every row while the window has room for them, so a list that fits never scrolls; past
             # that, the list scrolls under the thin bar the rest of the app uses.
             height = sum(ROW_PX if item.data(KEY_ROLE) else LABEL_PX for item in self._items())
             self.list.setFixedHeight(min(height, self._room()) + 2 * self.list.frameWidth())
         self.box.adjustSize()
+        self._fit_box()
 
     def _room(self) -> int:
         """How tall the list may be: the window below the box's top, less the field and a gap."""
@@ -302,6 +430,24 @@ class CommandBar(QWidget):
             return 10 * ROW_PX
         above = self.input.sizeHint().height() + 2 * self.box.layout().spacing() + 2 * 8 + 1
         return max(4 * ROW_PX, host.height() - self._top() - above - BOTTOM_GAP)
+
+    def _fit_box(self) -> None:
+        """Keep the whole box on screen; shrink the list if the window is short."""
+        host = self.parentWidget()
+        if host is None:
+            return
+        top = self._top()
+        max_bottom = host.height() - BOTTOM_GAP
+        box = self.box.geometry()
+        if box.bottom() <= max_bottom and box.top() >= 0:
+            return
+        while box.bottom() > max_bottom and self.list.height() > 4 * ROW_PX:
+            self.list.setFixedHeight(self.list.height() - ROW_PX)
+            self.box.adjustSize()
+            box = self.box.geometry()
+        if box.bottom() > max_bottom:
+            top = max(0, max_bottom - box.height())
+        self.box.move(box.x(), top)
 
     def _top(self) -> int:
         host = self.parentWidget()
@@ -318,6 +464,7 @@ class CommandBar(QWidget):
         self.box.adjustSize()
         # A fixed top, so the box grows and shrinks downwards as typing filters the list.
         self.box.move((host.width() - width) // 2, self._top())
+        self._refit()
 
     def _run_item(self, item: QListWidgetItem) -> None:
         key = item.data(KEY_ROLE)

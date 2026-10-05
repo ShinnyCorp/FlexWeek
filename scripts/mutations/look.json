@@ -2,7 +2,7 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "a block leaves out its length though it has room",
-  "old": "            lambda cut: stack(2, tuple(part for part in (times, length) if part), cut),\n",
+  "old": "            lambda cut, most=title_lines: stack(most, tuple(part for part in (times, length) if part), cut),\n",
   "new": "",
   "test": "desktop/tests/test_hours_painter.py::test_a_block_says_the_most_it_can_without_cutting_a_word_or_ending_a_line_in_a_dot"
  },

@@ -2,15 +2,15 @@
  {
   "file": "desktop/native/layouts/mission.py",
   "name": "a tick drawn as a block",
-  "old": "        if drawn.held or drawn.span.minutes > TICK:\n",
-  "new": "        if True:\n",
-  "test": "desktop/tests/test_layout_mission.py::test_half_an_hour_or_less_is_a_tick_and_longer_a_filled_block"
+  "old": "        return not drawn.held and rect.width() < MIN_BAR\n",
+  "new": "        return False\n",
+  "test": "desktop/tests/test_layout_mission.py::test_the_line_for_now_stops_short_of_a_ticks_icon"
  },
  {
   "file": "desktop/native/layouts/mission.py",
   "name": "no name beside a block",
-  "old": "        if self._beside(painter, rect, drawn, visible):\n",
-  "new": "        if False:\n",
+  "old": "        beside = self._beside(painter, rect, drawn, visible)\n",
+  "new": "        beside = []\n",
   "test": "desktop/tests/test_layout_mission.py::test_a_name_that_cannot_fit_is_written_beside_its_block_where_the_lane_is_free"
  },
  {
