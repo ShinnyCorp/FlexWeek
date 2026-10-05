@@ -212,6 +212,36 @@ def test_unfinished_opens_its_list_in_any_design(
     assert action.toolTip() == "Homework from earlier weeks that still needs time. Plan it into this week."
 
 
+def test_unfinished_stays_open_when_the_week_changes_after_it_is_opened(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """Opened from More, the list stayed open only until the next change to the week: a save or a
+    reload arriving a moment later folded it back into its badge. It stays open until closed."""
+    session = window.session
+    week = date.fromisoformat(session.week_start)
+    session.add_homework({"id": "essay", "title": "History essay", "estimate_min": 120, "revision": 0,
+                          "due": (date.today() - timedelta(days=3)).isoformat() + "T12:00"})
+    session.save()
+    settled(qapp, window)
+    planned = next(block for block in session.blocks if block.get("assignment_id") == "essay")
+    session.delete_block(planned["id"])
+    session.save()
+    settled(qapp, window)
+    later = (week + timedelta(days=7)).isoformat()
+    session.load_week(later)
+    wait_until(qapp, lambda: session.week_start == later and not session.busy)
+    window._on_week()
+    window.unfinished_panel.hide()
+    unfinished_action(window).trigger()
+    qapp.processEvents()
+    assert window.unfinished_panel.isVisibleTo(window)
+    window._on_week()
+    qapp.processEvents()
+    assert window.unfinished_panel.isVisibleTo(window), "a change to the week closed the list"
+    assert not window.unfinished_badge.isVisibleTo(window)
+
+
 def test_unfinished_is_greyed_when_every_item_is_not_yet_overdue(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811

@@ -1223,6 +1223,8 @@ class NativeWindow(QMainWindow):
         self.unfinished_badge.hide()
         self.unfinished_badge.clicked.connect(self._open_unfinished_from_badge)
         self._unfinished_introduced = False
+        # Opened by the student, from More or its badge: a change to the week refreshes it, never folds it.
+        self._unfinished_opened = False
         self.unfinished_panel.plan_requested.connect(self._plan_unfinished)
         self.unfinished_panel.delete_requested.connect(self._delete_homework)
         self.unfinished_panel.collapsed.connect(self._collapse_unfinished)
@@ -1995,8 +1997,12 @@ class NativeWindow(QMainWindow):
             self._unfinished_introduced = True
             self.unfinished_badge.hide()
         elif items and self._unfinished_introduced:
-            self.unfinished_panel.hide()
-            self._sync_unfinished_badge(items)
+            if self._unfinished_opened and not self.unfinished_panel.isHidden():
+                self.unfinished_panel.set_items(items)
+            else:
+                self._unfinished_opened = False
+                self.unfinished_panel.hide()
+                self._sync_unfinished_badge(items)
         elif not items:
             self.unfinished_panel.hide()
             self.unfinished_badge.hide()
@@ -3090,6 +3096,7 @@ class NativeWindow(QMainWindow):
 
     def _collapse_unfinished(self) -> None:
         self._unfinished_introduced = True
+        self._unfinished_opened = False
         items = self.session.unfinished()
         if items:
             self._sync_unfinished_badge(items)
@@ -3101,6 +3108,7 @@ class NativeWindow(QMainWindow):
             return
         self.unfinished_badge.hide()
         self.unfinished_panel.set_items(items)
+        self._unfinished_opened = True
 
     def _copy_last_week_fixed(self) -> None:
         def offer(rows: list[dict] | None) -> None:
@@ -3122,6 +3130,7 @@ class NativeWindow(QMainWindow):
             self.session._say(NOTHING_UNFINISHED)
         self.unfinished_badge.hide()
         self.unfinished_panel.set_items(items)
+        self._unfinished_opened = bool(items)
 
     def _plan_unfinished(self, assignment_id: str) -> None:
         item = self.session.assignments.get(assignment_id)
