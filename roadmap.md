@@ -8,14 +8,14 @@ desktop units, the 0.10.1 and 0.11 polish, the web client's retirement, the
 first implementation slice) was removed from this file on 2026-10-02. It is in
 this file's git history, in `CHANGELOG.md`, and in `docs/cac-build-plan.md`.
 
-## Where things stand (2026-10-03)
-- v0.18.1 is released as latest: the 20 Fix-first findings of the 0.17.2
-  audit, Jonathan's J1 to J6 and the engine leftovers. v0.18.0 brought the
-  Rust engine.
-- 0.18.2 is next. Batch A (six lanes, no mockups) is written by Grok and
-  reviewed by Claude; batch B waits for mockup round 2. Then 0.18.3.
+## Where things stand (2026-10-04)
+- v0.18.1 is released as latest. v0.18.0 brought the Rust engine.
+- 0.18.2 is batch A alone (seven lanes, written by Grok, reviewed and fixed
+  by Claude), versioned and checked on `release/0.18.2`: whole suite and all
+  seven rigs pass. It waits for Jonathan's look at #98 and his word to ship.
+- Batch B moves to 0.18.3 and still waits for mockup round 2.
 - Decisions left open by 0.18.1 are listed under "Open after 0.18.1".
-- 22 days to the contest submission (Phase 8).
+- 21 days to the contest submission (Phase 8).
 
 ## Phase 8 — Contest delivery (Oct 25, 2026)
 - README with account setup, both contributors and the AI-assistance disclosure.
@@ -214,7 +214,7 @@ merges into `release/0.18.2`; Jonathan decides what ships. Batch A needs no
 mockups and goes first. Batch B waits for mockup round 2. Branches:
 `grok/0182-<lane>`. Each finding is reproduced by a failing test before it is
 fixed; one that does not reproduce on the current build is closed with that
-test.
+test. Decided 2026-10-04: 0.18.2 ships batch A alone; batch B moves to 0.18.3.
 
 #### Batch A, lane 0: repairs to what 0.18.1 shipped (merged 2026-10-04)
 - Homework blocks in Timeline, Mission, Bento, Retro, Clay and One thing lost
@@ -373,7 +373,7 @@ test.
   `test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings` fails when
   its file runs alone (622 px against 640), on main too.
 
-#### Batch B (after mockup round 2)
+#### Batch B (moved to 0.18.3 on 2026-10-04; after mockup round 2)
 Mockup round 2: Setup's Style page and page layout; Add and Edit homework with
 Spread beside Estimated time, the Placed line and the empty link and step
 lists; the Placed panel; Choose a time; Add fixed time; Availability with one

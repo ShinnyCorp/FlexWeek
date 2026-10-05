@@ -3,7 +3,7 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.18.2] - 2026-10-04
 
 ### Added
 - An empty week shows a card over the hours offering "Copy last week's fixed
