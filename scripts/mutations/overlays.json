@@ -9,8 +9,8 @@
   {
     "file": "desktop/native/window.py",
     "name": "the toast stays when the student leaves its page",
-    "old": "                    self.toast.hide()\n                if name == \"settingsPage\":",
-    "new": "                    pass\n                if name == \"settingsPage\":",
+    "old": "                    self.toast.hide()\n                    left = \"\" if leaving is None",
+    "new": "                    pass\n                    left = \"\" if leaving is None",
     "test": "desktop/tests/test_drag_results.py::test_the_toast_belongs_to_the_page_it_was_said_on"
   },
   {
@@ -86,8 +86,8 @@
   {
     "file": "desktop/native/window.py",
     "name": "the deletes are not set apart by a line",
-    "old": "        menu.addSeparator()\n        if block.get(\"start\") or assignment is None:",
-    "new": "        if block.get(\"start\") or assignment is None:",
+    "old": "        menu.addSeparator()\n        menu.add(\"Delete\", \"trash\"",
+    "new": "        menu.add(\"Delete\", \"trash\"",
     "test": "desktop/tests/test_context_menu.py::test_a_right_click_offers_four_things_and_finished_only_for_homework"
   },
   {

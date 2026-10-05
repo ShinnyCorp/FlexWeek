@@ -51,8 +51,8 @@
  {
   "name": "Mission keeps an hour moved in from the edge on top of its neighbour",
   "file": "desktop/native/layouts/mission.py",
-  "old": "            if moved and any(",
-  "new": "            if False and any(",
+  "old": "            if hits_kept or (moved and hits_any):\n",
+  "new": "            if hits_kept and not moved:\n",
   "test": "desktop/tests/test_clock_gutters.py::test_the_hours_and_now_label_fit_their_painted_boxes[810-large-12h-mission]"
  }
 ]

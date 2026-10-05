@@ -184,8 +184,8 @@
  {
   "file": "desktop/native/window.py",
   "name": "Unfinished opens its list",
-  "old": "            self.session._say(NOTHING_UNFINISHED)\n        self.unfinished_panel.set_items(items)\n",
-  "new": "            self.session._say(NOTHING_UNFINISHED)\n",
+  "old": "        self.unfinished_panel.set_items(items)\n        self._unfinished_opened = bool(items)\n",
+  "new": "        self._unfinished_opened = bool(items)\n",
   "test": "desktop/tests/test_more_menu_words.py::test_unfinished_opens_its_list_in_any_design"
  },
  {
@@ -429,9 +429,9 @@
  {
   "file": "desktop/native/window.py",
   "name": "homework with no time offers a one-time Delete",
-  "old": "        if block.get(\"start\") or assignment is None:\n            menu.add(\"Delete\", ",
-  "new": "        if True:\n            menu.add(\"Delete\", ",
-  "test": "desktop/tests/test_context_menu.py::test_homework_with_no_time_has_a_menu_too"
+  "old": "        if not block.get(\"start\"):\n            self._delete_homework(assignment[\"id\"])\n",
+  "new": "        if not block.get(\"start\"):\n            self._delete_block(block, \"occurrence\", on)\n",
+  "test": "desktop/tests/test_context_menu.py::test_delete_homework_asks_first_and_takes_it_away_with_an_undo"
  },
  {
   "file": "desktop/native/widgets.py",

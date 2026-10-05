@@ -44,8 +44,8 @@
  {
   "file": "desktop/native/hours/canvas.py",
   "name": "a cut title put after its time",
-  "old": "    for cut in (False, True):\n        for way in time_ways:\n",
-  "new": "    for cut in (False, True):\n        for way in name_ways:\n",
+  "old": "    for way in time_ways:\n        found = way(True)\n        if found is not None and kept(found) >= 2:\n",
+  "new": "    for way in name_ways:\n        found = way(True)\n        if found is not None and kept(found) >= 2:\n",
   "test": "desktop/tests/test_week_words.py::test_a_short_block_says_its_name_then_its_start"
  },
  {

@@ -401,6 +401,16 @@ def test_day_opens_the_card_wider_with_its_hours_by_kind_and_what_is_left_today(
     assert summary.geometry().left() > visible_scrolls(view)[0].geometry().right()
 
 
+def test_planned_counts_only_what_is_left_of_homework_already_under_way() -> None:
+    """At 13:40 the essay from 13:00 to 14:00 has 20 minutes left, and chemistry's 90 at 20:00 are all
+    ahead: planned today is 1 h 50 min, not the essay's whole hour on top of chemistry."""
+    from desktop.native.layouts.clay import left_today
+
+    blocks = [dict(item, start="13:00") if item["id"] == "essay-1" else item for item in BLOCKS]
+    planned, _free, _coming = left_today(build_week(WEEK, blocks, HOMEWORK, TRACE), 3, minute_of("13:40"))
+    assert planned == 20 + 90
+
+
 def test_another_day_has_no_left_today(qapp: QApplication) -> None:
     view = shown(qapp, tab="day", day=4)
     assert view.row.front == 4

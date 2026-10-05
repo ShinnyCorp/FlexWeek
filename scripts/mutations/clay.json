@@ -58,9 +58,9 @@
  {
   "file": "desktop/native/layouts/clay.py",
   "name": "planned counts the whole of what is on now",
-  "old": "    planned = _covered(ahead, minute, DAY_TO)\n",
-  "new": "    planned = sum(item.minutes for item in ahead)\n",
-  "test": "desktop/tests/test_layout_clay.py::test_day_opens_the_card_wider_with_its_hours_by_kind_and_what_is_left_today"
+  "old": "    planned = _covered([item for item in ahead if item.work], minute, DAY_TO)\n",
+  "new": "    planned = sum(item.minutes for item in ahead if item.work)\n",
+  "test": "desktop/tests/test_layout_clay.py::test_planned_counts_only_what_is_left_of_homework_already_under_way"
  },
  {
   "file": "desktop/native/layouts/clay.py",
