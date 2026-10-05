@@ -49,15 +49,18 @@ def test_recovery_codes_use_the_bundled_mono_face(window: NativeWindow) -> None:
     assert window.recovery_list.font().family() == "JetBrains Mono"
 
 
-def test_plan_keeps_its_words_when_the_bar_wraps(qapp: QApplication, window: NativeWindow) -> None:
+def test_plan_is_never_cut_when_the_bar_wraps(qapp: QApplication, window: NativeWindow) -> None:
+    """#83: one order at every width, so a wrapped bar says "Plan" (Jonathan, 2026-10-04); whatever
+    it says is whole, and a wide window gives the words back."""
     for width in (1280, 1000, 810, 1280):
         window.resize(width, 800)
         for _ in range(4):
             qapp.processEvents()
-        assert window.solve_button.text() in ("Plan my homework", "Plan homework")
+        assert window.solve_button.text() in ("Plan my homework", "Plan homework", "Plan")
         assert window.solve_button.fontMetrics().horizontalAdvance(window.solve_button.text()) < (
             window.solve_button.width() - window.solve_button.iconSize().width()
         )
+    assert window.solve_button.text() == "Plan my homework", "1280 pixels has room for the words"
 
 
 def test_narrow_week_blocks_still_include_their_times(

@@ -22,7 +22,7 @@ from desktop.native.layouts.base import NARROW_WIDTH
 from desktop.native.layouts.empty import EMPTY_COPY_LAST, EMPTY_USE_ROUTINE
 from desktop.native.menus import Menu
 from desktop.native.widgets import ConfirmSheet, PreviewDialog, RoutineDialog
-from desktop.native.window import PLAN_LABEL, PLAN_SHORT, NativeWindow
+from desktop.native.window import PLAN_LABEL, PLAN_SHORT, PLAN_TINY, NativeWindow
 from desktop.tests import window_support as window_support_mod
 from desktop.tests.window_support import (  # noqa: F401
     free,
@@ -286,7 +286,7 @@ def test_plan_keeps_its_words_then_more_then_drops_my(
             qapp.processEvents()
         plan = signed_in.solve_button.text()
         more = signed_in.more_button.text()
-        assert plan in (PLAN_LABEL, PLAN_SHORT), (width, plan)
+        assert plan in (PLAN_LABEL, PLAN_SHORT, PLAN_TINY), (width, plan)
         assert more in ("More", ""), (width, more)
         if plan != PLAN_LABEL:
             assert PLAN_SHORT == "Plan homework", PLAN_SHORT
@@ -298,33 +298,26 @@ def test_plan_follows_one_shortening_rule_at_every_width_and_text_size(
 ) -> None:
     from desktop.native.look import sanitize_look
 
+    # #83's steps, in the one order they are taken as the window narrows.
+    steps = [(PLAN_LABEL, "More"), (PLAN_LABEL, ""), (PLAN_SHORT, ""), (PLAN_TINY, "")]
     for size in ("normal", "large"):
         signed_in._look = sanitize_look({"preset": "default", "knobs": {"text": size}})
         signed_in._apply_appearance()
         signed_in._sync_chrome()
-        for width in (810, 900, 1100, 1400):
+        taken = []
+        for width in (1400, 1100, 900, 810):
             signed_in.solve_button.setMaximumWidth(16777215)
             signed_in.resize(width, 800)
             for _ in range(6):
                 qapp.processEvents()
             plan = signed_in.solve_button
             more = signed_in.more_button
-            assert plan.text() in (PLAN_LABEL, PLAN_SHORT), (size, width, plan.text())
-            assert more.text() in ("More", ""), (size, width, more.text())
-            if plan.text() == PLAN_SHORT:
-                assert more.text() == ""
+            assert (plan.text(), more.text()) in steps, (size, width, plan.text(), more.text())
+            taken.append(steps.index((plan.text(), more.text())))
             room = max(0, plan.contentsRect().width() - plan.iconSize().width() - 16)
             ink = plan.fontMetrics().horizontalAdvance(plan.text())
             assert ink <= max(room, plan.width()), (size, width, plan.text(), ink, room)
-        signed_in.resize(1100, 800)
-        for _ in range(4):
-            qapp.processEvents()
-        plan = signed_in.solve_button
-        plan.setMaximumWidth(plan._wide(PLAN_SHORT) + 20)
-        signed_in._fit_plan_and_more()
-        qapp.processEvents()
-        assert plan.text() == PLAN_SHORT, (size, plan.text(), plan.width())
-        plan.setMaximumWidth(16777215)
+        assert taken == sorted(taken), (size, "a narrower window went back a step", taken)
 
 
 LAST_WEEK_FIXED = {
