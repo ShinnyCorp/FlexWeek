@@ -10,9 +10,9 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@v4
+      - uses: useblacksmith/checkout@v1
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
@@ -71,10 +71,10 @@ jobs:
           FWTEST_STEP_TIMEOUT_SECS: "900"
 
   rig:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: useblacksmith/checkout@v1
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
@@ -153,10 +153,10 @@ jobs:
   mutate:
     # workflow_dispatch always. A pull request only when it changes the engine or a mutation spec.
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v4
+      - uses: useblacksmith/checkout@v1
         with:
           fetch-depth: 0
       - name: See whether this pull request changes the engine or a mutation spec
