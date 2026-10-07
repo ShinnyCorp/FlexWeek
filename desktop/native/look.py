@@ -1121,7 +1121,8 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f"QListWidget#prefsNav::item:hover {{ background: {palette['hairline']}; color: {palette['text']}; }}"
         f"QListWidget#prefsNav::item:selected {{ background: {selected}; color: {palette['text']}; "
         f"border-left: 3px solid {palette['accent']}; font-weight: {WEIGHT_STRONG}; }}"
-        f"QWidget#settingsFooter {{ border-top: {footer_line}; }}"
+        # Opaque: the sections scroll under it, and what shows through would be words with no fade.
+        f"QWidget#settingsFooter {{ background: {palette['window']}; border-top: {footer_line}; }}"
         f"QLabel#settingsTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; }}"
         f"QFrame#settingsCard, QFrame#dialogCard {{ background: {palette['panel']}; "
         f"border-radius: {card_radius}px; padding: 0; {edges} }}"

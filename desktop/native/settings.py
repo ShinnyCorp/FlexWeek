@@ -992,18 +992,26 @@ class SettingsPage(QWidget):
         self.done.setToolTip("Back to your week (Esc)")
         self.done.clicked.connect(self.close_page)
         footer_line.addWidget(self.done)
-        column = QVBoxLayout()
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(0)
-        column.addWidget(self.stack, 1)
-        column.addWidget(footer)
+        # The footer floats over the bottom of the page, so what scrolls under it fades out above it and
+        # each section is padded by the footer's height to end clear of it (mockup 8, #66).
+        footer.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.footer = footer
+        footer.installEventFilter(self)
+        stage = QWidget()
+        stage_grid = QGridLayout(stage)
+        stage_grid.setContentsMargins(0, 0, 0, 0)
+        stage_grid.addWidget(self.stack, 0, 0)
+        stage_grid.addWidget(footer, 0, 0, Qt.AlignmentFlag.AlignBottom)
+        self.footer_fade = FooterFade(stage, self.stack, footer)
+        footer.raise_()
+        self._clear_footer()
         # Settings, and over them the look editor while it is open.
         self.body = QWidget()
         outer = QHBoxLayout(self.body)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         outer.addWidget(rail)
-        outer.addLayout(column, 1)
+        outer.addWidget(stage, 1)
         self._screens = QStackedLayout(self)
         self._screens.addWidget(self.body)
         self.editor: LookEditor | None = None
@@ -1094,6 +1102,7 @@ class SettingsPage(QWidget):
         colours, and one width for each kind of field in the look's font. Then the list fits its longest
         name; at large text a fixed width cut "Appearance & layout" off."""
         palette = self.shown_palette()
+        self.footer_fade.set_colour(QColor(palette["window"]))
         self.accent.set_colours({name: ACCENT_COLORS[name][palette["axis"]] for name in ACCENTS})
         size = 16
         self.nav.setIconSize(QSize(size, size))
@@ -1130,6 +1139,20 @@ class SettingsPage(QWidget):
         for stepper in self.focus_steppers:
             stepper.box.setFixedWidth(stepper.box.width() + width - stepped)
         self.preset_timer.setFixedWidth(width)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self.footer and event.type() == QEvent.Type.Resize:
+            self._clear_footer()
+        return super().eventFilter(watched, event)
+
+    def _clear_footer(self) -> None:
+        """Every section padded below its last card by the footer's height, so the end of a section
+        rests above the footer and not under it."""
+        room = max(self.footer.height(), self.footer.sizeHint().height()) + SECTION_GAP_BELOW
+        for index in range(self.stack.count()):
+            around = self.stack.widget(index).widget().layout()
+            edges = around.contentsMargins()
+            around.setContentsMargins(edges.left(), edges.top(), edges.right(), room)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         if event.key() == Qt.Key.Key_Escape:
@@ -1816,6 +1839,57 @@ class ScrollFade(QWidget):
         ramp = QLinearGradient(0, 0, 0, self.height())
         ramp.setColorAt(0, page if self._top else clear)
         ramp.setColorAt(1, clear if self._top else page)
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), ramp)
+        painter.end()
+
+
+class FooterFade(QWidget):
+    """The page fading into the footer's colour just above the footer while a section has more under
+    it, so a cut row reads as more to scroll to and not as a hard edge. Hidden at the end, where the
+    section's padding has already left the footer clear."""
+
+    def __init__(self, stage: QWidget, stack: QStackedWidget, footer: QWidget) -> None:
+        super().__init__(stage)
+        self.setObjectName("settingsFooterFade")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._stack, self._footer = stack, footer
+        self._colour = QColor("white")
+        for index in range(stack.count()):
+            bar = stack.widget(index).verticalScrollBar()
+            bar.valueChanged.connect(self._follow)
+            bar.rangeChanged.connect(self._follow)
+        stack.currentChanged.connect(self._follow)
+        stage.installEventFilter(self)
+        footer.installEventFilter(self)
+        self._follow()
+
+    def set_colour(self, colour: QColor) -> None:
+        self._colour = colour
+        self.update()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Move):
+            self._follow()
+        return False
+
+    def _follow(self, *_args: object) -> None:
+        stage = self.parentWidget()
+        self.setGeometry(0, max(0, self._footer.y() - FADE_PX), stage.width(), FADE_PX)
+        area = self._stack.currentWidget()
+        bar = area.verticalScrollBar() if area is not None else None
+        self.setVisible(bar is not None and bar.value() < bar.maximum())
+        self.raise_()
+        self._footer.raise_()
+
+    def paintEvent(self, _event: QPaintEvent) -> None:  # noqa: N802
+        clear = QColor(self._colour)
+        clear.setAlpha(0)
+        # Ends a row early so the last row is the page colour whole, and a dark picture behind it does
+        # not show a few per cent through.
+        ramp = QLinearGradient(0, 0, 0, self.height() - 1)
+        ramp.setColorAt(0, clear)
+        ramp.setColorAt(1, self._colour)
         painter = QPainter(self)
         painter.fillRect(self.rect(), ramp)
         painter.end()
