@@ -215,6 +215,7 @@ def test_setup_and_availability_offer_the_same_cutoffs(qapp: QApplication) -> No
 def test_the_availability_cutoff_says_what_it_is_for(qapp: QApplication) -> None:
     availability = AvailabilityDialog(None, {})
     availability.show()
+    availability.tabs.setCurrentIndex(availability.tabs.findData("cutoff"))
     qapp.processEvents()
     assert availability.cutoff.accessibleName() == "No homework after"
     labels = [label for label in availability.findChildren(QLabel) if label.text() == "No homework after"]

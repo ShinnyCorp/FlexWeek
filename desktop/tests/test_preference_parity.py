@@ -29,7 +29,6 @@ WEB_ONLY = {
 # Set in their own dialog rather than in Settings.
 ELSEWHERE = {
     "protected": "Availability",
-    "study_windows": "Availability",
     "day_cutoff": "Availability",
     "setup": "first-run setup writes it; Settings offers Run setup again",
 }

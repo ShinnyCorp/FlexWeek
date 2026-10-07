@@ -324,38 +324,40 @@ def test_settings_saves_work_windows_with_existing_availability(
     window.setup_page.skip_all.click()
     written(qapp, window)
     protected = [{"days": [0], "start": "19:00", "duration_min": 60, "kind": "meal"}]
-    study = [{"days": [1], "start": "17:00", "duration_min": 60, "subject": "Math"}]
-    # Preferred study hours sent the old way land in the one Study hours list (J7).
-    carried = [{"days": [1], "start": "17:00", "end": "18:00", "subject": "Math"}]
-    assert window.session.save_availability(protected, study, "22:00", [])
-    wait_until(qapp, lambda: not window.session.busy and window.session.preferences["work_windows"] == carried)
+    weekdays = {"days": [0, 1, 2, 3, 4], "start": "16:00", "end": "21:00"}
+    assert window.session.save_availability(protected, "22:00", [weekdays])
+    wait_until(
+        qapp, lambda: not window.session.busy and window.session.preferences["work_windows"] == [weekdays]
+    )
 
-    chosen = {"days": [5, 6], "start": "10:00", "end": "16:00"}
-    sent: list[tuple[list[dict], list[dict], str | None, list[dict]]] = []
+    weekend = {"days": [5, 6], "start": "10:00", "end": "16:00"}
+    sent: list[tuple[list[dict], str | None, list[dict]]] = []
     save = window.session.save_availability
 
-    def record(
-        kept_protected: list[dict], kept_study: list[dict], cutoff: str | None, hours: list[dict]
-    ) -> bool:
-        sent.append((kept_protected, kept_study, cutoff, hours))
-        return save(kept_protected, kept_study, cutoff, hours)
+    def record(kept_protected: list[dict], cutoff: str | None, hours: list[dict]) -> bool:
+        sent.append((kept_protected, cutoff, hours))
+        return save(kept_protected, cutoff, hours)
 
     window.session.save_availability = record
 
     def choose() -> None:
         dialog = QApplication.activeModalWidget()
         assert isinstance(dialog, AvailabilityDialog)
-        dialog.work_editor.set_windows([chosen])
+        for day in (5, 6):
+            dialog._open_picker(kind="study", day=day)
+            dialog.picker_start.setTime(QTime(10, 0))
+            dialog.picker_end.setTime(QTime(16, 0))
+            dialog.picker_add.click()
         dialog.accept()
 
     QTimer.singleShot(0, choose)
     window._open_availability()
     wait_until(
         qapp,
-        lambda: not window.session.busy and window.session.preferences["work_windows"] == [chosen],
+        lambda: not window.session.busy and window.session.preferences["work_windows"] == [weekdays, weekend],
     )
     prefs = window.session.preferences
-    assert sent == [(protected, [], "22:00", [chosen])]
+    assert sent == [(protected, "22:00", [weekdays, weekend])]
     assert prefs["protected"] == protected
     assert "study_windows" not in prefs
     assert prefs["day_cutoff"] == "22:00"
