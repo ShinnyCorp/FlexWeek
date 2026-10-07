@@ -4448,12 +4448,18 @@ class AvailabilityDialog(Dialog):
         self.picker_kind.setAccessibleName("Kind of time")
         for kind in PROTECTED_KINDS:
             self.picker_kind.addItem(PROTECTED_WORDS[kind], kind)
-        self._picker_extra: dict[str, QWidget] = {}
+        self.picker_title = QLineEdit()
+        self.picker_title.setObjectName("availabilityTitle")
+        self.picker_title.setAccessibleName("Name (optional)")
+        self.picker_title.setPlaceholderText("e.g. Piano")
+        self.picker_title.setMaxLength(40)
+        self._picker_extra: dict[str, list[QWidget]] = {"study": [], "protected": []}
         for words, field, kind in (
             ("From", self.picker_start, ""),
             ("To", self.picker_end, ""),
             ("Subject", self.picker_subject, "study"),
             ("Kind", self.picker_kind, "protected"),
+            ("Name (optional)", self.picker_title, "protected"),
         ):
             holder = bare(QWidget())
             pair = QVBoxLayout(holder)
@@ -4463,11 +4469,15 @@ class AvailabilityDialog(Dialog):
             label.setObjectName("fieldLabel")
             pair.addWidget(label)
             pair.addWidget(field)
-            fields.addWidget(holder)
+            if field is self.picker_title:
+                # On its own line: beside the times it made the sheet jump wider as it opened.
+                column.addLayout(fields)
+                column.addWidget(holder)
+            else:
+                fields.addWidget(holder)
             if kind:
-                self._picker_extra[kind] = holder
+                self._picker_extra[kind].append(holder)
         fields.addStretch(1)
-        column.addLayout(fields)
         answers = QHBoxLayout()
         self.picker_add = sheet_button("Add", "outlined", "availabilityPickerAdd")
         self.picker_add.clicked.connect(self._add_picked)
@@ -4548,7 +4558,7 @@ class AvailabilityDialog(Dialog):
                 else:
                     start = clock_to_minutes(entry["start"])
                     words = _span_words(start, start + entry["duration_min"])
-                    named = PROTECTED_WORDS.get(entry["kind"], entry["kind"])
+                    named = entry.get("title") or PROTECTED_WORDS.get(entry["kind"], entry["kind"])
                 chip = sheet_button(f"{words} {named}  ×" if named else f"{words}  ×", "tonal", f"{kind}Chip")
                 chip.setProperty("kind", kind)
                 chip.setProperty("entry", index)
@@ -4587,8 +4597,11 @@ class AvailabilityDialog(Dialog):
         self.picker_end.setTime(QTime(18, 0))
         self.picker_subject.setCurrentIndex(0)
         self.picker_kind.setCurrentIndex(0)
-        self._picker_extra["study"].setVisible(study)
-        self._picker_extra["protected"].setVisible(not study)
+        self.picker_title.clear()
+        for holder in self._picker_extra["study"]:
+            holder.setVisible(study)
+        for holder in self._picker_extra["protected"]:
+            holder.setVisible(not study)
         self.error.setText("")
         self._render()
         self.picker_start.setFocus()
@@ -4617,6 +4630,9 @@ class AvailabilityDialog(Dialog):
         else:
             entry = {"day": day, "kind": self.picker_kind.currentData(), "start": minutes_to_hhmm(start),
                      "duration_min": end - start}  # fmt: skip
+            title = self.picker_title.text().strip()
+            if title:
+                entry["title"] = title[:40]
             entries = self._protected
             for other in entries:
                 other_start = clock_to_minutes(other["start"])

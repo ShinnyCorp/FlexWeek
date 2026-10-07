@@ -568,6 +568,16 @@ class StudyWindow(GridWindow):
 
 class ProtectedWindow(GridWindow):
     kind: Literal["downtime", "commute", "meal"]
+    # The student's own name for it, such as Piano. Omitted when there is none, so older rows and
+    # clients keep working.
+    title: str | None = Field(default=None, max_length=40, exclude_if=lambda value: value is None)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def title_is_trimmed(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
 
 class SpreadRequest(BaseModel):

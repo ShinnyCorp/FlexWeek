@@ -2870,6 +2870,31 @@ def test_protected_time_is_added_with_its_kind_and_never_overlaps(qapp: QApplica
     dialog.deleteLater()
 
 
+def test_protected_time_shows_and_saves_its_own_name(qapp: QApplication) -> None:
+    from PySide6.QtCore import QTime
+
+    dialog = availability({"protected": [{**PIANO, "title": "Piano"}]})
+    assert day_row(dialog, "protected", 1) == ["17:00–18:30 Piano  ×", "+"]
+    dialog._open_picker(kind="protected", day=2)
+    assert dialog.picker_title.isVisibleTo(dialog) and not dialog.picker_subject.isVisibleTo(dialog)
+    assert dialog.picker_title.placeholderText() == "e.g. Piano"
+    dialog.picker_start.setTime(QTime(17, 0))
+    dialog.picker_end.setTime(QTime(18, 30))
+    dialog.picker_title.setText("  Piano ")
+    dialog.picker_add.click()
+    dialog._open_picker(kind="protected", day=5)
+    assert dialog.picker_title.text() == "", "each new time starts without a name"
+    dialog.picker_start.setTime(QTime(9, 0))
+    dialog.picker_end.setTime(QTime(10, 0))
+    dialog.picker_add.click()
+    assert dialog.protected() == [
+        {"days": [1, 2, 3], "start": "17:00", "duration_min": 90, "kind": "downtime", "title": "Piano"},
+        {"days": [5], "kind": "downtime", "start": "09:00", "duration_min": 60},
+    ]
+    assert day_row(dialog, "protected", 5) == ["09:00–10:00 Downtime  ×", "+"]
+    dialog.deleteLater()
+
+
 def test_a_change_to_the_week_does_not_restyle_the_window_when_the_look_is_the_same(
     qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -196,3 +196,10 @@ client or an import file still sends it, each preferred window joins the list as
 `{days, start, end, subject}` after the windows already there. One that the list
 already covers on each of its days, for the same subject, is left out, and none is
 added past the limit of 21. The next save writes the one list alone.
+
+## Addendum 2026-10-07: a name for protected time
+
+A protected window may carry `title`, the student's own name for it such as "Piano":
+at most 40 characters after trimming, and omitted when absent or blank. The kind
+stays required. The solver does not read the title; Availability shows it on the
+window's chip in place of the kind. Windows saved without a title load as before.

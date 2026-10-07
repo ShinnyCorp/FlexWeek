@@ -406,6 +406,27 @@ def test_an_older_client_sending_preferred_study_hours_saves_them_as_study_hours
     assert alice.get("/api/preferences").json()["work_windows"] == saved.json()["work_windows"]
 
 
+def test_protected_time_keeps_an_optional_name(alice: TestClient, database: Path) -> None:
+    prefs = defaults(alice)
+    piano = {"kind": "downtime", "days": [1, 3], "start": "17:00", "duration_min": 90}
+    saved = alice.put(
+        "/api/preferences",
+        json={**prefs, "protected": [{**piano, "title": "  Piano "}, {**piano, "days": [5], "title": " "}]},
+        headers=WRITE,
+    )
+    assert saved.status_code == 200, saved.text
+    named, blank = saved.json()["protected"]
+    assert named["title"] == "Piano", "trimmed"
+    assert "title" not in blank, "a blank name is no name"
+    assert alice.get("/api/preferences").json()["protected"] == saved.json()["protected"]
+    too_long = {**piano, "title": "x" * 41}
+    assert alice.put("/api/preferences", json={**prefs, "protected": [too_long]}, headers=WRITE).status_code == 422
+    # A row saved before names existed still opens, without one.
+    with sqlite3.connect(database) as db:
+        db.execute("UPDATE preferences SET availability_json = ?", (json.dumps({"protected": [piano]}),))
+    assert alice.get("/api/preferences").json()["protected"] == [piano]
+
+
 def test_preferences_reject_overlapping_protected_windows_and_accept_adjacent_ones(
     alice: TestClient,
 ) -> None:
