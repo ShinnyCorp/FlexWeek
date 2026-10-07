@@ -390,8 +390,12 @@ preview, nothing scrolling; Timeline's fold B, a "‹ 3 | 4 ›" handle on the f
 in the day-name row, dragged or stepped, keyboard too; Clay A, neighbours
 dimmed and still, a horizontal drag switches days; Focus A, Pause filled with
 Skip and Finish outlined in one row, the ring at full accent before Start, and
-Finish asking "End this session?". Group 2 (the sheets, Settings, account and
-Large text items) still to draw.
+Finish asking "End this session?". Group 2 (boards 7 to 9, one proposal each
+to the "done when" below) was approved the same day, with three calls: Running
+late's row is Accept late start filled (greyed until a preview), Preview
+outlined, Cancel bare; at Large text the title keeps 16 px from the switcher
+even where that shortens Plan to "Plan" (1157 px); Add fixed time's Spotify
+link moves under More details. Mockup round 2 is complete; batch B can start.
 
 - **Setup.** #4 At 1280×800 the second row of style cards (Dashboard, Retro)
   is cut by the footer with no fade, the default card shows no selected state,
