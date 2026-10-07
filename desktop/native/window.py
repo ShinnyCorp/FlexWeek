@@ -42,7 +42,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStackedWidget,
     QSystemTrayIcon,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -60,7 +59,15 @@ from desktop.native.calendar import (
     span_clash,
     sunday_due,
 )
-from desktop.native.client import PASSWORD_LENGTH_HINT, USERNAME_HINT, sign_in_problem, sign_up_problem
+from desktop.native.client import (
+    PASSWORD_LENGTH_HINT,
+    SIGN_IN_WHY,
+    SIGN_IN_WHY_LINK,
+    SIGN_IN_WRONG,
+    USERNAME_HINT,
+    sign_in_problem,
+    sign_up_problem,
+)
 from desktop.native.command_bar import Command, CommandBar
 from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.custom_look import sanitize_saved
@@ -149,6 +156,7 @@ from desktop.native.weekmodel import (
 )
 from desktop.native.widgets import (
     REPLAN_TIP,
+    REVEAL_ICON_PX,
     AddMenu,
     AlertStrip,
     AvailabilityDialog,
@@ -161,6 +169,7 @@ from desktop.native.widgets import (
     HomeworkDialog,
     LateDialog,
     MoreButton,
+    PasswordField,
     PlanButton,
     PlanReview,
     PreviewDialog,
@@ -335,9 +344,6 @@ RESET_HEADING = "Reset your password"
 RESET_NOTE = "Use one of the recovery codes you saved when you made your account."
 # What the sign-in card is for at the moment.
 SIGN_IN, CREATE, RESET = "sign in", "create", "reset"
-# The eye inside the password box, and the room it keeps clear of the typing.
-REVEAL_PX = 28
-REVEAL_ICON_PX = 16
 # Long enough for the student to read that the update installed before the window goes.
 UPDATE_QUIT_MS = 1200
 # How long after the last change the week saves itself. Long enough that dragging a block does not
@@ -431,40 +437,6 @@ class LastInput(QObject):
         elif kind == QEvent.Type.MouseButtonPress:
             self.keyboard = False
         return False
-
-
-class PasswordField(QLineEdit):
-    """A password box with an eye inside its right edge that shows what is typed and hides it again.
-    A Show button beside the box made it 76 pixels narrower than the username box above it."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setEchoMode(QLineEdit.EchoMode.Password)
-        self.setTextMargins(0, 0, REVEAL_PX, 0)
-        self._colour = "#5b6474"
-        self.reveal = QToolButton(self)
-        self.reveal.setObjectName("passwordReveal")
-        self.reveal.setCheckable(True)
-        self.reveal.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.reveal.setIconSize(QSize(REVEAL_ICON_PX, REVEAL_ICON_PX))
-        self.reveal.toggled.connect(self._show)
-        self._show(False)
-
-    def set_colour(self, colour: str) -> None:
-        self._colour = colour
-        self._show(self.reveal.isChecked())
-
-    def _show(self, shown: bool) -> None:
-        self.setEchoMode(QLineEdit.EchoMode.Normal if shown else QLineEdit.EchoMode.Password)
-        words = "Hide password" if shown else "Show password"
-        self.reveal.setIcon(icons.icon("eye-off" if shown else "eye", self._colour))
-        self.reveal.setToolTip(words)
-        self.reveal.setAccessibleName(words)
-
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        super().resizeEvent(event)
-        side = min(REVEAL_PX, self.height() - 4)
-        self.reveal.setGeometry(self.width() - side - 4, (self.height() - side) // 2, side, side)
 
 
 class NativeWindow(QMainWindow):
@@ -667,6 +639,17 @@ class NativeWindow(QMainWindow):
     def _clear_auth_status(self) -> None:
         self.auth_status.clear()
         self.auth_status.setVisible(False)
+        self.auth_error.setVisible(False)
+
+    def _explain_wrong_sign_in(self) -> None:
+        sheet = ConfirmSheet(
+            self,
+            "Why it doesn't say which",
+            SIGN_IN_WHY,
+            (("ok", "Got it", ""),),
+            default="ok",
+        )
+        sheet.exec()
 
     def _sync_auth_mode(self) -> None:
         """Sign in is the door, and creating an account is the small print under it: a student signs
@@ -815,6 +798,30 @@ class NativeWindow(QMainWindow):
         self.password.setAccessibleName("Password")
         self.password_reveal = self.password.reveal
         layout.addWidget(self.password)
+        # A wrong sign-in is said here, right under the box it is about, so it is read with the box.
+        self.auth_error = QWidget()
+        self.auth_error.setObjectName("authError")
+        error_box = QVBoxLayout(self.auth_error)
+        error_box.setContentsMargins(0, 0, 0, 0)
+        error_box.setSpacing(0)
+        error_line = QHBoxLayout()
+        error_line.setSpacing(SPACING[1])
+        self.auth_error_icon = QLabel()
+        self.auth_error_icon.setObjectName("authErrorIcon")
+        error_line.addWidget(self.auth_error_icon, 0, Qt.AlignmentFlag.AlignTop)
+        self.auth_error_text = QLabel(SIGN_IN_WRONG)
+        self.auth_error_text.setObjectName("authErrorText")
+        self.auth_error_text.setWordWrap(True)
+        error_line.addWidget(self.auth_error_text, 1)
+        error_box.addLayout(error_line)
+        self.auth_why = QPushButton(SIGN_IN_WHY_LINK)
+        self.auth_why.setObjectName("authWhy")
+        self.auth_why.setFlat(True)
+        self.auth_why.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.auth_why.clicked.connect(self._explain_wrong_sign_in)
+        error_box.addWidget(self.auth_why, 0, Qt.AlignmentFlag.AlignLeft)
+        self.auth_error.setVisible(False)
+        layout.addWidget(self.auth_error)
         self.password_hint = QLabel(PASSWORD_LENGTH_HINT)
         self.password_hint.setObjectName("passwordHint")
         self.password_hint.setWordWrap(True)
@@ -2047,8 +2054,10 @@ class NativeWindow(QMainWindow):
     def _on_status(self, message: str) -> None:
         """What the session says goes in the toast, on the week's page, unless it is still going
         ("Saving…") or routine ("Saved."). The student's own request is answered either way."""
-        self.auth_status.setText(message)
-        self.auth_status.setVisible(bool(message))
+        wrong = message == SIGN_IN_WRONG
+        self.auth_status.setText("" if wrong else message)
+        self.auth_status.setVisible(bool(message) and not wrong)
+        self.auth_error.setVisible(wrong)
         if not message:
             # The session took back what it said, as Cancel on Running late's preview does.
             if not self.toast.button.isVisible():
@@ -3778,6 +3787,10 @@ class NativeWindow(QMainWindow):
 
     def _open_account(self) -> None:
         dialog = AccountDialog(self, self.session.recovery_remaining, self.session.storage_info)
+        pack, dark, accent = self._look_inputs()
+        eye = resolved_palette(pack, dark, self._look, accent)["muted"]
+        for field in (dialog.current_password, dialog.new_password):
+            field.set_colour(eye)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         password = dialog.current_password.text()
@@ -3970,6 +3983,7 @@ class NativeWindow(QMainWindow):
         with the large shadow, unless the look's shadows are flat or drawn as hard edges."""
         for field in (self.password, self.new_recovery_password):
             field.set_colour(palette["muted"])
+        self.auth_error_icon.setPixmap(icons.pixmap("triangle-alert", palette["error"], REVEAL_ICON_PX))
         knobs = effective_look(self._look)
         soft = knobs["depth"] == "soft"
         for card in self._entry_cards:

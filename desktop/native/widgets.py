@@ -79,6 +79,7 @@ from PySide6.QtWidgets import (
     QStyleOptionSlider,
     QStylePainter,
     QTimeEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
     QWidgetAction,
@@ -127,6 +128,9 @@ from desktop.native.work_windows import WorkWindowsEditor
 
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 SWATCH_PX = 12
+# The eye inside the password box, and the room it keeps clear of the typing.
+REVEAL_PX = 28
+REVEAL_ICON_PX = 16
 DETAIL_BOX_HEIGHT = 84
 DIALOG_USABLE_HEIGHT = 480
 # Dates as a student reads them. "2026-09-27 23:59" made them work out which day that was.
@@ -2067,6 +2071,40 @@ def even_fields(root: QWidget) -> None:
         for field in fields:
             if field.width() != width or field.minimumWidth() != width:
                 field.setFixedWidth(width)
+
+
+class PasswordField(QLineEdit):
+    """A password box with an eye inside its right edge that shows what is typed and hides it again.
+    A Show button beside the box made it 76 pixels narrower than the username box above it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setEchoMode(QLineEdit.EchoMode.Password)
+        self.setTextMargins(0, 0, REVEAL_PX, 0)
+        self._colour = "#5b6474"
+        self.reveal = QToolButton(self)
+        self.reveal.setObjectName("passwordReveal")
+        self.reveal.setCheckable(True)
+        self.reveal.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.reveal.setIconSize(QSize(REVEAL_ICON_PX, REVEAL_ICON_PX))
+        self.reveal.toggled.connect(self._show)
+        self._show(False)
+
+    def set_colour(self, colour: str) -> None:
+        self._colour = colour
+        self._show(self.reveal.isChecked())
+
+    def _show(self, shown: bool) -> None:
+        self.setEchoMode(QLineEdit.EchoMode.Normal if shown else QLineEdit.EchoMode.Password)
+        words = "Hide password" if shown else "Show password"
+        self.reveal.setIcon(icons.icon("eye-off" if shown else "eye", self._colour))
+        self.reveal.setToolTip(words)
+        self.reveal.setAccessibleName(words)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        side = min(REVEAL_PX, self.height() - 4)
+        self.reveal.setGeometry(self.width() - side - 4, (self.height() - side) // 2, side, side)
 
 
 class FitScroll(QScrollArea):
