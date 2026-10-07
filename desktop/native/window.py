@@ -67,7 +67,7 @@ from desktop.native.custom_look import sanitize_saved
 from desktop.native.elevation import lift
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import focus_now, phase_duration_ms
-from desktop.native.focus_screen import FocusScreen
+from desktop.native.focus_screen import QUICK_TITLE, FocusScreen
 from desktop.native.fonts import load_fonts
 from desktop.native.hours.canvas import HoursCanvas
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
@@ -3304,6 +3304,22 @@ class NativeWindow(QMainWindow):
             self._focus_week()
 
     def _stop_focus(self) -> None:
+        state = self.session.focus
+        title = (state or {}).get("title") or QUICK_TITLE
+        homework = (state or {}).get("assignmentId") in (self.session.assignments or {})
+        question = f"You have done {self.session.focus_elapsed_min()} min of {title}."
+        if homework:
+            question += " It counts toward the homework."
+        sheet = ConfirmSheet(
+            self,
+            "End this session?",
+            question,
+            (("stay", "Keep going", "outlined"), ("yes", "End session", "")),
+            default="stay",
+        )
+        sheet.exec()
+        if sheet.answer != "yes":
+            return
         self.session.reset_focus()
         self._close_focus_screen()
 
