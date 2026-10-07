@@ -123,6 +123,16 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-04, `release/0.18.2` in `~/.worktrees/flexweek-0182-release` (`.venv` is
-  `venv-0182-engine`, the engine with the new reason codes). Batch A done and checked. Next:
-  Jonathan's look at #98's sliding plan panel, then the PR to main and the release on his word. Batch B waits for mockup round 2.
+- 2026-10-07, `release/0.18.3` in `~/.worktrees/flexweek-0183-release` (main + the round 2 docs).
+  Batch B wave 1 is building on `lane/0183-<lane>` worktrees (`~/.worktrees/flexweek-0183-<lane>`):
+  setup, homework, settings, focus, account (Sonnet 5.5 jobs, `nohup claude -p`; their output in
+  `~/.flexweek-ui-harness/scratch/0.18.3/lanes/job-<lane>.out`) and availability, timeline-fold, clay
+  (Opus 5.5 agents; if a session restart cut them, relaunch from the same briefs). Briefs:
+  `~/.flexweek-ui-harness/scratch/0.18.3/lanes/COMMON.md` + `<lane>.md`; reports go to
+  `~/.flexweek-ui-harness/scratch/0.18.3/<lane>/report.md`. Wave 2 (sheets, large-text; briefs
+  written, worktrees made) starts after homework, account and focus merge. Next: review each lane's
+  diff, run its test files, merge into release/0.18.3; then J13 (styles on every page) once Jonathan
+  picks a depth from `~/.flexweek-ui-harness/scratch/0.18.x/mockups/round2/out/10_styles_*.png`
+  (report in `report-styles.md`); #41 and the "Open after 0.18.1" decisions still wait on him.
+  `docs/mockup-round2` is local only (he said not to push yet). Phase 8 (contest, due 2026-10-25) is
+  with Cursor and his partner; v0.18.2 is released as latest.
