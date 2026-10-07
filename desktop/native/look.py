@@ -1137,7 +1137,8 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f"font-weight: {WEIGHT_STRONG}; }}"
         "QLabel#settingsCardNote, QLabel#cardNote, QLabel#prefPlanningNote, "
         "QLabel#prefDndNote, "
-        "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits { "
+        "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits, "
+        "QLabel#alarmEmpty { "
         f"color: {palette['muted']}; }}"
         f'QFrame[segmented="true"] {{ background: {track}; border: none; '
         f"border-radius: {max(radius, 6) + 2}px; padding: 0; }}"

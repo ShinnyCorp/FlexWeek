@@ -101,6 +101,7 @@ from desktop.native.widgets import (
     ChoiceCard,
     Choices,
     Dialog,
+    FieldLabel,
     FitScroll,
     FlowLayout,
     Form,
@@ -127,6 +128,10 @@ PREFS_NAV_PAD = 8
 SETTINGS_COLUMN = 960
 CARD_PAD = 16
 SECTION_GAP_BELOW = 24
+# One width for every control in a column of Focus or Alerts, and for the three buttons of This
+# computer, so a column reads as one edge (#68). A wider control, at Large text, widens the rest.
+CONTROL_WIDTH = 260
+BUTTON_WIDTH = 190
 SECTIONS = ("Appearance & layout", "Planning", "Focus", "Alerts", "This computer")
 # Each section's icon in the list, Lucide's names (decision 24 of 0.17). None on the rows themselves.
 SECTION_ICONS = ("palette", "calendar", "timer", "bell", "laptop")
@@ -878,10 +883,11 @@ class SettingsPage(QWidget):
         boxes = (self.work, self.break_min, self.long_break, self.long_every)
         self.focus_steppers = [Stepper(box) for box in boxes]
         work, rest, long_rest, every = self.focus_steppers
+        # The preset first: it sets the three lengths under it.
+        focus_form.addRow("Timer preset", self.preset_timer)
         focus_form.addRow("Focus minutes", work)
         focus_form.addRow("Break minutes", rest)
         focus_form.addRow("Long break minutes", long_rest)
-        focus_form.addRow("Timer preset", self.preset_timer)
         focus_form.addRow("Long break after", every)
         focus_form.addRow(self.auto_split)
         focus = _section_page("Focus", (focus_card,))
@@ -894,7 +900,8 @@ class SettingsPage(QWidget):
         reminder_form = Form(self.reminder_controls)
         reminder_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         reminder_form.setContentsMargins(0, 0, 0, 0)
-        reminder_form.addRow("How long before", Stepper(self.lead))
+        self.lead_stepper = Stepper(self.lead)
+        reminder_form.addRow("How long before", self.lead_stepper)
         reminder_form.addRow(self.reminder_sound)
         tone_row = QHBoxLayout()
         tone_row.addWidget(self.alarm_tone)
@@ -966,7 +973,8 @@ class SettingsPage(QWidget):
         button_row.addStretch(1)
         alarms_form.addRow(button_row)
         all_card, all_form = _card("All alerts")
-        all_form.addRow("Volume", Stepper(self.volume))
+        self.volume_stepper = Stepper(self.volume)
+        all_form.addRow("Volume", self.volume_stepper)
         all_form.addRow(self.end_chime)
         all_form.addRow(self.tray)
         all_form.addRow(_note(TRAY_NOTE, "prefTrayNote"))
@@ -997,7 +1005,10 @@ class SettingsPage(QWidget):
         update_col.addWidget(version)
         update_col.addWidget(check_updates)
         computer_form.addRow("Updates", update_col)
+        self.computer_buttons = (open_account, run_setup, check_updates)
         computer = _section_page("This computer", (start_card, computer_card))
+        # Their values start at one x, so each one's labels share a column.
+        self._aligned = (focus, alerts, computer)
         rail = QWidget()
         rail.setObjectName("settingsRail")
         rail.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -1166,9 +1177,12 @@ class SettingsPage(QWidget):
         # Section by section: a dropdown on Alerts need not make Appearance's wider than its page.
         for index in range(self.stack.count()):
             even_fields(self.stack.widget(index))
-            even_labels(self.stack.widget(index))
-        # Once the steppers have their look: before it, their − and + had no width yet.
-        QTimer.singleShot(0, self, self._even_focus)
+            if self.stack.widget(index).widget() not in self._aligned:
+                even_labels(self.stack.widget(index))
+        self._one_label_column()
+        self._even_controls()
+        # Again once the steppers have their look: before it, their − and + had no width yet.
+        QTimer.singleShot(0, self, self._even_controls)
         margins = self.nav.contentsMargins()
         self.nav.setFixedWidth(
             self.nav.sizeHintForColumn(0) + margins.left() + margins.right() + 2 * self.nav.frameWidth()
@@ -1182,14 +1196,51 @@ class SettingsPage(QWidget):
             f"color: {palette['accent_ink']}; }}"
         )
 
-    def _even_focus(self) -> None:
-        """Timer preset as wide as the − value + fields above and below it (T20 of the 0.17.0 audit);
-        when its longest name is wider, every box widens with it instead."""
-        stepped = self.focus_steppers[0].sizeHint().width()
-        width = max(self.preset_timer.sizeHint().width(), stepped)
-        for stepper in self.focus_steppers:
-            stepper.box.setFixedWidth(stepper.box.width() + width - stepped)
-        self.preset_timer.setFixedWidth(width)
+    def _one_label_column(self) -> None:
+        """Focus, Alerts and This computer with one label column between them, so their values start
+        at one x: each page sized its own to its longest label (even_labels does one page)."""
+        labels = [label for page in self._aligned for label in page.findChildren(FieldLabel)]
+        for label in labels:
+            label.setMinimumWidth(0)
+        widest = max((label.sizeHint().width() for label in labels), default=0)
+        for label in labels:
+            label.setMinimumWidth(widest)
+
+    def _even_controls(self) -> None:
+        """Every control in Focus's column one width, the preset as wide as the steppers (T20 of the
+        0.17.0 audit), and so for Alerts' and the three buttons of This computer."""
+        columns = (
+            [self.preset_timer, *self.focus_steppers],
+            [
+                self.lead_stepper,
+                self.volume_stepper,
+                self.alarm_tone,
+                self.spotify,
+                self.alarm_name,
+                self.alarm_time,
+                self.alarm_sound,
+                self.alarm_spotify,
+            ],
+        )
+        for controls in columns:
+            width = max(CONTROL_WIDTH, *(self._natural_width(control) for control in controls))
+            for control in controls:
+                if isinstance(control, Stepper):
+                    control.box.setFixedWidth(width - self._stepper_chrome(control))
+                else:
+                    control.setFixedWidth(width)
+        width = max(BUTTON_WIDTH, *(button.sizeHint().width() for button in self.computer_buttons))
+        for button in self.computer_buttons:
+            button.setFixedWidth(width)
+
+    @staticmethod
+    def _stepper_chrome(stepper: Stepper) -> int:
+        return stepper.less.sizeHint().width() + stepper.more.sizeHint().width()
+
+    def _natural_width(self, control: QWidget) -> int:
+        if isinstance(control, Stepper):
+            return self._stepper_chrome(control) + control.box.sizeHint().width()
+        return control.sizeHint().width()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if watched is self.footer and event.type() == QEvent.Type.Resize:

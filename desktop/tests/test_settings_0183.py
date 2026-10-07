@@ -14,7 +14,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint
-from PySide6.QtGui import QColor, QImage
+from PySide6.QtGui import QColor, QImage, QPalette
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
 from desktop.native import motion
@@ -258,4 +258,80 @@ def test_the_button_and_the_description_have_their_new_words(
     assert LAYOUTS["classic"].summary == sentence
     card = next(card for card in page.findChildren(ChoiceCard) if card.accessibleName() == "Today's app")
     assert card.note.text() == sentence
+    page.close_page()
+
+
+# --- #68: one control width per column ---------------------------------------------------------
+
+
+def test_focus_puts_the_preset_first_and_every_control_is_one_width(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    page = open_settings(qapp, window, (1280, 800))
+    show_section(qapp, page, FOCUS)
+    steppers = page.focus_steppers
+    rows = [page.preset_timer, *steppers[:3], steppers[3]]
+    tops = [where(widget, page).y() for widget in rows]
+    assert tops == sorted(tops) and len(set(tops)) == 5, tops
+    assert {widget.width() for widget in rows} == {CONTROL_WIDTH}, [widget.width() for widget in rows]
+    page.close_page()
+
+
+def test_alerts_controls_are_one_width_and_no_alarms_yet_is_grey(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    page = open_settings(qapp, window, (1280, 800))
+    page.alarm_tone.setCurrentIndex(page.alarm_tone.findData("spotify"))
+    show_section(qapp, page, ALERTS)
+    controls = [
+        page.lead.parentWidget(),
+        page.volume.parentWidget(),
+        page.alarm_tone,
+        page.spotify,
+        page.alarm_name,
+        page.alarm_time,
+        page.alarm_sound,
+        page.alarm_spotify,
+    ]
+    assert all(widget.isVisibleTo(page) for widget in controls)
+    # 260 px, or the widest one's own width where a label needs more: "A Spotify song or playlist" is
+    # wider than 260 in the sound dropdown, and every control follows it.
+    widths = {widget.width() for widget in controls}
+    assert len(widths) == 1 and min(widths) >= CONTROL_WIDTH, [widget.width() for widget in controls]
+    hint = page.findChild(QLabel, "prefTrayNote")
+    empty = page.alarm_empty
+    assert empty.isVisibleTo(page)
+    grey = palette_of(window)["muted"]
+    assert near(hint.palette().color(QPalette.ColorRole.WindowText), grey)
+    assert near(empty.palette().color(QPalette.ColorRole.WindowText), grey)
+    page.close_page()
+
+
+def test_this_computer_values_start_where_focus_and_alerts_values_start(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    page = open_settings(qapp, window, (1280, 800))
+    starts: dict[str, int] = {}
+    show_section(qapp, page, FOCUS)
+    starts["focus"] = where(page.preset_timer, page).x()
+    show_section(qapp, page, ALERTS)
+    starts["alerts"] = where(page.lead.parentWidget(), page).x()
+    starts["alarm name"] = where(page.alarm_name, page).x()
+    computer = show_section(qapp, page, COMPUTER)
+    names = (
+        "prefPreferredView",
+        "prefClock",
+        "prefsAccount",
+        "prefsRunSetup",
+        "prefsVersion",
+        "prefsCheckUpdates",
+    )
+    for name in names:
+        starts[name] = where(computer.findChild(QWidget, name), page).x()
+    assert len(set(starts.values())) == 1, starts
+    buttons = [
+        computer.findChild(QPushButton, name)
+        for name in ("prefsAccount", "prefsRunSetup", "prefsCheckUpdates")
+    ]
+    assert len({button.width() for button in buttons}) == 1, [button.width() for button in buttons]
     page.close_page()
