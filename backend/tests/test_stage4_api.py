@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -350,6 +352,58 @@ def test_estimates_and_the_planners_windows_stay_on_the_quarter_hour(alice: Test
         headers=WRITE,
     )
     assert spread.status_code == 422
+
+
+def test_preferred_study_hours_saved_by_an_older_build_open_as_study_hours(
+    alice: TestClient, database: Path
+) -> None:
+    """J7: a preferences row as 0.18.2 saved it, with planning hours and preferred study hours apart,
+    opens as one Study hours list, the planner reads that list, and the next save writes it alone."""
+    old = {
+        "work_windows": [{"days": [0, 1, 2, 3, 4], "start": "16:00", "end": "21:00"}],
+        "study_windows": [{"days": [5, 6], "start": "10:00", "duration_min": 120}],
+    }
+    with sqlite3.connect(database) as db:
+        db.execute("UPDATE preferences SET availability_json = ?", (json.dumps(old),))
+    prefs = alice.get("/api/preferences").json()
+    assert "study_windows" not in prefs
+    hours = [
+        {"days": [0, 1, 2, 3, 4], "start": "16:00", "end": "21:00"},
+        {"days": [5, 6], "start": "10:00", "end": "12:00"},
+    ]
+    assert prefs["work_windows"] == hours
+    # Saturday has no other hours, so homework there goes in the carried window or nowhere.
+    homework = {
+        "id": "hw",
+        "title": "Homework",
+        "kind": "flexible",
+        "duration_min": 60,
+        "days": [5],
+        "priority": 3,
+        "energy": "low",
+    }
+    solved = alice.post("/api/solve", json={"blocks": [homework]}, headers=WRITE)
+    assert solved.status_code == 200, solved.text
+    assert next(block for block in solved.json()["placed"] if block["id"] == "hw")["start"] == "10:00"
+    assert alice.put("/api/preferences", json=prefs, headers=WRITE).status_code == 200
+    with sqlite3.connect(database) as db:
+        (stored,) = db.execute("SELECT availability_json FROM preferences").fetchone()
+    assert json.loads(stored)["work_windows"] == hours
+    assert "study_windows" not in json.loads(stored)
+
+
+def test_an_older_client_sending_preferred_study_hours_saves_them_as_study_hours(
+    alice: TestClient,
+) -> None:
+    prefs = defaults(alice)
+    preferred = [{"days": [2], "start": "19:00", "duration_min": 90, "subject": "Math"}]
+    saved = alice.put("/api/preferences", json={**prefs, "study_windows": preferred}, headers=WRITE)
+    assert saved.status_code == 200, saved.text
+    assert "study_windows" not in saved.json()
+    assert saved.json()["work_windows"] == [
+        {"days": [2], "start": "19:00", "end": "20:30", "subject": "Math"}
+    ]
+    assert alice.get("/api/preferences").json()["work_windows"] == saved.json()["work_windows"]
 
 
 def test_preferences_reject_overlapping_protected_windows_and_accept_adjacent_ones(

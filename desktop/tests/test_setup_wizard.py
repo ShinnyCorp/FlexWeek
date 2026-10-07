@@ -325,8 +325,10 @@ def test_settings_saves_work_windows_with_existing_availability(
     written(qapp, window)
     protected = [{"days": [0], "start": "19:00", "duration_min": 60, "kind": "meal"}]
     study = [{"days": [1], "start": "17:00", "duration_min": 60, "subject": "Math"}]
+    # Preferred study hours sent the old way land in the one Study hours list (J7).
+    carried = [{"days": [1], "start": "17:00", "end": "18:00", "subject": "Math"}]
     assert window.session.save_availability(protected, study, "22:00", [])
-    wait_until(qapp, lambda: not window.session.busy and window.session.preferences["study_windows"] == study)
+    wait_until(qapp, lambda: not window.session.busy and window.session.preferences["work_windows"] == carried)
 
     chosen = {"days": [5, 6], "start": "10:00", "end": "16:00"}
     sent: list[tuple[list[dict], list[dict], str | None, list[dict]]] = []
@@ -353,9 +355,9 @@ def test_settings_saves_work_windows_with_existing_availability(
         lambda: not window.session.busy and window.session.preferences["work_windows"] == [chosen],
     )
     prefs = window.session.preferences
-    assert sent == [(protected, study, "22:00", [chosen])]
+    assert sent == [(protected, [], "22:00", [chosen])]
     assert prefs["protected"] == protected
-    assert prefs["study_windows"] == study
+    assert "study_windows" not in prefs
     assert prefs["day_cutoff"] == "22:00"
     close(qapp, window)
 

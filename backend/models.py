@@ -548,7 +548,8 @@ class GridWindow(BaseModel):
 
 
 class StudyWindow(GridWindow):
-    """A preferred study time. With a subject, it is preferred for that subject's homework only."""
+    """Preferred study hours as builds before 0.18.3 saved them. Only read, to carry them into the one
+    Study hours list (`work_windows`); nothing writes this shape any more."""
 
     subject: str | None = Field(
         default=None, min_length=1, max_length=40, exclude_if=lambda value: value is None

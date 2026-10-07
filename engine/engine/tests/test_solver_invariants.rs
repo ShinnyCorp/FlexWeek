@@ -95,7 +95,7 @@ fn test_generated_weeks_preserve_grid_bounds_occupancy_and_input() {
             } else {
                 windows_legacy()
             };
-            let trace = solve_with(&blocks, None, None, Some(&windows), &real_clock());
+            let trace = solve_with(&blocks, None, Some(&windows), &real_clock());
             assert_eq!(blocks, before, "seed {seed} {mode} input");
             let school = trace
                 .placed
@@ -293,7 +293,7 @@ fn test_budget_expiry_returns_the_best_partial_placement() {
             .priority(4)
             .into_block(),
     ];
-    let trace = solve_with(&blocks, None, None, Some(&windows_legacy()), &elapsed);
+    let trace = solve_with(&blocks, None, Some(&windows_legacy()), &elapsed);
     let placed: Vec<_> = trace
         .placed
         .iter()

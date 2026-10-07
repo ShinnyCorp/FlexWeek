@@ -43,17 +43,27 @@ def lateness_occupancy(day: int, from_start: str, minutes: int) -> list[int]:
 
 
 def study_rank(
-    windows: list[StudyWindow], course: str | None, day: int, start_min: int, duration_min: int
+    windows: list[WorkWindow], course: str | None, day: int, start_min: int, duration_min: int
 ) -> int:
-    """How much a session wants this time: 0 inside a window for its own subject, 1 inside a window for
-    any subject, 2 anywhere else. Another subject's window is anywhere else, so Reading does not take
-    the time kept for Math."""
+    """How much a session wants this time in its Study hours: 0 inside a window for its own subject, 1
+    inside a window for any subject, 2 anywhere else. Another subject's window is anywhere else, so
+    Reading does not take the time kept for Math."""
     return flexweek_engine.study_rank(
         json.dumps([window.model_dump() for window in windows]),
         course,
         day,
         start_min,
         duration_min,
+    )
+
+
+def fold_study_windows(work: list[WorkWindow], study: list[StudyWindow]) -> list[dict]:
+    """Preferred study hours from before the one list, joined to Study hours (J7)."""
+    return json.loads(
+        flexweek_engine.fold_study_windows(
+            json.dumps([window.model_dump() for window in work]),
+            json.dumps([window.model_dump() for window in study]),
+        )
     )
 
 
