@@ -9,19 +9,33 @@ in Settings.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from uuid import uuid4
 
-from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTime, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap, QResizeEvent, QShowEvent
+from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTime, QTimer, QVariantAnimation, Signal
+from PySide6.QtGui import (
+    QColor,
+    QFocusEvent,
+    QFont,
+    QIcon,
+    QKeyEvent,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QPixmap,
+    QResizeEvent,
+    QShowEvent,
+)
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QButtonGroup,
     QCheckBox,
     QComboBox,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -65,7 +79,16 @@ from desktop.native.look import (
     resolved_palette,
     sanitize_look,
 )
-from desktop.native.motion import appear, fade_away, glide, hold_picture, switch_page
+from desktop.native.motion import (
+    EASE_MS,
+    appear,
+    duration,
+    fade_away,
+    glide,
+    hold_picture,
+    settle,
+    switch_page,
+)
 from desktop.native.previews import Previews
 from desktop.native.remind import reminder_lead_min
 from desktop.native.settings import (
@@ -137,9 +160,16 @@ SPACINGS = (("comfortable", "Comfortable"), ("compact", "Compact"))
 FONTS = (("sans", "Sans"), ("serif", "Serif"), ("mono", "Mono"))
 SHADOWS = tuple((value, KNOB_VALUE_LABELS[value]) for value in LOOK_KNOBS["depth"])
 TONE_NAMES = {tone: tone.title() for tone in RECIPES}
-STYLE_THUMB, LOOK_THUMB, COLOUR_THUMB = 264, 206, 400
+STYLE_PICTURE, LOOK_THUMB, COLOUR_THUMB = 520, 206, 400
 # The pages and the row of buttons under them, centred up to this width (decision 26 of 0.17).
 SETUP_COLUMN = 880
+# The style carousel: the middle picture at most STYLE_PICTURE wide, never less than STYLE_PICTURE_MIN,
+# with at least PEEK_PX of each neighbour showing past a CAROUSEL_GAP. CAROUSEL_CHROME is a slide's
+# ring and padding, both sides.
+STYLE_PICTURE_MIN, PEEK_PX, CAROUSEL_GAP, CAROUSEL_CHROME = 240, 56, 12, 16
+NEIGHBOUR_OPACITY = 0.45
+EXPERIMENTAL_TAG = "Experimental"
+DOT_PX, ARROW_PX = 16, 32
 # A step on the rail is marked by its number in a ring, or once it is done by a tick on the accent.
 BADGE_PX, TICK_PX = 20, 16
 PENDING, CURRENT, FINISHED = "pending", "current", "finished"
@@ -158,11 +188,12 @@ class Style:
     options: dict = field(default_factory=dict)
 
 
+DEFAULT_STYLE = "plain"
 STYLES = (
     Style(
         "plain",
         "Plain calendar",
-        "Today's app. Your week as a grid, like a timetable.",
+        "Your week as a timetable grid",
         "classic",
         None,
         "light-frost",
@@ -170,7 +201,7 @@ STYLES = (
     Style(
         "dashboard",
         "Dashboard",
-        "Bento in indigo. What's next and what's due, as tiles.",
+        "Next up and due soon, as tiles",
         "bento",
         "indigo",
         "light-frost",
@@ -178,7 +209,7 @@ STYLES = (
     Style(
         "night",
         "Night owl",
-        "Timeline at night, with compact spacing.",
+        "Dark colours, compact spacing",
         "timeline",
         "night",
         "dark-frost",
@@ -188,7 +219,7 @@ STYLES = (
     Style(
         "retro",
         "Retro",
-        "Retro desktop in teal, with large text.",
+        "A retro desktop, with large text",
         "retro",
         "teal",
         "light-frost",
@@ -346,6 +377,274 @@ def _row(*widgets: QWidget, stretch: bool = True) -> QWidget:
     if stretch:
         line.addStretch(1)
     return holder
+
+
+class StyleSlide(QFrame):
+    """One style's picture in the carousel: ringed in the accent while it is the chosen one, and asking
+    to be brought to the middle when it is clicked."""
+
+    chosen = Signal()
+
+    def __init__(self, style: Style, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setObjectName("setupSlide")
+        self.setAccessibleName(style.name)
+        self.setAccessibleDescription(style.note)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.offset = 0
+        self._source = QPixmap()
+        box = QVBoxLayout(self)
+        box.setContentsMargins(*(CAROUSEL_CHROME // 2 - 2,) * 4)
+        self.picture = QLabel()
+        self.picture.setObjectName("setupSlidePicture")
+        box.addWidget(self.picture)
+        # Over the picture's corner, so a card carries it wherever it stands in the row.
+        self.tag: QLabel | None = None
+        if LAYOUTS[style.main].experimental:
+            self.tag = QLabel(EXPERIMENTAL_TAG, self.picture)
+            self.tag.setObjectName("setupSlideTag")
+            self.tag.move(8, 8)
+        self.fade = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self.fade)
+        self.select(False)
+
+    def set_picture(self, picture: QPixmap) -> None:
+        self._source = picture
+        self._draw()
+
+    def set_picture_width(self, width: int) -> None:
+        self.picture.setFixedSize(width, round(width * 0.625))
+        self._draw()
+
+    def _draw(self) -> None:
+        if self._source.isNull():
+            return
+        size = self.picture.size()
+        fitted = self._source.scaled(
+            size, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation
+        )
+        self.picture.setPixmap(rounded_picture(fitted, 6))
+
+    def select(self, on: bool) -> None:
+        self.setProperty("selected", on)
+        _repolish(self)
+
+    def is_selected(self) -> bool:
+        return bool(self.property("selected"))
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.chosen.emit()
+            return
+        super().mouseReleaseEvent(event)
+
+
+class StyleCarousel(QFrame):
+    """One style's picture large in the middle, the one before and the one after peeking at the sides
+    dimmed, an arrow and a dot for each below, then the name and one note. Whatever is in the middle is
+    the chosen style, once the student has moved it or a style was chosen already; Left and Right move
+    it, and a click on a neighbour brings it to the middle. The styles wrap round, so the last one
+    stands left of the first."""
+
+    # The key of the style that is now in the middle and chosen.
+    moved = Signal(str)
+
+    def __init__(self, styles: tuple[Style, ...], motion: Callable[[], str]) -> None:
+        super().__init__()
+        self.setObjectName("setupRow")
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAccessibleName("Style")
+        self._motion = motion
+        # The plain ones first, then the experimental, as the roadmap's picture has them.
+        self._order = tuple(sorted(styles, key=lambda style: LAYOUTS[style.main].experimental))
+        self._index = 0
+        self._chosen = False
+        self._width = STYLE_PICTURE
+        box = QVBoxLayout(self)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(8)
+        self.stage = QWidget()
+        self.stage.setObjectName("setupRow")
+        self.stage.setFixedHeight(self._slide_height(STYLE_PICTURE))
+        box.addWidget(self.stage)
+        self.slides: dict[str, StyleSlide] = {}
+        for style in self._order:
+            slide = StyleSlide(style, self.stage)
+            slide.chosen.connect(lambda key=style.key: self.go_to(key))
+            self.slides[style.key] = slide
+        self.previous = self._arrow("chevron-left", "Previous style", -1)
+        self.following = self._arrow("chevron-right", "Next style", 1)
+        self.dots: dict[str, QPushButton] = {}
+        line = QHBoxLayout()
+        line.setSpacing(10)
+        line.addStretch(1)
+        line.addWidget(self.previous)
+        for style in self._order:
+            dot = QPushButton()
+            dot.setObjectName("setupDot")
+            dot.setFixedSize(DOT_PX, DOT_PX)
+            dot.setIconSize(QSize(DOT_PX - 4, DOT_PX - 4))
+            dot.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            dot.setCursor(Qt.CursorShape.PointingHandCursor)
+            dot.setAccessibleName(f"Show {style.name}")
+            dot.clicked.connect(lambda _checked=False, key=style.key: self.go_to(key))
+            self.dots[style.key] = dot
+            line.addWidget(dot)
+        line.addWidget(self.following)
+        line.addStretch(1)
+        box.addLayout(line)
+        self.name = _label("", "setupChoiceName")
+        self.name.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.note = _label("", "setupChoiceNote")
+        self.note.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        box.addWidget(self.name)
+        box.addWidget(self.note)
+        self._arrange(delta=0)
+        self._refresh()
+
+    def _arrow(self, icon_name: str, label: str, delta: int) -> QPushButton:
+        arrow = QPushButton()
+        arrow.setObjectName("setupArrow")
+        arrow.setFixedSize(ARROW_PX, ARROW_PX)
+        arrow.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        arrow.setCursor(Qt.CursorShape.PointingHandCursor)
+        arrow.setAccessibleName(label)
+        arrow.clicked.connect(lambda: self.step(delta))
+        icons.tint(arrow, icon_name)
+        return arrow
+
+    @staticmethod
+    def _slide_height(picture: int) -> int:
+        return round(picture * 0.625) + CAROUSEL_CHROME
+
+    def key(self) -> str:
+        return self._order[self._index].key
+
+    def is_chosen(self) -> bool:
+        return self._chosen
+
+    def show_style(self, key: str, chosen: bool) -> None:
+        """The middle at `key`, and whether it counts as chosen, without moving or saying so."""
+        index = next(at for at, style in enumerate(self._order) if style.key == key)
+        if (index, chosen) == (self._index, self._chosen):
+            return
+        moved = index != self._index
+        self._index, self._chosen = index, chosen
+        if moved:
+            self._arrange(delta=0)
+        self._refresh()
+
+    def go_to(self, key: str) -> None:
+        """The student's move: `key` to the middle and chosen."""
+        target = next(at for at, style in enumerate(self._order) if style.key == key)
+        count = len(self._order)
+        delta = (target - self._index + count // 2) % count - count // 2
+        if delta == 0 and self._chosen:
+            return
+        self._index, self._chosen = target, True
+        self._arrange(delta=delta)
+        self._refresh()
+        self.moved.emit(key)
+
+    def step(self, delta: int) -> None:
+        self.go_to(self._order[(self._index + delta) % len(self._order)].key)
+
+    def _slot(self, offset: int) -> int:
+        slide_width = self._width + CAROUSEL_CHROME
+        return (self.width() - slide_width) // 2 + offset * (slide_width + CAROUSEL_GAP)
+
+    def _arrange(self, delta: int) -> None:
+        """Every slide to its place. A step of one slides them there; anything else, and a resize,
+        puts them there. A slide that wraps from one end to the other goes on past the edge it was
+        heading for, or comes in from the far one, so none crosses the middle."""
+        room = self.width()
+        if room <= 0:
+            return
+        count = len(self._order)
+        picture = max(
+            STYLE_PICTURE_MIN, min(STYLE_PICTURE, room - 2 * (PEEK_PX + CAROUSEL_GAP) - CAROUSEL_CHROME)
+        )
+        resized = picture != self._width
+        self._width = picture
+        height = self._slide_height(picture)
+        self.stage.setFixedHeight(height)
+        slides_move = abs(delta) == 1 and not resized
+        level = self._motion()
+        for at, style in enumerate(self._order):
+            slide = self.slides[style.key]
+            offset = (at - self._index + count // 2) % count - count // 2
+            if abs(slide.offset) > 1:
+                # Out of sight since the last move, where it may have stopped short of its place.
+                settle(slide)
+                slide.move(self._slot(slide.offset), 0)
+            if resized or slide.picture.width() != picture:
+                slide.set_picture_width(picture)
+            target = QRect(self._slot(offset), 0, picture + CAROUSEL_CHROME, height)
+            if slides_move and abs(offset - slide.offset) > 1:
+                if abs(slide.offset) <= 1:
+                    target.moveLeft(self._slot(slide.offset - delta))
+                else:
+                    slide.setGeometry(self._slot(2 * (1 if offset > 0 else -1)), 0, target.width(), height)
+            if slides_move:
+                glide(slide, target, level)
+            else:
+                settle(slide)
+                slide.setGeometry(target)
+            slide.offset = offset
+            self._dim(slide, abs(offset) != 0, animate=slides_move)
+
+    def _dim(self, slide: StyleSlide, dimmed: bool, animate: bool) -> None:
+        goal = NEIGHBOUR_OPACITY if dimmed else 1.0
+        length = duration(EASE_MS, self._motion()) if animate else 0
+        if length == 0:
+            slide.fade.setOpacity(goal)
+            return
+        run = QVariantAnimation(slide)
+        run.setStartValue(slide.fade.opacity())
+        run.setEndValue(goal)
+        run.setDuration(length)
+        run.valueChanged.connect(lambda value: slide.fade.setOpacity(float(value)))
+        run.start(QVariantAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    def _refresh(self) -> None:
+        count = len(self._order)
+        current = self._order[self._index]
+        for style in self._order:
+            here = style.key == current.key
+            self.slides[style.key].select(here and self._chosen)
+            dot = self.dots[style.key]
+            dot.setProperty("current", here)
+            dot.setProperty("chosen", here and self._chosen)
+            icons.tint(dot, "check" if here and self._chosen else None)
+            _repolish(dot)
+        self.name.setText(current.name)
+        self.note.setText(current.note)
+        state = ", chosen" if self._chosen else ""
+        self.setAccessibleDescription(f"{current.name}, {self._index + 1} of {count}{state}")
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        arrows = {Qt.Key.Key_Left: -1, Qt.Key.Key_Right: 1}
+        if event.key() in arrows and not event.modifiers():
+            self.step(arrows[event.key()])
+            return
+        super().keyPressEvent(event)
+
+    def focusInEvent(self, event: QFocusEvent) -> None:  # noqa: N802
+        super().focusInEvent(event)
+        self._mark_focus(True)
+
+    def focusOutEvent(self, event: QFocusEvent) -> None:  # noqa: N802
+        super().focusOutEvent(event)
+        self._mark_focus(False)
+
+    def _mark_focus(self, on: bool) -> None:
+        for slide in self.slides.values():
+            slide.setProperty("focused", on)
+            _repolish(slide)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._arrange(delta=0)
 
 
 class Chips(QWidget):
@@ -753,21 +1052,16 @@ class SetupPage(QWidget):
         content.setObjectName("setupRow")
         box = QVBoxLayout(content)
         box.setContentsMargins(0, 0, 0, 0)
-        self.style_cards: dict[str, ChoiceCard] = {}
-        for experimental in (False, True):
-            styles = [style for style in STYLES if LAYOUTS[style.main].experimental == experimental]
-            if experimental:
-                self._section(box, EXPERIMENTAL)
-            cards = []
-            for style in styles:
-                card = ChoiceCard(style.name, style.note, STYLE_THUMB)
-                card.chosen.connect(lambda style=style: self._choose_style(style))
-                cards.append(card)
-                self.style_cards[style.key] = card
-            _card_grid(box, STYLE_THUMB).set_cards(cards)
-        own = _quiet(OWN_LOOK_LABEL, "setupOwnLook")
+        self.carousel = StyleCarousel(STYLES, lambda: self.motion)
+        self.carousel.moved.connect(lambda key: self._choose_style(next(s for s in STYLES if s.key == key)))
+        self.style_cards = self.carousel.slides
+        box.addWidget(self.carousel)
+        own = QPushButton(OWN_LOOK_LABEL)
+        own.setObjectName("setupOwnLook")
+        own.setProperty("outline", True)
+        own.setCursor(Qt.CursorShape.PointingHandCursor)
         own.clicked.connect(self._choose_own_look)
-        box.addWidget(own, 0, Qt.AlignmentFlag.AlignLeft)
+        box.addWidget(own, 0, Qt.AlignmentFlag.AlignHCenter)
         return content
 
     def _build_look(self) -> QWidget:
@@ -1054,19 +1348,22 @@ class SetupPage(QWidget):
         self._sync_chrome()
         QTimer.singleShot(0, self, lambda: self._place_marker(animate=False))
 
+    def _style_in_use(self) -> str | None:
+        if self._state.first_run:
+            return DEFAULT_STYLE
+        return matching_style(self._pack, self._look, self._layout)
+
     def _fill_style(self) -> None:
-        self._style_key = (
-            matching_style(self._pack, self._look, self._layout) if not self._state.first_run else None
-        )
-        for key, card in self.style_cards.items():
-            card.select(key == self._style_key)
+        # A new account starts on Plain calendar, chosen, so Next without a click keeps it.
+        self._style_key = self._style_in_use()
+        self.carousel.show_style(self._style_key or DEFAULT_STYLE, chosen=self._style_key is not None)
         for layout_id, card in self.look_cards.items():
             card.select(layout_id == self._layout["main"])
         # The first page's pictures before it shows; the rest one at a time once it has.
         for style in STYLES:
             card = self.style_cards[style.key]
             card.set_picture(
-                self._previews.get(style.main, style.colour, style.pack, style_look(style), STYLE_THUMB)
+                self._previews.get(style.main, style.colour, style.pack, style_look(style), STYLE_PICTURE)
             )
         self._pending_pictures = []
         for spec in layouts_for("plan"):
@@ -1213,6 +1510,8 @@ class SetupPage(QWidget):
             page.verticalScrollBar().setValue(0)
 
     def _prepare(self, step: int) -> None:
+        if step == STYLE:
+            self.carousel.setFocus(Qt.FocusReason.OtherFocusReason)
         if step == LOOK:
             for layout_id, card in self.look_cards.items():
                 card.select(layout_id == self._layout["main"])
@@ -1299,16 +1598,14 @@ class SetupPage(QWidget):
         pack, look, layout = self._entered
         if (pack, look, layout) != (self._pack, self._look, self._layout):
             self._pack, self._look, self._layout = pack, deepcopy(look), deepcopy(layout)
-            self._style_key = matching_style(pack, look, layout) if not self._state.first_run else None
-            for key, card in self.style_cards.items():
-                card.select(key == self._style_key)
+            self._style_key = self._style_in_use()
+            self.carousel.show_style(self._style_key or DEFAULT_STYLE, chosen=self._style_key is not None)
             self._preview()
 
     def _choose_style(self, style: Style) -> None:
         self._own_look = False
         self._style_key = style.key
-        for key, card in self.style_cards.items():
-            card.select(key == style.key)
+        self.carousel.show_style(style.key, chosen=True)
         self._pack = style.pack
         self._look = style_look(style)
         self._layout = style_layout(style, self._layout)
@@ -1541,8 +1838,16 @@ class SetupPage(QWidget):
         return None
 
     def _answer(self, step: int) -> dict | None:
-        if step == STYLE and self._style_key is None:
-            return None
+        if step == STYLE:
+            style = next((style for style in STYLES if style.key == self._style_key), None)
+            if style is None:
+                return None
+            # The one in the middle, whether or not the student moved it.
+            self._pack, self._look, self._layout = (
+                style.pack,
+                style_look(style),
+                style_layout(style, self._layout),
+            )
         if step in LOOK_STEPS:
             return {"pack": self._pack, "look": deepcopy(self._look), "layout": deepcopy(self._layout)}
         if step == WEEK:

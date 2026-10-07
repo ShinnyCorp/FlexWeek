@@ -90,21 +90,30 @@ def test_the_picture_cards_are_whole_at_the_end_of_their_page(
 ) -> None:
     """At 810 pixels two cards a row ran off the right edge of the page, and nothing scrolls sideways."""
     with dressed(qapp, size, text) as (setup, _palette):
-        for step, cards in ((STYLE, setup.style_cards), (LOOK, setup.look_cards)):
-            show(qapp, setup, step)
-            page = setup.pages[step]
-            bar = page.verticalScrollBar()
-            bar.setValue(bar.maximum())
-            qapp.processEvents()
-            view = page.viewport()
-            for key, card in cards.items():
-                box = QRect(card.mapTo(view, QPoint(0, 0)), card.size())
-                where = (step, key, size, text)
-                assert box.left() >= 0 and box.right() < view.width(), (where, "cut at the side", box)
-                assert box.bottom() < view.height(), (where, "cut at the bottom", box)
-                for label in card.findChildren(QLabel):
-                    if label.wordWrap() and label.isVisibleTo(card):
-                        assert label.height() >= label.heightForWidth(label.width()), (where, label.text())
+        show(qapp, setup, LOOK)
+        page = setup.pages[LOOK]
+        bar = page.verticalScrollBar()
+        bar.setValue(bar.maximum())
+        qapp.processEvents()
+        view = page.viewport()
+        for key, card in setup.look_cards.items():
+            box = QRect(card.mapTo(view, QPoint(0, 0)), card.size())
+            where = (LOOK, key, size, text)
+            assert box.left() >= 0 and box.right() < view.width(), (where, "cut at the side", box)
+            assert box.bottom() < view.height(), (where, "cut at the bottom", box)
+            for label in card.findChildren(QLabel):
+                if label.wordWrap() and label.isVisibleTo(card):
+                    assert label.height() >= label.heightForWidth(label.width()), (where, label.text())
+        # The Style page's carousel keeps its middle picture and its words whole; the neighbours are
+        # meant to run off the sides.
+        show(qapp, setup, STYLE)
+        carousel = setup.carousel
+        front = carousel.slides[carousel.key()]
+        view = setup.pages[STYLE].viewport()
+        box = QRect(front.mapTo(view, QPoint(0, 0)), front.size())
+        assert box.left() >= 0 and box.right() < view.width(), ((size, text), "the middle is cut", box)
+        for label in (carousel.name, carousel.note):
+            assert label.height() >= label.heightForWidth(label.width()), (size, text, label.text())
 
 
 def test_the_planning_hours_chips_are_the_pills_the_day_picker_uses(qapp: QApplication) -> None:
@@ -208,7 +217,7 @@ def test_setup_calls_each_design_by_the_one_name_settings_uses(qapp: QApplicatio
             assert "·" not in card.accessibleName() + card.accessibleDescription(), card.accessibleName()
         assert setup.look_cards["classic"].accessibleName() == "Today's app"
         assert setup.look_cards["timeline"].accessibleName() == "Timeline"
-        assert setup.style_cards["plain"].accessibleDescription().startswith("Today's app. ")
+        assert all("Today's app" not in card.accessibleDescription() for card in setup.style_cards.values())
         # The day screens, offered by name on the colours page.
         chips = [button.text() for button in setup.day_screen.buttons()]
         assert chips == [spec.label for spec in (*layouts_for("day", False), *layouts_for("day", True))]

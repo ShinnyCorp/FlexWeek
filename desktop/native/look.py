@@ -1221,7 +1221,7 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     # A card is larger than a control, so it is lifted with the text colour, never the accent.
     lift = mix(palette["text"], palette["panel"], 0.04)
     quiet = (
-        "setupQuiet", "setupSkip", "setupSkipAll", "setupOwnLook", "setupAddActivity", "setupAddHomework",
+        "setupQuiet", "setupSkip", "setupSkipAll", "setupAddActivity", "setupAddHomework",
         "setupSuggest", "setupChange", "setupFineTune",
     )
     quiet_rule = ", ".join(f"QPushButton#{name}" for name in quiet)
@@ -1265,6 +1265,28 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         f"QLabel#setupChoiceName {{ {heading} }}"
         f"QLabel#setupChoiceNote {{ color: {palette['muted']}; }}"
         f"QLabel#setupChoiceTag {{ color: {palette['muted']}; {strong} }}"
+        # The style carousel's pictures: a ring of one width, the accent when picked, and the tint of a
+        # focused carousel on the one in the middle, since Left and Right move whichever has focus.
+        f"QFrame#setupSlide {{ background: {palette['panel']}; border: 2px solid {ring}; "
+        f"border-radius: {card_radius}px; padding: 0; }}"
+        f"QFrame#setupSlide[selected=\"true\"] {{ border-color: {palette['accent']}; background: {lift}; }}"
+        f"QFrame#setupSlide[focused=\"true\"] "
+        f"{{ background: {mix(palette['accent'], palette['panel'], 0.12)}; }}"
+        f"QLabel#setupSlidePicture {{ background: transparent; border: none; padding: 0; }}"
+        f"QLabel#setupSlideTag {{ background: {palette['panel']}; color: {palette['text']}; "
+        f"border: 1px solid {palette['hairline_strong']}; border-radius: 9px; padding: 1px 8px; "
+        f"font-size: {type_pt('caption', text)}pt; {strong} }}"
+        f"QPushButton#setupArrow {{ background: {palette['field']}; color: {palette['text']}; {edges} "
+        f"border-radius: 16px; padding: 0; min-height: 0; min-width: 0; }}"
+        f"QPushButton#setupArrow:hover {{ background: {mix(palette['accent'], palette['field'], 0.14)}; }}"
+        f"QPushButton#setupDot {{ background: {palette['hairline_strong']}; border: none; "
+        f"border-radius: 8px; padding: 0; min-height: 0; min-width: 0; color: {palette['accent_ink']}; }}"
+        f"QPushButton#setupDot:hover "
+        f"{{ background: {mix(palette['accent'], palette['hairline_strong'], 0.5)}; }}"
+        f"QPushButton#setupDot[current=\"true\"] {{ background: {palette['field']}; "
+        f"border: 2px solid {palette['accent']}; }}"
+        f"QPushButton#setupDot[chosen=\"true\"] {{ background: {palette['accent']}; "
+        f"border: 2px solid {palette['accent']}; }}"
         f"QFrame#setupGroup {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
         f"{pills} {{ background: {palette['field']}; color: {palette['text']}; {edges} "
         f"border-radius: 14px; padding: 4px 12px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"
