@@ -271,3 +271,39 @@ def test_a_short_block_word_gives_its_name_the_room_its_times_took(qapp: QApplic
     assert any("16:00" in line.text for line in block_layout(soccer, title, small, room))
     short = Drawn(**{**soccer.__dict__, "short": True})
     assert [line.text for line in block_layout(short, title, small, room)] == ["Soccer practice"]
+
+
+def test_the_focus_list_grows_to_its_rows_with_no_scroll_bar_and_no_row_cut(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """The list was a small scrolling box that clipped the last row ("Fri 17:0(")."""
+    seeded(qapp, window)
+    session = window.session
+    math = next(block for block in session.blocks if block.get("assignment_id") == "math")
+    session.add_block({**math, "start": "17:00", "days": [4], "pinned": True})
+    session.save()
+    settled(qapp, window)
+    for _ in range(5):
+        qapp.processEvents()
+    tasks = window.rail.tasks
+    assert tasks.count() == 3
+    row = tasks.sizeHintForRow(0)
+    assert not tasks.verticalScrollBar().isVisible() and not tasks.horizontalScrollBar().isVisible()
+    assert tasks.viewport().height() >= 3 * row, "all three rows fit"
+    last = tasks.visualItemRect(tasks.item(2))
+    assert last.bottom() <= tasks.viewport().height() and last.right() <= tasks.viewport().width()
+    assert tasks.height() >= 3 * row
+
+
+def test_the_focus_list_has_no_row_limit_of_its_own(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """The rail scrolls as a whole, so the list never needs a scroll bar of its own."""
+    seeded(qapp, window)
+    rows = [{"id": f"t{n}", "day": 4, "start": "17:00", "title": f"Task {n}"} for n in range(9)]
+    window.rail.set_tasks(rows, 0)
+    tasks = window.rail.tasks
+    assert tasks.count() == 9
+    assert tasks.height() >= 9 * tasks.sizeHintForRow(0)

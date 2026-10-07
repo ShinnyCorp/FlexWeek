@@ -59,12 +59,12 @@ class FocusScreen(QWidget):
         buttons.setSpacing(8)
         buttons.addStretch(1)
         # One filled button, the next step: Start, Pause or Resume, or Finished once time is up.
-        # Skip, Finish and Take a break are words beside it.
+        # Skip and Finish are outlined beside Pause; Take a break is a word.
         self.start = self._button("Start", "focusScreenStart", self.start_requested)
         self.start.setToolTip("Start a focus timer now, without picking homework.")
         self.pause = self._button("Pause", "focusScreenPause", self.pause_requested)
-        self.skip = self._button("Skip", "focusScreenSkip", self.skip_requested, quiet=True)
-        self.stop = self._button("Finish", "focusScreenFinish", self.stop_requested, quiet=True)
+        self.skip = self._button("Skip", "focusScreenSkip", self.skip_requested, outlined=True)
+        self.stop = self._button("Finish", "focusScreenFinish", self.stop_requested, outlined=True)
         self.stop.setToolTip("Stop the timer and go back to your week.")
         self.finished = self._button("Finished", "focusScreenFinished", self.finished_requested)
         self.finished.setToolTip("Mark this homework as finished.")
@@ -86,11 +86,15 @@ class FocusScreen(QWidget):
         made.setAlignment(Qt.AlignmentFlag.AlignCenter)
         return made
 
-    def _button(self, words: str, name: str, signal: Signal, *, quiet: bool = False) -> QPushButton:
+    def _button(
+        self, words: str, name: str, signal: Signal, *, quiet: bool = False, outlined: bool = False
+    ) -> QPushButton:
         made = QPushButton(words)
         made.setObjectName(name)
         if quiet:
             made.setProperty("quiet", True)
+        if outlined:
+            made.setProperty("outlined", True)
         made.clicked.connect(signal.emit)
         return made
 
@@ -122,6 +126,7 @@ class FocusScreen(QWidget):
             whole = phase_duration_ms(phase, prefs) if running else 1
             self.ring.set_left(min(left, whole) / whole if running else 0.0)
         self._show_task()
+        self._level_buttons()
         self.start.setVisible(state is None)
         self.pause.setText("Pause" if state and state.get("running") else "Resume")
         self.skip.setToolTip(SKIP_TIPS.get(phase or "", ""))
@@ -130,6 +135,17 @@ class FocusScreen(QWidget):
         homework = ended and state.get("assignmentId") in (session.assignments or {})
         self.finished.setVisible(bool(homework))
         self.take_break.setVisible(ended)
+
+    def _level_buttons(self) -> None:
+        """Every button as tall as the tallest, shown or not: the filled ones and the outlined ones
+        differ by a few pixels, and the row's height moves the ring when one set replaces the other."""
+        everyone = (self.start, self.pause, self.skip, self.stop, self.finished, self.take_break)
+        for button in everyone:
+            button.setMinimumHeight(0)
+            button.ensurePolished()
+        tallest = max(button.sizeHint().height() for button in everyone)
+        for button in everyone:
+            button.setMinimumHeight(tallest)
 
     def time_text(self) -> str:
         """The countdown as the ring shows it."""

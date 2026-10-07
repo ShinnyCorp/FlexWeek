@@ -1740,7 +1740,7 @@ def toast_colours(palette: dict) -> dict[str, str]:
 
 
 # The focus screen's words-only buttons, beside its one filled button.
-FOCUS_TEXT_BUTTONS = ("focusScreenBack", "focusScreenSkip", "focusScreenFinish", "focusScreenBreak")
+FOCUS_TEXT_BUTTONS = ("focusScreenBack", "focusScreenBreak")
 
 
 def overlay_rules(palette: dict, knobs: dict, pad: int, card_radius: int) -> str:
@@ -1779,7 +1779,8 @@ def overlay_rules(palette: dict, knobs: dict, pad: int, card_radius: int) -> str
         f"QLabel#focusScreenTask {{ color: {palette['text']}; font-size: {type_pt('title', text)}pt; "
         f"font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#focusScreenHint {{ color: {palette['muted']}; }}"
-        "QPushButton#focusScreenStart, QPushButton#focusScreenPause, QPushButton#focusScreenFinished { "
+        "QPushButton#focusScreenStart, QPushButton#focusScreenPause, QPushButton#focusScreenFinished, "
+        "QPushButton#focusScreenSkip, QPushButton#focusScreenFinish { "
         f"font-weight: {WEIGHT_STRONG}; padding: {pad + 2}px {pad * 3}px; }}"
         f"{words} {{ background: transparent; color: {palette['text']}; border: none; "
         f"font-weight: {WEIGHT_STRONG}; padding: {pad + 2}px {pad * 2}px; }}"
