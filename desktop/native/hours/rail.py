@@ -72,8 +72,6 @@ from desktop.native.weekmodel import (
 from desktop.native.widgets import FlowLayout, overlay_scroll_bars
 
 RAIL_PX = 280
-# The most rows the focus list shows before it scrolls, so a long one never pushes the rest away.
-FOCUS_ROWS = 6
 LETTERS = ("M", "T", "W", "T", "F", "S", "S")
 MONTHS = (
     "January",
@@ -797,8 +795,8 @@ class Rail(QFrame):
         ]
 
     def _fit_tasks(self) -> None:
-        """As tall as its rows, up to FOCUS_ROWS."""
-        rows = min(self.tasks.count(), FOCUS_ROWS)
+        """As tall as all its rows: the rail scrolls as a whole, and a box of its own clipped the last."""
+        rows = self.tasks.count()
         if rows:
             self.tasks.ensurePolished()
             margins = self.tasks.contentsMargins()
