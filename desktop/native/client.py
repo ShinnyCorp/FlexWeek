@@ -28,10 +28,10 @@ PASSWORD_LENGTH_HINT = "Password: use 12–128 characters."
 USERNAME_HINT = "Username: 3–32 letters, numbers or underscores."
 USERNAME_ERROR = "That username is not 3–32 letters, numbers or underscores."
 # Sign-in and sign-up say which thing is wrong wherever FlexWeek can tell. The server answers a wrong
-# password and an unknown username alike on purpose, so that one sentence says so.
-SIGN_IN_WRONG = (
-    "Wrong username or password. FlexWeek doesn't say which, so no one can find out who has an account."
-)
+# password and an unknown username alike on purpose; the sign-in card's link says why.
+SIGN_IN_WRONG = "Wrong username or password."
+SIGN_IN_WHY_LINK = "Why doesn't it say which?"
+SIGN_IN_WHY = "FlexWeek doesn't say which, so no one can find out who has an account."
 SIGN_IN_NO_USERNAME = "Type your username."
 SIGN_IN_NO_PASSWORD = "Type your password."
 SIGN_IN_BAD_USERNAME = (

@@ -103,6 +103,7 @@ from desktop.native.widgets import (
     FitScroll,
     FlowLayout,
     Form,
+    PasswordField,
     Segmented,
     Swatches,
     Switch,
@@ -1609,12 +1610,10 @@ class AccountDialog(Dialog):
         column.setSpacing(SPACING[2])
         sheet_section(column, "Password", ACCOUNT_PASSWORD_NOTE)
         form = Form(stacked=True)
-        self.current_password = QLineEdit()
-        self.current_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.current_password = PasswordField()
         self.current_password.setObjectName("currentPassword")
         form.addRow("Current password", self.current_password)
-        self.new_password = QLineEdit()
-        self.new_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.new_password = PasswordField()
         self.new_password.setObjectName("newPassword")
         form.addRow("New password", self.new_password)
         column.addLayout(form)
