@@ -188,7 +188,7 @@ def child_main(args: argparse.Namespace) -> int:
     from desktop.native.hours.geometry import FIRST, Axis
     from desktop.native.hours.hand import surface_at
     from desktop.native.hours.zoom import HoursScroll
-    from desktop.native.layouts.registry import sanitize_layout
+    from desktop.native.layouts.registry import options_for, sanitize_layout
     from desktop.native.look import sanitize_look
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
@@ -1541,6 +1541,39 @@ def child_main(args: argparse.Namespace) -> int:
         yield ("wait", 300)
         expect(opened == "History essay", f"opened {opened!r}")
 
+    def week_fold(r: Rig) -> Step:
+        """J8: Timeline's fold handle carried one day left by the pointer. The counts follow while it
+        is held, Wednesday goes to the right page, and the fold is kept with the look."""
+        yield from r.tab("week")
+        before = window._layout
+        try:
+            handle = window.planner.currentWidget().findChild(QWidget, "timelineFold")
+            expect(handle is not None and handle.isVisible(), "the week shows the fold's handle")
+            expect(handle.text() == "‹ 3 | 4 ›", f"the handle reads {handle.text()!r}")
+            hours = r.surface("hours")
+            start = handle.mapToGlobal(handle.rect().center())
+            wednesday = hours.tracks[2].area
+            # Over Wednesday and past its middle, on the way left.
+            over = hours.mapToGlobal(QPointF(wednesday.left() + wednesday.width() * 0.3, 0)).toPoint()
+            held: list[str] = []
+            yield from r.drag(start, QPoint(over.x(), start.y()), held=lambda: held.append(handle.text()))
+            expect(held == ["‹ 2 | 5 ›"], f"while held the handle read {held}")
+            yield (
+                "until",
+                lambda: options_for(window._layout, "timeline")["fold"] == "2",
+                3000,
+                "the fold to be kept",
+            )
+            tracks = r.surface("hours").tracks
+            gutter = tracks[2].area.left() - tracks[1].area.right()
+            expect(gutter > 20, f"the gutter is between Tuesday and Wednesday ({gutter:.0f} px there)")
+            saved = json.loads(window._look_path().read_text())["layout"]["options"].get("timeline", {})
+            expect(saved.get("fold") == "2", f"the look file keeps {saved}")
+        finally:
+            window._layout = before
+            window._save_look()
+            window._on_week()
+
     scenarios = [
         Scenario("day-move", "day", day_move),
         Scenario("day-resize", "day", day_resize),
@@ -1574,6 +1607,7 @@ def child_main(args: argparse.Namespace) -> int:
         Scenario("week-second-move-in-flight", "week", week_second_move_in_flight),
         Scenario("week-agrees-with-day", "week", week_agrees_with_day),
         Scenario("week-small-large", "week", week_small_large),
+        Scenario("week-fold", "week", week_fold, only=("timeline",)),
         Scenario("month-times", "month", month_times),
         Scenario("month-open-day", "month", month_open_day),
         Scenario("month-move-date", "month", month_move_date),
