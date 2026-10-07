@@ -15,9 +15,10 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QPoint
 from PySide6.QtGui import QColor, QImage
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
 from desktop.native import motion
+from desktop.native.layouts.registry import LAYOUTS
 from desktop.native.look import resolved_palette
 from desktop.native.settings import FADE_PX, SettingsPage
 from desktop.native.widgets import ChoiceCard
@@ -178,3 +179,83 @@ def test_mid_scroll_the_row_above_the_footer_is_the_fade(
     page.close_page()
 
 
+# --- #67: Appearance ---------------------------------------------------------------------------
+
+
+def test_the_chosen_look_card_is_ringed_and_says_wearing_inside_the_card(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    page = open_settings(qapp, window, (1280, 800))
+    height = page.look.sizeHint().height()
+    tile(page, "Nocturne").chosen.emit()
+    for _ in range(5):
+        qapp.processEvents()
+    assert page.look.sizeHint().height() == height, "wearing a look moves nothing below it"
+    accent = palette_of(window)["accent"]
+    worn = tile(page, "Nocturne")
+    ring = worn.grab().toImage()
+    assert near(ring.pixelColor(worn.width() // 2, 1), accent)
+    inside = [label.text() for label in worn.findChildren(QLabel) if label.isVisibleTo(worn)]
+    assert "Wearing" in inside
+    for other in page.look.more.cards:
+        if other is not worn:
+            assert not near(other.grab().toImage().pixelColor(other.width() // 2, 1), accent)
+            assert "Wearing" not in [
+                label.text() for label in other.findChildren(QLabel) if label.isVisibleTo(other)
+            ]
+    assert page.look.worn.isHidden(), "no line under the grid: the card says it"
+    page.close_page()
+
+
+def test_light_dark_and_system_show_the_chosen_one_the_same_way(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    page = open_settings(qapp, window, (1280, 800))
+    segments = page.look.main.buttons()
+    height = page.look.sizeHint().height()
+    segments[2].click()
+    for _ in range(5):
+        qapp.processEvents()
+    assert page.look.sizeHint().height() == height, "wearing System moves nothing below it"
+    accent = palette_of(window)["accent"]
+    assert near(segments[2].grab().toImage().pixelColor(segments[2].width() // 2, 1), accent)
+    assert not near(segments[0].grab().toImage().pixelColor(segments[0].width() // 2, 1), accent)
+    line = page.look.main_worn
+    assert line.text() == "Wearing System" and line.isVisibleTo(page)
+    assert where(line, page).y() >= where(page.look.main, page).y() + page.look.main.height()
+    tile(page, "Nocturne").chosen.emit()
+    for _ in range(5):
+        qapp.processEvents()
+    assert not near(segments[2].grab().toImage().pixelColor(segments[2].width() // 2, 1), accent)
+    assert line.text().strip() == ""
+    page.close_page()
+
+
+@pytest.mark.parametrize("size", [(1024, 700), (1280, 800)])
+def test_the_look_grids_stretch_to_the_row(
+    qapp: QApplication, window: NativeWindow, size: tuple[int, int]
+) -> None:
+    page = open_settings(qapp, window, size)
+    page.look.set_saved([{"name": "Night study", "base": "light"}, {"name": "Bus", "base": "dark"}])
+    for _ in range(8):
+        qapp.processEvents()
+    for grid in (page.look.more, page.look.yours):
+        assert grid.cards
+        right = max(card.geometry().right() + 1 for card in grid.cards)
+        assert grid.width() - right <= 16, (size, grid.width(), right)
+        for card in grid.cards:
+            sharp = card.picture.pixmap().width() / card.picture.pixmap().devicePixelRatio()
+            assert abs(sharp - card.picture.width()) <= 2, "the picture is drawn at the card's width"
+    page.close_page()
+
+
+def test_the_button_and_the_description_have_their_new_words(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    page = open_settings(qapp, window, (1280, 800))
+    assert page.findChild(QPushButton, "prefCustomise").text() == "Edit your own look…"
+    sentence = "The week grid with the sidebar. Its colours come from the look you choose above."
+    assert LAYOUTS["classic"].summary == sentence
+    card = next(card for card in page.findChildren(ChoiceCard) if card.accessibleName() == "Today's app")
+    assert card.note.text() == sentence
+    page.close_page()

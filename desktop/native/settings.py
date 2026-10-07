@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
 from uuid import uuid4
@@ -139,15 +140,19 @@ ACCENT_LABELS = {"default": "Blue"}
 OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
 # A look of the student's own sets the accent and every knob (look.py's resolved_palette and
 # effective_look), so while one is worn they show its values and say where they change instead.
-OWN_LOOK_ACCENT_NOTE = "{name} sets the accent. To change it, open Customise…"
-OWN_LOOK_KNOBS_NOTE = "{name} sets these. To change them, open Customise… in Colours."
+OWN_LOOK_ACCENT_NOTE = "{name} sets the accent. To change it, open Edit your own look…"
+OWN_LOOK_KNOBS_NOTE = "{name} sets these. To change them, open Edit your own look… in Colours."
 CUSTOMISE = "Customise"
+# The button on the Colours card; the command bar and menus keep the shorter name.
+EDIT_OWN_LOOK = "Edit your own look…"
 CUSTOMISE_TIP = "Change any look, colours, corners and fonts included, and save it as your own."
 # A saved look's choice under More looks, after the ten, by its name.
 SAVED_LOOK = "saved:"
 YOUR_LOOKS = "Your looks"
 UNSAVED_LOOK = "{name} (not saved)"
 WEARING = "Wearing {name}"
+# What a card says inside itself while its look is the one worn.
+WORN = "Wearing"
 # The footer says this one thing; the status line's routine "Saving…" and "Saved preferences." would
 # have it swap between two sentences for the same fact (Grok Bot's 0.17.0 audit, T33).
 SAVE_STATE = "Changes are saved as you make them."
@@ -330,6 +335,41 @@ def _section_page(title: str, cards: tuple[QWidget, ...]) -> QWidget:
     return page
 
 
+class LookCard(ChoiceCard):
+    """A look's card. The one worn is ringed and says so inside the card. Every card keeps that line
+    (a space when it is not worn), so wearing another look moves nothing on the page."""
+
+    def __init__(self, name: str, width: int) -> None:
+        super().__init__(name, "", width)
+        self.note.setVisible(True)
+
+    def select(self, on: bool) -> None:
+        super().select(on)
+        self.note.setText(WORN if on else " ")
+        self.setAccessibleDescription(WORN if on else "")
+
+
+class LookGrid(CardGrid):
+    """The looks as cards that share the row: as many to a row as hold their smallest width, each
+    as wide as the row allows, its picture drawn at that width (the grid left 75 to 190 px empty on
+    the right)."""
+
+    def __init__(self, card_width: int, gap: int, draw: Callable[[ChoiceCard, int], None]) -> None:
+        super().__init__(card_width, gap)
+        self._draw = draw
+
+    def _place(self, room: int) -> None:
+        super()._place(room)
+        columns = self.columns()
+        if not columns:
+            return
+        picture = (room - (columns - 1) * self._gap) // columns - CARD_WIDTH_PAD
+        for card in self.cards:
+            if card.picture.width() != picture:
+                card.set_width(picture)
+                self._draw(card, picture)
+
+
 class LookPicker(Choices):
     """Look as "Light | Dark | System", with every other look as a small picture of a week in its own
     colours under them, and the student's own looks after those (decision 24 of 0.17; Grok Bot's
@@ -346,13 +386,14 @@ class LookPicker(Choices):
         for label, token in ordered:
             self._remember(label, token)
         self._tile_width = LOOK_TILE
+        self._saved: list[dict] = []
         self.main = Segmented(tuple(item for item in ordered if item[1] in main), f"{name}Main")
         self.main.setAccessibleName("Look")
-        self.more = CardGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP)
+        self.more = LookGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP, self._draw)
         self.more.setObjectName(f"{name}More")
         self.more.setAccessibleName(MORE_LOOKS)
         self.more.set_cards([self._tile(label, token, []) for label, token in ordered if token not in main])
-        self.yours = CardGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP)
+        self.yours = LookGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP, self._draw)
         self.yours.setObjectName(f"{name}Yours")
         self.yours.setAccessibleName(YOUR_LOOKS)
         self.worn = QLabel()
@@ -366,6 +407,11 @@ class LookPicker(Choices):
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
         box.addWidget(self.main, 0, Qt.AlignmentFlag.AlignLeft)
+        # Under Light, Dark and System, as the card says it for the others. Always shown, a space when
+        # nothing is worn here, so choosing another look moves nothing.
+        self.main_worn = QLabel(" ")
+        self.main_worn.setObjectName("settingsCardNote")
+        box.addWidget(self.main_worn)
         caption = QLabel(MORE_LOOKS)
         caption.setObjectName("settingsCardNote")
         box.addWidget(caption)
@@ -376,17 +422,21 @@ class LookPicker(Choices):
         self.main.currentIndexChanged.connect(self._picked_main)
         self._built_in = self.count()
         self._unsaved: str | None = None
-        self._saved: list[dict] = []
 
     def _tile(self, label: str, token: str, saved: list[dict]) -> ChoiceCard:
         """A look as a picture of a week in its colours over its name; one click, or Space or Enter,
         wears it."""
-        card = ChoiceCard(label, "", self._tile_width)
+        card = LookCard(label, self._tile_width)
         card.setProperty("token", token)
         pack, look = look_choice(token, saved)
         card.set_picture(look_preview(pack, look, self._tile_width))
         card.chosen.connect(self._picked_tile)
         return card
+
+    def _draw(self, card: ChoiceCard, width: int) -> None:
+        """A card's picture at `width`: drawn again when the card is stretched, so it stays sharp."""
+        pack, look = look_choice(card.property("token"), self._saved)
+        card.set_picture(look_preview(pack, look, width))
 
     def set_text_scale(self, scale: float) -> None:
         """The pictures as much wider as the text is larger, so a name keeps its one line under its
@@ -398,8 +448,7 @@ class LookPicker(Choices):
         for grid in (self.more, self.yours):
             for card in grid.cards:
                 card.set_width(width)
-                pack, look = look_choice(card.property("token"), self._saved)
-                card.set_picture(look_preview(pack, look, width))
+                self._draw(card, width)
             grid.set_card_width(width + CARD_WIDTH_PAD)
 
     def set_saved(self, looks: list[dict]) -> None:
@@ -432,12 +481,14 @@ class LookPicker(Choices):
         self.setCurrentIndex(self.findData(self.sender().property("token")))
 
     def _say_worn(self) -> None:
-        """Light, Dark and System show no choice while another look is worn, so the look is named
-        where the pictures are, as well as marked on its own."""
-        name = self.currentText() or (UNSAVED_LOOK.format(name=self._unsaved) if self._unsaved else "")
-        elsewhere = bool(name) and self.main.currentIndex() < 0
-        self.worn.setText(WEARING.format(name=name) if elsewhere else "")
-        self.worn.setVisible(elsewhere)
+        """The look worn is marked where it is picked: Light, Dark and System say it under themselves,
+        a card inside itself. A look of the student's own that is not saved has neither, so the
+        line under the pictures names it."""
+        on_main = self.main.currentIndex() >= 0
+        self.main_worn.setText(WEARING.format(name=self.currentText()) if on_main else " ")
+        unsaved = not self.currentText() and bool(self._unsaved)
+        self.worn.setText(WEARING.format(name=UNSAVED_LOOK.format(name=self._unsaved)) if unsaved else "")
+        self.worn.setVisible(unsaved)
 
     def _show(self, index: int) -> None:
         token = self.itemData(index) if index >= 0 else None
@@ -642,7 +693,7 @@ class SettingsPage(QWidget):
         self.accent_note = _note(OWN_ACCENT_NOTE, "settingsCardNote")
         # The width of the swatches' column, so the line under them is one line.
         self.accent_note.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.customise = _page_button(f"{CUSTOMISE}…", "prefCustomise")
+        self.customise = _page_button(EDIT_OWN_LOOK, "prefCustomise")
         self.customise.setToolTip(CUSTOMISE_TIP)
         self.customise.clicked.connect(self._open_customise)
         self.accent_chips = Switch("Use the accent on category chips")

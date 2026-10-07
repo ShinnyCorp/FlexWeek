@@ -80,7 +80,7 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "classic",
             "plan",
             "Today's app",
-            "The week grid with the sidebar. Its colours are the Look menu.",
+            "The week grid with the sidebar. Its colours come from the look you choose above.",
             purpose="Calendar",
         ),
         LayoutSpec(

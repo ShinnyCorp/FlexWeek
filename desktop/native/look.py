@@ -1148,6 +1148,11 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f'QPushButton[segment="true"]:hover {{ color: {palette["text"]}; }}'
         f'QPushButton[segment="true"]:checked {{ background: {palette["field"]}; color: {palette["text"]}; '
         f"border: {chosen_edge}; }}"
+        # The look's own segments say which is worn by a ring in the accent, as its cards do.
+        f'QFrame#prefThemeMain QPushButton[segment="true"] {{ border: 2px solid transparent; '
+        f"padding: {max(pad - 3, 2)}px {pad + 7}px; }}"
+        'QFrame#prefThemeMain QPushButton[segment="true"]:checked '
+        f"{{ border: 2px solid {palette['accent']}; }}"
         'QPushButton[segment="true"]:disabled { background: transparent; '
         f'color: {palette["hairline_strong"]}; }}'
         # Still raised, so a choice that cannot be changed here says which it is.
