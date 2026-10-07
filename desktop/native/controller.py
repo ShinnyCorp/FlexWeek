@@ -229,6 +229,7 @@ class NativeSession(QObject):
         self._join_step = False
         # New homework to give a time once its save lands, when the student plans as they add.
         self._plan_after_save: set[str] = set()
+        self._spread_after_save: tuple[str, int, str] | None = None
         self._redo: list[dict] = []
         self._committed_blocks: list[dict] = []
         self._committed_assignments: dict[str, dict] = {}
@@ -856,7 +857,11 @@ class NativeSession(QObject):
         self.blocks = apply_block_edit(self.blocks, validated, scope=scope, day=day)
         self._touch("editing " + validated["title"], keep={validated["id"]})
 
-    def add_homework(self, assignment: dict, *, days: list[int] | None = None) -> None:
+    def add_homework(
+        self, assignment: dict, *, days: list[int] | None = None, spread: bool = False
+    ) -> None:
+        """Save `assignment` and keep its sessions in step. `spread` drops every open time it has and
+        makes no new one, for `spread_after_save` to write the sessions that replace them."""
         payload = {key: value for key, value in assignment.items() if key in Assignment.model_fields}
         payload.setdefault("revision", 0)
         known = self.assignments.get(payload.get("id"))
@@ -870,7 +875,8 @@ class NativeSession(QObject):
         # One session as long as the old estimate is the homework's only planned time, so it follows
         # the new estimate. Spread, pasted or partly planned sessions keep the lengths already chosen.
         whole = (
-            len(sessions) == 1
+            not spread
+            and len(sessions) == 1
             and known is not None
             and sessions[0]["duration_min"] == known.get("estimate_min")
         )
@@ -878,6 +884,8 @@ class NativeSession(QObject):
         for item in self.blocks:
             if item.get("assignment_id") != body["id"]:
                 blocks.append(item)
+                continue
+            if spread and not item.get("completed"):
                 continue
             session = deepcopy(item)
             session["title"] = body["title"]
@@ -892,7 +900,7 @@ class NativeSession(QObject):
             if "fixed_at" in assignment and not session.get("completed"):
                 self._fix_session(session, assignment["fixed_at"])
             blocks.append(TimeBlock.model_validate(session).model_dump(mode="json"))
-        if not sessions:
+        if not sessions and not spread:
             session = {
                 "id": str(uuid4()),
                 "title": body["title"],
@@ -970,6 +978,11 @@ class NativeSession(QObject):
             and not block.get("completed")
         }
         self._plan_after_save |= waiting
+
+    def spread_after_save(self, assignment_id: str, session_min: int, from_date: str) -> None:
+        """Once the save now under way lands, spread this homework into sessions of `session_min` from
+        `from_date` and add them, with no preview to answer: the editor already said what they would be."""
+        self._spread_after_save = (assignment_id, session_min, from_date)
 
     def place_session(self, block_id: str, day: int, start_min: int) -> bool:
         """Give homework that needs a time the one the student chose, dragged or picked. It is pinned,
@@ -1673,6 +1686,9 @@ class NativeSession(QObject):
             self._join_step = False
             self.pending_save = None
             self._save_status = None
+            spread_next, self._spread_after_save = self._spread_after_save, None
+            if spread_next is not None:
+                QTimer.singleShot(0, lambda: self.preview_spread(*spread_next, then=self.confirm_spread))
             planned_next, self._plan_after_save = self._plan_after_save, set()
             if planned_next:
                 # Plan it for me as I add it: the new homework's time, joined to the add in one step.
@@ -1705,6 +1721,7 @@ class NativeSession(QObject):
                 return
             # A plan waiting on this save must not fire after some later, unrelated one.
             self._plan_after_save = set()
+            self._spread_after_save = None
             self._join_step = False
             refused_travel = bool(self._traveling) and error.status == 409
             if self._traveling and self._travel_step is not None:
@@ -2497,7 +2514,13 @@ class NativeSession(QObject):
         self.late_preview = None
         return True
 
-    def preview_spread(self, assignment_id: str, session_min: int, from_date: str) -> None:
+    def preview_spread(
+        self,
+        assignment_id: str,
+        session_min: int,
+        from_date: str,
+        then: Callable[[], object] | None = None,
+    ) -> None:
         item = self.assignments.get(assignment_id)
         if item is None or item.get("completed"):
             return
@@ -2553,6 +2576,8 @@ class NativeSession(QObject):
             }
             self._say(summary)
             self.week_changed.emit()
+            if then is not None:
+                then()
 
         self.client.request(
             "POST",
