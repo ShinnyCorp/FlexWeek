@@ -195,6 +195,9 @@ class LayoutView(QWidget):
     menu_requested = Signal(QPoint)
     # A level the student chose on hours this design made, to remember: the scale's key and pixels an hour.
     zoomed = Signal(str, int)
+    # One of this design's options the student changed on its own page, as Timeline's fold, to keep
+    # with the look: the option's key and its new value.
+    option_set = Signal(str, str)
 
     layout_id = ""
 

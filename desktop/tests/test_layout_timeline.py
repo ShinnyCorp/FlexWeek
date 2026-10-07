@@ -430,13 +430,18 @@ def test_the_paper_shows_under_the_hours_and_the_notes_outside_the_window_too(qa
 
 
 def test_the_gutter_is_plain_paper_either_side_of_the_fold_line(qapp: QApplication) -> None:
-    """The fold is one line. The shade that once darkened the pages toward it is gone."""
+    """The fold is one line. The shade that once darkened the pages toward it is gone. On Week it runs
+    down the middle of the gutter between the hours' pages, which the hours' scroll bar puts a little
+    left of the paper's middle; on Day it is the paper's middle."""
     for tab in ("week", "day"):
         view = shown(qapp, tab)
         spread = view.findChild(QWidget, f"timeline{tab.title()}Spread")
         paper = view.scene.tokens["surface"]
         seen = Seen(view)
-        fold, middle = spread.width() // 2, spread.height() // 2
+        fold = spread.width() // 2
+        if tab == "week":
+            fold = spread.mapFromGlobal(QPointF(fold_x(view), 0)).toPoint().x()
+        middle = spread.height() // 2
         assert [
             reach
             for reach in (3, 8, 14)
@@ -705,6 +710,248 @@ def test_a_block_rested_at_the_top_of_the_hours_scrolls_them_back(qapp: QApplica
         qapp.processEvents()
     assert bar.value() < before, "rested at the top of the hours: they scroll back"
     view.hand.cancel()
+
+
+# The fold between the pages (J8): a handle in the row of day names, dragged or stepped
+
+
+def handle_of(view: TimelineView) -> QWidget:
+    found = view.findChild(QWidget, "timelineFold")
+    assert found is not None and found.isVisible(), "the fold has its handle"
+    return found
+
+
+def pages(view: TimelineView) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """The days on each page, read from where the gutter falls between the columns."""
+    tracks = canvas(view).tracks
+    gaps = [at for at in range(1, 7) if tracks[at].area.left() - tracks[at - 1].area.right() > 20]
+    assert len(gaps) == 1, f"one gutter, not {gaps}"
+    return tuple(range(gaps[0])), tuple(range(gaps[0], 7))
+
+
+def fold_x(view: TimelineView) -> float:
+    """Where the fold runs on the screen: halfway across the gutter between the pages."""
+    hours, tracks = canvas(view), canvas(view).tracks
+    left = len(pages(view)[0])
+    middle = (tracks[left - 1].area.right() + tracks[left].area.left()) / 2
+    return hours.mapToGlobal(QPointF(middle, 0)).x()
+
+
+def centre_of(widget: QWidget) -> QPointF:
+    return widget.mapToGlobal(QRectF(widget.rect()).center())
+
+
+def over(view: TimelineView, day: int, share: float) -> QPointF:
+    """A point in the row of day names over `day`, `share` of the way across its column."""
+    hours = canvas(view)
+    area = hours.tracks[day].area
+    across = hours.mapToGlobal(QPointF(area.left() + area.width() * share, 0)).x()
+    return QPointF(across, centre_of(handle_of(view)).y())
+
+
+def press(widget: QWidget, kind: QEvent.Type, at: QPointF, held: bool) -> None:
+    buttons = Qt.MouseButton.LeftButton if held else Qt.MouseButton.NoButton
+    QApplication.sendEvent(
+        widget,
+        QMouseEvent(
+            kind,
+            widget.mapFromGlobal(at),
+            at,
+            Qt.MouseButton.LeftButton,
+            buttons,
+            Qt.KeyboardModifier.NoModifier,
+        ),
+    )
+
+
+def drag_fold(qapp: QApplication, view: TimelineView, to: QPointF, held=None) -> object:
+    """Press the handle, carry it to `to` in steps, run `held` while it is still pressed, let go."""
+    handle = handle_of(view)
+    start = centre_of(handle)
+    press(handle, QEvent.Type.MouseButtonPress, start, True)
+    for step in range(1, 7):
+        press(handle, QEvent.Type.MouseMove, start + (to - start) * (step / 6), True)
+    qapp.processEvents()
+    seen = held() if held is not None else None
+    press(handle, QEvent.Type.MouseButtonRelease, to, False)
+    qapp.processEvents()
+    return seen
+
+
+def kept_by(view: TimelineView) -> list[tuple[str, str]]:
+    kept: list[tuple[str, str]] = []
+    view.option_set.connect(lambda key, value: kept.append((key, value)))
+    return kept
+
+
+def test_the_folds_handle_sits_on_the_fold_in_the_row_of_day_names_and_counts_each_page(
+    qapp: QApplication,
+) -> None:
+    view = shown(qapp)
+    handle = handle_of(view)
+    heads = view.findChild(QWidget, "timelineHeads")
+    assert handle.text() == "‹ 3 | 4 ›"
+    assert handle.toolTip() == "Drag to move days between the pages"
+    assert handle.parentWidget() is heads, "in the row of day names, not on the hours"
+    assert handle.geometry().top() >= 0 and handle.geometry().bottom() < heads.height()
+    assert abs(centre_of(handle).x() - fold_x(view)) <= 1, "on the fold"
+    assert pages(view) == ((0, 1, 2), (3, 4, 5, 6))
+    assert view.findChildren(QWidget, "timelineFold") == [handle]
+    day = shown(qapp, "day")
+    assert [found for found in day.findChildren(QWidget, "timelineFold") if found.isVisible()] == []
+
+
+@pytest.mark.parametrize(
+    ("day", "share", "left"),
+    [
+        # Past Wednesday's middle, Wednesday goes to the right page; short of it, it stays.
+        (2, 0.4, 2),
+        (2, 0.6, 3),
+        # Thursday comes to the left page once its middle is passed, and not before.
+        (3, 0.4, 3),
+        (3, 0.6, 4),
+        # Past Monday's middle the left page would be empty: it keeps one day, and so does the right.
+        (0, 0.1, 1),
+        (6, 0.9, 6),
+    ],
+)
+def test_a_drag_moves_the_fold_to_the_day_edge_nearest_the_pointer(
+    qapp: QApplication, day: int, share: float, left: int
+) -> None:
+    view = shown(qapp)
+    kept = kept_by(view)
+    words = drag_fold(qapp, view, over(view, day, share), held=lambda: handle_of(view).text())
+    assert words == f"‹ {left} | {7 - left} ›", "the counts follow the pointer while it drags"
+    assert pages(view) == (tuple(range(left)), tuple(range(left, 7)))
+    assert kept == ([] if left == 3 else [("fold", str(left))])
+    assert handle_of(view).text() == f"‹ {left} | {7 - left} ›"
+    assert abs(centre_of(handle_of(view)).x() - fold_x(view)) <= 1, "back on the fold once let go"
+    areas = [track.area.width() for track in canvas(view).tracks]
+    for page in pages(view):
+        widths = [areas[at] for at in page]
+        assert max(widths) - min(widths) < 1, "a page's days share its width equally"
+
+
+def test_the_feet_and_the_fold_line_follow_the_fold(qapp: QApplication) -> None:
+    view = shown(qapp)
+    drag_fold(qapp, view, over(view, 2, 0.4))
+    assert pages(view)[0] == (0, 1)
+    fold = fold_x(view)
+    week = view.findChild(QWidget, "timelineWeekFoot")
+    notes = view.findChild(QWidget, "timelineNotesFoot")
+    ends = week.mapToGlobal(QPointF(week.width(), 0)).x()
+    starts = notes.mapToGlobal(QPointF(0, 0)).x()
+    assert ends < fold < starts, "each page's foot stays on its page"
+    assert abs((fold - ends) - (starts - fold)) <= 2, "the gutter between the feet is centred on the fold"
+    spread = view.findChild(QWidget, "timelineWeekSpread")
+    paper = view.scene.tokens["surface"]
+    seen = Seen(view)
+    at = spread.mapFromGlobal(QPointF(fold, 0)).toPoint().x()
+    middle = spread.height() // 2
+    assert [
+        reach
+        for reach in (3, 8, 14)
+        for side in (-1, 1)
+        if seen.at(spread, QPoint(at + side * reach, middle)).name() != paper
+    ] == [], "paper either side of the fold"
+    assert [seen.at(spread, QPoint(at + beside, middle)).name() for beside in (-1, 0)] != [paper, paper]
+
+
+def test_the_arrows_and_the_left_and_right_keys_move_one_day_across(qapp: QApplication) -> None:
+    view = shown(qapp)
+    kept = kept_by(view)
+
+    def tap(where: str) -> str:
+        handle = handle_of(view)
+        across = {"back": 3, "forward": handle.width() - 4, "middle": handle.width() // 2}[where]
+        QTest.mouseClick(handle, Qt.MouseButton.LeftButton, pos=QPoint(across, handle.height() // 2))
+        qapp.processEvents()
+        return handle_of(view).text()
+
+    assert tap("back") == "‹ 2 | 5 ›"
+    assert pages(view) == ((0, 1), (2, 3, 4, 5, 6))
+    assert tap("forward") == "‹ 3 | 4 ›"
+    assert tap("forward") == "‹ 4 | 3 ›"
+    assert tap("middle") == "‹ 4 | 3 ›", "the counts themselves are not a button"
+    handle = handle_of(view)
+    assert handle.focusPolicy() & Qt.FocusPolicy.TabFocus, "reached with Tab"
+    QTest.keyClick(handle, Qt.Key.Key_Left)
+    assert handle_of(view).text() == "‹ 3 | 4 ›"
+    QTest.keyClick(handle_of(view), Qt.Key.Key_Right)
+    assert handle_of(view).text() == "‹ 4 | 3 ›"
+    assert pages(view) == ((0, 1, 2, 3), (4, 5, 6))
+    assert kept == [("fold", value) for value in ("2", "3", "4", "3", "4")]
+
+
+@pytest.mark.parametrize(
+    ("left", "where", "key", "far"), [(1, "back", "Left", (0, 0.05)), (6, "forward", "Right", (6, 0.95))]
+)
+def test_the_fold_keeps_a_day_on_each_page(
+    qapp: QApplication, left: int, where: str, key: str, far: tuple[int, float]
+) -> None:
+    """1 | 6 and 6 | 1 are the ends: never 0 | 7."""
+    view = shown(qapp, fold=str(left))
+    kept = kept_by(view)
+    words = f"‹ {left} | {7 - left} ›"
+    assert handle_of(view).text() == words
+    assert pages(view) == (tuple(range(left)), tuple(range(left, 7)))
+    handle = handle_of(view)
+    across = 3 if where == "back" else handle.width() - 4
+    QTest.mouseClick(handle, Qt.MouseButton.LeftButton, pos=QPoint(across, handle.height() // 2))
+    QTest.keyClick(handle_of(view), getattr(Qt.Key, f"Key_{key}"))
+    drag_fold(qapp, view, over(view, *far))
+    assert handle_of(view).text() == words
+    assert pages(view) == (tuple(range(left)), tuple(range(left, 7)))
+    assert kept == []
+
+
+def test_while_dragging_a_dashed_line_shows_where_the_fold_lands_and_names_each_page(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from desktop.native.layouts import timeline
+
+    view = shown(qapp)
+    hours = canvas(view)
+    accent = view.scene.tokens["accent"]
+    paper = view.scene.tokens["surface"]
+    wednesday = hours.tracks[2]
+    hours.reveal(2, 21 * 60, 23 * 60)
+    qapp.processEvents()
+    assert hours.in_view(2, 21 * 60) and hours.in_view(2, 23 * 60), "the evening is on screen to be read"
+    # Wednesday's start, where the fold lands once Wednesday goes to the right page; late in the
+    # evening, where Wednesday has nothing.
+    edge = round(wednesday.area.left())
+    evening = range(round(wednesday.point_for(21 * 60).y()), round(wednesday.point_for(23 * 60).y()))
+    inside = QPoint(round(wednesday.area.center().x()), round(wednesday.point_for(22 * 60 + 30).y()))
+
+    def drawn() -> tuple[int, str]:
+        # The whole view, since the paper under the hours is the spread's.
+        seen = Seen(view)
+        line = sum(
+            any(near(seen.at(hours, QPoint(edge + beside, y)), accent, 24) for beside in (-1, 0, 1))
+            for y in evening
+        )
+        return line, seen.at(hours, inside).name()
+
+    line, tint = drawn()
+    assert line == 0 and tint == paper, "no line and no tint before a drag"
+
+    def held() -> tuple[int, str, list[str]]:
+        line, tint = drawn()
+        monkeypatch.setattr(timeline, "QPainter", Said)
+        Said.words = []
+        hours.repaint()
+        monkeypatch.undo()
+        return line, tint, list(Said.words)
+
+    line, tint, words = drag_fold(qapp, view, over(view, 2, 0.3), held=held)
+    assert len(evening) * 0.3 < line < len(evening), "a dashed line down Wednesday's start edge"
+    assert tint != paper, "Wednesday, which changes page, is tinted"
+    assert "Mon–Tue | Wed–Sun" in words, "the pages the fold would make, named"
+    monkeypatch.setattr(timeline, "QPainter", Said)
+    Said.words = []
+    hours.repaint()
+    assert not any("|" in said for said in Said.words), "let go, the line and the names go"
 
 
 # Options and colours

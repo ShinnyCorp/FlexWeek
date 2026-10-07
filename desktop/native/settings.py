@@ -1185,6 +1185,7 @@ class SettingsPage(QWidget):
         layout = sanitize_layout(week_layout)
         for section in self.layout_sections:
             section.pick.setCurrentIndex(max(0, section.pick.findData(layout[section.slot])))
+            section.sync(layout)
         self.reminders.setChecked(preferences.get("reminders_enabled", True) is not False)
         self.lead.setValue(reminder_lead_min(preferences))
         tone = preferences.get("alarm_tone") or FALLBACK

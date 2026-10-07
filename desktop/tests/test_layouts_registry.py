@@ -133,6 +133,17 @@ def test_options_are_the_students_choice_over_the_designs_defaults() -> None:
     assert options_for(choice, "classic") == {}
 
 
+def test_timelines_fold_is_saved_as_one_to_six_days_on_the_left_page_three_as_shipped() -> None:
+    """J8: the fold is one of Timeline's options, so it is kept with the look and reset with the
+    design. 1 | 6 and 6 | 1 are the ends; anything else on disk is the shipped 3 | 4."""
+    assert options_for(None, "timeline")["fold"] == "3"
+    for left in ("1", "2", "3", "4", "5", "6"):
+        saved = sanitize_layout({"main": "timeline", "options": {"timeline": {"fold": left}}})
+        assert options_for(saved, "timeline")["fold"] == left
+    for broken in ("0", "7", "x", 3, None):
+        assert options_for({"options": {"timeline": {"fold": broken}}}, "timeline")["fold"] == "3"
+
+
 @pytest.mark.parametrize("layout_id", DESIGNS)
 def test_every_shipped_colourway_is_readable(layout_id: str) -> None:
     palette = resolved_palette("light-frost", False, None, "default")
