@@ -374,6 +374,14 @@ class HoursScroll(QScrollArea):
             else:
                 self.scroll_to(minute, above, end, keep)
 
+    def placing(self) -> bool:
+        """Whether the hours are still putting themselves where they opened or were left: a time asked
+        for and not reached yet, a minute waiting to be put back, or a minute opened in the middle the
+        student has not scrolled away from. A student's own scroll is not placing."""
+        if self._pending is not None or self._kept is not None:
+            return True
+        return self._centre is not None and self._bar().value() == self._placed
+
     def take_places(self, before: HoursScroll) -> None:
         """Go back where the student left each week and day on `before`, the hours these replace."""
         self._positions = dict(before._positions)
@@ -434,9 +442,13 @@ class HoursScroll(QScrollArea):
             return
         self._lay_out_now()
         if self._at_end:
-            bar.setValue(round(self._y_for(self._start_for_end(self._centre))))
+            wanted = round(self._y_for(self._start_for_end(self._centre)))
         else:
-            bar.setValue(round(self._y_for(self._centre) - self._port_length() / 2))
+            wanted = round(self._y_for(self._centre) - self._port_length() / 2)
+        # Where the bar stops, known before it moves, so whoever watches it sees the hours placing
+        # themselves (`placing`), not the student scrolling.
+        self._placed = min(max(wanted, bar.minimum()), bar.maximum())
+        bar.setValue(wanted)
         self._placed = bar.value()
 
     def showEvent(self, event: object) -> None:  # noqa: N802

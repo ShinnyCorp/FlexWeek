@@ -205,8 +205,8 @@
  {
   "file": "desktop/native/hours/zoom.py",
   "name": "a resize forgets that now was kept in view",
-  "old": "            bar.setValue(round(self._y_for(self._start_for_end(self._centre))))\n",
-  "new": "            bar.setValue(round(self._y_for(self._centre) - self._port_length()))\n",
+  "old": "            wanted = round(self._y_for(self._start_for_end(self._centre)))\n",
+  "new": "            wanted = round(self._y_for(self._centre) - self._port_length())\n",
   "test": "desktop/tests/test_layout_mission.py::test_the_lanes_keep_their_opening_while_the_window_settles"
  }
 ]

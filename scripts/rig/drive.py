@@ -1011,6 +1011,25 @@ def child_main(args: argparse.Namespace) -> int:
         yield from r.settled()
         expect(block(ids["essay"])["start"] == "19:00", "opening the essay moved it")
 
+    def day_drag_row(r: Rig) -> Step:
+        """Clay (J10): a sideways drag on the card beside the open day brings that day to the front, as
+        the arrows do, and moves no block."""
+        yield from day_tab(r)
+        revision = session.revision
+        beside = window.planner.currentWidget().findChild(QWidget, "clayPeek4")
+        expect(beside is not None and beside.isVisible(), "Friday's card is not beside Thursday")
+        start = beside.mapToGlobal(beside.rect().center())
+        yield from r.drag(start, start - QPoint(240, 0))
+        friday = (thursday + timedelta(days=1)).date().isoformat()
+        yield (
+            "until",
+            lambda: session.selected_day == friday and window.planner.currentWidget().row.front == 4,
+            3000,
+            "Friday to come to the front",
+        )
+        show_day(friday)
+        unchanged(revision)
+
     def week_agrees_with_day(r: Rig) -> Step:
         """Moved on Week, the essay is on Friday's Day at that time, and no longer on Thursday."""
         yield from r.tab("week")
@@ -1555,6 +1574,7 @@ def child_main(args: argparse.Namespace) -> int:
         Scenario("day-escape", "day", day_escape),
         Scenario("day-dwell", "day", day_dwell),
         Scenario("day-open", "day", day_open),
+        Scenario("day-drag-row", "day", day_drag_row, only=("clay",)),
         Scenario("day-small-large", "day", day_small_large),
         Scenario("week-move-day", "week", week_move_day),
         Scenario("week-resize-top", "week", week_resize_top),
