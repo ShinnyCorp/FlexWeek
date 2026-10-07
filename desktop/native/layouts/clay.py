@@ -1,12 +1,14 @@
 """Clay deck: the week as a row of clay cards, one day at a time (0.17's Card carousel).
 
 The day in front is a large card of its hours, which scroll and zoom. The days either side peek at 70 %,
-laid out smaller rather than shrunk, so their words stay on the type scale, and they show the stretch
-of the day the card in front shows, with its hours labelled. A card is whole or out of sight, never
-cut by the window's edge. The round arrows beside the card, or the wheel over the row, slide
-it a day at a time. Every card is live hours on the window's hand: a block goes to a neighbour by a
-drop on it, and further by resting on an arrow while it is held, which slides the row. Homework not
-placed yet rests in a pressed-in dish under the row.
+laid out smaller rather than shrunk, so their words stay on the type scale, under a 60 % veil of the
+page's colour so the front holds the eye. They show the stretch of the day the card in front opened
+at, with its hours labelled, and stay there while it scrolls. A card is whole or out of sight, never
+cut by the window's edge. The round arrows beside the card, the wheel over the row, or a sideways
+drag on a neighbour or the room between the cards slide it a day at a time. Every card is live hours
+on the window's hand: a block goes to a neighbour by a drop on it, and further by resting on an arrow
+while it is held, which slides the row. Homework not placed yet rests in a pressed-in dish under the
+row.
 
 Day is the same row with its day's card open wider: its hours, and beside them the day's hours by
 kind and, today, what is left of it.
@@ -22,6 +24,8 @@ from datetime import date
 from PySide6.QtCore import (
     QAbstractAnimation,
     QEasingCurve,
+    QEvent,
+    QObject,
     QPoint,
     QPointF,
     QRectF,
@@ -38,12 +42,14 @@ from PySide6.QtGui import (
     QFontInfo,
     QFontMetricsF,
     QLinearGradient,
+    QMouseEvent,
     QPainter,
     QPainterPath,
     QPen,
     QWheelEvent,
 )
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -139,6 +145,10 @@ RADIUS_BLOCK = round(1.2 * RADIUS_CARD)
 SLIDE_MS = 240
 # Resting a held block on an arrow this long slides the row a day.
 DWELL_S = 0.5
+# The page's colour over the cards beside the one in front, at this strength (J10, board 5b).
+VEIL = 0.6
+# A sideways drag on the row shorter than this, at Normal text, goes back to the day it left.
+DRAG_LEAST = 40
 # The stretch of the day Day's summary counts, as the mock-up does.
 DAY_FROM, DAY_TO = 8 * 60, 22 * 60
 # A block this short on the card in front says nothing; the mock-up's one line starts here.
@@ -249,25 +259,38 @@ def _soft(
         painter.drawRoundedRect(around, max(radius + grow, 0), max(radius + grow, 0))
 
 
+def _shadows(tokens: dict[str, str], lifted: bool) -> list[tuple[float, float, float, QColor, float]]:
+    """The soft shadows under a card, as CSS's box-shadow: down, blur, spread, colour and strength.
+    On a dark page the shadow is the large one."""
+    if family(tokens) == "dark":
+        large = SHADOW_LARGE
+        return [(large.y, large.blur, 0, QColor("#000000"), large.dark_opacity)]
+    ink = QColor(tokens["text"])
+    if lifted:
+        return [(2, 4, 0, ink, 0.06), (22, 40, -16, ink, 0.32)]
+    return [(1, 2, 0, ink, 0.06), (12, 24, -14, ink, 0.24)]
+
+
+def shadowed(rect: QRectF, tokens: dict[str, str], lifted: bool) -> QRectF:
+    """A card with as far as its shadow reaches around it."""
+    sides, top, foot = 0.0, 0.0, 0.0
+    for y, blur, spread, _colour, _alpha in _shadows(tokens, lifted):
+        grow = spread + blur / 2
+        sides, top, foot = max(sides, grow), max(top, grow - y), max(foot, grow + y)
+    return rect.adjusted(-sides, -top, sides, foot)
+
+
 def paint_clay(painter: QPainter, rect: QRectF, tokens: dict[str, str], radius: float, *, lifted: bool,
                shadow: bool = True) -> None:
     """Claymorphism, tempered as the mock-up draws it: the card's surface a touch deeper at its foot,
     a highlight along its top edge, a soft shade inside its foot, a hairline ring, and a soft shadow
-    under it, stronger under the one lifted in front. On a dark page the shadow is the large one."""
+    under it, stronger under the one lifted in front."""
     dark = family(tokens) == "dark"
     text, surface = tokens["text"], tokens["surface"]
     painter.save()
     if shadow:
-        if dark:
-            large = SHADOW_LARGE
-            _soft(painter, rect, radius, large.y, large.blur, 0, QColor("#000000"), large.dark_opacity)
-        else:
-            ink = QColor(text)
-            _soft(painter, rect, radius, 1 if not lifted else 2, 2 if not lifted else 4, 0, ink, 0.06)
-            if lifted:
-                _soft(painter, rect, radius, 22, 40, -16, ink, 0.32)
-            else:
-                _soft(painter, rect, radius, 12, 24, -14, ink, 0.24)
+        for y, blur, spread, colour, alpha in _shadows(tokens, lifted):
+            _soft(painter, rect, radius, y, blur, spread, colour, alpha)
     shape = QPainterPath()
     shape.addRoundedRect(rect, radius, radius)
     ramp = QLinearGradient(rect.topLeft(), rect.bottomLeft())
@@ -728,6 +751,25 @@ class Fade(QWidget):
         painter.end()
 
 
+class Veil(QWidget):
+    """The page's colour over the cards beside the one in front and their shadows, so the front holds
+    the eye; never over the card in front or its shadow. Over the bare page it is the page's own
+    colour, so only the cards show it. The arrows lie above it and draw their own clay."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.shape = QPainterPath()
+        self.colour = QColor("#ffffff")
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        if self.shape.isEmpty():
+            return
+        painter = QPainter(self)
+        painter.fillPath(self.shape, self.colour)
+        painter.end()
+
+
 class Row(QWidget):
     """The days as cards in a row, one in front. It paints their clay; the cards and the hours in
     front draw what is on them. Week slides it here; Day asks the window for another day and slides
@@ -735,8 +777,8 @@ class Row(QWidget):
 
     # A day's name was clicked: open it on Day.
     opened = Signal(int)
-    # On Day, the arrows, the wheel or a rest on an arrow moved to this day of the week, which may be
-    # the Sunday before it (-1) or the Monday after (7).
+    # On Day, the arrows, the wheel, a drag of the row or a rest on an arrow moved to this day of the
+    # week, which may be the Sunday before it (-1) or the Monday after (7).
     turned = Signal(int)
 
     def __init__(self, hand: Hand, keep: Callable[[HoursScroll], HoursScroll]) -> None:
@@ -761,6 +803,17 @@ class Row(QWidget):
         self._from: dict[int, QRectF] = {}
         self._to: dict[int, QRectF] = {}
         self._wheel = 0
+        # The hours the neighbours' stretch was taken for, and the hours open now: Week's week, or
+        # Day's day. While they match, the neighbours stay still.
+        self._held: object = None
+        self._opening: object = None
+        # A drag of the row: where the button went down, and whether it became one (None while it may
+        # still be a click). On a neighbour, the press it held back until it knew.
+        self._grip: QPointF | None = None
+        self._dragging: bool | None = None
+        self._held_press: tuple[QWidget, QPointF, QPointF, Qt.KeyboardModifier] | None = None
+        self._replaying = False
+        self._veil = Veil(self)
         self._fade = Fade(self)
         # Day's date, at the open card's far corner as the mock-up puts it: two labels shown in turn.
         self._date = label("", "clayDate")
@@ -816,6 +869,10 @@ class Row(QWidget):
         for key, scroll in self._hours.items():
             scroll.setVisible(key == ("day" if opened else "week"))
         self._fade.page = QColor(self.tokens["bg"])
+        veil = QColor(self.tokens["bg"])
+        veil.setAlphaF(VEIL)
+        self._veil.colour = veil
+        self._opening = ("day", scene.week.week_start, front) if opened else ("week", scene.week.week_start)
         for arrow in (self.back, self.ahead):
             arrow.tokens = self.tokens
             arrow.setFixedSize(round(ARROW * self.scale), round(ARROW * self.scale))
@@ -854,7 +911,10 @@ class Row(QWidget):
         if self._cards:
             return
         for day in range(7):
-            self._cards[day] = Card(day, self, ClayPainter(scene.tokens, share=PEEK))
+            card = Card(day, self, ClayPainter(scene.tokens, share=PEEK))
+            card.head.installEventFilter(self)
+            card.hours.installEventFilter(self)
+            self._cards[day] = card
         for key, scale in (("week", WEEK_SCALE), ("day", DAY_SCALE)):
             canvas = ClayCanvas(
                 self.hand, ClayPainter(scene.tokens, full=True, wide=key == "day"), self.front_track, self,
@@ -874,6 +934,9 @@ class Row(QWidget):
             scroll.verticalScrollBar().rangeChanged.connect(lambda _low, _high: self._follow())
             self._hours[key] = scroll
             self._heads[key] = head
+        # Over the neighbours, under the hours in front.
+        self._veil.raise_()
+        self._veil.stackUnder(self._hours["week"])
 
     def _front_clicked(self, head: Head) -> None:
         if head.property("opens"):
@@ -883,7 +946,7 @@ class Row(QWidget):
         return [LinearTrack(self._front, area.adjusted(0, END_ROOM / 2, 0, -END_ROOM / 2))]
 
     def peek_track(self, day: int, area: QRectF) -> list[LinearTrack]:
-        """A neighbour's hours are the stretch the card in front shows, on the drag's step."""
+        """A neighbour's hours are the stretch the card in front opened at, on the drag's step."""
         first, last = self._window
         return [LinearTrack(day, area.adjusted(0, 1, 0, -1), Axis.DOWN, first, last)]
 
@@ -996,7 +1059,23 @@ class Row(QWidget):
             self._summary.setGeometry(box.toRect())
         self._fade.setGeometry(self.rect())
         self._place_arrows()
+        self._veil_cards()
         self.update()
+
+    def _veil_cards(self) -> None:
+        """The veil over every neighbour and its shadow, short of the card in front's shadow."""
+        veil = self._veil
+        veil.setGeometry(self.rect())
+        shape = QPainterPath()
+        if self.tokens and self._peeks:
+            for day, rect in self._rects.items():
+                if day != self._front:
+                    shape.addRect(shadowed(rect, self.tokens, False))
+            kept = QPainterPath()
+            kept.addRect(shadowed(self._rects[self._front], self.tokens, True))
+            shape = shape.subtracted(kept)
+        veil.shape = shape
+        veil.update()
 
     def _place_arrows(self) -> None:
         """The arrows in the gaps either side of the card in front, halfway down; and the fade at the
@@ -1033,11 +1112,16 @@ class Row(QWidget):
             arrow.setAccessibleName(f"Show {name}")
 
     def _follow(self) -> None:
-        """Neighbours show the stretch of the day the card in front shows, on the drag's step, so
-        a block dropped at their top or foot still lands on it."""
+        """Neighbours take the stretch of the day the card in front shows, on the drag's step, so a
+        block dropped at their top or foot still lands on it: when its hours open afresh, another week
+        or another day on Day, and each time they put themselves where they opened while the page
+        settles. Then they stay still while the student scrolls it (J10)."""
         scroll = self.hours
         if scroll is None or not scroll.canvas.tracks:
             return
+        if self._held == self._opening and not scroll.placing():
+            return
+        self._held = self._opening
         track = scroll.canvas.tracks[0]
         top = scroll.verticalScrollBar().value()
         middle = track.area.center().x()
@@ -1092,6 +1176,139 @@ class Row(QWidget):
             step = -1 if self._wheel > 0 else 1
             self._wheel = 0
             self.turn(step)
+
+    # Dragging the row
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        """A press in the room between the cards, or on a neighbour's edge, may start a drag of the row.
+        The card in front is its hours' own: a drag there never moves the row."""
+        front = self._rects.get(self._front)
+        if event.button() != Qt.MouseButton.LeftButton or front is None or front.contains(event.position()):
+            super().mousePressEvent(event)
+            return
+        self._grip, self._dragging = event.globalPosition(), None
+        event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._grip is None or self._held_press is not None:
+            super().mouseMoveEvent(event)
+            return
+        self._drag_to(event.globalPosition())
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._grip is None or self._held_press is not None or event.button() != Qt.MouseButton.LeftButton:
+            super().mouseReleaseEvent(event)
+            return
+        self._let_go(event.globalPosition())
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        """On a neighbour's name or hours, a press is held back until the pointer shows what it is: a
+        sideways drag moves the row; anything else is handed on as it came, so a click still opens the
+        day or a block and a drag up or down still carries a block."""
+        if self._replaying or not isinstance(event, QMouseEvent):
+            return False
+        kind = event.type()
+        if kind == QEvent.Type.MouseButtonPress:
+            left = event.button() == Qt.MouseButton.LeftButton
+            if not left or self.hand.busy or not isinstance(watched, QWidget):
+                return False
+            self._grip, self._dragging = event.globalPosition(), None
+            self._held_press = (watched, event.position(), event.globalPosition(), event.modifiers())
+            return True
+        if self._held_press is None or self._held_press[0] is not watched:
+            return False
+        if kind == QEvent.Type.MouseMove:
+            if self._drag_to(event.globalPosition()) is False:
+                self._hand_on(event)
+            return True
+        if kind == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            if self._dragging:
+                self._held_press = None
+                self._let_go(event.globalPosition())
+            else:
+                self._hand_on(event)
+            return True
+        return False
+
+    def _hand_on(self, event: QMouseEvent) -> None:
+        """Give the neighbour the press the row held back, then `event`, as if the row never looked."""
+        held = self._held_press
+        assert held is not None
+        watched, local, at, modifiers = held
+        self._held_press, self._grip, self._dragging = None, None, None
+        left = Qt.MouseButton.LeftButton
+        self._replaying = True
+        try:
+            QApplication.sendEvent(
+                watched, QMouseEvent(QEvent.Type.MouseButtonPress, local, at, left, left, modifiers)
+            )
+            QApplication.sendEvent(
+                watched,
+                QMouseEvent(
+                    event.type(), event.position(), event.globalPosition(), event.button(), event.buttons(),
+                    event.modifiers(),
+                ),
+            )
+        finally:
+            self._replaying = False
+
+    def _drag_to(self, at: QPointF) -> bool | None:
+        """The row follows the pointer once it has gone sideways further than a click strays, and more
+        across than up or down. None while that is not known yet; False when it went up or down."""
+        grip = self._grip
+        if grip is None:
+            return None
+        across, down = at.x() - grip.x(), at.y() - grip.y()
+        if self._dragging is None:
+            if max(abs(across), abs(down)) < QApplication.startDragDistance():
+                return None
+            self._dragging = abs(across) > abs(down)
+            if self._dragging:
+                self._slide.stop()
+        if self._dragging:
+            self._put({day: rect.translated(across, 0) for day, rect in self._targets().items()})
+        return self._dragging
+
+    def _let_go(self, at: QPointF) -> None:
+        """Settle on the day nearest the middle, as the arrows do; a drag shorter than DRAG_LEAST goes
+        back. On Day the window is asked for the day, as the arrows ask it."""
+        grip, dragging = self._grip, self._dragging
+        self._grip = self._dragging = None
+        if grip is None or not dragging:
+            return
+        across = at.x() - grip.x()
+        if abs(across) < DRAG_LEAST * self.scale:
+            self._go_back()
+            return
+        towards = 1 if across < 0 else -1
+        targets = self._targets()
+        here = targets[self._front]
+        beside = targets.get(self._front + towards, targets.get(self._front - towards))
+        pitch = abs(beside.center().x() - here.center().x()) if beside is not None else here.width()
+        target = self._front + towards * max(1, round(abs(across) / max(pitch, 1.0)))
+        target = min(max(target, -1 if self._open else 0), 7 if self._open else 6)
+        if target == self._front:
+            self._go_back()
+        elif not self._open:
+            self._go(target, "slide")
+        else:
+            left = self._front
+            self.turned.emit(target)
+            if self._front == left:
+                # The window shows the day later, or not at all: the row goes back meanwhile, and slides
+                # from wherever it is when the day arrives.
+                self._go_back()
+
+    def _go_back(self) -> None:
+        """The row back to the day in front, sliding as the arrows slide it, at once without motion."""
+        motion_level, rects = app_level(), self._targets()
+        length = duration(SLIDE_MS, motion_level)
+        if length > 0 and moves(motion_level) and self.isVisible() and self._rects:
+            self._from, self._to = dict(self._rects), rects
+            self._slide.setDuration(length)
+            self._slide.start()
+            return
+        self._put(rects)
 
     # While a block is held
 

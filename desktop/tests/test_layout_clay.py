@@ -18,8 +18,8 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, QRectF, Qt
-    from PySide6.QtGui import QCursor, QFont, QFontMetricsF, QImage, QPainter
+    from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, QRect, QRectF, Qt
+    from PySide6.QtGui import QColor, QCursor, QFont, QFontMetricsF, QImage, QPainter
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
@@ -51,10 +51,16 @@ def still() -> Iterator[None]:
 
 
 def shown(
-    qapp: QApplication, *, tab: str = "week", day: int = 3, blocks: list[dict] | None = None, **chosen: str
+    qapp: QApplication,
+    *,
+    tab: str = "week",
+    day: int = 3,
+    blocks: list[dict] | None = None,
+    pack: str = "light-frost",
+    **chosen: str,
 ) -> ClayDeckView:
     options = {**options_for(None, "clay"), **chosen}
-    palette = resolved_palette("light-frost", False, None, "default")
+    palette = resolved_palette(pack, False, None, "default")
     week = build_week(WEEK, BLOCKS if blocks is None else blocks, HOMEWORK, TRACE)
     view = ClayDeckView()
     view.resize(1280, 764)
@@ -112,6 +118,37 @@ def rest(qapp: QApplication, seconds: float) -> None:
         time.sleep(0.01)
 
 
+def drag(target: QWidget, start: QPoint, by: QPoint, *, let_go: bool = True) -> None:
+    """Press at `start` on `target` and travel `by` in six moves, as a hand does, then let go unless
+    asked not to. Aimed at points fixed in the window, as a real pointer's are, though the row moves
+    the card under it; QTest sends each to `target`, the widget a real press would keep."""
+    window = target.window()
+    at = target.mapTo(window, start)
+    QTest.mousePress(target, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    for step in range(1, 7):
+        on = at + QPoint(round(by.x() * step / 6), round(by.y() * step / 6))
+        QTest.mouseMove(target, target.mapFrom(window, on))
+    if let_go:
+        let_go_at(target, at + by)
+
+
+def let_go_at(target: QWidget, at: QPoint) -> None:
+    """Let go of `target` at a point in its window."""
+    local = target.mapFrom(target.window(), at)
+    QTest.mouseRelease(target, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, local)
+
+
+def card_of(view: ClayDeckView, day: int) -> QWidget:
+    return view.findChild(HoursCanvas, f"clayPeek{day}").parentWidget()
+
+
+def at_slots(view: ClayDeckView, day: int) -> bool:
+    """Whether every neighbour is where the row puts it with `day` in front: nothing left mid-drag."""
+    row = view.row
+    found = slots(row.width(), row.height(), day, row.scale, wide=row._open)
+    return all(card_of(view, other).geometry() == found[other].toRect() for other in range(7) if other != day)
+
+
 def test_the_day_in_front_is_the_one_hours_that_scroll_and_zoom_and_its_neighbours_are_live(
     qapp: QApplication,
 ) -> None:
@@ -126,8 +163,16 @@ def test_the_day_in_front_is_the_one_hours_that_scroll_and_zoom_and_its_neighbou
     assert all(surface.hand is view.hand for surface in view.hours_surfaces())
 
 
-def test_neighbours_show_the_stretch_the_day_in_front_shows_on_the_drags_step(qapp: QApplication) -> None:
+def test_neighbours_show_the_stretch_the_day_in_front_opened_at_and_stay_still_while_it_scrolls(
+    qapp: QApplication,
+) -> None:
+    """J10: scrolling the card in front scrolled its neighbours with it. They keep the stretch the day
+    opened at, on the drag's step."""
     view = shown(qapp)
+    # Painted once before the student scrolls, as on screen: a paint settling the page late once left
+    # the neighbours taking the scrolled stretch after the scroll.
+    view.grab()
+    qapp.processEvents()
     scroll = visible_scrolls(view)[0]
     track = front(view).tracks[0]
     x = track.area.center().x()
@@ -140,10 +185,14 @@ def test_neighbours_show_the_stretch_the_day_in_front_shows_on_the_drags_step(qa
         assert peek.first % step == 0 and peek.last % step == 0
         assert peek.first <= first < peek.first + step
         assert peek.last - step < last <= peek.last
-    scroll.verticalScrollBar().setValue(top - 120)
-    qapp.processEvents()
-    moved = view.hours_surfaces()[1].tracks[0]
-    assert moved.first == pytest.approx(first - 120 / track.per_minute(), abs=step)
+    held = [(surface.tracks[0].first, surface.tracks[0].last) for surface in view.hours_surfaces()[1:]]
+    for value in (top - 120, 0, scroll.verticalScrollBar().maximum()):
+        scroll.verticalScrollBar().setValue(value)
+        qapp.processEvents()
+        qapp.processEvents()
+        assert front(view).tracks[0].minute_at(QPointF(x, scroll.verticalScrollBar().value())) != first
+        now = [(surface.tracks[0].first, surface.tracks[0].last) for surface in view.hours_surfaces()[1:]]
+        assert now == held
 
 
 def test_neighbours_are_the_card_in_front_at_70_percent_with_the_room_between_kept() -> None:
@@ -337,6 +386,138 @@ def test_a_block_held_on_an_arrow_slides_the_row_to_the_next_day(qapp: QApplicat
     view.hand.active_changed.emit(False)
     rest(qapp, 0.8)
     assert view.row.front == 4
+
+
+def test_neighbours_sit_under_a_60_percent_veil_of_the_page_and_the_front_under_none(
+    qapp: QApplication,
+) -> None:
+    """J10, board 5b: the neighbours peeked at full strength. A pixel of Friday's card, beside its hours
+    where the clay is plain, is the page colour laid 60 % over the card colour; the card in front
+    shows its own. On Slate, whose page and cards differ the most of the built-in looks."""
+    view = shown(qapp, pack="slate")
+    tokens = view.scene.tokens
+    page, card = QColor(tokens["bg"]), QColor(tokens["surface"])
+    picture = view.row.grab().toImage()
+
+    def pixel(box: QRect) -> tuple[int, int, int]:
+        colour = picture.pixelColor(box.left() + 3, box.top() + box.height() // 3)
+        return colour.red(), colour.green(), colour.blue()
+
+    veiled = [0.6 * page.redF() + 0.4 * card.redF(), 0.6 * page.greenF() + 0.4 * card.greenF(),
+              0.6 * page.blueF() + 0.4 * card.blueF()]
+    for day in (2, 4):
+        got = pixel(card_of(view, day).geometry())
+        assert all(abs(have - 255 * want) <= 1 for have, want in zip(got, veiled, strict=True)), (day, got)
+    front_card = view.row._rects[3].toRect()
+    assert pixel(front_card) == (card.red(), card.green(), card.blue())
+
+
+def test_a_sideways_drag_on_a_neighbour_slides_the_row_to_that_day(qapp: QApplication) -> None:
+    """J10: only the arrows and the wheel switched days. Dragged left from Friday, the row brings
+    Friday to the front as the ahead arrow does, and nothing is picked up or made."""
+    view = shown(qapp)
+    made: list[object] = []
+    view.hand.committed.connect(made.append)
+    friday = view.findChild(HoursCanvas, "clayPeek4")
+    drag(friday, friday.rect().center(), QPoint(-200, 0))
+    assert view.row.front == 4
+    assert [track.day for track in front(view).tracks] == [4]
+    assert at_slots(view, 4)
+    assert made == [] and not view.hand.busy
+
+
+def test_a_sideways_drag_on_the_room_between_the_cards_slides_the_row(qapp: QApplication) -> None:
+    view = shown(qapp)
+    ahead = view.findChild(QPushButton, "clayAhead").geometry()
+    gap = QPoint(ahead.center().x(), ahead.top() - 60)
+    assert not view.row._rects[3].contains(QPointF(gap)) and not card_of(view, 4).geometry().contains(gap)
+    drag(view.row, gap, QPoint(200, 0))
+    assert view.row.front == 2
+    assert at_slots(view, 2)
+
+
+def test_a_drag_on_the_front_cards_hours_is_the_hands_and_never_moves_the_row(qapp: QApplication) -> None:
+    view = shown(qapp)
+    scroll = visible_scrolls(view)[0]
+    hours = front(view)
+    start = hours.mapFrom(scroll.viewport(), scroll.viewport().rect().center())
+    before = (scroll.geometry(), card_of(view, 4).geometry())
+    drag(hours, start, QPoint(-150, 0), let_go=False)
+    try:
+        assert view.hand.active, "the hand carries what the press picked up"
+        assert (scroll.geometry(), card_of(view, 4).geometry()) == before
+    finally:
+        let_go_at(hours, hours.mapTo(view, start + QPoint(-150, 0)))
+    assert view.row.front == 3
+    assert at_slots(view, 3)
+
+
+def test_a_drag_shorter_than_40_pixels_goes_back_to_the_day_it_left(qapp: QApplication) -> None:
+    view = shown(qapp)
+    friday = view.findChild(HoursCanvas, "clayPeek4")
+    before = card_of(view, 4).geometry()
+    start = friday.mapTo(view, friday.rect().center())
+    drag(friday, friday.rect().center(), QPoint(-36, 0), let_go=False)
+    try:
+        assert card_of(view, 4).geometry() == before.translated(-36, 0), "the row follows the pointer"
+    finally:
+        let_go_at(friday, start + QPoint(-36, 0))
+    assert view.row.front == 3
+    assert card_of(view, 4).geometry() == before
+    drag(friday, friday.rect().center(), QPoint(-44, 0))
+    assert view.row.front == 4
+
+
+def test_a_drag_settles_with_the_apps_motion_and_at_once_with_motion_off(qapp: QApplication) -> None:
+    view = shown(qapp)
+    friday = view.findChild(HoursCanvas, "clayPeek4")
+    drag(friday, friday.rect().center(), QPoint(-200, 0))
+    assert view.row._slide.state() == QAbstractAnimation.State.Stopped
+    assert view.row.front == 4 and at_slots(view, 4)
+    motion.apply_ui_effects("normal")
+    saturday = view.findChild(HoursCanvas, "clayPeek5")
+    drag(saturday, saturday.rect().center(), QPoint(-200, 0))
+    assert view.row.front == 5
+    assert view.row._slide.state() == QAbstractAnimation.State.Running
+    rest(qapp, 0.4)
+    assert view.row._slide.state() == QAbstractAnimation.State.Stopped and at_slots(view, 5)
+    friday = view.findChild(HoursCanvas, "clayPeek4")
+    drag(friday, friday.rect().center(), QPoint(20, 0))
+    assert view.row.front == 5
+    assert view.row._slide.state() == QAbstractAnimation.State.Running, "a short drag slides back"
+    rest(qapp, 0.4)
+    assert at_slots(view, 5)
+
+
+def test_a_sideways_drag_on_day_asks_the_window_for_the_day_as_the_arrows_do(qapp: QApplication) -> None:
+    view = shown(qapp, tab="day")
+    opened: list[str] = []
+    view.day_activated.connect(opened.append)
+    friday = view.findChild(HoursCanvas, "clayPeek4")
+    assert friday.isVisible()
+    drag(friday, friday.rect().center(), QPoint(-200, 0))
+    assert opened == [view.scene.week.date_of(4).isoformat()]
+    # The window has not shown Friday here, so the row went back to Thursday meanwhile.
+    assert view.row.front == 3 and at_slots(view, 3)
+
+
+def test_a_click_on_a_neighbour_still_opens_its_day_or_its_block(qapp: QApplication) -> None:
+    """The row holds a press on a neighbour back until it knows it is no drag of the row; a click is
+    then the click it was."""
+    view = shown(qapp)
+    days: list[str] = []
+    blocks: list[str] = []
+    view.day_activated.connect(days.append)
+    view.hand.opened.connect(blocks.append)
+    QTest.mouseClick(view.findChild(QPushButton, "clayDay4"), Qt.MouseButton.LeftButton)
+    assert days == [view.scene.week.date_of(4).isoformat()]
+    friday = view.findChild(HoursCanvas, "clayPeek4")
+    school = friday.block_rect("school", 4)
+    assert school is not None
+    on_school = friday.mapFromGlobal(school.center())
+    QTest.mouseClick(friday, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, on_school)
+    assert blocks == ["school"]
+    assert view.row.front == 3
 
 
 def test_day_names_open_their_day_and_every_day_has_one(qapp: QApplication) -> None:
