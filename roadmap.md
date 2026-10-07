@@ -382,6 +382,16 @@ page; the Settings forms; the sign-in error and the password eye; the Focus
 screen's controls; Timeline's fold handle; Clay's dimmed neighbours. Drawn
 with the app's own widgets and stylesheet; Jonathan picks; behaviour inside
 them waits for the pick.
+Picked 2026-10-07 from group 1 (boards in `docs/mockups/round2-0183/`): Add and
+Edit homework A, a tinted "Spread across days…" beside Estimated time from 60
+min; Availability A, three questions in one column (study hours, protected
+time, the cut-off); Setup's Style page B, a list of styles and one large
+preview, nothing scrolling; Timeline's fold B, a "‹ 3 | 4 ›" handle on the fold
+in the day-name row, dragged or stepped, keyboard too; Clay A, neighbours
+dimmed and still, a horizontal drag switches days; Focus A, Pause filled with
+Skip and Finish outlined in one row, the ring at full accent before Start, and
+Finish asking "End this session?". Group 2 (the sheets, Settings, account and
+Large text items) still to draw.
 
 - **Setup.** #4 At 1280×800 the second row of style cards (Dashboard, Retro)
   is cut by the footer with no fade, the default card shows no selected state,
