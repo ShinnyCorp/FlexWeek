@@ -85,6 +85,7 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
+from backend.availability import spread_sessions
 from backend.explain import REASON_COPY
 from backend.models import ESTIMATE_MAX_MIN, Assignment, TimeBlock, WeekRequest, due_is_timed, parse_due
 from backend.slots import (
@@ -128,12 +129,18 @@ from desktop.native.work_windows import WorkWindowsEditor
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 SWATCH_PX = 12
 DETAIL_BOX_HEIGHT = 84
+SCROLL_GAP = 16
+DUE_SWITCH_EXTRA = 1
+# An estimate of an hour or more can be spread over days; a shorter one is a single sitting.
+SPREAD_MIN = 60
+SPREAD_NOTHING = "Nothing left to spread: the rest is already done or focused."
 DIALOG_USABLE_HEIGHT = 480
 # Dates as a student reads them. "2026-09-27 23:59" made them work out which day that was.
 DUE_DATE_FORMAT = "ddd d MMM yyyy"
 DATE_FORMAT = "ddd d MMM yyyy"
 DIALOG_MAX_HEIGHT = 700
-SLOT_HINT = "Use a multiple of 15 minutes, such as 15, 30, or 45."
+# No-break space before the last word, so a narrow sheet never leaves "45." alone on a line.
+SLOT_HINT = "Use a multiple of 15 minutes, such as 15, 30, or\u00a045."
 DUE_BY_HINT = "FlexWeek plans it before this time."
 DUE_PASSED = "That time has already passed."
 ESTIMATE_ERROR = "That time is not a multiple of 15 minutes."
@@ -2073,9 +2080,11 @@ class FitScroll(QScrollArea):
     """A dialog's body that scrolls only past the room it is given. A plain scroll area asks for a
     modest fixed height, so a dialog opened short of its content, or tall with nothing in it."""
 
-    def __init__(self, body: QWidget, name: str) -> None:
+    def __init__(self, body: QWidget, name: str, *, gap: int | None = None) -> None:
         super().__init__()
         self.setObjectName(name)
+        # Room between the content and the bar's handle; None keeps the handle's own edge.
+        self._gap = OverlayBar.EDGE if gap is None else gap
         bare(self)
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -2093,7 +2102,7 @@ class FitScroll(QScrollArea):
         if layout is None:
             return
         margins = layout.contentsMargins()
-        right = self._rim + (OverlayBar.WIDE + 2 * OverlayBar.EDGE if high > 0 else 0)
+        right = self._rim + (OverlayBar.WIDE + OverlayBar.EDGE + self._gap if high > 0 else 0)
         if margins.right() != right:
             layout.setContentsMargins(margins.left(), margins.top(), right, margins.bottom())
 
@@ -2780,15 +2789,22 @@ class DueField(QWidget):
         *,
         stacked: bool = False,
         today: str | None = None,
+        default_time: int = 9 * 60,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        # The time a box opened later starts at.
+        self._default_time = default_time
         # Stacked puts the time under the date, for a form too narrow to hold them side by side.
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(STACKED_GAP)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         outer.addLayout(row)
+        # The switch sat 6 px under the date, tight beside the rows around it. One more is all an 800 px
+        # window has room for with the Sessions rows in: test_sheets holds Add homework to 90 % of it.
+        outer.addSpacing(DUE_SWITCH_EXTRA)
         self.date = DateField()
         self.date.setObjectName(name)
         self.date.setDisplayFormat(DUE_DATE_FORMAT)
@@ -2822,6 +2838,7 @@ class DueField(QWidget):
         self.problem.setVisible(False)
         outer.addWidget(self.problem)
         self.set_value(due)
+        self.date.dateChanged.connect(self._follow_year)
         self.date.dateChanged.connect(self._say_changed)
         self.timed.toggled.connect(self._show_time)
         self.timed.toggled.connect(self._say_changed)
@@ -2831,10 +2848,19 @@ class DueField(QWidget):
         day, minute = parse_due(due)
         self.date.setDate(QDate(day.year, day.month, day.day))
         timed = due_is_timed(due)
-        # A time box opened later starts at a usual start of lessons, not at midnight.
-        self.time.setTime(QTime(minute // 60, minute % 60) if timed else QTime(9, 0))
+        fallback = self._default_time
+        self.time.setTime(QTime(minute // 60, minute % 60) if timed else QTime(fallback // 60, fallback % 60))
         self.timed.setChecked(timed)
         self._show_time(timed)
+        self._follow_year()
+
+    def _follow_year(self, *_value: object) -> None:
+        """The year is written only for a date outside this one: "Tue 15 Sep" says enough."""
+        this_year = (self.date.today or QDate.currentDate()).year()
+        other_year = self.date.date().year() != this_year
+        wanted = DUE_DATE_FORMAT if other_year else DUE_DATE_FORMAT.replace(" yyyy", "")
+        if self.date.displayFormat() != wanted:
+            self.date.setDisplayFormat(wanted)
 
     def value(self) -> str:
         day = self.date.date().toString("yyyy-MM-dd")
@@ -2858,6 +2884,35 @@ class DueField(QWidget):
         # Connected straight to `changed.emit`, each signal handed its value to a signal that takes
         # none: a TypeError inside Qt, and nothing connected to `changed` ran.
         self.changed.emit()
+
+
+def spread_session_min(remaining: int) -> int:
+    """How long each spread session is: an hour, or what is left when that is less, cut to the 15-minute
+    grid and never over three hours."""
+    return max(SLOT_MIN, min(60, remaining - remaining % SLOT_MIN, 180))
+
+
+def spread_words(sessions: list[dict], due: str) -> str:
+    """What spreading will do, for the grey line under the choice: "2 × 60 min on different days before
+    it is due Sun 4 Oct."."""
+    if not sessions:
+        return SPREAD_NOTHING
+    sizes = [int(item["duration_min"]) for item in sessions]
+    full = sizes[0]
+    whole = sizes.count(full)
+    lead = f"{whole} × {full} min" if whole > 1 else f"{full} min"
+    parts = lead if whole == len(sizes) else f"{lead} and {sizes[-1]} min"
+    ahead = f"before it is due {due_label(due, '')}."
+    if len(sizes) == 1:
+        return f"{parts} in one session {ahead}"
+    days = len({item["date"] for item in sessions})
+    if days == len(sizes):
+        return f"{parts} on different days {ahead}"
+    return f"{parts} on the same day {ahead}" if days == 1 else f"{parts} over {days} days {ahead}"
+
+
+def _day_on_screen(today: str | None, now: datetime | None) -> date:
+    return date.fromisoformat(today) if today else (now or datetime.now()).date()
 
 
 class HomeworkDialog(Dialog):
@@ -2885,8 +2940,8 @@ class HomeworkDialog(Dialog):
                 "id": str(uuid4()),
                 # Empty, with the category as its hint. Filled in with "Homework", typing added to the word.
                 "title": "",
-                # Today, whatever week is on screen: the Monday of that week was often already past.
-                "due": due or today or date.today().isoformat(),
+                # Tomorrow, from the day on screen: work due today at 22:41 had no evening left to plan in.
+                "due": due or (_day_on_screen(today, now) + timedelta(days=1)).isoformat(),
                 "estimate_min": estimate_min or (info or {}).get("preset", {}).get("duration_min") or 60,
                 "category": category,
                 "revision": 0,
@@ -2914,22 +2969,51 @@ class HomeworkDialog(Dialog):
         body_layout.addLayout(form)
         self.title = _line("homeworkTitle", self._original["title"])
         # Homework saved with no category is still homework, so it gets the same hint.
-        self.title.setPlaceholderText((info or CATEGORIES["assignments"])["label"])
+        self.title.setPlaceholderText("e.g. History essay")
         form.addRow("Title", self.title)
-        self.due = DueField(self._original["due"], "homeworkDue", stacked=True, today=today)
+        # Where it is placed, said under the title in Edit; a new or unplaced homework says nothing.
+        self.placed_line = sheet_note(self._placed_words())
+        form.addRow("", self.placed_line)
+        form.setRowVisible(self.placed_line, bool(self.placed_line.text()))
+        self.due = DueField(
+            self._original["due"],
+            "homeworkDue",
+            stacked=True,
+            today=today,
+            default_time=self._school_end(),
+        )
         form.addRow("Due", self.due)
         self.due.changed.connect(self._clear_due_problem)
         self._add_when(form)
         self.estimate = LengthBox("homeworkEstimate", self._original["estimate_min"])
-        form.addRow("Estimated time", Stepper(self.estimate, QUICK_LENGTHS))
+        self.stepper = Stepper(self.estimate, QUICK_LENGTHS)
+        form.addRow("Estimated time", self.stepper)
         self.estimate_hint = QLabel(SLOT_HINT)
         self.estimate_hint.setObjectName("homeworkEstimateHint")
         self.estimate_hint.setWordWrap(True)
         form.addRow("", self.estimate_hint)
+        # Said only for a length that is wrong, so the row goes with its words.
+        form.setRowVisible(self.estimate_hint, False)
+        # In one go, or spread over the days before the due: a setting of the homework, said in a line
+        # under it, not a second sheet. Made right after the length it divides, so the keyboard reaches it
+        # next: Tab follows the order widgets were made in.
+        self.spread_choice = Segmented(
+            (("In one go", "one"), ("Spread over days", "spread")), "homeworkSpread"
+        )
+        form.addRow("Sessions", self.spread_choice)
+        self.spread_line = sheet_note("")
+        form.addRow("", self.spread_line)
+        self.spread_choice.currentIndexChanged.connect(self._follow_spread)
+        self.estimate.valueChanged.connect(self._follow_spread)
+        self.due.changed.connect(self._follow_spread)
+        self.when.currentIndexChanged.connect(self._follow_spread)
         self.estimate.valueChanged.connect(self._recheck_length)
+        # Not while typing: "4" on the way to 45 is not yet a mistake. A step or a pill is always good.
+        self.estimate.editingFinished.connect(self._say_length)
         if self._length_problem():
             # Stored before the limit, so the student is told before they try to save it.
             self._say_length()
+        self._follow_spread()
         self.error = _error_label()
         form.addRow("", self.error)
         # The row goes with its words: an empty one left a gap above Finished.
@@ -2958,7 +3042,7 @@ class HomeworkDialog(Dialog):
         if self._session_buttons:
             session_row.addStretch(1)
             form.addRow("", session_row)
-        self.more_details = QPushButton("More details")
+        self.more_details = QPushButton()
         self.more_details.setObjectName("homeworkMoreDetails")
         self.more_details.setProperty("outline", True)
         self.more_details.setCheckable(True)
@@ -2992,8 +3076,7 @@ class HomeworkDialog(Dialog):
         self.notes.setObjectName("homeworkNotes")
         # Three boxes at their 192px default made this dialog taller than a laptop screen.
         self.notes.setMaximumHeight(DETAIL_BOX_HEIGHT)
-        self.notes.setPlaceholderText("Notes")
-        details_layout.addWidget(self.notes)
+        extra.addRow("Notes", self.notes)
         link_row = QHBoxLayout()
         self.link_label = _line("homeworkLinkLabel", "", 80)
         self.link_label.setPlaceholderText("Link label")
@@ -3012,6 +3095,9 @@ class HomeworkDialog(Dialog):
         self.links.setObjectName("homeworkLinks")
         self.links.setMaximumHeight(DETAIL_BOX_HEIGHT)
         details_layout.addWidget(self.links)
+        # A list with nothing in it looked like another field to fill in.
+        self.no_links = sheet_note("No links yet")
+        details_layout.addWidget(self.no_links)
         for link in self._original.get("links") or []:
             self._append_link(link["label"], link["url"])
         check_row = QHBoxLayout()
@@ -3027,23 +3113,17 @@ class HomeworkDialog(Dialog):
         self.checks = QListWidget()
         self.checks.setObjectName("homeworkChecklist")
         details_layout.addWidget(self.checks)
+        self.no_steps = sheet_note("No steps yet")
+        details_layout.addWidget(self.no_steps)
         for step in self._original.get("checklist") or []:
             self._append_check(step["id"], step["text"], step.get("done", False))
+        self._show_lists()
         if assignment is not None:
-            spread = QPushButton("Spread across days")
-            spread.setProperty("quiet", True)
-            spread.setObjectName("spreadHomework")
-            spread.clicked.connect(self._request_spread)
-            spread.setToolTip("Save these edits first, then spread.")
-            details_layout.addWidget(spread)
-            self._spread_button = spread
-            self.title.textChanged.connect(self._disable_spread)
-            self.notes.textChanged.connect(self._disable_spread)
-            self.estimate.valueChanged.connect(self._disable_spread)
-            self.due.changed.connect(self._disable_spread)
-            self.course.textChanged.connect(self._disable_spread)
-        else:
-            self._spread_button = None
+            self.title.textChanged.connect(self._disable_placing)
+            self.notes.textChanged.connect(self._disable_placing)
+            self.estimate.valueChanged.connect(self._disable_placing)
+            self.due.changed.connect(self._disable_placing)
+            self.course.textChanged.connect(self._disable_placing)
         body_layout.addWidget(details)
         self._details = details
         self.more_details.toggled.connect(details.setVisible)
@@ -3055,12 +3135,14 @@ class HomeworkDialog(Dialog):
             or self._original.get("spotify_url")
         )
         self.more_details.setChecked(open_details)
+        self._name_toggle(open_details)
+        self.more_details.toggled.connect(self._name_toggle)
         details.setVisible(open_details)
         # The sheet grows with the details, up to the room its window has.
         self.more_details.toggled.connect(self.refit)
         # A time box shown under the date makes the body taller: the sheet is fitted again, not scrolled.
         self.due.timed.toggled.connect(self.refit)
-        area = FitScroll(body, "homeworkScroll")
+        area = FitScroll(body, "homeworkScroll", gap=SCROLL_GAP)
         layout.addWidget(area, 1)
         self._scroll = area
         # Delete is not one of the dialog's answers: quiet words at the left, away from Save, as the
@@ -3086,6 +3168,40 @@ class HomeworkDialog(Dialog):
         super().showEvent(event)
         if not self.sheet:
             fit_scroll_dialog(self)
+
+    def _school_end(self) -> int:
+        """The minute school ends, from the saved school hours, or 15:00 with none: work due at a set
+        time is usually due when the school day does."""
+        blocks = getattr(getattr(self.parent(), "session", None), "blocks", None) or []
+        locked = [item for item in blocks if item.get("kind") == "locked"]
+        school = next((item for item in locked if item.get("id") == "school"), None) or next(
+            (item for item in locked if item.get("category") == "class"), None
+        )
+        if school is None or not school.get("start"):
+            return 15 * 60
+        return min(hhmm_to_minutes(school["start"]) + int(school["duration_min"]), 23 * 60 + 45)
+
+    def _placed_words(self) -> str:
+        """"Placed Fri 15:30", or with several times "Placed Fri 15:30 and Sat 10:00 · 2 times"; empty
+        when none of this homework's times has a place on the calendar."""
+        placed = [block for block in self._open_sessions() if block.get("start")]
+        at = sorted((block["days"][0], block["start"]) for block in placed)
+        if not at:
+            return ""
+        names = [f"{DAYS[day]} {hhmm_text(start)}" for day, start in at]
+        if len(names) == 1:
+            return f"Placed {names[0]}"
+        return f"Placed {', '.join(names[:-1])} and {names[-1]} · {len(names)} times"
+
+    def _name_toggle(self, open_: bool) -> None:
+        self.more_details.setText("Fewer details" if open_ else "More details")
+        icons.tint(self.more_details, "chevron-up" if open_ else "chevron-down", gap=6)
+        self.more_details.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+
+    def _show_lists(self) -> None:
+        for items, none in ((self.links, self.no_links), (self.checks, self.no_steps)):
+            items.setVisible(items.count() > 0)
+            none.setVisible(items.count() == 0)
 
     def _open_sessions(self) -> list[dict]:
         """This homework's unfinished times on the week in the window, which the dialog reads from the
@@ -3219,13 +3335,16 @@ class HomeworkDialog(Dialog):
             return ESTIMATE_SHORT
         if minutes > ESTIMATE_MAX_MIN:
             return ESTIMATE_LONG
-        return ""
+        return SLOT_HINT if minutes % SLOT_MIN else ""
 
     def _say_length(self) -> bool:
         """Say under the box what is wrong with the length, in the error colour, or the usual hint."""
         problem = self._length_problem()
         self.estimate_hint.setText(problem or SLOT_HINT)
         self.estimate_hint.setProperty("problem", bool(problem))
+        self._form.setRowVisible(self.estimate_hint, bool(problem))
+        if self.isVisible():
+            self.refit()
         self.estimate_hint.style().unpolish(self.estimate_hint)
         self.estimate_hint.style().polish(self.estimate_hint)
         return bool(problem)
@@ -3235,21 +3354,57 @@ class HomeworkDialog(Dialog):
         if self.estimate_hint.property("problem"):
             self._say_length()
 
-    def _disable_spread(self, *_args: object) -> None:
-        # Like Spread, placing acts on the saved homework, so an unsaved edit turns them off.
+    def _disable_placing(self, *_args: object) -> None:
+        # Placing acts on the saved homework, so an unsaved edit turns the buttons off.
         for button in self._session_buttons:
             button.setEnabled(False)
-        if self._spread_button is None:
-            return
-        self._spread_button.setEnabled(False)
 
-    def _request_spread(self) -> None:
-        self._spread = True
-        self._result = deepcopy(self._original)
-        super().accept()
+    def _spread_figures(self) -> tuple[int, str, list[dict]]:
+        """The session length, the day the sessions start and the sessions themselves, for the values as
+        they stand now. Every open time of this homework is replaced, so only focus already given counts."""
+        due = self._chosen_due()
+        remaining = max(0, self.estimate.value() - int(self._original.get("focus_minutes") or 0))
+        session_min = spread_session_min(remaining)
+        today = self._now().date().isoformat()
+        ahead = str(getattr(getattr(self.parent(), "session", None), "selected_day", "") or "")
+        start = max(today, ahead)
+        from_date = min(start, parse_due(due)[0].isoformat())
+        sessions, _off_grid = spread_sessions(
+            estimate_min=self.estimate.value(),
+            focus_minutes=int(self._original.get("focus_minutes") or 0),
+            planned_min=0,
+            due=due,
+            session_min=session_min,
+            from_date=from_date,
+        )
+        return session_min, from_date, sessions
+
+    def _follow_spread(self, *_args: object) -> None:
+        """The choice shows for an hour or more that FlexWeek is to place: a time picked by hand is one
+        time, and it is one go under an hour. Hiding it takes the choice back to one go."""
+        shown = (
+            self.estimate.value() >= SPREAD_MIN
+            and not self._spread_out
+            and self.when.currentData() != "fixed"
+        )
+        self._form.setRowVisible(self.spread_choice, shown)
+        if not shown:
+            self.spread_choice.setCurrentIndex(0)
+        # The line says what Spread over days will do, so it has nothing to say for one go.
+        spreading = shown and self.spread_choice.currentData() == "spread"
+        self._form.setRowVisible(self.spread_line, spreading)
+        if spreading:
+            self.spread_line.setText(spread_words(self._spread_figures()[2], self._chosen_due()))
+        if self.isVisible():
+            self.refit()
 
     def spread_requested(self) -> bool:
         return self._spread
+
+    def spread_plan(self) -> dict:
+        """How the window spreads the saved homework: the length of each session and the day they start."""
+        session_min, from_date, _sessions = self._spread_figures()
+        return {"session_min": session_min, "from_date": from_date}
 
     def _request_session(self) -> None:
         self._request = self.sender().property("request")
@@ -3283,6 +3438,7 @@ class HomeworkDialog(Dialog):
             self._show_error("A link needs a label and an http(s) address.")
             return
         self._append_link(label, url)
+        self._show_lists()
         self.link_label.clear()
         self.link_url.clear()
         self._show_error("")
@@ -3303,6 +3459,7 @@ class HomeworkDialog(Dialog):
             self._show_error("A checklist step needs text.")
             return
         self._append_check(str(uuid4()), text, False)
+        self._show_lists()
         self.check_text.clear()
         self._show_error("")
 
@@ -3399,6 +3556,7 @@ class HomeworkDialog(Dialog):
         except ValueError as error:
             self._show_error(_homework_problem(error))
             return
+        self._spread = self.spread_choice.currentData() == "spread"
         self._result = candidate
         super().accept()
 
@@ -4209,8 +4367,7 @@ class SpreadDialog(Dialog):
         layout.addLayout(form)
         self.session = QComboBox()
         self.session.setObjectName("spreadSession")
-        remaining = max(SLOT_MIN, int(assignment.get("unplanned_min") or SLOT_MIN))
-        chosen = min(60, remaining - remaining % SLOT_MIN, 180)
+        chosen = spread_session_min(int(assignment.get("unplanned_min") or SLOT_MIN))
         for minutes in range(SLOT_MIN, 181, SLOT_MIN):
             self.session.addItem(f"{minutes} minutes", minutes)
         self.session.setCurrentIndex(max(0, self.session.findData(chosen)))

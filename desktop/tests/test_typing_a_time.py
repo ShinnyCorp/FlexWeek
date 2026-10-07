@@ -87,7 +87,7 @@ def test_the_block_editor_keeps_the_typed_times(qapp: QApplication, host: QWidge
 def test_add_homework_keeps_the_typed_due_time(qapp: QApplication, host: QWidget, twenty_four: bool) -> None:
     set_clock_24h(twenty_four)
     dialog = HomeworkDialog(
-        host, today="2026-09-24", category="assignments", now=datetime(2026, 9, 24, 10, 0)
+        host, today="2026-09-24", category="assignments", due="2026-09-24", now=datetime(2026, 9, 24, 10, 0)
     )
     dialog.title.setText("Essay")
     dialog.due.timed.setChecked(True)

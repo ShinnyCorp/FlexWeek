@@ -37,7 +37,7 @@ def picked_near_today() -> QDate:
 
 
 def opened(qapp: QApplication, parent: QWidget, day: QDate) -> tuple[HomeworkDialog, QWidget, LookCalendar]:  # noqa: F811
-    dialog = HomeworkDialog(parent, today=day.toString("yyyy-MM-dd"))
+    dialog = HomeworkDialog(parent, today=day.toString("yyyy-MM-dd"), due=day.toString("yyyy-MM-dd"))
     dialog.show()
     month = dialog.due.date.calendarWidget()
     popup = month.parentWidget()
