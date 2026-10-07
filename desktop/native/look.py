@@ -1121,7 +1121,8 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f"QListWidget#prefsNav::item:hover {{ background: {palette['hairline']}; color: {palette['text']}; }}"
         f"QListWidget#prefsNav::item:selected {{ background: {selected}; color: {palette['text']}; "
         f"border-left: 3px solid {palette['accent']}; font-weight: {WEIGHT_STRONG}; }}"
-        f"QWidget#settingsFooter {{ border-top: {footer_line}; }}"
+        # Opaque: the sections scroll under it, and what shows through would be words with no fade.
+        f"QWidget#settingsFooter {{ background: {palette['window']}; border-top: {footer_line}; }}"
         f"QLabel#settingsTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; }}"
         f"QFrame#settingsCard, QFrame#dialogCard {{ background: {palette['panel']}; "
         f"border-radius: {card_radius}px; padding: 0; {edges} }}"
@@ -1136,7 +1137,8 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f"font-weight: {WEIGHT_STRONG}; }}"
         "QLabel#settingsCardNote, QLabel#cardNote, QLabel#prefPlanningNote, "
         "QLabel#prefDndNote, "
-        "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits { "
+        "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits, "
+        "QLabel#alarmEmpty { "
         f"color: {palette['muted']}; }}"
         f'QFrame[segmented="true"] {{ background: {track}; border: none; '
         f"border-radius: {max(radius, 6) + 2}px; padding: 0; }}"
@@ -1147,6 +1149,11 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f'QPushButton[segment="true"]:hover {{ color: {palette["text"]}; }}'
         f'QPushButton[segment="true"]:checked {{ background: {palette["field"]}; color: {palette["text"]}; '
         f"border: {chosen_edge}; }}"
+        # The look's own segments say which is worn by a ring in the accent, as its cards do.
+        f'QFrame#prefThemeMain QPushButton[segment="true"] {{ border: 2px solid transparent; '
+        f"padding: {max(pad - 3, 2)}px {pad + 7}px; }}"
+        'QFrame#prefThemeMain QPushButton[segment="true"]:checked '
+        f"{{ border: 2px solid {palette['accent']}; }}"
         'QPushButton[segment="true"]:disabled { background: transparent; '
         f'color: {palette["hairline_strong"]}; }}'
         # Still raised, so a choice that cannot be changed here says which it is.

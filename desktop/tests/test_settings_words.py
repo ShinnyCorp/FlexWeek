@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 
 from desktop.native.layouts.registry import sanitize_layout
 from desktop.native.look import look_menu_token
-from desktop.native.settings import FINE_TUNE_LOOK, SettingsPage
+from desktop.native.settings import BUTTON_WIDTH, FINE_TUNE_LOOK, SettingsPage
 from desktop.native.update import WINDOWS_SETUP, available
 from desktop.native.version import VERSION
 from desktop.native.widgets import Segmented, Switch
@@ -418,5 +418,6 @@ def test_a_button_that_opens_something_else_is_outlined_and_as_wide_as_its_words
     at = button.mapTo(on, QPoint(button.width() // 2, 4))
     card = inside(button, on)
     assert picture.pixelColor(at.x(), at.y()) == picture.pixelColor(card.x(), card.y()), "filled"
-    assert button.width() <= button.sizeHint().width(), "as wide as the page"
+    # The three buttons of This computer share one width, 190 px (mockup 8).
+    assert button.width() <= max(button.sizeHint().width(), BUTTON_WIDTH), "as wide as the page"
     dialog.close_page()

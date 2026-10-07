@@ -88,7 +88,8 @@ def test_one_click_wears_a_look_and_marks_it_and_says_so(qapp: QApplication, win
     assert tile(dialog, "Nocturne").is_selected()
     assert [card.is_selected() for card in dialog.look.more.cards].count(True) == 1
     assert dialog.look.main.currentIndex() == -1, "Light, Dark and System show none"
-    assert dialog.look.worn.text() == "Wearing Nocturne" and not dialog.look.worn.isHidden()
+    assert dialog.look.worn.isHidden(), "the card says it, inside itself, not a line under the grid"
+    assert tile(dialog, "Nocturne").note.text() == "Wearing"
     dialog.look.main.buttons()[0].click()
     assert not any(card.is_selected() for card in dialog.look.more.cards)
     assert dialog.look.worn.isHidden()
