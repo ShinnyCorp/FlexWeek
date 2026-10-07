@@ -20,6 +20,7 @@ from PySide6.QtGui import (
     QColor,
     QFocusEvent,
     QFont,
+    QFontMetrics,
     QIcon,
     QKeyEvent,
     QMouseEvent,
@@ -72,7 +73,6 @@ from desktop.native.layouts.registry import (
 from desktop.native.look import (
     KNOB_VALUE_LABELS,
     LOOK_KNOBS,
-    PACK_LABELS,
     PACKS,
     effective_look,
     look_menu_items,
@@ -169,7 +169,18 @@ SETUP_COLUMN = 880
 STYLE_PICTURE_MIN, PEEK_PX, CAROUSEL_GAP, CAROUSEL_CHROME = 240, 56, 12, 16
 NEIGHBOUR_OPACITY = 0.45
 EXPERIMENTAL_TAG = "Experimental"
+# How the summary says the colours of a look that has no colour choices of its own.
+PACK_IN = {
+    "system": "your system's colours",
+    "light-frost": "light colours",
+    "dark-frost": "dark colours",
+    "nocturne": "Nocturne colours",
+    "slate": "Slate colours",
+}
 DOT_PX, ARROW_PX = 16, 32
+RAIL_MIN = 210
+# The margin the pages keep at the sides, and the fade over the last stretch above the footer.
+PAGE_MARGIN, FADE_PX = 32, 24
 # A step on the rail is marked by its number in a ring, or once it is done by a tick on the accent.
 BADGE_PX, TICK_PX = 20, 16
 PENDING, CURRENT, FINISHED = "pending", "current", "finished"
@@ -336,6 +347,91 @@ def _quiet(text: str, name: str = "setupQuiet") -> QPushButton:
     button.setObjectName(name)
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     return button
+
+
+def _outlined(text: str, name: str = "") -> QPushButton:
+    button = QPushButton(text)
+    if name:
+        button.setObjectName(name)
+    button.setProperty("outline", True)
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    return button
+
+
+class Level(QWidget):
+    """`inner` centred in a cell as tall as `like`, for a neighbour that is taller than `inner`: the
+    two then read on one line instead of one hanging from the top of the cell."""
+
+    def __init__(self, inner: QWidget, like: QWidget) -> None:
+        super().__init__()
+        self.setObjectName("setupRow")
+        self._inner, self._like = inner, like
+        box = QVBoxLayout(self)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(0)
+        box.addStretch(1)
+        box.addWidget(inner)
+        box.addStretch(1)
+        self.setSizePolicy(inner.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        hint = self._inner.sizeHint()
+        return QSize(hint.width(), max(hint.height(), self._like.sizeHint().height()))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        hint = self._inner.minimumSizeHint()
+        return QSize(hint.width(), max(hint.height(), self._like.sizeHint().height()))
+
+
+class Footer(QWidget):
+    """The buttons along the bottom of setup, with a fade above them for the page to run out under.
+    It says its height when it changes, as Large text and a wrapped error make it taller."""
+
+    resized = Signal(int)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName("setupRow")
+        self._box = QVBoxLayout(self)
+        self._box.setContentsMargins(0, 0, 0, 0)
+        self._box.setSpacing(0)
+        self.fade = QWidget()
+        self.fade.setObjectName("setupFade")
+        self.fade.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.fade.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.fade.setFixedHeight(FADE_PX)
+        self._box.addWidget(self.fade)
+
+    def add(self, buttons: QWidget) -> None:
+        self._box.addWidget(buttons)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self.resized.emit(self.height())
+
+
+class PageScroll(QScrollArea):
+    """A setup page. Its column starts at one x on every page, whether or not this page has a scroll bar,
+    since the gutter is worked out from the whole width and not the part the bar leaves. It scrolls
+    under the footer, with room at the end for the footer's height so the last thing is not hidden."""
+
+    def __init__(self, around: QHBoxLayout) -> None:
+        super().__init__()
+        self._around = around
+        self._footer = 0
+        self._pad()
+
+    def set_footer(self, height: int) -> None:
+        self._footer = height
+        self._pad()
+
+    def _pad(self) -> None:
+        gutter = max(PAGE_MARGIN, (self.width() - SETUP_COLUMN) // 2)
+        self._around.setContentsMargins(gutter, 28, PAGE_MARGIN, self._footer)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._pad()
 
 
 def _card_grid(box: QVBoxLayout, picture: int) -> CardGrid:
@@ -811,7 +907,7 @@ class ActivityRow(QFrame):
         self.name.setPlaceholderText("Soccer, band, a job…")
         self.name.setMaxLength(80)
         self.name.setAccessibleName("Activity name")
-        remove = _quiet("Remove")
+        remove = _outlined("Remove")
         remove.setAccessibleName("Remove this activity")
         remove.clicked.connect(lambda: self.removed.emit(self))
         self.category = QComboBox()
@@ -835,7 +931,7 @@ class ActivityRow(QFrame):
         self.days = DayPicker(days or [], "setupDay")
         self.times = TimeRange(start, minutes_to_hhmm(hhmm_to_minutes(start) + minutes), "Activity")
         bottom = FlowLayout(gap=12)
-        bottom.addWidget(self.days)
+        bottom.addWidget(Level(self.days, self.times.start))
         bottom.addWidget(self.times)
         box.addLayout(bottom)
 
@@ -885,13 +981,15 @@ class HomeworkRow(QFrame):
         self.minutes.setSuffix(" min")
         self.minutes.setAccessibleName("How long it takes")
         self.due = DueField(due, "setupHomeworkDue")
-        remove = _quiet("Remove")
+        remove = _outlined("Remove")
         remove.setAccessibleName("Remove this homework")
         remove.clicked.connect(lambda: self.removed.emit(self))
         grid.addWidget(_label("Name", "setupFieldLabel", wrap=False), 0, 0)
         grid.addWidget(self.name, 0, 1, 1, 3)
         grid.addWidget(remove, 0, 4)
-        grid.addWidget(_label("Takes", "setupFieldLabel", wrap=False), 1, 0)
+        # On the line of the box, not the middle of the box and the lengths under it.
+        takes = Level(_label("Takes", "setupFieldLabel", wrap=False), self.minutes)
+        grid.addWidget(takes, 1, 0, Qt.AlignmentFlag.AlignTop)
         grid.addWidget(Stepper(self.minutes, QUICK_LENGTHS), 1, 1)
         grid.addWidget(_label("Due", "setupFieldLabel", wrap=False), 1, 2)
         grid.addWidget(self.due, 1, 3, 1, 2)
@@ -958,7 +1056,17 @@ class SetupPage(QWidget):
         for step, builder in builders:
             self.pages[step] = self._page(step, builder())
             self.stack.addWidget(self.pages[step])
-        column.addWidget(self.stack, 1)
+        # The pages run under the footer, which fades them out above it; each page keeps the footer's
+        # height clear at its end so the last thing on it can be reached.
+        under = QWidget()
+        under.setObjectName("setupRow")
+        stacked = QGridLayout(under)
+        stacked.setContentsMargins(0, 0, 0, 0)
+        stacked.addWidget(self.stack, 0, 0)
+        self.footer = Footer()
+        self.footer.resized.connect(self._clear_footer)
+        stacked.addWidget(self.footer, 0, 0, Qt.AlignmentFlag.AlignBottom)
+        column.addWidget(under, 1)
         nav = QWidget()
         nav.setObjectName("setupNav")
         nav.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -972,7 +1080,7 @@ class SetupPage(QWidget):
         self.back.setObjectName("setupBack")
         self.back.clicked.connect(self._go_back)
         self.error = _label("", "setupError")
-        self.skip = _quiet(SKIP_STEP_LABEL, "setupSkip")
+        self.skip = _outlined(SKIP_STEP_LABEL, "setupSkip")
         self.skip.clicked.connect(self._skip_step)
         self.next = QPushButton(NEXT_LABEL)
         self.next.setObjectName("setupNext")
@@ -982,7 +1090,7 @@ class SetupPage(QWidget):
         line.addWidget(self.error, 1)
         line.addWidget(self.skip)
         line.addWidget(self.next)
-        column.addWidget(nav)
+        self.footer.add(nav)
         outer.addLayout(column, 1)
         self._sync_chrome()
 
@@ -992,7 +1100,7 @@ class SetupPage(QWidget):
         rail = QWidget()
         rail.setObjectName("setupRail")
         rail.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        rail.setMinimumWidth(210)
+        rail.setMinimumWidth(RAIL_MIN)
         box = QVBoxLayout(rail)
         box.setContentsMargins(22, 28, 16, 20)
         box.setSpacing(2)
@@ -1021,16 +1129,22 @@ class SetupPage(QWidget):
         return rail
 
     def _page(self, step: int, content: QWidget) -> QWidget:
-        scroll = QScrollArea()
+        body = QWidget()
+        body.setObjectName("setupBody")
+        around = QHBoxLayout(body)
+        scroll = PageScroll(around)
         scroll.setObjectName("setupScroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        body = QWidget()
-        body.setObjectName("setupBody")
-        around = QHBoxLayout(body)
-        around.setContentsMargins(32, 28, 32, 12)
-        column = _centred_column(around)
+        column = QWidget()
+        column.setObjectName("setupRow")
+        column.setMaximumWidth(SETUP_COLUMN)
+        column.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        # The column's stretch outweighs the spacer's, so it takes the room up to its maximum and the
+        # rest goes after it, not on both sides.
+        around.addWidget(column, SETUP_COLUMN)
+        around.addStretch(1)
         box = QVBoxLayout(column)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(10)
@@ -1153,7 +1267,7 @@ class SetupPage(QWidget):
         school.setObjectName("setupGroup")
         school_line = FlowLayout(school, gap=12)
         school_line.setContentsMargins(12, 10, 12, 10)
-        school_line.addWidget(self.school_days)
+        school_line.addWidget(Level(self.school_days, self.school_times.start))
         school_line.addWidget(self.school_times)
         box.addWidget(school)
         # Said only when it is true: under a week of school days it read as a warning.
@@ -1173,7 +1287,15 @@ class SetupPage(QWidget):
         self.cutoff.setObjectName("setupCutoff")
         self.cutoff.setAccessibleName("No homework after")
         fill_cutoff(self.cutoff, None)
-        box.addWidget(_row(_label("No homework after", "setupFieldLabel", wrap=False), self.cutoff))
+        bedtime = QFrame()
+        bedtime.setObjectName("setupGroup")
+        bedtime_line = QHBoxLayout(bedtime)
+        bedtime_line.setContentsMargins(12, 10, 12, 10)
+        bedtime_line.setSpacing(8)
+        bedtime_line.addWidget(_label("No homework after", "setupFieldLabel", wrap=False))
+        bedtime_line.addWidget(self.cutoff)
+        bedtime_line.addStretch(1)
+        box.addWidget(bedtime)
         return content
 
     def _build_homework(self) -> QWidget:
@@ -1531,6 +1653,11 @@ class SetupPage(QWidget):
                 row.default_due = fresh
                 row.due.set_value(fresh)
 
+    def _clear_footer(self, height: int) -> None:
+        for page in self.pages.values():
+            if isinstance(page, PageScroll):
+                page.set_footer(height)
+
     def _sync_chrome(self) -> None:
         self.back.setVisible(self._step != STYLE)
         self.skip.setVisible(self._step != DONE)
@@ -1547,6 +1674,23 @@ class SetupPage(QWidget):
             state = CURRENT if current else FINISHED if done else PENDING
             item.setIcon(self._badge(index + 1, state, item.font().family()))
             item.setAccessibleDescription("Done" if state == FINISHED else "")
+        self._fit_rail()
+
+    def _fit_rail(self) -> None:
+        """The rail as wide as it is with its widest step bold, as the current step is, so the pages do
+        not slide sideways as the steps change."""
+        margins = self._rail.layout().contentsMargins()
+        widest = 0
+        for item in self.rail_items:
+            item.ensurePolished()
+            bold = item.font()
+            bold.setWeight(QFont.Weight(WEIGHT_STRONG))
+            around = item.sizeHint().width() - item.fontMetrics().horizontalAdvance(item.text())
+            widest = max(widest, around + QFontMetrics(bold).horizontalAdvance(item.text()))
+        # A few pixels over, then up to a multiple of 8, since bold text measured on its own rounds a
+        # little differently from step to step and the rail must not follow that.
+        wanted = -(-(widest + margins.left() + margins.right() + 3) // 8) * 8
+        self._rail.setMinimumWidth(max(RAIL_MIN, wanted, self._rail.minimumWidth()))
 
     def _badge(self, number: int, state: str, family: str) -> QIcon:
         made = QIcon()
@@ -1908,7 +2052,7 @@ class SetupPage(QWidget):
                 (label for value, label, _ in spec.colourways if value == colour), "your colours"
             )
         else:
-            colour_name = PACK_LABELS.get(state.pack, "your colours")
+            colour_name = PACK_IN.get(state.pack, "your colours")
         text = effective_look(state.look)["text"]
         look = f"{spec.label} in {colour_name}"
         if text != "normal":
@@ -1950,7 +2094,7 @@ class SetupPage(QWidget):
             reminders = f"Off · alarms ring {sound}"
         values = (
             look,
-            "; ".join(week_parts) or "Nothing fixed yet",
+            " · ".join(week_parts) or "Nothing fixed yet",
             planning,
             reminders,
             ", ".join(state.homework) or "None yet",

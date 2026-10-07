@@ -1205,6 +1205,12 @@ def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str, t
     )
 
 
+def rgba_clear(colour: str) -> str:
+    """`colour` with no opacity, so a gradient from it to the colour passes through no other hue."""
+    red, green, blue = (int(colour[at : at + 2], 16) for at in (1, 3, 5))
+    return f"rgba({red}, {green}, {blue}, 0)"
+
+
 def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: str) -> str:
     """First-run setup: a rail of steps beside one question at a time, and cards to pick from.
 
@@ -1221,7 +1227,7 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     # A card is larger than a control, so it is lifted with the text colour, never the accent.
     lift = mix(palette["text"], palette["panel"], 0.04)
     quiet = (
-        "setupQuiet", "setupSkip", "setupSkipAll", "setupAddActivity", "setupAddHomework",
+        "setupQuiet", "setupSkipAll", "setupAddActivity", "setupAddHomework",
         "setupSuggest", "setupChange", "setupFineTune",
     )
     quiet_rule = ", ".join(f"QPushButton#{name}" for name in quiet)
@@ -1234,6 +1240,9 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     return (
         f"QWidget#setupRail {{ background: {palette['panel']}; }}"
         f"QWidget#setupNav {{ background: {palette['window']}; }}"
+        # The page's colour thickening from clear to solid over the stretch above the footer.
+        f"QWidget#setupFade {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+        f"stop:0 {rgba_clear(palette['window'])}, stop:1 {palette['window']}); border: none; }}"
         # The rows inside the pages are bare QWidgets, which the app-wide rule paints in the page
         # colour. On a card that is a band of background across the middle of it.
         f"QWidget#setupRow, QWidget#setupBody {{ background: transparent; border: none; padding: 0; }}"
