@@ -2706,23 +2706,193 @@ def test_placing_by_hand_turns_plan_into_suggest_times(qapp: QApplication, windo
     assert window.solve_button.text() == "Suggest times"
 
 
-def test_a_study_window_can_be_kept_for_one_subject(qapp: QApplication) -> None:
-    from PySide6.QtCore import QTime
+# Availability (#54 and J7): the week strip, then Study hours, Protected and Cut-off as tabs.
 
+SETUP_HOURS = [
+    {"days": [0, 1, 2, 3, 4], "start": "16:00", "end": "21:00"},
+    {"days": [5, 6], "start": "10:00", "end": "12:00"},
+]
+PIANO = {"days": [1, 3], "start": "17:00", "duration_min": 90, "kind": "downtime"}
+
+
+def availability(preferences: dict, palette: dict | None = None):
     from desktop.native.widgets import AvailabilityDialog
 
-    dialog = AvailabilityDialog(None, {}, ["Math", "Reading"])
-    dialog.study_start.setTime(QTime(15, 30))
-    dialog.study_end.setTime(QTime(17, 0))
-    dialog.study_subject.setCurrentIndex(dialog.study_subject.findData("Math"))
-    dialog.findChild(QPushButton, "studyAdd").click()
-    kept = {"days": [0, 1, 2, 3, 4], "start": "15:30", "duration_min": 90, "subject": "Math"}
-    assert dialog.study_windows() == [kept]
-    assert dialog.study_list.item(0).text().endswith("Math only")
-    dialog.study_end.setTime(QTime(15, 0))
-    dialog.findChild(QPushButton, "studyAdd").click()
-    assert len(dialog.study_windows()) == 1
-    assert "ends after it starts" in dialog.error.text()
+    return AvailabilityDialog(None, preferences, ["Math", "Reading"], palette)
+
+
+def plus(dialog, kind: str, day: int) -> QPushButton:
+    buttons = dialog.findChildren(QPushButton, f"{kind}Add")
+    return next(button for button in buttons if button.property("day") == day)
+
+
+def day_row(dialog, kind: str, day: int) -> list[str]:
+    """The words on one day's row of a tab: its chips, then its +."""
+    row = plus(dialog, kind, day).parentWidget()
+    return [button.text() for button in row.findChildren(QPushButton)]
+
+
+def test_the_strip_paints_study_hours_protected_time_and_the_cutoff(qapp: QApplication) -> None:
+    from PySide6.QtGui import QColor
+
+    from desktop.native.look import resolved_palette
+
+    palette = resolved_palette("light-frost", False, None, "sea")
+    dialog = availability({"work_windows": SETUP_HOURS, "protected": [PIANO], "day_cutoff": "22:00"}, palette)
+    strip = dialog.strip
+    strip.resize(420, strip.height())
+    picture = strip.grab().toImage()
+
+    def colour(day: int, hhmm: str) -> str:
+        hour, minute = map(int, hhmm.split(":"))
+        middle = strip.column(day).center().x()
+        return QColor(picture.pixel(round(middle), round(strip.y_of(hour * 60 + minute)))).name()
+
+    assert colour(0, "17:00") == palette["accent"], "Monday's study hours"
+    assert colour(5, "11:00") == palette["accent"], "Saturday's study hours"
+    assert colour(0, "23:00") == palette["hairline"], "after the cut-off, nothing but the track"
+    assert colour(5, "17:00") == palette["hairline"], "Saturday has no study hours at 17:00"
+    assert colour(1, "17:45") == palette["muted"], "Tuesday's protected time, over its study hours"
+    assert colour(1, "20:00") == palette["accent"]
+    assert colour(6, "22:00") == palette["error"], "the cut-off line runs across every day"
+    dialog.deleteLater()
+
+
+def test_each_day_shows_its_hours_as_chips_and_one_plus(qapp: QApplication) -> None:
+    math = {"days": [2], "start": "07:00", "end": "08:00", "subject": "Math"}
+    dialog = availability({"work_windows": [*SETUP_HOURS, math], "protected": [PIANO]})
+    assert day_row(dialog, "study", 0) == ["16:00–21:00  ×", "+"]
+    assert day_row(dialog, "study", 2) == ["16:00–21:00  ×", "07:00–08:00 Math  ×", "+"]
+    assert day_row(dialog, "study", 6) == ["10:00–12:00  ×", "+"]
+    assert day_row(dialog, "protected", 1) == ["17:00–18:30 Downtime  ×", "+"]
+    assert day_row(dialog, "protected", 0) == ["+"], "an empty day shows only its +"
+    for button in dialog.findChildren(QPushButton):
+        if button.text() == "+":
+            assert button.property("outlined") is True, "add buttons are outlined"
+        if button.text().endswith("×"):
+            assert button.property("tonal") is True, "chips are tinted"
+    assert dialog.study_empty.isHidden() and dialog.protected_empty.isHidden()
+    dialog.deleteLater()
+
+
+def test_an_empty_tab_says_so_in_grey(qapp: QApplication) -> None:
+    dialog = availability({})
+    assert dialog.protected_empty.text() == "Nothing protected yet. Add practice, family time or a job."
+    assert dialog.protected_empty.objectName() == "cardNote"
+    assert not dialog.study_empty.isHidden() and not dialog.protected_empty.isHidden()
+    assert day_row(dialog, "study", 3) == ["+"]
+    dialog.deleteLater()
+
+
+def test_the_tabs_show_study_hours_protected_time_and_the_cutoff(qapp: QApplication) -> None:
+    dialog = availability({"work_windows": SETUP_HOURS, "day_cutoff": "21:30"})
+    assert [button.text() for button in dialog.tabs.buttons()] == ["Study hours", "Protected", "Cut-off"]
+    assert dialog.pages.currentIndex() == 0
+    for index, shown in ((1, "protectedAdd"), (2, "availabilityCutoff"), (0, "studyAdd")):
+        dialog.tabs.buttons()[index].click()
+        page = dialog.pages.currentWidget()
+        assert page.findChild(QWidget, shown) is not None, shown
+    dialog.tabs.buttons()[2].click()
+    assert dialog.day_cutoff() == "21:30"
+    dialog.cutoff.setCurrentIndex(dialog.cutoff.findData(None))
+    assert dialog.day_cutoff() is None
+    assert "The line" not in dialog.legend.text(), "no cut-off, no line to explain"
+    dialog.deleteLater()
+
+
+def test_removing_a_chip_takes_only_that_day_out_of_a_shared_window(qapp: QApplication) -> None:
+    """Setup saves Monday to Friday as one window. Tuesday's × leaves the other four days with it."""
+    dialog = availability({"work_windows": SETUP_HOURS})
+    tuesday = next(
+        chip for chip in dialog.findChildren(QPushButton, "studyChip") if "Tuesday" in chip.accessibleName()
+    )
+    tuesday.click()
+    assert dialog.work_windows() == [
+        {"days": [0, 2, 3, 4], "start": "16:00", "end": "21:00"},
+        {"days": [5, 6], "start": "10:00", "end": "12:00"},
+    ]
+    assert day_row(dialog, "study", 1) == ["+"]
+    dialog.deleteLater()
+
+
+def test_adding_hours_on_a_day_saves_them_with_any_equal_hours(qapp: QApplication) -> None:
+    from PySide6.QtCore import QTime
+
+    dialog = availability({"work_windows": SETUP_HOURS})
+    plus(dialog, "study", 5).click()
+    assert dialog.picker.isVisibleTo(dialog)
+    dialog.picker_start.setTime(QTime(16, 0))
+    dialog.picker_end.setTime(QTime(21, 0))
+    dialog.picker_add.click()
+    assert not dialog.picker.isVisibleTo(dialog)
+    assert dialog.work_windows() == [
+        {"days": [0, 1, 2, 3, 4, 5], "start": "16:00", "end": "21:00"},
+        {"days": [5, 6], "start": "10:00", "end": "12:00"},
+    ]
+    assert day_row(dialog, "study", 5) == ["10:00–12:00  ×", "16:00–21:00  ×", "+"]
+    dialog.deleteLater()
+
+
+def test_study_hours_can_be_kept_for_one_subject(qapp: QApplication) -> None:
+    from PySide6.QtCore import QTime
+
+    dialog = availability({})
+    dialog._open_picker(kind="study", day=0)
+    dialog.picker_start.setTime(QTime(15, 30))
+    dialog.picker_end.setTime(QTime(17, 0))
+    dialog.picker_subject.setCurrentIndex(dialog.picker_subject.findData("Math"))
+    dialog.picker_add.click()
+    assert dialog.work_windows() == [{"days": [0], "start": "15:30", "end": "17:00", "subject": "Math"}]
+    assert day_row(dialog, "study", 0) == ["15:30–17:00 Math  ×", "+"]
+    dialog._open_picker(kind="study", day=0)
+    dialog.picker_end.setTime(QTime(15, 0))
+    dialog.picker_add.click()
+    assert dialog.error.text() == "End must be after Start."
+    assert len(dialog.work_windows()) == 1
+    dialog.deleteLater()
+
+
+def test_protected_time_is_added_with_its_kind_and_never_overlaps(qapp: QApplication) -> None:
+    from PySide6.QtCore import QTime
+
+    dialog = availability({"protected": [PIANO]})
+    dialog._open_picker(kind="protected", day=3)
+    assert not dialog.picker_subject.isVisibleTo(dialog) and dialog.picker_kind.isVisibleTo(dialog)
+    dialog.picker_start.setTime(QTime(18, 0))
+    dialog.picker_end.setTime(QTime(19, 0))
+    dialog.picker_add.click()
+    assert dialog.error.text() == "That overlaps protected time already on Thursday."
+    dialog.picker_start.setTime(QTime(18, 30))
+    dialog.picker_kind.setCurrentIndex(dialog.picker_kind.findData("meal"))
+    dialog.picker_add.click()
+    assert dialog.error.text() == ""
+    assert dialog.protected() == [PIANO, {"days": [3], "kind": "meal", "start": "18:30", "duration_min": 30}]
+    dialog.deleteLater()
+
+
+def test_protected_time_shows_and_saves_its_own_name(qapp: QApplication) -> None:
+    from PySide6.QtCore import QTime
+
+    dialog = availability({"protected": [{**PIANO, "title": "Piano"}]})
+    assert day_row(dialog, "protected", 1) == ["17:00–18:30 Piano  ×", "+"]
+    dialog._open_picker(kind="protected", day=2)
+    assert dialog.picker_title.isVisibleTo(dialog) and not dialog.picker_subject.isVisibleTo(dialog)
+    assert dialog.picker_title.placeholderText() == "e.g. Piano"
+    dialog.picker_start.setTime(QTime(17, 0))
+    dialog.picker_end.setTime(QTime(18, 30))
+    dialog.picker_title.setText("  Piano ")
+    dialog.picker_add.click()
+    dialog._open_picker(kind="protected", day=5)
+    assert dialog.picker_title.text() == "", "each new time starts without a name"
+    dialog.picker_start.setTime(QTime(9, 0))
+    dialog.picker_end.setTime(QTime(10, 0))
+    dialog.picker_add.click()
+    assert dialog.protected() == [
+        {"days": [1, 2, 3], "start": "17:00", "duration_min": 90, "kind": "downtime", "title": "Piano"},
+        {"days": [5], "kind": "downtime", "start": "09:00", "duration_min": 60},
+    ]
+    assert day_row(dialog, "protected", 5) == ["09:00–10:00 Downtime  ×", "+"]
+    dialog.deleteLater()
 
 
 def test_a_change_to_the_week_does_not_restyle_the_window_when_the_look_is_the_same(

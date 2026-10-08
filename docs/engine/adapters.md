@@ -31,6 +31,7 @@ The desktop tables use the same three classes. Those modules live in `desktop/na
 | availability | occupancy_from_windows | ADAPTER | Encodes the windows, one call, list out. |
 | availability | lateness_occupancy | ADAPTER | One engine call, list out. |
 | availability | study_rank | ADAPTER | Encodes the windows, one call. |
+| availability | fold_study_windows | ADAPTER | Encodes both lists, one call, dicts out. |
 | availability | resolve_work_windows | ADAPTER | `None` stays `None`; an empty list is the engine's to default. One call, then pydantic. |
 | availability | session_inside_work_windows | ADAPTER | Encodes the windows, one call. |
 | availability | merge_occupancy | ADAPTER | One engine call, list out. |
@@ -147,7 +148,7 @@ The desktop tables use the same three classes. Those modules live in `desktop/na
 | app | insert_restore_point | ADAPTER | One connection call. Python reads `secrets` and the clock and passes both in; the engine names the point, counts, snapshots, protects and prunes. |
 | app | preferences_from_row | ADAPTER | One engine call fills every default; `Preferences` is the pydantic check. |
 | app | validate_windows | ADAPTER | The pydantic check the engine calls for each window list. |
-| app | solve_availability | ADAPTER | One engine call splits the stored text and builds the occupancy; Python revalidates the study and work windows. |
+| app | solve_availability | ADAPTER | One engine call splits the stored text, folds an older row's study windows into the work windows and builds the occupancy; Python revalidates each list first. |
 | app | naive_now | STAYS | Reads the clock. |
 
 `upsert_assignment`, `delete_assignment`, `save_week_row`, `upsert_routine`, and `delete_routine` are not in the table and the test does not check them. Each makes one store call and turns the status it gets back into an HTTP error (409, 422, 404) by comparing it with a status word. The store decides the status; the comparison only picks the error. None of the five holds a rule beyond that mapping: the revision check, the cap, and the identical-body shortcut are all in the store.

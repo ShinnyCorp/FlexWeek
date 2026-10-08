@@ -1745,7 +1745,6 @@ class NativeWindow(QMainWindow):
             for key in (
                 "planning_style",
                 "drag_step_min",
-                "study_windows",
                 "reminders_enabled",
                 "reminder_lead_min",
                 "alarm_tone",
@@ -1775,12 +1774,7 @@ class NativeWindow(QMainWindow):
         if self._setup_work_windows is not None and session.preferences is not None:
             windows, self._setup_work_windows = self._setup_work_windows, None
             prefs = session.preferences
-            session.save_availability(
-                prefs.get("protected") or [],
-                prefs.get("study_windows") or [],
-                prefs.get("day_cutoff"),
-                windows,
-            )
+            session.save_availability(prefs.get("protected") or [], prefs.get("day_cutoff"), windows)
             return
         if self._setup_week:
             self._setup_week = False
@@ -3248,12 +3242,12 @@ class NativeWindow(QMainWindow):
         subjects = sorted(
             {str(item["course"]).strip() for item in self.session.assignments.values() if item.get("course")}
         )
-        dialog = AvailabilityDialog(self, self.session.preferences, subjects)
+        pack, system_dark, accent = self._look_inputs()
+        palette = resolved_palette(pack, system_dark, self._look, accent)
+        dialog = AvailabilityDialog(self, self.session.preferences, subjects, palette)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        self.session.save_availability(
-            dialog.protected(), dialog.study_windows(), dialog.day_cutoff(), dialog.work_windows()
-        )
+        self.session.save_availability(dialog.protected(), dialog.day_cutoff(), dialog.work_windows())
 
     def _show_recover(self, shown: bool) -> None:
         for widget in (self.recovery_code, self.new_recovery_password, self.recover_button):

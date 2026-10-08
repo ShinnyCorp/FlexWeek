@@ -202,7 +202,7 @@ Reading the test column. `desktop/tests/<file>::<test>` is a test that calls the
 | `NativeSession.finish_alarm` | Dismissing snoozes the alarm if asked, remembers a block's song for the snooze or forgets it, and then shows the next queued alarm. | desktop/tests/test_native.py::test_a_second_alarm_waits_until_the_first_is_dismissed |
 | `NativeSession.spotify_url` | Takes the given link, else the selected block's, else the default; returns only a valid Spotify link and otherwise an empty string. | none found |
 | `NativeSession.save_preferences` | Merges updates over the stored preferences and, when the theme pack changes, sets the light or dark axis from the pack. | desktop/tests/test_native.py::test_preference_round_trip_keeps_theme_pack_and_reminders |
-| `NativeSession.save_availability` | Validates every protected, study and work window and says the error instead of saving when one is wrong; an empty day cutoff becomes none. | desktop/tests/test_native.py::test_availability_round_trips_protected_time |
+| `NativeSession.save_availability` | Validates every protected and work window and says the error instead of saving when one is wrong; an empty day cutoff becomes none. | desktop/tests/test_native.py::test_availability_round_trips_protected_time |
 | `NativeSession.save_routine` | Needs a name and at least one fixed commitment (or a chosen subset), builds the routine from those, and uses a repeatable key so a retry makes one routine. | desktop/tests/test_native.py::test_apply_routine_writes_a_restore_snapshot |
 | `NativeSession.apply_routine_rows` | Says to choose a weekday when none or no routine exists; otherwise builds the rows for the chosen weekdays. | desktop/tests/test_native.py::test_apply_routine_writes_a_restore_snapshot (via apply_routine) |
 | `NativeSession.apply_routine` | Says there is nothing to add when no rows result, otherwise adds them with a restore point named for the routine and a key that identifies routine, revision, week and days. | desktop/tests/test_native.py::test_apply_routine_writes_a_restore_snapshot |
@@ -419,7 +419,7 @@ Reading the test column. `desktop/tests/<file>::<test>` is a test that calls the
 | `_homework_problem` | Picks the sentence a student reads for a refused homework by the first field the server names, with separate words for too-long titles, bad links and too many links or checklist steps. | desktop/tests/test_homework_plan.py::test_homework_editor_refuses_each_field_in_its_own_words |
 | `_preset_locked` | Builds a new fixed block from a category's preset: uses the preset's start, length and days only when the drag was the untouched default (60 min at 16:00), and uses a duration-only preset's length otherwise. | none found |
 | `ChooseTimeDialog._check` | Asks the calendar rules whether the picked day and start are allowed, shows the refusal in plain words (dropping the ", so it stayed where it was" tail), names a block sharing the time, and enables OK only when nothing refuses. | desktop/tests/test_layouts_window.py::test_choose_a_time_places_homework_without_dragging (via the dialog's own buttons and notes) |
-| `AvailabilityDialog._add_study` | Rounds the typed start and end down to quarter hours, refuses a window outside 06:00 to 23:00 or ending before it starts, refuses past the limit of 21, and keeps a subject only when one other than "Any subject" is typed (cut to 40 characters). | desktop/tests/test_layouts_window.py::test_a_study_window_can_be_kept_for_one_subject |
+| `AvailabilityDialog._add_picked` | Rounds the picked start and end down to quarter hours; refuses hours that end before they start, protected time that overlaps other protected time that day, and a 22nd window once equal hours are joined; keeps a subject only when one other than "Any subject" is typed (cut to 40 characters). | desktop/tests/test_layouts_window.py::test_study_hours_can_be_kept_for_one_subject; desktop/tests/test_layouts_window.py::test_protected_time_is_added_with_its_kind_and_never_overlaps; desktop/tests/test_ui_dialogs.py::test_study_hours_stop_at_the_limit |
 | `DayAgenda.set_agenda` | Decides what the day shows: an empty-day sentence when nothing is due, planned or fixed; a planned-and-free line when a workload exists; unplaced work first, timed rows in clock order with height scaled to length (28 to 160), then deadlines in a student's words; and the label of the next-action button. | desktop/tests/test_day_agenda.py::test_the_day_is_in_clock_order; desktop/tests/test_day_agenda.py::test_an_empty_day_still_says_so |
 | `PreviewDialog._row_widget` | Decides what a pasted row may be changed to: for a fixed block, quarter-hour starts that still fit the day plus the block's own off-grid time, and lengths no longer than the room left or the original length, always keeping its own length. | desktop/tests/test_ui_dialogs.py::test_a_pasted_block_off_the_quarter_hour_keeps_its_time |
 | `PreviewDialog._refresh` | Un-ticks any row that clashes or is invalid the first time it is shown, enables Save only when something is ticked and no ticked row clashes, and says why Save is off. | desktop/tests/test_native.py::test_preview_dialog_leaves_a_collision_unchecked |
@@ -452,11 +452,12 @@ Reading the test column. `desktop/tests/<file>::<test>` is a test that calls the
 | `PreviewDialog._set_day` | Applies a new day and ticks the row if it no longer clashes. | none found |
 | `PreviewDialog._set_duration` | Applies a new length and ticks the row if it no longer clashes. | none found |
 | `PreviewDialog._set_checked` | Records a tick and refreshes unless the dialog is rebuilding. | none found |
-| `AvailabilityDialog._add_protected` | Refuses a 22nd protected window; otherwise adds a default one (first kind, weekdays at 18:00 for an hour). | none found |
-| `AvailabilityDialog.__init__` | Offers cutoffs from 06:15 on the quarter-hour grid plus "No cutoff", and picks the saved one. | none found |
-| `AvailabilityDialog._render` | Words each protected and study window with its time, length, days and, for study, its subject. | none found |
-| `AvailabilityDialog.accept` | Refuses to close while the work windows have a problem. | desktop/tests/test_ui_dialogs.py::test_work_window_end_before_start_is_refused_beside_end |
-| `AvailabilityDialog._fit_width` | Widens the dialog only when its body needs more than its present minimum. | desktop/tests/test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings (asserts no sideways scroll) |
+| `AvailabilityDialog._remove_chip` | Takes one day out of its window; the window's other days keep it. | desktop/tests/test_layouts_window.py::test_removing_a_chip_takes_only_that_day_out_of_a_shared_window |
+| `AvailabilityDialog.__init__` | Splits each saved window into one entry per day, and offers the cutoffs with the saved one picked. | desktop/tests/test_one_source_settings.py::test_a_cutoff_saved_off_the_list_is_kept_not_dropped |
+| `AvailabilityDialog._render` | Words each chip with its hours and its subject or kind of time, shows a tab's grey line only when it is empty, paints the strip, and names the cut-off line in the legend only when there is one. | desktop/tests/test_layouts_window.py::test_each_day_shows_its_hours_as_chips_and_one_plus; desktop/tests/test_layouts_window.py::test_an_empty_tab_says_so_in_grey; desktop/tests/test_layouts_window.py::test_the_tabs_show_study_hours_protected_time_and_the_cutoff |
+| `_joined` | Joins equal hours on several days back into one window, in the order the hours first appear. | desktop/tests/test_layouts_window.py::test_adding_hours_on_a_day_saves_them_with_any_equal_hours |
+| `AvailabilityStrip.show_week` | Starts the strip at 06:00, or at the hour of an earlier window. | desktop/tests/test_layouts_window.py::test_the_strip_paints_study_hours_protected_time_and_the_cutoff (via the dialog) |
+| `AvailabilityDialog._fit_width` | Widens the dialog only when its body needs more than its present minimum. | none found |
 | `HomeworkDialog._add_link` | Refuses a 21st link or one missing its label or address; otherwise adds it and clears the boxes. | desktop/tests/test_homework_plan.py::test_homework_editor_refuses_each_field_in_its_own_words (via; only the later save message is asserted) |
 | `HomeworkDialog._add_check` | Refuses a 41st step or an empty one; otherwise adds it and clears the box. | none found |
 | `HomeworkDialog._disable_spread` | Turns off Spread and the place-by-hand buttons once an unsaved edit is made. | none found |
@@ -1429,15 +1430,15 @@ Reading the test column. `desktop/tests/<file>::<test>` is a test that calls the
 
 | Function | What it decides | Test |
 |---|---|---|
-| `_WorkWindowRow.problem` | Says "End must be after Start." when the end is not later than the start, shows or hides that message beside the end box, and returns it. | desktop/tests/test_ui_dialogs.py::test_work_window_end_before_start_is_refused_beside_end |
-| `WorkWindowsEditor._refresh` | Words the heading ("only planned between these times" or "any time of day"), shows the "21 is the most you can add." line only at the limit, and disables every add button at the limit. | desktop/tests/test_ui_dialogs.py::test_work_window_limit_and_reset_in_settings; desktop/tests/test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings |
-| `_WorkWindowRow.window` | Builds one window from the ticked days and the times, adding the subject only when the typed one is not blank after trimming. | desktop/tests/test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings |
-| `WorkWindowsEditor.set_windows` | Refuses more than 21 windows by raising, otherwise replaces all rows. | desktop/tests/test_ui_dialogs.py::test_work_window_limit_and_reset_in_settings (21 accepted; the raise is not asserted) |
-| `WorkWindowsEditor.problem` | Returns the first row's problem, checking every row so each shows its own message. | desktop/tests/test_ui_dialogs.py::test_work_window_end_before_start_is_refused_beside_end |
+| `_WorkWindowRow.problem` | Says "End must be after Start." when the end is not later than the start, shows or hides that message beside the end box, and returns it. | none found |
+| `WorkWindowsEditor._refresh` | Words the heading ("only planned between these times" or "any time of day"), shows the "21 is the most you can add." line only at the limit, and disables every add button at the limit. | none found |
+| `_WorkWindowRow.window` | Builds one window from the ticked days and the times, adding the subject only when the typed one is not blank after trimming. | none found |
+| `WorkWindowsEditor.set_windows` | Refuses more than 21 windows by raising, otherwise replaces all rows. | none found |
+| `WorkWindowsEditor.problem` | Returns the first row's problem, checking every row so each shows its own message. | none found |
 | `WorkWindowsEditor._add_window` | Ignores an add when 21 rows already exist. | none found |
 | `_WorkWindowRow._day_toggled` | Stops the last ticked day from being unticked by re-ticking it. | none found |
-| `_WorkWindowRow.set_subjects` | Refills the subject choices without repeats and keeps the text already typed. | desktop/tests/test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings |
-| `WorkWindowsEditor._remove_row` | Removes a row and re-words the heading and limit. | desktop/tests/test_ui_dialogs.py::test_work_windows_can_be_added_edited_and_removed_in_settings |
+| `_WorkWindowRow.set_subjects` | Refills the subject choices without repeats and keeps the text already typed. | none found |
+| `WorkWindowsEditor._remove_row` | Removes a row and re-words the heading and limit. | none found |
 
 ## `desktop/native/hours/chips.py`
 

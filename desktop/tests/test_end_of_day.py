@@ -132,12 +132,12 @@ def test_study_hours_take_an_end_at_midnight(
 ) -> None:
     set_clock_24h(twenty_four)
     dialog = AvailabilityDialog(host, {})
-    type_over(dialog.study_start, "22:00")
-    type_over(dialog.study_end, way)
-    dialog._add_study()
+    dialog._open_picker(kind="study", day=0)
+    type_over(dialog.picker_start, "22:00")
+    type_over(dialog.picker_end, way)
+    dialog.picker_add.click()
     assert dialog.error.text() == ""
-    (window,) = dialog.study_windows()
-    assert (window["start"], window["duration_min"]) == ("22:00", 120)
+    assert dialog.work_windows() == [{"days": [0], "start": "22:00", "end": "24:00"}]
 
 
 def test_a_setup_end_box_steps_up_to_the_end_of_the_day_and_no_further(qapp: QApplication) -> None:

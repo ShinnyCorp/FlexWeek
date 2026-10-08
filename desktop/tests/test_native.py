@@ -823,7 +823,6 @@ def test_the_reason_homework_has_no_time_is_the_latest_one(qapp: QApplication, s
     # Monday is full from 06:00 to 23:00. Without this, the open night would give the homework a time.
     assert session.save_availability(
         [],
-        [],
         None,
         [{"days": [0, 1, 2, 3, 4, 5, 6], "start": "06:00", "end": "23:00"}],
     )
@@ -941,7 +940,7 @@ def test_availability_round_trips_protected_time(qapp: QApplication, server: Loc
     wait_until(qapp, lambda: session.preferences is not None)
     window = {"kind": "meal", "days": [0, 1, 2, 3, 4], "start": "18:00", "duration_min": 30}
     hours = [{"days": [0, 1, 2, 3, 4, 5, 6], "start": "08:00", "end": "21:00"}]
-    assert session.save_availability([window], [], "21:00", hours)
+    assert session.save_availability([window], "21:00", hours)
     wait_until(qapp, lambda: not session.busy)
     assert session.preferences is not None
     assert session.preferences["protected"][0]["kind"] == "meal"

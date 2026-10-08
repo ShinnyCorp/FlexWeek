@@ -81,14 +81,6 @@ pub struct WorkWindow {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StudyWindow {
-    pub days: Vec<i64>,
-    pub start: String,
-    pub duration_min: i64,
-    pub subject: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct Move {
     pub block_id: String,
     pub reason: String,
@@ -175,18 +167,6 @@ fn work_value(window: &WorkWindow) -> Value {
     value
 }
 
-fn study_value(window: &StudyWindow) -> Value {
-    let mut value = serde_json::json!({
-        "days": window.days,
-        "start": window.start,
-        "duration_min": window.duration_min,
-    });
-    if let Some(subject) = &window.subject {
-        value["subject"] = serde_json::json!(subject);
-    }
-    value
-}
-
 fn merge_occupancy(base: &[u128], extra: &[u128]) -> EngineResult<Vec<u128>> {
     crate::plan::merge_occupancy(base, extra)
 }
@@ -202,17 +182,6 @@ fn resolve_work_windows(windows: Option<&[WorkWindow]>) -> (Vec<WorkWindow>, boo
 
 fn lateness_occupancy(day: i64, from_start: &str, minutes: i64) -> EngineResult<Vec<u128>> {
     crate::plan::lateness_occupancy(day, from_start, minutes)
-}
-
-fn study_rank(
-    windows: &[StudyWindow],
-    course: Option<&str>,
-    day: i64,
-    start_min: i64,
-    duration_min: i64,
-) -> EngineResult<i64> {
-    let values: Vec<Value> = windows.iter().map(study_value).collect();
-    crate::plan::study_rank(&values, course, day, start_min, duration_min)
 }
 
 fn session_inside_work_windows(
@@ -352,7 +321,7 @@ fn has_slot(
 fn order_values(
     block: &TimeBlock,
     values: &[(i64, i64)],
-    windows: &[StudyWindow],
+    windows: &[Value],
 ) -> EngineResult<Vec<(i64, i64)>> {
     let (low, high) = energy_window(&block.energy);
     let mut keyed: Vec<(i64, i64, i64, i64, i64)> = Vec::with_capacity(values.len());
@@ -364,7 +333,7 @@ fn order_values(
         } else {
             0
         };
-        let study = study_rank(
+        let study = crate::plan::study_rank(
             windows,
             block.course.as_deref(),
             day,
@@ -421,7 +390,7 @@ struct SearchCtx<'a> {
     flex: &'a [TimeBlock],
     lengths: &'a [i64],
     parsed_deadlines: &'a [Option<(i64, i64)>],
-    windows: &'a [StudyWindow],
+    windows: &'a [Value],
     budget_ms: f64,
     elapsed_ms: &'a dyn Fn() -> f64,
     best_score: (i64, i64, i64, i64),
@@ -654,7 +623,6 @@ fn apply_slack_overrides(
 pub fn solve(
     blocks: &[TimeBlock],
     extra_occ: Option<&[u128]>,
-    study_windows: Option<&[StudyWindow]>,
     work_windows: Option<&[WorkWindow]>,
     overrides: Option<&DeadlineOverrides>,
     budget_ms: f64,
@@ -704,8 +672,9 @@ pub fn solve(
         occ_locked = merge_occupancy(&occ_locked, extra)?;
     }
 
-    let windows = study_windows.unwrap_or(&[]);
     let (planning_windows, work_windows_defaulted) = resolve_work_windows(work_windows);
+    // One list bounds the search and orders it: a subject's own hours come first (J7).
+    let windows: Vec<Value> = planning_windows.iter().map(work_value).collect();
 
     let ids: Vec<String> = flexible.iter().map(|b| b.id.clone()).collect();
     let mut parsed_deadlines: Vec<Option<(i64, i64)>> = flexible
@@ -746,7 +715,7 @@ pub fn solve(
         flex: &flexible,
         lengths: &lengths,
         parsed_deadlines: &parsed_deadlines,
-        windows,
+        windows: &windows,
         budget_ms,
         elapsed_ms,
         best_score: (-1, -1, -1, -1),
@@ -950,7 +919,6 @@ pub fn reschedule_after_miss(
     missed_day: i64,
     previous_placed: &[TimeBlock],
     extra_occ: Option<&[u128]>,
-    study_windows: Option<&[StudyWindow]>,
     work_windows: Option<&[WorkWindow]>,
     overrides: Option<&DeadlineOverrides>,
     budget_ms: f64,
@@ -977,7 +945,6 @@ pub fn reschedule_after_miss(
     let trace = solve(
         &updated,
         extra_occ,
-        study_windows,
         work_windows,
         overrides,
         budget_ms,
@@ -999,7 +966,6 @@ pub fn reschedule_running_late(
     from_start: &str,
     previous_placed: &[TimeBlock],
     extra_occ: Option<&[u128]>,
-    study_windows: Option<&[StudyWindow]>,
     work_windows: Option<&[WorkWindow]>,
     overrides: Option<&DeadlineOverrides>,
     budget_ms: f64,
@@ -1013,7 +979,6 @@ pub fn reschedule_running_late(
     let trace = solve(
         blocks,
         Some(&combined),
-        study_windows,
         work_windows,
         overrides,
         budget_ms,
@@ -1163,19 +1128,6 @@ pub fn work_window_from_value(value: &Value) -> WorkWindow {
     }
 }
 
-pub fn study_window_from_value(value: &Value) -> StudyWindow {
-    StudyWindow {
-        days: i64_list(value.get("days")),
-        start: value
-            .get("start")
-            .and_then(Value::as_str)
-            .unwrap_or("00:00")
-            .into(),
-        duration_min: i64_field(value, "duration_min", 0),
-        subject: opt_string(value.get("subject")),
-    }
-}
-
 fn window_to_value(window: &WorkWindow) -> Value {
     let mut map = Map::new();
     map.insert(
@@ -1302,7 +1254,6 @@ mod tests {
         let trace = solve(
             &[school],
             None,
-            None,
             Some(&legacy_work_windows()),
             None,
             SOLVE_BUDGET_MS,
@@ -1323,7 +1274,6 @@ mod tests {
         let hw = flex("hw", "Math homework", 60, &[0], "high");
         let trace = solve(
             &[school, hw],
-            None,
             None,
             Some(&legacy_work_windows()),
             None,

@@ -657,7 +657,7 @@ fn test_homework_is_never_planned_in_a_quarter_hour_a_block_at_any_minute_touche
         ));
     }
     let evening = vec![work_span(&[0], "17:30", "18:45", None)];
-    let trace = solve_with(&blocks, None, None, Some(&evening), &real_clock());
+    let trace = solve_with(&blocks, None, Some(&evening), &real_clock());
     let starts: Vec<_> = trace
         .placed
         .iter()
@@ -717,7 +717,7 @@ fn test_due_today_with_no_study_time_left_says_so() {
         Some("Monday 21:00"),
     );
     let windows = vec![work_span(&[0], "16:00", "20:00", None)];
-    let trace = solve_with(&[hw], None, None, Some(&windows), &real_clock());
+    let trace = solve_with(&[hw], None, Some(&windows), &real_clock());
     assert_eq!(ids(&trace.unplaced), ["hw"]);
     let (reason, message) = unplaced_reason(&trace, "hw");
     assert_eq!(reason, "NO_STUDY_TIME_TODAY");
@@ -737,7 +737,7 @@ fn test_a_window_that_is_too_short_today_is_still_a_work_window_miss() {
         Some("Monday 16:00"),
     );
     let windows = vec![work_span(&[0], "16:00", "17:00", None)];
-    let trace = solve_with(&[hw], None, None, Some(&windows), &real_clock());
+    let trace = solve_with(&[hw], None, Some(&windows), &real_clock());
     assert_eq!(ids(&trace.unplaced), ["hw"]);
     assert_eq!(unplaced_reason(&trace, "hw").0, "WORK_WINDOW_MISS");
 }
