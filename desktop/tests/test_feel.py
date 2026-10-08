@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import gc
 import json
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -19,12 +21,17 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSlider,
     QWidget,
 )
+from shiboken6 import isValid
 
 from desktop.native.calendar import monday_of
 from desktop.native.feel import (
+    BevelPane,
     Context,
+    Win98Chrome,
+    Win98TitleBar,
     apply_feel,
     bevel_css,
     bevel_kind,
@@ -395,6 +402,109 @@ def test_retro_bevels_are_raised_and_sunken(qapp: QApplication) -> None:  # noqa
     assert dialog.findChild(QWidget, "win98Bevels") is not None
     dialog.close()
     free(dialog)
+    free(host)
+
+
+class _Cycle:
+    """A Python loop around a page, so only the garbage collector can free it."""
+
+    def __init__(self, page: QWidget) -> None:
+        self.page = page
+        self.loop = self
+
+
+def _record_errors(monkeypatch: pytest.MonkeyPatch) -> list[BaseException]:
+    """Errors a Qt override raised. The app's own hook waits on the window thread, and the collector
+    can run off it: on 0.18.3 that hung the app, here it fails the assertion."""
+    errors: list[BaseException] = []
+    monkeypatch.setattr(sys, "excepthook", lambda _kind, value, _tb: errors.append(value))
+    return errors
+
+
+def test_collecting_a_retro_page_raises_nothing(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+) -> None:
+    errors = _record_errors(monkeypatch)
+    host, ctx = _host(qapp, "retro")
+    freed: list[bool] = []
+    gc.collect()
+    # Collector off while the page is built, so what it breaks up later is in the order it was made.
+    gc.disable()
+    try:
+        # A bare page: SettingsPage and SetupPage hold themselves in closures, so the collector never
+        # frees them.
+        page = QWidget()
+        page.setObjectName("settingsPage")
+        QSlider(page)
+        page.resize(1280, 800)
+        page.show()
+        apply_feel(page, ctx)
+        apply_feel(page, ctx)
+        qapp.processEvents()
+        assert page.findChild(Win98Chrome) is not None
+        assert page.findChild(BevelPane) is not None
+        page.destroyed.connect(lambda *_: freed.append(True))
+        held = _Cycle(page)
+        del page, held
+        gc.collect()
+        qapp.processEvents()
+    finally:
+        gc.enable()
+    free(host)
+    assert freed == [True]
+    assert errors == []
+
+
+def test_an_emptied_retro_frame_ignores_its_hosts_events(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+) -> None:
+    errors = _record_errors(monkeypatch)
+    host, ctx = _host(qapp, "retro")
+    prefs = {"alarms": [], "reminders_enabled": True, "theme_pack": "light-frost"}
+    page = SettingsPage(host, prefs, ctx.look, {}, style_layout(STYLE["retro"], sanitize_layout(None)))
+    page.resize(1280, 800)
+    page.show()
+    apply_feel(page, ctx)
+    frame = page.findChild(Win98Chrome)
+    assert frame is not None
+    # What the collector does to an object it is breaking up, while Qt still has the C++ side.
+    frame.hide()
+    frame.__dict__.clear()
+    page.hide()
+    page.show()
+    page.resize(page.width() + 8, page.height())
+    free(page)
+    free(host)
+    assert errors == []
+
+
+def test_every_retro_widget_is_owned_by_the_page_it_dresses(qapp: QApplication) -> None:  # noqa: F811
+    def frames() -> dict[int, QWidget]:
+        found = (Win98Chrome, Win98TitleBar, BevelPane)
+        return {id(obj): obj for obj in gc.get_objects() if isinstance(obj, found) and isValid(obj)}
+
+    host, ctx = _host(qapp, "retro")
+    large = sanitize_look({**ctx.look, "knobs": {**ctx.look.get("knobs", {}), "text": "large"}})
+    restyled = Context(ctx.feel, large, ctx.palette, ctx.tokens, ctx.base_sheet)
+    prefs = {"alarms": [], "reminders_enabled": True, "theme_pack": "light-frost"}
+    before = frames()
+    page = SettingsPage(host, prefs, ctx.look, {}, style_layout(STYLE["retro"], sanitize_layout(None)))
+    dialog = HomeworkDialog(host, today="2026-10-01")
+    dialog.show()
+    setup = SetupPage(host)
+    setup.motion = "off"
+    for root in (page, dialog, setup):
+        apply_feel(root, ctx)
+        apply_feel(root, restyled)
+        qapp.processEvents()
+        made = [obj for key, obj in frames().items() if key not in before and root.isAncestorOf(obj)]
+        assert {type(obj) for obj in made} == {Win98Chrome, Win98TitleBar, BevelPane}, root.objectName()
+    strays = [obj for key, obj in frames().items() if key not in before and obj.parentWidget() is None]
+    assert strays == []
+    dialog.close()
+    free(dialog)
+    free(page)
+    free(setup)
     free(host)
 
 

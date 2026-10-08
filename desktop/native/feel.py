@@ -483,8 +483,10 @@ class _HeroPlace(QObject):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize and isinstance(watched, QWidget):
             mark = watched.findChild(HeroMark)
-            if mark is not None:
-                pad = round(16 * mark._scale)
+            # A mark the collector has already cleared has no scale left to place it by.
+            scale = getattr(mark, "_scale", None)
+            if scale is not None:
+                pad = round(16 * scale)
                 mark.move(pad, max((watched.height() - mark.height()) // 2, 0))
         return False
 
@@ -564,6 +566,9 @@ class Win98TitleBar(QWidget):
 class Win98Chrome(QWidget):
     """A Windows 98 window or dialog frame around a page or sheet, painted over its edges."""
 
+    # Empty once the garbage collector has cleared this frame, so a filter call then has nothing to place.
+    _bar: Win98TitleBar | None = None
+
     def __init__(
         self,
         host: QWidget,
@@ -575,7 +580,6 @@ class Win98Chrome(QWidget):
     ) -> None:
         super().__init__(host)
         self.setObjectName("win98Frame")
-        self._host = host
         self._title = title
         self._icon = icon
         self._caps = caps
@@ -586,6 +590,12 @@ class Win98Chrome(QWidget):
         self._bar = Win98TitleBar(title, icon, caps, tokens, scale, self._close_host, host)
         host.installEventFilter(self)
         self._sync()
+
+    @property
+    def _host(self) -> QWidget | None:
+        # Asked of Qt, never kept: a Python reference to the parent made a cycle with it, and the
+        # collector then cleared this frame's __dict__ while the host's C++ side was still being torn down.
+        return self.parentWidget()
 
     def _close_host(self) -> None:
         dialog = self._host if isinstance(self._host, QDialog) else self._host.window()
@@ -603,6 +613,8 @@ class Win98Chrome(QWidget):
 
     def _sync(self) -> None:
         host = self._host
+        if self._bar is None or host is None:
+            return
         self.setGeometry(host.rect())
         bar_h = max(bar_height(self._scale), retro.CAP.height() + 8)
         self._bar.setParent(host)
@@ -823,13 +835,17 @@ class BevelPane(QWidget):
     def __init__(self, host: QWidget, tokens: dict[str, str]) -> None:
         super().__init__(host)
         self.setObjectName("win98Bevels")
-        self._host = host
         self._tokens = tokens
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         host.installEventFilter(self)
         self._watch(host)
         self._sync()
+
+    @property
+    def _host(self) -> QWidget | None:
+        # Asked of Qt, never kept, for the same reason as Win98Chrome._host.
+        return self.parentWidget()
 
     def _watch(self, widget: QWidget) -> None:
         widget.installEventFilter(self)
@@ -860,9 +876,12 @@ class BevelPane(QWidget):
         return False
 
     def _sync(self) -> None:
-        self.setGeometry(self._host.rect())
+        host = self._host
+        if host is None:
+            return
+        self.setGeometry(host.rect())
         self.raise_()
-        for bar in self._host.findChildren(Win98TitleBar):
+        for bar in host.findChildren(Win98TitleBar):
             bar.raise_()
 
     def paintEvent(self, event: object) -> None:  # noqa: N802
