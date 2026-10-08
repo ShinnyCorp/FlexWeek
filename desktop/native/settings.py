@@ -2016,6 +2016,8 @@ def _logo(side: int) -> QLabel:
 
 
 class AboutDialog(Dialog):
+    _pin_top = True
+
     def __init__(self, parent: QWidget | None, storage: dict | None, folder: str) -> None:
         super().__init__(parent, sheet=True)
         layout = self.card_body("About FlexWeek")
@@ -2042,12 +2044,15 @@ class AboutDialog(Dialog):
             open_folder.setToolTip(folder)
             open_folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(folder)))
             layout.addWidget(open_folder)
+        layout.addSpacing(SPACING[3])
 
 
 class HelpDialog(Dialog):
     """Enough to find your way: the screens two by two, then the keys, drawn as keycaps. A list's sheet,
     600 wide (5.1 A of 0.17.2), so the shortcuts are one column: beside the screens, their words wrapped
     a word or two to a line."""
+
+    _pin_top = True
 
     def __init__(self, parent: QWidget | None) -> None:
         super().__init__(parent, sheet=True)
@@ -2085,6 +2090,7 @@ class HelpDialog(Dialog):
         for key, what in HELP_KEYS:
             keys.addRow(keycaps(key), _line(what, "helpKeyDoes"))
         column.addWidget(key_list)
+        column.addSpacing(SPACING[3])
         column.addStretch(1)
         # A dialog's minimum counts a wrapped line as one line, so at large text on a laptop, Help at
         # its minimum squeezed the shortcuts to half their height. A scroll area gives the words the

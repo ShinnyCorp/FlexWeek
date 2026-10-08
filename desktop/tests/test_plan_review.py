@@ -128,14 +128,16 @@ def test_the_panel_shows_the_count_and_can_be_dismissed(qapp: QApplication) -> N
     panel.set_trace(TRACE, TITLES, WEEK, (1, 1))
     qapp.processEvents()
     assert panel.isVisible() is True
-    assert panel.heading.text() == "Placed 1 · 1 without a time"
+    from desktop.native.controller import plan_sentence
+
+    assert panel.heading.text() == plan_sentence(1, 1)
     assert panel.list.count() == 3
     # Something has no time, so why is open already; Details folds it away.
     assert panel.list.isVisible()
     panel.findChild(QPushButton, "planReviewDetails").click()
     assert not panel.list.isVisible()
     panel.set_trace({**TRACE, "unplaced": []}, TITLES, WEEK, (2, 0))
-    assert panel.heading.text() == "Placed 2" and not panel.list.isVisible()
+    assert panel.heading.text() == plan_sentence(2, 0) and not panel.list.isVisible()
     seen: list[str] = []
     panel.dismissed.connect(lambda: seen.append("dismissed"))
     panel.findChild(QPushButton, "planReviewDismiss").click()

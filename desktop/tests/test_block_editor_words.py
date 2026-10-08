@@ -75,7 +75,7 @@ def icon_style(qapp: QApplication) -> Iterator[None]:  # noqa: F811
 
 
 def test_the_editor_is_titled_as_a_student_says_it(qapp: QApplication, host: QWidget) -> None:  # noqa: F811
-    assert BlockDialog(host, day=3, start="17:15").windowTitle() == "New event"
+    assert BlockDialog(host, day=3, start="17:15").windowTitle() == "Add fixed time"
     assert BlockDialog(host, soccer()).windowTitle() == "Edit event"
 
 
@@ -83,7 +83,7 @@ def test_it_says_that_ticking_another_day_repeats_it(qapp: QApplication, host: Q
     dialog = BlockDialog(host, day=3, start="17:15", duration_min=30, from_range=True)
     dialog.show()
     note = dialog.findChild(QLabel, "blockRepeatNote")
-    assert note.text() == "Tick more days to repeat it this week."
+    assert note.text() == "Pick more days to repeat it."
     assert note.isVisibleTo(dialog)
     series = BlockDialog(host, soccer(), occurrence_day=3)
     series.show()
