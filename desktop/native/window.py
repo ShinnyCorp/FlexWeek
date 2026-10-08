@@ -3616,6 +3616,37 @@ class NativeWindow(QMainWindow):
         if self._settings is not None or self.session.account is None or self.session.preferences is None:
             return
         self._attach_settings_page(self._build_settings_page())
+        self._warm_settings_pictures()
+
+    def _warm_settings_pictures(self) -> None:
+        """Draw each design's picture while Settings is still off screen, at the width it will open
+        at. Drawn as the page slides in, the pictures were one long turn."""
+        page = self._settings
+        if page is None or not isValid(page) or self._stack.currentWidget() is page:
+            return
+        size = self._stack.size()
+        if size.width() <= 0 or size.height() <= 0:
+            return
+        page.resize(size)
+        page.ensurePolished()
+        layout = page.layout()
+        if layout is not None:
+            layout.activate()
+        from PySide6.QtWidgets import QScrollArea
+
+        from desktop.native.layouts.dialog import DesignPicker
+
+        for area in page.findChildren(QScrollArea):
+            inner = area.widget()
+            view = area.viewport()
+            if inner is None or view.width() <= 0:
+                continue
+            inner.resize(view.size())
+            box = inner.layout()
+            if box is not None:
+                box.activate()
+        for picker in page.findChildren(DesignPicker):
+            picker.warm()
 
     def _build_settings_page(self) -> SettingsPage:
         account = self.session.account

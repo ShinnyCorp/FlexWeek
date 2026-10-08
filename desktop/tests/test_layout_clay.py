@@ -18,7 +18,7 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, QRect, QRectF, Qt
+    from PySide6.QtCore import QAbstractAnimation, QEvent, QObject, QPoint, QPointF, QRect, QRectF, Qt
     from PySide6.QtGui import QColor, QCursor, QFont, QFontMetricsF, QImage, QPainter
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
@@ -337,6 +337,46 @@ def test_the_wheel_slides_the_row_over_a_neighbour_and_scrolls_the_hours_over_th
     visible_scrolls(view)[0].verticalScrollBar().setValue(0)
     wheel(front(view), 1)
     assert view.row.front == 4
+
+
+def test_a_sliding_row_does_not_repaint_its_cards_every_frame(qapp: QApplication) -> None:
+    """The row slides a picture of its cards. The cards themselves stay unpainted until it lands."""
+
+    class Count(QObject):
+        def __init__(self) -> None:
+            super().__init__()
+            self.paints = 0
+
+        def eventFilter(self, _watched: QObject, event: QEvent) -> bool:  # noqa: N802
+            if event.type() == QEvent.Type.Paint:
+                self.paints += 1
+            return False
+
+    view = shown(qapp)
+    motion.apply_ui_effects("normal")
+    cards = []
+    for day in range(7):
+        canvas = view.row.findChild(QWidget, f"clayPeek{day}")
+        assert canvas is not None
+        cards.append(canvas.parentWidget())
+    counter = Count()
+    for card in cards:
+        card.installEventFilter(counter)
+    view.findChild(QPushButton, "clayAhead").click()
+    assert view.row._slide.state() == QAbstractAnimation.State.Running
+    counter.paints = 0
+    frames = 0
+    deadline = time.monotonic() + 0.2
+    while time.monotonic() < deadline and view.row._slide.state() == QAbstractAnimation.State.Running:
+        qapp.processEvents()
+        frames += 1
+        QTest.qWait(8)
+    assert frames >= 8, "the row slid for several frames"
+    assert counter.paints <= 3, f"the cards painted {counter.paints} times over {frames} frames"
+    rest(qapp, 0.3)
+    assert view.row.front == 4
+    thursday = view.row.findChild(QWidget, "clayPeek3").parentWidget()
+    assert thursday.isVisible()
 
 
 def test_the_row_slides_in_240_ms_and_jumps_with_motion_off(qapp: QApplication) -> None:

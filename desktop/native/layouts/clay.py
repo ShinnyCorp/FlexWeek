@@ -28,6 +28,7 @@ from PySide6.QtCore import (
     QObject,
     QPoint,
     QPointF,
+    QRect,
     QRectF,
     QSize,
     Qt,
@@ -46,6 +47,7 @@ from PySide6.QtGui import (
     QPainter,
     QPainterPath,
     QPen,
+    QPixmap,
     QWheelEvent,
 )
 from PySide6.QtWidgets import (
@@ -58,6 +60,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid
 
 from desktop.native import icons
 from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS, category_icon
@@ -802,6 +805,10 @@ class Row(QWidget):
         self._rects: dict[int, QRectF] = {}
         self._from: dict[int, QRectF] = {}
         self._to: dict[int, QRectF] = {}
+        # A picture of each card for the slide, and the widgets hidden while that picture moves.
+        self._snaps: dict[int, QPixmap] | None = None
+        self._held_back: list[QWidget] = []
+        self._quiet: list[QWidget] = []
         self._wheel = 0
         # The hours the neighbours' stretch was taken for, and the hours open now: Week's week, or
         # Day's day. While they match, the neighbours stay still.
@@ -830,7 +837,7 @@ class Row(QWidget):
         self._slide.setEndValue(1.0)
         self._slide.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._slide.valueChanged.connect(self._slid)
-        self._slide.finished.connect(lambda: self._put(self._to))
+        self._slide.finished.connect(self._land)
         self._dwell = QTimer(self)
         self._dwell.setInterval(50)
         self._dwell.timeout.connect(self._dwelt)
@@ -1006,13 +1013,14 @@ class Row(QWidget):
         # Under Reduce motion the row changes where it is, under a picture of it that fades.
         picture = hold_picture(self, level) if moving and not slides else None
         before = dict(self._rects)
-        self._slide.stop()
+        self._stop_slide()
         self._front = day
         self._retarget()
         after = self._targets()
         if slides:
             self._from, self._to = before, after
             self._put(before)
+            self._capture()
             self._slide.setDuration(duration(SLIDE_MS, level))
             self._slide.start()
             return
@@ -1021,10 +1029,117 @@ class Row(QWidget):
 
     def _slid(self, value: object) -> None:
         share = float(value)
-        self._put({day: between(self._from.get(day, rect), rect, share) for day, rect in self._to.items()})
+        rects = {day: between(self._from.get(day, rect), rect, share) for day, rect in self._to.items()}
+        if self._snaps is not None:
+            self._rects = rects
+            self._place_front(rects[self._front])
+            self._place_arrows()
+            self.update()
+            return
+        self._put(rects)
         scroll = self.hours
         if scroll is not None:
             scroll.canvas.update()
+
+    def _stop_slide(self) -> None:
+        """Stopping does not finish the slide, so a picture still up has to give the widgets back."""
+        self._slide.stop()
+        self._drop_snaps()
+
+    def _capture(self) -> None:
+        """One picture of the row as it stands. The slide moves that, and the cards stay unpainted."""
+        self._drop_snaps()
+        if not self.tokens or not self._rects:
+            return
+        arrows = [arrow for arrow in (self.back, self.ahead) if arrow.isVisible()]
+        for arrow in arrows:
+            arrow.hide()
+        whole = self.grab()
+        for arrow in arrows:
+            arrow.show()
+        if whole.isNull():
+            return
+        ratio = whole.devicePixelRatio()
+        snaps: dict[int, QPixmap] = {}
+        for day, rect in self._rects.items():
+            if day != self._front and not self._peeks:
+                continue
+            area = shadowed(rect, self.tokens, day == self._front).toRect().intersected(self.rect())
+            if area.isEmpty():
+                continue
+            kept = whole.copy(
+                QRect(
+                    round(area.x() * ratio),
+                    round(area.y() * ratio),
+                    round(area.width() * ratio),
+                    round(area.height() * ratio),
+                )
+            )
+            if kept.isNull():
+                return
+            kept.setDevicePixelRatio(ratio)
+            snaps[day] = kept
+        if not snaps:
+            return
+        held: list[QWidget] = []
+        for card in self._cards.values():
+            if card.isVisible():
+                card.hide()
+                held.append(card)
+        # The veil tints the neighbours. It is in the picture, so it does not have to be drawn again
+        # as the picture moves. The hours in front stay up: a test, and a drop, read them mid-slide.
+        if self._veil.isVisible():
+            self._veil.hide()
+            held.append(self._veil)
+        if self._fade.isVisible():
+            self._fade.hide()
+            held.append(self._fade)
+        quiet: list[QWidget] = []
+        for widget in (self.hours, self._date, self._chip, self._summary):
+            if widget is not None and widget.updatesEnabled():
+                widget.setUpdatesEnabled(False)
+                quiet.append(widget)
+        self._snaps = snaps
+        self._held_back = held
+        self._quiet = quiet
+
+    def _drop_snaps(self) -> None:
+        self._snaps = None
+        held = self._held_back
+        self._held_back = []
+        for widget in held:
+            if isValid(widget):
+                widget.show()
+        quiet = self._quiet
+        self._quiet = []
+        for widget in quiet:
+            if isValid(widget):
+                widget.setUpdatesEnabled(True)
+
+    def _land(self) -> None:
+        self._drop_snaps()
+        self._put(self._to)
+
+    def _paint_snaps(self) -> None:
+        snaps = self._snaps
+        if not snaps or not self.tokens:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        order = sorted(
+            (day for day in self._rects if day != self._front and self._peeks),
+            key=lambda day: -abs(day - self._front),
+        )
+        for day in (*order, self._front):
+            picture = snaps.get(day)
+            rect = self._rects.get(day)
+            if picture is None or rect is None:
+                continue
+            if rect.right() < -FADE or rect.left() > self.width() + FADE:
+                continue
+            painter.drawPixmap(shadowed(rect, self.tokens, day == self._front).toRect(), picture)
+        painter.end()
 
     def _targets(self) -> dict[int, QRectF]:
         return slots(self.width(), self.height(), self._front, self.scale, wide=self._open)
@@ -1034,13 +1149,20 @@ class Row(QWidget):
         if not rects or not self._cards:
             return
         self._rects = dict(rects)
-        scale = self.scale
         for day, card in self._cards.items():
             shown = day != self._front and self._peeks
             if shown:
                 card.setGeometry(rects[day].toRect())
             card.setVisible(shown)
-        front = rects[self._front]
+        self._place_front(rects[self._front])
+        self._fade.setGeometry(self.rect())
+        self._place_arrows()
+        self._veil_cards()
+        self.update()
+
+    def _place_front(self, front: QRectF) -> None:
+        """The hours, the date and Day's summary on the card in front, which `front` is."""
+        scale = self.scale
         side, right, foot = (size * scale for size in FRONT_PAD)
         beside = (SUMMARY + SUMMARY_GAP) * scale if self._open and self._summary is not None else 0
         scroll = self.hours
@@ -1057,10 +1179,6 @@ class Row(QWidget):
             wide = SUMMARY * scale
             box = QRectF(front.right() - right - wide, top, wide, front.bottom() - foot - top)
             self._summary.setGeometry(box.toRect())
-        self._fade.setGeometry(self.rect())
-        self._place_arrows()
-        self._veil_cards()
-        self.update()
 
     def _veil_cards(self) -> None:
         """The veil over every neighbour and its shadow, short of the card in front's shadow."""
@@ -1140,10 +1258,13 @@ class Row(QWidget):
 
     def resizeEvent(self, event: object) -> None:  # noqa: N802
         super().resizeEvent(event)
-        self._slide.stop()
+        self._stop_slide()
         self._put(self._targets())
 
     def paintEvent(self, event: object) -> None:  # noqa: N802
+        if self._snaps is not None:
+            self._paint_snaps()
+            return
         if not self.tokens or not self._rects:
             return
         painter = QPainter(self)
@@ -1264,7 +1385,7 @@ class Row(QWidget):
                 return None
             self._dragging = abs(across) > abs(down)
             if self._dragging:
-                self._slide.stop()
+                self._stop_slide()
         if self._dragging:
             self._put({day: rect.translated(across, 0) for day, rect in self._targets().items()})
         return self._dragging
@@ -1305,6 +1426,7 @@ class Row(QWidget):
         length = duration(SLIDE_MS, motion_level)
         if length > 0 and moves(motion_level) and self.isVisible() and self._rects:
             self._from, self._to = dict(self._rects), rects
+            self._capture()
             self._slide.setDuration(length)
             self._slide.start()
             return

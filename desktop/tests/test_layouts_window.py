@@ -717,7 +717,10 @@ def test_a_sticky_notes_small_print_is_regular_in_the_real_window(
     view = window.planner.currentWidget()
     view.findChild(QPushButton, "timelineWaiting0").grab()
     assert ("Science", 600) in written
-    assert [weight for words, weight in written if words == "1 h"] == [400]
+    # A page change paints the note into the picture it fades, and the test paints it again.
+    weights = [weight for words, weight in written if words == "1 h"]
+    assert weights
+    assert all(weight == 400 for weight in weights)
 
 
 def test_timelines_fold_is_kept_with_the_look_restored_on_open_and_reset_with_the_design(

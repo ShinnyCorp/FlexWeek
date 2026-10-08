@@ -696,3 +696,150 @@ def test_the_segmented_selection_slides_to_the_segment_chosen(qapp: QApplication
     assert pill_on(track, day) and not pill_on(track, month), "with animations off it is simply there"
     apply_ui_effects("normal")
     track.close()
+
+
+class _Counted(QWidget):
+    """A child whose paints can be counted. A page drawn through an effect paints these every frame."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.paints = 0
+        self.setMinimumHeight(24)
+
+    def paintEvent(self, _event: object) -> None:  # noqa: N802
+        self.paints += 1
+
+
+def _frames(qapp: QApplication, seconds: float) -> int:
+    frames = 0
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        qapp.processEvents()
+        frames += 1
+        QTest.qWait(8)
+    return frames
+
+
+def test_a_page_change_does_not_repaint_the_live_page_every_frame(qapp: QApplication) -> None:
+    """The page coming in is live at once. Its widgets are painted into one picture for the fade,
+    not again on every frame."""
+    apply_ui_effects("normal")
+    stack = QStackedWidget()
+    first = QLabel("Week")
+    second = QWidget()
+    column = QVBoxLayout(second)
+    children = [_Counted() for _ in range(6)]
+    for child in children:
+        column.addWidget(child)
+    stack.addWidget(first)
+    stack.addWidget(second)
+    stack.resize(400, 300)
+    stack.show()
+    qapp.processEvents()
+    for child in children:
+        child.paints = 0
+    switch_page(stack, second, "normal")
+    frames = _frames(qapp, (duration(PAGE_IN_AFTER_MS + PAGE_IN_MS, "normal") + 80) / 1000)
+    assert frames >= 8, "the page change ran for several frames"
+    for child in children:
+        assert child.paints <= 3, f"a live widget painted {child.paints} times over {frames} frames"
+    stack.close()
+
+
+def test_a_sheet_does_not_repaint_the_page_under_it_every_frame(qapp: QApplication) -> None:
+    """The shade covers the window. The page under it stays as it was for the fade, instead of
+    being painted again because the shade moved."""
+    apply_ui_effects("normal")
+    window = QWidget()
+    column = QVBoxLayout(window)
+    children = [_Counted() for _ in range(6)]
+    for child in children:
+        column.addWidget(child)
+    window.resize(900, 700)
+    window.show()
+    qapp.processEvents()
+    for child in children:
+        child.paints = 0
+    sheet = Dialog(window, sheet=True)
+    sheet.card_body("Add homework").addWidget(QLabel("Homework"))
+    sheet.show()
+    qapp.processEvents()
+    assert all(not child.updatesEnabled() for child in children), "the page under the sheet holds still"
+    frames = _frames(qapp, (duration(EASE_MS, "normal") + 80) / 1000)
+    assert frames >= 8, "the sheet ran for several frames"
+    for child in children:
+        assert child.paints <= 4, f"the page painted {child.paints} times over {frames} frames"
+    assert within(2, lambda: all(child.updatesEnabled() for child in children))
+    sheet.close()
+    window.close()
+
+
+def test_a_page_change_ends_where_motion_off_leaves_it(qapp: QApplication) -> None:
+    """The fade is only on the way. Where it ends is the page motion Off shows at once."""
+
+    def landed(level: str) -> QImage:
+        apply_ui_effects(level)
+        stack, _first, second = two_pages(qapp)
+        switch_page(stack, second, level)
+        assert within(2, lambda: second.graphicsEffect() is None and pictures(stack) == [])
+        assert second.pos() == QPoint(0, 0)
+        image = stack.grab().toImage()
+        stack.close()
+        return image
+
+    try:
+        assert landed("normal") == landed("off")
+    finally:
+        apply_ui_effects("normal")
+
+
+def test_the_clock_follows_the_screen_and_falls_back_to_60(qapp: QApplication) -> None:
+    """Frames follow the screen. An unknown rate is 60, whose interval is 17 ms, never 0."""
+    from desktop.native import motion as motion_module
+
+    assert motion_module.frame_interval_ms(180) == round(1000 / 180) == 6
+    assert motion_module.frame_interval_ms(360) == 3
+    assert motion_module.frame_interval_ms(60) == 17
+    assert motion_module.frame_interval_ms(0) == 17
+    assert motion_module.frame_interval_ms(-5) == 17
+    assert motion_module.frame_interval_ms(59.94) == round(1000 / 59.94)
+    apply_ui_effects("normal")
+    host = QWidget()
+    notice = QLabel("Saved.", host)
+    notice.move(10, 10)
+    host.resize(200, 80)
+    host.show()
+    qapp.processEvents()
+    appear(notice, "normal")
+    clock = notice._motion_running[0]
+    rate = notice.screen().refreshRate() if notice.screen() is not None else 0
+    assert clock.interval() == motion_module.frame_interval_ms(rate or 0)
+    assert clock.interval() >= 1
+    host.close()
+
+
+def test_design_pictures_are_drawn_one_a_turn_and_can_be_drawn_ahead(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each design picture takes about a tenth of a second. Chained on a zero timer they become one
+    long turn. Ahead of time, while Settings is not on screen, they can all be drawn now."""
+    from desktop.native.layouts import dialog
+    from desktop.native.layouts.dialog import DesignPicker
+
+    drawn: list[int] = []
+
+    class Counting:
+        def get(self, *_args: object) -> QPixmap:
+            drawn.append(1)
+            return QPixmap(4, 4)
+
+    monkeypatch.setattr(dialog, "Previews", Counting)
+    picker = DesignPicker("plan", "designs", "Design", "slate")
+    picker._draw_next()
+    assert len(drawn) == 1
+    qapp.processEvents()
+    assert len(drawn) == 1, "the next picture waits until the next turn"
+    picker.warm()
+    assert len(drawn) == len(picker.cards)
+    picker.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

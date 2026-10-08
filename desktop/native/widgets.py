@@ -115,7 +115,19 @@ from desktop.native.hours.geometry import next_slot
 from desktop.native.icons import pixmap as icon_pixmap
 from desktop.native.look import CONFLICT_TEXT, resolved_palette
 from desktop.native.menus import Menu
-from desktop.native.motion import OUT, SEGMENT_MS, app_level, appear, between, duration, moves, settle, vanish
+from desktop.native.motion import (
+    EASE_MS,
+    OUT,
+    SEGMENT_MS,
+    app_level,
+    appear,
+    between,
+    duration,
+    frame_interval_ms,
+    moves,
+    settle,
+    vanish,
+)
 from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
     DAYS_LONG,
@@ -2277,6 +2289,8 @@ class Dialog(QDialog):
         # The sheet's card and the room for its shadow, which fade in as one: the card's own effect
         # is its shadow, and a widget holds one effect.
         self._face: QWidget | None = None
+        # Widgets of the page under a sheet, held still while the sheet fades in.
+        self._frozen: list[QWidget] = []
         if self.sheet:
             self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -2353,6 +2367,8 @@ class Dialog(QDialog):
                 appear(part, level, rise=True)
             if self._shade is not None:
                 appear(self._shade, level)
+            if self.sheet and duration(EASE_MS) > 0:
+                self._freeze_page()
 
     def _content(self) -> list[QWidget]:
         """What fades in and rises the first time the dialog shows (decision 31 of 0.17): a window's
@@ -2369,7 +2385,43 @@ class Dialog(QDialog):
             if not child.isWindow() and child.graphicsEffect() is None
         ]
 
+    def _freeze_page(self) -> None:
+        """The shade covers the whole window, and a frame of it would repaint everything under it.
+        Those widgets keep the picture they already have until the fade has landed. The shade and the
+        sheet still paint. The window itself is left able to paint, or the shade could not."""
+        parent = self.parentWidget()
+        if parent is None:
+            return
+        host = parent.window()
+        frozen: list[QWidget] = []
+        for child in host.findChildren(QWidget):
+            if child is self._shade or child is self or self.isAncestorOf(child):
+                continue
+            if not child.updatesEnabled():
+                continue
+            child.setUpdatesEnabled(False)
+            frozen.append(child)
+        self._frozen = frozen
+        QTimer.singleShot(0, self._thaw_when_settled)
+
+    def _thaw_when_settled(self) -> None:
+        if not isValid(self):
+            return
+        for widget in (self._face, self._shade, *self._content()):
+            if widget is not None and getattr(widget, "_motion_running", None) is not None:
+                QTimer.singleShot(frame_interval_ms(60), self._thaw_when_settled)
+                return
+        self._thaw()
+
+    def _thaw(self) -> None:
+        frozen = self._frozen
+        self._frozen = []
+        for child in frozen:
+            if isValid(child):
+                child.setUpdatesEnabled(True)
+
     def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802
+        self._thaw()
         super().hideEvent(event)
         if self._came_from is not None:
             QTimer.singleShot(0, partial(_give_focus_back, self._came_from))
