@@ -7,6 +7,8 @@ stays short.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -59,6 +61,26 @@ SEGMENTED_MOST = 3
 PICTURES_AFTER_SLIDE_MS = 40
 
 
+class DesignGrid(CardGrid):
+    """Design cards share the row, as the look grids do. At a fixed picture width the row ended
+    about 220 px short of the card beside it."""
+
+    def __init__(self, card_width: int, gap: int, on_width: Callable[[ChoiceCard, int], None]) -> None:
+        super().__init__(card_width, gap)
+        self._on_width = on_width
+
+    def _place(self, room: int) -> None:
+        super()._place(room)
+        columns = self.columns()
+        if not columns:
+            return
+        picture = (room - (columns - 1) * self._gap) // columns - CARD_WIDTH_PAD
+        for card in self.cards:
+            if card.picture.width() != picture:
+                card.set_width(picture)
+                self._on_width(card, picture)
+
+
 class DesignPicker(Choices):
     """The designs for one role as cards with a picture of each, answering a dropdown's calls."""
 
@@ -69,13 +91,15 @@ class DesignPicker(Choices):
         self.setAccessibleName(title)
         self._pack = pack
         self.cards: list[ChoiceCard] = []
+        self._drawn: dict[int, int] = {}
+        self._waiting: list[int] = []
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
         # One grid for every design, the standard ones first, so its rows are full: with the
         # experimental ones under a heading of their own, Clay deck and Day screen's last card each
         # stood alone (Grok Bot's 0.17.0 audit, T34).
-        self._grid = CardGrid(PICTURE_WIDTH + CARD_WIDTH_PAD, CARD_GAP)
+        self._grid = DesignGrid(PICTURE_WIDTH + CARD_WIDTH_PAD, CARD_GAP, self._width_changed)
         for spec in sorted(layouts_for(role), key=lambda spec: spec.experimental):
             index = self._remember(spec.label, spec.id)
             tag = EXPERIMENTAL_TAG if spec.experimental else ""
@@ -91,6 +115,14 @@ class DesignPicker(Choices):
         self._waiting = list(range(len(self.cards)))
         QTimer.singleShot(duration(OVER_MS, "extra") + PICTURES_AFTER_SLIDE_MS, self._draw_next)
 
+    def _width_changed(self, card: ChoiceCard, width: int) -> None:
+        index = int(card.property("index"))
+        drawn = self._drawn.get(index)
+        if drawn is None or drawn == width or index in self._waiting:
+            return
+        self._waiting.append(index)
+        QTimer.singleShot(0, self._draw_next)
+
     def _card_chosen(self) -> None:
         self.setCurrentIndex(int(self.sender().property("index")))
 
@@ -101,7 +133,10 @@ class DesignPicker(Choices):
         layout_id = str(self._data[index])
         colourways = LAYOUTS[layout_id].colourways
         colour = colourways[0][0] if colourways else None
-        self.cards[index].set_picture(Previews().get(layout_id, colour, self._pack, None, PICTURE_WIDTH))
+        card = self.cards[index]
+        width = card.picture.width()
+        card.set_picture(Previews().get(layout_id, colour, self._pack, None, width))
+        self._drawn[index] = width
         if self._waiting:
             QTimer.singleShot(0, self._draw_next)
 
