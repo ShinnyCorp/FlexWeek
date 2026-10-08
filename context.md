@@ -123,16 +123,16 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-08, `release/0.18.3` in `~/.worktrees/flexweek-0183-release` (`.venv` is `venv-0183-engine`,
+- 2026-10-07, `release/0.18.3` in `~/.worktrees/flexweek-0183-release` (`.venv` is `venv-0183-engine`,
   the engine with J7; the lane worktrees other than availability still link `venv-0182-engine`). Merged:
   clay, settings, focus, account, availability, timeline-fold, homework (each verified: ruff, tests
   one file per process; Clay and Timeline rigs passed). Left for Grok (prompt
   `~/.flexweek-ui-harness/scratch/0.18.3/grok-0183-wave2.md`): settings-2, setup-2 (then merge
-  `lane/0183-setup`), sheets, large-text. Then J13 (styles on every page) once Jonathan picks a
-  depth from `~/.flexweek-ui-harness/scratch/0.18.x/mockups/round2/out/10_styles_*.png`.
+  `lane/0183-setup`), sheets, large-text; Grok started on 2026-10-07. Then J13 (styles on every
+  page) at depth 1, picked 2026-10-07 (boards
+  `~/.flexweek-ui-harness/scratch/0.18.x/mockups/round2/out/10_styles_*.png`).
   Two tests fail alone on release and on the 0.18.2 checkout since about 2026-10-07 though both
   passed on 2026-10-04 (`test_the_bar_is_fitted_as_large_text_arrives_not_later`,
-  `test_my_day_actions_leave_room_after_their_icons`): environment, not code; check at the gate.
-  spec.md drift to raise with Jonathan: study windows are one list (J7) and protected time may
-  carry a title. Nothing pushed; `docs/mockup-round2` local only. #41 and "Open after 0.18.1"
+  `test_my_day_actions_leave_room_after_their_icons`): to be fixed before 0.18.3 ships.
+  spec.md now says study hours are one list (J7) and protected time may carry a title. Nothing pushed; `docs/mockup-round2` local only. #41 and "Open after 0.18.1"
   still wait on him. Phase 8 (due 2026-10-25) is with Cursor and his partner.

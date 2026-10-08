@@ -409,9 +409,12 @@ not a second entry). Mockup round 2 is complete; batch B can start.
   each page's layout, and the change made smoothly. Depth (fonts, shapes and
   chrome, or shapes and spacing only) is decided from a mockup: Settings and
   one sheet in each style at both depths. Mocked up first; built in 0.18.3
-  after the pick.
+  after the pick. Picked 2026-10-07: depth 1, fonts, shapes and chrome (boards
+  `10_styles_*`): Night owl's serif headings, tighter gaps and paper edge;
+  Dashboard's title on the hero tile, its tiles and small shadow; Retro's
+  pixel faces, bevels and Windows 98 frames. Plain calendar is unchanged.
 
-Batch B decisions, 2026-10-08 (from the lanes' reports): protected time can
+Batch B decisions, 2026-10-07 (from the lanes' reports): protected time can
 carry an optional name (up to 40 characters; the chip shows it, else the kind);
 old accounts whose only hours were "preferred" get those as their Study hours,
 no whole-day fallback; the strip's legend says "Coloured: study hours"; the

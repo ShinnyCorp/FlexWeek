@@ -165,14 +165,17 @@ Contract for the finished app:
   checklist items never completes the assignment, and focus minutes still
   complete nothing.
 - Preferences carry availability: up to 21 `protected` windows (downtime,
-  commute or meal), up to 21 `work_windows` (the hours the planner may use,
-  set in setup and in Settings; `work_windows_defaulted` marks an account that
-  has not chosen any, whose whole day is open), up to 21 soft `study_windows`
-  (Settings only), and an optional `day_cutoff` that flexible work must finish
-  by. A study window may name one `subject`:
-  the solver tries a session in its own subject's window first, then in a
-  window for any subject, then anywhere else. `POST /api/solve` loads them for
-  the signed-in account, so the client never re-sends occupancy.
+  commute or meal, each with an optional `title` of up to 40 characters that
+  its chip shows in place of the kind), up to 21 `work_windows` (one list,
+  shown as Study hours: the hours the planner may use, set in Setup and in
+  Availability; `work_windows_defaulted` marks an account that has not chosen
+  any, whose whole day is open), and an optional `day_cutoff` that flexible
+  work must finish by. A study window may name one `subject`: the solver tries
+  a session in its own subject's windows first, then in windows for any
+  subject. Preferred study hours saved by builds before 0.18.3
+  (`study_windows`) are read once into `work_windows` and never written again.
+  `POST /api/solve` loads them for the signed-in account, so the client never
+  re-sends occupancy.
 - Comfort preferences persist per account: `alert_volume` (0-100), `end_chime`,
   `tray_notifications`, `start_at_login`, `preferred_view` (`week` or `day`),
   `sidebar_collapsed` and `sidebar_width_px` (200-640). One `alarm_tone`
@@ -738,7 +741,7 @@ The commands it runs, each of which must exit 0:
 - [ ] A student who is running late previews a 30-minute delay, accepts it, and
       undoes it in one step; spreading a project adds sessions only after a
       preview.
-- [ ] Protected downtime, preferred study hours and a day cutoff change where
+- [ ] Protected downtime, study hours and a day cutoff change where
       the solver places work without the client re-sending occupancy.
 - [ ] A student opens Month, sees deadlines with planned and completed study
       time, and clicks a date to open Day view.
