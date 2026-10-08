@@ -21,7 +21,7 @@ from desktop.native import motion
 from desktop.native.layouts.registry import LAYOUTS
 from desktop.native.look import resolved_palette
 from desktop.native.settings import FADE_PX, SettingsPage
-from desktop.native.widgets import ChoiceCard
+from desktop.native.widgets import CardGrid, ChoiceCard
 from desktop.native.window import NativeWindow
 
 # The fixtures are used by name, so each test's argument list redefines them.
@@ -246,6 +246,19 @@ def test_the_look_grids_stretch_to_the_row(
         for card in grid.cards:
             sharp = card.picture.pixmap().width() / card.picture.pixmap().devicePixelRatio()
             assert abs(sharp - card.picture.width()) <= 2, "the picture is drawn at the card's width"
+    page.close_page()
+
+
+@pytest.mark.parametrize("size", [(1024, 700), (1280, 800)])
+def test_the_design_grids_stretch_to_the_row(
+    qapp: QApplication, window: NativeWindow, size: tuple[int, int]
+) -> None:
+    page = open_settings(qapp, window, size)
+    for section in page.layout_sections:
+        grid = section.pick.findChild(CardGrid)
+        assert grid is not None and grid.cards
+        right = max(card.geometry().right() + 1 for card in grid.cards)
+        assert grid.width() - right <= 16, (section.pick.accessibleName(), size, grid.width(), right)
     page.close_page()
 
 
