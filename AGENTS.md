@@ -143,6 +143,21 @@ tooling on your own initiative to satisfy it.
 - Before a PR is opened or a branch is merged: lint + type checks + tests must pass locally first (subject to the placeholders-and-adoption rule).
 - Keep the default branch clean — it should always be in a working, validated state.
 
+## Branches and Storage
+Old branches, worktrees and their build output pile up and fill the disk.
+- Besides the default branch, at most two working branches exist at a time,
+  counting local and remote together. Each has at most one worktree. A third
+  does not start until one is merged or deleted.
+- Two releases are kept: the current one and the one before it. When a
+  release is pushed, everything belonging to older releases is deleted: their
+  merged branches (local and remote), their worktrees, and the local files
+  made for them (test environments, test and rig output, scratch folders,
+  build output). spec.md names where a project keeps those files.
+- Before deleting, list what will go, with sizes, and get the human's
+  approval of that list. Never delete a branch whose work is not in the
+  default branch without the human's word.
+- A project may set other numbers in spec.md.
+
 ## Skills and Playbooks
 - These rules override any skill, plugin, or playbook, including pstack. When
   a playbook step says to push, open or merge a PR, force-push, deploy, or
