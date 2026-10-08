@@ -411,6 +411,20 @@ not a second entry). Mockup round 2 is complete; batch B can start.
   one sheet in each style at both depths. Mocked up first; built in 0.18.3
   after the pick.
 
+Batch B decisions, 2026-10-08 (from the lanes' reports): protected time can
+carry an optional name (up to 40 characters; the chip shows it, else the kind);
+old accounts whose only hours were "preferred" get those as their Study hours,
+no whole-day fallback; the strip's legend says "Coloured: study hours"; the
+Appearance page's design grids stretch like the look grids; Timeline's feet
+follow the fold and reflow, and the fold is also a Settings option ("Days on
+the left page"); Clay's neighbours open at the stretch the front card opened
+at, and a long drag moves up to two days; Save with "Spread over days" drops
+the open time and writes the spread sessions (no second sheet); "Do it at"
+and Spread are exclusive; Setup previews Plain calendar as its page opens.
+Merged into `release/0.18.3` so far: clay, settings, focus, account,
+availability, timeline-fold, homework. Left: setup (merges after the preview
+follow-up), the Settings design-grid follow-up, sheets, large-text, J13.
+
 - **Setup.** #4 At 1280×800 the second row of style cards (Dashboard, Retro)
   is cut by the footer with no fade, the default card shows no selected state,
   each card shows two names, and only two columns are used. Done when the page
