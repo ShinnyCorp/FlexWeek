@@ -317,6 +317,7 @@ GREYED_TIPS = {
     "undoButton": "Nothing to undo yet.",
     "redoButton": "Nothing to redo.",
     "pasteBlock": "Copy a block or a day first.",
+    "runningLate": "Open this week to use Running late.",
 }
 WAIT_TIP = "Wait a moment: FlexWeek is still saving or planning."
 SIGN_OUT_QUESTION = "Your week is saved on {where}, under this account. Sign in again to see it."
@@ -2020,6 +2021,7 @@ class NativeWindow(QMainWindow):
                 self._layout_plan_review()
                 if not was_open:
                     slide_down(self.plan_review, self._motion)
+        self._sync_running_late()
         self._sync_chrome()
         self._apply_appearance()
         self._finish_turn(turn)
@@ -2148,6 +2150,7 @@ class NativeWindow(QMainWindow):
             button = self.findChild(QPushButton, name)
             if button is not None:
                 button.setEnabled(not busy)
+        self._sync_running_late()
 
     def _on_recovery_ack(self, checked: bool) -> None:
         self.recovery_continue.setEnabled(checked and not self.session.busy)
@@ -2794,7 +2797,7 @@ class NativeWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         day, start = dialog.choice()
-        if self.session.place_session(block["id"], day, start):
+        if self.session.place_session(block["id"], day, start, duration_min=dialog.length_min()):
             self.session.save()
 
     def _judge_span(self, block_id: str, from_day: int, day: int, start: int, end: int) -> HandVerdict:
@@ -3146,7 +3149,30 @@ class NativeWindow(QMainWindow):
             ),
         )
 
+    def _late_other_week(self) -> bool:
+        now = datetime.fromtimestamp(self.session.now_ms() / 1000)
+        return (
+            running_late_refusal(
+                week_start=self.session.week_start,
+                now=now,
+                dirty=False,
+                conflict=False,
+                block_count=0,
+            )
+            == "Open this week before using Running late."
+        )
+
+    def _sync_running_late(self) -> None:
+        late = self.findChild(QPushButton, "runningLate")
+        if late is None:
+            return
+        other = self._late_other_week()
+        late.setEnabled(not self.session.busy and not other)
+        late.setToolTip(GREYED_TIPS["runningLate"] if other else MORE_TIPS["runningLate"])
+
     def _open_late(self) -> None:
+        if self._late_other_week():
+            return
         now = datetime.fromtimestamp(self.session.now_ms() / 1000)
         refusal = running_late_refusal(
             week_start=self.session.week_start,

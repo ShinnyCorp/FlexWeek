@@ -170,8 +170,8 @@ def press(dialog: QDialog, name: str) -> int:
 def test_nothing_placed_says_nothing_placed_not_planned_zero() -> None:
     assert plan_sentence(0, 1) == "Nothing placed. 1 still needs a time."
     assert plan_sentence(0, 2) == "Nothing placed. 2 still need a time."
-    assert plan_sentence(1, 1) == "Planned 1 homework block. 1 still needs a time."
-    assert plan_sentence(3, 0) == "Planned 3 homework blocks."
+    assert plan_sentence(1, 1) == "Placed 1 homework block. 1 still needs a time."
+    assert plan_sentence(3, 0) == "Placed 3 homework blocks."
 
 
 # Due today
@@ -521,11 +521,11 @@ def test_plan_says_what_it_did_with_an_undo_that_takes_it_all_back(
     window.findChild(QPushButton, "solveButton").click()
     settled(qapp, window)
     monkeypatch.undo()
-    assert shown == [("Planned 3 homework blocks.", "Undo")], "said once, with its Undo, not rewrapped"
+    assert shown == [("Placed 3 homework blocks.", "Undo")], "said once, with its Undo, not rewrapped"
     planned = stored_blocks(window)
     assert planned != before
     assert window.toast.button.isVisible()
-    assert window.toast.text() == "Planned 3 homework blocks."
+    assert window.toast.text() == "Placed 3 homework blocks."
     assert window.toast.button.text() == "Undo"
 
     window.toast.button.click()
@@ -790,7 +790,7 @@ def test_the_rail_and_the_plan_panel_count_the_same_homework_without_a_time(
     settled(qapp, window)
     window.findChild(QPushButton, "solveButton").click()
     settled(qapp, window)
-    assert window.plan_review.heading.text() == "Placed 1 · 1 without a time"
+    assert window.plan_review.heading.text() == plan_sentence(1, 1)
     assert window.rail.waiting_count.text() == "1"
     assert len(window.rail.chips()) == 1
     assert not window.rail.none_waiting.isVisible()

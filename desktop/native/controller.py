@@ -123,7 +123,7 @@ def plan_sentence(placed: int, waiting: int) -> str:
     if placed == 0:
         said = "Nothing placed."
     else:
-        said = f"Planned {placed} homework block{'s' if placed != 1 else ''}."
+        said = f"Placed {placed} homework block{'s' if placed != 1 else ''}."
     if waiting:
         said += f" {waiting} still need{'s' if waiting == 1 else ''} a time."
     return said
@@ -984,13 +984,17 @@ class NativeSession(QObject):
         `from_date` and add them, with no preview to answer: the editor already said what they would be."""
         self._spread_after_save = (assignment_id, session_min, from_date)
 
-    def place_session(self, block_id: str, day: int, start_min: int) -> bool:
+    def place_session(
+        self, block_id: str, day: int, start_min: int, duration_min: int | None = None
+    ) -> bool:
         """Give homework that needs a time the one the student chose, dragged or picked. It is pinned,
         so no plan moves it, and it is one Undo step."""
         block = next((item for item in self.blocks if item["id"] == block_id), None)
         if block is None or block.get("kind") != "flexible" or block.get("completed"):
             return False
         placed = {**block, "start": minutes_to_hhmm(start_min), "days": [day], "pinned": True}
+        if duration_min is not None:
+            placed["duration_min"] = duration_min
         self.blocks = [placed if item["id"] == block_id else item for item in self.blocks]
         self.needs_time.pop(block_id, None)
         self._touch("placing " + block["title"], keep={block_id})
