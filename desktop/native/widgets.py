@@ -2333,6 +2333,19 @@ class Dialog(QDialog):
         even_fields(self)
         if self.sheet:
             self._over_window()
+        from desktop.native.feel import apply_feel, current, extra_stylesheet
+
+        ctx = current()
+        if ctx is not None:
+            extra = extra_stylesheet(
+                ctx.base_sheet, ctx.feel, ctx.palette, ctx.tokens, ctx.look, ("sheetTitle",), nested=False
+            )
+            base = self.property("feelBaseSheet")
+            if not isinstance(base, str):
+                base = self.styleSheet()
+                self.setProperty("feelBaseSheet", base)
+            self.setStyleSheet((base + extra) if extra else base)
+            apply_feel(self, ctx)
         self.refit()
         if not self._appeared:
             self._appeared = True

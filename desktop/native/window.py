@@ -72,6 +72,7 @@ from desktop.native.command_bar import Command, CommandBar
 from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.custom_look import sanitize_saved
 from desktop.native.elevation import lift
+from desktop.native.feel import Context, apply_feel, context_for, current, extra_stylesheet, set_current
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import QUICK_TITLE, FocusScreen
@@ -3694,6 +3695,13 @@ class NativeWindow(QMainWindow):
         self._settings = page
         self._settings_finish = finish
         self._stack.addWidget(page)
+        ctx = current()
+        if ctx is not None:
+            extra = extra_stylesheet(
+                ctx.base_sheet, ctx.feel, ctx.palette, ctx.tokens, ctx.look, ("settingsTitle",)
+            )
+            page.setStyleSheet(ctx.base_sheet + extra)
+            apply_feel(page, ctx)
 
     def _refresh_settings_page(self) -> None:
         page = self._settings
@@ -3954,6 +3962,9 @@ class NativeWindow(QMainWindow):
         palette = resolved_palette(pack, system_dark, self._look, accent)
         art = control_art(palette)
         sheet = pack_stylesheet(pack, system_dark, self._look, accent, palette, art)
+        ctx = context_for(self._layout, self._look, palette, sheet)
+        heroes = ("settingsTitle", "sheetTitle", "setupTitle", "authBrand")
+        extra = extra_stylesheet(sheet, ctx.feel, palette, ctx.tokens, self._look, heroes)
         page = self._page_palette(palette)
         page_sheet = ""
         if page is not None:
@@ -3961,9 +3972,10 @@ class NativeWindow(QMainWindow):
         chips = bool((self.session.preferences or {}).get("accent_chips"))
         chosen_motion = (self.session.preferences or {}).get("motion")
         self._motion = motion_level(chosen_motion, look_motion(self._look))
-        dressed = (sheet, repr(self._look), repr(palette), chips, self._motion)
+        dressed = (sheet, repr(self._look), repr(palette), chips, self._motion, ctx.feel.key)
         # Every change to the week comes through here. Restyling the whole window each time, when the
         # look had not changed, cost about 26 ms a change and repainted everything on screen.
+        set_current(ctx)
         if dressed != self._dressed:
             self._dressed = dressed
             self.setStyleSheet(sheet)
@@ -3979,12 +3991,31 @@ class NativeWindow(QMainWindow):
             self.add_menu.set_palette(palette, chips)
             self._dress_entry(palette)
             self.setup_page.set_palette(palette)
+            self._dress_feel(ctx, sheet, extra)
         if page_sheet != self._page_sheet:
             # The planner holds the design's page and nothing of the chrome.
             self._page_sheet = page_sheet
             self.planner.setStyleSheet(page_sheet)
         self._sync_add_button()
         self._refresh_layout()
+
+    def _feel_roots(self) -> list[QWidget]:
+        """Pages J13 dresses: Settings, Setup, sign-in and recovery. Not the week, day, rail or bar."""
+        roots: list[QWidget] = []
+        for name in ("authPage", "recoveryPage", "forgotPage"):
+            page = self.findChild(QWidget, name)
+            if page is not None:
+                roots.append(page)
+        roots.append(self.setup_page)
+        if self._settings is not None:
+            roots.append(self._settings)
+        roots.extend(dialog for dialog in self.findChildren(QDialog) if dialog.isVisible())
+        return roots
+
+    def _dress_feel(self, ctx: Context, sheet: str, extra: str) -> None:
+        for root in self._feel_roots():
+            root.setStyleSheet(sheet + extra if extra else "")
+            apply_feel(root, ctx)
 
     def _dress_entry(self, palette: dict) -> None:
         """The eye in the muted text colour, and the sign-in and recovery cards lifted off the page
