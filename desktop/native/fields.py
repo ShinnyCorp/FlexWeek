@@ -331,7 +331,6 @@ class ClockField(QTimeEdit):
         self._end = end
         self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.setProperty("typed", True)
-        self.setProperty("outlinedField", True)
         self.setDisplayFormat(time_format())
         line = self.lineEdit()
         # Qt re-selects a section every time the cursor moves, and rewrites the text on every edit.

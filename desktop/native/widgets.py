@@ -166,6 +166,8 @@ def day_range_words(days: list[int] | tuple[int, ...]) -> str:
         else:
             parts.extend(DAYS[day] for day in run)
     return ", ".join(parts)
+
+
 SWATCH_PX = 12
 # The eye inside the password box, and the room it keeps clear of the typing.
 REVEAL_PX = 28
@@ -1892,7 +1894,6 @@ def _line(name: str, text: str = "", limit: int = 80) -> QLineEdit:
     field = QLineEdit(text)
     field.setObjectName(name)
     field.setMaxLength(limit)
-    field.setProperty("outlinedField", True)
     return field
 
 

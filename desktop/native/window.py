@@ -3151,16 +3151,7 @@ class NativeWindow(QMainWindow):
 
     def _late_other_week(self) -> bool:
         now = datetime.fromtimestamp(self.session.now_ms() / 1000)
-        return (
-            running_late_refusal(
-                week_start=self.session.week_start,
-                now=now,
-                dirty=False,
-                conflict=False,
-                block_count=0,
-            )
-            == "Open this week before using Running late."
-        )
+        return monday_of(now.date().isoformat()) != self.session.week_start
 
     def _sync_running_late(self) -> None:
         late = self.findChild(QPushButton, "runningLate")

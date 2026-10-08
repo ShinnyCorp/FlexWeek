@@ -129,8 +129,6 @@ def test_a_sheets_text_field_uses_the_outlined_style_with_an_accent_focus_ring(
     dialog = shown(qapp, BlockDialog(parent, day=3, start="17:00"))
     field = dialog.findChild(QLineEdit, "blockTitle")
     field.ensurePolished()
-    edge = field.property("outlinedField")
-    assert edge is True or "solid" in field.styleSheet() or field.style().styleHint is not None
     border = field.style().pixelMetric(field.style().PixelMetric.PM_DefaultFrameWidth, None, field)
     field.setFocus()
     qapp.processEvents()
