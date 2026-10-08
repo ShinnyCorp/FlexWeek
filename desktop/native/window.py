@@ -1521,6 +1521,16 @@ class NativeWindow(QMainWindow):
             row.takeAt(at)
         self._top_bar.invalidate()
 
+    def _schedule_bar_refit(self) -> None:
+        """After Large text, Plan and More refit from FontChange before their row's width settles."""
+        timer = getattr(self, "_bar_refit_timer", None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._fit_plan_and_more)
+            self._bar_refit_timer = timer
+        timer.start(0)
+
     def _fit_plan_and_more(self, total_width: int | None = None) -> None:
         """#83's one order as the bar runs short of room: the date shortens, More drops to its icon,
         Plan my homework drops "my", then reads "Plan". Each step's words are set and the bar's own
@@ -1556,6 +1566,9 @@ class NativeWindow(QMainWindow):
             # Each group keeps its own size until told; the bar's invalidate does not reach them.
             for part in (first, second, bar):
                 part.invalidate()
+            for group in (first, second):
+                if isinstance(group, QHBoxLayout):
+                    group.activate()
             if first.sizeHint().width() + bar._gap + second.sizeHint().width() <= inner:
                 break
         bar.invalidate()

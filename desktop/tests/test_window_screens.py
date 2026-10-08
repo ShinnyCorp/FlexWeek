@@ -192,21 +192,28 @@ def test_the_top_bar_is_never_cut_mid_word(qapp: QApplication, window: NativeWin
     assert cut_on_the_bar(window) == [], "at 1150 pixels"
 
 
-def test_the_bar_is_fitted_as_large_text_arrives_not_later(qapp: QApplication, window: NativeWindow) -> None:
-    """The rig clicked Week where it had just been: Large text reached Plan and More after the bar was
-    fitted, and the bar was fitted again only on a later change, its buttons moving under the pointer."""
+@pytest.mark.parametrize("week_start", ["2026-10-05", "2026-09-28"])
+def test_the_bar_is_fitted_as_large_text_arrives_not_later(
+    qapp: QApplication, window: NativeWindow, week_start: str,
+) -> None:
+    """Large text reached Plan and More after the bar was fitted; a stale group width must not leave
+    the bar on two rows until something else refits it (short title weeks were the tell)."""
+    session = window.session
+    session.load_week(week_start)
+    settled(qapp, window)
     window.resize(1150, 768)
     for _ in range(4):
         qapp.processEvents()
     text_size(window, "large")
     for _ in range(4):
         qapp.processEvents()
-    window._fit_plan_and_more()
     week = window.findChild(QPushButton, "viewWeek")
+    title_foot = window.week_title.mapTo(window, QPoint(0, window.week_title.height())).y()
+    assert window.solve_button.mapTo(window, QPoint(0, 0)).y() < title_foot, week_start
     seen = (window.solve_button.text(), window.more_button.text(), week.mapTo(window, QPoint(0, 0)))
-    window._fit_plan_and_more()
     for _ in range(4):
         qapp.processEvents()
+    assert window.solve_button.mapTo(window, QPoint(0, 0)).y() < title_foot, week_start
     assert (window.solve_button.text(), window.more_button.text(), week.mapTo(window, QPoint(0, 0))) == seen
 
 
