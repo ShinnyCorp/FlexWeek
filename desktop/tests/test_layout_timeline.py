@@ -954,6 +954,57 @@ def test_while_dragging_a_dashed_line_shows_where_the_fold_lands_and_names_each_
     assert not any("|" in said for said in Said.words), "let go, the line and the names go"
 
 
+def inside(widget: QWidget, page: QWidget) -> bool:
+    """Whether a widget lies wholly within a page's foot, left to right."""
+    left = widget.mapTo(page, QPoint(0, 0)).x()
+    return left >= 0 and left + widget.width() <= page.width()
+
+
+def whole(item: QLabel) -> bool:
+    """Whether a label shows all its words: one line as wide as they are, or wrapped lines as tall."""
+    if item.wordWrap():
+        return item.heightForWidth(item.width()) <= item.height()
+    return item.fontMetrics().horizontalAdvance(item.text()) <= item.width()
+
+
+def test_at_one_day_on_the_left_the_weeks_figures_are_whole_on_two_rows(qapp: QApplication) -> None:
+    """The left page's foot is as narrow as its page: the figures wrap rather than being cut."""
+    view = shown(qapp, fold="1")
+    foot = view.findChild(QWidget, "timelineWeekFoot")
+    stats = [item for item in view.findChildren(QLabel, "timelineStat") if item.isVisible()]
+    words = [item for item in view.findChildren(QLabel, "timelineStatWord") if item.isVisible()]
+    assert [item.text() for item in stats] == ["3 h 15 min", "1 of 4", "1"]
+    cut = [item.text() for item in (*stats, *words) if not (whole(item) and inside(item, foot))]
+    assert cut == [], "every figure and its words are whole on the page"
+    rows = {item.mapTo(foot, QPoint(0, 0)).y() for item in stats}
+    assert len(rows) == 2, f"two rows of figures, not {len(rows)}"
+    roomy = shown(qapp)
+    rows = {item.mapTo(roomy, QPoint(0, 0)).y() for item in roomy.findChildren(QLabel, "timelineStat")}
+    assert len(rows) == 1, "at 3 | 4 they stay on one row"
+
+
+def test_at_one_day_on_the_right_the_note_and_what_is_due_wrap_inside_the_page(qapp: QApplication) -> None:
+    """The right page's foot is about 140 pixels at 6 | 1: one note to a row, and each due line wraps
+    rather than running past the page's edge."""
+    # Two notes waiting, which side by side would be wider than the page.
+    lab = block("lab-1", "flexible", [], None, 60, assignment_id="lab", title="Lab")
+    due = {"id": "lab", "title": "Lab", "due": "2026-09-19T20:00", "completed": False}
+    homework = {**HOMEWORK, "lab": due}
+    view = shown(qapp, fold="6", blocks=[*BLOCKS, lab], homework=homework)
+    foot = view.findChild(QWidget, "timelineNotesFoot")
+    notes = [chip for chip in view.findChildren(TrayChip) if chip.isVisible()]
+    assert len(notes) == 2
+    assert [note.text() for note in notes if not inside(note, foot)] == [], "one note to a row, on its page"
+    when = [item for item in view.findChildren(QLabel, "timelineDueWhen") if item.isVisible()]
+    assert len(when) == 5
+    assert [item.text() for item in when if not (whole(item) and inside(item, foot))] == []
+    assert any(item.height() >= 2 * item.fontMetrics().lineSpacing() for item in when), "a due line wraps"
+    titles = [item for item in view.findChildren(FittedLabel, "timelineDueTitle") if item.isVisible()]
+    assert [item.full_text() for item in titles if not inside(item, foot)] == []
+    labels = [item for item in foot.findChildren(QLabel) if item.isVisible() and item.text()]
+    assert [item.text() for item in labels if not inside(item, foot)] == [], "nothing runs past the page"
+
+
 # Options and colours
 
 

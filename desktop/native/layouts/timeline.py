@@ -903,10 +903,12 @@ class Split(QFrame):
     """Two parts side by side while it is `wide` enough for both, and one over the other when not,
     as the foot of the right page is in a narrow window or at large text."""
 
-    def __init__(self, name: str, wide: int, gap: int) -> None:
+    def __init__(self, name: str, wide: int, gap: int, lead: tuple[QWidget, int] | None = None) -> None:
         super().__init__()
         self.setObjectName(name)
         self.wide = wide
+        # The first part and its width side by side; one over the other it takes no more than the row.
+        self.lead = lead
         self.box = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
         self.box.setContentsMargins(0, 0, 0, 0)
         self.box.setSpacing(gap)
@@ -919,6 +921,10 @@ class Split(QFrame):
         direction = QBoxLayout.Direction.LeftToRight if side else QBoxLayout.Direction.TopToBottom
         if self.box.direction() != direction:
             self.box.setDirection(direction)
+        if self.lead is not None:
+            part, wide = self.lead
+            part.setMinimumWidth(wide if side else 0)
+            part.setMaximumWidth(wide)
 
 
 @dataclass
@@ -1082,16 +1088,18 @@ class TimelineView(LayoutView):
         px = scene.px
         foot.setSpacing(px(8))
         foot.addWidget(label("This week", "timelineLabel"))
-        row = QHBoxLayout()
-        row.setSpacing(px(32))
+        # Wrapping onto a second row on a narrow page, as the fold can make it (J8), rather than cut.
+        row = FlowLayout(gap=px(8))
         for value, words in week_figures(scene.week):
             pair = QVBoxLayout()
             pair.setSpacing(px(2))
+            figure = _frame("timelineFigure", pair)
+            # The rest of the room between figures, so the rows sit closer than the figures do.
+            pair.setContentsMargins(0, 0, px(24), 0)
             pair.addWidget(label(value, "timelineStat"))
             pair.addWidget(label(words, "timelineStatWord"))
-            row.addLayout(pair)
-        row.addStretch(1)
-        foot.addLayout(row)
+            row.addWidget(figure)
+        foot.addWidget(_frame("timelineFigures", row))
         coming = next_up(scene)
         if coming is not None:
             muted = scene.tokens["muted"]
@@ -1111,8 +1119,9 @@ class TimelineView(LayoutView):
         px = scene.px
         # Two square notes side by side, as the mock-up's 276 pixels hold, at any text size.
         wide = 2 * round(SQUARE_NOTE[0] * scene.scale) + px(12)
-        split = Split("timelineNotesSplit", wide + px(24) + px(DUE_WIDE), px(24))
         notes = _frame("timelineNotes", QVBoxLayout())
+        # Two notes wide beside what is due; under it, one to a row on a page too narrow for two.
+        split = Split("timelineNotesSplit", wide + px(24) + px(DUE_WIDE), px(24), lead=(notes, wide))
         notes.setFixedWidth(wide)
         self._waiting(scene, notes.layout(), square=True)
         split.box.addWidget(notes, 0, Qt.AlignmentFlag.AlignTop)
@@ -1255,7 +1264,8 @@ class TimelineView(LayoutView):
             row.setSpacing(px(6))
             line = _frame("timelineDueRow", row)
             line.setProperty("ruled", big)
-            line.setFixedHeight(px(40 if big else 34))
+            # Taller when its line wraps on a narrow page.
+            line.setMinimumHeight(px(40 if big else 34))
             mark = QLabel()
             mark.setObjectName("timelineDueBook")
             mark.setPixmap(book)
@@ -1267,7 +1277,8 @@ class TimelineView(LayoutView):
             title.setProperty("big", big)
             title.set_full_text(due.title)
             deadline, placed = _due_words(due.due), _placed_words(due.at)
-            where = label(" · ".join(part for part in (deadline, placed) if part), "timelineDueWhen")
+            words = " · ".join(part for part in (deadline, placed) if part)
+            where = label(words, "timelineDueWhen", wrap=True)
             if due.at is None:
                 where.setProperty("open", True)
             column.addWidget(title)
