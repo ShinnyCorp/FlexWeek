@@ -701,6 +701,23 @@ The commands it runs, each of which must exit 0:
   `.venv/bin/maturin develop --release --manifest-path engine/py/Cargo.toml --features audit`
   (`audit` adds functions only the tests call; release builds leave it out).
 
+## Branches and Storage
+Decided by Jonathan on 2026-10-08, so old worktrees and their build output do
+not pile up again.
+
+- Besides `main`, at most two working branches exist at a time, counting local
+  and remote together (for example the release branch and one lane). Each has
+  at most one worktree. A third does not start until one is merged or deleted.
+- Two releases are kept: the current one and the one before it. When a release
+  is pushed, everything belonging to older releases is deleted: their merged
+  branches (local and remote) and worktrees, their test environments
+  (`~/.flexweek-ui-harness/venv-*`), and their rig runs and scratch folders
+  under `~/.flexweek-ui-harness/scratch/`.
+- Before deleting, the agent lists what will go, with sizes, and Jonathan
+  approves the list. A branch with work that is not in `main` is never deleted
+  without his word, and worktree records made from Windows are not pruned from
+  Linux.
+
 ## Acceptance Criteria
 - [ ] Only-locked week solves to an identity schedule with 0 moves (T1).
 - [ ] A single homework block with room to spare is placed, energy-matched where
