@@ -928,6 +928,7 @@ class NativeWindow(QMainWindow):
         # goes under the first rather than both being cut.
         bar = EndsLayout()
         where = QHBoxLayout()
+        where.setSpacing(0)
         self._bar_views = QHBoxLayout()
         bar.add_group(where)
         bar.add_group(self._bar_views)
@@ -946,18 +947,24 @@ class NativeWindow(QMainWindow):
         today.setToolTip("Jump to today")
         today.clicked.connect(self._go_today)
         today.setProperty("quiet", True)
-        for arrow, name in ((self.prev_nav, "chevron-left"), (self.next_nav, "chevron-right")):
+        for index, (arrow, name) in enumerate(
+            ((self.prev_nav, "chevron-left"), (self.next_nav, "chevron-right"))
+        ):
+            if index:
+                where.addSpacing(SPACING[0])
             arrow.setProperty("quiet", True)
             arrow.setIconSize(QSize(BAR_ICON_PX, BAR_ICON_PX))
             icons.tint(arrow, name)
             where.addWidget(arrow)
-        where.addWidget(today)
         where.addSpacing(SPACING[1])
+        where.addWidget(today)
+        where.addStretch(1)
         # Thirteen buttons of equal weight and no title at all was the clutter: nothing told the eye
         # where to land.
         self.week_title = FittedLabel()
         self.week_title.setObjectName("weekTitle")
         where.addWidget(self.week_title)
+        where.addSpacing(16)
         # One control, not four loose buttons: switching view is one decision.
         segments = SegmentTrack()
         segments.setObjectName("segments")
@@ -981,7 +988,8 @@ class NativeWindow(QMainWindow):
         my_day.setToolTip("Watch today")
         my_day.clicked.connect(self._enter_day)
         segments.add(my_day)
-        self._bar_views.addWidget(segments)
+        where.addWidget(segments)
+        self._bar_views.addStretch(1)
         self.account_name = QLabel()
         self.account_name.setObjectName("accountName")
         self.account_name.setVisible(False)

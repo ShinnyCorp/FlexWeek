@@ -22,7 +22,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QPoint, QStandardPaths
-    from PySide6.QtWidgets import QApplication, QPushButton, QStyle
+    from PySide6.QtWidgets import QApplication, QPushButton, QStyle, QWidget
 
     from desktop.native.calendar import monday_of, sunday_due
     from desktop.native.layouts.registry import sanitize_layout
@@ -199,7 +199,9 @@ def test_the_bar_is_fitted_as_large_text_arrives_not_later(qapp: QApplication, w
     for _ in range(4):
         qapp.processEvents()
     text_size(window, "large")
-    qapp.processEvents()
+    for _ in range(4):
+        qapp.processEvents()
+    window._fit_plan_and_more()
     week = window.findChild(QPushButton, "viewWeek")
     seen = (window.solve_button.text(), window.more_button.text(), week.mapTo(window, QPoint(0, 0)))
     window._fit_plan_and_more()
@@ -278,3 +280,38 @@ def test_retry_save_shows_only_after_a_save_fails(qapp: QApplication, window: Na
     assert not window.retry_button.isEnabled(), "Retry save was pressable while it was retrying"
     settled(qapp, window)
     assert not window.retry_button.isVisible(), "Retry save stayed after the retry saved"
+
+
+def _title_switcher_gap(window: NativeWindow) -> int:
+    segments = window.findChild(QWidget, "segments")
+    assert segments is not None
+    title_right = window.week_title.mapTo(window, window.week_title.rect().topRight()).x()
+    switcher_left = segments.mapTo(window, QPoint(0, 0)).x()
+    return switcher_left - title_right
+
+
+@pytest.mark.parametrize(
+    ("width", "text", "preset"),
+    [
+        (1157, "normal", "default"),
+        (1157, "large", "default"),
+        (1280, "normal", "default"),
+        (1280, "large", "default"),
+        (1157, "normal", "high-contrast"),
+    ],
+)
+def test_the_title_keeps_sixteen_pixels_from_the_view_switcher(
+    qapp: QApplication, window: NativeWindow, width: int, text: str, preset: str
+) -> None:
+    """#84: the date stays 16 px from Day/Week/Month even where that shortens Plan at 1157 px Large."""
+    window._look = sanitize_look({"preset": preset, "knobs": {"text": text}})
+    window._apply_appearance()
+    window.findChild(QPushButton, "viewWeek").click()
+    window.resize(width, 768)
+    for _ in range(6):
+        qapp.processEvents()
+    window._fit_plan_and_more()
+    for _ in range(4):
+        qapp.processEvents()
+    gap = _title_switcher_gap(window)
+    assert 15 <= gap <= 17, (width, text, preset, gap)
