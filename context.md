@@ -123,8 +123,8 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-08, `release/0.18.3` in `~/.worktrees/flexweek-0183-release` (`.venv` is `venv-0182-engine`;
-  the J7 engine is in `venv-0183-engine`, relink before running engine-dependent tests). Merged:
+- 2026-10-08, `release/0.18.3` in `~/.worktrees/flexweek-0183-release` (`.venv` is `venv-0183-engine`,
+  the engine with J7; the lane worktrees other than availability still link `venv-0182-engine`). Merged:
   clay, settings, focus, account, availability, timeline-fold, homework (each verified: ruff, tests
   one file per process; Clay and Timeline rigs passed). Left for Grok (prompt
   `~/.flexweek-ui-harness/scratch/0.18.3/grok-0183-wave2.md`): settings-2, setup-2 (then merge
