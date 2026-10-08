@@ -331,6 +331,8 @@ PLAN_TINY = "Plan"
 SUGGEST_SHORT = "Suggest"
 # The top bar's icons, the larger of the system's two sizes (decision 7).
 BAR_ICON_PX = 20
+# Between the week's date and the view switcher beside it: at 6 px they ran together at Large text (#84).
+TITLE_SWITCHER_GAP = 16
 AUTH_CARD_WIDTH = 420
 # One heading on the sign-in card: a greeting there, and what the page is for when making an account.
 FIRST_GREETING = "Welcome"
@@ -927,9 +929,9 @@ class NativeWindow(QMainWindow):
         layout = QVBoxLayout(page)
         # Where you are at the left, what to show and do at the right; on a narrow window the second
         # goes under the first rather than both being cut.
-        bar = EndsLayout()
+        # The date keeps 16 px from the view switcher beside it, even where that shortens Plan (#84).
+        bar = EndsLayout(between=TITLE_SWITCHER_GAP)
         where = QHBoxLayout()
-        where.setSpacing(0)
         self._bar_views = QHBoxLayout()
         bar.add_group(where)
         bar.add_group(self._bar_views)
@@ -948,24 +950,18 @@ class NativeWindow(QMainWindow):
         today.setToolTip("Jump to today")
         today.clicked.connect(self._go_today)
         today.setProperty("quiet", True)
-        for index, (arrow, name) in enumerate(
-            ((self.prev_nav, "chevron-left"), (self.next_nav, "chevron-right"))
-        ):
-            if index:
-                where.addSpacing(SPACING[0])
+        for arrow, name in ((self.prev_nav, "chevron-left"), (self.next_nav, "chevron-right")):
             arrow.setProperty("quiet", True)
             arrow.setIconSize(QSize(BAR_ICON_PX, BAR_ICON_PX))
             icons.tint(arrow, name)
             where.addWidget(arrow)
-        where.addSpacing(SPACING[1])
         where.addWidget(today)
-        where.addStretch(1)
+        where.addSpacing(SPACING[1])
         # Thirteen buttons of equal weight and no title at all was the clutter: nothing told the eye
         # where to land.
         self.week_title = FittedLabel()
         self.week_title.setObjectName("weekTitle")
         where.addWidget(self.week_title)
-        where.addSpacing(16)
         # One control, not four loose buttons: switching view is one decision.
         segments = SegmentTrack()
         segments.setObjectName("segments")
@@ -989,8 +985,7 @@ class NativeWindow(QMainWindow):
         my_day.setToolTip("Watch today")
         my_day.clicked.connect(self._enter_day)
         segments.add(my_day)
-        where.addWidget(segments)
-        self._bar_views.addStretch(1)
+        self._bar_views.addWidget(segments)
         self.account_name = QLabel()
         self.account_name.setObjectName("accountName")
         self.account_name.setVisible(False)
@@ -1570,7 +1565,7 @@ class NativeWindow(QMainWindow):
             for group in (first, second):
                 if isinstance(group, QHBoxLayout):
                     group.activate()
-            if first.sizeHint().width() + bar._gap + second.sizeHint().width() <= inner:
+            if first.sizeHint().width() + bar.between + second.sizeHint().width() <= inner:
                 break
         bar.invalidate()
         self._fitting_plan_row = False

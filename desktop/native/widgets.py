@@ -739,10 +739,12 @@ class EndsLayout(QLayout):
     the second; with no room for both at their smallest, the second goes under the first, still at
     the right. So the top bar is never squeezed until its words are cut."""
 
-    def __init__(self, parent: QWidget | None = None, gap: int = 6) -> None:
+    def __init__(self, parent: QWidget | None = None, gap: int = 6, between: int | None = None) -> None:
         super().__init__(parent)
         self._items: list[QLayoutItem] = []
+        # `gap` between the rows once the second group goes under; `between` the groups side by side.
         self._gap = gap
+        self.between = gap if between is None else between
 
     def add_group(self, group: QLayout) -> None:
         # A layout, not a widget holding one: a change inside it reaches the window's layout at once.
@@ -777,7 +779,7 @@ class EndsLayout(QLayout):
     def sizeHint(self) -> QSize:  # noqa: N802 - Qt virtual
         hints = [item.sizeHint() for item in self._items]
         return self._framed(
-            sum(hint.width() for hint in hints) + self._gap * (len(hints) - 1),
+            sum(hint.width() for hint in hints) + self.between * (len(hints) - 1),
             max((hint.height() for hint in hints), default=0),
         )
 
@@ -803,9 +805,9 @@ class EndsLayout(QLayout):
             return tall + margins.top() + margins.bottom()
         first, second = shown
         least = first.minimumSize().width()
-        if least + self._gap + second.minimumSize().width() <= area.width():
-            right = min(second.sizeHint().width(), area.width() - self._gap - least)
-            left = min(first.sizeHint().width(), area.width() - self._gap - right)
+        if least + self.between + second.minimumSize().width() <= area.width():
+            right = min(second.sizeHint().width(), area.width() - self.between - least)
+            left = min(first.sizeHint().width(), area.width() - self.between - right)
             tall = max(first.sizeHint().height(), second.sizeHint().height())
             if place:
                 first.setGeometry(QRect(area.x(), area.y(), left, tall))

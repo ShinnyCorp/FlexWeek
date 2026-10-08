@@ -100,9 +100,9 @@
  {
   "file": "desktop/native/window.py",
   "name": "the title sits six pixels from the switcher again",
-  "old": "        where.addSpacing(16)\n",
-  "new": "        where.addSpacing(6)\n",
-  "test": "desktop/tests/test_window_screens.py::test_the_title_keeps_sixteen_pixels_from_the_view_switcher[1280-normal-default]"
+  "old": "TITLE_SWITCHER_GAP = 16\n",
+  "new": "TITLE_SWITCHER_GAP = 6\n",
+  "test": "desktop/tests/test_window_screens.py::test_the_title_keeps_sixteen_pixels_from_the_view_switcher[normal-default]"
  },
  {
   "file": "desktop/native/hours/classic.py",

@@ -298,27 +298,28 @@ def _title_switcher_gap(window: NativeWindow) -> int:
 
 
 @pytest.mark.parametrize(
-    ("width", "text", "preset"),
-    [
-        (1157, "normal", "default"),
-        (1157, "large", "default"),
-        (1280, "normal", "default"),
-        (1280, "large", "default"),
-        (1157, "normal", "high-contrast"),
-    ],
+    ("text", "preset"),
+    [("normal", "default"), ("large", "default"), ("large", "high-contrast")],
 )
 def test_the_title_keeps_sixteen_pixels_from_the_view_switcher(
-    qapp: QApplication, window: NativeWindow, width: int, text: str, preset: str
+    qapp: QApplication, window: NativeWindow, text: str, preset: str
 ) -> None:
-    """#84: the date stays 16 px from Day/Week/Month even where that shortens Plan at 1157 px Large."""
+    """#84: the date stays at least 16 px from Day/Week/Month at every width where they share a row,
+    even where that shortens Plan (1157 px at Large text). At 6 px they ran together."""
     window._look = sanitize_look({"preset": preset, "knobs": {"text": text}})
     window._apply_appearance()
     window.findChild(QPushButton, "viewWeek").click()
-    window.resize(width, 768)
-    for _ in range(6):
-        qapp.processEvents()
-    window._fit_plan_and_more()
-    for _ in range(4):
-        qapp.processEvents()
-    gap = _title_switcher_gap(window)
-    assert 15 <= gap <= 17, (width, text, preset, gap)
+    segments = window.findChild(QWidget, "segments")
+    one_row = []
+    # Every width, not a few: where the bar has room to spare the gap is wide whatever the rule says.
+    for width in range(1000, 1301, 2):
+        window.resize(width, 768)
+        for _ in range(3):
+            qapp.processEvents()
+        title_top = window.week_title.mapTo(window, QPoint(0, 0)).y()
+        if segments.mapTo(window, QPoint(0, 0)).y() >= title_top + window.week_title.height():
+            continue
+        one_row.append(width)
+        gap = _title_switcher_gap(window)
+        assert gap >= 16, (width, text, preset, gap)
+    assert one_row, "the bar was never on one row"
