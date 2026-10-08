@@ -60,7 +60,7 @@ from desktop.native.calendar import (
     is_setup_block,
 )
 from desktop.native.fields import END_OF_DAY, QUICK_LENGTHS, ClockField, DayPicker, Stepper
-from desktop.native.fonts import numeral
+from desktop.native.fonts import numeral, weighted
 from desktop.native.hours.geometry import drag_step
 from desktop.native.layouts.registry import (
     EXPERIMENTAL,
@@ -1689,8 +1689,7 @@ class SetupPage(QWidget):
         widest = 0
         for item in self.rail_items:
             item.ensurePolished()
-            bold = item.font()
-            bold.setWeight(QFont.Weight(WEIGHT_STRONG))
+            bold = weighted(item.font(), WEIGHT_STRONG)
             around = item.sizeHint().width() - item.fontMetrics().horizontalAdvance(item.text())
             widest = max(widest, around + QFontMetrics(bold).horizontalAdvance(item.text()))
         # A few pixels over, then up to a multiple of 8, since bold text measured on its own rounds a

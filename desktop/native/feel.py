@@ -299,7 +299,7 @@ def face_rules(feel: Feel, tokens: dict[str, str], scale: float) -> str:
     if faces.label_heads:
         made.append(
             f"QLabel#prefsHeading {{ font-size: {type_pt('caption', scale)}pt; "
-            f"color: {tokens['muted']}; font-weight: 600; }}"
+            f"color: {tokens['muted']}; font-weight: {WEIGHT_STRONG}; }}"
         )
     return "".join(made)
 

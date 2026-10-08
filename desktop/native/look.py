@@ -1231,6 +1231,8 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     heading = f"font-size: {type_pt('heading', text)}pt; {strong}"
     card_radius = max(radius, 10)
     ring = "transparent" if depth == "none" else mix(palette["hairline_strong"], palette["panel"], 0.6)
+    # A tag is a label, not a control: one hairline, or none in a flat look like everything else.
+    tag_edge = "border: none;" if depth == "none" else f"border: 1px solid {palette['hairline_strong']};"
     # A card is larger than a control, so it is lifted with the text colour, never the accent.
     lift = mix(palette["text"], palette["panel"], 0.04)
     quiet = (
@@ -1290,7 +1292,7 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         f"{{ background: {mix(palette['accent'], palette['panel'], 0.12)}; }}"
         f"QLabel#setupSlidePicture {{ background: transparent; border: none; padding: 0; }}"
         f"QLabel#setupSlideTag {{ background: {palette['panel']}; color: {palette['text']}; "
-        f"border: 1px solid {palette['hairline_strong']}; border-radius: 9px; padding: 1px 8px; "
+        f"{tag_edge} border-radius: 9px; padding: 1px 8px; "
         f"font-size: {type_pt('caption', text)}pt; {strong} }}"
         f"QPushButton#setupArrow {{ background: {palette['field']}; color: {palette['text']}; {edges} "
         f"border-radius: 16px; padding: 0; min-height: 0; min-width: 0; }}"

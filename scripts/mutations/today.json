@@ -302,10 +302,10 @@
  },
  {
   "file": "desktop/native/controller.py",
-  "name": "a block made by dragging is School until a type is picked",
+  "name": "a block made by dragging is School whenever it starts",
   "old": "        self.armed_category: str | None = None\n",
   "new": "        self.armed_category: str | None = \"class\"\n",
-  "test": "desktop/tests/test_drag_results.py::test_a_block_made_by_dragging_has_no_category_until_the_student_picks_one"
+  "test": "desktop/tests/test_drag_results.py::test_a_block_made_by_dragging_guesses_its_category_from_when_it_starts"
  },
  {
   "file": "desktop/native/window.py",

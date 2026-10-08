@@ -30,7 +30,6 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QAction,
     QColor,
-    QFont,
     QFontMetrics,
     QHideEvent,
     QIcon,
@@ -111,7 +110,7 @@ from desktop.native.calendar import (
 )
 from desktop.native.elevation import lift
 from desktop.native.fields import QUICK_LENGTHS, ClockField, DateField, DayPicker, Stepper
-from desktop.native.fonts import time_font, weighted
+from desktop.native.fonts import caption, time_font, weighted
 from desktop.native.hours.geometry import next_slot
 from desktop.native.icons import pixmap as icon_pixmap
 from desktop.native.look import CONFLICT_TEXT, resolved_palette
@@ -4630,9 +4629,7 @@ class AvailabilityStrip(QWidget):
     def paintEvent(self, _event: object) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        font = QFont(self.font())
-        font.setPointSizeF(font.pointSizeF() * 0.85)
-        painter.setFont(font)
+        painter.setFont(caption(self.font()))
         for day, letter in enumerate("MTWTFSS"):
             track = self.column(day)
             painter.setPen(QColor(self.colours["muted"]))

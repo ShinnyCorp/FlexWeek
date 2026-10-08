@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -43,7 +44,15 @@ from desktop.native.motion import apply_ui_effects
 from desktop.native.settings import SettingsPage
 from desktop.native.setup import STYLE as SETUP_STEP
 from desktop.native.setup import STYLES, SetupPage, SetupState, style_layout, style_look
-from desktop.native.tokens import RADIUS_CARD, RADIUS_SHEET
+from desktop.native.tokens import (
+    RADIUS_CARD,
+    RADIUS_SHEET,
+    TEXT_SCALE,
+    TYPE_PT,
+    WEIGHT_REGULAR,
+    WEIGHT_STRONG,
+    type_pt,
+)
 from desktop.native.widgets import HomeworkDialog, control_art
 from desktop.native.window import NativeWindow
 from desktop.tests.window_support import (  # noqa: F401
@@ -117,6 +126,25 @@ def test_each_style_adds_its_faces_or_radius(
         assert "VT323" in extra
     if style_key == "dashboard":
         assert "hero" in extra.lower() or "background:" in extra
+
+
+def test_feel_sizes_are_on_the_scale(qapp: QApplication) -> None:  # noqa: F811
+    """A style's extra sheet sets sizes and weights of its own (test_tokens lets feel.py), so each one
+    must still be a step of the type scale at every text size, and one of the two weights."""
+    checked = 0
+    for style_key in ("night", "dashboard", "retro"):
+        for text in TEXT_SCALE:
+            _pack, look, palette, tokens, feel, base, _layout = _dressed(style_key)
+            look = sanitize_look({**look, "knobs": {**look.get("knobs", {}), "text": text}})
+            extra = extra_stylesheet(base, feel, palette, tokens, look, HEROES)
+            scale = {type_pt(role, text) for role in TYPE_PT}
+            found = re.findall(r"font-size: ([^;}]+)", extra)
+            sizes = [float(size.strip().removesuffix("pt")) for size in found]
+            weights = [weight.strip() for weight in re.findall(r"font-weight: ([^;}]+)", extra)]
+            checked += len(sizes)
+            assert [size for size in sizes if size not in scale] == [], (style_key, text)
+            assert set(weights) <= {str(WEIGHT_REGULAR), str(WEIGHT_STRONG)}, (style_key, text, weights)
+    assert checked, "the pattern found no size to check"
 
 
 def test_hero_and_retro_title_bars_read_at_aa(qapp: QApplication) -> None:  # noqa: F811
