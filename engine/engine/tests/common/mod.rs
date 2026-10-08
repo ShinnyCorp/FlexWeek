@@ -6,9 +6,8 @@
 pub mod desk;
 
 use flexweek_engine::solver::{
-    DeadlineOverrides, SOLVE_BUDGET_MS, SolveTrace, StudyWindow, TimeBlock, WorkWindow,
-    block_from_value, reschedule_after_miss, reschedule_running_late, solve,
-    study_window_from_value, work_window_from_value,
+    DeadlineOverrides, SOLVE_BUDGET_MS, SolveTrace, TimeBlock, WorkWindow, block_from_value,
+    reschedule_after_miss, reschedule_running_late, solve, work_window_from_value,
 };
 use flexweek_engine::time::{hhmm_to_minutes, overlaps};
 use serde_json::{Map, Value, json};
@@ -134,19 +133,6 @@ pub fn work_span(days: &[i64], start: &str, end: &str, subject: Option<&str>) ->
     work_window_from_value(&value)
 }
 
-pub fn study_span(
-    days: &[i64],
-    start: &str,
-    duration_min: i64,
-    subject: Option<&str>,
-) -> StudyWindow {
-    let mut value = json!({"days": days, "start": start, "duration_min": duration_min});
-    if let Some(subject) = subject {
-        value["subject"] = json!(subject);
-    }
-    study_window_from_value(&value)
-}
-
 /// The solver wants milliseconds since its own start, so build one per call. A clock that
 /// never moves makes `solve_ms` always 0 and the budget can never expire.
 pub fn real_clock() -> impl Fn() -> f64 {
@@ -157,14 +143,12 @@ pub fn real_clock() -> impl Fn() -> f64 {
 pub fn solve_with(
     blocks: &[TimeBlock],
     extra_occ: Option<&[u128]>,
-    study: Option<&[StudyWindow]>,
     work: Option<&[WorkWindow]>,
     elapsed_ms: &dyn Fn() -> f64,
 ) -> SolveTrace {
     solve(
         blocks,
         extra_occ,
-        study,
         work,
         Some(&DeadlineOverrides::default()),
         SOLVE_BUDGET_MS,
@@ -176,21 +160,12 @@ pub fn solve_with(
 /// `solve()` in the Python tests fills in legacy 06:00–23:00 windows.
 pub fn solve_legacy(blocks: &[TimeBlock]) -> SolveTrace {
     let work = windows_legacy();
-    solve_with(blocks, None, None, Some(&work), &real_clock())
+    solve_with(blocks, None, Some(&work), &real_clock())
 }
 
 /// `run_solve()` leaves work windows unset. The binding passes None.
 pub fn solve_open(blocks: &[TimeBlock]) -> SolveTrace {
-    solve_with(blocks, None, None, None, &real_clock())
-}
-
-pub fn solve_studied(
-    blocks: &[TimeBlock],
-    extra_occ: Option<&[u128]>,
-    study: &[StudyWindow],
-) -> SolveTrace {
-    let work = windows_legacy();
-    solve_with(blocks, extra_occ, Some(study), Some(&work), &real_clock())
+    solve_with(blocks, None, None, &real_clock())
 }
 
 pub fn miss_legacy(
@@ -205,7 +180,6 @@ pub fn miss_legacy(
         missed_block_id,
         missed_day,
         previous,
-        None,
         None,
         Some(&work),
         Some(&DeadlineOverrides::default()),
@@ -229,7 +203,6 @@ pub fn miss_open(
         previous,
         None,
         None,
-        None,
         Some(&DeadlineOverrides::default()),
         SOLVE_BUDGET_MS,
         &real_clock(),
@@ -251,7 +224,6 @@ pub fn late_legacy(
         minutes,
         from_start,
         previous,
-        None,
         None,
         Some(&work),
         Some(&DeadlineOverrides::default()),

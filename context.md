@@ -1,6 +1,13 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-08, `release/0.18.3` (local, not pushed): batch B and J13 (a style's feel on every page)
+  are merged, version 0.18.3 with its CHANGELOG entry and `docs/release-notes-v0.18.3.md`. Final
+  check: the whole suite (75 files one per process, the other 102 with `-n 4`) green after six
+  fixes (feb3188, 5fb8f56); mypy clean; engine cargo fmt, clippy and 406 tests clean; every rig
+  passes (classic 41, timeline 41, mission 40, bento 40, retro 40, clay 41, one 3, dial 3) after
+  the Retro frame's freeze on garbage collection was fixed (5ab0a0c). spec.md and AGENTS.md gained
+  Branches and Storage (main plus two working branches; keep two releases' files).
 - 2026-10-04, `release/0.18.2` (local, not pushed): all of batch A is merged, with Grok's rounds
   2-4 and Claude's fixes from the whole-suite and rig runs (folded rail drag, page margins and
   the top bar's one order with "Plan" last, Unfinished staying open, the bar fitted as Large text
@@ -123,6 +130,18 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-04, `release/0.18.2` in `~/.worktrees/flexweek-0182-release` (`.venv` is
-  `venv-0182-engine`, the engine with the new reason codes). Batch A done and checked. Next:
-  Jonathan's look at #98's sliding plan panel, then the PR to main and the release on his word. Batch B waits for mockup round 2.
+- 2026-10-07, `release/0.18.3` in `~/.worktrees/flexweek-0183-release` (`.venv` is `venv-0183-engine`,
+  the engine with J7; the lane worktrees other than availability still link `venv-0182-engine`). Merged:
+  clay, settings, focus, account, availability, timeline-fold, homework, then Grok's wave 2:
+  settings-2, setup (with setup-2), sheets, large-text (each verified: ruff, tests one file per
+  process; Clay and Timeline rigs passed). Claude's follow-ups on top: Running late checks the week
+  itself; the view switcher stays in the bar's right group with a 16 px side-by-side gap
+  (`EndsLayout(between=)`, large-text had moved it beside the title); the focus list is as tall
+  as its two-line rows. Both tests that failed alone now pass. J13 (depth 1, Grok, `grok/0183-j13`)
+  is merged (d8af632) after three review rounds: Settings, sheets, Setup and sign-in wear the
+  style's feel (`desktop/native/feel.py`); the week and day pages are unchanged. Retro at Large text
+  still scrolls Add homework, as before J13. Open for Jonathan: Retro teal's
+  title bar end is darkened to reach 4.5:1; Clay, Mission, Dial and One thing keep Plain's feel.
+  The Quick focus hop is checked by eye in the 0.18.3 build.
+  spec.md now says study hours are one list (J7) and protected time may carry a title. Nothing pushed; `docs/mockup-round2` local only. #41 and "Open after 0.18.1"
+  still wait on him. Phase 8 (due 2026-10-25) is with Cursor and his partner.

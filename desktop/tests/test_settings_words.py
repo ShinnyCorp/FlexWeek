@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 
 from desktop.native.layouts.registry import sanitize_layout
 from desktop.native.look import look_menu_token
-from desktop.native.settings import FINE_TUNE_LOOK, SettingsPage
+from desktop.native.settings import BUTTON_WIDTH, FINE_TUNE_LOOK, SettingsPage
 from desktop.native.update import WINDOWS_SETUP, available
 from desktop.native.version import VERSION
 from desktop.native.widgets import Segmented, Switch
@@ -121,22 +121,22 @@ def test_every_field_in_a_forms_column_starts_at_the_same_left_edge(
     dialog.close_page()
 
 
-def test_this_build_says_0_18_2_and_is_not_offered_0_18_1(
+def test_this_build_says_0_18_3_and_is_not_offered_0_18_2(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
-    assert VERSION == "0.18.2"
+    assert VERSION == "0.18.3"
     release = {
-        "tag_name": "v0.18.1",
+        "tag_name": "v0.18.2",
         "assets": [
             {"name": name, "browser_download_url": f"https://example.invalid/{name}"}
             for name in (WINDOWS_SETUP, WINDOWS_SETUP + ".sha256")
         ],
     }
     assert available(release, "windows") is None
-    assert available({**release, "tag_name": "v0.18.3"}, "windows")["version"] == "0.18.3"
+    assert available({**release, "tag_name": "v0.18.4"}, "windows")["version"] == "0.18.4"
     dialog = prefs(window)
-    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.18.2"
+    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.18.3"
     dialog.close_page()
 
 
@@ -418,5 +418,6 @@ def test_a_button_that_opens_something_else_is_outlined_and_as_wide_as_its_words
     at = button.mapTo(on, QPoint(button.width() // 2, 4))
     card = inside(button, on)
     assert picture.pixelColor(at.x(), at.y()) == picture.pixelColor(card.x(), card.y()), "filled"
-    assert button.width() <= button.sizeHint().width(), "as wide as the page"
+    # The three buttons of This computer share one width, 190 px (mockup 8).
+    assert button.width() <= max(button.sizeHint().width(), BUTTON_WIDTH), "as wide as the page"
     dialog.close_page()

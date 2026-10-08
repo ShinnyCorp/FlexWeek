@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   windows:
-    runs-on: blacksmith-4vcpu-windows-2025
+    runs-on: windows-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -236,10 +236,10 @@ jobs:
             --clobber
 
   linux:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: useblacksmith/checkout@v1
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
 

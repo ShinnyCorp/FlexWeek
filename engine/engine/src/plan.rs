@@ -876,6 +876,9 @@ fn casefold_trim(s: Option<&str>) -> Option<String> {
         .map(|t| crate::casefold::casefold(crate::time::py_strip(t)))
 }
 
+/// How much a session wants this time, read from the one Study hours list: 0 inside a window
+/// kept for its own subject, 1 inside a window for any subject, 2 anywhere else. Another
+/// subject's window is anywhere else, so Reading does not take the time kept for Math.
 pub fn study_rank(
     windows: &[Value],
     course: Option<&str>,
@@ -894,9 +897,9 @@ pub fn study_rank(
         if !days.contains(&day) {
             continue;
         }
-        let begin = unpacked_minutes(window["start"].as_str().unwrap_or("00:00"))?;
-        let win_dur = window["duration_min"].as_i64().unwrap_or(0);
-        if !(begin <= start_min && start_min + duration_min <= begin + win_dur) {
+        let begin = clock_to_minutes(window["start"].as_str().unwrap_or("00:00"))?;
+        let finish = clock_to_minutes(window["end"].as_str().unwrap_or("24:00"))?;
+        if !(begin <= start_min && start_min + duration_min <= finish) {
             continue;
         }
         if window.get("subject").is_none_or(Value::is_null) {
@@ -912,6 +915,88 @@ pub fn study_rank(
         }
     }
     Ok(best)
+}
+
+/// The most windows one availability list holds (`Preferences` in `backend/app.py`).
+pub const WINDOW_LIMIT: usize = 21;
+
+/// J7: older builds kept "preferred study hours" (`study_windows`: a start and a length) beside
+/// the planning hours. They join the one Study hours list (`work_windows`) as a start and an
+/// end, after the windows already there. A preferred window that the list already covers, for
+/// the same subject on each of its days, adds nothing and is left out; so is any past the
+/// list's limit, since a list over it could not be loaded at all.
+pub fn fold_study_windows(work: &[Value], study: &[Value]) -> EngineResult<Vec<Value>> {
+    let mut folded = work.to_vec();
+    for window in study {
+        let begin = unpacked_minutes(window["start"].as_str().unwrap_or("00:00"))?;
+        let finish = begin + window["duration_min"].as_i64().unwrap_or(0);
+        let subject = window.get("subject").and_then(Value::as_str);
+        let days: Vec<i64> = window
+            .get("days")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(|v| v.as_i64()).collect())
+            .unwrap_or_default();
+        let mut covered = true;
+        for day in &days {
+            let spans = same_subject_spans(&folded, subject, *day)?;
+            if !spans
+                .iter()
+                .any(|(low, high)| *low <= begin && finish <= *high)
+            {
+                covered = false;
+                break;
+            }
+        }
+        if covered || folded.len() >= WINDOW_LIMIT {
+            continue;
+        }
+        let mut carried = json!({
+            "days": days,
+            "start": minutes_to_hhmm(begin),
+            "end": minutes_to_hhmm(finish),
+        });
+        if let Some(subject) = subject {
+            carried["subject"] = json!(subject);
+        }
+        folded.push(carried);
+    }
+    Ok(folded)
+}
+
+/// The day's hours from windows kept for exactly this subject (none means windows for any
+/// subject), touching ones joined.
+fn same_subject_spans(
+    windows: &[Value],
+    subject: Option<&str>,
+    day: i64,
+) -> EngineResult<Vec<(i64, i64)>> {
+    let wanted = casefold_trim(subject);
+    let mut spans: Vec<(i64, i64)> = Vec::new();
+    for window in windows {
+        let on_day = window
+            .get("days")
+            .and_then(Value::as_array)
+            .is_some_and(|a| a.iter().any(|v| v.as_i64() == Some(day)));
+        if !on_day || casefold_trim(window.get("subject").and_then(Value::as_str)) != wanted {
+            continue;
+        }
+        let begin = clock_to_minutes(window["start"].as_str().unwrap_or("00:00"))?;
+        let finish = clock_to_minutes(window["end"].as_str().unwrap_or("24:00"))?;
+        if begin < finish {
+            spans.push((begin, finish));
+        }
+    }
+    spans.sort_unstable();
+    let mut merged: Vec<(i64, i64)> = Vec::new();
+    for (begin, finish) in spans {
+        match merged.last_mut() {
+            Some((_, last_finish)) if begin <= *last_finish => {
+                *last_finish = (*last_finish).max(finish);
+            }
+            _ => merged.push((begin, finish)),
+        }
+    }
+    Ok(merged)
 }
 
 pub fn resolve_work_windows(windows: Option<&[Value]>) -> (Vec<Value>, bool) {

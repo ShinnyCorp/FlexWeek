@@ -195,10 +195,11 @@ def create_on(
     settled(qapp, window)
 
 
-def test_a_block_made_by_dragging_has_no_category_until_the_student_picks_one(
+def test_a_block_made_by_dragging_guesses_its_category_from_when_it_starts(
     qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """It used to be School, so an hour of Club counted as School in the Day's summary. A type picked
+    """It used to be School, so an hour of Club counted as School in the Day's summary. Add fixed time
+    guesses from the time of day (#52): 16:00 is after school and no meal, so Activity. A type picked
     under Add, "Then drag on the calendar", is still what the next drag makes."""
     seen = answer_editors(monkeypatch, "Club", None, "Practice")
     add = window.findChild(QPushButton, "addButton")
@@ -216,9 +217,9 @@ def test_a_block_made_by_dragging_has_no_category_until_the_student_picks_one(
     }
     assert (says, seen, made, window.day_view.summary.text()) == (
         ["Add", "Add sports"],
-        [("", "None"), ("Sports", "Sports"), ("Sports", "Sports")],
-        {"Club": ([3], "16:00", 60, None), "Practice": ([3], "17:30", 30, "exercise")},
-        "School: 6 h 30 min\nOther: 1 h\nActivity: 30 min\nSports: 30 min\nHomework: 1 h",
+        [("", "Activity"), ("Sports", "Sports"), ("Sports", "Sports")],
+        {"Club": ([3], "16:00", 60, "extra"), "Practice": ([3], "17:30", 30, "exercise")},
+        "School: 6 h 30 min\nActivity: 1 h 30 min\nSports: 30 min\nHomework: 1 h",
     )
 
 

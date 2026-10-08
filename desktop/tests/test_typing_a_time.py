@@ -87,7 +87,7 @@ def test_the_block_editor_keeps_the_typed_times(qapp: QApplication, host: QWidge
 def test_add_homework_keeps_the_typed_due_time(qapp: QApplication, host: QWidget, twenty_four: bool) -> None:
     set_clock_24h(twenty_four)
     dialog = HomeworkDialog(
-        host, today="2026-09-24", category="assignments", now=datetime(2026, 9, 24, 10, 0)
+        host, today="2026-09-24", category="assignments", due="2026-09-24", now=datetime(2026, 9, 24, 10, 0)
     )
     dialog.title.setText("Essay")
     dialog.due.timed.setChecked(True)
@@ -100,11 +100,11 @@ def test_add_homework_keeps_the_typed_due_time(qapp: QApplication, host: QWidget
 def test_study_hours_keep_the_typed_times(qapp: QApplication, host: QWidget, twenty_four: bool) -> None:
     set_clock_24h(twenty_four)
     dialog = AvailabilityDialog(host, {})
-    type_over(dialog.study_start, "4:30 pm")
-    type_over(dialog.study_end, "1800")
-    dialog._add_study()
-    (window,) = dialog.study_windows()
-    assert (window["start"], window["duration_min"]) == ("16:30", 90)
+    dialog._open_picker(kind="study", day=4)
+    type_over(dialog.picker_start, "4:30 pm")
+    type_over(dialog.picker_end, "1800")
+    dialog.picker_add.click()
+    assert dialog.work_windows() == [{"days": [4], "start": "16:30", "end": "18:00"}]
 
 
 @CLOCKS

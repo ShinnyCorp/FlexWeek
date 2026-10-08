@@ -210,8 +210,9 @@ def test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way(
         qapp.processEvents()
     rail = window.rail
     shown = chips(window)
-    assert len(shown) == 2 and any(chip.shown_title().endswith("…") for chip in shown)
+    assert len(shown) == 2
     for chip in shown:
+        assert len(chip.title_lines()) <= 2
         assert chip.mapTo(rail, chip.rect().topRight()).x() <= rail.width()
     assert rail.width() == RAIL_PX
     tasks = rail.tasks
@@ -271,3 +272,96 @@ def test_a_short_block_word_gives_its_name_the_room_its_times_took(qapp: QApplic
     assert any("16:00" in line.text for line in block_layout(soccer, title, small, room))
     short = Drawn(**{**soccer.__dict__, "short": True})
     assert [line.text for line in block_layout(short, title, small, room)] == ["Soccer practice"]
+
+
+def test_the_focus_list_grows_to_its_rows_with_no_scroll_bar_and_no_row_cut(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """The list was a small scrolling box that clipped the last row ("Fri 17:0(")."""
+    seeded(qapp, window)
+    session = window.session
+    math = next(block for block in session.blocks if block.get("assignment_id") == "math")
+    session.add_block({**math, "start": "17:00", "days": [4], "pinned": True})
+    session.save()
+    settled(qapp, window)
+    for _ in range(5):
+        qapp.processEvents()
+    tasks = window.rail.tasks
+    assert tasks.count() == 3
+    row = tasks.sizeHintForRow(0)
+    assert not tasks.verticalScrollBar().isVisible() and not tasks.horizontalScrollBar().isVisible()
+    assert tasks.viewport().height() >= 3 * row, "all three rows fit"
+    last = tasks.visualItemRect(tasks.item(2))
+    assert last.bottom() <= tasks.viewport().height() and last.right() <= tasks.viewport().width()
+    assert tasks.height() >= 3 * row
+
+
+def test_the_focus_list_has_no_row_limit_of_its_own(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """The rail scrolls as a whole, so the list never needs a scroll bar of its own."""
+    seeded(qapp, window)
+    rows = [{"id": f"t{n}", "day": 4, "start": "17:00", "title": f"Task {n}"} for n in range(9)]
+    window.rail.set_tasks(rows, 0)
+    tasks = window.rail.tasks
+    assert tasks.count() == 9
+    assert tasks.height() >= 9 * tasks.sizeHintForRow(0)
+
+
+def test_rail_chips_and_focus_rows_wrap_long_names_on_two_lines_at_large_text(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """#84: "Math worksheet, chapter 4" and "History / essay" stay whole on two lines, not "Math worksh…"."""
+    from desktop.native.hours.rail import rail_title_lines
+    from desktop.native.look import sanitize_look
+
+    seeded(qapp, window)
+    session = window.session
+    due = sunday_due(session.week_start)
+    for key, title in (
+        ("long-math", "Math worksheet, chapter 4"),
+        ("long-history", "History / essay"),
+    ):
+        session.add_homework({"id": key, "title": title, "due": due, "estimate_min": 60, "revision": 0})
+    session.save()
+    settled(qapp, window)
+    window._look = sanitize_look({"preset": "default", "knobs": {"text": "large"}})
+    window._apply_appearance()
+    for _ in range(5):
+        qapp.processEvents()
+    by_title = {chip._title: chip for chip in window.rail.chips()}
+    for title in ("Math worksheet, chapter 4", "History / essay"):
+        chip = by_title[title]
+        lines = chip.title_lines()
+        assert len(lines) <= 2
+        assert " ".join(lines) == title
+        assert "…" not in chip.shown_title()
+        assert title in chip.accessibleName()
+        body, _small = chip._fonts()
+        assert rail_title_lines(title, QFontMetricsF(body), chip._title_room()) == lines
+    essay = next(block for block in session.blocks if block.get("assignment_id") == "essay")
+    session.add_block({**essay, "start": "18:00", "days": [3], "pinned": True})
+    math = next(block for block in session.blocks if block.get("assignment_id") == "long-math")
+    session.add_block({**math, "start": "19:00", "days": [3], "pinned": True})
+    history = next(block for block in session.blocks if block.get("assignment_id") == "long-history")
+    session.add_block({**history, "start": "20:00", "days": [3], "pinned": True})
+    session.save()
+    settled(qapp, window)
+    for _ in range(5):
+        qapp.processEvents()
+    # The focus rows: each long name on two lines, and the list as tall as all of them, at the
+    # widths the bar fits Plan to, after Large text has arrived (the list was sized before it).
+    tasks = window.rail.tasks
+    line = QFontMetricsF(window.rail.fonts()[0]).lineSpacing()
+    for width in (1157, 1280):
+        window.resize(width, 800)
+        for _ in range(5):
+            qapp.processEvents()
+        rows = {tasks.item(row).text(): tasks.visualItemRect(tasks.item(row)) for row in range(tasks.count())}
+        for title in ("Math worksheet, chapter 4", "History / essay"):
+            assert rows[title].height() >= 2 * line, (width, title, rows[title].height(), line)
+        lowest = max(rect.bottom() for rect in rows.values())
+        assert lowest < tasks.viewport().height(), (width, lowest, tasks.viewport().height())

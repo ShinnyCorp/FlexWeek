@@ -165,14 +165,17 @@ Contract for the finished app:
   checklist items never completes the assignment, and focus minutes still
   complete nothing.
 - Preferences carry availability: up to 21 `protected` windows (downtime,
-  commute or meal), up to 21 `work_windows` (the hours the planner may use,
-  set in setup and in Settings; `work_windows_defaulted` marks an account that
-  has not chosen any, whose whole day is open), up to 21 soft `study_windows`
-  (Settings only), and an optional `day_cutoff` that flexible work must finish
-  by. A study window may name one `subject`:
-  the solver tries a session in its own subject's window first, then in a
-  window for any subject, then anywhere else. `POST /api/solve` loads them for
-  the signed-in account, so the client never re-sends occupancy.
+  commute or meal, each with an optional `title` of up to 40 characters that
+  its chip shows in place of the kind), up to 21 `work_windows` (one list,
+  shown as Study hours: the hours the planner may use, set in Setup and in
+  Availability; `work_windows_defaulted` marks an account that has not chosen
+  any, whose whole day is open), and an optional `day_cutoff` that flexible
+  work must finish by. A study window may name one `subject`: the solver tries
+  a session in its own subject's windows first, then in windows for any
+  subject. Preferred study hours saved by builds before 0.18.3
+  (`study_windows`) are read once into `work_windows` and never written again.
+  `POST /api/solve` loads them for the signed-in account, so the client never
+  re-sends occupancy.
 - Comfort preferences persist per account: `alert_volume` (0-100), `end_chime`,
   `tray_notifications`, `start_at_login`, `preferred_view` (`week` or `day`),
   `sidebar_collapsed` and `sidebar_width_px` (200-640). One `alarm_tone`
@@ -698,6 +701,23 @@ The commands it runs, each of which must exit 0:
   `.venv/bin/maturin develop --release --manifest-path engine/py/Cargo.toml --features audit`
   (`audit` adds functions only the tests call; release builds leave it out).
 
+## Branches and Storage
+Decided by Jonathan on 2026-10-08, so old worktrees and their build output do
+not pile up again.
+
+- Besides `main`, at most two working branches exist at a time, counting local
+  and remote together (for example the release branch and one lane). Each has
+  at most one worktree. A third does not start until one is merged or deleted.
+- Two releases are kept: the current one and the one before it. When a release
+  is pushed, everything belonging to older releases is deleted: their merged
+  branches (local and remote) and worktrees, their test environments
+  (`~/.flexweek-ui-harness/venv-*`), and their rig runs and scratch folders
+  under `~/.flexweek-ui-harness/scratch/`.
+- Before deleting, the agent lists what will go, with sizes, and Jonathan
+  approves the list. A branch with work that is not in `main` is never deleted
+  without his word, and worktree records made from Windows are not pruned from
+  Linux.
+
 ## Acceptance Criteria
 - [ ] Only-locked week solves to an identity schedule with 0 moves (T1).
 - [ ] A single homework block with room to spare is placed, energy-matched where
@@ -738,7 +758,7 @@ The commands it runs, each of which must exit 0:
 - [ ] A student who is running late previews a 30-minute delay, accepts it, and
       undoes it in one step; spreading a project adds sessions only after a
       preview.
-- [ ] Protected downtime, preferred study hours and a day cutoff change where
+- [ ] Protected downtime, study hours and a day cutoff change where
       the solver places work without the client re-sending occupancy.
 - [ ] A student opens Month, sees deadlines with planned and completed study
       time, and clicks a date to open Day view.

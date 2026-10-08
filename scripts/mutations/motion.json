@@ -154,11 +154,11 @@
     "test": "desktop/tests/test_focus_screen.py::test_quick_focus_fills_the_window_and_esc_comes_back"
   },
   {
-    "name": "a waiting ring is drawn in the full accent",
+    "name": "a waiting ring is drawn softer than the accent",
     "file": "desktop/native/ring.py",
-    "old": "            arc = mix_oklab(colours.arc, colours.track, WAITING_SHARE) if self._waiting else colours.arc\n",
-    "new": "            arc = colours.arc\n",
-    "test": "desktop/tests/test_ring.py::test_a_timer_not_started_draws_its_arc_softer_so_it_does_not_look_finished"
+    "old": "        return self._colours.arc\n",
+    "new": "        return self._colours.track if self._waiting else self._colours.arc\n",
+    "test": "desktop/tests/test_ring.py::test_a_timer_not_started_draws_its_arc_in_the_accent_itself"
   },
   {
     "name": "Ctrl+K rises only a notice's 8 pixels",

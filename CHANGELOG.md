@@ -3,6 +3,63 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.3] - 2026-10-08
+
+### Added
+- A style's feel reaches every page. With Night owl, Dashboard or Retro as the
+  main view, Settings, the sheets, Setup and sign-in take its fonts, shapes
+  and chrome: Night owl's serif headings and paper edge, Dashboard's title on
+  a coloured tile with rounder cards, Retro's pixel type, bevels and Windows
+  98 title bars. Setup shows each style's feel as it is picked, and sign-in
+  wears the style this computer used last. Plain calendar and the other
+  designs look as before, and the week and day pages keep their own design.
+- Timeline's fold moves: drag the "‹ 3 | 4 ›" handle in the day-name row,
+  click its arrows, or use Left and Right, from 1 | 6 to 6 | 1. It is also in
+  Settings as "Days on the left page", and the page footers reflow to fit.
+- Protected time can have a name, up to 40 characters ("e.g. Piano"), which
+  its chip shows.
+- Clay: a sideways drag on a neighbouring day or the space between the cards
+  moves to that day.
+- Manage account's password boxes have the show-password eye.
+
+### Changed
+- Study hours are one list. Preferred study hours and planning hours are
+  merged into Study hours, set in Setup and in Availability; hours saved the
+  old way are carried into it.
+- Availability shows the week as a strip, then Study hours, Protected and
+  Cut-off as tabs, one row of chips per day with a + to add.
+- Setup's Style page shows one style at a time, large, with the neighbours
+  dimmed at the sides; Plain calendar is chosen and previewed from the start.
+  Every Setup page's column starts at the same place, and the pages fade
+  under the footer instead of being cut by it.
+- Settings: the worn look is marked inside its card ("Wearing"), the look and
+  design grids stretch to the row, controls on Focus, Alerts and This
+  computer share one width and one label column, the timer preset comes
+  first on Focus, and sections fade under a floating footer.
+- Add and Edit homework: due starts tomorrow; the multiple-of-15 hint shows
+  only for a wrong length; Edit says where the homework is placed; "In one go"
+  or "Spread over days" from 60 minutes up, and Save with Spread writes the
+  spread times straight away.
+- The sheets: the plan panel says "Placed"; Choose a time picks one day and a
+  length; "New event" is "Add fixed time", with its Spotify link under More
+  details; Running late is greyed on another week ("Open this week to use
+  Running late."); Help, Routines, About and School hours are tidied.
+- The focus screen: the ring is the accent before Start; Skip and Finish sit
+  beside Pause; Finish asks "End this session?"; the buttons no longer move
+  the ring when they change.
+- Clay's neighbouring days are dimmed and stay still while the front day
+  scrolls.
+- At Large text, homework names in the rail and the focus list wrap onto two
+  lines before they are cut, and the week's date keeps 16 px from the view
+  switcher.
+- A wrong password shows as a red line under the password box, with a link
+  explaining why.
+
+### Fixed
+- The rail's focus list shows all its rows instead of a small scrolling box.
+- At Large text the top bar could leave Plan on a second row until the next
+  change.
+
 ## [0.18.2] - 2026-10-04
 
 ### Added

@@ -42,7 +42,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStackedWidget,
     QSystemTrayIcon,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -60,14 +59,23 @@ from desktop.native.calendar import (
     span_clash,
     sunday_due,
 )
-from desktop.native.client import PASSWORD_LENGTH_HINT, USERNAME_HINT, sign_in_problem, sign_up_problem
+from desktop.native.client import (
+    PASSWORD_LENGTH_HINT,
+    SIGN_IN_WHY,
+    SIGN_IN_WHY_LINK,
+    SIGN_IN_WRONG,
+    USERNAME_HINT,
+    sign_in_problem,
+    sign_up_problem,
+)
 from desktop.native.command_bar import Command, CommandBar
 from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.custom_look import sanitize_saved
 from desktop.native.elevation import lift
+from desktop.native.feel import Context, apply_feel, context_for, current, extra_stylesheet, set_current
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import focus_now, phase_duration_ms
-from desktop.native.focus_screen import FocusScreen
+from desktop.native.focus_screen import QUICK_TITLE, FocusScreen
 from desktop.native.fonts import load_fonts
 from desktop.native.hours.canvas import HoursCanvas
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
@@ -149,6 +157,7 @@ from desktop.native.weekmodel import (
 )
 from desktop.native.widgets import (
     REPLAN_TIP,
+    REVEAL_ICON_PX,
     AddMenu,
     AlertStrip,
     AvailabilityDialog,
@@ -161,6 +170,7 @@ from desktop.native.widgets import (
     HomeworkDialog,
     LateDialog,
     MoreButton,
+    PasswordField,
     PlanButton,
     PlanReview,
     PreviewDialog,
@@ -168,7 +178,6 @@ from desktop.native.widgets import (
     SchoolHoursDialog,
     Segment,
     SegmentTrack,
-    SpreadDialog,
     Toast,
     UnfinishedPanel,
     WhyOff,
@@ -309,6 +318,7 @@ GREYED_TIPS = {
     "undoButton": "Nothing to undo yet.",
     "redoButton": "Nothing to redo.",
     "pasteBlock": "Copy a block or a day first.",
+    "runningLate": "Open this week to use Running late.",
 }
 WAIT_TIP = "Wait a moment: FlexWeek is still saving or planning."
 SIGN_OUT_QUESTION = "Your week is saved on {where}, under this account. Sign in again to see it."
@@ -322,6 +332,8 @@ PLAN_TINY = "Plan"
 SUGGEST_SHORT = "Suggest"
 # The top bar's icons, the larger of the system's two sizes (decision 7).
 BAR_ICON_PX = 20
+# Between the week's date and the view switcher beside it: at 6 px they ran together at Large text (#84).
+TITLE_SWITCHER_GAP = 16
 AUTH_CARD_WIDTH = 420
 # One heading on the sign-in card: a greeting there, and what the page is for when making an account.
 FIRST_GREETING = "Welcome"
@@ -335,9 +347,6 @@ RESET_HEADING = "Reset your password"
 RESET_NOTE = "Use one of the recovery codes you saved when you made your account."
 # What the sign-in card is for at the moment.
 SIGN_IN, CREATE, RESET = "sign in", "create", "reset"
-# The eye inside the password box, and the room it keeps clear of the typing.
-REVEAL_PX = 28
-REVEAL_ICON_PX = 16
 # Long enough for the student to read that the update installed before the window goes.
 UPDATE_QUIT_MS = 1200
 # How long after the last change the week saves itself. Long enough that dragging a block does not
@@ -431,40 +440,6 @@ class LastInput(QObject):
         elif kind == QEvent.Type.MouseButtonPress:
             self.keyboard = False
         return False
-
-
-class PasswordField(QLineEdit):
-    """A password box with an eye inside its right edge that shows what is typed and hides it again.
-    A Show button beside the box made it 76 pixels narrower than the username box above it."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setEchoMode(QLineEdit.EchoMode.Password)
-        self.setTextMargins(0, 0, REVEAL_PX, 0)
-        self._colour = "#5b6474"
-        self.reveal = QToolButton(self)
-        self.reveal.setObjectName("passwordReveal")
-        self.reveal.setCheckable(True)
-        self.reveal.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.reveal.setIconSize(QSize(REVEAL_ICON_PX, REVEAL_ICON_PX))
-        self.reveal.toggled.connect(self._show)
-        self._show(False)
-
-    def set_colour(self, colour: str) -> None:
-        self._colour = colour
-        self._show(self.reveal.isChecked())
-
-    def _show(self, shown: bool) -> None:
-        self.setEchoMode(QLineEdit.EchoMode.Normal if shown else QLineEdit.EchoMode.Password)
-        words = "Hide password" if shown else "Show password"
-        self.reveal.setIcon(icons.icon("eye-off" if shown else "eye", self._colour))
-        self.reveal.setToolTip(words)
-        self.reveal.setAccessibleName(words)
-
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        super().resizeEvent(event)
-        side = min(REVEAL_PX, self.height() - 4)
-        self.reveal.setGeometry(self.width() - side - 4, (self.height() - side) // 2, side, side)
 
 
 class NativeWindow(QMainWindow):
@@ -587,7 +562,6 @@ class NativeWindow(QMainWindow):
         self._late_dialog: LateDialog | None = None
         # The late start accepted but not stored yet, and the sentence its save will confirm.
         self._late_waiting: tuple[str, str] | None = None
-        self._pending_spread_ui = False
         self._quitting = False
         self._tray_icon: QSystemTrayIcon | None = None
         self._tray_hinted = False
@@ -667,6 +641,17 @@ class NativeWindow(QMainWindow):
     def _clear_auth_status(self) -> None:
         self.auth_status.clear()
         self.auth_status.setVisible(False)
+        self.auth_error.setVisible(False)
+
+    def _explain_wrong_sign_in(self) -> None:
+        sheet = ConfirmSheet(
+            self,
+            "Why it doesn't say which",
+            SIGN_IN_WHY,
+            (("ok", "Got it", ""),),
+            default="ok",
+        )
+        sheet.exec()
 
     def _sync_auth_mode(self) -> None:
         """Sign in is the door, and creating an account is the small print under it: a student signs
@@ -815,6 +800,30 @@ class NativeWindow(QMainWindow):
         self.password.setAccessibleName("Password")
         self.password_reveal = self.password.reveal
         layout.addWidget(self.password)
+        # A wrong sign-in is said here, right under the box it is about, so it is read with the box.
+        self.auth_error = QWidget()
+        self.auth_error.setObjectName("authError")
+        error_box = QVBoxLayout(self.auth_error)
+        error_box.setContentsMargins(0, 0, 0, 0)
+        error_box.setSpacing(0)
+        error_line = QHBoxLayout()
+        error_line.setSpacing(SPACING[1])
+        self.auth_error_icon = QLabel()
+        self.auth_error_icon.setObjectName("authErrorIcon")
+        error_line.addWidget(self.auth_error_icon, 0, Qt.AlignmentFlag.AlignTop)
+        self.auth_error_text = QLabel(SIGN_IN_WRONG)
+        self.auth_error_text.setObjectName("authErrorText")
+        self.auth_error_text.setWordWrap(True)
+        error_line.addWidget(self.auth_error_text, 1)
+        error_box.addLayout(error_line)
+        self.auth_why = QPushButton(SIGN_IN_WHY_LINK)
+        self.auth_why.setObjectName("authWhy")
+        self.auth_why.setFlat(True)
+        self.auth_why.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.auth_why.clicked.connect(self._explain_wrong_sign_in)
+        error_box.addWidget(self.auth_why, 0, Qt.AlignmentFlag.AlignLeft)
+        self.auth_error.setVisible(False)
+        layout.addWidget(self.auth_error)
         self.password_hint = QLabel(PASSWORD_LENGTH_HINT)
         self.password_hint.setObjectName("passwordHint")
         self.password_hint.setWordWrap(True)
@@ -921,7 +930,8 @@ class NativeWindow(QMainWindow):
         layout = QVBoxLayout(page)
         # Where you are at the left, what to show and do at the right; on a narrow window the second
         # goes under the first rather than both being cut.
-        bar = EndsLayout()
+        # The date keeps 16 px from the view switcher beside it, even where that shortens Plan (#84).
+        bar = EndsLayout(between=TITLE_SWITCHER_GAP)
         where = QHBoxLayout()
         self._bar_views = QHBoxLayout()
         bar.add_group(where)
@@ -1375,6 +1385,7 @@ class NativeWindow(QMainWindow):
             view.watched_day_changed.connect(self._watched_day_title)
             view.remembered_zoom = self._zoom
             view.zoomed.connect(self._remember_zoom)
+            view.option_set.connect(lambda key, value, chosen=layout_id: self._set_option(chosen, key, value))
             self.planner.addWidget(view)
             self._views[layout_id] = view
         view.show_week(self._scene_for(layout_id))
@@ -1507,6 +1518,16 @@ class NativeWindow(QMainWindow):
             row.takeAt(at)
         self._top_bar.invalidate()
 
+    def _schedule_bar_refit(self) -> None:
+        """After Large text, Plan and More refit from FontChange before their row's width settles."""
+        timer = getattr(self, "_bar_refit_timer", None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._fit_plan_and_more)
+            self._bar_refit_timer = timer
+        timer.start(0)
+
     def _fit_plan_and_more(self, total_width: int | None = None) -> None:
         """#83's one order as the bar runs short of room: the date shortens, More drops to its icon,
         Plan my homework drops "my", then reads "Plan". Each step's words are set and the bar's own
@@ -1542,7 +1563,10 @@ class NativeWindow(QMainWindow):
             # Each group keeps its own size until told; the bar's invalidate does not reach them.
             for part in (first, second, bar):
                 part.invalidate()
-            if first.sizeHint().width() + bar._gap + second.sizeHint().width() <= inner:
+            for group in (first, second):
+                if isinstance(group, QHBoxLayout):
+                    group.activate()
+            if first.sizeHint().width() + bar.between + second.sizeHint().width() <= inner:
                 break
         bar.invalidate()
         self._fitting_plan_row = False
@@ -1738,7 +1762,6 @@ class NativeWindow(QMainWindow):
             for key in (
                 "planning_style",
                 "drag_step_min",
-                "study_windows",
                 "reminders_enabled",
                 "reminder_lead_min",
                 "alarm_tone",
@@ -1768,12 +1791,7 @@ class NativeWindow(QMainWindow):
         if self._setup_work_windows is not None and session.preferences is not None:
             windows, self._setup_work_windows = self._setup_work_windows, None
             prefs = session.preferences
-            session.save_availability(
-                prefs.get("protected") or [],
-                prefs.get("study_windows") or [],
-                prefs.get("day_cutoff"),
-                windows,
-            )
+            session.save_availability(prefs.get("protected") or [], prefs.get("day_cutoff"), windows)
             return
         if self._setup_week:
             self._setup_week = False
@@ -2020,35 +2038,18 @@ class NativeWindow(QMainWindow):
                 self._layout_plan_review()
                 if not was_open:
                     slide_down(self.plan_review, self._motion)
+        self._sync_running_late()
         self._sync_chrome()
         self._apply_appearance()
         self._finish_turn(turn)
-        if self._pending_spread_ui and self.session.spread_preview:
-            self._pending_spread_ui = False
-            preview = self.session.spread_preview
-            item = self.session.assignments.get(preview["assignment_id"])
-            title = item["title"] if item else "homework"
-            QTimer.singleShot(
-                0,
-                lambda: self._show_preview(
-                    "Spread " + title,
-                    preview["summary"],
-                    preview["rows"],
-                    label="spreading " + title,
-                    attempt_key=(
-                        f"spread|{self.session.account['id']}|{preview['assignment_id']}|"
-                        f"{preview['from_date']}|{preview['session_min']}"
-                        if self.session.account
-                        else None
-                    ),
-                ),
-            )
 
     def _on_status(self, message: str) -> None:
         """What the session says goes in the toast, on the week's page, unless it is still going
         ("Saving…") or routine ("Saved."). The student's own request is answered either way."""
-        self.auth_status.setText(message)
-        self.auth_status.setVisible(bool(message))
+        wrong = message == SIGN_IN_WRONG
+        self.auth_status.setText("" if wrong else message)
+        self.auth_status.setVisible(bool(message) and not wrong)
+        self.auth_error.setVisible(wrong)
         if not message:
             # The session took back what it said, as Cancel on Running late's preview does.
             if not self.toast.button.isVisible():
@@ -2166,6 +2167,7 @@ class NativeWindow(QMainWindow):
             button = self.findChild(QPushButton, name)
             if button is not None:
                 button.setEnabled(not busy)
+        self._sync_running_late()
 
     def _on_recovery_ack(self, checked: bool) -> None:
         self.recovery_continue.setEnabled(checked and not self.session.busy)
@@ -2342,7 +2344,11 @@ class NativeWindow(QMainWindow):
         if not self._run_sheet(dialog):
             return
         if dialog.spread_requested():
-            self._open_spread(dialog.assignment()["id"])
+            body = dialog.assignment()
+            plan = dialog.spread_plan()
+            self.session.add_homework(body, spread=True)
+            self.session.spread_after_save(body["id"], plan["session_min"], plan["from_date"])
+            self.session.save()
             return
         if dialog.requested() == "choose":
             self._choose_time(dialog.assignment()["id"])
@@ -2481,6 +2487,18 @@ class NativeWindow(QMainWindow):
             self._day_mode,
             repr(self._layout),
         )
+
+    def _set_option(self, layout_id: str, key: str, value: str) -> None:
+        """An option a design changed on its own page, kept with the look as Settings keeps one: only
+        while it differs from how the design ships."""
+        options = {name: dict(values) for name, values in self._layout["options"].items()}
+        chosen = options.setdefault(layout_id, {})
+        chosen[key] = value
+        if value == options_for(None, layout_id)[key]:
+            del chosen[key]
+        self._layout = sanitize_layout({**self._layout, "options": options})
+        self._save_look()
+        self._on_week()
 
     def _remember_zoom(self, key: str, px: int) -> None:
         """How close a surface's hours are is kept for this device, as the look is."""
@@ -2796,7 +2814,7 @@ class NativeWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         day, start = dialog.choice()
-        if self.session.place_session(block["id"], day, start):
+        if self.session.place_session(block["id"], day, start, duration_min=dialog.length_min()):
             self.session.save()
 
     def _judge_span(self, block_id: str, from_day: int, day: int, start: int, end: int) -> HandVerdict:
@@ -3148,7 +3166,21 @@ class NativeWindow(QMainWindow):
             ),
         )
 
+    def _late_other_week(self) -> bool:
+        now = datetime.fromtimestamp(self.session.now_ms() / 1000)
+        return monday_of(now.date().isoformat()) != self.session.week_start
+
+    def _sync_running_late(self) -> None:
+        late = self.findChild(QPushButton, "runningLate")
+        if late is None:
+            return
+        other = self._late_other_week()
+        late.setEnabled(not self.session.busy and not other)
+        late.setToolTip(GREYED_TIPS["runningLate"] if other else MORE_TIPS["runningLate"])
+
     def _open_late(self) -> None:
+        if self._late_other_week():
+            return
         now = datetime.fromtimestamp(self.session.now_ms() / 1000)
         refusal = running_late_refusal(
             week_start=self.session.week_start,
@@ -3218,20 +3250,6 @@ class NativeWindow(QMainWindow):
             self._late_waiting = None
             self.session._say(message)
 
-    def _open_spread(self, assignment_id: str) -> None:
-        item = self.session.assignments.get(assignment_id)
-        if item is None or item.get("completed"):
-            return
-        due_date = item["due"][:10]
-        today = date.today().isoformat()
-        base = self.session.selected_day if self.session.selected_day > today else today
-        from_date = base if base <= due_date else due_date
-        dialog = SpreadDialog(self, item, from_date)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        self._pending_spread_ui = True
-        self.session.preview_spread(assignment_id, dialog.session_min(), dialog.from_iso())
-
     def _open_availability(self) -> None:
         if self.session.preferences is None:
             self.session._say("Still loading your settings…")
@@ -3239,12 +3257,12 @@ class NativeWindow(QMainWindow):
         subjects = sorted(
             {str(item["course"]).strip() for item in self.session.assignments.values() if item.get("course")}
         )
-        dialog = AvailabilityDialog(self, self.session.preferences, subjects)
+        pack, system_dark, accent = self._look_inputs()
+        palette = resolved_palette(pack, system_dark, self._look, accent)
+        dialog = AvailabilityDialog(self, self.session.preferences, subjects, palette)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        self.session.save_availability(
-            dialog.protected(), dialog.study_windows(), dialog.day_cutoff(), dialog.work_windows()
-        )
+        self.session.save_availability(dialog.protected(), dialog.day_cutoff(), dialog.work_windows())
 
     def _show_recover(self, shown: bool) -> None:
         for widget in (self.recovery_code, self.new_recovery_password, self.recover_button):
@@ -3304,6 +3322,22 @@ class NativeWindow(QMainWindow):
             self._focus_week()
 
     def _stop_focus(self) -> None:
+        state = self.session.focus
+        title = (state or {}).get("title") or QUICK_TITLE
+        homework = (state or {}).get("assignmentId") in (self.session.assignments or {})
+        question = f"You have done {self.session.focus_elapsed_min()} min of {title}."
+        if homework:
+            question += " It counts toward the homework."
+        sheet = ConfirmSheet(
+            self,
+            "End this session?",
+            question,
+            (("stay", "Keep going", "outlined"), ("yes", "End session", "")),
+            default="stay",
+        )
+        sheet.exec()
+        if sheet.answer != "yes":
+            return
         self.session.reset_focus()
         self._close_focus_screen()
 
@@ -3661,6 +3695,13 @@ class NativeWindow(QMainWindow):
         self._settings = page
         self._settings_finish = finish
         self._stack.addWidget(page)
+        ctx = current()
+        if ctx is not None:
+            extra = extra_stylesheet(
+                ctx.base_sheet, ctx.feel, ctx.palette, ctx.tokens, ctx.look, ("settingsTitle",)
+            )
+            page.setStyleSheet(ctx.base_sheet + extra)
+            apply_feel(page, ctx)
 
     def _refresh_settings_page(self) -> None:
         page = self._settings
@@ -3762,6 +3803,10 @@ class NativeWindow(QMainWindow):
 
     def _open_account(self) -> None:
         dialog = AccountDialog(self, self.session.recovery_remaining, self.session.storage_info)
+        pack, dark, accent = self._look_inputs()
+        eye = resolved_palette(pack, dark, self._look, accent)["muted"]
+        for field in (dialog.current_password, dialog.new_password):
+            field.set_colour(eye)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         password = dialog.current_password.text()
@@ -3917,6 +3962,9 @@ class NativeWindow(QMainWindow):
         palette = resolved_palette(pack, system_dark, self._look, accent)
         art = control_art(palette)
         sheet = pack_stylesheet(pack, system_dark, self._look, accent, palette, art)
+        ctx = context_for(self._layout, self._look, palette, sheet)
+        heroes = ("settingsTitle", "sheetTitle", "setupTitle", "authBrand")
+        extra = extra_stylesheet(sheet, ctx.feel, palette, ctx.tokens, self._look, heroes)
         page = self._page_palette(palette)
         page_sheet = ""
         if page is not None:
@@ -3924,9 +3972,10 @@ class NativeWindow(QMainWindow):
         chips = bool((self.session.preferences or {}).get("accent_chips"))
         chosen_motion = (self.session.preferences or {}).get("motion")
         self._motion = motion_level(chosen_motion, look_motion(self._look))
-        dressed = (sheet, repr(self._look), repr(palette), chips, self._motion)
+        dressed = (sheet, repr(self._look), repr(palette), chips, self._motion, ctx.feel.key)
         # Every change to the week comes through here. Restyling the whole window each time, when the
         # look had not changed, cost about 26 ms a change and repainted everything on screen.
+        set_current(ctx)
         if dressed != self._dressed:
             self._dressed = dressed
             self.setStyleSheet(sheet)
@@ -3942,6 +3991,7 @@ class NativeWindow(QMainWindow):
             self.add_menu.set_palette(palette, chips)
             self._dress_entry(palette)
             self.setup_page.set_palette(palette)
+            self._dress_feel(ctx, sheet, extra)
         if page_sheet != self._page_sheet:
             # The planner holds the design's page and nothing of the chrome.
             self._page_sheet = page_sheet
@@ -3949,11 +3999,30 @@ class NativeWindow(QMainWindow):
         self._sync_add_button()
         self._refresh_layout()
 
+    def _feel_roots(self) -> list[QWidget]:
+        """Pages J13 dresses: Settings, Setup, sign-in and recovery. Not the week, day, rail or bar."""
+        roots: list[QWidget] = []
+        for name in ("authPage", "recoveryPage", "forgotPage"):
+            page = self.findChild(QWidget, name)
+            if page is not None:
+                roots.append(page)
+        roots.append(self.setup_page)
+        if self._settings is not None:
+            roots.append(self._settings)
+        roots.extend(dialog for dialog in self.findChildren(QDialog) if dialog.isVisible())
+        return roots
+
+    def _dress_feel(self, ctx: Context, sheet: str, extra: str) -> None:
+        for root in self._feel_roots():
+            root.setStyleSheet(sheet + extra if extra else "")
+            apply_feel(root, ctx)
+
     def _dress_entry(self, palette: dict) -> None:
         """The eye in the muted text colour, and the sign-in and recovery cards lifted off the page
         with the large shadow, unless the look's shadows are flat or drawn as hard edges."""
         for field in (self.password, self.new_recovery_password):
             field.set_colour(palette["muted"])
+        self.auth_error_icon.setPixmap(icons.pixmap("triangle-alert", palette["error"], REVEAL_ICON_PX))
         knobs = effective_look(self._look)
         soft = knobs["depth"] == "soft"
         for card in self._entry_cards:

@@ -1121,7 +1121,8 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f"QListWidget#prefsNav::item:hover {{ background: {palette['hairline']}; color: {palette['text']}; }}"
         f"QListWidget#prefsNav::item:selected {{ background: {selected}; color: {palette['text']}; "
         f"border-left: 3px solid {palette['accent']}; font-weight: {WEIGHT_STRONG}; }}"
-        f"QWidget#settingsFooter {{ border-top: {footer_line}; }}"
+        # Opaque: the sections scroll under it, and what shows through would be words with no fade.
+        f"QWidget#settingsFooter {{ background: {palette['window']}; border-top: {footer_line}; }}"
         f"QLabel#settingsTitle {{ font-size: {pt['title']}; font-weight: {WEIGHT_STRONG}; }}"
         f"QFrame#settingsCard, QFrame#dialogCard {{ background: {palette['panel']}; "
         f"border-radius: {card_radius}px; padding: 0; {edges} }}"
@@ -1136,7 +1137,8 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f"font-weight: {WEIGHT_STRONG}; }}"
         "QLabel#settingsCardNote, QLabel#cardNote, QLabel#prefPlanningNote, "
         "QLabel#prefDndNote, "
-        "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits { "
+        "QLabel#prefTrayNote, QLabel#prefBlockSongNote, QLabel#prefToneNote, QLabel#reminderLimits, "
+        "QLabel#alarmEmpty { "
         f"color: {palette['muted']}; }}"
         f'QFrame[segmented="true"] {{ background: {track}; border: none; '
         f"border-radius: {max(radius, 6) + 2}px; padding: 0; }}"
@@ -1147,6 +1149,11 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f'QPushButton[segment="true"]:hover {{ color: {palette["text"]}; }}'
         f'QPushButton[segment="true"]:checked {{ background: {palette["field"]}; color: {palette["text"]}; '
         f"border: {chosen_edge}; }}"
+        # The look's own segments say which is worn by a ring in the accent, as its cards do.
+        f'QFrame#prefThemeMain QPushButton[segment="true"] {{ border: 2px solid transparent; '
+        f"padding: {max(pad - 3, 2)}px {pad + 7}px; }}"
+        'QFrame#prefThemeMain QPushButton[segment="true"]:checked '
+        f"{{ border: 2px solid {palette['accent']}; }}"
         'QPushButton[segment="true"]:disabled { background: transparent; '
         f'color: {palette["hairline_strong"]}; }}'
         # Still raised, so a choice that cannot be changed here says which it is.
@@ -1205,6 +1212,12 @@ def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str, t
     )
 
 
+def rgba_clear(colour: str) -> str:
+    """`colour` with no opacity, so a gradient from it to the colour passes through no other hue."""
+    red, green, blue = (int(colour[at : at + 2], 16) for at in (1, 3, 5))
+    return f"rgba({red}, {green}, {blue}, 0)"
+
+
 def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: str) -> str:
     """First-run setup: a rail of steps beside one question at a time, and cards to pick from.
 
@@ -1218,10 +1231,12 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     heading = f"font-size: {type_pt('heading', text)}pt; {strong}"
     card_radius = max(radius, 10)
     ring = "transparent" if depth == "none" else mix(palette["hairline_strong"], palette["panel"], 0.6)
+    # A tag is a label, not a control: one hairline, or none in a flat look like everything else.
+    tag_edge = "border: none;" if depth == "none" else f"border: 1px solid {palette['hairline_strong']};"
     # A card is larger than a control, so it is lifted with the text colour, never the accent.
     lift = mix(palette["text"], palette["panel"], 0.04)
     quiet = (
-        "setupQuiet", "setupSkip", "setupSkipAll", "setupOwnLook", "setupAddActivity", "setupAddHomework",
+        "setupQuiet", "setupSkipAll", "setupAddActivity", "setupAddHomework",
         "setupSuggest", "setupChange", "setupFineTune",
     )
     quiet_rule = ", ".join(f"QPushButton#{name}" for name in quiet)
@@ -1234,6 +1249,9 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     return (
         f"QWidget#setupRail {{ background: {palette['panel']}; }}"
         f"QWidget#setupNav {{ background: {palette['window']}; }}"
+        # The page's colour thickening from clear to solid over the stretch above the footer.
+        f"QWidget#setupFade {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+        f"stop:0 {rgba_clear(palette['window'])}, stop:1 {palette['window']}); border: none; }}"
         # The rows inside the pages are bare QWidgets, which the app-wide rule paints in the page
         # colour. On a card that is a band of background across the middle of it.
         f"QWidget#setupRow, QWidget#setupBody {{ background: transparent; border: none; padding: 0; }}"
@@ -1265,6 +1283,28 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         f"QLabel#setupChoiceName {{ {heading} }}"
         f"QLabel#setupChoiceNote {{ color: {palette['muted']}; }}"
         f"QLabel#setupChoiceTag {{ color: {palette['muted']}; {strong} }}"
+        # The style carousel's pictures: a ring of one width, the accent when picked, and the tint of a
+        # focused carousel on the one in the middle, since Left and Right move whichever has focus.
+        f"QFrame#setupSlide {{ background: {palette['panel']}; border: 2px solid {ring}; "
+        f"border-radius: {card_radius}px; padding: 0; }}"
+        f"QFrame#setupSlide[selected=\"true\"] {{ border-color: {palette['accent']}; background: {lift}; }}"
+        f"QFrame#setupSlide[focused=\"true\"] "
+        f"{{ background: {mix(palette['accent'], palette['panel'], 0.12)}; }}"
+        f"QLabel#setupSlidePicture {{ background: transparent; border: none; padding: 0; }}"
+        f"QLabel#setupSlideTag {{ background: {palette['panel']}; color: {palette['text']}; "
+        f"{tag_edge} border-radius: 9px; padding: 1px 8px; "
+        f"font-size: {type_pt('caption', text)}pt; {strong} }}"
+        f"QPushButton#setupArrow {{ background: {palette['field']}; color: {palette['text']}; {edges} "
+        f"border-radius: 16px; padding: 0; min-height: 0; min-width: 0; }}"
+        f"QPushButton#setupArrow:hover {{ background: {mix(palette['accent'], palette['field'], 0.14)}; }}"
+        f"QPushButton#setupDot {{ background: {palette['hairline_strong']}; border: none; "
+        f"border-radius: 8px; padding: 0; min-height: 0; min-width: 0; color: {palette['accent_ink']}; }}"
+        f"QPushButton#setupDot:hover "
+        f"{{ background: {mix(palette['accent'], palette['hairline_strong'], 0.5)}; }}"
+        f"QPushButton#setupDot[current=\"true\"] {{ background: {palette['field']}; "
+        f"border: 2px solid {palette['accent']}; }}"
+        f"QPushButton#setupDot[chosen=\"true\"] {{ background: {palette['accent']}; "
+        f"border: 2px solid {palette['accent']}; }}"
         f"QFrame#setupGroup {{ background: {palette['panel']}; border-radius: {card_radius}px; {edges} }}"
         f"{pills} {{ background: {palette['field']}; color: {palette['text']}; {edges} "
         f"border-radius: 14px; padding: 4px 12px; font-weight: {WEIGHT_REGULAR}; min-height: 0; }}"
@@ -1316,6 +1356,11 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         f"QLabel#authBrand {{ {title} color: {palette['text']}; }}"
         f"QLabel#authHeading {{ {title} }}"
         f"QLabel#authNote {{ color: {palette['muted']}; }}"
+        f"QLabel#authErrorText {{ color: {palette['error']}; }}"
+        f"QPushButton#authWhy {{ background: transparent; color: {palette['accent']}; border: none; "
+        f"padding: {SPACING[0]}px 0; min-height: 0; text-align: left; font-weight: {WEIGHT_REGULAR}; }}"
+        f"QPushButton#authWhy:hover, QPushButton#authWhy[keyfocus=\"true\"]:focus "
+        f"{{ color: {deeper}; text-decoration: underline; }}"
         f"QLabel#passwordHint, QLabel#usernameHint {{ color: {palette['muted']}; "
         f"font-size: {type_pt('caption', text)}pt; }}"
         f"QLabel#recoveryList {{ font-family: {FONT_FAMILIES['mono']}; "
@@ -1733,7 +1778,7 @@ def toast_colours(palette: dict) -> dict[str, str]:
 
 
 # The focus screen's words-only buttons, beside its one filled button.
-FOCUS_TEXT_BUTTONS = ("focusScreenBack", "focusScreenSkip", "focusScreenFinish", "focusScreenBreak")
+FOCUS_TEXT_BUTTONS = ("focusScreenBack", "focusScreenBreak")
 
 
 def overlay_rules(palette: dict, knobs: dict, pad: int, card_radius: int) -> str:
@@ -1772,7 +1817,8 @@ def overlay_rules(palette: dict, knobs: dict, pad: int, card_radius: int) -> str
         f"QLabel#focusScreenTask {{ color: {palette['text']}; font-size: {type_pt('title', text)}pt; "
         f"font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#focusScreenHint {{ color: {palette['muted']}; }}"
-        "QPushButton#focusScreenStart, QPushButton#focusScreenPause, QPushButton#focusScreenFinished { "
+        "QPushButton#focusScreenStart, QPushButton#focusScreenPause, QPushButton#focusScreenFinished, "
+        "QPushButton#focusScreenSkip, QPushButton#focusScreenFinish { "
         f"font-weight: {WEIGHT_STRONG}; padding: {pad + 2}px {pad * 3}px; }}"
         f"{words} {{ background: transparent; color: {palette['text']}; border: none; "
         f"font-weight: {WEIGHT_STRONG}; padding: {pad + 2}px {pad * 2}px; }}"

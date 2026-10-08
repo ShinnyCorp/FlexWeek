@@ -14,7 +14,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtCore import QStandardPaths, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QPushButton
 
 from desktop.native.calendar import sunday_due
 from desktop.native.focus import format_countdown, phase_duration_ms, remaining_ms
@@ -111,7 +111,7 @@ def quick_focus(window: NativeWindow) -> None:
     assert window.session.focus is None, "Quick focus waits for Start"
     assert on_screen(window) == "focusPage"
     assert visible_buttons(window.focus_screen) == ["Back", "Start"]
-    assert window.focus_screen.ring._waiting, "set but not started: drawn softer"
+    assert window.focus_screen.ring._waiting, "set but not started"
     QTest.mouseClick(window.focus_screen.start, LEFT)
     assert window.session.focus is not None
     assert not window.focus_screen.ring._waiting
@@ -157,7 +157,7 @@ def test_pause_skip_and_finish_act_on_the_one_timer(qapp: QApplication, window: 
     assert window.session.focus["phase"] == "break"
     assert screen.phase.text() == "Break"
     assert screen.time_text() == format_countdown(phase_duration_ms("break", window.session.preferences))
-    QTest.mouseClick(screen.stop, LEFT)
+    end_sheet_answer(qapp, window, "yes")
     assert window.session.focus is None
     assert on_screen(window) == "weekPage"
 
@@ -259,14 +259,9 @@ def test_pause_is_the_one_filled_button_and_skip_and_finish_are_words(
     quick_focus(window)
     screen = window.focus_screen
     filled = [button.text() for button in screen.findChildren(QPushButton)
-              if button.isVisible() and not button.property("quiet")]
+              if button.isVisible() and not button.property("quiet") and not button.property("outlined")]
     assert filled == ["Pause"]
-    assert {screen.skip.objectName(), screen.stop.objectName(), screen.back.objectName()} <= set(
-        FOCUS_TEXT_BUTTONS
-    )
-    screen.skip.ensurePolished()
-    face = screen.skip.palette().color(screen.skip.backgroundRole())
-    assert face.alpha() == 0 or face == screen.palette().color(screen.backgroundRole()), "no fill of its own"
+    assert screen.back.objectName() in FOCUS_TEXT_BUTTONS
     assert not screen.back.icon().isNull(), "Back carries the chevron"
 
 
@@ -281,3 +276,116 @@ def test_the_screen_wears_the_look_and_its_accent(qapp: QApplication, window: Na
     screen = window.focus_screen
     assert screen.ring._colours.arc == palette["accent"]
     assert screen.palette().color(screen.backgroundRole()).name() == palette["window"]
+
+
+def test_while_a_timer_runs_pause_is_filled_and_skip_and_finish_are_outlined_in_one_row(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """#19 pick A: one filled action and two outlined ones in one row under the ring."""
+    from desktop.native.look import FOCUS_TEXT_BUTTONS
+
+    quick_focus(window)
+    screen = window.focus_screen
+    assert screen.skip.property("outlined") is True and screen.stop.property("outlined") is True
+    assert not screen.pause.property("outlined")
+    assert "focusScreenSkip" not in FOCUS_TEXT_BUTTONS and "focusScreenFinish" not in FOCUS_TEXT_BUTTONS
+    three = (screen.pause, screen.skip, screen.stop)
+    tops = {button.mapTo(screen, button.rect().center()).y() for button in three}
+    assert len(tops) == 1, "the three buttons share one row"
+    lefts = [button.mapTo(screen, button.rect().topLeft()).x() for button in three]
+    assert lefts == sorted(lefts), "Pause, then Skip, then Finish"
+    ring_bottom = screen.ring.mapTo(screen, screen.ring.rect().bottomLeft()).y()
+    assert min(button.mapTo(screen, button.rect().topLeft()).y() for button in three) > ring_bottom
+
+
+def end_sheet_answer(qapp: QApplication, window: NativeWindow, key: str) -> list:
+    """Press Finish and answer the sheet it opens with `key`; the sheets seen are returned."""
+    from PySide6.QtCore import QTimer
+
+    from desktop.native.widgets import ConfirmSheet
+
+    seen: list = []
+
+    def answer() -> None:
+        shown = [s for s in qapp.topLevelWidgets() if isinstance(s, ConfirmSheet) and s.isVisible()]
+        sheet = shown[0] if shown else None
+        if sheet is None:
+            QTimer.singleShot(20, answer)
+            return
+        seen.append(sheet)
+        sheet.buttons[key].click()
+
+    QTimer.singleShot(20, answer)
+    QTest.mouseClick(window.focus_screen.stop, LEFT)
+    return seen
+
+
+def test_finish_asks_first_and_keep_going_leaves_the_timer_running(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    quick_focus(window)
+    seen = end_sheet_answer(qapp, window, "stay")
+    assert len(seen) == 1
+    sheet = seen[0]
+    assert "End this session?" in [label.text() for label in sheet.findChildren(QLabel)]
+    assert sheet.question.text() == "You have done 0 min of Quick focus."
+    assert sheet.buttons["stay"].text() == "Keep going" and sheet.buttons["stay"].property("outlined") is True
+    assert sheet.buttons["yes"].text() == "End session" and not sheet.buttons["yes"].property("outlined")
+    assert window.session.focus is not None
+    assert on_screen(window) == "focusPage"
+
+
+def test_finish_ends_the_session_only_on_end_session(qapp: QApplication, window: NativeWindow) -> None:
+    quick_focus(window)
+    end_sheet_answer(qapp, window, "yes")
+    assert window.session.focus is None
+    assert on_screen(window) == "weekPage"
+
+
+def test_the_sheet_says_the_minutes_done_and_that_they_count_toward_the_homework(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    session = window.session
+    essay = next(block for block in session.blocks if block.get("assignment_id") == "essay")
+    assert session.start_focus(essay["id"], 3)
+    window._open_focus_screen()
+    state = session.focus
+    left = phase_duration_ms("work", session.preferences) - 7 * 60_000
+    session.now_ms = lambda: int(state["endsAt"]) - left
+    seen = end_sheet_answer(qapp, window, "stay")
+    assert seen[0].question.text() == "You have done 7 min of History essay. It counts toward the homework."
+
+
+def test_start_does_not_move_the_task_label(qapp: QApplication, window: NativeWindow) -> None:
+    window.findChild(QPushButton, "quickFocusAction").click()
+    screen = window.focus_screen
+    qapp.processEvents()
+    row = (screen.start, screen.pause, screen.skip, screen.stop)
+    assert len({button.minimumHeight() for button in row}) == 1, "both states' buttons reserve one height"
+    assert row[0].minimumHeight() >= max(button.sizeHint().height() for button in row)
+    before = screen.task.mapTo(screen, screen.task.rect().topLeft())
+    ring_before = screen.ring.mapTo(screen, screen.ring.rect().topLeft())
+    QTest.mouseClick(screen.start, LEFT)
+    qapp.processEvents()
+    assert screen.task.mapTo(screen, screen.task.rect().topLeft()) == before
+    assert screen.ring.mapTo(screen, screen.ring.rect().topLeft()) == ring_before
+
+
+def test_before_start_the_ring_is_the_accent_and_reads_three_to_one_in_every_look(qapp: QApplication) -> None:
+    from desktop.native.look import LOOK_PRESETS, PACKS, resolved_palette
+    from desktop.native.ring import CountdownRing, ring_colours
+    from desktop.native.tokens import contrast
+
+    ring = CountdownRing()
+    ring.setFixedSize(340, 340)
+    ring.set_waiting(True)
+    looks = [(pack, dark, {"preset": "default", "knobs": {}}) for pack in PACKS for dark in (False, True)]
+    looks += [("light", False, {"preset": name, "knobs": {}}) for name in LOOK_PRESETS if name != "default"]
+    for pack, dark, look in looks:
+        palette = resolved_palette(pack, dark, look)
+        ring.set_colours(ring_colours(palette))
+        assert ring.arc_colour() == palette["accent"], (pack, dark, look)
+        stroke = ring._stroke()
+        drawn = ring.grab().toImage().pixelColor(ring.width() // 2 + 40, round(2 + stroke / 2) + 1)
+        assert drawn.name() == palette["accent"].lower(), "the ring is painted in it, not just told it"
+        assert contrast(ring.arc_colour(), palette["window"]) >= 3.0, (pack, dark, look)

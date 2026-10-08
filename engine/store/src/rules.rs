@@ -213,14 +213,18 @@ pub fn preferences_fields(row: &Value) -> StoreResult<Value> {
     );
     fields.insert("alarms".into(), loads(get("alarms_json")?)?);
     let availability = stored::dict(&availability)?;
-    for name in ["protected", "study_windows", "work_windows"] {
-        let listed = availability
+    let listed = |name: &str| {
+        availability
             .get(name)
             .filter(|value| stored::truthy(Some(value)))
             .cloned()
-            .unwrap_or_else(|| json!([]));
-        fields.insert(name.into(), listed);
-    }
+            .unwrap_or_else(|| json!([]))
+    };
+    fields.insert("protected".into(), listed("protected"));
+    fields.insert(
+        "work_windows".into(),
+        with_study_hours(listed("work_windows"), &listed("study_windows"))?,
+    );
     fields.insert(
         "day_cutoff".into(),
         availability
@@ -262,11 +266,22 @@ pub fn preferences_fields(row: &Value) -> StoreResult<Value> {
     Ok(Value::Object(fields))
 }
 
+/// J7: a row saved before the one Study hours list may still hold preferred study hours. They
+/// join the list where saved preferences are read, so nothing past this point sees two lists;
+/// the next save writes the one list alone.
+fn with_study_hours(work: Value, study: &Value) -> EngineResult<Value> {
+    match (work.as_array(), study.as_array()) {
+        (Some(hours), Some(preferred)) if !preferred.is_empty() => {
+            Ok(Value::Array(plan::fold_study_windows(hours, preferred)?))
+        }
+        _ => Ok(work),
+    }
+}
+
 /// The windows the solver reads, from the stored availability text. No row at all is seven
 /// empty days. `validate` runs each list through its pydantic model and returns the dumped list.
 pub struct SolveAvailability {
     pub occupancy: Vec<u128>,
-    pub study: Value,
     pub work: Value,
 }
 
@@ -277,7 +292,6 @@ pub fn solve_availability<E>(
     let Some(text) = stored_text else {
         return Ok(SolveAvailability {
             occupancy: vec![0; 7],
-            study: json!([]),
             work: json!([]),
         });
     };
@@ -293,7 +307,7 @@ pub fn solve_availability<E>(
     };
     let protected = listed("protected", "protected")?;
     let study = listed("study_windows", "study")?;
-    let work = listed("work_windows", "work")?;
+    let work = with_study_hours(listed("work_windows", "work")?, &study)?;
     let cutoff = match availability.get("day_cutoff") {
         None | Some(Value::Null) => None,
         Some(Value::String(text)) => Some(text.as_str()),
@@ -306,11 +320,7 @@ pub fn solve_availability<E>(
     };
     let protected = protected.as_array().cloned().unwrap_or_default();
     let occupancy = plan::occupancy_from_windows(&protected, cutoff)?;
-    Ok(SolveAvailability {
-        occupancy,
-        study,
-        work,
-    })
+    Ok(SolveAvailability { occupancy, work })
 }
 
 pub enum Adopted {
@@ -605,7 +615,7 @@ mod tests {
                 r#""reminder_sound":false,"reminder_dnd_override":false,"timer_work_min":25,"#,
                 r#""timer_break_min":5,"timer_long_break_min":15,"timer_long_break_every":4,"#,
                 r#""auto_split_pomodoro":true,"default_spotify_url":null,"alarms":[],"#,
-                r#""protected":[],"study_windows":[],"work_windows":[],"day_cutoff":null,"#,
+                r#""protected":[],"work_windows":[],"day_cutoff":null,"#,
                 r#""alert_volume":80,"end_chime":false,"tray_notifications":true,"#,
                 r#""start_at_login":false,"preferred_view":null,"sidebar_collapsed":false,"#,
                 r#""sidebar_width_px":null,"theme_pack":"system","accent":"default","#,
@@ -631,6 +641,42 @@ mod tests {
         assert_eq!(fields["tray_notifications"], json!(false));
         assert_eq!(fields["drag_step_min"], json!(10));
         assert_eq!(fields["setup"], json!({"x": 1}));
+    }
+
+    #[test]
+    fn preferences_saved_with_preferred_study_hours_open_as_one_study_hours_list() {
+        // The shape builds before 0.18.3 saved: planning hours, and preferred hours apart.
+        let fields = preferences_fields(&row(
+            r#"{"work_windows": [{"days": [0, 1, 2, 3, 4], "start": "16:00", "end": "21:00"}],
+                "study_windows": [
+                    {"days": [5, 6], "start": "10:00", "duration_min": 120},
+                    {"days": [0, 1], "start": "17:00", "duration_min": 60},
+                    {"days": [2], "start": "19:00", "duration_min": 90, "subject": "Math"}
+                ]}"#,
+            "{}",
+        ))
+        .unwrap();
+        assert!(fields.get("study_windows").is_none());
+        assert_eq!(
+            fields["work_windows"],
+            json!([
+                {"days": [0, 1, 2, 3, 4], "start": "16:00", "end": "21:00"},
+                {"days": [5, 6], "start": "10:00", "end": "12:00"},
+                {"days": [2], "start": "19:00", "end": "20:30", "subject": "Math"},
+            ])
+        );
+    }
+
+    #[test]
+    fn the_planner_reads_preferred_study_hours_as_study_hours() {
+        let stored = r#"{"study_windows": [{"days": [0], "start": "18:00", "duration_min": 120}]}"#;
+        let found = solve_availability(Some(stored), |_kind, items| Ok::<_, String>(items.clone()))
+            .ok()
+            .unwrap();
+        assert_eq!(
+            found.work,
+            json!([{"days": [0], "start": "18:00", "end": "20:00"}])
+        );
     }
 
     #[test]
@@ -666,7 +712,7 @@ mod tests {
     fn a_missing_availability_row_is_seven_empty_days() {
         let found = solve_availability(None, keep_all).ok().unwrap();
         assert_eq!(found.occupancy, vec![0u128; 7]);
-        assert_eq!((found.study, found.work), (json!([]), json!([])));
+        assert_eq!(found.work, json!([]));
     }
 
     #[test]
@@ -688,7 +734,6 @@ mod tests {
             found.occupancy,
             vec![first, other, other, other, other, other, other]
         );
-        assert_eq!(found.study, json!([]));
         assert_eq!(found.work, json!([{"w": 1}]));
     }
 

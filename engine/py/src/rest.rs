@@ -4,7 +4,7 @@ use std::path::Path;
 
 use ::flexweek_engine::plan;
 use ::flexweek_engine::snapshot;
-use ::flexweek_engine::solver::{self, DeadlineOverrides, StudyWindow, TimeBlock, WorkWindow};
+use ::flexweek_engine::solver::{self, DeadlineOverrides, TimeBlock, WorkWindow};
 use flexweek_store as store;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -46,21 +46,6 @@ fn work_windows_of(text: Option<&str>) -> PyResult<Option<Vec<WorkWindow>>> {
             .unwrap_or_default()
             .iter()
             .map(solver::work_window_from_value)
-            .collect(),
-    ))
-}
-
-fn study_windows_of(text: Option<&str>) -> PyResult<Option<Vec<StudyWindow>>> {
-    let Some(text) = text else {
-        return Ok(None);
-    };
-    Ok(Some(
-        parse(text)?
-            .as_array()
-            .cloned()
-            .unwrap_or_default()
-            .iter()
-            .map(solver::study_window_from_value)
             .collect(),
     ))
 }
@@ -138,6 +123,16 @@ fn study_rank(
 }
 
 #[pyfunction]
+fn fold_study_windows(work: &str, study: &str) -> PyResult<String> {
+    guard(|| {
+        let work = parse(work)?.as_array().cloned().unwrap_or_default();
+        let study = parse(study)?.as_array().cloned().unwrap_or_default();
+        let folded = plan::fold_study_windows(&work, &study).map_err(crate::raise)?;
+        Ok(dump(&Value::Array(folded)))
+    })
+}
+
+#[pyfunction]
 fn resolve_work_windows(windows: Option<&str>) -> PyResult<(String, bool)> {
     guard(|| {
         let parsed = windows.map(parse).transpose()?;
@@ -198,20 +193,17 @@ fn solve(
     deadlines: Option<&str>,
     slack_deadlines: Option<&str>,
     extra_occ: Option<Vec<u128>>,
-    study_windows: Option<&str>,
     work_windows: Option<&str>,
     clock: Py<PyAny>,
 ) -> PyResult<String> {
     guard(|| {
         let blocks = blocks_of(blocks)?;
-        let study = study_windows_of(study_windows)?;
         let work = work_windows_of(work_windows)?;
         let overrides = overrides_of(deadlines, slack_deadlines)?;
         let trace = search(py, &clock, |elapsed| {
             solver::solve(
                 &blocks,
                 extra_occ.as_deref(),
-                study.as_deref(),
                 work.as_deref(),
                 Some(&overrides),
                 solver::SOLVE_BUDGET_MS,
@@ -234,14 +226,12 @@ fn reschedule_after_miss(
     deadlines: Option<&str>,
     slack_deadlines: Option<&str>,
     extra_occ: Option<Vec<u128>>,
-    study_windows: Option<&str>,
     work_windows: Option<&str>,
     clock: Py<PyAny>,
 ) -> PyResult<String> {
     guard(|| {
         let blocks = blocks_of(blocks)?;
         let previous = blocks_of(previous_placed)?;
-        let study = study_windows_of(study_windows)?;
         let work = work_windows_of(work_windows)?;
         let overrides = overrides_of(deadlines, slack_deadlines)?;
         let missed = missed_block_id.to_string();
@@ -252,7 +242,6 @@ fn reschedule_after_miss(
                 missed_day,
                 &previous,
                 extra_occ.as_deref(),
-                study.as_deref(),
                 work.as_deref(),
                 Some(&overrides),
                 solver::SOLVE_BUDGET_MS,
@@ -276,14 +265,12 @@ fn reschedule_running_late(
     deadlines: Option<&str>,
     slack_deadlines: Option<&str>,
     extra_occ: Option<Vec<u128>>,
-    study_windows: Option<&str>,
     work_windows: Option<&str>,
     clock: Py<PyAny>,
 ) -> PyResult<String> {
     guard(|| {
         let blocks = blocks_of(blocks)?;
         let previous = blocks_of(previous_placed)?;
-        let study = study_windows_of(study_windows)?;
         let work = work_windows_of(work_windows)?;
         let overrides = overrides_of(deadlines, slack_deadlines)?;
         let from_start = from_start.to_string();
@@ -295,7 +282,6 @@ fn reschedule_running_late(
                 &from_start,
                 &previous,
                 extra_occ.as_deref(),
-                study.as_deref(),
                 work.as_deref(),
                 Some(&overrides),
                 solver::SOLVE_BUDGET_MS,
@@ -393,6 +379,7 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         occupancy_from_windows,
         lateness_occupancy,
         study_rank,
+        fold_study_windows,
         resolve_work_windows,
         session_inside_work_windows,
         merge_occupancy,
@@ -506,13 +493,13 @@ fn solve_availability(
     py: Python<'_>,
     stored: Option<&str>,
     validate: &Bound<'_, PyAny>,
-) -> PyResult<(Vec<u128>, String, String)> {
+) -> PyResult<(Vec<u128>, String)> {
     guard(|| {
         let found = store::solve_availability(stored, |kind, items| {
             let text: String = validate.call1((kind, dump(items)))?.extract()?;
             parse(&text)
         })
         .map_err(|relay| relay_py(py, relay))?;
-        Ok((found.occupancy, dump(&found.study), dump(&found.work)))
+        Ok((found.occupancy, dump(&found.work)))
     })
 }

@@ -250,3 +250,41 @@ def test_a_link_in_reach_keeps_the_accent_darker_and_underlined(
     assert distance(reached, QColor(palette["accent"])) < distance(reached, QColor(palette["text"])), (
         f"still the accent, not near-black: {reached.name()}"
     )
+
+
+def test_a_wrong_sign_in_is_a_short_red_line_under_the_password_box(
+    signed_out: NativeWindow,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#73: the sentence is "Wrong username or password." in the look's error colour with a warning
+    icon, directly under the password box and above Keep me signed in; the explanation is a link."""
+    window = signed_out
+    window.show()
+    QApplication.processEvents()
+    before = card(window).height()
+    window._on_status("Wrong username or password.")
+    QApplication.processEvents()
+    text = window.auth_error_text
+    assert window.auth_error.isVisibleTo(window)
+    assert text.text() == "Wrong username or password."
+    assert not window.auth_status.isVisibleTo(window), "the long sentence is not also at the foot"
+    pack, dark, accent = window._look_inputs()
+    error = resolved_palette(pack, dark, window._look, accent)["error"]
+    text.ensurePolished()
+    assert text.palette().color(text.foregroundRole()).name() == error
+    assert not window.auth_error_icon.pixmap().isNull()
+    top = window.auth_error.mapTo(window, QPoint(0, 0)).y()
+    assert top >= window.password.mapTo(window, QPoint(0, window.password.height())).y()
+    assert top + window.auth_error.height() <= window.keep_signed_in.mapTo(window, QPoint(0, 0)).y()
+    assert window.auth_why.text() == "Why doesn't it say which?"
+    # The line and its link, plus the one gap the card puts between rows, and no more: the old
+    # sentence added 75 px.
+    gap = card(window).layout().spacing()
+    assert card(window).height() - before <= window.auth_error.height() + gap
+
+    shown_sheets = []
+    monkeypatch.setattr(
+        "desktop.native.window.ConfirmSheet.exec", lambda self: shown_sheets.append(self.question.text())
+    )
+    window.auth_why.click()
+    assert shown_sheets == ["FlexWeek doesn't say which, so no one can find out who has an account."]

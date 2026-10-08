@@ -188,7 +188,7 @@ def child_main(args: argparse.Namespace) -> int:
     from desktop.native.hours.geometry import FIRST, Axis
     from desktop.native.hours.hand import surface_at
     from desktop.native.hours.zoom import HoursScroll
-    from desktop.native.layouts.registry import sanitize_layout
+    from desktop.native.layouts.registry import options_for, sanitize_layout
     from desktop.native.look import sanitize_look
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
@@ -1011,6 +1011,25 @@ def child_main(args: argparse.Namespace) -> int:
         yield from r.settled()
         expect(block(ids["essay"])["start"] == "19:00", "opening the essay moved it")
 
+    def day_drag_row(r: Rig) -> Step:
+        """Clay (J10): a sideways drag on the card beside the open day brings that day to the front, as
+        the arrows do, and moves no block."""
+        yield from day_tab(r)
+        revision = session.revision
+        beside = window.planner.currentWidget().findChild(QWidget, "clayPeek4")
+        expect(beside is not None and beside.isVisible(), "Friday's card is not beside Thursday")
+        start = beside.mapToGlobal(beside.rect().center())
+        yield from r.drag(start, start - QPoint(240, 0))
+        friday = (thursday + timedelta(days=1)).date().isoformat()
+        yield (
+            "until",
+            lambda: session.selected_day == friday and window.planner.currentWidget().row.front == 4,
+            3000,
+            "Friday to come to the front",
+        )
+        show_day(friday)
+        unchanged(revision)
+
     def week_agrees_with_day(r: Rig) -> Step:
         """Moved on Week, the essay is on Friday's Day at that time, and no longer on Thursday."""
         yield from r.tab("week")
@@ -1541,6 +1560,39 @@ def child_main(args: argparse.Namespace) -> int:
         yield ("wait", 300)
         expect(opened == "History essay", f"opened {opened!r}")
 
+    def week_fold(r: Rig) -> Step:
+        """J8: Timeline's fold handle carried one day left by the pointer. The counts follow while it
+        is held, Wednesday goes to the right page, and the fold is kept with the look."""
+        yield from r.tab("week")
+        before = window._layout
+        try:
+            handle = window.planner.currentWidget().findChild(QWidget, "timelineFold")
+            expect(handle is not None and handle.isVisible(), "the week shows the fold's handle")
+            expect(handle.text() == "‹ 3 | 4 ›", f"the handle reads {handle.text()!r}")
+            hours = r.surface("hours")
+            start = handle.mapToGlobal(handle.rect().center())
+            wednesday = hours.tracks[2].area
+            # Over Wednesday and past its middle, on the way left.
+            over = hours.mapToGlobal(QPointF(wednesday.left() + wednesday.width() * 0.3, 0)).toPoint()
+            held: list[str] = []
+            yield from r.drag(start, QPoint(over.x(), start.y()), held=lambda: held.append(handle.text()))
+            expect(held == ["‹ 2 | 5 ›"], f"while held the handle read {held}")
+            yield (
+                "until",
+                lambda: options_for(window._layout, "timeline")["fold"] == "2",
+                3000,
+                "the fold to be kept",
+            )
+            tracks = r.surface("hours").tracks
+            gutter = tracks[2].area.left() - tracks[1].area.right()
+            expect(gutter > 20, f"the gutter is between Tuesday and Wednesday ({gutter:.0f} px there)")
+            saved = json.loads(window._look_path().read_text())["layout"]["options"].get("timeline", {})
+            expect(saved.get("fold") == "2", f"the look file keeps {saved}")
+        finally:
+            window._layout = before
+            window._save_look()
+            window._on_week()
+
     scenarios = [
         Scenario("day-move", "day", day_move),
         Scenario("day-resize", "day", day_resize),
@@ -1555,6 +1607,7 @@ def child_main(args: argparse.Namespace) -> int:
         Scenario("day-escape", "day", day_escape),
         Scenario("day-dwell", "day", day_dwell),
         Scenario("day-open", "day", day_open),
+        Scenario("day-drag-row", "day", day_drag_row, only=("clay",)),
         Scenario("day-small-large", "day", day_small_large),
         Scenario("week-move-day", "week", week_move_day),
         Scenario("week-resize-top", "week", week_resize_top),
@@ -1574,6 +1627,7 @@ def child_main(args: argparse.Namespace) -> int:
         Scenario("week-second-move-in-flight", "week", week_second_move_in_flight),
         Scenario("week-agrees-with-day", "week", week_agrees_with_day),
         Scenario("week-small-large", "week", week_small_large),
+        Scenario("week-fold", "week", week_fold, only=("timeline",)),
         Scenario("month-times", "month", month_times),
         Scenario("month-open-day", "month", month_open_day),
         Scenario("month-move-date", "month", month_move_date),

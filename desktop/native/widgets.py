@@ -7,6 +7,7 @@ from copy import deepcopy
 from datetime import date, datetime, time, timedelta
 from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -79,18 +80,21 @@ from PySide6.QtWidgets import (
     QStyleOptionSlider,
     QStylePainter,
     QTimeEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
     QWidgetAction,
 )
 from shiboken6 import isValid
 
+from backend.availability import spread_sessions
 from backend.explain import REASON_COPY
 from backend.models import ESTIMATE_MAX_MIN, Assignment, TimeBlock, WeekRequest, due_is_timed, parse_due
 from backend.slots import (
     DAY_END_MIN,
     DAY_START_MIN,
     SLOT_MIN,
+    clock_to_minutes,
     hhmm_to_minutes,
     minutes_to_hhmm,
 )
@@ -106,14 +110,15 @@ from desktop.native.calendar import (
 )
 from desktop.native.elevation import lift
 from desktop.native.fields import QUICK_LENGTHS, ClockField, DateField, DayPicker, Stepper
-from desktop.native.fonts import time_font, weighted
+from desktop.native.fonts import caption, time_font, weighted
 from desktop.native.hours.geometry import next_slot
 from desktop.native.icons import pixmap as icon_pixmap
-from desktop.native.look import CONFLICT_TEXT
+from desktop.native.look import CONFLICT_TEXT, resolved_palette
 from desktop.native.menus import Menu
 from desktop.native.motion import OUT, SEGMENT_MS, app_level, appear, between, duration, moves, settle, vanish
 from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
+    DAYS_LONG,
     LATE_MINUTES,
     PROTECTED_KINDS,
     due_point,
@@ -123,17 +128,62 @@ from desktop.native.reuse import (
 )
 from desktop.native.tokens import SHADOW_LARGE, SPACING, WEIGHT_REGULAR, WEIGHT_STRONG, Shadow, type_pt
 from desktop.native.weekmodel import due_label, hhmm_text, length_label
-from desktop.native.work_windows import WorkWindowsEditor
 
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+# Meals first: 18:00–19:30 sits inside the afternoon activity window.
+_MEAL_WINDOWS = ((7 * 60, 8 * 60), (12 * 60, 13 * 60), (18 * 60, 19 * 60 + 30))
+_SCHOOL_START = hhmm_to_minutes(CATEGORIES["class"]["preset"]["start"])
+_SCHOOL_END = hhmm_to_minutes(CATEGORIES["class"]["preset"]["end"])
+
+
+def guess_locked_category(start: str) -> str:
+    """A category for a new fixed time, from when it starts, until the student picks one."""
+    minute = hhmm_to_minutes(start)
+    for low, high in _MEAL_WINDOWS:
+        if low <= minute < high:
+            return "meals"
+    if _SCHOOL_START <= minute < _SCHOOL_END:
+        return "class"
+    return "extra"
+
+
+def day_range_words(days: list[int] | tuple[int, ...]) -> str:
+    """Three or more days in a row as a range ("Mon–Fri"); otherwise a list ("Mon, Wed, Fri")."""
+    if not days:
+        return ""
+    ordered = sorted(set(days))
+    runs: list[list[int]] = [[ordered[0]]]
+    for day in ordered[1:]:
+        if day == runs[-1][-1] + 1:
+            runs[-1].append(day)
+        else:
+            runs.append([day])
+    parts: list[str] = []
+    for run in runs:
+        if len(run) >= 3:
+            parts.append(f"{DAYS[run[0]]}–{DAYS[run[-1]]}")
+        else:
+            parts.extend(DAYS[day] for day in run)
+    return ", ".join(parts)
+
+
 SWATCH_PX = 12
+# The eye inside the password box, and the room it keeps clear of the typing.
+REVEAL_PX = 28
+REVEAL_ICON_PX = 16
 DETAIL_BOX_HEIGHT = 84
+SCROLL_GAP = 16
+DUE_SWITCH_EXTRA = 1
+# An estimate of an hour or more can be spread over days; a shorter one is a single sitting.
+SPREAD_MIN = 60
+SPREAD_NOTHING = "Nothing left to spread: the rest is already done or focused."
 DIALOG_USABLE_HEIGHT = 480
 # Dates as a student reads them. "2026-09-27 23:59" made them work out which day that was.
 DUE_DATE_FORMAT = "ddd d MMM yyyy"
 DATE_FORMAT = "ddd d MMM yyyy"
 DIALOG_MAX_HEIGHT = 700
-SLOT_HINT = "Use a multiple of 15 minutes, such as 15, 30, or 45."
+# No-break space before the last word, so a narrow sheet never leaves "45." alone on a line.
+SLOT_HINT = "Use a multiple of 15 minutes, such as 15, 30, or\u00a045."
 DUE_BY_HINT = "FlexWeek plans it before this time."
 DUE_PASSED = "That time has already passed."
 ESTIMATE_ERROR = "That time is not a multiple of 15 minutes."
@@ -152,7 +202,7 @@ HOMEWORK_REFUSED = "Check the homework details and try again."
 PLAN_REVIEW_MAX = 132
 # How many rows of Unfinished homework show before the list scrolls: the half row says there is more.
 UNFINISHED_ROWS = 3.5
-REPEAT_NOTE = "Tick more days to repeat it this week."
+REPEAT_NOTE = "Pick more days to repeat it."
 SCHOOL_HOURS_NOTE = "The days and times you are at school, so nothing is planned then."
 ROUTINE_LIST_HEIGHT = 104
 REPLAN_TIP = (
@@ -658,6 +708,7 @@ def _refit_bar(button: QPushButton, event: QEvent) -> None:
         host = button.window()
         if hasattr(host, "_fit_plan_and_more"):
             host._fit_plan_and_more()
+            host._schedule_bar_refit()
 
 
 class MoreButton(FittedButton):
@@ -687,10 +738,12 @@ class EndsLayout(QLayout):
     the second; with no room for both at their smallest, the second goes under the first, still at
     the right. So the top bar is never squeezed until its words are cut."""
 
-    def __init__(self, parent: QWidget | None = None, gap: int = 6) -> None:
+    def __init__(self, parent: QWidget | None = None, gap: int = 6, between: int | None = None) -> None:
         super().__init__(parent)
         self._items: list[QLayoutItem] = []
+        # `gap` between the rows once the second group goes under; `between` the groups side by side.
         self._gap = gap
+        self.between = gap if between is None else between
 
     def add_group(self, group: QLayout) -> None:
         # A layout, not a widget holding one: a change inside it reaches the window's layout at once.
@@ -725,7 +778,7 @@ class EndsLayout(QLayout):
     def sizeHint(self) -> QSize:  # noqa: N802 - Qt virtual
         hints = [item.sizeHint() for item in self._items]
         return self._framed(
-            sum(hint.width() for hint in hints) + self._gap * (len(hints) - 1),
+            sum(hint.width() for hint in hints) + self.between * (len(hints) - 1),
             max((hint.height() for hint in hints), default=0),
         )
 
@@ -751,9 +804,9 @@ class EndsLayout(QLayout):
             return tall + margins.top() + margins.bottom()
         first, second = shown
         least = first.minimumSize().width()
-        if least + self._gap + second.minimumSize().width() <= area.width():
-            right = min(second.sizeHint().width(), area.width() - self._gap - least)
-            left = min(first.sizeHint().width(), area.width() - self._gap - right)
+        if least + self.between + second.minimumSize().width() <= area.width():
+            right = min(second.sizeHint().width(), area.width() - self.between - least)
+            left = min(first.sizeHint().width(), area.width() - self.between - right)
             tall = max(first.sizeHint().height(), second.sizeHint().height())
             if place:
                 first.setGeometry(QRect(area.x(), area.y(), left, tall))
@@ -2069,13 +2122,49 @@ def even_fields(root: QWidget) -> None:
                 field.setFixedWidth(width)
 
 
+class PasswordField(QLineEdit):
+    """A password box with an eye inside its right edge that shows what is typed and hides it again.
+    A Show button beside the box made it 76 pixels narrower than the username box above it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setEchoMode(QLineEdit.EchoMode.Password)
+        self.setTextMargins(0, 0, REVEAL_PX, 0)
+        self._colour = "#5b6474"
+        self.reveal = QToolButton(self)
+        self.reveal.setObjectName("passwordReveal")
+        self.reveal.setCheckable(True)
+        self.reveal.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.reveal.setIconSize(QSize(REVEAL_ICON_PX, REVEAL_ICON_PX))
+        self.reveal.toggled.connect(self._show)
+        self._show(False)
+
+    def set_colour(self, colour: str) -> None:
+        self._colour = colour
+        self._show(self.reveal.isChecked())
+
+    def _show(self, shown: bool) -> None:
+        self.setEchoMode(QLineEdit.EchoMode.Normal if shown else QLineEdit.EchoMode.Password)
+        words = "Hide password" if shown else "Show password"
+        self.reveal.setIcon(icons.icon("eye-off" if shown else "eye", self._colour))
+        self.reveal.setToolTip(words)
+        self.reveal.setAccessibleName(words)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        side = min(REVEAL_PX, self.height() - 4)
+        self.reveal.setGeometry(self.width() - side - 4, (self.height() - side) // 2, side, side)
+
+
 class FitScroll(QScrollArea):
     """A dialog's body that scrolls only past the room it is given. A plain scroll area asks for a
     modest fixed height, so a dialog opened short of its content, or tall with nothing in it."""
 
-    def __init__(self, body: QWidget, name: str) -> None:
+    def __init__(self, body: QWidget, name: str, *, gap: int | None = None) -> None:
         super().__init__()
         self.setObjectName(name)
+        # Room between the content and the bar's handle; None keeps the handle's own edge.
+        self._gap = OverlayBar.EDGE if gap is None else gap
         bare(self)
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -2093,7 +2182,7 @@ class FitScroll(QScrollArea):
         if layout is None:
             return
         margins = layout.contentsMargins()
-        right = self._rim + (OverlayBar.WIDE + 2 * OverlayBar.EDGE if high > 0 else 0)
+        right = self._rim + (OverlayBar.WIDE + OverlayBar.EDGE + self._gap if high > 0 else 0)
         if margins.right() != right:
             layout.setContentsMargins(margins.left(), margins.top(), right, margins.bottom())
 
@@ -2175,6 +2264,8 @@ class Dialog(QDialog):
     _shade: SheetShade | None = None
     # How much of its window's height a sheet may take before it scrolls; None is the window less its gap.
     _most_share: float | None = None
+    # Help, Routines and About share one top, so a short About is not centred under a tall Help.
+    _pin_top = False
     # Where the keyboard was when the sheet opened, and goes back to when it closes.
     _came_from: QWidget | None = None
 
@@ -2241,6 +2332,19 @@ class Dialog(QDialog):
         even_fields(self)
         if self.sheet:
             self._over_window()
+        from desktop.native.feel import apply_feel, current, extra_stylesheet
+
+        ctx = current()
+        if ctx is not None:
+            extra = extra_stylesheet(
+                ctx.base_sheet, ctx.feel, ctx.palette, ctx.tokens, ctx.look, ("sheetTitle",), nested=False
+            )
+            base = self.property("feelBaseSheet")
+            if not isinstance(base, str):
+                base = self.styleSheet()
+                self.setProperty("feelBaseSheet", base)
+            self.setStyleSheet((base + extra) if extra else base)
+            apply_feel(self, ctx)
         self.refit()
         if not self._appeared:
             self._appeared = True
@@ -2329,7 +2433,13 @@ class Dialog(QDialog):
         width = inner + shadow
         height = min(max(hint.height(), tall) + shadow, most_h)
         self.setFixedSize(width, height)
-        self.move(room.x() + (room.width() - width) // 2, room.y() + (room.height() - height) // 2)
+        left = room.x() + (room.width() - width) // 2
+        if self._pin_top:
+            top = room.y() + SHEET_GAP - SHEET_ROOM
+            top = min(top, room.y() + max(0, room.height() - height))
+        else:
+            top = room.y() + (room.height() - height) // 2
+        self.move(left, top)
         if self.card is not None and self.card.graphicsEffect() is None:
             dark = self.palette().color(QPalette.ColorRole.WindowText).lightness() > 128
             lift(self.card, SHADOW_LARGE, dark)
@@ -2473,7 +2583,7 @@ class BlockDialog(Dialog):
         existing = block is not None
         series = existing and is_series(self._original)
         self.setObjectName("blockDialog")
-        layout = self.card_body("Edit event" if existing else "New event")
+        layout = self.card_body("Edit event" if existing else "Add fixed time")
         body = QWidget()
         form = Form(body, stacked=True)
         form.setContentsMargins(0, 0, 0, 0)
@@ -2517,13 +2627,13 @@ class BlockDialog(Dialog):
         # them. A Duration box beside End was a second way to say the same thing, and could disagree.
         self._length = int(self._original["duration_min"])
         self.end = ClockField(
-            self._minutes_clock(self._clock_minutes(self.start.time()) + self._length), end=True
+            self._minutes_clock(self._clock_to_minutes(self.start.time()) + self._length), end=True
         )
         self.end.setObjectName("blockEnd")
         form.add_pair(("Start", self.start), ("End", self.end))
         self.duration_line = QLabel()
         self.duration_line.setObjectName("blockDurationLine")
-        form.addRow("", self.duration_line)
+        form.addRow("Duration", self.duration_line)
         self.start.timeChanged.connect(self._keep_length)
         self.end.timeChanged.connect(self._show_length)
         self._show_length()
@@ -2532,16 +2642,40 @@ class BlockDialog(Dialog):
         self.category.addItem("None", None)
         for key, info in CATEGORIES.items():
             self.category.addItem(info["label"], key)
+        self._guessing = not existing and not (self._original.get("category") or category)
         chosen = self._original.get("category") or category
+        if self._guessing:
+            chosen = guess_locked_category(self._original.get("start") or start)
         if chosen and self.category.findData(chosen) < 0:
             self.category.addItem(chosen, chosen)
+        self._applying_guess = True
         self.category.setCurrentIndex(max(0, self.category.findData(chosen)))
+        self._applying_guess = False
         form.addRow("Category", self.category)
-        # A block could carry a Spotify link from the web, and the Spotify button already opens it,
-        # but there was no way to set one here. The link is validated with the rest of the block.
+        self.category.currentIndexChanged.connect(self._chose_category)
+        self.start.timeChanged.connect(self._maybe_guess)
+        self.more_details = QPushButton()
+        self.more_details.setObjectName("blockMoreDetails")
+        self.more_details.setProperty("outline", True)
+        self.more_details.setCheckable(True)
+        self.more_details.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        form.addRow("", self.more_details)
+        details = bare(QWidget())
+        details.setObjectName("blockDetails")
+        extra = Form(details, stacked=True)
+        extra.setContentsMargins(0, 0, 0, 0)
+        # The link is under More details: on the main card it read as a second thing to fill in.
         self.spotify = _line("blockSpotify", self._original.get("spotify_url") or "", 500)
         self.spotify.setPlaceholderText("https://open.spotify.com/…")
-        form.addRow("Spotify link", self.spotify)
+        extra.addRow("Spotify link", self.spotify)
+        form.addRow("", details)
+        self.more_details.toggled.connect(details.setVisible)
+        open_details = bool(self._original.get("spotify_url"))
+        self.more_details.setChecked(open_details)
+        self._name_block_toggle(open_details)
+        self.more_details.toggled.connect(self._name_block_toggle)
+        details.setVisible(open_details)
+        self.more_details.toggled.connect(self.refit)
         self.missed = QCheckBox(
             "I missed it" if occurrence_day is None else f"I missed it on {DAY_FULL[occurrence_day]}"
         )
@@ -2570,6 +2704,22 @@ class BlockDialog(Dialog):
         layout.addLayout(row)
         self._sync_scope()
 
+    def _name_block_toggle(self, open_: bool) -> None:
+        self.more_details.setText("Fewer details" if open_ else "More details")
+
+    def _chose_category(self, *_index: object) -> None:
+        if self._applying_guess:
+            return
+        self._guessing = False
+
+    def _maybe_guess(self, *_args: object) -> None:
+        if not self._guessing:
+            return
+        key = guess_locked_category(self.start.time().toString("HH:mm"))
+        self._applying_guess = True
+        self.category.setCurrentIndex(max(0, self.category.findData(key)))
+        self._applying_guess = False
+
     def _sync_scope(self, *_index: object) -> None:
         occurrence = self.scope_occurrence.isChecked() and self._occurrence_day is not None
         # "This day only" ticks one day. Going back used to leave it that way, so Save took the block
@@ -2588,7 +2738,7 @@ class BlockDialog(Dialog):
             self._series_days = None
         self.repeat_note.setVisible(not occurrence)
 
-    def _clock_minutes(self, clock: QTime) -> int:
+    def _clock_to_minutes(self, clock: QTime) -> int:
         return clock.hour() * 60 + clock.minute()
 
     def _minutes_clock(self, minutes: int) -> QTime:
@@ -2603,7 +2753,7 @@ class BlockDialog(Dialog):
 
     def _keep_length(self, *_args: object) -> None:
         """Moving the start moves the end with it, as a calendar does, so the length stays."""
-        self.end.setTime(self._minutes_clock(self._clock_minutes(self.start.time()) + self._length))
+        self.end.setTime(self._minutes_clock(self._clock_to_minutes(self.start.time()) + self._length))
 
     def _show_length(self, *_args: object) -> None:
         problem = self._span_problem()
@@ -2690,8 +2840,8 @@ class SchoolHoursDialog(Dialog):
 
     def __init__(self, parent: QWidget | None, school: dict | None = None) -> None:
         super().__init__(parent, sheet=True)
-        # Setup's own controls, imported here: setup imports this module.
-        from desktop.native.setup import TimeRange
+        # Setup's own time box, imported here: setup imports this module.
+        from desktop.native.setup import QuarterTime
 
         self._original = deepcopy(school) if school is not None else None
         self._result: dict | None = None
@@ -2702,11 +2852,19 @@ class SchoolHoursDialog(Dialog):
         minutes = int((school or {}).get("duration_min") or 390)
         days = (school or {}).get("days") or ([] if school else [0, 1, 2, 3, 4])
         self.days = DayPicker(list(days), "schoolDay")
-        self.times = TimeRange(start, minutes_to_hhmm(hhmm_to_minutes(start) + minutes), "School")
-        self.times.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        begin = QuarterTime(start)
+        begin.setAccessibleName("School starts")
+        finish = QuarterTime(minutes_to_hhmm(hhmm_to_minutes(start) + minutes), end=True)
+        finish.setAccessibleName("School ends")
+        self.times = SimpleNamespace(
+            start=begin,
+            end=finish,
+            span=lambda: (begin.hhmm(), finish.minutes() - begin.minutes()),
+        )
         form = Form(stacked=True)
         form.addRow("Days", self.days)
-        form.addRow("Hours", self.times)
+        form.addRow("Start", begin)
+        form.addRow("End", finish)
         box.addLayout(form)
         # Said only when it is true, as setup does: under a week of school days it read as a warning.
         self.hint = QLabel("No school days picked means no school on the calendar.")
@@ -2780,15 +2938,22 @@ class DueField(QWidget):
         *,
         stacked: bool = False,
         today: str | None = None,
+        default_time: int = 9 * 60,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        # The time a box opened later starts at.
+        self._default_time = default_time
         # Stacked puts the time under the date, for a form too narrow to hold them side by side.
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(STACKED_GAP)
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         outer.addLayout(row)
+        # The switch sat 6 px under the date, tight beside the rows around it. One more is all an 800 px
+        # window has room for with the Sessions rows in: test_sheets holds Add homework to 90 % of it.
+        outer.addSpacing(DUE_SWITCH_EXTRA)
         self.date = DateField()
         self.date.setObjectName(name)
         self.date.setDisplayFormat(DUE_DATE_FORMAT)
@@ -2822,6 +2987,7 @@ class DueField(QWidget):
         self.problem.setVisible(False)
         outer.addWidget(self.problem)
         self.set_value(due)
+        self.date.dateChanged.connect(self._follow_year)
         self.date.dateChanged.connect(self._say_changed)
         self.timed.toggled.connect(self._show_time)
         self.timed.toggled.connect(self._say_changed)
@@ -2831,10 +2997,19 @@ class DueField(QWidget):
         day, minute = parse_due(due)
         self.date.setDate(QDate(day.year, day.month, day.day))
         timed = due_is_timed(due)
-        # A time box opened later starts at a usual start of lessons, not at midnight.
-        self.time.setTime(QTime(minute // 60, minute % 60) if timed else QTime(9, 0))
+        fallback = self._default_time
+        self.time.setTime(QTime(minute // 60, minute % 60) if timed else QTime(fallback // 60, fallback % 60))
         self.timed.setChecked(timed)
         self._show_time(timed)
+        self._follow_year()
+
+    def _follow_year(self, *_value: object) -> None:
+        """The year is written only for a date outside this one: "Tue 15 Sep" says enough."""
+        this_year = (self.date.today or QDate.currentDate()).year()
+        other_year = self.date.date().year() != this_year
+        wanted = DUE_DATE_FORMAT if other_year else DUE_DATE_FORMAT.replace(" yyyy", "")
+        if self.date.displayFormat() != wanted:
+            self.date.setDisplayFormat(wanted)
 
     def value(self) -> str:
         day = self.date.date().toString("yyyy-MM-dd")
@@ -2858,6 +3033,35 @@ class DueField(QWidget):
         # Connected straight to `changed.emit`, each signal handed its value to a signal that takes
         # none: a TypeError inside Qt, and nothing connected to `changed` ran.
         self.changed.emit()
+
+
+def spread_session_min(remaining: int) -> int:
+    """How long each spread session is: an hour, or what is left when that is less, cut to the 15-minute
+    grid and never over three hours."""
+    return max(SLOT_MIN, min(60, remaining - remaining % SLOT_MIN, 180))
+
+
+def spread_words(sessions: list[dict], due: str) -> str:
+    """What spreading will do, for the grey line under the choice: "2 × 60 min on different days before
+    it is due Sun 4 Oct."."""
+    if not sessions:
+        return SPREAD_NOTHING
+    sizes = [int(item["duration_min"]) for item in sessions]
+    full = sizes[0]
+    whole = sizes.count(full)
+    lead = f"{whole} × {full} min" if whole > 1 else f"{full} min"
+    parts = lead if whole == len(sizes) else f"{lead} and {sizes[-1]} min"
+    ahead = f"before it is due {due_label(due, '')}."
+    if len(sizes) == 1:
+        return f"{parts} in one session {ahead}"
+    days = len({item["date"] for item in sessions})
+    if days == len(sizes):
+        return f"{parts} on different days {ahead}"
+    return f"{parts} on the same day {ahead}" if days == 1 else f"{parts} over {days} days {ahead}"
+
+
+def _day_on_screen(today: str | None, now: datetime | None) -> date:
+    return date.fromisoformat(today) if today else (now or datetime.now()).date()
 
 
 class HomeworkDialog(Dialog):
@@ -2885,8 +3089,8 @@ class HomeworkDialog(Dialog):
                 "id": str(uuid4()),
                 # Empty, with the category as its hint. Filled in with "Homework", typing added to the word.
                 "title": "",
-                # Today, whatever week is on screen: the Monday of that week was often already past.
-                "due": due or today or date.today().isoformat(),
+                # Tomorrow, from the day on screen: work due today at 22:41 had no evening left to plan in.
+                "due": due or (_day_on_screen(today, now) + timedelta(days=1)).isoformat(),
                 "estimate_min": estimate_min or (info or {}).get("preset", {}).get("duration_min") or 60,
                 "category": category,
                 "revision": 0,
@@ -2914,22 +3118,51 @@ class HomeworkDialog(Dialog):
         body_layout.addLayout(form)
         self.title = _line("homeworkTitle", self._original["title"])
         # Homework saved with no category is still homework, so it gets the same hint.
-        self.title.setPlaceholderText((info or CATEGORIES["assignments"])["label"])
+        self.title.setPlaceholderText("e.g. History essay")
         form.addRow("Title", self.title)
-        self.due = DueField(self._original["due"], "homeworkDue", stacked=True, today=today)
+        # Where it is placed, said under the title in Edit; a new or unplaced homework says nothing.
+        self.placed_line = sheet_note(self._placed_words())
+        form.addRow("", self.placed_line)
+        form.setRowVisible(self.placed_line, bool(self.placed_line.text()))
+        self.due = DueField(
+            self._original["due"],
+            "homeworkDue",
+            stacked=True,
+            today=today,
+            default_time=self._school_end(),
+        )
         form.addRow("Due", self.due)
         self.due.changed.connect(self._clear_due_problem)
         self._add_when(form)
         self.estimate = LengthBox("homeworkEstimate", self._original["estimate_min"])
-        form.addRow("Estimated time", Stepper(self.estimate, QUICK_LENGTHS))
+        self.stepper = Stepper(self.estimate, QUICK_LENGTHS)
+        form.addRow("Estimated time", self.stepper)
         self.estimate_hint = QLabel(SLOT_HINT)
         self.estimate_hint.setObjectName("homeworkEstimateHint")
         self.estimate_hint.setWordWrap(True)
         form.addRow("", self.estimate_hint)
+        # Said only for a length that is wrong, so the row goes with its words.
+        form.setRowVisible(self.estimate_hint, False)
+        # In one go, or spread over the days before the due: a setting of the homework, said in a line
+        # under it, not a second sheet. Made right after the length it divides, so the keyboard reaches it
+        # next: Tab follows the order widgets were made in.
+        self.spread_choice = Segmented(
+            (("In one go", "one"), ("Spread over days", "spread")), "homeworkSpread"
+        )
+        form.addRow("Sessions", self.spread_choice)
+        self.spread_line = sheet_note("")
+        form.addRow("", self.spread_line)
+        self.spread_choice.currentIndexChanged.connect(self._follow_spread)
+        self.estimate.valueChanged.connect(self._follow_spread)
+        self.due.changed.connect(self._follow_spread)
+        self.when.currentIndexChanged.connect(self._follow_spread)
         self.estimate.valueChanged.connect(self._recheck_length)
+        # Not while typing: "4" on the way to 45 is not yet a mistake. A step or a pill is always good.
+        self.estimate.editingFinished.connect(self._say_length)
         if self._length_problem():
             # Stored before the limit, so the student is told before they try to save it.
             self._say_length()
+        self._follow_spread()
         self.error = _error_label()
         form.addRow("", self.error)
         # The row goes with its words: an empty one left a gap above Finished.
@@ -2958,7 +3191,7 @@ class HomeworkDialog(Dialog):
         if self._session_buttons:
             session_row.addStretch(1)
             form.addRow("", session_row)
-        self.more_details = QPushButton("More details")
+        self.more_details = QPushButton()
         self.more_details.setObjectName("homeworkMoreDetails")
         self.more_details.setProperty("outline", True)
         self.more_details.setCheckable(True)
@@ -2992,8 +3225,7 @@ class HomeworkDialog(Dialog):
         self.notes.setObjectName("homeworkNotes")
         # Three boxes at their 192px default made this dialog taller than a laptop screen.
         self.notes.setMaximumHeight(DETAIL_BOX_HEIGHT)
-        self.notes.setPlaceholderText("Notes")
-        details_layout.addWidget(self.notes)
+        extra.addRow("Notes", self.notes)
         link_row = QHBoxLayout()
         self.link_label = _line("homeworkLinkLabel", "", 80)
         self.link_label.setPlaceholderText("Link label")
@@ -3012,6 +3244,9 @@ class HomeworkDialog(Dialog):
         self.links.setObjectName("homeworkLinks")
         self.links.setMaximumHeight(DETAIL_BOX_HEIGHT)
         details_layout.addWidget(self.links)
+        # A list with nothing in it looked like another field to fill in.
+        self.no_links = sheet_note("No links yet")
+        details_layout.addWidget(self.no_links)
         for link in self._original.get("links") or []:
             self._append_link(link["label"], link["url"])
         check_row = QHBoxLayout()
@@ -3027,23 +3262,17 @@ class HomeworkDialog(Dialog):
         self.checks = QListWidget()
         self.checks.setObjectName("homeworkChecklist")
         details_layout.addWidget(self.checks)
+        self.no_steps = sheet_note("No steps yet")
+        details_layout.addWidget(self.no_steps)
         for step in self._original.get("checklist") or []:
             self._append_check(step["id"], step["text"], step.get("done", False))
+        self._show_lists()
         if assignment is not None:
-            spread = QPushButton("Spread across days")
-            spread.setProperty("quiet", True)
-            spread.setObjectName("spreadHomework")
-            spread.clicked.connect(self._request_spread)
-            spread.setToolTip("Save these edits first, then spread.")
-            details_layout.addWidget(spread)
-            self._spread_button = spread
-            self.title.textChanged.connect(self._disable_spread)
-            self.notes.textChanged.connect(self._disable_spread)
-            self.estimate.valueChanged.connect(self._disable_spread)
-            self.due.changed.connect(self._disable_spread)
-            self.course.textChanged.connect(self._disable_spread)
-        else:
-            self._spread_button = None
+            self.title.textChanged.connect(self._disable_placing)
+            self.notes.textChanged.connect(self._disable_placing)
+            self.estimate.valueChanged.connect(self._disable_placing)
+            self.due.changed.connect(self._disable_placing)
+            self.course.textChanged.connect(self._disable_placing)
         body_layout.addWidget(details)
         self._details = details
         self.more_details.toggled.connect(details.setVisible)
@@ -3055,12 +3284,14 @@ class HomeworkDialog(Dialog):
             or self._original.get("spotify_url")
         )
         self.more_details.setChecked(open_details)
+        self._name_toggle(open_details)
+        self.more_details.toggled.connect(self._name_toggle)
         details.setVisible(open_details)
         # The sheet grows with the details, up to the room its window has.
         self.more_details.toggled.connect(self.refit)
         # A time box shown under the date makes the body taller: the sheet is fitted again, not scrolled.
         self.due.timed.toggled.connect(self.refit)
-        area = FitScroll(body, "homeworkScroll")
+        area = FitScroll(body, "homeworkScroll", gap=SCROLL_GAP)
         layout.addWidget(area, 1)
         self._scroll = area
         # Delete is not one of the dialog's answers: quiet words at the left, away from Save, as the
@@ -3086,6 +3317,40 @@ class HomeworkDialog(Dialog):
         super().showEvent(event)
         if not self.sheet:
             fit_scroll_dialog(self)
+
+    def _school_end(self) -> int:
+        """The minute school ends, from the saved school hours, or 15:00 with none: work due at a set
+        time is usually due when the school day does."""
+        blocks = getattr(getattr(self.parent(), "session", None), "blocks", None) or []
+        locked = [item for item in blocks if item.get("kind") == "locked"]
+        school = next((item for item in locked if item.get("id") == "school"), None) or next(
+            (item for item in locked if item.get("category") == "class"), None
+        )
+        if school is None or not school.get("start"):
+            return 15 * 60
+        return min(hhmm_to_minutes(school["start"]) + int(school["duration_min"]), 23 * 60 + 45)
+
+    def _placed_words(self) -> str:
+        """"Placed Fri 15:30", or with several times "Placed Fri 15:30 and Sat 10:00 · 2 times"; empty
+        when none of this homework's times has a place on the calendar."""
+        placed = [block for block in self._open_sessions() if block.get("start")]
+        at = sorted((block["days"][0], block["start"]) for block in placed)
+        if not at:
+            return ""
+        names = [f"{DAYS[day]} {hhmm_text(start)}" for day, start in at]
+        if len(names) == 1:
+            return f"Placed {names[0]}"
+        return f"Placed {', '.join(names[:-1])} and {names[-1]} · {len(names)} times"
+
+    def _name_toggle(self, open_: bool) -> None:
+        self.more_details.setText("Fewer details" if open_ else "More details")
+        icons.tint(self.more_details, "chevron-up" if open_ else "chevron-down", gap=6)
+        self.more_details.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+
+    def _show_lists(self) -> None:
+        for items, none in ((self.links, self.no_links), (self.checks, self.no_steps)):
+            items.setVisible(items.count() > 0)
+            none.setVisible(items.count() == 0)
 
     def _open_sessions(self) -> list[dict]:
         """This homework's unfinished times on the week in the window, which the dialog reads from the
@@ -3219,13 +3484,16 @@ class HomeworkDialog(Dialog):
             return ESTIMATE_SHORT
         if minutes > ESTIMATE_MAX_MIN:
             return ESTIMATE_LONG
-        return ""
+        return SLOT_HINT if minutes % SLOT_MIN else ""
 
     def _say_length(self) -> bool:
         """Say under the box what is wrong with the length, in the error colour, or the usual hint."""
         problem = self._length_problem()
         self.estimate_hint.setText(problem or SLOT_HINT)
         self.estimate_hint.setProperty("problem", bool(problem))
+        self._form.setRowVisible(self.estimate_hint, bool(problem))
+        if self.isVisible():
+            self.refit()
         self.estimate_hint.style().unpolish(self.estimate_hint)
         self.estimate_hint.style().polish(self.estimate_hint)
         return bool(problem)
@@ -3235,21 +3503,57 @@ class HomeworkDialog(Dialog):
         if self.estimate_hint.property("problem"):
             self._say_length()
 
-    def _disable_spread(self, *_args: object) -> None:
-        # Like Spread, placing acts on the saved homework, so an unsaved edit turns them off.
+    def _disable_placing(self, *_args: object) -> None:
+        # Placing acts on the saved homework, so an unsaved edit turns the buttons off.
         for button in self._session_buttons:
             button.setEnabled(False)
-        if self._spread_button is None:
-            return
-        self._spread_button.setEnabled(False)
 
-    def _request_spread(self) -> None:
-        self._spread = True
-        self._result = deepcopy(self._original)
-        super().accept()
+    def _spread_figures(self) -> tuple[int, str, list[dict]]:
+        """The session length, the day the sessions start and the sessions themselves, for the values as
+        they stand now. Every open time of this homework is replaced, so only focus already given counts."""
+        due = self._chosen_due()
+        remaining = max(0, self.estimate.value() - int(self._original.get("focus_minutes") or 0))
+        session_min = spread_session_min(remaining)
+        today = self._now().date().isoformat()
+        ahead = str(getattr(getattr(self.parent(), "session", None), "selected_day", "") or "")
+        start = max(today, ahead)
+        from_date = min(start, parse_due(due)[0].isoformat())
+        sessions, _off_grid = spread_sessions(
+            estimate_min=self.estimate.value(),
+            focus_minutes=int(self._original.get("focus_minutes") or 0),
+            planned_min=0,
+            due=due,
+            session_min=session_min,
+            from_date=from_date,
+        )
+        return session_min, from_date, sessions
+
+    def _follow_spread(self, *_args: object) -> None:
+        """The choice shows for an hour or more that FlexWeek is to place: a time picked by hand is one
+        time, and it is one go under an hour. Hiding it takes the choice back to one go."""
+        shown = (
+            self.estimate.value() >= SPREAD_MIN
+            and not self._spread_out
+            and self.when.currentData() != "fixed"
+        )
+        self._form.setRowVisible(self.spread_choice, shown)
+        if not shown:
+            self.spread_choice.setCurrentIndex(0)
+        # The line says what Spread over days will do, so it has nothing to say for one go.
+        spreading = shown and self.spread_choice.currentData() == "spread"
+        self._form.setRowVisible(self.spread_line, spreading)
+        if spreading:
+            self.spread_line.setText(spread_words(self._spread_figures()[2], self._chosen_due()))
+        if self.isVisible():
+            self.refit()
 
     def spread_requested(self) -> bool:
         return self._spread
+
+    def spread_plan(self) -> dict:
+        """How the window spreads the saved homework: the length of each session and the day they start."""
+        session_min, from_date, _sessions = self._spread_figures()
+        return {"session_min": session_min, "from_date": from_date}
 
     def _request_session(self) -> None:
         self._request = self.sender().property("request")
@@ -3283,6 +3587,7 @@ class HomeworkDialog(Dialog):
             self._show_error("A link needs a label and an http(s) address.")
             return
         self._append_link(label, url)
+        self._show_lists()
         self.link_label.clear()
         self.link_url.clear()
         self._show_error("")
@@ -3303,6 +3608,7 @@ class HomeworkDialog(Dialog):
             self._show_error("A checklist step needs text.")
             return
         self._append_check(str(uuid4()), text, False)
+        self._show_lists()
         self.check_text.clear()
         self._show_error("")
 
@@ -3399,6 +3705,7 @@ class HomeworkDialog(Dialog):
         except ValueError as error:
             self._show_error(_homework_problem(error))
             return
+        self._spread = self.spread_choice.currentData() == "spread"
         self._result = candidate
         super().accept()
 
@@ -3779,6 +4086,7 @@ class PlanReview(QFrame):
         replan.clicked.connect(self.replan_requested.emit)
         dismiss = QPushButton("Got it")
         dismiss.setObjectName("planReviewDismiss")
+        dismiss.setProperty("tonal", True)
         dismiss.setToolTip("Hide this list.")
         dismiss.clicked.connect(self._dismiss)
         row.addWidget(replan)
@@ -3853,8 +4161,9 @@ class PlanReview(QFrame):
             self.hide()
             return
         placed, waiting = counts
-        parts = [f"Placed {placed}"] + ([f"{waiting} without a time"] if waiting else [])
-        self.heading.setText(" · ".join(parts))
+        from desktop.native.controller import plan_sentence
+
+        self.heading.setText(plan_sentence(placed, waiting))
         for line in said:
             self.list.addItem(QListWidgetItem(line))
         # As tall as it needs and no taller. One line in a box four lines deep reads as an error.
@@ -3893,14 +4202,10 @@ class ChooseTimeDialog(Dialog):
         layout = self.card_body("Choose a time")
         layout.addWidget(sheet_note(f"For {block.get('title') or 'homework'}."))
         form = Form(stacked=True)
-        self.day = QComboBox()
-        self.day.setObjectName("chooseTimeDay")
-        monday = date.fromisoformat(week_start)
-        for day in days:
-            self.day.addItem((monday + timedelta(days=day)).strftime("%a %-d %b"), day)
-        # Today rather than the first day the homework could go, which on a Wednesday was Monday.
-        if today in days:
-            self.day.setCurrentIndex(days.index(today))
+        picked = today if today in days else (days[0] if days else 0)
+        self.day = DayPicker([picked], "chooseTimeDay", exclusive=True)
+        for index, button in enumerate(self.day.buttons):
+            button.setEnabled(index in days)
         form.addRow("Day", self.day)
         self.start = ClockField(QTime(16, 0))
         self.start.setObjectName("chooseTimeStart")
@@ -3912,12 +4217,14 @@ class ChooseTimeDialog(Dialog):
             # there and the last one today when it cannot: 16:00 had often passed already.
             ahead, slot = next_slot(minute, first=6 * 60, last=latest)
             if ahead and today + ahead in days:
-                self.day.setCurrentIndex(days.index(today + ahead))
+                self.day.set_days([today + ahead])
             elif ahead:
                 slot = latest
             self.start.setTime(QTime(slot // 60, slot % 60))
         form.addRow("Start", self.start)
-        form.addRow("Length", QLabel(length_label(self._duration)))
+        self.length = LengthBox("chooseTimeLength", self._duration)
+        self.stepper = Stepper(self.length, QUICK_LENGTHS)
+        form.addRow("Length", self.stepper)
         layout.addLayout(form)
         self.problem = QLabel()
         self.problem.setObjectName("validationError")
@@ -3941,17 +4248,29 @@ class ChooseTimeDialog(Dialog):
         layout.addWidget(self.beside_row)
         choices = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         self.buttons = QDialogButtonBox(choices)
+        choose = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        choose.setText("Choose this time")
         self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setProperty("quiet", True)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)
-        self.day.currentIndexChanged.connect(self._check)
+        self.day.changed.connect(self._check)
         self.start.timeChanged.connect(self._check)
+        self.length.valueChanged.connect(self._length_changed)
         self._check()
 
     def choice(self) -> tuple[int, int]:
         """The day and the start, to the minute the student picked."""
         return int(self.day.currentData()), self.start.time().hour() * 60 + self.start.time().minute()
+
+    def length_min(self) -> int:
+        return int(self.length.value())
+
+    def _length_changed(self, *_args: object) -> None:
+        self._duration = int(self.length.value())
+        latest = DAY_END_MIN - self._duration
+        self.start.setMaximumTime(QTime(latest // 60, latest % 60))
+        self._check()
 
     def _check(self, *_args: object) -> None:
         day, start = self.choice()
@@ -3966,6 +4285,8 @@ class ChooseTimeDialog(Dialog):
 
 
 class RoutineDialog(Dialog):
+    _pin_top = True
+
     def __init__(
         self,
         parent: QWidget | None,
@@ -3989,7 +4310,7 @@ class RoutineDialog(Dialog):
         column.setSpacing(SPACING[1])
         sheet_section(
             column,
-            "Save this week as a routine",
+            "Make a routine from this week",
             "Tick the fixed times to keep, give them a name, and copy them into any week later.",
         )
         self.name = _line("routineName")
@@ -4001,13 +4322,13 @@ class RoutineDialog(Dialog):
         self.choices.setFixedHeight(ROUTINE_LIST_HEIGHT)
         column.addWidget(self.choices)
         for block in self._blocks:
-            days = ", ".join(DAYS[day] for day in block["days"])
+            days = day_range_words(block["days"])
             item = QListWidgetItem(f"{block['title']} · {days} · {hhmm_text(block['start'])}")
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked)
             item.setData(Qt.ItemDataRole.UserRole, block["id"])
             self.choices.addItem(item)
-        save = QPushButton("Save this week as a routine")
+        save = QPushButton("Save routine")
         save.setObjectName("saveRoutine")
         save.clicked.connect(self._save)
         # The name and the button that keeps it on one line, under the times they keep.
@@ -4055,6 +4376,7 @@ class RoutineDialog(Dialog):
         delete.setProperty("quiet", True)
         delete.clicked.connect(self._delete)
         for button in (apply, delete):
+            button.setVisible(bool(routines))
             button.setEnabled(bool(routines))
             actions.addWidget(button)
         actions.addStretch(1)
@@ -4147,7 +4469,7 @@ class LateDialog(Dialog):
         buttons = QHBoxLayout()
         preview = QPushButton("Preview")
         preview.setObjectName("latePreview")
-        preview.setProperty("quiet", True)
+        preview.setProperty("outlined", True)
         preview.clicked.connect(self.preview_requested.emit)
         # The answers where the platform puts them; Preview is a step before them, at the left.
         answers = QDialogButtonBox()
@@ -4209,8 +4531,7 @@ class SpreadDialog(Dialog):
         layout.addLayout(form)
         self.session = QComboBox()
         self.session.setObjectName("spreadSession")
-        remaining = max(SLOT_MIN, int(assignment.get("unplanned_min") or SLOT_MIN))
-        chosen = min(60, remaining - remaining % SLOT_MIN, 180)
+        chosen = spread_session_min(int(assignment.get("unplanned_min") or SLOT_MIN))
         for minutes in range(SLOT_MIN, 181, SLOT_MIN):
             self.session.addItem(f"{minutes} minutes", minutes)
         self.session.setCurrentIndex(max(0, self.session.findData(chosen)))
@@ -4235,69 +4556,163 @@ class SpreadDialog(Dialog):
         return self.from_date.date().toString("yyyy-MM-dd")
 
 
+AVAILABILITY_TABS = (("Study hours", "study"), ("Protected", "protected"), ("Cut-off", "cutoff"))
+PROTECTED_WORDS = {"downtime": "Downtime", "commute": "Commute", "meal": "Meal"}
+NO_STUDY_HOURS = "No study hours yet, so homework can go at any time of day."
+NO_PROTECTED = "Nothing protected yet. Add practice, family time or a job."
+# The strip starts at 06:00 unless a window starts earlier; it always runs to the end of the day.
+STRIP_FIRST_MIN = 6 * 60
+
+
+def _span_words(start: int, end: int) -> str:
+    return f"{hhmm_text(minutes_to_hhmm(start))}–{hhmm_text(minutes_to_hhmm(end))}"
+
+
+def _joined(entries: list[dict]) -> list[dict]:
+    """Entries of one day each back into saved windows: equal hours on several days are one window
+    with those days, in the order the hours first appear."""
+    joined: dict[tuple, dict] = {}
+    for entry in entries:
+        rest = {key: value for key, value in entry.items() if key != "day"}
+        window = joined.setdefault(tuple(sorted(rest.items())), {"days": [], **rest})
+        if entry["day"] not in window["days"]:
+            window["days"].append(entry["day"])
+    for window in joined.values():
+        window["days"].sort()
+    return list(joined.values())
+
+
+def _by_day(windows: list[dict]) -> list[dict]:
+    return [
+        {"day": day, **{key: value for key, value in window.items() if key != "days"}}
+        for window in windows
+        for day in sorted(window["days"])
+    ]
+
+
+class AvailabilityStrip(QWidget):
+    """The week at a glance, Monday to Sunday: study hours in the accent, protected time in grey over
+    them and the cut-off as a line across. Painted to be read; the tabs under it change what it shows."""
+
+    HEAD = 18
+    GAP = 6
+
+    def __init__(self, palette: dict) -> None:
+        super().__init__()
+        self.setObjectName("availabilityStrip")
+        self.setFixedHeight(120)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setAccessibleName("This week's study hours, protected time and cut-off")
+        self.colours = palette
+        self.first = STRIP_FIRST_MIN
+        self._hours: list[tuple[int, int, int]] = []
+        self._protected: list[tuple[int, int, int]] = []
+        self._cutoff: int | None = None
+
+    def show_week(
+        self, hours: list[tuple[int, int, int]], protected: list[tuple[int, int, int]], cutoff: int | None
+    ) -> None:
+        """Each span is (day, start minute, end minute)."""
+        self._hours, self._protected, self._cutoff = hours, protected, cutoff
+        starts = [start - start % 60 for _day, start, _end in hours + protected]
+        self.first = min([STRIP_FIRST_MIN, *starts])
+        self.update()
+
+    def column(self, day: int) -> QRectF:
+        width = (self.width() - 6 * self.GAP) / 7
+        return QRectF(day * (width + self.GAP), self.HEAD, width, self.height() - self.HEAD - 1)
+
+    def y_of(self, minute: int) -> float:
+        track = self.column(0)
+        return track.top() + (minute - self.first) / (DAY_END_MIN - self.first) * track.height()
+
+    def paintEvent(self, _event: object) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setFont(caption(self.font()))
+        for day, letter in enumerate("MTWTFSS"):
+            track = self.column(day)
+            painter.setPen(QColor(self.colours["muted"]))
+            head = QRectF(track.left(), 0, track.width(), self.HEAD)
+            painter.drawText(head, Qt.AlignmentFlag.AlignCenter, letter)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(self.colours["hairline"]))
+            painter.drawRoundedRect(track, 4, 4)
+        # Protected time is drawn over study hours: the planner keeps out of it either way.
+        for key, spans in (("accent", self._hours), ("muted", self._protected)):
+            painter.setBrush(QColor(self.colours[key]))
+            for day, start, end in spans:
+                track = self.column(day)
+                top, bottom = self.y_of(max(start, self.first)), self.y_of(end)
+                painter.drawRoundedRect(QRectF(track.left(), top, track.width(), bottom - top), 3, 3)
+        if self._cutoff is not None:
+            # Crisp, two pixels on the pixel grid: smoothed, a thin line came out a paler red.
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+            painter.setPen(QPen(QColor(self.colours["error"]), 2))
+            line = round(self.y_of(self._cutoff))
+            painter.drawLine(0, line, self.width(), line)
+        painter.end()
+
+
 class AvailabilityDialog(Dialog):
-    def __init__(self, parent: QWidget | None, preferences: dict, subjects: list[str] | None = None) -> None:
+    """When homework may go (#54 and J7): the week strip on top, then Study hours, Protected and
+    Cut-off as tabs. Study hours is the one list the planner uses; Setup fills it too.
+
+    A window Setup saved for several days shows as a chip on each of them. Removing a chip takes only
+    that day out of the window, and the other days keep it: each day is edited on its own, and equal
+    hours are joined back into one window with several days when the sheet answers."""
+
+    def __init__(
+        self,
+        parent: QWidget | None,
+        preferences: dict,
+        subjects: list[str] | None = None,
+        palette: dict | None = None,
+    ) -> None:
         super().__init__(parent, sheet=True)
         self.setObjectName("availabilityDialog")
-        self._protected = deepcopy(preferences.get("protected") or [])
-        self._study = deepcopy(preferences.get("study_windows") or [])
-        layout = self.card_body("Availability", SHEET_LIST)
+        self._hours = _by_day(deepcopy(preferences.get("work_windows") or []))
+        self._protected = _by_day(deepcopy(preferences.get("protected") or []))
+        self._picking: tuple[str, int] | None = None
+        layout = self.card_body("Availability")
         body = QWidget()
         self._body = body
         body.installEventFilter(self)
         form = QVBoxLayout(body)
         form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(SPACING[2])
         layout.addWidget(FitScroll(body, "availabilityScroll"), 1)
-        form.addWidget(QLabel("Protected time"))
-        self.protected_list = QListWidget()
-        self.protected_list.setObjectName("protectedWindows")
-        self.protected_list.setMaximumHeight(100)
-        form.addWidget(self.protected_list)
-        add_protected = QPushButton("Add protected time")
-        add_protected.setObjectName("protectedAdd")
-        add_protected.setProperty("quiet", True)
-        add_protected.clicked.connect(self._add_protected)
-        form.addWidget(add_protected)
-        form.addWidget(QLabel("Preferred study hours"))
-        self.study_list = QListWidget()
-        self.study_list.setObjectName("studyWindows")
-        self.study_list.setMaximumHeight(100)
-        form.addWidget(self.study_list)
-        # A new window's hours, and optionally the one subject it is kept for.
-        study_row = QHBoxLayout()
-        self.study_start = ClockField(QTime(19, 0))
-        self.study_start.setObjectName("studyStart")
-        self.study_end = ClockField(QTime(21, 0), end=True)
-        self.study_end.setObjectName("studyEnd")
-        self.study_subject = QComboBox()
-        self.study_subject.setObjectName("studySubject")
-        self.study_subject.setEditable(True)
-        self.study_subject.addItem("Any subject", "")
-        for subject in subjects or []:
-            self.study_subject.addItem(subject, subject)
-        for label, widget in (("From", self.study_start), ("to", self.study_end)):
-            study_row.addWidget(QLabel(label))
-            study_row.addWidget(widget)
-        study_row.addWidget(self.study_subject, 1)
-        form.addLayout(study_row)
-        add_study = QPushButton("Add study window")
-        add_study.setObjectName("studyAdd")
-        add_study.setProperty("quiet", True)
-        add_study.clicked.connect(self._add_study)
-        form.addWidget(add_study)
-        form.addWidget(QLabel("No homework after"))
+        self.strip = AvailabilityStrip(palette or resolved_palette("system", False, None))
+        form.addWidget(self.strip)
+        self.legend = sheet_note("")
+        self.legend.setObjectName("availabilityLegend")
+        form.addWidget(self.legend)
+        self.tabs = Segmented(AVAILABILITY_TABS, "availabilityTabs")
+        form.addWidget(self.tabs, 0, Qt.AlignmentFlag.AlignLeft)
+        self.pages = QStackedWidget()
+        self.tabs.currentIndexChanged.connect(self.pages.setCurrentIndex)
+        form.addWidget(self.pages)
+        self.study_empty, self._study_rows = self._page("When may FlexWeek plan homework?", NO_STUDY_HOURS)
+        self.protected_empty, self._protected_rows = self._page("When must homework stay away?", NO_PROTECTED)
+        cutoff_page = bare(QWidget())
+        cutoff_column = QVBoxLayout(cutoff_page)
+        cutoff_column.setContentsMargins(0, 0, 0, 0)
+        cutoff_column.setSpacing(STACKED_GAP)
+        question = QLabel("No homework after")
+        question.setObjectName("fieldLabel")
+        cutoff_column.addWidget(question)
         self.cutoff = QComboBox()
         self.cutoff.setObjectName("availabilityCutoff")
         self.cutoff.setAccessibleName("No homework after")
         fill_cutoff(self.cutoff, preferences.get("day_cutoff"))
-        form.addWidget(self.cutoff)
-        form.addWidget(QLabel("When may FlexWeek plan homework?"))
-        self.work_editor = WorkWindowsEditor(preferences.get("work_windows") or [], subjects, body)
-        # Save is this dialog's answer, so the editor's Add is plain here.
-        self.work_editor.add_button.setProperty("quiet", True)
-        form.addWidget(self.work_editor)
+        self.cutoff.currentIndexChanged.connect(self._render)
+        cutoff_column.addWidget(self.cutoff, 0, Qt.AlignmentFlag.AlignLeft)
+        cutoff_column.addStretch(1)
+        self.pages.addWidget(cutoff_page)
+        self._build_picker(subjects or [])
         self.error = _error_label()
         form.addWidget(self.error)
+        form.addStretch(1)
         save = sheet_button("Save", "", "availabilitySave")
         save.setDefault(True)
         save.clicked.connect(self.accept)
@@ -4306,6 +4721,91 @@ class AvailabilityDialog(Dialog):
         sheet_footer(layout, cancel, save, divided=True)
         self._render()
 
+    def _page(self, question_words: str, empty_words: str) -> tuple[QLabel, QVBoxLayout]:
+        page = bare(QWidget())
+        column = QVBoxLayout(page)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(STACKED_GAP)
+        question = QLabel(question_words)
+        question.setObjectName("fieldLabel")
+        column.addWidget(question)
+        empty = sheet_note(empty_words)
+        column.addWidget(empty)
+        rows = QVBoxLayout()
+        rows.setSpacing(SPACING[1])
+        column.addLayout(rows)
+        column.addStretch(1)
+        self.pages.addWidget(page)
+        return empty, rows
+
+    def _build_picker(self, subjects: list[str]) -> None:
+        """The small form a + opens under its day: the hours, and a subject or a kind of time."""
+        self.picker = bare(QWidget())
+        self.picker.setObjectName("availabilityPicker")
+        column = QVBoxLayout(self.picker)
+        column.setContentsMargins(0, 0, 0, SPACING[1])
+        column.setSpacing(STACKED_GAP)
+        fields = QHBoxLayout()
+        fields.setSpacing(SPACING[3])
+        self.picker_start = ClockField(QTime(16, 0))
+        self.picker_start.setObjectName("availabilityStart")
+        self.picker_start.setAccessibleName("From")
+        self.picker_end = ClockField(QTime(18, 0), end=True)
+        self.picker_end.setObjectName("availabilityEnd")
+        self.picker_end.setAccessibleName("To")
+        self.picker_subject = QComboBox()
+        self.picker_subject.setObjectName("availabilitySubject")
+        self.picker_subject.setAccessibleName("Subject")
+        self.picker_subject.setEditable(True)
+        self.picker_subject.addItem("Any subject", "")
+        for subject in subjects:
+            self.picker_subject.addItem(subject, subject)
+        self.picker_kind = QComboBox()
+        self.picker_kind.setObjectName("availabilityKind")
+        self.picker_kind.setAccessibleName("Kind of time")
+        for kind in PROTECTED_KINDS:
+            self.picker_kind.addItem(PROTECTED_WORDS[kind], kind)
+        self.picker_title = QLineEdit()
+        self.picker_title.setObjectName("availabilityTitle")
+        self.picker_title.setAccessibleName("Name (optional)")
+        self.picker_title.setPlaceholderText("e.g. Piano")
+        self.picker_title.setMaxLength(40)
+        self._picker_extra: dict[str, list[QWidget]] = {"study": [], "protected": []}
+        for words, field, kind in (
+            ("From", self.picker_start, ""),
+            ("To", self.picker_end, ""),
+            ("Subject", self.picker_subject, "study"),
+            ("Kind", self.picker_kind, "protected"),
+            ("Name (optional)", self.picker_title, "protected"),
+        ):
+            holder = bare(QWidget())
+            pair = QVBoxLayout(holder)
+            pair.setContentsMargins(0, 0, 0, 0)
+            pair.setSpacing(STACKED_GAP)
+            label = QLabel(words)
+            label.setObjectName("fieldLabel")
+            pair.addWidget(label)
+            pair.addWidget(field)
+            if field is self.picker_title:
+                # On its own line: beside the times it made the sheet jump wider as it opened.
+                column.addLayout(fields)
+                column.addWidget(holder)
+            else:
+                fields.addWidget(holder)
+            if kind:
+                self._picker_extra[kind].append(holder)
+        fields.addStretch(1)
+        answers = QHBoxLayout()
+        self.picker_add = sheet_button("Add", "outlined", "availabilityPickerAdd")
+        self.picker_add.clicked.connect(self._add_picked)
+        self.picker_cancel = sheet_button("Cancel", "quiet", "availabilityPickerCancel")
+        self.picker_cancel.clicked.connect(self._close_picker)
+        answers.addWidget(self.picker_add)
+        answers.addWidget(self.picker_cancel)
+        answers.addStretch(1)
+        column.addLayout(answers)
+        self.picker.setVisible(False)
+
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
         super().showEvent(event)
         self._fit_width()
@@ -4313,14 +4813,14 @@ class AvailabilityDialog(Dialog):
             fit_scroll_dialog(self, min_height=600)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        # A work window's row added later can be wider than the dialog opened. The scrolled body
+        # A day with many chips, or the picker, can be wider than the sheet opened. The scrolled body
         # hears that as a layout request; the dialog itself never does.
         if watched is self._body and event.type() == QEvent.Type.LayoutRequest:
             self._fit_width()
         return super().eventFilter(watched, event)
 
     def _fit_width(self) -> None:
-        """Wide enough for every row, so the dialog only ever scrolls up and down."""
+        """Wide enough for every row, so the sheet only ever scrolls up and down."""
         even_fields(self)
         wanted = self._body.minimumSizeHint().width() + 2 * SHEET_PAD + 64
         if self.sheet:
@@ -4330,62 +4830,145 @@ class AvailabilityDialog(Dialog):
         elif wanted > self.minimumWidth():
             self.setMinimumWidth(wanted)
 
-    def accept(self) -> None:
-        if self.work_editor.problem():
-            return
-        super().accept()
-
     def _render(self) -> None:
-        self.protected_list.clear()
-        for window in self._protected:
-            item = QListWidgetItem(
-                f"{window.get('kind')} · {hhmm_text(window['start'])} · {window['duration_min']}m · "
-                + ",".join(DAYS[day] for day in window["days"])
-            )
-            self.protected_list.addItem(item)
-        self.study_list.clear()
-        for window in self._study:
-            text = f"{hhmm_text(window['start'])} · {length_label(window['duration_min'])} · " + ",".join(
-                DAYS[day] for day in window["days"]
-            )
-            if window.get("subject"):
-                text += f" · {window['subject']} only"
-            self.study_list.addItem(QListWidgetItem(text))
+        cutoff = self.cutoff.currentData()
+        hours = [
+            (entry["day"], clock_to_minutes(entry["start"]), clock_to_minutes(entry["end"]))
+            for entry in self._hours
+        ]
+        protected = []
+        for entry in self._protected:
+            start = clock_to_minutes(entry["start"])
+            protected.append((entry["day"], start, start + entry["duration_min"]))
+        self.strip.show_week(hours, protected, clock_to_minutes(cutoff) if cutoff else None)
+        legend = "Coloured: study hours. Grey: protected."
+        if cutoff:
+            legend += f" The line: no homework after {hhmm_text(cutoff)}."
+        self.legend.setText(legend)
+        self._fill_rows("study", self._study_rows, self._hours)
+        self._fill_rows("protected", self._protected_rows, self._protected)
+        self.study_empty.setVisible(not self._hours)
+        self.protected_empty.setVisible(not self._protected)
 
-    def _add_protected(self) -> None:
-        if len(self._protected) >= AVAILABILITY_LIMIT:
-            self.error.setText("Up to 21 protected windows.")
-            return
-        self._protected.append(
-            {"kind": PROTECTED_KINDS[0], "days": [0, 1, 2, 3, 4], "start": "18:00", "duration_min": 60}
-        )
+    def _fill_rows(self, kind: str, rows: QVBoxLayout, entries: list[dict]) -> None:
+        if rows.indexOf(self.picker) >= 0:
+            rows.removeWidget(self.picker)
+        while rows.count():
+            widget = rows.takeAt(0).widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        for day in range(7):
+            row = bare(QWidget())
+            line = QHBoxLayout(row)
+            line.setContentsMargins(0, 0, 0, 0)
+            line.setSpacing(SPACING[1])
+            name = QLabel(DAYS[day])
+            name.setMinimumWidth(40)
+            line.addWidget(name)
+            for index, entry in enumerate(entries):
+                if entry["day"] != day:
+                    continue
+                if kind == "study":
+                    words = _span_words(clock_to_minutes(entry["start"]), clock_to_minutes(entry["end"]))
+                    named = entry.get("subject")
+                else:
+                    start = clock_to_minutes(entry["start"])
+                    words = _span_words(start, start + entry["duration_min"])
+                    named = entry.get("title") or PROTECTED_WORDS.get(entry["kind"], entry["kind"])
+                chip = sheet_button(f"{words} {named}  ×" if named else f"{words}  ×", "tonal", f"{kind}Chip")
+                chip.setProperty("kind", kind)
+                chip.setProperty("entry", index)
+                chip.setAccessibleName(f"Remove {words}{' ' + named if named else ''} on {DAYS_LONG[day]}")
+                chip.setToolTip("Remove")
+                chip.clicked.connect(self._remove_chip)
+                line.addWidget(chip)
+            add = sheet_button("+", "outlined", f"{kind}Add")
+            add.setProperty("kind", kind)
+            add.setProperty("day", day)
+            what = "study hours" if kind == "study" else "protected time"
+            add.setAccessibleName(f"Add {what} on {DAYS_LONG[day]}")
+            add.clicked.connect(self._open_picker)
+            line.addWidget(add)
+            line.addStretch(1)
+            rows.addWidget(row)
+            if self._picking == (kind, day):
+                rows.addWidget(self.picker)
+                self.picker.setVisible(True)
+
+    def _remove_chip(self) -> None:
+        chip = self.sender()
+        entries = self._hours if chip.property("kind") == "study" else self._protected
+        del entries[int(chip.property("entry"))]
         self._render()
 
-    def _add_study(self) -> None:
-        if len(self._study) >= AVAILABILITY_LIMIT:
-            self.error.setText("Up to 21 study windows.")
-            return
-        start, end = self.study_start.minutes(), self.study_end.minutes()
-        start, end = start - start % SLOT_MIN, end - end % SLOT_MIN
-        if end - start < SLOT_MIN or start < DAY_START_MIN or end > DAY_END_MIN:
-            self.error.setText("Pick a study window that ends after it starts.")
-            return
-        window: dict = {"days": [0, 1, 2, 3, 4], "start": minutes_to_hhmm(start), "duration_min": end - start}
-        typed = self.study_subject.currentText().strip()
-        if typed and typed != "Any subject":
-            window["subject"] = typed[:40]
+    def _open_picker(self, *, kind: str | None = None, day: int | None = None) -> None:
+        """Open the picker under a day's row: the + that was pressed, or `kind` and `day`."""
+        if kind is None or day is None:
+            button = self.sender()
+            kind, day = str(button.property("kind")), int(button.property("day"))
+        self._picking = (kind, day)
+        self.tabs.setCurrentIndex(self.tabs.findData(kind))
+        study = kind == "study"
+        self.picker_start.setTime(QTime(16, 0) if study else QTime(17, 0))
+        self.picker_end.setTime(QTime(18, 0))
+        self.picker_subject.setCurrentIndex(0)
+        self.picker_kind.setCurrentIndex(0)
+        self.picker_title.clear()
+        for holder in self._picker_extra["study"]:
+            holder.setVisible(study)
+        for holder in self._picker_extra["protected"]:
+            holder.setVisible(not study)
         self.error.setText("")
-        self._study.append(window)
         self._render()
+        self.picker_start.setFocus()
+
+    def _close_picker(self) -> None:
+        self._picking = None
+        self.picker.setVisible(False)
+        self.error.setText("")
+        self._render()
+
+    def _add_picked(self) -> None:
+        if self._picking is None:
+            return
+        kind, day = self._picking
+        start, end = self.picker_start.minutes(), self.picker_end.minutes()
+        start, end = start - start % SLOT_MIN, end - end % SLOT_MIN
+        if end - start < SLOT_MIN:
+            self.error.setText("End must be after Start.")
+            return
+        if kind == "study":
+            entry: dict = {"day": day, "start": minutes_to_hhmm(start), "end": minutes_to_hhmm(end)}
+            typed = self.picker_subject.currentText().strip()
+            if typed and typed != "Any subject":
+                entry["subject"] = typed[:40]
+            entries = self._hours
+        else:
+            entry = {"day": day, "kind": self.picker_kind.currentData(), "start": minutes_to_hhmm(start),
+                     "duration_min": end - start}  # fmt: skip
+            title = self.picker_title.text().strip()
+            if title:
+                entry["title"] = title[:40]
+            entries = self._protected
+            for other in entries:
+                other_start = clock_to_minutes(other["start"])
+                if other["day"] == day and start < other_start + other["duration_min"] and other_start < end:
+                    self.error.setText(f"That overlaps protected time already on {DAYS_LONG[day]}.")
+                    return
+        if entry not in entries:
+            if len(_joined([*entries, entry])) > AVAILABILITY_LIMIT:
+                what = "sets of study hours" if kind == "study" else "protected times"
+                self.error.setText(f"Up to {AVAILABILITY_LIMIT} {what}.")
+                return
+            entries.append(entry)
+        self._close_picker()
 
     def protected(self) -> list[dict]:
-        return deepcopy(self._protected)
-
-    def study_windows(self) -> list[dict]:
-        return deepcopy(self._study)
+        return _joined(self._protected)
 
     def work_windows(self) -> list[dict]:
-        return self.work_editor.windows()
+        return _joined(self._hours)
 
     def day_cutoff(self) -> str | None:
         return self.cutoff.currentData()

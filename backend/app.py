@@ -20,7 +20,7 @@ from backend.assignments import (
     planned_minutes_by_id,
     prepare_solve,
 )
-from backend.availability import spread_sessions
+from backend.availability import fold_study_windows, spread_sessions
 from backend.comfort import REMINDER_LIMITS, TIMER_PRESETS, preview_split
 from backend.day import build_day
 from backend.limits import MAX_BODY
@@ -445,9 +445,8 @@ class Preferences(BaseModel):
     protected: list[ProtectedWindow] = Field(
         default_factory=list, max_length=21, exclude_if=lambda value: not value
     )
-    study_windows: list[StudyWindow] = Field(
-        default_factory=list, max_length=21, exclude_if=lambda value: not value
-    )
+    # Study hours: the one list the planner may use (J7). Older builds also sent preferred
+    # study hours as `study_windows`; carry_preferred_study_hours folds them in.
     work_windows: list[WorkWindow] = Field(
         default_factory=list, max_length=21, exclude_if=lambda value: not value
     )
@@ -487,6 +486,20 @@ class Preferences(BaseModel):
     setup: SetupProgress | None = Field(default=None, exclude_if=lambda value: value is None)
 
     _spotify_url = field_validator("default_spotify_url")(valid_spotify_url)
+
+    @model_validator(mode="before")
+    @classmethod
+    def carry_preferred_study_hours(cls, data: object) -> object:
+        """An export file or client from before the one list may still send preferred study hours.
+        They join Study hours here, as they do where saved preferences are read."""
+        if not isinstance(data, dict) or "study_windows" not in data:
+            return data
+        data = dict(data)
+        study = [StudyWindow.model_validate(item) for item in data.pop("study_windows") or []]
+        if study:
+            work = [WorkWindow.model_validate(item) for item in data.get("work_windows") or []]
+            data["work_windows"] = fold_study_windows(work, study)
+        return data
 
     @field_validator("day_cutoff")
     @classmethod
@@ -691,7 +704,6 @@ def encode_availability(preferences: Preferences) -> str:
     return json.dumps(
         {
             "protected": [window.model_dump() for window in preferences.protected],
-            "study_windows": [window.model_dump() for window in preferences.study_windows],
             "work_windows": [window.model_dump() for window in preferences.work_windows],
             "day_cutoff": preferences.day_cutoff,
         },
@@ -779,15 +791,9 @@ def validate_windows(kind: str, text: str) -> str:
     return json.dumps([model.model_validate(item).model_dump() for item in json.loads(text)])
 
 
-def solve_availability(
-    stored: str | None,
-) -> tuple[list[int], list[StudyWindow], list[WorkWindow]]:
-    occupancy, study, work = flexweek_engine.solve_availability(stored, validate_windows)
-    return (
-        list(occupancy),
-        [StudyWindow.model_validate(item) for item in json.loads(study)],
-        [WorkWindow.model_validate(item) for item in json.loads(work)],
-    )
+def solve_availability(stored: str | None) -> tuple[list[int], list[WorkWindow]]:
+    occupancy, work = flexweek_engine.solve_availability(stored, validate_windows)
+    return list(occupancy), [WorkWindow.model_validate(item) for item in json.loads(work)]
 
 
 def create_app(database: Path | None = None, origin: str | None = None) -> FastAPI:
@@ -1392,7 +1398,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
         with connect(path) as db:
             owned = require_own_assignments(db, account["id"], ids) if ids else {}
             availability = db.availability_json(account["id"])
-        extra_occ, study_windows, work_windows = solve_availability(availability)
+        extra_occ, work_windows = solve_availability(availability)
         blocks = week.blocks
         extra_deadlines = None
         extra_slack = None
@@ -1409,7 +1415,6 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 deadlines=extra_deadlines,
                 slack_deadlines=extra_slack,
                 extra_occ=extra_occ,
-                study_windows=study_windows,
                 work_windows=work_windows,
             ).model_dump()
         if week.running_late is not None:
@@ -1422,7 +1427,6 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 deadlines=extra_deadlines,
                 slack_deadlines=extra_slack,
                 extra_occ=extra_occ,
-                study_windows=study_windows,
                 work_windows=work_windows,
             ).model_dump()
         return solve(
@@ -1430,7 +1434,6 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             deadlines=extra_deadlines,
             slack_deadlines=extra_slack,
             extra_occ=extra_occ,
-            study_windows=study_windows,
             work_windows=work_windows,
         ).model_dump()
 

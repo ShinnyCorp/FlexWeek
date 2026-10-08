@@ -40,16 +40,15 @@ def test_routines_school_hours_and_work_hours_pick_days_with_pills(
     qapp: QApplication,  # noqa: F811
     host: QWidget,  # noqa: F811
 ) -> None:
-    """X7: setup's planning-hours step and Availability ticked work hours' days in check boxes."""
-    from desktop.native.widgets import AvailabilityDialog, RoutineDialog, SchoolHoursDialog
+    """X7: setup's planning-hours step ticked work hours' days in check boxes. (Availability edits
+    each day on its own row since #54, so it has no days to pick.)"""
+    from desktop.native.widgets import RoutineDialog, SchoolHoursDialog
     from desktop.native.work_windows import WorkWindowsEditor
 
     routines = RoutineDialog(host, {}, [], "2026-09-21")
     school = SchoolHoursDialog(host, None)
     work = WorkWindowsEditor([{"days": [0, 2], "start": "16:00", "end": "18:00"}])
-    weekend = {"days": [5], "start": "10:00", "end": "12:00"}
-    availability = AvailabilityDialog(host, {"work_windows": [weekend]})
-    for made in (routines, school, work, availability):
+    for made in (routines, school, work):
         assert day_boxes(made) == [], type(made).__name__
         assert [pill.text() for pill in pills(made)] == list(DAYS), type(made).__name__
     pills(routines)[6].click()
@@ -58,7 +57,7 @@ def test_routines_school_hours_and_work_hours_pick_days_with_pills(
     assert school.days.days() == [1, 2, 3, 4]
     pills(work)[4].click()
     assert work.windows()[0]["days"] == [0, 2, 4]
-    for made in (routines, school, availability):
+    for made in (routines, school):
         free(made)
     free(work)
 

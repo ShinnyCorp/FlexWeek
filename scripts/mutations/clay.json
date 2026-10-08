@@ -29,10 +29,10 @@
  },
  {
   "file": "desktop/native/layouts/clay.py",
-  "name": "neighbours keep a fixed stretch",
+  "name": "neighbours never take the stretch the front opened at",
   "old": "            self._window = window\n",
   "new": "            self._window = self._window\n",
-  "test": "desktop/tests/test_layout_clay.py::test_neighbours_show_the_stretch_the_day_in_front_shows_on_the_drags_step"
+  "test": "desktop/tests/test_layout_clay.py::test_neighbours_show_the_stretch_the_day_in_front_opened_at_and_stay_still_while_it_scrolls"
  },
  {
   "file": "desktop/native/layouts/clay.py",
@@ -166,5 +166,75 @@
   "old": "            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), max(radius - 1, 0), max(radius - 1, 0))\n",
   "new": "            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), max(radius - 1, 0), max(radius - 1, 0))\n        if drawn.columns > 1 and not drawn.held:\n            painter.setBrush(self.fills(drawn)[1])\n            painter.drawEllipse(QPointF(rect.right() - 7, rect.top() + 7), 3.5, 3.5)\n",
   "test": "desktop/tests/test_layout_clay.py::test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "neighbours scroll with the front",
+  "old": "        if self._held == self._opening and not scroll.placing():\n            return\n",
+  "new": "",
+  "test": "desktop/tests/test_layout_clay.py::test_neighbours_show_the_stretch_the_day_in_front_opened_at_and_stay_still_while_it_scrolls"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "the veil at half strength",
+  "old": "VEIL = 0.6\n",
+  "new": "VEIL = 0.5\n",
+  "test": "desktop/tests/test_layout_clay.py::test_neighbours_sit_under_a_60_percent_veil_of_the_page_and_the_front_under_none"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "the veil over the card in front too",
+  "old": "            shape = shape.subtracted(kept)\n",
+  "new": "            shape = shape.united(kept)\n",
+  "test": "desktop/tests/test_layout_clay.py::test_neighbours_sit_under_a_60_percent_veil_of_the_page_and_the_front_under_none"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "a sideways drag on a neighbour picks up instead",
+  "old": "            self._dragging = abs(across) > abs(down)\n",
+  "new": "            self._dragging = False\n",
+  "test": "desktop/tests/test_layout_clay.py::test_a_sideways_drag_on_a_neighbour_slides_the_row_to_that_day"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "the room between the cards never drags",
+  "old": "        self._grip, self._dragging = event.globalPosition(), None\n        event.accept()\n",
+  "new": "        super().mousePressEvent(event)\n        return\n",
+  "test": "desktop/tests/test_layout_clay.py::test_a_sideways_drag_on_the_room_between_the_cards_slides_the_row"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "the front's hours drag the row",
+  "old": "            canvas.setObjectName(\"clayHours\")\n",
+  "new": "            canvas.setObjectName(\"clayHours\")\n            canvas.installEventFilter(self)\n",
+  "test": "desktop/tests/test_layout_clay.py::test_a_drag_on_the_front_cards_hours_is_the_hands_and_never_moves_the_row"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "a short drag switches days",
+  "old": "        if abs(across) < DRAG_LEAST * self.scale:\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_layout_clay.py::test_a_drag_shorter_than_40_pixels_goes_back_to_the_day_it_left"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "a short drag jumps back under motion",
+  "old": "        if length > 0 and moves(motion_level) and self.isVisible() and self._rects:\n",
+  "new": "        if False:\n",
+  "test": "desktop/tests/test_layout_clay.py::test_a_drag_settles_with_the_apps_motion_and_at_once_with_motion_off"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "Day's drag slides the row itself",
+  "old": "        elif not self._open:\n            self._go(target, \"slide\")\n",
+  "new": "        elif True:\n            self._go(target, \"slide\")\n",
+  "test": "desktop/tests/test_layout_clay.py::test_a_sideways_drag_on_day_asks_the_window_for_the_day_as_the_arrows_do"
+ },
+ {
+  "file": "desktop/native/layouts/clay.py",
+  "name": "a click on a neighbour is swallowed",
+  "old": "            else:\n                self._hand_on(event)\n            return True\n",
+  "new": "            else:\n                self._held_press = self._grip = None\n            return True\n",
+  "test": "desktop/tests/test_layout_clay.py::test_a_click_on_a_neighbour_still_opens_its_day_or_its_block"
  }
 ]

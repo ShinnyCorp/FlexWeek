@@ -7,7 +7,7 @@ import time
 
 import flexweek_engine  # type: ignore[import-untyped]
 
-from backend.models import SolveTrace, StudyWindow, TimeBlock, WorkWindow
+from backend.models import SolveTrace, TimeBlock, WorkWindow
 
 SOLVE_BUDGET_MS = 150
 
@@ -45,7 +45,6 @@ def solve(
     deadlines: dict[str, tuple[int, int] | None] | None = None,
     slack_deadlines: dict[str, tuple[int, int]] | None = None,
     extra_occ: list[int] | None = None,
-    study_windows: list[StudyWindow] | None = None,
     work_windows: list[WorkWindow] | None = None,
 ) -> SolveTrace:
     """Place flexible blocks around locked ones. Pure and synchronous."""
@@ -54,7 +53,6 @@ def solve(
         _points(deadlines),
         _points(slack_deadlines),
         extra_occ,
-        _windows(study_windows),
         _windows(work_windows),
         _clock(),
     )
@@ -70,7 +68,6 @@ def reschedule_after_miss(
     deadlines: dict[str, tuple[int, int] | None] | None = None,
     slack_deadlines: dict[str, tuple[int, int]] | None = None,
     extra_occ: list[int] | None = None,
-    study_windows: list[StudyWindow] | None = None,
     work_windows: list[WorkWindow] | None = None,
 ) -> SolveTrace:
     """Mark one locked occurrence missed, solve again, and describe changed flexible placements."""
@@ -82,7 +79,6 @@ def reschedule_after_miss(
         _points(deadlines),
         _points(slack_deadlines),
         extra_occ,
-        _windows(study_windows),
         _windows(work_windows),
         _clock(),
     )
@@ -99,7 +95,6 @@ def reschedule_running_late(
     deadlines: dict[str, tuple[int, int] | None] | None = None,
     slack_deadlines: dict[str, tuple[int, int]] | None = None,
     extra_occ: list[int] | None = None,
-    study_windows: list[StudyWindow] | None = None,
     work_windows: list[WorkWindow] | None = None,
 ) -> SolveTrace:
     """Occupy a late window on one day, solve again, and describe changed flexible placements."""
@@ -112,7 +107,6 @@ def reschedule_running_late(
         _points(deadlines),
         _points(slack_deadlines),
         extra_occ,
-        _windows(study_windows),
         _windows(work_windows),
         _clock(),
     )

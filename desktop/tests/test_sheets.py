@@ -585,7 +585,7 @@ def test_choose_a_times_conflict_line_is_the_amber_row_with_a_warning_mark(
     assert contrast(CONFLICT_TEXT, CONFLICT_FILL) >= 7
     mark = row.findChild(QLabel, "conflictMark")
     assert mark is not None and not mark.pixmap().isNull(), "a warning mark, drawn as the app's icons are"
-    sheet.day.setCurrentIndex(sheet.day.findData(2))
+    sheet.day.set_days([2])
     settle_layout(qapp)
     assert not row.isVisible(), "no clash, no row"
     free(sheet)

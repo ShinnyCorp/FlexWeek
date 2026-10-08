@@ -1,4 +1,4 @@
-"""Homework and planning through the real window: new homework is due today, changing the due date
+"""Homework and planning through the real window: new homework is due tomorrow, changing the due date
 runs what hangs off it, Plan never puts anything before now, a homework's length is checked in words
 beside its box, the due date's calendar shows its whole month, and one Plan is one Undo.
 """
@@ -170,14 +170,14 @@ def press(dialog: QDialog, name: str) -> int:
 def test_nothing_placed_says_nothing_placed_not_planned_zero() -> None:
     assert plan_sentence(0, 1) == "Nothing placed. 1 still needs a time."
     assert plan_sentence(0, 2) == "Nothing placed. 2 still need a time."
-    assert plan_sentence(1, 1) == "Planned 1 homework block. 1 still needs a time."
-    assert plan_sentence(3, 0) == "Planned 3 homework blocks."
+    assert plan_sentence(1, 1) == "Placed 1 homework block. 1 still needs a time."
+    assert plan_sentence(3, 0) == "Placed 3 homework blocks."
 
 
 # Due today
 
 
-def test_new_homework_opens_due_today_whatever_week_is_on_screen(
+def test_new_homework_opens_due_tomorrow_whatever_week_is_on_screen(
     qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     dues: list[str] = []
@@ -188,8 +188,8 @@ def test_new_homework_opens_due_today_whatever_week_is_on_screen(
 
     opened_with(monkeypatch, look)
     window._add_homework()
-    today = thursday_iso(window)
-    assert dues == [today], "due today, not on the Monday of the week on screen"
+    tomorrow = (date.fromisoformat(thursday_iso(window)) + timedelta(days=1)).isoformat()
+    assert dues == [tomorrow], "tomorrow, not on the Monday of the week on screen"
 
     dues.clear()
     window._edit_homework("math")
@@ -199,7 +199,7 @@ def test_new_homework_opens_due_today_whatever_week_is_on_screen(
     window.session.load_week(ahead)
     wait_until(qapp, lambda: window.session.week_start == ahead and not window.session.busy)
     window._add_homework()
-    assert dues[-1] == today
+    assert dues[-1] == tomorrow
 
 
 # The due date's follow-ups
@@ -208,38 +208,37 @@ def test_new_homework_opens_due_today_whatever_week_is_on_screen(
 def test_changing_the_due_date_turns_off_what_acts_on_the_saved_homework(
     qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Spread and Let FlexWeek move it act on the saved homework, so an unsaved edit turns them off.
-    The due date's signal handed a date to a signal that takes none, raised inside Qt, and nothing
-    connected after it ran."""
-    states: list[tuple[str, bool, bool]] = []
+    """Let FlexWeek move it acts on the saved homework, so an unsaved edit turns it off. The due date's
+    signal handed a date to a signal that takes none, raised inside Qt, and nothing connected after it
+    ran."""
+    states: list[tuple[str, bool]] = []
 
     def change(dialog: HomeworkDialog) -> int:
-        spread = dialog.findChild(QPushButton, "spreadHomework")
         unpin = dialog.findChild(QPushButton, "homeworkUnpin")
-        states.append(("opened", spread.isEnabled(), unpin.isEnabled()))
+        states.append(("opened", unpin.isEnabled()))
         dialog.due.date.setDate(dialog.due.date.date().addDays(-1))
-        states.append(("date", spread.isEnabled(), unpin.isEnabled()))
+        states.append(("date", unpin.isEnabled()))
         return QDialog.DialogCode.Rejected
 
     opened_with(monkeypatch, change)
     window._edit_homework("essay")
-    assert states == [("opened", True, True), ("date", False, False)]
+    assert states == [("opened", True), ("date", False)]
 
     for step in ("timed", "time"):
         states.clear()
 
         def other(dialog: HomeworkDialog, step: str = step) -> int:
-            spread = dialog.findChild(QPushButton, "spreadHomework")
+            unpin = dialog.findChild(QPushButton, "homeworkUnpin")
             if step == "timed":
                 dialog.due.timed.setChecked(True)
             else:
                 dialog.due.time.setTime(QTime(7, 45))
-            states.append((step, spread.isEnabled(), True))
+            states.append((step, unpin.isEnabled()))
             return QDialog.DialogCode.Rejected
 
         opened_with(monkeypatch, other)
         window._edit_homework("essay")
-        assert states == [(step, False, True)], f"changing the {step} turns Spread off too"
+        assert states == [(step, False)], f"changing the {step} turns it off too"
 
 
 def test_a_due_field_says_it_changed_with_no_arguments(qapp: QApplication) -> None:
@@ -522,11 +521,11 @@ def test_plan_says_what_it_did_with_an_undo_that_takes_it_all_back(
     window.findChild(QPushButton, "solveButton").click()
     settled(qapp, window)
     monkeypatch.undo()
-    assert shown == [("Planned 3 homework blocks.", "Undo")], "said once, with its Undo, not rewrapped"
+    assert shown == [("Placed 3 homework blocks.", "Undo")], "said once, with its Undo, not rewrapped"
     planned = stored_blocks(window)
     assert planned != before
     assert window.toast.button.isVisible()
-    assert window.toast.text() == "Planned 3 homework blocks."
+    assert window.toast.text() == "Placed 3 homework blocks."
     assert window.toast.button.text() == "Undo"
 
     window.toast.button.click()
@@ -791,7 +790,7 @@ def test_the_rail_and_the_plan_panel_count_the_same_homework_without_a_time(
     settled(qapp, window)
     window.findChild(QPushButton, "solveButton").click()
     settled(qapp, window)
-    assert window.plan_review.heading.text() == "Placed 1 · 1 without a time"
+    assert window.plan_review.heading.text() == plan_sentence(1, 1)
     assert window.rail.waiting_count.text() == "1"
     assert len(window.rail.chips()) == 1
     assert not window.rail.none_waiting.isVisible()

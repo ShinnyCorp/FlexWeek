@@ -382,6 +382,52 @@ page; the Settings forms; the sign-in error and the password eye; the Focus
 screen's controls; Timeline's fold handle; Clay's dimmed neighbours. Drawn
 with the app's own widgets and stylesheet; Jonathan picks; behaviour inside
 them waits for the pick.
+Picked 2026-10-07 (boards in `docs/mockups/round2-0183/`), final after a second
+look: Add and Edit homework B, a segmented "In one go / Spread over days" under
+Estimated time with a grey line saying what Plan will do; Availability the B+C
+mix with tabs (board 2b): a Mon–Sun strip of study hours, protected time and
+the cut-off on top, then Study hours day by day as chips, Protected and
+Cut-off as the other tabs; Setup's Style page C, one big preview at a time
+with the neighbours peeking, arrows and dots; Timeline's fold B, a "‹ 3 | 4 ›"
+handle on the fold in the day-name row, dragged or stepped, keyboard too; Clay
+A at a 60 % veil (board 5b), neighbours still, a horizontal drag on a neighbour
+or the gap switches days, never on the front card's hours; Focus A, Pause
+filled with Skip and Finish outlined in one row, the ring at full accent
+before Start, and Finish asking "End this session?". Group 2 (boards 7 to 9,
+one proposal each to the "done when" below) approved with three calls: Running
+late's row is Accept late start filled (greyed until a preview), Preview
+outlined, Cancel bare; at Large text the title keeps 16 px from the switcher
+even where that shortens Plan to "Plan" (1157 px); Add fixed time's Spotify
+link moves under More details ("New event" is that sheet's old title, renamed,
+not a second entry). Mockup round 2 is complete; batch B can start.
+
+- **J13 Styles on every page (new 2026-10-07).** A style (Plain calendar,
+  Night owl, Dashboard, Retro) changes only the week and day views; Settings,
+  the sheets, Setup and sign-in take the look's colours and nothing else.
+  Jonathan wants each style's feel on every page, including Setup (previewed
+  as it is picked) and sign-in (the last style this computer used), keeping
+  each page's layout, and the change made smoothly. Depth (fonts, shapes and
+  chrome, or shapes and spacing only) is decided from a mockup: Settings and
+  one sheet in each style at both depths. Mocked up first; built in 0.18.3
+  after the pick. Picked 2026-10-07: depth 1, fonts, shapes and chrome (boards
+  `10_styles_*`): Night owl's serif headings, tighter gaps and paper edge;
+  Dashboard's title on the hero tile, its tiles and small shadow; Retro's
+  pixel faces, bevels and Windows 98 frames. Plain calendar is unchanged.
+  Merged 2026-10-07; the week and day pages keep their own design.
+
+Batch B decisions, 2026-10-07 (from the lanes' reports): protected time can
+carry an optional name (up to 40 characters; the chip shows it, else the kind);
+old accounts whose only hours were "preferred" get those as their Study hours,
+no whole-day fallback; the strip's legend says "Coloured: study hours"; the
+Appearance page's design grids stretch like the look grids; Timeline's feet
+follow the fold and reflow, and the fold is also a Settings option ("Days on
+the left page"); Clay's neighbours open at the stretch the front card opened
+at, and a long drag moves up to two days; Save with "Spread over days" drops
+the open time and writes the spread sessions (no second sheet); "Do it at"
+and Spread are exclusive; Setup previews Plain calendar as its page opens.
+Merged into `release/0.18.3`: clay, settings, focus, account, availability,
+timeline-fold, homework, setup, the Settings design-grid follow-up, sheets,
+large-text, and J13 (2026-10-07, after three review rounds).
 
 - **Setup.** #4 At 1280×800 the second row of style cards (Dashboard, Retro)
   is cut by the footer with no fade, the default card shows no selected state,
@@ -494,8 +540,11 @@ them waits for the pick.
   have a recorded answer, the gate, the rig and CI's mutation job are green,
   `CHANGELOG.md` and the release notes are written, and v0.18.2 is published
   as latest.
-- Status: [~] batch A prompt written for Grok 2026-10-03; mockup round 2 not
-  started.
+- Status: [~] batch A released as v0.18.2 (2026-10-04). Batch B and J13 are
+  merged on `release/0.18.3` (2026-10-08): whole suite, mypy, engine cargo
+  checks and every rig green, CHANGELOG and release notes written, version
+  0.18.3. Left: #41 and the "Open after 0.18.1" decisions, the push, CI and
+  publishing, on Jonathan's word.
 
 ### 0.18.3 — Consistency and polish
 Mockup round 3 before the Designs, Buttons and Sign-in lanes: the Day dial and

@@ -2,16 +2,22 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use common::{Dump, by_id, ids, late_legacy, solve_legacy, solve_studied, study_span};
+use common::{Dump, by_id, ids, late_legacy, solve_legacy, work_span};
 use flexweek_engine::plan::{
-    build_day, build_month, occupancy_from_windows, prepare_solve, spread_sessions, study_rank,
+    WINDOW_LIMIT, build_day, build_month, fold_study_windows, occupancy_from_windows,
+    prepare_solve, spread_sessions, study_rank,
 };
-use flexweek_engine::solver::{SOLVE_BUDGET_MS, TimeBlock};
+use flexweek_engine::solver::{SOLVE_BUDGET_MS, SolveTrace, TimeBlock, WorkWindow};
 use flexweek_engine::time::hhmm_to_minutes;
 use serde_json::json;
 
 const CLUSTER_MESSAGE: &str = "Several tasks are short on time. Shorten a session, pick another day, or free some protected hours. Work that cannot fit stays unplaced.";
 const LATE_MESSAGE: &str = "Moved after you ran late so the rest of the day still fits.";
+
+/// The planner with one Study hours list and nothing else.
+fn solve_in_hours(blocks: &[TimeBlock], hours: &[WorkWindow]) -> SolveTrace {
+    common::solve_with(blocks, None, Some(hours), &common::real_clock())
+}
 
 fn locked(id: &str, start: &str, duration_min: i64, days: &[i64]) -> TimeBlock {
     Dump::locked(id, id, duration_min, days, start).into_block()
@@ -50,7 +56,6 @@ fn test_protected_hours_leave_locked_blocks_and_unplace_overflow() {
     let trace = common::solve_with(
         &[wind, homework],
         Some(&occ),
-        None,
         Some(&work),
         &common::real_clock(),
     );
@@ -124,8 +129,9 @@ fn test_packed_fixture_stays_under_budget_with_protected_hours() {
     }
     let meal = protected("meal", &[0, 1, 2, 3, 4, 5, 6], "18:00", 60);
     let occ = occupancy_from_windows(&[meal], Some("21:00")).unwrap();
-    let windows = [study_span(&[0, 1, 2, 3, 4], "15:00", 120, None)];
-    let trace = solve_studied(&blocks, Some(&occ), &windows);
+    let mut hours = common::windows_legacy();
+    hours.push(work_span(&[0, 1, 2, 3, 4], "15:00", "17:00", Some("Math")));
+    let trace = common::solve_with(&blocks, Some(&occ), Some(&hours), &common::real_clock());
     assert!(trace.solve_ms < SOLVE_BUDGET_MS);
 }
 
@@ -172,21 +178,13 @@ fn test_spread_reports_a_remainder_that_fits_no_grid_session() {
 }
 
 #[test]
-fn test_study_windows_are_preferred_before_energy() {
+fn test_study_hours_win_over_energy() {
+    // A high-energy session would go in the morning; the one list keeps it in the evening.
     let homework = flex("hw", 60, &[0], "high", None);
-    let windows = [study_span(&[0], "18:00", 120, None)];
-    let trace = solve_studied(&[homework], None, &windows);
+    let trace = solve_in_hours(&[homework], &[work_span(&[0], "18:00", "20:00", None)]);
     let placed = by_id(&trace.placed, "hw");
     assert_eq!(placed.start.as_deref(), Some("18:00"));
     assert!(hhmm_to_minutes(placed.start.as_deref().unwrap()).unwrap() >= 18 * 60);
-}
-
-#[test]
-fn test_a_short_study_window_does_not_claim_a_longer_session() {
-    let homework = flex("hw", 60, &[0], "high", None);
-    let windows = [study_span(&[0], "21:00", 30, None)];
-    let trace = solve_studied(&[homework], None, &windows);
-    assert_eq!(by_id(&trace.placed, "hw").start.as_deref(), Some("06:00"));
 }
 
 #[test]
@@ -194,13 +192,7 @@ fn test_cutoff_occupancy_blocks_starts_that_would_finish_after_it() {
     let homework = flex("hw", 60, &[0], "high", None);
     let occ = occupancy_from_windows(&[], Some("06:15")).unwrap();
     let work = common::windows_legacy();
-    let trace = common::solve_with(
-        &[homework],
-        Some(&occ),
-        None,
-        Some(&work),
-        &common::real_clock(),
-    );
+    let trace = common::solve_with(&[homework], Some(&occ), Some(&work), &common::real_clock());
     assert_eq!(ids(&trace.unplaced), ["hw"]);
 }
 
@@ -238,10 +230,10 @@ fn test_a_subject_window_is_kept_for_that_subject() {
         .course("reading")
         .into_block();
     let windows = [
-        study_span(&[0], "15:30", 90, Some("Math")),
-        study_span(&[0], "19:00", 120, Some("Reading")),
+        work_span(&[0], "15:30", "17:00", Some("Math")),
+        work_span(&[0], "19:00", "21:00", Some("Reading")),
     ];
-    let trace = solve_studied(&[math, reading], None, &windows);
+    let trace = solve_in_hours(&[math, reading], &windows);
     assert_eq!(by_id(&trace.placed, "math").start.as_deref(), Some("15:30"));
     assert_eq!(
         by_id(&trace.placed, "reading").start.as_deref(),
@@ -250,16 +242,16 @@ fn test_a_subject_window_is_kept_for_that_subject() {
 }
 
 #[test]
-fn test_homework_without_its_own_window_prefers_an_untagged_one() {
+fn test_homework_without_its_own_window_takes_an_untagged_one() {
     let history = Dump::flex("history", "history", 60, &[0])
         .energy("high")
         .course("History")
         .into_block();
     let windows = [
-        study_span(&[0], "15:30", 90, Some("Math")),
-        study_span(&[0], "19:00", 120, None),
+        work_span(&[0], "15:30", "17:00", Some("Math")),
+        work_span(&[0], "19:00", "21:00", None),
     ];
-    let trace = solve_studied(&[history], None, &windows);
+    let trace = solve_in_hours(&[history], &windows);
     assert_eq!(
         by_id(&trace.placed, "history").start.as_deref(),
         Some("19:00")
@@ -267,17 +259,17 @@ fn test_homework_without_its_own_window_prefers_an_untagged_one() {
 }
 
 #[test]
-fn test_another_subjects_window_is_not_a_preference() {
+fn test_another_subjects_window_is_closed_to_it() {
     let reading = Dump::flex("reading", "reading", 60, &[0])
         .energy("high")
         .course("Reading")
         .into_block();
-    let windows = [study_span(&[0], "15:30", 90, Some("Math"))];
-    let trace = solve_studied(&[reading], None, &windows);
-    assert_eq!(
-        by_id(&trace.placed, "reading").start.as_deref(),
-        Some("06:00")
+    let trace = solve_in_hours(
+        &[reading],
+        &[work_span(&[0], "15:30", "17:00", Some("Math"))],
     );
+    assert_eq!(ids(&trace.unplaced), ["reading"]);
+    assert_eq!(trace.moves[0].reason, "WORK_WINDOW_MISS");
 }
 
 #[test]
@@ -301,30 +293,102 @@ fn test_a_subjects_own_window_beats_an_earlier_untagged_one() {
         .course("Math")
         .into_block();
     let windows = [
-        study_span(&[0], "15:30", 90, None),
-        study_span(&[0], "19:00", 90, Some("Math")),
+        work_span(&[0], "15:30", "17:00", None),
+        work_span(&[0], "19:00", "20:30", Some("Math")),
     ];
-    let trace = solve_studied(&[math], None, &windows);
+    let trace = solve_in_hours(&[math], &windows);
     assert_eq!(by_id(&trace.placed, "math").start.as_deref(), Some("19:00"));
 }
 
 #[test]
 fn test_a_window_start_in_other_digits_is_read_as_python_reads_it() {
-    // The StudyWindow pattern's `\d` takes any Unicode digit, and Python's int() reads
-    // "1٩" as 19, so this window keeps 19:00 to 20:30 for Math.
+    // The WorkWindow pattern's `\d` takes any Unicode digit, and Python's int() reads
+    // "1٩" as 19, so this window keeps 19:00 to 20:30 for Math, ahead of the earlier one.
     let math = Dump::flex("math", "math", 60, &[0])
         .energy("high")
         .course("Math")
         .into_block();
-    let windows = [study_span(&[0], "1\u{0669}:00", 90, Some("Math"))];
-    let trace = solve_studied(&[math], None, &windows);
+    let windows = [
+        work_span(&[0], "15:30", "17:00", None),
+        work_span(&[0], "1\u{0669}:00", "20:30", Some("Math")),
+    ];
+    let trace = solve_in_hours(&[math], &windows);
     assert_eq!(by_id(&trace.placed, "math").start.as_deref(), Some("19:00"));
 }
 
 #[test]
 fn test_a_window_start_that_is_not_a_time_is_an_error_not_midnight() {
-    let windows = [json!({"days": [0], "start": "bad", "duration_min": 90})];
+    let windows = [json!({"days": [0], "start": "bad", "end": "12:00"})];
     assert!(study_rank(&windows, None, 0, 0, 60).is_err());
+}
+
+// J7: preferred study hours saved by older builds join the one Study hours list.
+
+#[test]
+fn test_preferred_hours_join_the_list_as_a_start_and_an_end() {
+    let hours = [json!({"days": [0, 1, 2, 3, 4], "start": "16:00", "end": "21:00"})];
+    let preferred = [
+        json!({"days": [5, 6], "start": "10:00", "duration_min": 120}),
+        json!({"days": [0], "start": "23:00", "duration_min": 60, "subject": "Math"}),
+    ];
+    assert_eq!(
+        fold_study_windows(&hours, &preferred).unwrap(),
+        vec![
+            hours[0].clone(),
+            json!({"days": [5, 6], "start": "10:00", "end": "12:00"}),
+            json!({"days": [0], "start": "23:00", "end": "24:00", "subject": "Math"}),
+        ]
+    );
+}
+
+#[test]
+fn test_preferred_hours_already_in_the_list_add_nothing() {
+    let hours = [json!({"days": [0, 1, 2, 3, 4], "start": "16:00", "end": "21:00"})];
+    let inside = json!({"days": [0, 1], "start": "17:00", "duration_min": 60});
+    let twice = [
+        json!({"days": [5], "start": "10:00", "duration_min": 60}),
+        json!({"days": [5], "start": "10:00", "duration_min": 60}),
+    ];
+    assert_eq!(
+        fold_study_windows(&hours, std::slice::from_ref(&inside)).unwrap(),
+        hours.to_vec()
+    );
+    assert_eq!(fold_study_windows(&hours, &twice).unwrap().len(), 2);
+    // Inside on Monday but not on Saturday: Saturday has no such hours yet, so it is carried.
+    let half = json!({"days": [0, 5], "start": "17:00", "duration_min": 60});
+    assert_eq!(
+        fold_study_windows(&hours, std::slice::from_ref(&half)).unwrap()[1],
+        json!({"days": [0, 5], "start": "17:00", "end": "18:00"})
+    );
+}
+
+#[test]
+fn test_a_subjects_preferred_hours_stay_kept_for_it() {
+    // Inside hours for any subject, but those do not put Math first; its own window does.
+    let hours = [json!({"days": [0], "start": "16:00", "end": "21:00"})];
+    let math = json!({"days": [0], "start": "19:00", "duration_min": 90, "subject": "Math"});
+    assert_eq!(
+        fold_study_windows(&hours, std::slice::from_ref(&math)).unwrap()[1],
+        json!({"days": [0], "start": "19:00", "end": "20:30", "subject": "Math"})
+    );
+}
+
+#[test]
+fn test_preferred_hours_alone_become_the_list() {
+    let preferred = [json!({"days": [0, 2], "start": "18:00", "duration_min": 120})];
+    assert_eq!(
+        fold_study_windows(&[], &preferred).unwrap(),
+        vec![json!({"days": [0, 2], "start": "18:00", "end": "20:00"})]
+    );
+}
+
+#[test]
+fn test_the_list_never_grows_past_what_can_be_saved() {
+    let hours: Vec<_> = (0..WINDOW_LIMIT)
+        .map(|index| json!({"days": [index % 7], "start": format!("{:02}:00", index), "end": format!("{:02}:30", index)}))
+        .collect();
+    let preferred = [json!({"days": [6], "start": "23:00", "duration_min": 60})];
+    assert_eq!(fold_study_windows(&hours, &preferred).unwrap(), hours);
 }
 
 // Expected values below come from running the Python reference (`backend/tests/engine_ref` at v0.18.0, since deleted) on the

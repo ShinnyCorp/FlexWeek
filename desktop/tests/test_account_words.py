@@ -12,7 +12,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QPushButton, QToolButton
 
 from desktop.native import window as window_module
 from desktop.native.settings import AccountDialog
@@ -37,8 +37,9 @@ def press(qapp: QApplication, window: NativeWindow, name: str, username: str, pa
     window.password.setText(password)
     window.session._say("")
     wanted.click()
-    wait_until(qapp, lambda: not window.session.busy and bool(window.auth_status.text()))
-    return window.auth_status.text()
+    answered = lambda: bool(window.auth_status.text() or window.auth_error.isVisibleTo(window))  # noqa: E731
+    wait_until(qapp, lambda: not window.session.busy and answered())
+    return window.auth_status.text() or window.auth_error_text.text()
 
 
 @pytest.fixture()
@@ -49,7 +50,7 @@ def returning(qapp: QApplication, window: NativeWindow) -> NativeWindow:  # noqa
     return window
 
 
-WRONG = "Wrong username or password. FlexWeek doesn't say which, so no one can find out who has an account."
+WRONG = "Wrong username or password."
 
 
 @pytest.mark.parametrize(
@@ -220,12 +221,13 @@ def test_a_sign_in_error_does_not_follow_onto_reset_your_password(
     returning: NativeWindow,
 ) -> None:
     press(qapp, returning, "signIn", USERNAME, "not-the-right-password")
-    assert returning.auth_status.text() == WRONG
+    assert returning.auth_error.isVisibleTo(returning)
     returning.findChild(QPushButton, "forgotPassword").click()
     qapp.processEvents()
     assert returning.auth_heading.text() == "Reset your password"
     assert returning.auth_status.text() == ""
     assert not returning.auth_status.isVisible()
+    assert not returning.auth_error.isVisibleTo(returning)
 
 
 def test_signed_out_does_not_stay_on_reset_your_password(
@@ -261,3 +263,24 @@ def test_a_recovery_error_does_not_follow_back_to_sign_in(
     assert returning.auth_heading.text() in {"Welcome", "Welcome back"}
     assert returning.auth_status.text() == ""
     assert not returning.auth_status.isVisible()
+
+
+def test_manage_account_password_boxes_have_the_eye_sign_in_has(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+) -> None:
+    """#71: both boxes hold a Show password eye that flips the echo between dots and the typed text."""
+    dialog = AccountDialog(window, 8, {"username": "student"})
+    dialog.show()
+    qapp.processEvents()
+    for field in (dialog.current_password, dialog.new_password):
+        eye = field.findChild(QToolButton, "passwordReveal")
+        assert eye is not None and eye.isVisible()
+        assert field.echoMode() == QLineEdit.EchoMode.Password
+        assert eye.accessibleName() == "Show password"
+        eye.click()
+        assert field.echoMode() == QLineEdit.EchoMode.Normal
+        assert eye.accessibleName() == "Hide password"
+        eye.click()
+        assert field.echoMode() == QLineEdit.EchoMode.Password
+    dialog.close()

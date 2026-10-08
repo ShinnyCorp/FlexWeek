@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
 from uuid import uuid4
@@ -100,9 +101,11 @@ from desktop.native.widgets import (
     ChoiceCard,
     Choices,
     Dialog,
+    FieldLabel,
     FitScroll,
     FlowLayout,
     Form,
+    PasswordField,
     Segmented,
     Swatches,
     Switch,
@@ -126,6 +129,10 @@ PREFS_NAV_PAD = 8
 SETTINGS_COLUMN = 960
 CARD_PAD = 16
 SECTION_GAP_BELOW = 24
+# One width for every control in a column of Focus or Alerts, and for the three buttons of This
+# computer, so a column reads as one edge (#68). A wider control, at Large text, widens the rest.
+CONTROL_WIDTH = 260
+BUTTON_WIDTH = 190
 SECTIONS = ("Appearance & layout", "Planning", "Focus", "Alerts", "This computer")
 # Each section's icon in the list, Lucide's names (decision 24 of 0.17). None on the rows themselves.
 SECTION_ICONS = ("palette", "calendar", "timer", "bell", "laptop")
@@ -139,15 +146,19 @@ ACCENT_LABELS = {"default": "Blue"}
 OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
 # A look of the student's own sets the accent and every knob (look.py's resolved_palette and
 # effective_look), so while one is worn they show its values and say where they change instead.
-OWN_LOOK_ACCENT_NOTE = "{name} sets the accent. To change it, open Customise…"
-OWN_LOOK_KNOBS_NOTE = "{name} sets these. To change them, open Customise… in Colours."
+OWN_LOOK_ACCENT_NOTE = "{name} sets the accent. To change it, open Edit your own look…"
+OWN_LOOK_KNOBS_NOTE = "{name} sets these. To change them, open Edit your own look… in Colours."
 CUSTOMISE = "Customise"
+# The button on the Colours card; the command bar and menus keep the shorter name.
+EDIT_OWN_LOOK = "Edit your own look…"
 CUSTOMISE_TIP = "Change any look, colours, corners and fonts included, and save it as your own."
 # A saved look's choice under More looks, after the ten, by its name.
 SAVED_LOOK = "saved:"
 YOUR_LOOKS = "Your looks"
 UNSAVED_LOOK = "{name} (not saved)"
 WEARING = "Wearing {name}"
+# What a card says inside itself while its look is the one worn.
+WORN = "Wearing"
 # The footer says this one thing; the status line's routine "Saving…" and "Saved preferences." would
 # have it swap between two sentences for the same fact (Grok Bot's 0.17.0 audit, T33).
 SAVE_STATE = "Changes are saved as you make them."
@@ -330,6 +341,41 @@ def _section_page(title: str, cards: tuple[QWidget, ...]) -> QWidget:
     return page
 
 
+class LookCard(ChoiceCard):
+    """A look's card. The one worn is ringed and says so inside the card. Every card keeps that line
+    (a space when it is not worn), so wearing another look moves nothing on the page."""
+
+    def __init__(self, name: str, width: int) -> None:
+        super().__init__(name, "", width)
+        self.note.setVisible(True)
+
+    def select(self, on: bool) -> None:
+        super().select(on)
+        self.note.setText(WORN if on else " ")
+        self.setAccessibleDescription(WORN if on else "")
+
+
+class LookGrid(CardGrid):
+    """The looks as cards that share the row: as many to a row as hold their smallest width, each
+    as wide as the row allows, its picture drawn at that width (the grid left 75 to 190 px empty on
+    the right)."""
+
+    def __init__(self, card_width: int, gap: int, draw: Callable[[ChoiceCard, int], None]) -> None:
+        super().__init__(card_width, gap)
+        self._draw = draw
+
+    def _place(self, room: int) -> None:
+        super()._place(room)
+        columns = self.columns()
+        if not columns:
+            return
+        picture = (room - (columns - 1) * self._gap) // columns - CARD_WIDTH_PAD
+        for card in self.cards:
+            if card.picture.width() != picture:
+                card.set_width(picture)
+                self._draw(card, picture)
+
+
 class LookPicker(Choices):
     """Look as "Light | Dark | System", with every other look as a small picture of a week in its own
     colours under them, and the student's own looks after those (decision 24 of 0.17; Grok Bot's
@@ -346,13 +392,14 @@ class LookPicker(Choices):
         for label, token in ordered:
             self._remember(label, token)
         self._tile_width = LOOK_TILE
+        self._saved: list[dict] = []
         self.main = Segmented(tuple(item for item in ordered if item[1] in main), f"{name}Main")
         self.main.setAccessibleName("Look")
-        self.more = CardGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP)
+        self.more = LookGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP, self._draw)
         self.more.setObjectName(f"{name}More")
         self.more.setAccessibleName(MORE_LOOKS)
         self.more.set_cards([self._tile(label, token, []) for label, token in ordered if token not in main])
-        self.yours = CardGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP)
+        self.yours = LookGrid(LOOK_TILE + CARD_WIDTH_PAD, CARD_GAP, self._draw)
         self.yours.setObjectName(f"{name}Yours")
         self.yours.setAccessibleName(YOUR_LOOKS)
         self.worn = QLabel()
@@ -366,6 +413,11 @@ class LookPicker(Choices):
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
         box.addWidget(self.main, 0, Qt.AlignmentFlag.AlignLeft)
+        # Under Light, Dark and System, as the card says it for the others. Always shown, a space when
+        # nothing is worn here, so choosing another look moves nothing.
+        self.main_worn = QLabel(" ")
+        self.main_worn.setObjectName("settingsCardNote")
+        box.addWidget(self.main_worn)
         caption = QLabel(MORE_LOOKS)
         caption.setObjectName("settingsCardNote")
         box.addWidget(caption)
@@ -376,17 +428,21 @@ class LookPicker(Choices):
         self.main.currentIndexChanged.connect(self._picked_main)
         self._built_in = self.count()
         self._unsaved: str | None = None
-        self._saved: list[dict] = []
 
     def _tile(self, label: str, token: str, saved: list[dict]) -> ChoiceCard:
         """A look as a picture of a week in its colours over its name; one click, or Space or Enter,
         wears it."""
-        card = ChoiceCard(label, "", self._tile_width)
+        card = LookCard(label, self._tile_width)
         card.setProperty("token", token)
         pack, look = look_choice(token, saved)
         card.set_picture(look_preview(pack, look, self._tile_width))
         card.chosen.connect(self._picked_tile)
         return card
+
+    def _draw(self, card: ChoiceCard, width: int) -> None:
+        """A card's picture at `width`: drawn again when the card is stretched, so it stays sharp."""
+        pack, look = look_choice(card.property("token"), self._saved)
+        card.set_picture(look_preview(pack, look, width))
 
     def set_text_scale(self, scale: float) -> None:
         """The pictures as much wider as the text is larger, so a name keeps its one line under its
@@ -398,8 +454,7 @@ class LookPicker(Choices):
         for grid in (self.more, self.yours):
             for card in grid.cards:
                 card.set_width(width)
-                pack, look = look_choice(card.property("token"), self._saved)
-                card.set_picture(look_preview(pack, look, width))
+                self._draw(card, width)
             grid.set_card_width(width + CARD_WIDTH_PAD)
 
     def set_saved(self, looks: list[dict]) -> None:
@@ -432,12 +487,14 @@ class LookPicker(Choices):
         self.setCurrentIndex(self.findData(self.sender().property("token")))
 
     def _say_worn(self) -> None:
-        """Light, Dark and System show no choice while another look is worn, so the look is named
-        where the pictures are, as well as marked on its own."""
-        name = self.currentText() or (UNSAVED_LOOK.format(name=self._unsaved) if self._unsaved else "")
-        elsewhere = bool(name) and self.main.currentIndex() < 0
-        self.worn.setText(WEARING.format(name=name) if elsewhere else "")
-        self.worn.setVisible(elsewhere)
+        """The look worn is marked where it is picked: Light, Dark and System say it under themselves,
+        a card inside itself. A look of the student's own that is not saved has neither, so the
+        line under the pictures names it."""
+        on_main = self.main.currentIndex() >= 0
+        self.main_worn.setText(WEARING.format(name=self.currentText()) if on_main else " ")
+        unsaved = not self.currentText() and bool(self._unsaved)
+        self.worn.setText(WEARING.format(name=UNSAVED_LOOK.format(name=self._unsaved)) if unsaved else "")
+        self.worn.setVisible(unsaved)
 
     def _show(self, index: int) -> None:
         token = self.itemData(index) if index >= 0 else None
@@ -642,7 +699,7 @@ class SettingsPage(QWidget):
         self.accent_note = _note(OWN_ACCENT_NOTE, "settingsCardNote")
         # The width of the swatches' column, so the line under them is one line.
         self.accent_note.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.customise = _page_button(f"{CUSTOMISE}…", "prefCustomise")
+        self.customise = _page_button(EDIT_OWN_LOOK, "prefCustomise")
         self.customise.setToolTip(CUSTOMISE_TIP)
         self.customise.clicked.connect(self._open_customise)
         self.accent_chips = Switch("Use the accent on category chips")
@@ -827,10 +884,11 @@ class SettingsPage(QWidget):
         boxes = (self.work, self.break_min, self.long_break, self.long_every)
         self.focus_steppers = [Stepper(box) for box in boxes]
         work, rest, long_rest, every = self.focus_steppers
+        # The preset first: it sets the three lengths under it.
+        focus_form.addRow("Timer preset", self.preset_timer)
         focus_form.addRow("Focus minutes", work)
         focus_form.addRow("Break minutes", rest)
         focus_form.addRow("Long break minutes", long_rest)
-        focus_form.addRow("Timer preset", self.preset_timer)
         focus_form.addRow("Long break after", every)
         focus_form.addRow(self.auto_split)
         focus = _section_page("Focus", (focus_card,))
@@ -843,7 +901,8 @@ class SettingsPage(QWidget):
         reminder_form = Form(self.reminder_controls)
         reminder_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         reminder_form.setContentsMargins(0, 0, 0, 0)
-        reminder_form.addRow("How long before", Stepper(self.lead))
+        self.lead_stepper = Stepper(self.lead)
+        reminder_form.addRow("How long before", self.lead_stepper)
         reminder_form.addRow(self.reminder_sound)
         tone_row = QHBoxLayout()
         tone_row.addWidget(self.alarm_tone)
@@ -915,7 +974,8 @@ class SettingsPage(QWidget):
         button_row.addStretch(1)
         alarms_form.addRow(button_row)
         all_card, all_form = _card("All alerts")
-        all_form.addRow("Volume", Stepper(self.volume))
+        self.volume_stepper = Stepper(self.volume)
+        all_form.addRow("Volume", self.volume_stepper)
         all_form.addRow(self.end_chime)
         all_form.addRow(self.tray)
         all_form.addRow(_note(TRAY_NOTE, "prefTrayNote"))
@@ -946,7 +1006,10 @@ class SettingsPage(QWidget):
         update_col.addWidget(version)
         update_col.addWidget(check_updates)
         computer_form.addRow("Updates", update_col)
+        self.computer_buttons = (open_account, run_setup, check_updates)
         computer = _section_page("This computer", (start_card, computer_card))
+        # Their values start at one x, so each one's labels share a column.
+        self._aligned = (focus, alerts, computer)
         rail = QWidget()
         rail.setObjectName("settingsRail")
         rail.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -992,18 +1055,26 @@ class SettingsPage(QWidget):
         self.done.setToolTip("Back to your week (Esc)")
         self.done.clicked.connect(self.close_page)
         footer_line.addWidget(self.done)
-        column = QVBoxLayout()
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(0)
-        column.addWidget(self.stack, 1)
-        column.addWidget(footer)
+        # The footer floats over the bottom of the page, so what scrolls under it fades out above it and
+        # each section is padded by the footer's height to end clear of it (mockup 8, #66).
+        footer.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.footer = footer
+        footer.installEventFilter(self)
+        stage = QWidget()
+        stage_grid = QGridLayout(stage)
+        stage_grid.setContentsMargins(0, 0, 0, 0)
+        stage_grid.addWidget(self.stack, 0, 0)
+        stage_grid.addWidget(footer, 0, 0, Qt.AlignmentFlag.AlignBottom)
+        self.footer_fade = FooterFade(stage, self.stack, footer)
+        footer.raise_()
+        self._clear_footer()
         # Settings, and over them the look editor while it is open.
         self.body = QWidget()
         outer = QHBoxLayout(self.body)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         outer.addWidget(rail)
-        outer.addLayout(column, 1)
+        outer.addWidget(stage, 1)
         self._screens = QStackedLayout(self)
         self._screens.addWidget(self.body)
         self.editor: LookEditor | None = None
@@ -1094,6 +1165,7 @@ class SettingsPage(QWidget):
         colours, and one width for each kind of field in the look's font. Then the list fits its longest
         name; at large text a fixed width cut "Appearance & layout" off."""
         palette = self.shown_palette()
+        self.footer_fade.set_colour(QColor(palette["window"]))
         self.accent.set_colours({name: ACCENT_COLORS[name][palette["axis"]] for name in ACCENTS})
         size = 16
         self.nav.setIconSize(QSize(size, size))
@@ -1106,9 +1178,12 @@ class SettingsPage(QWidget):
         # Section by section: a dropdown on Alerts need not make Appearance's wider than its page.
         for index in range(self.stack.count()):
             even_fields(self.stack.widget(index))
-            even_labels(self.stack.widget(index))
-        # Once the steppers have their look: before it, their − and + had no width yet.
-        QTimer.singleShot(0, self, self._even_focus)
+            if self.stack.widget(index).widget() not in self._aligned:
+                even_labels(self.stack.widget(index))
+        self._one_label_column()
+        self._even_controls()
+        # Again once the steppers have their look: before it, their − and + had no width yet.
+        QTimer.singleShot(0, self, self._even_controls)
         margins = self.nav.contentsMargins()
         self.nav.setFixedWidth(
             self.nav.sizeHintForColumn(0) + margins.left() + margins.right() + 2 * self.nav.frameWidth()
@@ -1122,14 +1197,65 @@ class SettingsPage(QWidget):
             f"color: {palette['accent_ink']}; }}"
         )
 
-    def _even_focus(self) -> None:
-        """Timer preset as wide as the − value + fields above and below it (T20 of the 0.17.0 audit);
-        when its longest name is wider, every box widens with it instead."""
-        stepped = self.focus_steppers[0].sizeHint().width()
-        width = max(self.preset_timer.sizeHint().width(), stepped)
-        for stepper in self.focus_steppers:
-            stepper.box.setFixedWidth(stepper.box.width() + width - stepped)
-        self.preset_timer.setFixedWidth(width)
+    def _one_label_column(self) -> None:
+        """Focus, Alerts and This computer with one label column between them, so their values start
+        at one x: each page sized its own to its longest label (even_labels does one page)."""
+        labels = [label for page in self._aligned for label in page.findChildren(FieldLabel)]
+        for label in labels:
+            label.setMinimumWidth(0)
+        widest = max((label.sizeHint().width() for label in labels), default=0)
+        for label in labels:
+            label.setMinimumWidth(widest)
+
+    def _even_controls(self) -> None:
+        """Every control in Focus's column one width, the preset as wide as the steppers (T20 of the
+        0.17.0 audit), and so for Alerts' and the three buttons of This computer."""
+        columns = (
+            [self.preset_timer, *self.focus_steppers],
+            [
+                self.lead_stepper,
+                self.volume_stepper,
+                self.alarm_tone,
+                self.spotify,
+                self.alarm_name,
+                self.alarm_time,
+                self.alarm_sound,
+                self.alarm_spotify,
+            ],
+        )
+        for controls in columns:
+            width = max(CONTROL_WIDTH, *(self._natural_width(control) for control in controls))
+            for control in controls:
+                if isinstance(control, Stepper):
+                    control.box.setFixedWidth(width - self._stepper_chrome(control))
+                else:
+                    control.setFixedWidth(width)
+        width = max(BUTTON_WIDTH, *(button.sizeHint().width() for button in self.computer_buttons))
+        for button in self.computer_buttons:
+            button.setFixedWidth(width)
+
+    @staticmethod
+    def _stepper_chrome(stepper: Stepper) -> int:
+        return stepper.less.sizeHint().width() + stepper.more.sizeHint().width()
+
+    def _natural_width(self, control: QWidget) -> int:
+        if isinstance(control, Stepper):
+            return self._stepper_chrome(control) + control.box.sizeHint().width()
+        return control.sizeHint().width()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self.footer and event.type() == QEvent.Type.Resize:
+            self._clear_footer()
+        return super().eventFilter(watched, event)
+
+    def _clear_footer(self) -> None:
+        """Every section padded below its last card by the footer's height, so the end of a section
+        rests above the footer and not under it."""
+        room = max(self.footer.height(), self.footer.sizeHint().height()) + SECTION_GAP_BELOW
+        for index in range(self.stack.count()):
+            around = self.stack.widget(index).widget().layout()
+            edges = around.contentsMargins()
+            around.setContentsMargins(edges.left(), edges.top(), edges.right(), room)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         if event.key() == Qt.Key.Key_Escape:
@@ -1185,6 +1311,7 @@ class SettingsPage(QWidget):
         layout = sanitize_layout(week_layout)
         for section in self.layout_sections:
             section.pick.setCurrentIndex(max(0, section.pick.findData(layout[section.slot])))
+            section.sync(layout)
         self.reminders.setChecked(preferences.get("reminders_enabled", True) is not False)
         self.lead.setValue(reminder_lead_min(preferences))
         tone = preferences.get("alarm_tone") or FALLBACK
@@ -1609,12 +1736,10 @@ class AccountDialog(Dialog):
         column.setSpacing(SPACING[2])
         sheet_section(column, "Password", ACCOUNT_PASSWORD_NOTE)
         form = Form(stacked=True)
-        self.current_password = QLineEdit()
-        self.current_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.current_password = PasswordField()
         self.current_password.setObjectName("currentPassword")
         form.addRow("Current password", self.current_password)
-        self.new_password = QLineEdit()
-        self.new_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.new_password = PasswordField()
         self.new_password.setObjectName("newPassword")
         form.addRow("New password", self.new_password)
         column.addLayout(form)
@@ -1821,6 +1946,57 @@ class ScrollFade(QWidget):
         painter.end()
 
 
+class FooterFade(QWidget):
+    """The page fading into the footer's colour just above the footer while a section has more under
+    it, so a cut row reads as more to scroll to and not as a hard edge. Hidden at the end, where the
+    section's padding has already left the footer clear."""
+
+    def __init__(self, stage: QWidget, stack: QStackedWidget, footer: QWidget) -> None:
+        super().__init__(stage)
+        self.setObjectName("settingsFooterFade")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._stack, self._footer = stack, footer
+        self._colour = QColor("white")
+        for index in range(stack.count()):
+            bar = stack.widget(index).verticalScrollBar()
+            bar.valueChanged.connect(self._follow)
+            bar.rangeChanged.connect(self._follow)
+        stack.currentChanged.connect(self._follow)
+        stage.installEventFilter(self)
+        footer.installEventFilter(self)
+        self._follow()
+
+    def set_colour(self, colour: QColor) -> None:
+        self._colour = colour
+        self.update()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Move):
+            self._follow()
+        return False
+
+    def _follow(self, *_args: object) -> None:
+        stage = self.parentWidget()
+        self.setGeometry(0, max(0, self._footer.y() - FADE_PX), stage.width(), FADE_PX)
+        area = self._stack.currentWidget()
+        bar = area.verticalScrollBar() if area is not None else None
+        self.setVisible(bar is not None and bar.value() < bar.maximum())
+        self.raise_()
+        self._footer.raise_()
+
+    def paintEvent(self, _event: QPaintEvent) -> None:  # noqa: N802
+        clear = QColor(self._colour)
+        clear.setAlpha(0)
+        # Ends a row early so the last row is the page colour whole, and a dark picture behind it does
+        # not show a few per cent through.
+        ramp = QLinearGradient(0, 0, 0, self.height() - 1)
+        ramp.setColorAt(0, clear)
+        ramp.setColorAt(1, self._colour)
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), ramp)
+        painter.end()
+
+
 def _logo(side: int) -> QLabel:
     ratio = QGuiApplication.primaryScreen().devicePixelRatio() if QGuiApplication.primaryScreen() else 1.0
     made = QLabel()
@@ -1840,6 +2016,8 @@ def _logo(side: int) -> QLabel:
 
 
 class AboutDialog(Dialog):
+    _pin_top = True
+
     def __init__(self, parent: QWidget | None, storage: dict | None, folder: str) -> None:
         super().__init__(parent, sheet=True)
         layout = self.card_body("About FlexWeek")
@@ -1866,12 +2044,15 @@ class AboutDialog(Dialog):
             open_folder.setToolTip(folder)
             open_folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(folder)))
             layout.addWidget(open_folder)
+        layout.addSpacing(SPACING[3])
 
 
 class HelpDialog(Dialog):
     """Enough to find your way: the screens two by two, then the keys, drawn as keycaps. A list's sheet,
     600 wide (5.1 A of 0.17.2), so the shortcuts are one column: beside the screens, their words wrapped
     a word or two to a line."""
+
+    _pin_top = True
 
     def __init__(self, parent: QWidget | None) -> None:
         super().__init__(parent, sheet=True)
@@ -1909,6 +2090,7 @@ class HelpDialog(Dialog):
         for key, what in HELP_KEYS:
             keys.addRow(keycaps(key), _line(what, "helpKeyDoes"))
         column.addWidget(key_list)
+        column.addSpacing(SPACING[3])
         column.addStretch(1)
         # A dialog's minimum counts a wrapped line as one line, so at large text on a laptop, Help at
         # its minimum squeezed the shortcuts to half their height. A scroll area gives the words the

@@ -19,7 +19,8 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QPushButton, QScrollArea, QWidget
+    from PySide6.QtCore import QTime
+    from PySide6.QtWidgets import QApplication, QComboBox, QWidget
 
     from desktop.native.widgets import AvailabilityDialog, BlockDialog
 
@@ -177,7 +178,7 @@ def test_the_homework_editor_is_wide_enough_to_read_after_it_was_made_to_scroll(
 
 
 def test_an_off_grid_estimate_says_to_use_a_multiple_of_fifteen(qapp: QApplication) -> None:
-    from desktop.native.widgets import ESTIMATE_ERROR, SLOT_HINT, HomeworkDialog
+    from desktop.native.widgets import SLOT_HINT, HomeworkDialog
 
     dialog = HomeworkDialog(None, None, "2026-09-14")
     dialog.title.setText("Essay")
@@ -186,9 +187,10 @@ def test_an_off_grid_estimate_says_to_use_a_multiple_of_fifteen(qapp: QApplicati
     qapp.processEvents()
     dialog.accept()
     assert dialog.result() != dialog.DialogCode.Accepted
-    assert dialog.error.text() == ESTIMATE_ERROR
-    assert dialog.error.isVisible()
-    assert dialog.findChild(type(dialog.estimate_hint), "homeworkEstimateHint").text() == SLOT_HINT
+    hint = dialog.findChild(type(dialog.estimate_hint), "homeworkEstimateHint")
+    assert hint.text() == SLOT_HINT
+    assert hint.isVisible() and hint.property("problem") is True
+    assert not dialog.error.isVisible(), "said once, beside the box"
     dialog.close()
 
 
@@ -346,91 +348,47 @@ def test_a_short_password_names_the_field_instead_of_a_generic_check(qapp: QAppl
     assert "x" not in err.message
 
 
-def test_work_windows_can_be_added_edited_and_removed_in_settings(qapp: QApplication) -> None:
-    dialog = AvailabilityDialog(None, {}, ["Math"])
-    dialog.show()
-    qapp.processEvents()
-    editor = dialog.work_editor
-    assert editor.windows() == []
-    assert "any time of day" in editor.findChild(QLabel, "workWindowsMessage").text()
-
-    editor.findChild(QPushButton, "workWindowPresetAfterschool").click()
-    row = editor.findChild(QWidget, "workWindowRow")
-    editor.set_subjects(["Math", "Reading"])
-    assert row.findChild(QComboBox, "workWindowSubject").findText("Reading") >= 0
-    row.findChild(QComboBox, "workWindowStart").setCurrentText("15:45")
-    row.findChild(QComboBox, "workWindowEnd").setCurrentText("18:15")
-    row.findChild(QComboBox, "workWindowSubject").setEditText("Biology")
-    row.findChild(QWidget, "workWindowDay4").setChecked(False)
-    assert dialog.work_windows() == [
-        {"days": [0, 1, 2, 3], "start": "15:45", "end": "18:15", "subject": "Biology"}
-    ]
-
-    editor.findChild(QPushButton, "workWindowAdd").click()
-    qapp.processEvents()
-    scroll = dialog.findChild(QScrollArea)
-    assert dialog.width() >= 640
-    assert scroll.horizontalScrollBar().maximum() == 0
-    rows = editor.findChildren(QWidget, "workWindowRow")
-    rows[1].findChild(QComboBox, "workWindowEnd").setCurrentText("24:00")
-    rows[0].findChild(QPushButton, "workWindowRemove").click()
-    qapp.processEvents()
-    assert dialog.work_windows() == [
-        {"days": [0, 1, 2, 3, 4], "start": "16:00", "end": "24:00"}
-    ]
-    assert "only planned between" in editor.findChild(QLabel, "workWindowsMessage").text()
-    dialog.accept()
-    assert dialog.result() == dialog.DialogCode.Accepted
-
-
-def test_touching_and_overlapping_work_windows_are_kept(qapp: QApplication) -> None:
+def test_touching_and_overlapping_study_hours_are_kept(qapp: QApplication) -> None:
     windows = [
         {"days": [0], "start": "15:00", "end": "17:00"},
         {"days": [0], "start": "17:00", "end": "19:00"},
         {"days": [0], "start": "16:00", "end": "18:00"},
     ]
     dialog = AvailabilityDialog(None, {"work_windows": windows})
-    assert dialog.work_editor.problem() is None
     dialog.accept()
     assert dialog.result() == dialog.DialogCode.Accepted
     assert dialog.work_windows() == windows
 
 
-def test_work_window_limit_and_reset_in_settings(qapp: QApplication) -> None:
-    dialog = AvailabilityDialog(None, {})
-    editor = dialog.work_editor
-    editor.set_windows([{"days": [0], "start": "16:00", "end": "17:00"} for _ in range(21)])
-    assert len(dialog.work_windows()) == 21
-    assert not editor.findChild(QPushButton, "workWindowAdd").isEnabled()
-    assert editor.findChild(QLabel, "workWindowsLimit").text() == "21 is the most you can add."
-    editor.set_windows([])
-    assert editor.findChild(QLabel, "workWindowsLimit").text() == "", "nothing to say below the limit"
-    assert dialog.work_windows() == []
-    assert editor.findChild(QPushButton, "workWindowAdd").isEnabled()
-
-
-def test_work_window_end_before_start_is_refused_beside_end(qapp: QApplication) -> None:
-    dialog = AvailabilityDialog(
-        None,
-        {"work_windows": [{"days": [5, 6], "start": "10:00", "end": "12:00"}]},
-    )
-    dialog.show()
-    qapp.processEvents()
-    row = dialog.work_editor.findChild(QWidget, "workWindowRow")
-    row.findChild(QComboBox, "workWindowEnd").setCurrentText("09:45")
-    qapp.processEvents()
-    error = row.findChild(QLabel, "validationError")
-    assert error.text() == "End must be after Start."
-    assert error.isVisible()
-    assert dialog.work_editor.problem() == "End must be after Start."
-    dialog.accept()
-    assert dialog.result() != dialog.DialogCode.Accepted
+def test_study_hours_stop_at_the_limit(qapp: QApplication) -> None:
+    full = [{"days": [at % 7], "start": f"{at:02d}:00", "end": f"{at:02d}:30"} for at in range(21)]
+    dialog = AvailabilityDialog(None, {"work_windows": full})
+    dialog._open_picker(kind="study", day=0)
+    dialog.picker_start.setTime(QTime(22, 0))
+    dialog.picker_end.setTime(QTime(23, 0))
+    dialog.picker_add.click()
+    assert dialog.error.text() == "Up to 21 sets of study hours."
+    assert dialog.work_windows() == full
+    # Hours equal to some already saved join them, so they never count against the limit.
+    dialog._open_picker(kind="study", day=1)
+    dialog.picker_start.setTime(QTime(0, 0))
+    dialog.picker_end.setTime(QTime(0, 30))
+    dialog.picker_add.click()
     assert dialog.error.text() == ""
+    assert dialog.work_windows()[0] == {"days": [0, 1], "start": "00:00", "end": "00:30"}
 
-    row.findChild(QComboBox, "workWindowEnd").setCurrentText("12:00")
-    qapp.processEvents()
-    assert error.text() == ""
-    assert dialog.work_editor.problem() is None
+
+def test_study_hours_that_end_before_they_start_are_refused(qapp: QApplication) -> None:
+    dialog = AvailabilityDialog(None, {"work_windows": [{"days": [5, 6], "start": "10:00", "end": "12:00"}]})
+    dialog._open_picker(kind="study", day=5)
+    dialog.picker_start.setTime(QTime(10, 0))
+    dialog.picker_end.setTime(QTime(9, 45))
+    dialog.picker_add.click()
+    assert dialog.error.text() == "End must be after Start."
+    assert dialog.picker.isVisibleTo(dialog), "the picker stays open to fix the time"
+    dialog.picker_cancel.click()
+    assert dialog.error.text() == ""
+    assert dialog.work_windows() == [{"days": [5, 6], "start": "10:00", "end": "12:00"}]
     dialog.accept()
     assert dialog.result() == dialog.DialogCode.Accepted
 
@@ -454,11 +412,11 @@ def test_new_homework_is_due_on_a_day_and_a_time_only_when_asked(qapp: QApplicat
     dialog = HomeworkDialog(None, None, "2026-09-14")
     dialog.show()
     qapp.processEvents()
-    assert dialog.due.value() == "2026-09-14"
+    assert dialog.due.value() == "2026-09-15", "tomorrow, whatever the hour"
     assert not dialog.due.time.isVisible(), "no time box until the student says it is due at one"
     dialog.due.timed.setChecked(True)
     assert dialog.due.time.isVisible()
-    assert dialog.due.value() == "2026-09-14T09:00"
+    assert dialog.due.value() == "2026-09-15T15:00", "the end of the school day, 15:00 with none saved"
     dialog.close()
 
 
