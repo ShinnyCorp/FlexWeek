@@ -311,8 +311,11 @@ def test_my_day_labels_do_not_have_ticks_that_read_as_minus_signs(
 
 
 def test_my_day_actions_leave_room_after_their_icons(qapp: QApplication, window: NativeWindow) -> None:
+    from desktop.native.calendar import sunday_due
+
     session = window.session
-    session.add_homework({"id": "essay", "title": "Essay", "due": "2026-10-04T23:59",
+    # Due at the end of the held week: a fixed date went past and left nothing to run late on.
+    session.add_homework({"id": "essay", "title": "Essay", "due": sunday_due(session.week_start),
                           "estimate_min": 60, "revision": 0})
     block = next(item for item in session.blocks if item.get("assignment_id") == "essay")
     session.place_session(block["id"], 3, 19 * 60)
