@@ -125,14 +125,16 @@ values make a retried write return the first result.
 ## Session Handoff
 - 2026-10-07, `release/0.18.3` in `~/.worktrees/flexweek-0183-release` (`.venv` is `venv-0183-engine`,
   the engine with J7; the lane worktrees other than availability still link `venv-0182-engine`). Merged:
-  clay, settings, focus, account, availability, timeline-fold, homework (each verified: ruff, tests
-  one file per process; Clay and Timeline rigs passed). Left for Grok (prompt
-  `~/.flexweek-ui-harness/scratch/0.18.3/grok-0183-wave2.md`): settings-2, setup-2 (then merge
-  `lane/0183-setup`), sheets, large-text; Grok started on 2026-10-07. Then J13 (styles on every
-  page) at depth 1, picked 2026-10-07: Grok prompt `~/.flexweek-ui-harness/scratch/0.18.3/grok-0183-j13.md`,
-  to start once wave 2 is merged. `test_my_day_actions_leave_room_after_their_icons` failed from a
-  fixed due date that had passed (fixed in 9989041). `test_the_bar_is_fitted_as_large_text_arrives_not_later`
-  fails on a real bug that this week's short title shows (diagnosis in `lanes/large-text.md`, now
-  Grok's in that lane). The Quick focus hop is checked by eye in the 0.18.3 build.
+  clay, settings, focus, account, availability, timeline-fold, homework, then Grok's wave 2:
+  settings-2, setup (with setup-2), sheets, large-text (each verified: ruff, tests one file per
+  process; Clay and Timeline rigs passed). Claude's follow-ups on top: Running late checks the week
+  itself; the view switcher stays in the bar's right group with a 16 px side-by-side gap
+  (`EndsLayout(between=)`, large-text had moved it beside the title); the focus list is as tall
+  as its two-line rows. Both tests that failed alone now pass. J13 (depth 1, Grok, `grok/0183-j13`)
+  is not merged: the Retro frame shows no title, its bevels are missing, it restyles the week
+  page too, and it saves the design twice; round 2 prompt
+  `~/.flexweek-ui-harness/scratch/0.18.3/grok-0183-j13-round2.md`. Open for Jonathan: Retro teal's
+  title bar end is darkened to reach 4.5:1; Clay, Mission, Dial and One thing keep Plain's feel.
+  The Quick focus hop is checked by eye in the 0.18.3 build.
   spec.md now says study hours are one list (J7) and protected time may carry a title. Nothing pushed; `docs/mockup-round2` local only. #41 and "Open after 0.18.1"
   still wait on him. Phase 8 (due 2026-10-25) is with Cursor and his partner.

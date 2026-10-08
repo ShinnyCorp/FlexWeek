@@ -1412,7 +1412,7 @@ def test_the_plan_bar_counts_what_the_toast_counts(qapp: QApplication, window: N
     placed, waiting = session.plan_counts
     assert window.toast.text().startswith(plan_sentence(placed, waiting))
     assert window.plan_review.isVisible()
-    assert window.plan_review.heading.text() == f"Placed {placed} · {waiting} without a time"
+    assert window.plan_review.heading.text() == plan_sentence(placed, waiting)
 
 
 def test_a_commitment_over_planned_homework_offers_find_a_new_time(
@@ -1471,7 +1471,7 @@ def test_the_plan_notice_counts_homework_blocks(qapp: QApplication, window: Nati
     window.session.solve(everything=True)
     wait_until(qapp, lambda: not window.session.busy)
     qapp.processEvents()
-    assert window.toast.text().startswith("Planned ")
+    assert window.toast.text().startswith("Placed ")
     assert " of " not in window.toast.text()
 
 

@@ -135,7 +135,9 @@ def test_the_editors_and_the_seven_others_are_sheets_over_the_dimmed_week(
         assert dimmed.lightness() < 0.75 * before.lightness(), f"{name}: the week behind is dimmed"
         card = dialog.card
         centre = card.mapToGlobal(card.rect().center()) - window.mapToGlobal(window.rect().center())
-        assert abs(centre.x()) <= 2 and abs(centre.y()) <= 2, f"{name}: the card is centred on the window"
+        assert abs(centre.x()) <= 2, f"{name}: the card is centred on the window"
+        if not getattr(dialog, "_pin_top", False):
+            assert abs(centre.y()) <= 2, f"{name}: the card is centred on the window"
         on_window = card.rect().translated(card.mapTo(window, QPoint(0, 0)))
         assert window.rect().contains(on_window), f"{name}: the card is inside the window"
         if make in editors:
@@ -191,6 +193,8 @@ def test_a_sheets_labels_sit_above_their_fields_at_one_edge(qapp: QApplication) 
     Beside them, the labels made a column of their own and each sheet's fields began somewhere else."""
     parent, _palette = styled(qapp)
     block = shown(qapp, BlockDialog(parent, soccer(), occurrence_day=3))
+    block.more_details.setChecked(True)
+    qapp.processEvents()
     edge = left_x(block.title, block)
     fields = {
         "Title": block.title,
@@ -245,7 +249,7 @@ def test_a_settings_label_sits_beside_its_field_on_its_line_of_words(qapp: QAppl
         (lambda parent: HomeworkDialog(parent, today=WEEK), "Add homework"),
         (lambda parent: HomeworkDialog(parent, {"id": "e", "title": "Essay", "due": WEEK, "estimate_min": 60,
                                                 "revision": 1}), "Edit homework"),
-        (lambda parent: BlockDialog(parent, day=3, start="17:00"), "New event"),
+        (lambda parent: BlockDialog(parent, day=3, start="17:00"), "Add fixed time"),
         (lambda parent: BlockDialog(parent, soccer(), occurrence_day=3), "Edit event"),
     ],
 )
@@ -274,7 +278,7 @@ def test_a_sheet_says_what_it_is_and_closes_from_its_corner(
 @pytest.mark.parametrize(
     ("make", "title", "fields"),
     [
-        (choose_time, "Choose a time", {"Day": "day", "Start": "start", "Length": None}),
+        (choose_time, "Choose a time", {"Day": "day", "Start": "start", "Length": "stepper"}),
         (
             lambda parent: SpreadDialog(parent, ESSAY, WEEK),
             "Spread homework",
@@ -302,9 +306,7 @@ def test_choose_a_time_and_spread_are_titled_sheets_with_their_labels_above_thei
     edge = left_x(heading, dialog)
     for words, name in fields.items():
         label = next(label for label in dialog.findChildren(QLabel) if label.text() == words)
-        field = getattr(dialog, name) if name else next(
-            item for item in dialog.findChildren(QLabel) if item is not label and item.text() == "1 h"
-        )
+        field = getattr(dialog, name)
         assert label.mapTo(dialog, QPoint(0, label.height())).y() <= field.mapTo(dialog, QPoint()).y(), words
         assert left_x(label, dialog) == left_x(field, dialog) == edge, words
     close.click()
@@ -323,7 +325,7 @@ def test_choose_a_time_and_spread_give_back_what_was_picked_and_esc_cancels(
     parent, _palette = styled(qapp)
     chosen = shown(qapp, choose_time(parent))
     assert chosen.choice() == (1, 16 * 60), "opens on today, Tuesday, at 16:00"
-    chosen.day.setCurrentIndex(chosen.day.findData(2))
+    chosen.day.set_days([2])
     chosen.start.setTime(QTime(17, 30))
     assert chosen.choice() == (2, 17 * 60 + 30)
     ok = chosen.buttons.button(chosen.buttons.StandardButton.Ok)

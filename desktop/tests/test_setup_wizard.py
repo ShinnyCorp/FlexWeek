@@ -21,8 +21,7 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QPoint, QStandardPaths, Qt, QTime, QTimer
-    from PySide6.QtTest import QTest
+    from PySide6.QtCore import QPoint, QStandardPaths, QTime, QTimer
     from PySide6.QtWidgets import QApplication, QComboBox, QDateTimeEdit, QLabel, QPushButton, QWidget
 
     from desktop.native.calendar import monday_of, sunday_due
@@ -36,6 +35,7 @@ if importlib.util.find_spec("PySide6") is not None:
         LOOK,
         REMINDERS,
         STYLE,
+        STYLES,
         WEEK,
         ActivityRow,
         QuarterTime,
@@ -618,6 +618,29 @@ def test_two_activities_keep_their_own_days_and_an_untouched_row_adds_nothing(qa
     setup.close()
 
 
+def test_the_style_page_previews_plain_calendar_as_it_opens(qapp: QApplication) -> None:
+    setup = SetupPage()
+    setup.motion = "off"
+    shown: list[dict] = []
+    setup.previewed.connect(shown.append)
+    setup.open(state())
+    assert shown, "Style opens with a live preview, not the system's dark look"
+    assert shown[0]["pack"] == "light-frost"
+    assert shown[0]["layout"]["main"] == "classic"
+    setup.close()
+
+
+def test_retros_style_note_describes_the_feel_not_the_layout_name(qapp: QApplication) -> None:
+    setup = opened(qapp)
+    retro = next(style for style in STYLES if style.key == "retro")
+    assert retro.note == "A 90s desktop, with large text"
+    setup.carousel.go_to("retro")
+    qapp.processEvents()
+    assert setup.carousel.note.text() == retro.note
+    assert "Retro desktop" not in retro.note
+    setup.close()
+
+
 def test_a_look_tried_and_skipped_is_put_back(qapp: QApplication) -> None:
     setup = opened(qapp)
     shown: list[dict] = []
@@ -722,16 +745,6 @@ def test_a_time_steps_a_quarter_hour_and_a_typed_one_keeps_its_minute(qapp: QApp
     assert field.hhmm() == "08:00"
 
 
-def test_a_style_card_is_picked_from_the_keyboard(qapp: QApplication) -> None:
-    setup = opened(qapp)
-    card = setup.style_cards["dashboard"]
-    card.setFocus(Qt.FocusReason.TabFocusReason)
-    QTest.keyClick(card, Qt.Key.Key_Space)
-    assert card.is_selected()
-    assert not setup.style_cards["plain"].is_selected()
-    setup.close()
-
-
 def test_a_step_already_seen_can_be_jumped_to_from_the_rail(qapp: QApplication) -> None:
     setup = opened(qapp)
     setup.skip.click()
@@ -773,16 +786,11 @@ def _top(widget: QWidget, within: QWidget) -> int:
     return widget.mapTo(within, QPoint(0, 0)).y()
 
 
-def test_the_experimental_styles_and_designs_come_after_their_heading(qapp: QApplication) -> None:
-    """Decision 3 of 0.16: Plain calendar and Night owl first, Dashboard and Retro under
-    "Experimental styles"; on the next page Today's app and Timeline first, the other four after."""
+def test_the_experimental_designs_come_after_their_heading(qapp: QApplication) -> None:
+    """Decision 3 of 0.16: on the Look page Today's app and Timeline first, the other four after
+    "Experimental styles". The Style page's carousel puts its experimental styles last, tagged; its
+    own test is in test_setup_carousel.py."""
     setup = opened(qapp)
-    style_page = setup.pages[STYLE]
-    heading = next(label for label in style_page.findChildren(QLabel) if label.text() == EXPERIMENTAL)
-    line = _top(heading, style_page)
-    above = sorted(key for key, card in setup.style_cards.items() if _top(card, style_page) < line)
-    below = sorted(key for key, card in setup.style_cards.items() if _top(card, style_page) > line)
-    assert (above, below) == (["night", "plain"], ["dashboard", "retro"])
     setup._show(LOOK)
     qapp.processEvents()
     look_page = setup.pages[LOOK]

@@ -167,7 +167,7 @@ def test_the_filled_button_is_the_answer(qapp: QApplication) -> None:
     for name in ("applyRoutine", "deleteRoutine", "sheetClose"):
         assert names[name].property("quiet") is True, name
     late = widgets.LateDialog(None, "School")
-    assert late.findChild(QPushButton, "latePreview").property("quiet") is True
+    assert late.findChild(QPushButton, "latePreview").property("outlined") is True
     assert not late.accept_button.property("quiet")
 
 
@@ -180,7 +180,7 @@ def test_routines_and_running_late_say_what_each_part_is_for(qapp: QApplication)
     routines = widgets.RoutineDialog(None, {}, [school()], "2026-09-21")
     assert routines.findChildren(QFrame, "dialogCard") == [], "no card inside the card"
     titles = [label.text() for label in routines.findChildren(QLabel, "cardTitle")]
-    assert titles == ["Save this week as a routine", "Use a saved routine"]
+    assert titles == ["Make a routine from this week", "Use a saved routine"]
     notes = routines.findChildren(QLabel, "cardNote")
     assert len(notes) == 2 and all(note.text() for note in notes)
     empty = routines.findChild(QLabel, "routineEmpty")

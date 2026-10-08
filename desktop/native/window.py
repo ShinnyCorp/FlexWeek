@@ -318,6 +318,7 @@ GREYED_TIPS = {
     "undoButton": "Nothing to undo yet.",
     "redoButton": "Nothing to redo.",
     "pasteBlock": "Copy a block or a day first.",
+    "runningLate": "Open this week to use Running late.",
 }
 WAIT_TIP = "Wait a moment: FlexWeek is still saving or planning."
 SIGN_OUT_QUESTION = "Your week is saved on {where}, under this account. Sign in again to see it."
@@ -331,6 +332,8 @@ PLAN_TINY = "Plan"
 SUGGEST_SHORT = "Suggest"
 # The top bar's icons, the larger of the system's two sizes (decision 7).
 BAR_ICON_PX = 20
+# Between the week's date and the view switcher beside it: at 6 px they ran together at Large text (#84).
+TITLE_SWITCHER_GAP = 16
 AUTH_CARD_WIDTH = 420
 # One heading on the sign-in card: a greeting there, and what the page is for when making an account.
 FIRST_GREETING = "Welcome"
@@ -927,7 +930,8 @@ class NativeWindow(QMainWindow):
         layout = QVBoxLayout(page)
         # Where you are at the left, what to show and do at the right; on a narrow window the second
         # goes under the first rather than both being cut.
-        bar = EndsLayout()
+        # The date keeps 16 px from the view switcher beside it, even where that shortens Plan (#84).
+        bar = EndsLayout(between=TITLE_SWITCHER_GAP)
         where = QHBoxLayout()
         self._bar_views = QHBoxLayout()
         bar.add_group(where)
@@ -1514,6 +1518,16 @@ class NativeWindow(QMainWindow):
             row.takeAt(at)
         self._top_bar.invalidate()
 
+    def _schedule_bar_refit(self) -> None:
+        """After Large text, Plan and More refit from FontChange before their row's width settles."""
+        timer = getattr(self, "_bar_refit_timer", None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._fit_plan_and_more)
+            self._bar_refit_timer = timer
+        timer.start(0)
+
     def _fit_plan_and_more(self, total_width: int | None = None) -> None:
         """#83's one order as the bar runs short of room: the date shortens, More drops to its icon,
         Plan my homework drops "my", then reads "Plan". Each step's words are set and the bar's own
@@ -1549,7 +1563,10 @@ class NativeWindow(QMainWindow):
             # Each group keeps its own size until told; the bar's invalidate does not reach them.
             for part in (first, second, bar):
                 part.invalidate()
-            if first.sizeHint().width() + bar._gap + second.sizeHint().width() <= inner:
+            for group in (first, second):
+                if isinstance(group, QHBoxLayout):
+                    group.activate()
+            if first.sizeHint().width() + bar.between + second.sizeHint().width() <= inner:
                 break
         bar.invalidate()
         self._fitting_plan_row = False
@@ -2021,6 +2038,7 @@ class NativeWindow(QMainWindow):
                 self._layout_plan_review()
                 if not was_open:
                     slide_down(self.plan_review, self._motion)
+        self._sync_running_late()
         self._sync_chrome()
         self._apply_appearance()
         self._finish_turn(turn)
@@ -2149,6 +2167,7 @@ class NativeWindow(QMainWindow):
             button = self.findChild(QPushButton, name)
             if button is not None:
                 button.setEnabled(not busy)
+        self._sync_running_late()
 
     def _on_recovery_ack(self, checked: bool) -> None:
         self.recovery_continue.setEnabled(checked and not self.session.busy)
@@ -2795,7 +2814,7 @@ class NativeWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         day, start = dialog.choice()
-        if self.session.place_session(block["id"], day, start):
+        if self.session.place_session(block["id"], day, start, duration_min=dialog.length_min()):
             self.session.save()
 
     def _judge_span(self, block_id: str, from_day: int, day: int, start: int, end: int) -> HandVerdict:
@@ -3147,7 +3166,21 @@ class NativeWindow(QMainWindow):
             ),
         )
 
+    def _late_other_week(self) -> bool:
+        now = datetime.fromtimestamp(self.session.now_ms() / 1000)
+        return monday_of(now.date().isoformat()) != self.session.week_start
+
+    def _sync_running_late(self) -> None:
+        late = self.findChild(QPushButton, "runningLate")
+        if late is None:
+            return
+        other = self._late_other_week()
+        late.setEnabled(not self.session.busy and not other)
+        late.setToolTip(GREYED_TIPS["runningLate"] if other else MORE_TIPS["runningLate"])
+
     def _open_late(self) -> None:
+        if self._late_other_week():
+            return
         now = datetime.fromtimestamp(self.session.now_ms() / 1000)
         refusal = running_late_refusal(
             week_start=self.session.week_start,

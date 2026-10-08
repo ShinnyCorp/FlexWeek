@@ -64,9 +64,16 @@ class DayPicker(QWidget):
 
     changed = Signal()
 
-    def __init__(self, days: list[int] | tuple[int, ...] = (), name: str = "day") -> None:
+    def __init__(
+        self,
+        days: list[int] | tuple[int, ...] = (),
+        name: str = "day",
+        *,
+        exclusive: bool = False,
+    ) -> None:
         super().__init__()
         self.setObjectName("setupRow")
+        self._exclusive = exclusive
         # Its height is the pills'; a form short of room squeezed the row to a sliver without this.
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         line = QHBoxLayout(self)
@@ -82,7 +89,7 @@ class DayPicker(QWidget):
             button.setAccessibleName(DAY_FULL[index])
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setAutoDefault(False)
-            button.toggled.connect(self.changed)
+            button.toggled.connect(self._toggled)
             line.addWidget(button)
             self.buttons.append(button)
         line.addStretch(1)
@@ -90,9 +97,36 @@ class DayPicker(QWidget):
     def days(self) -> list[int]:
         return [index for index, button in enumerate(self.buttons) if button.isChecked()]
 
+    def currentData(self) -> int | None:
+        chosen = self.days()
+        return chosen[0] if chosen else None
+
+    def findData(self, day: int) -> int:
+        return day if 0 <= int(day) < len(self.buttons) else -1
+
+    def setCurrentIndex(self, index: int) -> None:
+        if 0 <= index < len(self.buttons):
+            self.set_days([index])
+
     def set_days(self, days: list[int]) -> None:
         for index, button in enumerate(self.buttons):
             button.setChecked(index in days)
+
+    def _toggled(self, checked: bool) -> None:
+        if self._exclusive:
+            sender = self.sender()
+            if checked:
+                for button in self.buttons:
+                    if button is not sender:
+                        button.blockSignals(True)
+                        button.setChecked(False)
+                        button.blockSignals(False)
+            elif not any(button.isChecked() for button in self.buttons):
+                sender.blockSignals(True)
+                sender.setChecked(True)
+                sender.blockSignals(False)
+                return
+        self.changed.emit()
 
 
 def _toward(colour: QColor, ground: QColor, share: float) -> QColor:
