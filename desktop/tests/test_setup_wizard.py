@@ -35,6 +35,7 @@ if importlib.util.find_spec("PySide6") is not None:
         LOOK,
         REMINDERS,
         STYLE,
+        STYLES,
         WEEK,
         ActivityRow,
         QuarterTime,
@@ -610,6 +611,29 @@ def test_two_activities_keep_their_own_days_and_an_untouched_row_adds_nothing(qa
     setup._add_activity(title="Band", days=[], start="17:00", minutes=60)
     made = {block["title"]: block["days"] for block in setup.week_blocks() if block["id"] != "school"}
     assert made == {"Soccer": [1, 3], "Sport or club": [0]}, "a row with days but no name still counts"
+    setup.close()
+
+
+def test_the_style_page_previews_plain_calendar_as_it_opens(qapp: QApplication) -> None:
+    setup = SetupPage()
+    setup.motion = "off"
+    shown: list[dict] = []
+    setup.previewed.connect(shown.append)
+    setup.open(state())
+    assert shown, "Style opens with a live preview, not the system's dark look"
+    assert shown[0]["pack"] == "light-frost"
+    assert shown[0]["layout"]["main"] == "classic"
+    setup.close()
+
+
+def test_retros_style_note_describes_the_feel_not_the_layout_name(qapp: QApplication) -> None:
+    setup = opened(qapp)
+    retro = next(style for style in STYLES if style.key == "retro")
+    assert retro.note == "A 90s desktop, with large text"
+    setup.carousel.go_to("retro")
+    qapp.processEvents()
+    assert setup.carousel.note.text() == retro.note
+    assert "Retro desktop" not in retro.note
     setup.close()
 
 

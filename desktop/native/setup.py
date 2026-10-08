@@ -230,7 +230,7 @@ STYLES = (
     Style(
         "retro",
         "Retro",
-        "A retro desktop, with large text",
+        "A 90s desktop, with large text",
         "retro",
         "teal",
         "light-frost",
@@ -1634,6 +1634,12 @@ class SetupPage(QWidget):
     def _prepare(self, step: int) -> None:
         if step == STYLE:
             self.carousel.setFocus(Qt.FocusReason.OtherFocusReason)
+            if self._style_key is not None:
+                style = next(item for item in STYLES if item.key == self._style_key)
+                self._pack = style.pack
+                self._look = style_look(style)
+                self._layout = style_layout(style, self._layout)
+                self._preview()
         if step == LOOK:
             for layout_id, card in self.look_cards.items():
                 card.select(layout_id == self._layout["main"])
