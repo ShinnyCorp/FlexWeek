@@ -131,10 +131,9 @@ values make a retried write return the first result.
   itself; the view switcher stays in the bar's right group with a 16 px side-by-side gap
   (`EndsLayout(between=)`, large-text had moved it beside the title); the focus list is as tall
   as its two-line rows. Both tests that failed alone now pass. J13 (depth 1, Grok, `grok/0183-j13`)
-  is not merged after round 2 (d64bdd1, tests green): Retro repaints without end while idle,
-  bevels draw over the Settings footer, caption buttons are cut, a sheet re-adds its feel on each
-  show, and the Large text test cannot fail; round 3 prompt
-  `~/.flexweek-ui-harness/scratch/0.18.3/grok-0183-j13-round3.md`. Open for Jonathan: Retro teal's
+  is merged (d8af632) after three review rounds: Settings, sheets, Setup and sign-in wear the
+  style's feel (`desktop/native/feel.py`); the week and day pages are unchanged. Retro at Large text
+  still scrolls Add homework, as before J13. Open for Jonathan: Retro teal's
   title bar end is darkened to reach 4.5:1; Clay, Mission, Dial and One thing keep Plain's feel.
   The Quick focus hop is checked by eye in the 0.18.3 build.
   spec.md now says study hours are one list (J7) and protected time may carry a title. Nothing pushed; `docs/mockup-round2` local only. #41 and "Open after 0.18.1"

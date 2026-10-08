@@ -460,7 +460,7 @@ def test_retro_bevel_pane_is_idle_when_nothing_moves(qapp: QApplication) -> None
     assert done is not None
     done.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
     mid = QPointF(done.width() / 2, done.height() / 2)
-    qapp.sendEvent(done, QHoverEvent(QEvent.Type.HoverEnter, mid, mid))
+    qapp.sendEvent(done, QHoverEvent(QEvent.Type.HoverEnter, mid, done.mapToGlobal(mid), mid))
     qapp.processEvents()
     assert bevel_kind(done) == "raised"
     segments = [

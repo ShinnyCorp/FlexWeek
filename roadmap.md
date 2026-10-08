@@ -413,6 +413,7 @@ not a second entry). Mockup round 2 is complete; batch B can start.
   `10_styles_*`): Night owl's serif headings, tighter gaps and paper edge;
   Dashboard's title on the hero tile, its tiles and small shadow; Retro's
   pixel faces, bevels and Windows 98 frames. Plain calendar is unchanged.
+  Merged 2026-10-07; the week and day pages keep their own design.
 
 Batch B decisions, 2026-10-07 (from the lanes' reports): protected time can
 carry an optional name (up to 40 characters; the chip shows it, else the kind);
@@ -424,9 +425,9 @@ the left page"); Clay's neighbours open at the stretch the front card opened
 at, and a long drag moves up to two days; Save with "Spread over days" drops
 the open time and writes the spread sessions (no second sheet); "Do it at"
 and Spread are exclusive; Setup previews Plain calendar as its page opens.
-Merged into `release/0.18.3` so far: clay, settings, focus, account,
-availability, timeline-fold, homework. Left: setup (merges after the preview
-follow-up), the Settings design-grid follow-up, sheets, large-text, J13.
+Merged into `release/0.18.3`: clay, settings, focus, account, availability,
+timeline-fold, homework, setup, the Settings design-grid follow-up, sheets,
+large-text, and J13 (2026-10-07, after three review rounds).
 
 - **Setup.** #4 At 1280×800 the second row of style cards (Dashboard, Retro)
   is cut by the footer with no fade, the default card shows no selected state,
