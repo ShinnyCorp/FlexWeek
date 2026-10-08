@@ -294,3 +294,16 @@ def test_no_card_crosses_the_middle_while_the_others_slide(qapp: QApplication, d
                         centre = slide.x() + slide.width() // 2
                         assert not low < centre < high, (key, slide.geometry())
             QTest.qWait(300)
+
+
+def test_a_jump_during_a_step_leaves_only_the_middle_bright(qapp: QApplication) -> None:
+    """A step fades its cards over EASE_MS; a jump to a card two away before that ends sets them at
+    once. The step's fade must not finish afterwards and write its own end over the jump's."""
+    with dressed(qapp) as (setup, _palette):
+        setup.motion = "normal"
+        setup.carousel.step(1)
+        QTest.qWait(20)
+        setup.carousel.go_to(ORDER[3])
+        QTest.qWait(450)
+        for key, slide in setup.style_cards.items():
+            assert (opacity(slide) == 1.0) == (key == middle(setup)), (key, opacity(slide))

@@ -388,6 +388,26 @@ def test_retro_title_sits_on_a_full_width_bar(qapp: QApplication) -> None:  # no
     free(host)
 
 
+def test_retro_settings_close_caption_closes_the_page(qapp: QApplication) -> None:  # noqa: F811
+    """The drawn x on Retro's Settings frame does what Done does."""
+    host, ctx = _host(qapp, "retro")
+    prefs = {"alarms": [], "reminders_enabled": True, "theme_pack": "light-frost"}
+    page = SettingsPage(host, prefs, ctx.look, {}, style_layout(STYLE["retro"], sanitize_layout(None)))
+    page.resize(1280, 800)
+    page.show()
+    apply_feel(page, ctx)
+    qapp.processEvents()
+    closed: list[bool] = []
+    page.closed.connect(lambda *_: closed.append(True))
+    close = page.findChild(QPushButton, "win98Cap-close")
+    assert close is not None
+    close.click()
+    qapp.processEvents()
+    assert closed == [True]
+    free(page)
+    free(host)
+
+
 def test_retro_bevels_are_raised_and_sunken(qapp: QApplication) -> None:  # noqa: F811
     pack, look, palette, tokens, feel, base, _layout = _dressed("retro")
     extra = extra_stylesheet(base, feel, palette, tokens, look, ("sheetTitle",))

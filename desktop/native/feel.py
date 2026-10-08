@@ -598,7 +598,15 @@ class Win98Chrome(QWidget):
         return self.parentWidget()
 
     def _close_host(self) -> None:
-        dialog = self._host if isinstance(self._host, QDialog) else self._host.window()
+        host = self._host
+        if host is None:
+            return
+        # Settings closes as Done does; a sheet as Esc does.
+        close_page = getattr(host, "close_page", None)
+        if callable(close_page):
+            close_page()
+            return
+        dialog = host if isinstance(host, QDialog) else host.window()
         if isinstance(dialog, QDialog):
             dialog.reject()
 

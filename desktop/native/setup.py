@@ -501,6 +501,9 @@ class StyleSlide(QFrame):
             self.tag.setObjectName("setupSlideTag")
             self.tag.move(8, 8)
         self.fade = QGraphicsOpacityEffect(self)
+        # One fade at a time: a second one started over a running one ended where the first was going.
+        self.fading = QVariantAnimation(self)
+        self.fading.valueChanged.connect(lambda value: self.fade.setOpacity(float(value)))
         self.setGraphicsEffect(self.fade)
         self.select(False)
 
@@ -692,15 +695,14 @@ class StyleCarousel(QFrame):
     def _dim(self, slide: StyleSlide, dimmed: bool, animate: bool) -> None:
         goal = NEIGHBOUR_OPACITY if dimmed else 1.0
         length = duration(EASE_MS, self._motion()) if animate else 0
+        slide.fading.stop()
         if length == 0:
             slide.fade.setOpacity(goal)
             return
-        run = QVariantAnimation(slide)
-        run.setStartValue(slide.fade.opacity())
-        run.setEndValue(goal)
-        run.setDuration(length)
-        run.valueChanged.connect(lambda value: slide.fade.setOpacity(float(value)))
-        run.start(QVariantAnimation.DeletionPolicy.DeleteWhenStopped)
+        slide.fading.setStartValue(slide.fade.opacity())
+        slide.fading.setEndValue(goal)
+        slide.fading.setDuration(length)
+        slide.fading.start()
 
     def _refresh(self) -> None:
         count = len(self._order)
