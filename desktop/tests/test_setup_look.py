@@ -135,6 +135,9 @@ def filled(setup: SetupPage, accent: str) -> list[str]:
         # A ticked day or chip is an answer shown, like a segment, not a second thing to press.
         if button.isCheckable() and (button.property("pill") or button.objectName() == "setupChip"):
             continue
+        # The carousel's chosen dot marks which style is picked, which is not a button to press on.
+        if button.objectName() == "setupDot":
+            continue
         # Above the words, so a link in the accent does not count as a fill.
         if button.grab().toImage().pixelColor(button.width() // 2, 3) == QColor(accent):
             found.append(button.text() or button.objectName())
