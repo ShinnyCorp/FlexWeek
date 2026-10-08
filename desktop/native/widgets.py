@@ -2290,6 +2290,11 @@ class Dialog(QDialog):
         even_fields(self)
         if self.sheet:
             self._over_window()
+        from desktop.native.feel import apply_feel, current
+
+        ctx = current()
+        if ctx is not None:
+            apply_feel(self, ctx)
         self.refit()
         if not self._appeared:
             self._appeared = True

@@ -72,6 +72,7 @@ from desktop.native.command_bar import Command, CommandBar
 from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.custom_look import sanitize_saved
 from desktop.native.elevation import lift
+from desktop.native.feel import apply_feel, context_for, design_key, extra_stylesheet, set_current
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import QUICK_TITLE, FocusScreen
@@ -3661,6 +3662,11 @@ class NativeWindow(QMainWindow):
         self._settings = page
         self._settings_finish = finish
         self._stack.addWidget(page)
+        from desktop.native.feel import current
+
+        ctx = current()
+        if ctx is not None:
+            apply_feel(page, ctx)
 
     def _refresh_settings_page(self) -> None:
         page = self._settings
@@ -3876,6 +3882,11 @@ class NativeWindow(QMainWindow):
             stored = None
         self._look = sanitize_look(stored)
         self._layout = sanitize_layout(stored.get("layout") if isinstance(stored, dict) else None)
+        stored_design = stored.get("design") if isinstance(stored, dict) else None
+        if stored_design in {"classic", "timeline", "bento", "retro"} and (
+            not isinstance(stored, dict) or stored.get("layout") is None
+        ):
+            self._layout = sanitize_layout({"main": stored_design, "day": self._layout["day"]})
         self._updates = sanitize_updates(stored.get("updates") if isinstance(stored, dict) else None)
         self._zoom = sanitize_zoom(stored.get("zoom") if isinstance(stored, dict) else None)
         self._saved_looks = sanitize_saved(stored.get("saved_looks") if isinstance(stored, dict) else None)
@@ -3891,6 +3902,7 @@ class NativeWindow(QMainWindow):
             body = {
                 **self._look,
                 "layout": self._layout,
+                "design": design_key(self._layout.get("main")),
                 "updates": self._updates,
                 "zoom": self._zoom,
                 "saved_looks": self._saved_looks,
@@ -3921,16 +3933,24 @@ class NativeWindow(QMainWindow):
         palette = resolved_palette(pack, system_dark, self._look, accent)
         art = control_art(palette)
         sheet = pack_stylesheet(pack, system_dark, self._look, accent, palette, art)
+        ctx = context_for(self._layout, self._look, palette, sheet)
+        heroes = ("settingsTitle", "sheetTitle", "setupTitle", "authBrand")
+        extra = extra_stylesheet(sheet, ctx.feel, palette, ctx.tokens, self._look, heroes)
+        sheet = sheet + extra
         page = self._page_palette(palette)
         page_sheet = ""
         if page is not None:
             page_sheet = pack_stylesheet(pack, system_dark, self._look, accent, page, control_art(page))
+            page_sheet = page_sheet + extra_stylesheet(
+                page_sheet, ctx.feel, page, ctx.tokens, self._look, heroes
+            )
         chips = bool((self.session.preferences or {}).get("accent_chips"))
         chosen_motion = (self.session.preferences or {}).get("motion")
         self._motion = motion_level(chosen_motion, look_motion(self._look))
-        dressed = (sheet, repr(self._look), repr(palette), chips, self._motion)
+        dressed = (sheet, repr(self._look), repr(palette), chips, self._motion, ctx.feel.key)
         # Every change to the week comes through here. Restyling the whole window each time, when the
         # look had not changed, cost about 26 ms a change and repainted everything on screen.
+        set_current(ctx)
         if dressed != self._dressed:
             self._dressed = dressed
             self.setStyleSheet(sheet)
@@ -3946,6 +3966,15 @@ class NativeWindow(QMainWindow):
             self.add_menu.set_palette(palette, chips)
             self._dress_entry(palette)
             self.setup_page.set_palette(palette)
+            apply_feel(self, ctx)
+            if ctx.feel.key == "plain":
+                self._dress_entry(palette)
+            apply_feel(self.setup_page, ctx)
+            if self._settings is not None:
+                apply_feel(self._settings, ctx)
+            for dialog in self.findChildren(QDialog):
+                if dialog.isVisible():
+                    apply_feel(dialog, ctx)
         if page_sheet != self._page_sheet:
             # The planner holds the design's page and nothing of the chrome.
             self._page_sheet = page_sheet
