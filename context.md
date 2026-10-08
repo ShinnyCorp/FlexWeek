@@ -1,6 +1,13 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-08, `release/0.18.3` (local, not pushed): batch B and J13 (a style's feel on every page)
+  are merged, version 0.18.3 with its CHANGELOG entry and `docs/release-notes-v0.18.3.md`. Final
+  check: the whole suite (75 files one per process, the other 102 with `-n 4`) green after six
+  fixes (feb3188, 5fb8f56); mypy clean; engine cargo fmt, clippy and 406 tests clean; every rig
+  passes (classic 41, timeline 41, mission 40, bento 40, retro 40, clay 41, one 3, dial 3) after
+  the Retro frame's freeze on garbage collection was fixed (5ab0a0c). spec.md and AGENTS.md gained
+  Branches and Storage (main plus two working branches; keep two releases' files).
 - 2026-10-04, `release/0.18.2` (local, not pushed): all of batch A is merged, with Grok's rounds
   2-4 and Claude's fixes from the whole-suite and rig runs (folded rail drag, page margins and
   the top bar's one order with "Plan" last, Unfinished staying open, the bar fitted as Large text

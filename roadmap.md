@@ -540,8 +540,11 @@ large-text, and J13 (2026-10-07, after three review rounds).
   have a recorded answer, the gate, the rig and CI's mutation job are green,
   `CHANGELOG.md` and the release notes are written, and v0.18.2 is published
   as latest.
-- Status: [~] batch A prompt written for Grok 2026-10-03; mockup round 2 not
-  started.
+- Status: [~] batch A released as v0.18.2 (2026-10-04). Batch B and J13 are
+  merged on `release/0.18.3` (2026-10-08): whole suite, mypy, engine cargo
+  checks and every rig green, CHANGELOG and release notes written, version
+  0.18.3. Left: #41 and the "Open after 0.18.1" decisions, the push, CI and
+  publishing, on Jonathan's word.
 
 ### 0.18.3 — Consistency and polish
 Mockup round 3 before the Designs, Buttons and Sign-in lanes: the Day dial and
