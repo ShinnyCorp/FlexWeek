@@ -86,7 +86,7 @@ def test_a_day_that_has_passed_is_refused_beside_the_date(qapp: QApplication) ->
 
 def test_a_time_earlier_today_is_refused_and_a_later_one_is_not(qapp: QApplication) -> None:  # noqa: F811
     parent = clocked()
-    dialog = HomeworkDialog(parent, today=TODAY)
+    dialog = HomeworkDialog(parent, today=TODAY, due=TODAY)
     dialog.title.setText("History essay")
     dialog.due.timed.setChecked(True)
     dialog.due.time.setTime(QTime(14, 0))
@@ -101,7 +101,7 @@ def test_a_time_earlier_today_is_refused_and_a_later_one_is_not(qapp: QApplicati
 
 def test_a_day_with_no_time_is_due_at_the_end_of_it_so_today_is_fine(qapp: QApplication) -> None:  # noqa: F811
     parent = clocked()
-    dialog = HomeworkDialog(parent, today=TODAY)
+    dialog = HomeworkDialog(parent, today=TODAY, due=TODAY)
     dialog.title.setText("History essay")
     assert dialog.due.value() == TODAY
     assert saved(dialog)

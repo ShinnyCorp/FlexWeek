@@ -26,17 +26,14 @@ from desktop.tests.window_support import (  # noqa: F401
 )
 
 
-@pytest.mark.parametrize(
-    ("category", "hint"), [("assignments", "Homework"), ("study", "Study"), (None, "Homework")]
-)
-def test_new_homework_has_an_empty_title_with_the_category_as_its_hint(
+@pytest.mark.parametrize("category", ["assignments", "study", None])
+def test_new_homework_has_an_empty_title_with_the_example_setup_gives_as_its_hint(
     qapp: QApplication,  # noqa: F811
     category: str | None,
-    hint: str,
 ) -> None:
     dialog = HomeworkDialog(None, today="2026-09-24", category=category)
     assert dialog.title.text() == ""
-    assert dialog.title.placeholderText() == hint
+    assert dialog.title.placeholderText() == "e.g. History essay"
 
 
 def test_typing_the_title_gives_exactly_what_was_typed(qapp: QApplication) -> None:  # noqa: F811
@@ -87,4 +84,4 @@ def test_add_homework_from_the_window_opens_with_the_hint_not_the_word(
 
     monkeypatch.setattr(HomeworkDialog, "exec", run)
     window._add_homework()
-    assert seen == [("", "Homework")]
+    assert seen == [("", "e.g. History essay")]

@@ -177,7 +177,6 @@ from desktop.native.widgets import (
     SchoolHoursDialog,
     Segment,
     SegmentTrack,
-    SpreadDialog,
     Toast,
     UnfinishedPanel,
     WhyOff,
@@ -559,7 +558,6 @@ class NativeWindow(QMainWindow):
         self._late_dialog: LateDialog | None = None
         # The late start accepted but not stored yet, and the sentence its save will confirm.
         self._late_waiting: tuple[str, str] | None = None
-        self._pending_spread_ui = False
         self._quitting = False
         self._tray_icon: QSystemTrayIcon | None = None
         self._tray_hinted = False
@@ -2025,26 +2023,6 @@ class NativeWindow(QMainWindow):
         self._sync_chrome()
         self._apply_appearance()
         self._finish_turn(turn)
-        if self._pending_spread_ui and self.session.spread_preview:
-            self._pending_spread_ui = False
-            preview = self.session.spread_preview
-            item = self.session.assignments.get(preview["assignment_id"])
-            title = item["title"] if item else "homework"
-            QTimer.singleShot(
-                0,
-                lambda: self._show_preview(
-                    "Spread " + title,
-                    preview["summary"],
-                    preview["rows"],
-                    label="spreading " + title,
-                    attempt_key=(
-                        f"spread|{self.session.account['id']}|{preview['assignment_id']}|"
-                        f"{preview['from_date']}|{preview['session_min']}"
-                        if self.session.account
-                        else None
-                    ),
-                ),
-            )
 
     def _on_status(self, message: str) -> None:
         """What the session says goes in the toast, on the week's page, unless it is still going
@@ -2346,7 +2324,11 @@ class NativeWindow(QMainWindow):
         if not self._run_sheet(dialog):
             return
         if dialog.spread_requested():
-            self._open_spread(dialog.assignment()["id"])
+            body = dialog.assignment()
+            plan = dialog.spread_plan()
+            self.session.add_homework(body, spread=True)
+            self.session.spread_after_save(body["id"], plan["session_min"], plan["from_date"])
+            self.session.save()
             return
         if dialog.requested() == "choose":
             self._choose_time(dialog.assignment()["id"])
@@ -3233,20 +3215,6 @@ class NativeWindow(QMainWindow):
             # the wait is for the one that carries it.
             self._late_waiting = None
             self.session._say(message)
-
-    def _open_spread(self, assignment_id: str) -> None:
-        item = self.session.assignments.get(assignment_id)
-        if item is None or item.get("completed"):
-            return
-        due_date = item["due"][:10]
-        today = date.today().isoformat()
-        base = self.session.selected_day if self.session.selected_day > today else today
-        from_date = base if base <= due_date else due_date
-        dialog = SpreadDialog(self, item, from_date)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        self._pending_spread_ui = True
-        self.session.preview_spread(assignment_id, dialog.session_min(), dialog.from_iso())
 
     def _open_availability(self) -> None:
         if self.session.preferences is None:

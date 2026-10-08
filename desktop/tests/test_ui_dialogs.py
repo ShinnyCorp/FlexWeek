@@ -178,7 +178,7 @@ def test_the_homework_editor_is_wide_enough_to_read_after_it_was_made_to_scroll(
 
 
 def test_an_off_grid_estimate_says_to_use_a_multiple_of_fifteen(qapp: QApplication) -> None:
-    from desktop.native.widgets import ESTIMATE_ERROR, SLOT_HINT, HomeworkDialog
+    from desktop.native.widgets import SLOT_HINT, HomeworkDialog
 
     dialog = HomeworkDialog(None, None, "2026-09-14")
     dialog.title.setText("Essay")
@@ -187,9 +187,10 @@ def test_an_off_grid_estimate_says_to_use_a_multiple_of_fifteen(qapp: QApplicati
     qapp.processEvents()
     dialog.accept()
     assert dialog.result() != dialog.DialogCode.Accepted
-    assert dialog.error.text() == ESTIMATE_ERROR
-    assert dialog.error.isVisible()
-    assert dialog.findChild(type(dialog.estimate_hint), "homeworkEstimateHint").text() == SLOT_HINT
+    hint = dialog.findChild(type(dialog.estimate_hint), "homeworkEstimateHint")
+    assert hint.text() == SLOT_HINT
+    assert hint.isVisible() and hint.property("problem") is True
+    assert not dialog.error.isVisible(), "said once, beside the box"
     dialog.close()
 
 
@@ -411,11 +412,11 @@ def test_new_homework_is_due_on_a_day_and_a_time_only_when_asked(qapp: QApplicat
     dialog = HomeworkDialog(None, None, "2026-09-14")
     dialog.show()
     qapp.processEvents()
-    assert dialog.due.value() == "2026-09-14"
+    assert dialog.due.value() == "2026-09-15", "tomorrow, whatever the hour"
     assert not dialog.due.time.isVisible(), "no time box until the student says it is due at one"
     dialog.due.timed.setChecked(True)
     assert dialog.due.time.isVisible()
-    assert dialog.due.value() == "2026-09-14T09:00"
+    assert dialog.due.value() == "2026-09-15T15:00", "the end of the school day, 15:00 with none saved"
     dialog.close()
 
 
