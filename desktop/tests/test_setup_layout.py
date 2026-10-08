@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -19,7 +20,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QPoint, QStandardPaths
     from PySide6.QtGui import QColor
-    from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
 
     from desktop.native import motion
@@ -190,9 +190,13 @@ def test_the_last_card_on_homework_time_ends_above_the_footer(
         qapp.processEvents()
         for _ in range(9):
             setup.work_editor.add_button.click()
-        QTest.qWait(30)  # a scroll area learns its page's new height from a posted request
         page = setup.pages[HOMEWORK]
         bar = page.verticalScrollBar()
+        # A scroll area learns its page's new height from posted requests, which a busy machine
+        # runs later than a fixed 30 ms wait allowed for.
+        deadline = time.monotonic() + 5
+        while bar.maximum() == 0 and time.monotonic() < deadline:
+            qapp.processEvents()
         assert bar.maximum() > 0, "the card does not run past the page, so this proves nothing"
         bar.setValue(bar.maximum())
         qapp.processEvents()

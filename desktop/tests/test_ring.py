@@ -81,15 +81,13 @@ def test_the_arc_is_the_time_left_from_the_top_clockwise_on_the_track(qapp: QApp
     assert arc_angles(0.25) == (90 * 16, -90 * 16), "Qt's angles: from twelve o'clock, clockwise"
 
 
-def test_a_timer_not_started_draws_its_arc_softer_so_it_does_not_look_finished(qapp: QApplication) -> None:
-    """Grok Bot's 0.17.0 audit (T8): before Start the ring was solid accent with no track in sight, so
-    it read as a timer already done. Set but waiting, the arc is between the track and the accent."""
+def test_a_timer_not_started_draws_its_arc_in_the_accent_itself(qapp: QApplication) -> None:
+    """0.17.0 drew a waiting arc softer, between the track and the accent, so it would not read as done.
+    That arc measured 2.1:1 on the page, under the 3:1 a graphic needs, so mockup 6 option A (0.18.3)
+    draws it in the accent before Start as after; test_focus_screen checks 3:1 in every look."""
     ring = made(qapp, 1.0)
     ring.set_waiting(True)
-    waiting = QColor(on_ring(ring, drawn(ring), 20))
-    arc, track = QColor(ARC), QColor(TRACK)
-    assert waiting not in (arc, track)
-    assert track.green() > waiting.green() > arc.green() and arc.red() > waiting.red() > track.red()
+    assert on_ring(ring, drawn(ring), 20) == ARC, "waiting, it is the accent"
     ring.set_waiting(False)
     assert on_ring(ring, drawn(ring), 20) == ARC, "started, it is the accent"
 
