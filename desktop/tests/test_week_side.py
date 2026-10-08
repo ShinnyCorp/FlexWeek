@@ -346,7 +346,22 @@ def test_rail_chips_and_focus_rows_wrap_long_names_on_two_lines_at_large_text(
     session.add_block({**essay, "start": "18:00", "days": [3], "pinned": True})
     math = next(block for block in session.blocks if block.get("assignment_id") == "long-math")
     session.add_block({**math, "start": "19:00", "days": [3], "pinned": True})
+    history = next(block for block in session.blocks if block.get("assignment_id") == "long-history")
+    session.add_block({**history, "start": "20:00", "days": [3], "pinned": True})
     session.save()
     settled(qapp, window)
     for _ in range(5):
         qapp.processEvents()
+    # The focus rows: each long name on two lines, and the list as tall as all of them, at the
+    # widths the bar fits Plan to, after Large text has arrived (the list was sized before it).
+    tasks = window.rail.tasks
+    line = QFontMetricsF(window.rail.fonts()[0]).lineSpacing()
+    for width in (1157, 1280):
+        window.resize(width, 800)
+        for _ in range(5):
+            qapp.processEvents()
+        rows = {tasks.item(row).text(): tasks.visualItemRect(tasks.item(row)) for row in range(tasks.count())}
+        for title in ("Math worksheet, chapter 4", "History / essay"):
+            assert rows[title].height() >= 2 * line, (width, title, rows[title].height(), line)
+        lowest = max(rect.bottom() for rect in rows.values())
+        assert lowest < tasks.viewport().height(), (width, lowest, tasks.viewport().height())

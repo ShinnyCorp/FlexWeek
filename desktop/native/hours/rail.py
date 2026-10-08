@@ -874,10 +874,12 @@ class Rail(QFrame):
         rows = self.tasks.count()
         if rows:
             self.tasks.ensurePolished()
+            # Row by row, as the list lays them out at its width: a long name takes two lines (#84), so
+            # the first row's height times the count cut off the rows after a taller one.
+            self.tasks.doItemsLayout()
+            tall = sum(self.tasks.visualItemRect(self.tasks.item(row)).height() for row in range(rows))
             margins = self.tasks.contentsMargins()
-            self.tasks.setFixedHeight(
-                rows * self.tasks.sizeHintForRow(0) + margins.top() + margins.bottom() + 2
-            )
+            self.tasks.setFixedHeight(tall + margins.top() + margins.bottom() + 2)
 
     def set_waiting(self, waiting: tuple[Waiting, ...]) -> None:
         if self.hand.busy:
@@ -1022,6 +1024,9 @@ class Rail(QFrame):
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
+        # A narrower rail wraps more focus rows onto two lines.
+        if event.size().width() != event.oldSize().width():
+            self._fit_tasks()
         if self.folded:
             self._fit_waiting_words()
 
