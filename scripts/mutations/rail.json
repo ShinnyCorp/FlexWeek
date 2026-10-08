@@ -91,6 +91,20 @@
   "test": "desktop/tests/test_hours_open.py::test_todays_app_keeps_its_scroll_after_a_page_or_look_change"
  },
  {
+  "file": "desktop/native/hours/rail.py",
+  "name": "rail chips stay on one elided line",
+  "old": "def rail_title_lines(text: str, metrics: QFontMetricsF, width: float, most: int = 2) -> list[str]:\n",
+  "new": "def rail_title_lines(text: str, metrics: QFontMetricsF, width: float, most: int = 1) -> list[str]:\n",
+  "test": "desktop/tests/test_week_side.py::test_rail_chips_and_focus_rows_wrap_long_names_on_two_lines_at_large_text"
+ },
+ {
+  "file": "desktop/native/window.py",
+  "name": "the title sits six pixels from the switcher again",
+  "old": "        where.addSpacing(16)\n",
+  "new": "        where.addSpacing(6)\n",
+  "test": "desktop/tests/test_window_screens.py::test_the_title_keeps_sixteen_pixels_from_the_view_switcher[1280-normal-default]"
+ },
+ {
   "file": "desktop/native/hours/classic.py",
   "name": "now at the top rather than the middle",
   "old": "    scroll.open_at(key, opening_minute(week, today, now, day), None if at_now else 90)\n",
@@ -117,5 +131,12 @@
   "old": "        bands = {at // 7 for at, cell in enumerate(self.cells) if cell.today}\n",
   "new": "        bands: set[int] = set()\n",
   "test": "desktop/tests/test_hours_month.py::test_a_weeks_row_is_as_tall_as_its_busiest_date_and_this_week_is_banded"
+ },
+ {
+  "file": "desktop/native/widgets.py",
+  "name": "large text refits the bar only once",
+  "old": "            host._fit_plan_and_more()\n            host._schedule_bar_refit()\n",
+  "new": "            host._fit_plan_and_more()\n",
+  "test": "desktop/tests/test_window_screens.py::test_the_bar_is_fitted_as_large_text_arrives_not_later[2026-10-05]"
  }
 ]

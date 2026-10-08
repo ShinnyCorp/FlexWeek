@@ -929,6 +929,7 @@ class NativeWindow(QMainWindow):
         # goes under the first rather than both being cut.
         bar = EndsLayout()
         where = QHBoxLayout()
+        where.setSpacing(0)
         self._bar_views = QHBoxLayout()
         bar.add_group(where)
         bar.add_group(self._bar_views)
@@ -947,18 +948,24 @@ class NativeWindow(QMainWindow):
         today.setToolTip("Jump to today")
         today.clicked.connect(self._go_today)
         today.setProperty("quiet", True)
-        for arrow, name in ((self.prev_nav, "chevron-left"), (self.next_nav, "chevron-right")):
+        for index, (arrow, name) in enumerate(
+            ((self.prev_nav, "chevron-left"), (self.next_nav, "chevron-right"))
+        ):
+            if index:
+                where.addSpacing(SPACING[0])
             arrow.setProperty("quiet", True)
             arrow.setIconSize(QSize(BAR_ICON_PX, BAR_ICON_PX))
             icons.tint(arrow, name)
             where.addWidget(arrow)
-        where.addWidget(today)
         where.addSpacing(SPACING[1])
+        where.addWidget(today)
+        where.addStretch(1)
         # Thirteen buttons of equal weight and no title at all was the clutter: nothing told the eye
         # where to land.
         self.week_title = FittedLabel()
         self.week_title.setObjectName("weekTitle")
         where.addWidget(self.week_title)
+        where.addSpacing(16)
         # One control, not four loose buttons: switching view is one decision.
         segments = SegmentTrack()
         segments.setObjectName("segments")
@@ -982,7 +989,8 @@ class NativeWindow(QMainWindow):
         my_day.setToolTip("Watch today")
         my_day.clicked.connect(self._enter_day)
         segments.add(my_day)
-        self._bar_views.addWidget(segments)
+        where.addWidget(segments)
+        self._bar_views.addStretch(1)
         self.account_name = QLabel()
         self.account_name.setObjectName("accountName")
         self.account_name.setVisible(False)
@@ -1514,6 +1522,16 @@ class NativeWindow(QMainWindow):
             row.takeAt(at)
         self._top_bar.invalidate()
 
+    def _schedule_bar_refit(self) -> None:
+        """After Large text, Plan and More refit from FontChange before their row's width settles."""
+        timer = getattr(self, "_bar_refit_timer", None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._fit_plan_and_more)
+            self._bar_refit_timer = timer
+        timer.start(0)
+
     def _fit_plan_and_more(self, total_width: int | None = None) -> None:
         """#83's one order as the bar runs short of room: the date shortens, More drops to its icon,
         Plan my homework drops "my", then reads "Plan". Each step's words are set and the bar's own
@@ -1549,6 +1567,9 @@ class NativeWindow(QMainWindow):
             # Each group keeps its own size until told; the bar's invalidate does not reach them.
             for part in (first, second, bar):
                 part.invalidate()
+            for group in (first, second):
+                if isinstance(group, QHBoxLayout):
+                    group.activate()
             if first.sizeHint().width() + bar._gap + second.sizeHint().width() <= inner:
                 break
         bar.invalidate()

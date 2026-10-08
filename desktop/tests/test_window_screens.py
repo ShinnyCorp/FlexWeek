@@ -22,7 +22,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QPoint, QStandardPaths
-    from PySide6.QtWidgets import QApplication, QPushButton, QStyle
+    from PySide6.QtWidgets import QApplication, QPushButton, QStyle, QWidget
 
     from desktop.native.calendar import monday_of, sunday_due
     from desktop.native.layouts.registry import sanitize_layout
@@ -192,19 +192,28 @@ def test_the_top_bar_is_never_cut_mid_word(qapp: QApplication, window: NativeWin
     assert cut_on_the_bar(window) == [], "at 1150 pixels"
 
 
-def test_the_bar_is_fitted_as_large_text_arrives_not_later(qapp: QApplication, window: NativeWindow) -> None:
-    """The rig clicked Week where it had just been: Large text reached Plan and More after the bar was
-    fitted, and the bar was fitted again only on a later change, its buttons moving under the pointer."""
+@pytest.mark.parametrize("week_start", ["2026-10-05", "2026-09-28"])
+def test_the_bar_is_fitted_as_large_text_arrives_not_later(
+    qapp: QApplication, window: NativeWindow, week_start: str,
+) -> None:
+    """Large text reached Plan and More after the bar was fitted; a stale group width must not leave
+    the bar on two rows until something else refits it (short title weeks were the tell)."""
+    session = window.session
+    session.load_week(week_start)
+    settled(qapp, window)
     window.resize(1150, 768)
     for _ in range(4):
         qapp.processEvents()
     text_size(window, "large")
-    qapp.processEvents()
-    week = window.findChild(QPushButton, "viewWeek")
-    seen = (window.solve_button.text(), window.more_button.text(), week.mapTo(window, QPoint(0, 0)))
-    window._fit_plan_and_more()
     for _ in range(4):
         qapp.processEvents()
+    week = window.findChild(QPushButton, "viewWeek")
+    title_foot = window.week_title.mapTo(window, QPoint(0, window.week_title.height())).y()
+    assert window.solve_button.mapTo(window, QPoint(0, 0)).y() < title_foot, week_start
+    seen = (window.solve_button.text(), window.more_button.text(), week.mapTo(window, QPoint(0, 0)))
+    for _ in range(4):
+        qapp.processEvents()
+    assert window.solve_button.mapTo(window, QPoint(0, 0)).y() < title_foot, week_start
     assert (window.solve_button.text(), window.more_button.text(), week.mapTo(window, QPoint(0, 0))) == seen
 
 
@@ -278,3 +287,38 @@ def test_retry_save_shows_only_after_a_save_fails(qapp: QApplication, window: Na
     assert not window.retry_button.isEnabled(), "Retry save was pressable while it was retrying"
     settled(qapp, window)
     assert not window.retry_button.isVisible(), "Retry save stayed after the retry saved"
+
+
+def _title_switcher_gap(window: NativeWindow) -> int:
+    segments = window.findChild(QWidget, "segments")
+    assert segments is not None
+    title_right = window.week_title.mapTo(window, window.week_title.rect().topRight()).x()
+    switcher_left = segments.mapTo(window, QPoint(0, 0)).x()
+    return switcher_left - title_right
+
+
+@pytest.mark.parametrize(
+    ("width", "text", "preset"),
+    [
+        (1157, "normal", "default"),
+        (1157, "large", "default"),
+        (1280, "normal", "default"),
+        (1280, "large", "default"),
+        (1157, "normal", "high-contrast"),
+    ],
+)
+def test_the_title_keeps_sixteen_pixels_from_the_view_switcher(
+    qapp: QApplication, window: NativeWindow, width: int, text: str, preset: str
+) -> None:
+    """#84: the date stays 16 px from Day/Week/Month even where that shortens Plan at 1157 px Large."""
+    window._look = sanitize_look({"preset": preset, "knobs": {"text": text}})
+    window._apply_appearance()
+    window.findChild(QPushButton, "viewWeek").click()
+    window.resize(width, 768)
+    for _ in range(6):
+        qapp.processEvents()
+    window._fit_plan_and_more()
+    for _ in range(4):
+        qapp.processEvents()
+    gap = _title_switcher_gap(window)
+    assert 15 <= gap <= 17, (width, text, preset, gap)

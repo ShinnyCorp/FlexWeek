@@ -709,6 +709,7 @@ def _refit_bar(button: QPushButton, event: QEvent) -> None:
         host = button.window()
         if hasattr(host, "_fit_plan_and_more"):
             host._fit_plan_and_more()
+            host._schedule_bar_refit()
 
 
 class MoreButton(FittedButton):

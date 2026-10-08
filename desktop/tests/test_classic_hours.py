@@ -177,7 +177,9 @@ def test_a_rail_chip_shortens_its_title_to_the_rail_and_keeps_its_length(qapp: Q
     chip = rail.chips()[0]
     assert rail.width() == RAIL_PX, "a long title widened the rail"
     assert chip.mapTo(rail, chip.rect().topRight()).x() <= rail.width(), "the chip ran past the rail"
-    assert chip.shown_title() != title and chip.shown_title().endswith("…"), chip.shown_title()
+    lines = chip.title_lines()
+    assert len(lines) <= 2 and chip.shown_title() != title
+    assert lines[-1].endswith("…"), lines
     assert chip.length == "1 h 30 min"
     assert chip.accessibleName() == f"{title} · 1 h 30 min"
     assert title in chip.toolTip()
@@ -400,6 +402,7 @@ def test_a_focus_row_cuts_a_homework_title_only_when_the_row_has_no_room_for_it(
         paint.end()
         return [text for text, _where in Said.words]
 
-    assert said(rail.tasks.viewport().width()) == ["Today 16:15", "Math worksheet"]
-    narrow = said(rail.tasks.viewport().width() - 40)
-    assert narrow[0] == "Today 16:15" and narrow[1].endswith("…"), narrow
+    wide = said(rail.tasks.viewport().width())
+    assert wide[0] == "Today 16:15" and "Math worksheet" in " ".join(wide[1:])
+    narrow = said(200)
+    assert narrow[0] == "Today 16:15" and narrow[-1].endswith("…"), narrow

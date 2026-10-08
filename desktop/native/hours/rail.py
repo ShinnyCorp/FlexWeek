@@ -100,6 +100,44 @@ TITLE_GAP = SPACING[0]
 CHIP_TITLE_LEFT = SPACING[1] + 3 + SPACING[1] + 16 + BOOK_GAP
 
 
+def rail_title_lines(text: str, metrics: QFontMetricsF, width: float, most: int = 2) -> list[str]:
+    """Up to `most` lines with no word broken; when more words remain, the last line is cut with …."""
+    if width <= 0:
+        return [""]
+    words = text.split()
+    if not words:
+        return [""]
+    lines: list[str] = []
+    index = 0
+    while index < len(words):
+        word = words[index]
+        if metrics.horizontalAdvance(word) > width:
+            if not lines:
+                return [metrics.elidedText(word, Qt.TextElideMode.ElideRight, width)]
+            tail = " ".join(words[index:])
+            joined = f"{lines[-1]} {tail}".strip()
+            lines[-1] = (
+                metrics.elidedText(joined, Qt.TextElideMode.ElideRight, width)
+                if metrics.horizontalAdvance(joined) > width
+                else joined
+            )
+            return lines[:most]
+        if lines:
+            together = f"{lines[-1]} {word}"
+            if metrics.horizontalAdvance(together) <= width:
+                lines[-1] = together
+                index += 1
+                continue
+        if len(lines) >= most:
+            tail = " ".join(words[index:])
+            joined = f"{lines[-1]} {tail}".strip()
+            lines[-1] = metrics.elidedText(joined, Qt.TextElideMode.ElideRight, width)
+            return lines
+        lines.append(word)
+        index += 1
+    return lines
+
+
 def label(words: str, name: str, *, kind: str = "railLabel") -> QLabel:
     made = QLabel(words)
     made.setObjectName(name)
@@ -437,11 +475,24 @@ class RailChip(TrayChip):
     def _fonts(self) -> tuple[QFont, QFont]:
         return _scaled(self.font(), "body", self.look), time_font(_scaled(self.font(), "caption", self.look))
 
+    def _title_room(self) -> float:
+        body, small = self._fonts()
+        length = QFontMetricsF(small).horizontalAdvance(self.length)
+        return max(0.0, self.width() - CHIP_TITLE_LEFT - TITLE_GAP - length - SPACING[1])
+
+    def title_lines(self) -> list[str]:
+        body, _small = self._fonts()
+        return rail_title_lines(self._title, QFontMetricsF(body), self._title_room())
+
     def sizeHint(self) -> QSize:  # noqa: N802
         body, small = self._fonts()
-        tall = max(QFontMetricsF(body).height(), QFontMetricsF(small).height()) + 10
+        body_metrics = QFontMetricsF(body)
+        room = max(self._title_room(), body_metrics.averageCharWidth())
+        lines = rail_title_lines(self._title, body_metrics, room)
+        tall = body_metrics.lineSpacing() * len(lines) + 10
+        tall = max(tall, QFontMetricsF(small).height() + 10)
         # The room the paint gives the whole title: up to it, the gap, the length and the edge after.
-        title = QFontMetricsF(body).horizontalAdvance(self._title)
+        title = body_metrics.horizontalAdvance(self._title)
         length = QFontMetricsF(small).horizontalAdvance(self.length)
         wide = CHIP_TITLE_LEFT + title + TITLE_GAP + length + SPACING[1]
         return QSize(math.ceil(wide), round(max(30, tall)))
@@ -450,11 +501,8 @@ class RailChip(TrayChip):
         return QSize(80, self.sizeHint().height())
 
     def shown_title(self) -> str:
-        """The title as it fits beside the book and the length."""
-        body, small = self._fonts()
-        length = QFontMetricsF(small).horizontalAdvance(self.length)
-        room = self.width() - CHIP_TITLE_LEFT - TITLE_GAP - length - SPACING[1]
-        return QFontMetricsF(body).elidedText(self._title, Qt.TextElideMode.ElideRight, max(room, 0))
+        """The title as drawn beside the book and the length."""
+        return " ".join(self.title_lines())
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         painter = QPainter(self)
@@ -489,11 +537,17 @@ class RailChip(TrayChip):
         )
         painter.setFont(body)
         painter.setPen(QColor(colours.text))
-        painter.drawText(
-            QRectF(at, 0, max(0.0, right - length_room - TITLE_GAP - at), box.height()),
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            self.shown_title(),
-        )
+        title_room = max(0.0, right - length_room - TITLE_GAP - at)
+        lines = rail_title_lines(self._title, QFontMetricsF(body), title_room)
+        line_height = QFontMetricsF(body).lineSpacing()
+        block = line_height * len(lines)
+        top = (box.height() - block) / 2
+        for row, line in enumerate(lines):
+            painter.drawText(
+                QRectF(at, top + row * line_height, title_room, line_height),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                line,
+            )
         painter.end()
 
     def enterEvent(self, event: QEvent) -> None:  # noqa: N802
@@ -515,8 +569,25 @@ class FocusRows(QStyledItemDelegate):
         self.rail = rail
 
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex) -> QSize:
-        body, _small = self.rail.fonts()
-        return QSize(option.rect.width(), round(max(30.0, QFontMetricsF(body).height() + 10)))
+        body, small = self.rail.fonts()
+        body_metrics = QFontMetricsF(body)
+        when = str(index.data(Qt.ItemDataRole.ToolTipRole) or "")
+        today = bool(index.data(Qt.ItemDataRole.UserRole + 1))
+        timing = weighted(small, WEIGHT_STRONG) if today else small
+        width = max(
+            0.0,
+            option.rect.width()
+            - SPACING[1]
+            - 16
+            - BOOK_GAP
+            - SPACING[1]
+            - QFontMetricsF(timing).horizontalAdvance(when)
+            - TITLE_GAP
+            - SPACING[1],
+        )
+        lines = rail_title_lines(str(index.data()), body_metrics, width)
+        tall = body_metrics.lineSpacing() * len(lines) + 10
+        return QSize(option.rect.width(), round(max(30.0, tall)))
 
     def paint(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
@@ -552,12 +623,16 @@ class FocusRows(QStyledItemDelegate):
         painter.setFont(body)
         painter.setPen(QColor(colours.text))
         room = max(0.0, right - width - TITLE_GAP - at)
-        title = QFontMetricsF(body).elidedText(str(index.data()), Qt.TextElideMode.ElideRight, room)
-        painter.drawText(
-            QRectF(at, box.top(), room, box.height()),
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            title,
-        )
+        lines = rail_title_lines(str(index.data()), QFontMetricsF(body), room)
+        line_height = QFontMetricsF(body).lineSpacing()
+        block = line_height * len(lines)
+        top = box.top() + (box.height() - block) / 2
+        for row, line in enumerate(lines):
+            painter.drawText(
+                QRectF(at, top + row * line_height, room, line_height),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                line,
+            )
         painter.restore()
 
 
