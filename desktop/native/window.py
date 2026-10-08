@@ -3991,8 +3991,6 @@ class NativeWindow(QMainWindow):
             self.add_menu.set_palette(palette, chips)
             self._dress_entry(palette)
             self.setup_page.set_palette(palette)
-            if ctx.feel.key == "plain":
-                self._dress_entry(palette)
             self._dress_feel(ctx, sheet, extra)
         if page_sheet != self._page_sheet:
             # The planner holds the design's page and nothing of the chrome.
@@ -4016,7 +4014,7 @@ class NativeWindow(QMainWindow):
 
     def _dress_feel(self, ctx: Context, sheet: str, extra: str) -> None:
         for root in self._feel_roots():
-            root.setStyleSheet(sheet + extra)
+            root.setStyleSheet(sheet + extra if extra else "")
             apply_feel(root, ctx)
 
     def _dress_entry(self, palette: dict) -> None:

@@ -2340,11 +2340,11 @@ class Dialog(QDialog):
             extra = extra_stylesheet(
                 ctx.base_sheet, ctx.feel, ctx.palette, ctx.tokens, ctx.look, ("sheetTitle",), nested=False
             )
-            if extra:
-                owned = self.styleSheet()
-                window = self.window()
-                inherited = window.styleSheet() if window is not None else ctx.base_sheet
-                self.setStyleSheet((owned or inherited) + extra)
+            base = self.property("feelBaseSheet")
+            if not isinstance(base, str):
+                base = self.styleSheet()
+                self.setProperty("feelBaseSheet", base)
+            self.setStyleSheet((base + extra) if extra else base)
             apply_feel(self, ctx)
         self.refit()
         if not self._appeared:
