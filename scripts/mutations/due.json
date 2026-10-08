@@ -30,8 +30,8 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "a stored time not read back",
-  "old": "        self.time.setTime(QTime(minute // 60, minute % 60) if timed else QTime(9, 0))\n",
-  "new": "        self.time.setTime(QTime(9, 0))\n",
+  "old": "        self.time.setTime(QTime(minute // 60, minute % 60) if timed else QTime(fallback // 60, fallback % 60))\n",
+  "new": "        self.time.setTime(QTime(fallback // 60, fallback % 60))\n",
   "test": "desktop/tests/test_ui_dialogs.py::test_a_due_time_is_shown_and_can_be_taken_away"
  },
  {

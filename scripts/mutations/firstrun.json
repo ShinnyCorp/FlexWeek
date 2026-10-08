@@ -22,7 +22,7 @@
   },
   {
     "name": "the eye does not show the password",
-    "file": "desktop/native/window.py",
+    "file": "desktop/native/widgets.py",
     "old": "        self.setEchoMode(QLineEdit.EchoMode.Normal if shown else QLineEdit.EchoMode.Password)\n",
     "new": "        self.setEchoMode(QLineEdit.EchoMode.Password)\n",
     "test": "desktop/tests/test_sign_in_card.py::test_the_eye_sits_inside_the_password_box_and_shows_and_hides_it"

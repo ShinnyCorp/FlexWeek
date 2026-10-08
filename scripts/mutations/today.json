@@ -114,7 +114,7 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "the block editor is titled as a student says it",
-  "old": "self.card_body(\"Edit event\" if existing else \"New event\")",
+  "old": "self.card_body(\"Edit event\" if existing else \"Add fixed time\")",
   "new": "self.card_body(\"Edit fixed commitment\" if existing else \"Add fixed commitment\")",
   "test": "desktop/tests/test_block_editor_words.py::test_the_editor_is_titled_as_a_student_says_it"
  },
@@ -247,7 +247,7 @@
  {
   "file": "desktop/native/hours/chips.py",
   "name": "a tray chip shortens its length before its title",
-  "old": "            if title.strip(\"\u2026\"):\n                fitted = title + self._length\n",
+  "old": "            if title.strip(\"…\"):\n                fitted = title + self._length\n",
   "new": "",
   "test": "desktop/tests/test_classic_hours.py::test_a_tray_chip_shortens_its_title_and_keeps_its_length_whole"
  },
@@ -261,7 +261,7 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "the top bar squeezed instead of wrapping",
-  "old": "        if least + self._gap + second.minimumSize().width() <= area.width():\n",
+  "old": "        if least + self.between + second.minimumSize().width() <= area.width():\n",
   "new": "        if True:\n",
   "test": "desktop/tests/test_window_screens.py::test_the_top_bar_is_never_cut_mid_word"
  },
@@ -359,7 +359,7 @@
  {
   "file": "desktop/native/window.py",
   "name": "the toast says an action is still going, not what it did",
-  "old": "        if message.endswith(\"\u2026\"):\n            return\n",
+  "old": "        if message.endswith(\"…\"):\n            return\n",
   "new": "",
   "test": "desktop/tests/test_drag_results.py::test_every_advanced_action_says_what_it_did_when_it_is_done"
  },
@@ -471,8 +471,8 @@
  {
   "file": "desktop/native/hours/rail.py",
   "name": "the focus list a row short",
-  "old": "                rows * self.tasks.sizeHintForRow(0) + margins.top() + margins.bottom() + 2\n",
-  "new": "                (rows - 1) * self.tasks.sizeHintForRow(0) + margins.top() + margins.bottom() + 2\n",
+  "old": "            tall = sum(self.tasks.visualItemRect(self.tasks.item(row)).height() for row in range(rows))\n",
+  "new": "            tall = sum(self.tasks.visualItemRect(self.tasks.item(row)).height() for row in range(rows - 1))\n",
   "test": "desktop/tests/test_week_side.py::test_high_contrast_cuts_no_chip_and_scrolls_the_focus_list_neither_way"
  }
 ]
