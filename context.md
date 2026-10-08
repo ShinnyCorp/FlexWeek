@@ -1,8 +1,14 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-10-08, `release/0.18.3` (local, not pushed): batch B and J13 (a style's feel on every page)
-  are merged, version 0.18.3 with its CHANGELOG entry and `docs/release-notes-v0.18.3.md`. Final
+- 2026-10-08: v0.18.3 released as latest (PR 44, merge b105885; Windows and Linux packages
+  attached; the updater offers it to 0.18.2's three install kinds). CI runs on GitHub-hosted runners
+  again (Blacksmith's account verification blocks its runners). After the release, old lane
+  worktrees, branches and pre-0.18 scratch were deleted on Jonathan's approval (list in
+  `~/.flexweek-ui-harness/scratch/cleanup-after-0183.md`); the 0.18.3 and 0.18.2 release worktrees
+  remain, detached. `release/0.18.4` started for J14 (animation lag: measure, then fix the worst).
+- 0.18.3 contents: batch B and J13 (a style's feel on every page), version 0.18.3 with its
+  CHANGELOG entry and `docs/release-notes-v0.18.3.md`. Final
   check: the whole suite (75 files one per process, the other 102 with `-n 4`) green after six
   fixes (feb3188, 5fb8f56); mypy clean; engine cargo fmt, clippy and 406 tests clean; every rig
   passes (classic 41, timeline 41, mission 40, bento 40, retro 40, clay 41, one 3, dial 3) after

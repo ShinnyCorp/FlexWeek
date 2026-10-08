@@ -127,6 +127,16 @@ in 0.18.2.
   before the slide can start, on every open, because the page is rebuilt each
   time; build it ahead or keep it between opens. → 0.18.2 Plan lane with #98
   (same motion code).
+- J14 (2026-10-08): the animations still lag, everywhere about equally:
+  changing page or view, sheets opening, dragging and sliding. Widgets draw
+  on the CPU, so a GPU switch alone would not help much. Likely costs: fades
+  through an opacity effect on whole page parts (`motion.appear`,
+  `fade_through`), drop-shadow effects re-blurred under anything that
+  repaints (`elevation.lift`), a widget re-laid out each frame (`glide`), and
+  the hours repainting while things move. Decided: measure first (frame
+  times for each animation on the built app, worst first), then animate
+  still pictures where effects are the cost, as J12 did for the Settings
+  slide. → 0.18.4.
 - Noted, no new item: appearance lives on the account (pack and accent from
   short lists) and on the device (look, any-colour accent, knobs); this is
   the open decision about looks following the account.
