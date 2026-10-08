@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QRectF, QSize, Qt
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QRectF, QSize, Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -24,6 +24,8 @@ from PySide6.QtGui import (
     QResizeEvent,
 )
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QComboBox,
     QDialog,
     QFormLayout,
     QFrame,
@@ -31,6 +33,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QLineEdit,
     QPushButton,
     QWidget,
 )
@@ -70,7 +73,7 @@ PAGE_TITLES = {
     "settingsPage": ("Settings - FlexWeek", "settings", ("min", "max", "close")),
     "setupPage": ("Set up FlexWeek", "settings", ("min", "max", "close")),
     "authPage": ("Sign in to FlexWeek", "log-out", ("help", "close")),
-    "recoveryPage": ("Recovery codes - FlexWeek", "shield", ("help", "close")),
+    "recoveryPage": ("Recovery codes - FlexWeek", "file-text", ("help", "close")),
     "forgotPage": ("Recover account - FlexWeek", "log-out", ("help", "close")),
 }
 HERO_ICONS = {
@@ -487,6 +490,66 @@ class _HeroPlace(QObject):
 _hero_place = _HeroPlace()
 
 
+def bar_height(scale: float) -> int:
+    font = QFont("Pixelify Sans")
+    font.setPointSizeF(type_pt("body", scale))
+    return max(24, round(QFontMetricsF(weighted(font, WEIGHT_STRONG)).height()) + 6, retro.CAP.height() + 6)
+
+
+class Win98TitleBar(QWidget):
+    """Full-width Windows 98 title strip: gradient, icon, title widget, caption buttons."""
+
+    def __init__(
+        self,
+        title: str,
+        icon: str,
+        caps: tuple[str, ...],
+        tokens: dict[str, str],
+        scale: float,
+        close_host: object,
+        parent: QWidget,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("win98TitleBar")
+        self._tokens = tokens
+        self._icon = icon
+        self._scale = scale
+        self._colours = retro.scheme(tokens)
+        ink, _start, _end = title_bar_colours(tokens)
+        line = QHBoxLayout(self)
+        line.setContentsMargins(4, 0, 3, 0)
+        line.setSpacing(1)
+        mark = QLabel()
+        mark.setFixedSize(16, 16)
+        mark.setPixmap(icons.pixmap(icon, ink, 16, self.devicePixelRatioF(), "2"))
+        mark.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        line.addWidget(mark, 0, Qt.AlignmentFlag.AlignVCenter)
+        words = QLabel(title)
+        words.setObjectName("win98Title")
+        words.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        font = QFont("Pixelify Sans")
+        font.setPointSizeF(type_pt("body", scale))
+        words.setFont(weighted(font, WEIGHT_STRONG))
+        words.setStyleSheet(f"background: transparent; color: {ink};")
+        line.addWidget(words, 1, Qt.AlignmentFlag.AlignVCenter)
+        labels = {"min": "Minimise", "max": "Maximise", "close": "Close", "help": "Help"}
+        for cap in caps:
+            button = retro.CapButton(f"win98Cap-{cap}", labels.get(cap, cap), self._colours, cap)
+            if cap == "close":
+                button.clicked.connect(close_host)
+            line.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.setFixedHeight(bar_height(scale))
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        painter = QPainter(self)
+        gradient = QLinearGradient(0, 0, self.width(), 0)
+        _ink, start, end = title_bar_colours(self._tokens)
+        gradient.setColorAt(0, QColor(start))
+        gradient.setColorAt(1, QColor(end))
+        painter.fillRect(self.rect(), gradient)
+        painter.end()
+
+
 class Win98Chrome(QWidget):
     """A Windows 98 window or dialog frame around a page or sheet, painted over its edges."""
 
@@ -509,19 +572,8 @@ class Win98Chrome(QWidget):
         self._scale = scale
         self._colours = retro.scheme(tokens)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-        bar = QWidget(self)
-        bar.setObjectName("win98TitleBar")
-        line = QHBoxLayout(bar)
-        line.setContentsMargins(0, 0, 3, 0)
-        line.setSpacing(1)
-        line.addStretch(1)
-        labels = {"min": "Minimise", "max": "Maximise", "close": "Close", "help": "Help"}
-        for cap in caps:
-            button = retro.CapButton(f"win98Cap-{cap}", labels.get(cap, cap), self._colours, cap)
-            if cap == "close":
-                button.clicked.connect(self._close_host)
-            line.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
-        self._bar = bar
+        self._bar = Win98TitleBar(title, icon, caps, tokens, scale, self._close_host, self)
+        host.installEventFilter(self)
         self._sync()
 
     def _close_host(self) -> None:
@@ -529,15 +581,19 @@ class Win98Chrome(QWidget):
         if isinstance(dialog, QDialog):
             dialog.reject()
 
-    def _bar_height(self) -> int:
-        font = QFont("Pixelify Sans")
-        font.setPointSizeF(type_pt("body", self._scale))
-        return max(24, round(QFontMetricsF(weighted(font, WEIGHT_STRONG)).height()) + 6)
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self._host and event.type() in (
+            QEvent.Type.Resize,
+            QEvent.Type.Show,
+            QEvent.Type.LayoutRequest,
+        ):
+            self._sync()
+        return False
 
     def _sync(self) -> None:
         host = self._host
         self.setGeometry(host.rect())
-        bar_h = self._bar_height()
+        bar_h = bar_height(self._scale)
         self._bar.setGeometry(4, 4, max(host.width() - 8, 0), bar_h)
         inner = QRect(4, 4 + bar_h, max(host.width() - 8, 0), max(host.height() - 8 - bar_h, 0))
         self.setMask(QRegion(self.rect()).subtracted(QRegion(inner)))
@@ -555,31 +611,20 @@ class Win98Chrome(QWidget):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(colours.face))
         retro.bevel(painter, self.rect(), colours, "window")
-        strip = QRect(4, 4, self.width() - 8, self._bar_height())
-        gradient = QLinearGradient(strip.left(), 0, strip.right(), 0)
-        ink, start, end = title_bar_colours(self._tokens)
-        gradient.setColorAt(0, QColor(start))
-        gradient.setColorAt(1, QColor(end))
-        painter.fillRect(strip, gradient)
-        painter.drawPixmap(
-            QPointF(strip.left() + 4, strip.top() + (strip.height() - 16) // 2),
-            icons.pixmap(self._icon, ink, 16, self.devicePixelRatioF(), "2"),
-        )
-        font = QFont("Pixelify Sans")
-        font.setPointSizeF(type_pt("body", self._scale))
-        font = weighted(font, WEIGHT_STRONG)
-        painter.setFont(font)
-        painter.setPen(QColor(ink))
-        right = self._bar.findChildren(QWidget)[0].x() if self._bar.findChildren(QWidget) else strip.right()
-        painter.drawText(
-            QRectF(strip.left() + 25, strip.top(), max(right - strip.left() - 30, 0), strip.height()),
-            Qt.AlignmentFlag.AlignVCenter,
-            self._title,
-        )
         painter.end()
 
     def sizeHint(self) -> QSize:  # noqa: N802
         return self._host.size()
+
+    def restyle(self, title: str, icon: str, tokens: dict[str, str], scale: float) -> None:
+        self._title = title
+        self._icon = icon
+        self._tokens = tokens
+        self._colours = retro.scheme(tokens)
+        self._scale = scale
+        self._bar.deleteLater()
+        self._bar = Win98TitleBar(title, icon, self._caps, tokens, scale, self._close_host, self)
+        self._sync()
 
 
 def _card_widgets(root: QWidget) -> list[QWidget]:
@@ -689,11 +734,7 @@ def _ensure_one_frame(host: QWidget, tokens: dict[str, str], scale: float, on: b
     if existing is None:
         existing = Win98Chrome(host, title, icon, caps, tokens, scale)
     else:
-        existing._title = title
-        existing._icon = icon
-        existing._tokens = tokens
-        existing._colours = retro.scheme(tokens)
-        existing._scale = scale
+        existing.restyle(title, icon, tokens, scale)
     existing.show()
     existing.raise_()
     existing._sync()
@@ -702,6 +743,98 @@ def _ensure_one_frame(host: QWidget, tokens: dict[str, str], scale: float, on: b
 def _ensure_frame(root: QWidget, tokens: dict[str, str], scale: float, on: bool) -> None:
     for host in _hosts_to_frame(root):
         _ensure_one_frame(host, tokens, scale, on)
+
+
+def bevel_kind(widget: QWidget) -> str | None:
+    """Which of retro.BEVELS a widget takes: cards and buttons raised, fields and tracks sunken."""
+    name = widget.objectName()
+    if isinstance(widget, QPushButton):
+        if (
+            name in BEVEL_SKIP
+            or widget.isFlat()
+            or widget.property("quiet")
+            or (widget.property("segment") and not widget.isChecked())
+        ):
+            return None
+        if widget.property("segment"):
+            return "raised"
+        return "pressed" if widget.isCheckable() and widget.isChecked() else "raised"
+    if isinstance(widget, (QLineEdit, QComboBox, QAbstractSpinBox)):
+        parent = widget.parentWidget()
+        inner = isinstance(widget, QLineEdit) and isinstance(parent, (QComboBox, QAbstractSpinBox))
+        return None if inner else "sunken"
+    if isinstance(widget, QFrame) and widget.property("segmented"):
+        return "sunken"
+    if name == "setupChoice" and widget.property("selected"):
+        return None
+    if name in (*CARDS, "sheetCard", "authCard", "setupChoice"):
+        return "raised"
+    return None
+
+
+class BevelPane(QWidget):
+    """Paints retro.bevel on cards, buttons, fields and tracks a stylesheet cannot reach."""
+
+    def __init__(self, host: QWidget, tokens: dict[str, str]) -> None:
+        super().__init__(host)
+        self.setObjectName("win98Bevels")
+        self._host = host
+        self._tokens = tokens
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        host.installEventFilter(self)
+        self._sync()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self._host and event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
+            self._sync()
+        if event.type() == QEvent.Type.Paint:
+            self.update()
+        return False
+
+    def _sync(self) -> None:
+        self.setGeometry(self._host.rect())
+        self.raise_()
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        colours = retro.scheme(self._tokens)
+        painter = QPainter(self)
+        for widget in self._host.findChildren(QWidget):
+            if widget is self or isinstance(widget, (Win98Chrome, Win98TitleBar, BevelPane, retro.CapButton)):
+                continue
+            parent = widget.parentWidget()
+            skip = False
+            while parent is not None:
+                if isinstance(parent, (Win98Chrome, Win98TitleBar)):
+                    skip = True
+                    break
+                parent = parent.parentWidget()
+            if skip or not widget.isVisible() or widget.width() < 6 or widget.height() < 6:
+                continue
+            if _chrome_on(widget) is not None:
+                continue
+            kind = bevel_kind(widget)
+            if kind is None:
+                continue
+            top_left = widget.mapTo(self._host, QPoint(0, 0))
+            retro.bevel(painter, QRect(top_left, widget.size()), colours, kind)
+        painter.end()
+
+
+def _ensure_bevels(root: QWidget, tokens: dict[str, str], on: bool) -> None:
+    existing = next((child for child in root.findChildren(BevelPane) if child.parent() is root), None)
+    if not on:
+        if existing is not None:
+            existing.hide()
+            existing.deleteLater()
+        return
+    if existing is None:
+        existing = BevelPane(root, tokens)
+    else:
+        existing._tokens = tokens
+    existing.show()
+    existing.raise_()
+    existing._sync()
 
 
 def apply_feel(root: QWidget, context: Context, *, nested: bool = True) -> None:
@@ -715,6 +848,7 @@ def apply_feel(root: QWidget, context: Context, *, nested: bool = True) -> None:
     _shadows(_card_widgets(root), feel, context.palette.get("axis") == "dark")
     _hero_titles(root, context.tokens, text_scale(context.look), feel.chrome == "hero")
     _ensure_frame(root, context.tokens, text_scale(context.look), feel.chrome == "win98")
+    _ensure_bevels(root, context.tokens, feel.shape.edge == "bevel")
     root.setProperty("feelKey", feel.key)
 
 

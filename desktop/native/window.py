@@ -72,7 +72,7 @@ from desktop.native.command_bar import Command, CommandBar
 from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.custom_look import sanitize_saved
 from desktop.native.elevation import lift
-from desktop.native.feel import apply_feel, context_for, design_key, extra_stylesheet, set_current
+from desktop.native.feel import Context, apply_feel, context_for, current, extra_stylesheet, set_current
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import QUICK_TITLE, FocusScreen
@@ -3695,10 +3695,12 @@ class NativeWindow(QMainWindow):
         self._settings = page
         self._settings_finish = finish
         self._stack.addWidget(page)
-        from desktop.native.feel import current
-
         ctx = current()
         if ctx is not None:
+            extra = extra_stylesheet(
+                ctx.base_sheet, ctx.feel, ctx.palette, ctx.tokens, ctx.look, ("settingsTitle",)
+            )
+            page.setStyleSheet(ctx.base_sheet + extra)
             apply_feel(page, ctx)
 
     def _refresh_settings_page(self) -> None:
@@ -3915,11 +3917,6 @@ class NativeWindow(QMainWindow):
             stored = None
         self._look = sanitize_look(stored)
         self._layout = sanitize_layout(stored.get("layout") if isinstance(stored, dict) else None)
-        stored_design = stored.get("design") if isinstance(stored, dict) else None
-        if stored_design in {"classic", "timeline", "bento", "retro"} and (
-            not isinstance(stored, dict) or stored.get("layout") is None
-        ):
-            self._layout = sanitize_layout({"main": stored_design, "day": self._layout["day"]})
         self._updates = sanitize_updates(stored.get("updates") if isinstance(stored, dict) else None)
         self._zoom = sanitize_zoom(stored.get("zoom") if isinstance(stored, dict) else None)
         self._saved_looks = sanitize_saved(stored.get("saved_looks") if isinstance(stored, dict) else None)
@@ -3935,7 +3932,6 @@ class NativeWindow(QMainWindow):
             body = {
                 **self._look,
                 "layout": self._layout,
-                "design": design_key(self._layout.get("main")),
                 "updates": self._updates,
                 "zoom": self._zoom,
                 "saved_looks": self._saved_looks,
@@ -3969,14 +3965,10 @@ class NativeWindow(QMainWindow):
         ctx = context_for(self._layout, self._look, palette, sheet)
         heroes = ("settingsTitle", "sheetTitle", "setupTitle", "authBrand")
         extra = extra_stylesheet(sheet, ctx.feel, palette, ctx.tokens, self._look, heroes)
-        sheet = sheet + extra
         page = self._page_palette(palette)
         page_sheet = ""
         if page is not None:
             page_sheet = pack_stylesheet(pack, system_dark, self._look, accent, page, control_art(page))
-            page_sheet = page_sheet + extra_stylesheet(
-                page_sheet, ctx.feel, page, ctx.tokens, self._look, heroes
-            )
         chips = bool((self.session.preferences or {}).get("accent_chips"))
         chosen_motion = (self.session.preferences or {}).get("motion")
         self._motion = motion_level(chosen_motion, look_motion(self._look))
@@ -3999,21 +3991,33 @@ class NativeWindow(QMainWindow):
             self.add_menu.set_palette(palette, chips)
             self._dress_entry(palette)
             self.setup_page.set_palette(palette)
-            apply_feel(self, ctx)
             if ctx.feel.key == "plain":
                 self._dress_entry(palette)
-            apply_feel(self.setup_page, ctx)
-            if self._settings is not None:
-                apply_feel(self._settings, ctx)
-            for dialog in self.findChildren(QDialog):
-                if dialog.isVisible():
-                    apply_feel(dialog, ctx)
+            self._dress_feel(ctx, sheet, extra)
         if page_sheet != self._page_sheet:
             # The planner holds the design's page and nothing of the chrome.
             self._page_sheet = page_sheet
             self.planner.setStyleSheet(page_sheet)
         self._sync_add_button()
         self._refresh_layout()
+
+    def _feel_roots(self) -> list[QWidget]:
+        """Pages J13 dresses: Settings, Setup, sign-in and recovery. Not the week, day, rail or bar."""
+        roots: list[QWidget] = []
+        for name in ("authPage", "recoveryPage", "forgotPage"):
+            page = self.findChild(QWidget, name)
+            if page is not None:
+                roots.append(page)
+        roots.append(self.setup_page)
+        if self._settings is not None:
+            roots.append(self._settings)
+        roots.extend(dialog for dialog in self.findChildren(QDialog) if dialog.isVisible())
+        return roots
+
+    def _dress_feel(self, ctx: Context, sheet: str, extra: str) -> None:
+        for root in self._feel_roots():
+            root.setStyleSheet(sheet + extra)
+            apply_feel(root, ctx)
 
     def _dress_entry(self, palette: dict) -> None:
         """The eye in the muted text colour, and the sign-in and recovery cards lifted off the page

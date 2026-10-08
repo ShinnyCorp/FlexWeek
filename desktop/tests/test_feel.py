@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication, QLabel, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
 from desktop.native.feel import (
     Context,
     apply_feel,
+    bevel_css,
     design_key,
     dressed_stylesheet,
     extra_stylesheet,
@@ -182,26 +186,6 @@ def test_settings_and_a_sheet_and_setup_show_the_feel(qapp: QApplication) -> Non
         free(host)
 
 
-def test_sign_in_wears_the_last_design_this_computer_used(
-    qapp: QApplication, signed_out: NativeWindow  # noqa: F811
-) -> None:
-    path = look_file()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    body = {
-        "preset": "default",
-        "knobs": {},
-        "layout": {"main": "retro", "day": "dial", "options": {}},
-        "design": "retro",
-    }
-    path.write_text(json.dumps(body))
-    signed_out._load_look()
-    signed_out._apply_appearance()
-    still(signed_out)
-    assert page_feel().key == "retro"
-    assert signed_out.findChild(QWidget, "win98Frame") is not None
-    assert "Pixelify" in signed_out.styleSheet()
-
-
 def test_motion_off_changes_the_feel_at_once(qapp: QApplication, window: NativeWindow) -> None:  # noqa: F811
     apply_ui_effects("off")
     window.session.preferences = {**(window.session.preferences or {}), "motion": "off"}
@@ -238,3 +222,124 @@ def test_large_text_does_not_cut_titles(qapp: QApplication) -> None:  # noqa: F8
         free(dialog)
         free(page)
         free(host)
+
+
+def test_retro_title_sits_on_a_full_width_bar(qapp: QApplication) -> None:  # noqa: F811
+    host, ctx = _host(qapp, "retro")
+    prefs = {"alarms": [], "reminders_enabled": True, "theme_pack": "light-frost"}
+    page = SettingsPage(host, prefs, ctx.look, {}, style_layout(STYLE["retro"], sanitize_layout(None)))
+    page.resize(1280, 800)
+    apply_feel(page, ctx)
+    qapp.processEvents()
+    bar = page.findChild(QWidget, "win98TitleBar")
+    words = page.findChild(QLabel, "win98Title")
+    assert bar is not None
+    assert words is not None
+    assert words.text() == "Settings - FlexWeek"
+    assert bar.width() == page.width() - 8
+    dialog = HomeworkDialog(host, today="2026-10-01")
+    dialog.show()
+    apply_feel(dialog, ctx)
+    qapp.processEvents()
+    card = dialog.findChild(QWidget, "sheetCard")
+    assert card is not None
+    bar = card.findChild(QWidget, "win98TitleBar")
+    words = card.findChild(QLabel, "win98Title")
+    assert bar is not None
+    assert words is not None
+    assert words.text() == "Add homework"
+    assert bar.width() == card.width() - 8
+    close = card.findChild(QPushButton, "win98Cap-close")
+    assert close is not None
+    close.click()
+    qapp.processEvents()
+    assert not dialog.isVisible()
+    dialog = HomeworkDialog(host, today="2026-10-01")
+    dialog.show()
+    apply_feel(dialog, ctx)
+    qapp.processEvents()
+    QTest.keyClick(dialog, Qt.Key.Key_Escape)
+    qapp.processEvents()
+    assert not dialog.isVisible()
+    free(page)
+    free(host)
+
+
+def test_retro_bevels_are_raised_and_sunken(qapp: QApplication) -> None:  # noqa: F811
+    pack, look, palette, tokens, feel, base, _layout = _dressed("retro")
+    extra = extra_stylesheet(base, feel, palette, tokens, look, ("sheetTitle",))
+    assert "border-width: 2px" in extra
+    assert bevel_css("raised") in extra
+    assert bevel_css("sunken") in extra
+    host, ctx = _host(qapp, "retro")
+    dialog = HomeworkDialog(host, today="2026-10-01")
+    dialog.show()
+    apply_feel(dialog, ctx)
+    qapp.processEvents()
+    assert dialog.findChild(QWidget, "win98Bevels") is not None
+    dialog.close()
+    free(dialog)
+    free(host)
+
+
+def test_week_page_chrome_is_unchanged_by_j13(qapp: QApplication, window: NativeWindow) -> None:  # noqa: F811
+    for main in ("classic", "timeline", "bento", "retro"):
+        window._layout = sanitize_layout({"main": main, "day": "dial"})
+        window._apply_appearance()
+        still(window)
+        pack, system_dark, accent = window._look_inputs()
+        palette = resolved_palette(pack, system_dark, window._look, accent)
+        base = pack_stylesheet(pack, system_dark, window._look, accent, palette, control_art(palette))
+        assert window.styleSheet() == base
+        page = window._page_palette(palette)
+        page_sheet = ""
+        if page is not None:
+            page_sheet = pack_stylesheet(pack, system_dark, window._look, accent, page, control_art(page))
+        assert window.planner.styleSheet() == page_sheet
+        week = window.findChild(QWidget, "weekPage")
+        assert week is not None
+        assert week.findChild(QWidget, "win98Frame") is None
+        assert window.rail.findChild(QWidget, "win98Frame") is None
+        feel = feel_for(main)
+        extra = extra_stylesheet(
+            base, feel, palette, tokens_for(feel.layout, MATCH, palette), window._look
+        )
+        if extra:
+            assert extra not in window.styleSheet()
+            assert extra not in window.planner.styleSheet()
+
+
+def test_sign_in_wears_the_last_design_this_computer_used(
+    qapp: QApplication, signed_out: NativeWindow  # noqa: F811
+) -> None:
+    path = look_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "preset": "default",
+                "knobs": {},
+                "layout": {"main": "retro", "day": "dial", "options": {}},
+            }
+        )
+    )
+    signed_out._load_look()
+    signed_out._apply_appearance()
+    still(signed_out)
+    assert page_feel().key == "retro"
+    assert signed_out.findChild(QWidget, "win98Frame") is not None
+    assert "Pixelify" in signed_out.findChild(QWidget, "authPage").styleSheet()
+    signed_out._save_look()
+    saved = json.loads(path.read_text())
+    assert "design" not in saved
+    assert saved["layout"]["main"] == "retro"
+
+
+def test_window_imports_current_once() -> None:
+    import desktop.native.feel as feel
+    import desktop.native.window as native_window
+
+    assert native_window.current is feel.current
+    source = Path(native_window.__file__).read_text()
+    assert source.count("from desktop.native.feel import current") == 0
+    assert "current," in source.split("from desktop.native.feel import", 1)[1].split("\n", 1)[0]
