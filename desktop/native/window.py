@@ -1382,6 +1382,7 @@ class NativeWindow(QMainWindow):
             view.watched_day_changed.connect(self._watched_day_title)
             view.remembered_zoom = self._zoom
             view.zoomed.connect(self._remember_zoom)
+            view.option_set.connect(lambda key, value, chosen=layout_id: self._set_option(chosen, key, value))
             self.planner.addWidget(view)
             self._views[layout_id] = view
         view.show_week(self._scene_for(layout_id))
@@ -2484,6 +2485,18 @@ class NativeWindow(QMainWindow):
             self._day_mode,
             repr(self._layout),
         )
+
+    def _set_option(self, layout_id: str, key: str, value: str) -> None:
+        """An option a design changed on its own page, kept with the look as Settings keeps one: only
+        while it differs from how the design ships."""
+        options = {name: dict(values) for name, values in self._layout["options"].items()}
+        chosen = options.setdefault(layout_id, {})
+        chosen[key] = value
+        if value == options_for(None, layout_id)[key]:
+            del chosen[key]
+        self._layout = sanitize_layout({**self._layout, "options": options})
+        self._save_look()
+        self._on_week()
 
     def _remember_zoom(self, key: str, px: int) -> None:
         """How close a surface's hours are is kept for this device, as the look is."""

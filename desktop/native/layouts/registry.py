@@ -36,10 +36,13 @@ class Option:
     label: str
     level: str
     choices: tuple[Choice, ...]
+    # The value as the design ships, when that is not the first choice: a count in the middle of its
+    # range, such as Timeline's fold, is still listed in order.
+    shipped: str = ""
 
     @property
     def default(self) -> str:
-        return self.choices[0].value
+        return self.shipped or self.choices[0].value
 
     @property
     def values(self) -> tuple[str, ...]:
@@ -97,6 +100,14 @@ LAYOUTS: dict[str, LayoutSpec] = {
                     (Choice("comfortable", "Comfortable"), Choice("compact", "Compact")),
                 ),
                 _show("finished", "Finished and past items"),
+                # J8: where the fold falls, also moved with its handle on the week's pages.
+                Option(
+                    "fold",
+                    "Days on the left page",
+                    "detail",
+                    tuple(Choice(str(left), str(left)) for left in range(1, 7)),
+                    shipped="3",
+                ),
             ),
             TIMELINE,
             purpose="Agenda",

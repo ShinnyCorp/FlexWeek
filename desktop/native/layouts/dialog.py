@@ -166,6 +166,13 @@ class LayoutSection(QFrame):
     def chosen(self) -> str:
         return str(self.pick.currentData())
 
+    def sync(self, choice: dict) -> None:
+        """Every design's options as kept now. Settings stays built between opens, and an option
+        changed on a design's own page meanwhile, as Timeline's fold, would otherwise be written back
+        as it was."""
+        self._options = {layout_id: options_for(choice, layout_id) for layout_id in self._options}
+        self._rebuild(True)
+
     def values(self) -> dict[str, str]:
         """Every option of the design picked now, defaults included."""
         return dict(self._options[self.chosen()])

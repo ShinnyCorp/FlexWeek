@@ -1,7 +1,8 @@
 """Timeline: the week as a paper planner opened flat (0.17's Planner spread).
 
-Week is two pages: Monday to Wednesday on the left, Thursday to Sunday on the right, each day a
-column of hours, with the gutter between the pages and the hour rules running across both. The seven
+Week is two pages: Monday to Wednesday on the left, Thursday to Sunday on the right as it ships, each
+day a column of hours, with the gutter between the pages and the hour rules running across both. A
+handle on the fold, in the row of day names, moves days from one page to the other (J8). The seven
 columns are one canvas, so a block carried from Wednesday to Thursday never leaves the surface it
 started on. At the foot of the left page are the week's figures and what is next; at the foot of the
 right, the homework not placed yet as sticky notes, and what is due this week.
@@ -15,12 +16,14 @@ until FlexWeek can keep notes: lines that look writable and keep nothing would m
 from __future__ import annotations
 
 import html
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from functools import cached_property, partial
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen
+from PySide6.QtGui import QColor, QFocusEvent, QFont, QFontMetricsF, QKeyEvent, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import (
+    QApplication,
     QBoxLayout,
     QFrame,
     QGridLayout,
@@ -57,10 +60,11 @@ from desktop.native.layouts.base import (
     empty,
     family,
     label,
+    plural,
     rules,
     scrolling,
 )
-from desktop.native.layouts.registry import MATCH
+from desktop.native.layouts.registry import MATCH, options_for
 from desktop.native.look import FONT_FAMILIES, category_paint, look_measures, readable_ink
 from desktop.native.tokens import (
     RADIUS_CARD,
@@ -85,8 +89,8 @@ from desktop.native.widgets import FittedLabel, FlowLayout
 DAY_SCALE = Scale("timeline.day", (36, 45, 60, 80, 120), 45)
 # A level remembered for 0.16's lanes was an hour's width across a line; the columns keep their own.
 WEEK_SCALE = Scale("timeline.spread", (28, 36, 48, 64, 96), 36)
-# The planner's two pages and the days on each.
-PAGES = ((0, 1, 2), (3, 4, 5, 6))
+# The days on the planner's left page as the design ships; the rest are on the right.
+FOLD = int(options_for(None, "timeline")["fold"])
 # Room above and below the hours for the first and last hour's label.
 END_ROOM = 20
 # The mock-up's measures at Normal text, in pixels: room round the spread; inside a page at its outer
@@ -105,17 +109,43 @@ COMPACT = 0.6
 SHEET = 3
 
 
-def _spread(inner: float, area: QRectF) -> list[LinearTrack]:
-    """Monday to Wednesday on the left page, right of the hour labels, and Thursday to Sunday on the
-    right, `inner` clear of the fold down the middle of the canvas on either side."""
-    fold = area.right() / 2
+def pages_of(left: int) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """The days on each page, with the first `left` of the week on the left one."""
+    return tuple(range(left)), tuple(range(left, 7))
+
+
+def fold_at(left: int, width: float) -> float:
+    """Where the fold runs across hours `width` wide with `left` days on the left page: after `left`
+    + 1 of eight equal shares, the hour labels' column counting as one. At 3 | 4 that is the middle,
+    where the fold always was, and each day across moves it about a column."""
+    return width * (left + 1) / 8
+
+
+def landing(tracks: list[LinearTrack], at: float) -> int:
+    """The days on the left page if the fold were let go at `at`: each day whose middle is left of it,
+    so the fold snaps to the nearest day edge. Never fewer than one on either page."""
+    return min(max(sum(track.area.center().x() < at for track in tracks), 1), 6)
+
+
+def _run(days: tuple[int, ...]) -> str:
+    """A page's days as "Mon–Tue", or one day's short name."""
+    first, last = DAYS[days[0]], DAYS[days[-1]]
+    return first if first == last else f"{first}–{last}"
+
+
+def _spread(inner: float, left: int, area: QRectF) -> list[LinearTrack]:
+    """The first `left` days on the left page, right of the hour labels, and the rest on the right,
+    `inner` clear of the fold on either side. Each page's days share its width equally."""
+    fold = fold_at(left, area.right())
     top, tall = area.top() + END_ROOM / 2, area.height() - END_ROOM
     tracks = []
-    for days, (left, right) in zip(
-        PAGES, ((area.left(), fold - inner), (fold + inner, area.right())), strict=True
+    for days, (start, end) in zip(
+        pages_of(left), ((area.left(), fold - inner), (fold + inner, area.right())), strict=True
     ):
-        wide = (right - left) / len(days)
-        tracks += [LinearTrack(day, QRectF(left + at * wide, top, wide, tall)) for at, day in enumerate(days)]
+        wide = (end - start) / len(days)
+        tracks += [
+            LinearTrack(day, QRectF(start + at * wide, top, wide, tall)) for at, day in enumerate(days)
+        ]
     return tracks
 
 
@@ -220,6 +250,7 @@ class TimelinePainter(BlockPainter):
         edged: frozenset[int] = frozenset(),
         wide: bool = False,
         spine: float = 0,
+        pages: tuple[tuple[int, ...], ...] = pages_of(FOLD),
     ) -> None:
         soft = mix_oklab(tokens["line"], tokens["surface"], 0.5)
         super().__init__(
@@ -246,6 +277,7 @@ class TimelinePainter(BlockPainter):
         # the fold, where the time now goes if it fits; otherwise 0. Beside the labels it takes the
         # place of the one nearest it, as in Today's app.
         self.spine = spine
+        self.pages = pages
         self._ink = QColor(mix_oklab(tokens["text"], tokens["surface"], 0.78))
         # Set as each block is drawn, for `fonts`: one on Day too short for a line at the body size,
         # whose title is then in the caption size, as the mock-up writes "Dinner 18:30–19:00 · 30 min".
@@ -323,7 +355,7 @@ class TimelinePainter(BlockPainter):
         painter.setPen(QPen(self.c("now"), 2))
         painter.drawLine(QPointF(area.left(), at), QPointF(area.right(), at))
         if not self._beside_labels(painter.font()):
-            page = next(days for days in PAGES if track.day in days)
+            page = next(days for days in self.pages if track.day in days)
             fold = area.left() - page.index(track.day) * area.width() - self.spine / 2
             self._now_pill(painter, fold - self._pill_width(painter.font(), minute) / 2, at, minute)
 
@@ -362,6 +394,8 @@ class Spread(QWidget):
         super().__init__()
         self.setObjectName(name)
         self.tokens: dict[str, str] = {}
+        # Where the fold runs across it, asked as it paints; the middle when not set, as on Day.
+        self.fold: Callable[[], float] | None = None
 
     def paintEvent(self, event: object) -> None:  # noqa: N802
         if not self.tokens:
@@ -374,7 +408,7 @@ class Spread(QWidget):
         painter.setBrush(paper)
         for sheet in (box.translated(0, SHEET).adjusted(1, 0, -1, 0), box):
             painter.drawRoundedRect(sheet, RADIUS_CARD, RADIUS_CARD)
-        fold = self.width() / 2
+        fold = self.fold() if self.fold is not None else self.width() / 2
         painter.setPen(QPen(edge, 1))
         painter.drawLine(QPointF(fold, box.top()), QPointF(fold, box.bottom()))
         painter.end()
@@ -448,8 +482,154 @@ class DayHeading(QPushButton):
         return QSize(0, super().minimumSizeHint().height())
 
 
+class FoldHandle(QWidget):
+    """The fold's handle in the row of day names, "‹ 3 | 4 ›": the days on each page. Dragged sideways
+    it carries the fold to the day edge nearest the pointer, a day changing page once the pointer
+    passes its middle; ‹ and ›, or Left and Right with focus on it, move one day across. It takes its
+    own presses, so a drag started here never picks up a block from the hours."""
+
+    moved = Signal(int)
+    # Room either side of the words, and the share of its width at each end that is ‹ or ›.
+    PAD, ENDS = 6, 0.3
+
+    def __init__(self, heads: Heads) -> None:
+        super().__init__(heads)
+        self.heads = heads
+        self.setObjectName("timelineFold")
+        self.setToolTip("Drag to move days between the pages")
+        self.setAccessibleName("Fold between the pages")
+        self.setCursor(Qt.CursorShape.SizeHorCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.left = FOLD
+        self.tokens: dict[str, str] = {}
+        self.scale = 1.0
+        # Where it was pressed, and once that became a drag, the days the left page would hold if
+        # let go now.
+        self._pressed: QPointF | None = None
+        self._landing: int | None = None
+
+    def text(self) -> str:
+        return "".join(self._parts())
+
+    def _parts(self) -> tuple[str, str, str]:
+        """‹, the days on each page as it would be let go now, and ›."""
+        shown = self.left if self._landing is None else self._landing
+        return "‹", f" {shown} | {7 - shown} ", "›"
+
+    def carrying(self) -> bool:
+        return self._landing is not None
+
+    def show_fold(self, left: int, tokens: dict[str, str], scale: float) -> None:
+        self.left, self.tokens, self.scale = left, tokens, scale
+        self.setAccessibleDescription(
+            f"{plural(left, 'day')} on the left page, {7 - left} on the right. Left and Right move one "
+            "day across."
+        )
+        self.resize(self.sizeHint())
+        self.update()
+
+    def _font(self) -> QFont:
+        return at_scale(self.font(), "caption", self.scale, WEIGHT_STRONG)
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        metrics = QFontMetricsF(self._font())
+        # As wide as its widest counts, so it keeps its size while they change under a drag.
+        wide = max(metrics.horizontalAdvance(f"‹ {left} | {7 - left} ›") for left in range(1, 7))
+        return QSize(round(wide + 2 * self.PAD * self.scale), round(metrics.height() + 6 * self.scale))
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        if not self.tokens:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        held = self.carrying()
+        accent = QColor(self.tokens["accent"])
+        box = QRectF(self.rect()).adjusted(1, 1, -1, -1)
+        edge = accent if held or self.hasFocus() else QColor(self.tokens["line"])
+        painter.setPen(QPen(edge, 2 if self.hasFocus() else 1))
+        painter.setBrush(accent if held else QColor(self.tokens["surface"]))
+        painter.drawRoundedRect(box, box.height() / 2, box.height() / 2)
+        font = self._font()
+        painter.setFont(font)
+        metrics = QFontMetricsF(font)
+        back, counts, forward = self._parts()
+        ink = QColor(self.tokens["accent_ink"] if held else self.tokens["text"])
+        arrows = ink if held else QColor(self.tokens.get("accent_text", self.tokens["accent"]))
+        at = box.center().x() - metrics.horizontalAdvance(self.text()) / 2
+        for words, colour in ((back, arrows), (counts, ink), (forward, arrows)):
+            wide = metrics.horizontalAdvance(words)
+            painter.setPen(colour)
+            painter.drawText(QRectF(at, box.top(), wide, box.height()), Qt.AlignmentFlag.AlignCenter, words)
+            at += wide
+        painter.end()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+        self._pressed = event.position()
+        event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._pressed is None:
+            return
+        travelled = abs(event.position().x() - self._pressed.x())
+        if not self.carrying() and travelled < QApplication.startDragDistance():
+            return
+        canvas = self.heads.canvas
+        self._landing = landing(canvas.tracks, canvas.mapFromGlobal(event.globalPosition()).x())
+        canvas.show_landing((self.left, self._landing))
+        # Under the pointer while it is carried, as the mock-up draws it.
+        across = self.heads.mapFromGlobal(event.globalPosition()).x()
+        self.move(round(across - self.width() / 2), self.y())
+        self.update()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        pressed, landed = self._pressed, self._landing
+        if pressed is None:
+            super().mouseReleaseEvent(event)
+            return
+        self._let_go()
+        if landed is not None:
+            self._go(landed)
+        elif pressed.x() < self.width() * self.ENDS:
+            self._go(self.left - 1)
+        elif pressed.x() > self.width() * (1 - self.ENDS):
+            self._go(self.left + 1)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        if event.key() == Qt.Key.Key_Left:
+            self._go(self.left - 1)
+        elif event.key() == Qt.Key.Key_Right:
+            self._go(self.left + 1)
+        elif event.key() == Qt.Key.Key_Escape and self._pressed is not None:
+            self._let_go()
+        else:
+            super().keyPressEvent(event)
+
+    def focusInEvent(self, event: QFocusEvent) -> None:  # noqa: N802
+        super().focusInEvent(event)
+        self.update()
+
+    def focusOutEvent(self, event: QFocusEvent) -> None:  # noqa: N802
+        super().focusOutEvent(event)
+        self.update()
+
+    def _let_go(self) -> None:
+        self._pressed = self._landing = None
+        self.heads.canvas.show_landing(None)
+        self.heads.place()
+        self.update()
+
+    def _go(self, left: int) -> None:
+        left = min(max(left, 1), 6)
+        if left != self.left:
+            self.moved.emit(left)
+
+
 class Heads(QFrame):
-    """The days' names over their columns, kept above the hours as they scroll."""
+    """The days' names over their columns, kept above the hours as they scroll, and on Week the
+    fold's handle between the pages."""
 
     opened = Signal(int)
 
@@ -459,6 +639,8 @@ class Heads(QFrame):
         self.canvas = canvas
         self.opens = opens
         self.headings: dict[int, DayHeading] = {}
+        # Day is one page of hours beside its notes, with no fold to move.
+        self.handle = FoldHandle(self) if opens else None
         self.show_days(days)
         canvas.heads = self
 
@@ -486,6 +668,12 @@ class Heads(QFrame):
                 heading.setGeometry(
                     QRect(left, 0, round(track.area.right() - self.canvas.gutter) - left, self.height())
                 )
+        handle, split = self.handle, self.canvas.split
+        if handle is not None and split is not None and not handle.carrying():
+            across = fold_at(split[0], self.canvas.width()) - self.canvas.gutter
+            handle.move(round(across - handle.width() / 2), round((self.height() - handle.height()) / 2))
+            # Over the day names, which are made again when the days shown change.
+            handle.raise_()
 
     def resizeEvent(self, event: object) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -507,11 +695,80 @@ class TimelineCanvas(HoursCanvas):
     def __init__(self, hand: Hand, painter: TimelinePainter, lay_out) -> None:
         super().__init__(hand, painter, lay_out)
         self.heads: Heads | None = None
+        # On Week: the days on the left page and the room either side of the fold. None on Day.
+        self.split: tuple[int, int] | None = None
+        # The pages' feet side by side, as wide as the pages over them.
+        self.feet: QBoxLayout | None = None
+        # While the fold's handle is carried: the days the left page has, and would have if let go.
+        self.landing: tuple[int, int] | None = None
 
     def relayout(self) -> None:
         super().relayout()
+        if self.feet is not None and self.split is not None:
+            left, inner = self.split
+            fold = fold_at(left, self.width())
+            # The feet run under the hours' scroll bar too, so the right one reaches past the canvas.
+            scroll = self._scroll_area()
+            reach = scroll.width() if scroll is not None else self.width()
+            for at, wide in enumerate((fold - inner, reach - fold - inner)):
+                if self.feet.stretch(at) != max(round(wide), 1):
+                    self.feet.setStretch(at, max(round(wide), 1))
         if self.heads is not None:
             self.heads.place()
+
+    def fold_x(self) -> float:
+        """Where the fold runs across the hours."""
+        return fold_at(self.split[0], self.width()) if self.split is not None else self.width() / 2
+
+    def show_landing(self, landing: tuple[int, int] | None) -> None:
+        self.landing = landing
+        self.update()
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        super().paintEvent(event)
+        if self.landing is None or len(self.tracks) != 7:
+            return
+        painter = QPainter(self)
+        try:
+            self._paint_landing(painter, *self.landing)
+        finally:
+            painter.end()
+
+    def _paint_landing(self, painter: QPainter, now: int, then: int) -> None:
+        """Where the fold lands if let go: the days that change page tinted, a dashed line at the day
+        edge it snaps to, and the pages that makes named at the top of the line."""
+        tokens = self.painter.tokens
+        areas = {track.day: track.area for track in self.tracks}
+        if then < now:
+            moving, at = range(then, now), areas[then].left()
+        elif then > now:
+            moving, at = range(now, then), areas[then - 1].right()
+        else:
+            moving, at = range(0), self.fold_x()
+        accent = QColor(tokens["accent"])
+        wash = QColor(accent)
+        wash.setAlphaF(0.12)
+        for day in moving:
+            painter.fillRect(areas[day], wash)
+        # On a whole pixel, so the dashes are the accent and not a blend of it.
+        at = round(at)
+        painter.setPen(QPen(accent, 2, Qt.PenStyle.DashLine))
+        painter.drawLine(QPointF(at, 0), QPointF(at, self.height()))
+        visible = self._visible()
+        left, right = pages_of(then)
+        words = f"{_run(left)} | {_run(right)}"
+        font = weighted(caption(self.font()), WEIGHT_STRONG)
+        metrics = QFontMetricsF(font)
+        box = QRectF(0, 0, metrics.horizontalAdvance(words) + 16, metrics.height() + 6)
+        box.moveCenter(QPointF(at, visible.top() + 6 + box.height() / 2))
+        box.moveLeft(min(max(box.left(), 0), self.width() - box.width()))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(tokens["text"]))
+        painter.drawRoundedRect(box, box.height() / 2, box.height() / 2)
+        painter.setPen(QColor(tokens["surface"]))
+        painter.setFont(font)
+        painter.drawText(box, Qt.AlignmentFlag.AlignCenter, words)
 
     def day_name(self, day: int) -> QPoint:
         heading = self.heads.headings.get(day) if self.heads is not None else None
@@ -646,10 +903,12 @@ class Split(QFrame):
     """Two parts side by side while it is `wide` enough for both, and one over the other when not,
     as the foot of the right page is in a narrow window or at large text."""
 
-    def __init__(self, name: str, wide: int, gap: int) -> None:
+    def __init__(self, name: str, wide: int, gap: int, lead: tuple[QWidget, int] | None = None) -> None:
         super().__init__()
         self.setObjectName(name)
         self.wide = wide
+        # The first part and its width side by side; one over the other it takes no more than the row.
+        self.lead = lead
         self.box = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
         self.box.setContentsMargins(0, 0, 0, 0)
         self.box.setSpacing(gap)
@@ -662,6 +921,10 @@ class Split(QFrame):
         direction = QBoxLayout.Direction.LeftToRight if side else QBoxLayout.Direction.TopToBottom
         if self.box.direction() != direction:
             self.box.setDirection(direction)
+        if self.lead is not None:
+            part, wide = self.lead
+            part.setMinimumWidth(wide if side else 0)
+            part.setMaximumWidth(wide)
 
 
 @dataclass
@@ -741,6 +1004,8 @@ class TimelineView(LayoutView):
         canvas = TimelineCanvas(self.hand, TimelinePainter(scene.tokens), None)
         heads = Heads(canvas, () if day else tuple(range(7)), not day)
         heads.opened.connect(self._open_day)
+        if heads.handle is not None:
+            heads.handle.moved.connect(self._fold_moved)
         heads.setFixedHeight(px(HEADS))
         if day:
             canvas.setObjectName("timelineHours")
@@ -771,9 +1036,14 @@ class TimelineView(LayoutView):
             row = QHBoxLayout()
             for name in ("timelineWeekFoot", "timelineNotesFoot"):
                 foot = QVBoxLayout()
-                row.addWidget(_frame(name, foot), 1)
+                page_foot = _frame(name, foot)
+                # As wide as its page, whatever its parts would like: the canvas sets the stretches.
+                page_foot.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+                row.addWidget(page_foot, 1)
                 feet.append(foot)
             layout.addWidget(_frame("timelineFeet", row))
+            canvas.feet = row
+            spread.fold = lambda: canvas.mapTo(spread, QPoint(0, 0)).x() + canvas.fold_x()
         self._root.addWidget(spread, 1)
         made = Pages(spread, hours, row, tuple(feet))
         self._pages[key] = made
@@ -791,9 +1061,16 @@ class TimelineView(LayoutView):
     def _render_week(self, scene: Scene, pages: Pages, inner: int, tight: float) -> None:
         hours = pages.hours
         canvas = hours.canvas
-        canvas._lay_out = partial(_spread, inner)
-        spine = 2 * inner if scene.today in PAGES[1] else 0
-        canvas.set_painter(TimelinePainter(scene.tokens, edged=frozenset({0, 1, 2, 4, 5, 6}), spine=spine))
+        left = int(scene.options.get("fold", FOLD))
+        pages_now = pages_of(left)
+        canvas.split = (left, inner)
+        canvas._lay_out = partial(_spread, inner, left)
+        spine = 2 * inner if scene.today in pages_now[1] else 0
+        # A hairline down each day's start edge, but the first on the right page, which is the fold's.
+        edged = frozenset(range(7)) - {left}
+        canvas.set_painter(TimelinePainter(scene.tokens, edged=edged, spine=spine, pages=pages_now))
+        if canvas.heads is not None and canvas.heads.handle is not None:
+            canvas.heads.handle.show_fold(left, scene.tokens, scene.scale)
         canvas.relayout()
         self._date_heads(scene, canvas.heads)
         canvas.set_week(_shown(scene, scene.week.occurrences), scene.today, scene.minute)
@@ -811,16 +1088,18 @@ class TimelineView(LayoutView):
         px = scene.px
         foot.setSpacing(px(8))
         foot.addWidget(label("This week", "timelineLabel"))
-        row = QHBoxLayout()
-        row.setSpacing(px(32))
+        # Wrapping onto a second row on a narrow page, as the fold can make it (J8), rather than cut.
+        row = FlowLayout(gap=px(8))
         for value, words in week_figures(scene.week):
             pair = QVBoxLayout()
             pair.setSpacing(px(2))
+            figure = _frame("timelineFigure", pair)
+            # The rest of the room between figures, so the rows sit closer than the figures do.
+            pair.setContentsMargins(0, 0, px(24), 0)
             pair.addWidget(label(value, "timelineStat"))
             pair.addWidget(label(words, "timelineStatWord"))
-            row.addLayout(pair)
-        row.addStretch(1)
-        foot.addLayout(row)
+            row.addWidget(figure)
+        foot.addWidget(_frame("timelineFigures", row))
         coming = next_up(scene)
         if coming is not None:
             muted = scene.tokens["muted"]
@@ -840,8 +1119,9 @@ class TimelineView(LayoutView):
         px = scene.px
         # Two square notes side by side, as the mock-up's 276 pixels hold, at any text size.
         wide = 2 * round(SQUARE_NOTE[0] * scene.scale) + px(12)
-        split = Split("timelineNotesSplit", wide + px(24) + px(DUE_WIDE), px(24))
         notes = _frame("timelineNotes", QVBoxLayout())
+        # Two notes wide beside what is due; under it, one to a row on a page too narrow for two.
+        split = Split("timelineNotesSplit", wide + px(24) + px(DUE_WIDE), px(24), lead=(notes, wide))
         notes.setFixedWidth(wide)
         self._waiting(scene, notes.layout(), square=True)
         split.box.addWidget(notes, 0, Qt.AlignmentFlag.AlignTop)
@@ -984,7 +1264,8 @@ class TimelineView(LayoutView):
             row.setSpacing(px(6))
             line = _frame("timelineDueRow", row)
             line.setProperty("ruled", big)
-            line.setFixedHeight(px(40 if big else 34))
+            # Taller when its line wraps on a narrow page.
+            line.setMinimumHeight(px(40 if big else 34))
             mark = QLabel()
             mark.setObjectName("timelineDueBook")
             mark.setPixmap(book)
@@ -996,7 +1277,8 @@ class TimelineView(LayoutView):
             title.setProperty("big", big)
             title.set_full_text(due.title)
             deadline, placed = _due_words(due.due), _placed_words(due.at)
-            where = label(" · ".join(part for part in (deadline, placed) if part), "timelineDueWhen")
+            words = " · ".join(part for part in (deadline, placed) if part)
+            where = label(words, "timelineDueWhen", wrap=True)
             if due.at is None:
                 where.setProperty("open", True)
             column.addWidget(title)
@@ -1004,6 +1286,14 @@ class TimelineView(LayoutView):
             row.addWidget(mark, 0, Qt.AlignmentFlag.AlignVCenter)
             row.addLayout(column, 1)
             box.addWidget(line)
+
+    def _fold_moved(self, left: int) -> None:
+        """The fold let go somewhere new: the pages are laid out again now, and the window keeps it
+        with the look."""
+        if self._scene is None:
+            return
+        self.show_week(replace(self._scene, options={**self._scene.options, "fold": str(left)}))
+        self.option_set.emit("fold", str(left))
 
     def _open_day(self, day: int) -> None:
         if self._scene is not None:

@@ -720,6 +720,42 @@ def test_a_sticky_notes_small_print_is_regular_in_the_real_window(
     assert [weight for words, weight in written if words == "1 h"] == [400]
 
 
+def test_timelines_fold_is_kept_with_the_look_restored_on_open_and_reset_with_the_design(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """J8: a fold moved on the page is a Timeline option like the others. Settings, built before the
+    move and opened after it, shows it and keeps it when another option changes."""
+    window._layout = {"main": "timeline", "day": "one", "options": {}}
+    window._on_week()
+    open_settings(window).close_page()
+    faded_in()
+    handle = window.planner.currentWidget().findChild(QWidget, "timelineFold")
+    QTest.mouseClick(handle, Qt.MouseButton.LeftButton, pos=QPoint(handle.width() - 4, handle.height() // 2))
+    qapp.processEvents()
+    assert window._layout["options"] == {"timeline": {"fold": "4"}}
+    assert json.loads(look_file().read_text())["layout"]["options"] == {"timeline": {"fold": "4"}}
+    assert window.planner.currentWidget().findChild(QWidget, "timelineFold").text() == "‹ 4 | 3 ›"
+    page = open_settings(window)
+    page.findChild(QCheckBox, "layoutMainMore").setChecked(True)
+    assert combo(page, "layoutMain-fold").currentData() == "4"
+    density = combo(page, "layoutMain-density")
+    density.setCurrentIndex(density.findData("compact"))
+    assert window._layout["options"] == {"timeline": {"fold": "4", "density": "compact"}}
+    page.close_page()
+    window._layout = sanitize_layout(None)
+    window._load_look()
+    window._on_week()
+    qapp.processEvents()
+    assert window._layout["options"]["timeline"]["fold"] == "4", "restored when the app opens"
+    assert window.planner.currentWidget().findChild(QWidget, "timelineFold").text() == "‹ 4 | 3 ›"
+    page = open_settings(window)
+    page.findChild(QPushButton, "layoutMainReset").click()
+    assert window._layout["options"] == {}
+    page.close_page()
+    qapp.processEvents()
+    assert window.planner.currentWidget().findChild(QWidget, "timelineFold").text() == "‹ 3 | 4 ›"
+
+
 def test_timelines_names_and_figures_take_the_looks_heading_face(
     qapp: QApplication, window: NativeWindow
 ) -> None:
