@@ -123,16 +123,16 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-07, `release/0.18.3` in `~/.worktrees/flexweek-0183-release` (main + the round 2 docs).
-  Batch B wave 1 is building on `lane/0183-<lane>` worktrees (`~/.worktrees/flexweek-0183-<lane>`):
-  setup, homework, settings, focus, account (Sonnet 5.5 jobs, `nohup claude -p`; their output in
-  `~/.flexweek-ui-harness/scratch/0.18.3/lanes/job-<lane>.out`) and availability, timeline-fold, clay
-  (Opus 5.5 agents; if a session restart cut them, relaunch from the same briefs). Briefs:
-  `~/.flexweek-ui-harness/scratch/0.18.3/lanes/COMMON.md` + `<lane>.md`; reports go to
-  `~/.flexweek-ui-harness/scratch/0.18.3/<lane>/report.md`. Wave 2 (sheets, large-text; briefs
-  written, worktrees made) starts after homework, account and focus merge. Next: review each lane's
-  diff, run its test files, merge into release/0.18.3; then J13 (styles on every page) once Jonathan
-  picks a depth from `~/.flexweek-ui-harness/scratch/0.18.x/mockups/round2/out/10_styles_*.png`
-  (report in `report-styles.md`); #41 and the "Open after 0.18.1" decisions still wait on him.
-  `docs/mockup-round2` is local only (he said not to push yet). Phase 8 (contest, due 2026-10-25) is
-  with Cursor and his partner; v0.18.2 is released as latest.
+- 2026-10-08, `release/0.18.3` in `~/.worktrees/flexweek-0183-release` (`.venv` is `venv-0182-engine`;
+  the J7 engine is in `venv-0183-engine`, relink before running engine-dependent tests). Merged:
+  clay, settings, focus, account, availability, timeline-fold, homework (each verified: ruff, tests
+  one file per process; Clay and Timeline rigs passed). Left for Grok (prompt
+  `~/.flexweek-ui-harness/scratch/0.18.3/grok-0183-wave2.md`): settings-2, setup-2 (then merge
+  `lane/0183-setup`), sheets, large-text. Then J13 (styles on every page) once Jonathan picks a
+  depth from `~/.flexweek-ui-harness/scratch/0.18.x/mockups/round2/out/10_styles_*.png`.
+  Two tests fail alone on release and on the 0.18.2 checkout since about 2026-10-07 though both
+  passed on 2026-10-04 (`test_the_bar_is_fitted_as_large_text_arrives_not_later`,
+  `test_my_day_actions_leave_room_after_their_icons`): environment, not code; check at the gate.
+  spec.md drift to raise with Jonathan: study windows are one list (J7) and protected time may
+  carry a title. Nothing pushed; `docs/mockup-round2` local only. #41 and "Open after 0.18.1"
+  still wait on him. Phase 8 (due 2026-10-25) is with Cursor and his partner.
