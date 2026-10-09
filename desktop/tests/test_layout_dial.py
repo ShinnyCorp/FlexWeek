@@ -397,7 +397,7 @@ def test_the_weeks_small_dials_are_labelled_with_todays_hand_and_past_days_paler
 def test_a_small_dial_opens_that_day_and_today_is_one_press_back(qapp: QApplication) -> None:
     view = shown(qapp, "19:00")
     QTest.mouseClick(view.findChild(DialFace, "dialMini0"), Qt.MouseButton.LeftButton)
-    assert text(view, "dialKicker") == "Monday, September 14"
+    assert text(view, "dialKicker") == "Monday 14 September"
     assert text(view, "dialTitle") == "45 min planned · 45 min done"
     assert [(name, tag, state) for _time, name, _length, tag, state in rows(view)] == [
         ("School", "Done", "past"),
@@ -410,7 +410,7 @@ def test_a_small_dial_opens_that_day_and_today_is_one_press_back(qapp: QApplicat
 
 def test_in_another_week_it_shows_the_week_but_claims_no_now(qapp: QApplication) -> None:
     view = shown(qapp, "19:00", today=None)
-    assert text(view, "dialKicker") == "Monday, September 14"
+    assert text(view, "dialKicker") == "Monday 14 September"
     assert text(view, "dialThen") == "This is not the current week, so there is no now to show."
     assert view.findChild(QPushButton, "dialToday") is None
     assert view.findChild(QPushButton, "dialFinished") is None

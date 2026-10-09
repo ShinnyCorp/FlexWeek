@@ -709,29 +709,34 @@ fn test_a_block_cannot_run_past_midnight() {
 
 #[test]
 fn test_labels_read_the_way_a_student_says_them() {
+    let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 17).expect("a date");
     let lengths: Vec<String> = [30, 60, 90, 0].into_iter().map(length_label).collect();
     assert_eq!(lengths, ["30 min", "1 h", "1 h 30 min", "0 min"]);
     assert_eq!(
-        due_label(&json!("2026-09-17T23:59")).expect("words"),
+        due_label(&json!("2026-09-17T23:59"), today).expect("words"),
         "Thu 17 Sep"
     );
     assert_eq!(
-        due_label(&json!("2026-09-27")).expect("words"),
+        due_label(&json!("2026-09-27"), today).expect("words"),
         "Sun 27 Sep"
     );
     assert_eq!(
-        due_label(&json!("2026-09-27T09:00")).expect("words"),
+        due_label(&json!("2026-09-27T09:00"), today).expect("words"),
         "Sun 27 Sep, 09:00"
     );
     assert_eq!(
-        due_label(&json!("2026-09-28T08:00")).expect("words"),
+        due_label(&json!("2026-09-28T08:00"), today).expect("words"),
         "Mon 28 Sep, 08:00"
     );
     assert_eq!(
-        due_label(&json!("2026-09-20")).expect("words"),
+        due_label(&json!("2026-09-20"), today).expect("words"),
         "Sun 20 Sep"
     );
-    assert_eq!(due_label(&Value::Null).expect("words"), "");
+    assert_eq!(due_label(&Value::Null, today).expect("words"), "");
+    assert_eq!(
+        due_label(&json!("2027-01-08"), today).expect("words"),
+        "Fri 8 Jan 2027"
+    );
 }
 
 #[test]

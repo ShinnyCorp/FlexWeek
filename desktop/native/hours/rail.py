@@ -52,7 +52,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from desktop.native import icons
-from desktop.native.calendar import DAYS
+from desktop.native.calendar import DAYS, month_title
 from desktop.native.fonts import at_scale, time_font, weighted
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.hand import Hand
@@ -73,20 +73,6 @@ from desktop.native.widgets import FlowLayout, overlay_scroll_bars
 
 RAIL_PX = 280
 LETTERS = ("M", "T", "W", "T", "F", "S", "S")
-MONTHS = (
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-)
 HIDE_MONTH = "Hide the month"
 SHOW_MONTH = "Show the month"
 # 8 at the sides: the window's own 9-pixel margin puts the rail's words 17 from its edge, where the
@@ -353,7 +339,7 @@ class MonthCard(QWidget):
 
     def _say(self) -> None:
         month = self.dates.month
-        self.title.setText(f"{MONTHS[month.month - 1]} {month.year}")
+        self.title.setText(month_title(month))
         self.dates.updateGeometry()
         self.dates.update()
 

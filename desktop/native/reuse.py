@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 
 import flexweek_engine  # type: ignore[import-untyped]
+
+from desktop.native.calendar import iso_of
 
 MAX_WEEK_BLOCKS = 100
 AVAILABILITY_LIMIT = 21
@@ -28,8 +30,8 @@ def restore_point_label(text: str) -> str:
     return str(flexweek_engine.reuse_restore_label(text))
 
 
-def week_label(week_start: str) -> str:
-    return str(flexweek_engine.reuse_week_label(week_start))
+def week_label(week_start: str, today: date | str | None = None) -> str:
+    return str(flexweek_engine.reuse_week_label(week_start, iso_of(today)))
 
 
 def floor_slot(minutes: int) -> int:
@@ -317,35 +319,11 @@ def copy_label(block: dict, source_day: int, scope: str) -> str:
     )
 
 
-DAYS_LONG = (
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-)
-MONTHS = (
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-)
-
-
 def planner_title(session: object, view: str, *, short: bool = False, selected_day: str | None = None) -> str:
-    """Where you are, in words: "15 – 21 September", "Thursday 18 September", "September 2026".
+    """Where you are, in words: "15 – 21 Sep", "Thursday 18 September", "September 2026".
 
-    Week always uses short month names. `short` also abbreviates Day and Month for a narrow bar.
+    The week always uses short month names. `short` also abbreviates Day and Month for a narrow bar.
+    The year shows on a day only when it is not the session's current year.
 
     The top bar used to say none of this. It had two buttons reading "Previous week" and "Next week"
     and no statement of which week you were on at all.

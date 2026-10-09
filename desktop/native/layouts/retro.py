@@ -63,7 +63,15 @@ from PySide6.QtWidgets import (
 
 from backend.models import due_is_timed, due_sort_key
 from desktop.native import icons
-from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS, category_title
+from desktop.native.calendar import (
+    CATEGORIES,
+    DAY_FULL,
+    DAYS,
+    category_title,
+    day_long,
+    day_short,
+    week_range,
+)
 from desktop.native.fonts import at_scale, load_fonts, time_font, weighted
 from desktop.native.hours.canvas import (
     EDGE_WIDTH,
@@ -96,7 +104,6 @@ from desktop.native.layouts.base import (
 from desktop.native.layouts.colourways import RETRO
 from desktop.native.look import AA_TEXT, category_paint, look_measures, type_sizes
 from desktop.native.motion import Clock, app_level, appear, between, duration, moves
-from desktop.native.reuse import MONTHS, planner_title
 from desktop.native.tokens import (
     WEIGHT_REGULAR,
     WEIGHT_STRONG,
@@ -388,7 +395,7 @@ def due_heading(due: str | None, week: WeekModel, today: int | None) -> str:
     if not due:
         return "No due date."
     day = date.fromisoformat(due[:10])
-    words = f"Due {DAY_FULL[day.weekday()]} {day.day} {MONTHS[day.month - 1]}"
+    words = f"Due {day_long(day)}"
     if due_is_timed(due):
         words += f" at {hhmm_text(due[11:16])}"
     if today is not None:
@@ -1732,8 +1739,8 @@ class RetroView(LayoutView):
         week = scene.week
         if day is not None:
             shown = week.date_of(day)
-            return f"Week.exe - {DAY_FULL[day]} {shown.day} {MONTHS[shown.month - 1]}"
-        return f"Week.exe - {planner_title(week, 'week')}"
+            return f"Week.exe - {day_long(shown)}"
+        return f"Week.exe - {week_range(week.week_start)}"
 
     def _menu(self, key: str) -> QHBoxLayout:
         """A window's menu bar, as drawn. Its menus are pictures: FlexWeek's own are in More and Start."""
@@ -1805,8 +1812,8 @@ class RetroView(LayoutView):
         if scene.today is None or day not in (None, scene.today):
             return ()
         if day is None:
-            number, now = scene.week.date_of(scene.today).day, clock_label(scene.minute)
-            return (f"{DAY_FULL[scene.today]} {number}, {now}", f"{DAYS[scene.today]} {number}, {now}", now)
+            shown, now = scene.week.date_of(scene.today), clock_label(scene.minute)
+            return (f"{day_long(shown)}, {now}", f"{day_short(shown)}, {now}", now)
         ahead = sum(item.start > scene.minute for item in scene.week.on_day(day))
         return (f"{ahead} still to come", f"{ahead} to come")
 
@@ -1930,7 +1937,8 @@ class RetroView(LayoutView):
         box.addSpacing(8)
         box.addWidget(Rule(colours))
         box.addSpacing(12)
-        dated = label(f"{shown.day} {MONTHS[shown.month - 1]}", "retroWebDate")
+        # The weekday is the heading above; this is the rest of the long date.
+        dated = label(day_long(shown).partition(" ")[2], "retroWebDate")
         dated.setProperty("role", "strong")
         box.addWidget(dated)
         ahead = sum(item.start > scene.minute for item in items) if today else None

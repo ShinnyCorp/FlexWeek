@@ -685,7 +685,7 @@ def test_status_bar_tracks_the_hands_time_and_verdict(
 def test_the_status_bar_says_less_rather_than_cutting_its_words(qapp: QApplication) -> None:
     wide = shown(qapp)
     assert [text(wide, name) for name in ("retroStatusNow", "retroStatusWaiting")] == [
-        "Thursday 17, 13:40",
+        "Thursday 17 September, 13:40",
         f"1 homework {NOT_PLACED}",
     ]
     narrow = shown(qapp, 800, 700)

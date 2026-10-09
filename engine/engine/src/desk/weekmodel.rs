@@ -1,11 +1,12 @@
 //! Week reading model from `desktop/native/weekmodel.py`.
 
-use chrono::Datelike;
+use chrono::NaiveDate;
 use serde_json::{Map, Value, json};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::desk::calendar::{DAY_FULL, DAYS, is_series_checked};
+use crate::desk::datetext::day_short;
 use crate::desk::grid::work_session;
 use crate::desk::pydate::{from_iso, iso_text};
 use crate::desk::pyops::{
@@ -27,9 +28,6 @@ pub const SLACK_WORDS: [(&str, &str); 3] = [
 pub const NOT_PLANNED: &str = "Not planned yet.";
 pub const HOMEWORK: &str = "assignments";
 pub const END_OF_DAY: i64 = 24 * 60;
-const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
 pub const LEFTOVER: [(&str, &str); 4] = [
     ("needs_time", "Not placed yet"),
     ("no_homework", "No homework added"),
@@ -183,7 +181,7 @@ pub fn planned_line(planned_min: i64, done_min: i64) -> String {
 
 /// `due_label`: a falsy `due` is no label; the rest must be a date, with a time after it when the
 /// stamp names one.
-pub fn due_label(due: &Value) -> EngineResult<String> {
+pub fn due_label(due: &Value, today: NaiveDate) -> EngineResult<String> {
     if !truthy(Some(due)) {
         return Ok(String::new());
     }
@@ -191,12 +189,7 @@ pub fn due_label(due: &Value) -> EngineResult<String> {
         Value::String(found) => from_iso(&found)?,
         _ => return Err(type_error("fromisoformat: argument must be str")),
     };
-    let mut words = format!(
-        "{} {} {}",
-        DAYS[day.weekday().num_days_from_monday() as usize],
-        day.day(),
-        MONTHS[day.month0() as usize]
-    );
+    let mut words = day_short(day, today);
     let due = due.as_str().unwrap_or_default();
     if crate::model::due_is_timed(due) {
         words.push_str(&format!(
@@ -208,8 +201,8 @@ pub fn due_label(due: &Value) -> EngineResult<String> {
 }
 
 /// `due_label` for a day text the caller held as text.
-pub fn due_label_text(due: Option<&str>) -> EngineResult<String> {
-    due_label(&due.map_or(Value::Null, |found| json!(found)))
+pub fn due_label_text(due: Option<&str>, today: NaiveDate) -> EngineResult<String> {
+    due_label(&due.map_or(Value::Null, |found| json!(found)), today)
 }
 
 pub fn moved_words(
@@ -275,8 +268,12 @@ pub fn added_words(block: &Value) -> EngineResult<String> {
     Ok(format!("Added {}.", py_str(&title)))
 }
 
-pub fn dated_words(title: &Value, iso: &Value) -> EngineResult<String> {
-    Ok(format!("Moved {} to {}.", py_str(title), due_label(iso)?))
+pub fn dated_words(title: &Value, iso: &Value, today: NaiveDate) -> EngineResult<String> {
+    Ok(format!(
+        "Moved {} to {}.",
+        py_str(title),
+        due_label(iso, today)?
+    ))
 }
 
 /// `lookup.get(key)` on the dict the caller passed in.

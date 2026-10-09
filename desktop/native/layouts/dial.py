@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from desktop.native.calendar import DAY_FULL, DAYS
+from desktop.native.calendar import DAY_FULL, DAYS, day_long
 from desktop.native.fonts import at_scale, time_font
 from desktop.native.hours.canvas import fit_lines
 from desktop.native.hours.geometry import DialTrack, Span
@@ -992,7 +992,7 @@ class DayDialView(LayoutView):
         else:
             work = [entry for entry in scene.week.on_day(day) if entry.work]
             date = scene.week.date_of(day)
-            kicker = f"{DAY_FULL[day]}, {date.strftime('%B')} {date.day}"
+            kicker = day_long(date)
             title = planned_line(
                 sum(entry.minutes for entry in work), sum(entry.minutes for entry in work if entry.done)
             )

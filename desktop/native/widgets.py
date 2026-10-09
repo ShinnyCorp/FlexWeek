@@ -103,6 +103,8 @@ from backend.slots import (
 from desktop.native import icons
 from desktop.native.calendar import (
     CATEGORIES,
+    DAY_FULL,
+    DAYS,
     SETUP_SCHOOL_ID,
     is_series,
     local_stamp,
@@ -140,7 +142,6 @@ from desktop.native.motion import (
 )
 from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
-    DAYS_LONG,
     LATE_MINUTES,
     PROTECTED_KINDS,
     due_point,
@@ -159,7 +160,6 @@ from desktop.native.tokens import (
 )
 from desktop.native.weekmodel import due_label, hhmm_text, length_label
 
-DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 # Meals first: 18:00–19:30 sits inside the afternoon activity window.
 _MEAL_WINDOWS = ((7 * 60, 8 * 60), (12 * 60, 13 * 60), (18 * 60, 19 * 60 + 30))
 _SCHOOL_START = hhmm_to_minutes(CATEGORIES["class"]["preset"]["start"])
@@ -245,7 +245,6 @@ REPLAN_TIP = (
 LATE_WAIT = "Press Preview first to see what moves."
 # The same sentence the controller says when a preview with nothing ticked is saved anyway.
 PREVIEW_NONE = "Select at least one item before saving."
-DAY_FULL = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
 # What the block editor says when the server's rules refuse a block, by the field they name. Their own
@@ -1866,132 +1865,6 @@ def add_heading(menu: QMenu, text: str) -> QWidgetAction:
     return action
 
 
-class DayAgenda(QWidget):
-    item_activated = Signal(str)
-    homework_activated = Signal(str)
-    plan_requested = Signal()
-    add_requested = Signal()
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setObjectName("dayAgenda")
-        layout = QVBoxLayout(self)
-        self.heading = QLabel()
-        self.heading.setObjectName("dayTitle")
-        layout.addWidget(self.heading)
-        self.next_action = QPushButton()
-        self.next_action.setObjectName("dayNextAction")
-        self.next_action.clicked.connect(self._on_next)
-        action_row = QHBoxLayout()
-        action_row.addWidget(self.next_action)
-        action_row.addStretch(1)
-        layout.addLayout(action_row)
-        self.list = QListWidget()
-        self.list.setObjectName("dayList")
-        self.list.itemDoubleClicked.connect(self._on_item)
-        layout.addWidget(self.list)
-        self._next_kind = "add"
-        self._next_id: str | None = None
-
-    def set_agenda(self, iso_day: str, agenda: dict, day_data: dict | None) -> None:
-        day_index = agenda["day_index"]
-        name = DAY_FULL[day_index] if 0 <= day_index <= 6 else iso_day
-        self.heading.setText(date.fromisoformat(iso_day).strftime("%A, %b %d"))
-        nxt = agenda["next_action"]
-        self._next_kind = nxt["kind"]
-        self._next_id = nxt.get("id")
-        labels = {
-            "add": "Add homework",
-            "plan": "Plan my homework",
-            "start": "Open the next session",
-        }
-        self.next_action.setText(labels[nxt["kind"]])
-        self.list.clear()
-        if not agenda["due_soon"] and not agenda["sessions"] and not agenda["fixed"]:
-            empty = QListWidgetItem(f"Nothing is due soon and nothing is planned for {name}.")
-            empty.setFlags(Qt.ItemFlag.NoItemFlags)
-            self.list.addItem(empty)
-            return
-        week_start = monday_of(iso_day)
-        load = (day_data or {}).get("workload") or {}
-        if load:
-            work = QListWidgetItem(
-                f"{length_label(load.get('scheduled_min', 0))} planned"
-                f" · {length_label(load.get('available_min', 0))} free"
-            )
-            work.setFlags(Qt.ItemFlag.NoItemFlags)
-            self.list.addItem(work)
-        unplaced = [row for row in agenda["sessions"] if not row["start"]]
-        timeline = [("session", row) for row in agenda["sessions"] if row["start"]]
-        timeline.extend(("fixed", row) for row in agenda["fixed"])
-        timeline.sort(key=lambda pair: str(pair[1]["start"]))
-        for row in unplaced:
-            block = row["block"]
-            item = self._row(
-                f"not placed yet · {block['title']} · {length_label(block.get('duration_min') or 0)}",
-                block.get("category") or "assignments",
-            )
-            item.setData(Qt.ItemDataRole.UserRole, {"kind": "block", "id": block["id"]})
-            self.list.addItem(item)
-        for _kind, row in timeline:
-            block = row["block"]
-            duration = int(block.get("duration_min") or 0)
-            item = self._row(
-                f"{hhmm_text(row['start'])} · {block['title']} · {length_label(duration)}",
-                block.get("category") or "",
-            )
-            item.setData(Qt.ItemDataRole.UserRole, {"kind": "block", "id": block["id"]})
-            item.setSizeHint(QSize(0, max(28, min(160, duration // 3))))
-            self.list.addItem(item)
-        for item in agenda["due_soon"]:
-            # A student reads "Thu 17 Sep", not "2026-09-17T23:59". due_label is what every other
-            # surface in the app already uses.
-            row = self._row(
-                f"{item['title']} · due {due_label(item.get('due'), week_start)}",
-                item.get("category") or "assignments",
-            )
-            row.setData(Qt.ItemDataRole.UserRole, {"kind": "homework", "id": item["id"]})
-            self.list.addItem(row)
-
-    def _section(self, title: str, rows: list) -> None:
-        if not rows:
-            return
-        head = QListWidgetItem(title.upper())
-        head.setFlags(Qt.ItemFlag.NoItemFlags)
-        self.list.addItem(head)
-
-    @staticmethod
-    def _row(words: str, category: str) -> QListWidgetItem:
-        """One agenda row, with the category's own colour beside it, as every other surface paints it."""
-        item = QListWidgetItem(words)
-        mark = (CATEGORIES.get(category) or {}).get("mark")
-        if mark:
-            item.setData(Qt.ItemDataRole.DecorationRole, QColor(mark))
-        return item
-
-    def _on_next(self) -> None:
-        if self._next_kind == "plan":
-            self.plan_requested.emit()
-        elif self._next_kind == "add":
-            self.add_requested.emit()
-        elif self._next_id:
-            self.item_activated.emit(self._next_id)
-        else:
-            for index in range(self.list.count()):
-                candidate = self.list.item(index)
-                data = candidate.data(Qt.ItemDataRole.UserRole) if candidate else None
-                if data and data.get("kind") == "block":
-                    self.item_activated.emit(data["id"])
-                    return
-
-    def _on_item(self, item: QListWidgetItem) -> None:
-        data = item.data(Qt.ItemDataRole.UserRole) or {}
-        if data.get("kind") == "homework":
-            self.homework_activated.emit(data["id"])
-        elif data.get("kind") == "block":
-            self.item_activated.emit(data["id"])
-
-
 def _line(name: str, text: str = "", limit: int = 80) -> QLineEdit:
     field = QLineEdit(text)
     field.setObjectName(name)
@@ -3253,7 +3126,7 @@ def spread_session_min(remaining: int) -> int:
     return max(SLOT_MIN, min(60, remaining - remaining % SLOT_MIN, 180))
 
 
-def spread_words(sessions: list[dict], due: str) -> str:
+def spread_words(sessions: list[dict], due: str, today: date) -> str:
     """What spreading will do, for the grey line under the choice: "2 × 60 min on different days before
     it is due Sun 4 Oct."."""
     if not sessions:
@@ -3263,7 +3136,7 @@ def spread_words(sessions: list[dict], due: str) -> str:
     whole = sizes.count(full)
     lead = f"{whole} × {full} min" if whole > 1 else f"{full} min"
     parts = lead if whole == len(sizes) else f"{lead} and {sizes[-1]} min"
-    ahead = f"before it is due {due_label(due, '')}."
+    ahead = f"before it is due {due_label(due, today)}."
     if len(sizes) == 1:
         return f"{parts} in one session {ahead}"
     days = len({item["date"] for item in sessions})
@@ -3755,7 +3628,8 @@ class HomeworkDialog(Dialog):
         spreading = shown and self.spread_choice.currentData() == "spread"
         self._form.setRowVisible(self.spread_line, spreading)
         if spreading:
-            self.spread_line.setText(spread_words(self._spread_figures()[2], self._chosen_due()))
+            sessions = self._spread_figures()[2]
+            self.spread_line.setText(spread_words(sessions, self._chosen_due(), self._now().date()))
         if self.isVisible():
             self.refit()
 
@@ -4751,7 +4625,7 @@ class SpreadDialog(Dialog):
         self.setObjectName("spreadDialog")
         layout = self.card_body("Spread homework")
         # The same vocabulary as every other surface: "1 h 30 min total · due Thu 17 Sep".
-        due = due_label(assignment.get("due"), monday_of(from_date))
+        due = due_label(assignment.get("due"), from_date)
         total = length_label(int(assignment.get("estimate_min") or 0))
         layout.addWidget(sheet_note(f"{assignment['title']} · {total} total · due {due}"))
         form = Form(stacked=True)
@@ -5106,7 +4980,7 @@ class AvailabilityDialog(Dialog):
                 chip = sheet_button(f"{words} {named}  ×" if named else f"{words}  ×", "tonal", f"{kind}Chip")
                 chip.setProperty("kind", kind)
                 chip.setProperty("entry", index)
-                chip.setAccessibleName(f"Remove {words}{' ' + named if named else ''} on {DAYS_LONG[day]}")
+                chip.setAccessibleName(f"Remove {words}{' ' + named if named else ''} on {DAY_FULL[day]}")
                 chip.setToolTip("Remove")
                 chip.clicked.connect(self._remove_chip)
                 line.addWidget(chip)
@@ -5114,7 +4988,7 @@ class AvailabilityDialog(Dialog):
             add.setProperty("kind", kind)
             add.setProperty("day", day)
             what = "study hours" if kind == "study" else "protected time"
-            add.setAccessibleName(f"Add {what} on {DAYS_LONG[day]}")
+            add.setAccessibleName(f"Add {what} on {DAY_FULL[day]}")
             add.clicked.connect(self._open_picker)
             line.addWidget(add)
             line.addStretch(1)
@@ -5181,7 +5055,7 @@ class AvailabilityDialog(Dialog):
             for other in entries:
                 other_start = clock_to_minutes(other["start"])
                 if other["day"] == day and start < other_start + other["duration_min"] and other_start < end:
-                    self.error.setText(f"That overlaps protected time already on {DAYS_LONG[day]}.")
+                    self.error.setText(f"That overlaps protected time already on {DAY_FULL[day]}.")
                     return
         if entry not in entries:
             if len(_joined([*entries, entry])) > AVAILABILITY_LIMIT:

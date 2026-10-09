@@ -670,7 +670,7 @@ def test_a_block_carried_to_another_day_on_day_takes_the_window_there_when_it_is
 def test_the_dish_holds_what_is_not_placed_yet_with_when_it_is_due(qapp: QApplication) -> None:
     view = shown(qapp)
     assert view.findChild(QLabel, "clayTrayLabel").text() == "Not placed yet"
-    assert view.findChild(QLabel, "clayDue").text() == "Due Sun 20"
+    assert view.findChild(QLabel, "clayDue").text() == "Due Sun 20 Sep"
     assert view.findChild(QLabel, "clayHint").text() == "Drag a chip onto a day."
     chips = view.findChildren(ClayChip)
     assert [chip.block_id for chip in chips] == ["poster-1"]

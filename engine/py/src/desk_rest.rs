@@ -443,8 +443,9 @@ fn reuse_restore_label(text: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn reuse_week_label(week_start: &str) -> PyResult<String> {
-    guard(|| Ok(reuse::week_label(week_start)))
+fn reuse_week_label(week_start: &str, today: &str) -> PyResult<String> {
+    let today = ::flexweek_engine::desk::datetext::day_of(today).map_err(crate::raise)?;
+    guard(|| reuse::week_label(week_start, today).map_err(crate::raise))
 }
 
 #[pyfunction]

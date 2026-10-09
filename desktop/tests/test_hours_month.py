@@ -245,7 +245,7 @@ def test_the_words_held_over_a_refused_date_say_no_in_red(qapp: QApplication) ->
 
     stage.carry(stage.canvas.chip_point("essay-1", "2026-09-24"), stage.canvas.cell_point("2026-09-28"), look)
     stage.carry(stage.canvas.chip_point("essay-1", "2026-09-24"), stage.canvas.cell_point("2026-09-25"), look)
-    assert seen == [(words, True), ("19:00 History essay → Fri 25", False)]
+    assert seen == [(words, True), ("19:00 History essay → Fri 25 Sep", False)]
 
 
 def painted_colours(qapp: QApplication, draw, palette: dict | None = None) -> set[str]:

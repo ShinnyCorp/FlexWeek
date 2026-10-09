@@ -309,7 +309,7 @@ def test_another_week_has_no_today_to_count_from(qapp: QApplication) -> None:
     table = view.findChild(QFrame, "missionDeadlines")
     columns = [label.text() for label in table.findChildren(QLabel, "missionColumn")]
     assert columns == ["Homework", "Needs", "Due"]
-    assert [row[2] for row in table_rows(view)] == ["Thu 17", "Fri 18", "Sun 20"]
+    assert [row[2] for row in table_rows(view)] == ["Thu 17 Sep", "Fri 18 Sep", "Sun 20 Sep"]
 
 
 def test_the_deadline_table_lists_homework_still_to_do_by_time_left(qapp: QApplication) -> None:
@@ -331,7 +331,7 @@ def test_homework_due_on_one_day_says_so_under_the_table(qapp: QApplication) -> 
     homework = {key: {**item, "due": "2026-09-20T23:59"} for key, item in HOMEWORK.items()}
     view = shown(qapp, homework=homework)
     foot = view.findChild(QFrame, "missionDeadlines").findChild(QLabel, "missionFoot").text()
-    assert foot == "All 3 are due Sunday 20. The bar is how much of each is placed in the week."
+    assert foot == "All 3 are due Sunday 20 September. The bar is how much of each is placed in the week."
 
 
 def test_part_placed_homework_offers_the_session_still_waiting(qapp: QApplication) -> None:

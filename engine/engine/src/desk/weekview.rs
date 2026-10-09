@@ -210,7 +210,9 @@ impl Week {
         let heading = self.leftover_words(today)?.to_string();
         if kind == "needs_time" {
             let first = &self.waiting[self.due_today_unplaced(today)?[0]];
-            let due = due_label_text(first.due.as_deref())?;
+            let today_date =
+                crate::stored::add_days(from_iso(&self.week_start)?, today.unwrap_or_default())?;
+            let due = due_label_text(first.due.as_deref(), today_date)?;
             let line = if due.is_empty() {
                 "Due today".to_string()
             } else {

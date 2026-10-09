@@ -2727,7 +2727,8 @@ class NativeWindow(QMainWindow):
             self.session._say("Not moved: your last change has not saved yet. Try again once it has.")
             return
         if self.session.move_to_date(change.block_id, change.from_iso, change.to_iso):
-            self._say_when_saved(dated_words(self._title_of(change.block_id, change.from_iso), change.to_iso))
+            title = self._title_of(change.block_id, change.from_iso)
+            self._say_when_saved(dated_words(title, change.to_iso, self._today()))
 
     def _title_of(self, block_id: str, iso: str) -> str:
         """A block's title, from this week or, for a chip from another week, from what Month shows."""
@@ -4025,7 +4026,7 @@ class NativeWindow(QMainWindow):
                     self,
                     "Replace week",
                     "Replace blocks in "
-                    + week_label(self.session.week_start)
+                    + week_label(self.session.week_start, self._today())
                     + " with the import? Other weeks stay untouched.",
                 )
                 if answer != QMessageBox.StandardButton.Yes:

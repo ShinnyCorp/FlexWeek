@@ -62,7 +62,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from desktop.native import icons
-from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS, category_icon
+from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS, category_icon, day_short
 from desktop.native.fonts import at_scale, caption, time_font, weighted
 from desktop.native.hours.canvas import (
     BOOK,
@@ -2167,5 +2167,5 @@ def _due_words(waiting: Iterable[Waiting]) -> str:
     if not dues:
         return ""
     soonest = date.fromisoformat(dues[0])
-    words = f"{DAYS[soonest.weekday()]} {soonest.day}"
+    words = day_short(soonest)
     return f"Due {words}" if len(dues) == 1 else f"First due {words}"

@@ -492,6 +492,9 @@ class NativeSession(QObject):
         self._fetch_day()
         self.week_changed.emit()
 
+    def today_iso(self) -> str:
+        return datetime.fromtimestamp(self.now_ms() / 1000).date().isoformat()
+
     def open_month(self, month: str | None = None) -> None:
         if self.account is None:
             return
@@ -1277,7 +1280,7 @@ class NativeSession(QObject):
             return False
         source_after, dest_after, _made = moved
         if dest_after is not None and len(dest_after) > MAX_WEEK_BLOCKS:
-            self._say(capacity_problem(len(dest["blocks"]), 1, week_label(to_week)))
+            self._say(capacity_problem(len(dest["blocks"]), 1, week_label(to_week, self.today_iso())))
             return False
         writes = [_week_write(from_week, source_after, source["revision"])]
         step_weeks = [
@@ -2133,7 +2136,8 @@ class NativeSession(QObject):
             self._preview_attempt = attempt_key
         if list(by_week) == [self.week_start]:
             added = by_week[self.week_start]
-            problem = capacity_problem(len(self.blocks), len(added), week_label(self.week_start))
+            week_words = week_label(self.week_start, self.today_iso())
+            problem = capacity_problem(len(self.blocks), len(added), week_words)
             if problem:
                 self._say(problem)
                 return False
@@ -2182,7 +2186,8 @@ class NativeSession(QObject):
                     revision = data["revision"]
                 if len(blocks) > MAX_WEEK_BLOCKS:
                     if self._idle(ticket):
-                        self._say(capacity_problem(len(blocks) - len(added), len(added), week_label(week)))
+                        week_words = week_label(week, self.today_iso())
+                        self._say(capacity_problem(len(blocks) - len(added), len(added), week_words))
                     return
                 writes.append(_week_write(week, blocks, revision))
             if current_after is not None:
@@ -2565,7 +2570,7 @@ class NativeSession(QObject):
                 )
             # Time, not a count of sessions, and the deadline as a student says it: this read
             # "3 sessions · 180 minutes ready to add before 2026-09-27T23:59."
-            summary = f"{length_label(total)} ready to add before {due_label(item['due'], self.week_start)}."
+            summary = f"{length_label(total)} ready to add before {due_label(item['due'], self.today_iso())}."
             if remaining:
                 summary += (
                     f" {length_label(remaining)} cannot fit the 15-minute grid and has not been "
@@ -3496,7 +3501,7 @@ class NativeSession(QObject):
         if target != self.week_start:
             self._say(
                 "This file is for "
-                + week_label(target)
+                + week_label(target, self.today_iso())
                 + ". Open that week and import without changing other weeks?"
             )
             return False
@@ -3511,7 +3516,7 @@ class NativeSession(QObject):
         if mode == "replace" and self.blocks and replace is not True:
             self._say(
                 "Replace blocks in "
-                + week_label(self.week_start)
+                + week_label(self.week_start, self.today_iso())
                 + " with the import? Other weeks stay untouched."
             )
             return False
@@ -3522,7 +3527,7 @@ class NativeSession(QObject):
             return False
         if len(merged) > MAX_WEEK_BLOCKS:
             self._say(
-                week_label(self.week_start)
+                week_label(self.week_start, self.today_iso())
                 + " would exceed 100 blocks. Uncheck an item or remove a block first."
             )
             return False

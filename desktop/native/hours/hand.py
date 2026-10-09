@@ -22,7 +22,6 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import date
 from enum import Enum
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, Qt, QTimer, Signal
@@ -30,7 +29,7 @@ from PySide6.QtGui import QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication, QLabel, QScrollArea, QWidget
 from shiboken6 import isValid
 
-from desktop.native.calendar import DAYS
+from desktop.native.calendar import DAYS, day_short
 from desktop.native.hours.geometry import DRAG_STEPS, Span, Track, snap
 from desktop.native.weekmodel import clock_text, length_label
 
@@ -458,7 +457,7 @@ class Hand(QObject):
         if verdict is not None and not verdict.ok and verdict.words:
             words = verdict.words
         elif target and target != held.from_iso:
-            words += f" → {DAYS[date.fromisoformat(target).weekday()]} {int(target[8:])}"
+            words += f" → {day_short(target)}"
         self._float(words, at, refused=verdict is not None and not verdict.ok)
         if (target, verdict) != (self.month_target, self.month_verdict):
             self.month_target, self.month_verdict = target, verdict

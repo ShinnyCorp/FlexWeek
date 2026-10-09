@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from backend.models import due_sort_key
 from desktop.native import icons
-from desktop.native.calendar import DAY_FULL, DAYS, category_icon
+from desktop.native.calendar import DAY_FULL, DAYS, category_icon, day_long, day_short
 from desktop.native.fonts import at_scale
 from desktop.native.hours.canvas import (
     BOOK,
@@ -1426,11 +1426,11 @@ class MissionView(LayoutView):
 
 
 def _due_day(due: str | None, short: bool = False) -> str:
-    """When homework is due, as the table says it: "Sunday 27", or "Sun 27" in a column."""
+    """When homework is due: "Sunday 27 September", or "Sun 27 Sep" in a column."""
     if not due:
         return ""
     day = date.fromisoformat(due[:10])
-    return f"{(DAYS if short else DAY_FULL)[day.weekday()]} {day.day}"
+    return day_short(day) if short else day_long(day)
 
 
 def _detach(layout: QLayout, widget: QWidget) -> bool:

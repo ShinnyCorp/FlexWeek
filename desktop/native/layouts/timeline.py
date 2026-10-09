@@ -232,7 +232,7 @@ def _due_words(due: str | None) -> str:
     """When homework is due: "due Sun 4 Oct", without a clock so it is not read as a placed time."""
     if not due:
         return ""
-    words = due_label(due, "")
+    words = due_label(due)
     return f"due {words.split(',')[0]}" if words else ""
 
 
