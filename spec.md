@@ -147,8 +147,11 @@ Contract for the finished app:
   new homework as it is saved, in the same Undo step, and `manual` leaves it to
   the student, with the button reading Suggest times. Homework dragged onto a
   time, or given one with Choose a time, is `pinned`: every plan, Replan all
-  included, keeps it where the student put it, even beside a fixed block. Details live
-  in `docs/stage2-contract.md`.
+  included, keeps it where the student put it, even beside a fixed block. The
+  planner places homework at the earliest times that fit; after a plan, the
+  review names each day with more than 3 hours of homework on it ("Thursday has
+  5 h 30 min of homework.") and moves nothing itself. Details live in
+  `docs/stage2-contract.md`.
 - Running late is a solve preview of a 15, 30 or 60 minute delay from a
   15-minute cutoff on one day of the open week. Fixed commitments and sleep stay
   put, and work that no longer fits stays unplaced rather than being dropped.
@@ -428,8 +431,10 @@ out in OKLCH, every fill at one lightness and every mark at another, so no
 category outweighs the rest. Homework's mark is darker, so it stays apart from
 Exercise for a student who cannot tell red from green, and homework carries a
 book. On a dark look a block is its category sunk into the card, written in
-the look's text colour. `clock_24h` (default true) chooses 16:00 or 4:00 PM for
-every time written on screen; times are still sent and saved as HH:MM.
+the look's text colour. `clock_24h` chooses 16:00 or 4:00 PM for every time
+written on screen; times are still sent and saved as HH:MM. Setup's week page
+asks for it, with 12-hour chosen; a new account is 12-hour (`clock_24h` false),
+and accounts from before 0.18.5 that never chose were stamped 24-hour once.
 Settings is a page of the window, not a dialog: its sections on the left and
 cards on the right, a switch for each on or off, side-by-side segments for two
 or three choices, and pictures for the main view and day screen. Every dialog
