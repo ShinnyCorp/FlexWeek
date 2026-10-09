@@ -199,8 +199,8 @@ def day_range_words(days: list[int] | tuple[int, ...]) -> str:
 
 SWATCH_PX = 12
 # The eye inside the password box, and the room it keeps clear of the typing.
-REVEAL_PX = 28
-REVEAL_ICON_PX = 16
+REVEAL_PX = 32
+REVEAL_ICON_PX = 24
 DETAIL_BOX_HEIGHT = 84
 SCROLL_GAP = 16
 DUE_SWITCH_EXTRA = 1

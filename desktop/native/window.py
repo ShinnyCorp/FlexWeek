@@ -163,7 +163,6 @@ from desktop.native.weekmodel import (
 )
 from desktop.native.widgets import (
     REPLAN_TIP,
-    REVEAL_ICON_PX,
     AddMenu,
     AlertStrip,
     AvailabilityDialog,
@@ -343,9 +342,11 @@ BAR_ICON_PX = 20
 # Between the week's date and the view switcher beside it: at 6 px they ran together at Large text (#84).
 TITLE_SWITCHER_GAP = 16
 AUTH_CARD_WIDTH = 420
-# One heading on the sign-in card: a greeting there, and what the page is for when making an account.
-FIRST_GREETING = "Welcome"
-AGAIN_GREETING = "Welcome back"
+# One heading on the sign-in card, the same on a first launch and on a return, and what the page is for
+# when making an account.
+SIGN_IN_HEADING = "Sign in"
+# The error mark beside a wrong sign-in, in pixels.
+ERROR_ICON_PX = 16
 CREATE_HEADING = "Create your account"
 CREATE_NOTE = (
     "FlexWeek fits homework around school and sports. "
@@ -492,6 +493,8 @@ class NativeWindow(QMainWindow):
         self._views: dict[str, LayoutView] = {}
         self._entry_mode = SIGN_IN
         self._auth_mode_shown: str | None = None
+        self._auth_holder: QWidget | None = None
+        self._auth_card: QFrame | None = None
         self._updates = sanitize_updates(None)
         self._zoom: dict[str, int] = {}
         # The student's own looks, kept by name (custom_look.py); Settings will list them.
@@ -673,10 +676,14 @@ class NativeWindow(QMainWindow):
         if showing and self._auth_mode_shown not in (None, mode):
             self._clear_auth_status()
         self._auth_mode_shown = mode
-        kept = self.session.kept
-        back = kept is not None and kept.signed_in_before()
-        greeting = AGAIN_GREETING if back else FIRST_GREETING
-        self.auth_heading.setText({SIGN_IN: greeting, CREATE: CREATE_HEADING, RESET: RESET_HEADING}[mode])
+        self._lay_mode(mode)
+        self._pin_auth_height()
+
+    def _lay_mode(self, mode: str) -> None:
+        """What the card shows for `mode`, with nothing cleared and no height pinned, so the height of
+        the tallest page can be measured by laying it out and going back."""
+        headings = {SIGN_IN: SIGN_IN_HEADING, CREATE: CREATE_HEADING, RESET: RESET_HEADING}
+        self.auth_heading.setText(headings[mode])
         note = {SIGN_IN: "", CREATE: CREATE_NOTE, RESET: RESET_NOTE}[mode]
         self.auth_note.setText(note)
         self.auth_note.setVisible(bool(note))
@@ -696,6 +703,25 @@ class NativeWindow(QMainWindow):
         self.sign_in_button.setDefault(mode == SIGN_IN)
         self.create_button.setDefault(mode == CREATE)
         self.recover_button.setDefault(mode == RESET)
+
+    def _pin_auth_height(self) -> None:
+        """Hold the sign-in page's wordmark and card top where the tallest page, Create, puts them, so
+        nothing jumps between pages (#74): the card sits at the top of a holder that is always as tall
+        as the Create card, and the pages that are shorter simply end sooner."""
+        holder, card = self._auth_holder, self._auth_card
+        if holder is None or card is None:
+            return
+        shown = self._auth_mode_shown or SIGN_IN
+        self._lay_mode(CREATE)
+        card.layout().activate()
+        # What the layout will ask of the holder, which a wrapped label's minimum makes taller than the
+        # card is drawn.
+        tallest = max(
+            card.sizeHint().height(), card.minimumSizeHint().height(), card.heightForWidth(card.width())
+        )
+        self._lay_mode(shown)
+        card.layout().activate()
+        holder.setMinimumHeight(tallest)
 
     def listen_for_instances(self, name: str) -> bool:
         server = QLocalServer(self)
@@ -739,12 +765,13 @@ class NativeWindow(QMainWindow):
                     switch_page(self._stack, page, self._motion)
                 return
 
-    def _entry_card(self, name: str) -> QVBoxLayout:
+    def _entry_card(self, name: str, pinned: bool = False) -> QVBoxLayout:
         """A page for signing in or for the recovery codes: the wordmark on the page, and under it the
         page's card in the middle of the window. The layout inside the card is returned to fill.
 
         The first screen anyone sees. Left to a plain page layout it stretched every field and button
         the full width of the window, so it read as an unstyled form with a lot of nothing under it.
+        A `pinned` page keeps its card at the top of a holder of one height (`_pin_auth_height`).
         """
         page = QWidget()
         page.setObjectName(name)
@@ -757,16 +784,27 @@ class NativeWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("authCard")
         card.setFixedWidth(AUTH_CARD_WIDTH)
-        middle.addWidget(card)
+        if pinned:
+            middle.addWidget(card, 0, Qt.AlignmentFlag.AlignTop)
+        else:
+            middle.addWidget(card)
         middle.addStretch(1)
-        outer.addLayout(middle)
+        if pinned:
+            holder = QWidget()
+            holder.setObjectName("authHolder")
+            holder.setLayout(middle)
+            middle.setContentsMargins(0, 0, 0, 0)
+            outer.addWidget(holder)
+            self._auth_holder, self._auth_card = holder, card
+        else:
+            outer.addLayout(middle)
         outer.addStretch(1)
         self._entry_cards.append(card)
         self._stack.addWidget(page)
         layout = QVBoxLayout(card)
         # A frame, so the card's padding is the look's, as every card's is.
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(SPACING[2])
+        layout.setSpacing(SPACING[3])
         return layout
 
     def _link(self, words: str, name: str, layout: QVBoxLayout) -> QPushButton:
@@ -779,7 +817,7 @@ class NativeWindow(QMainWindow):
         return link
 
     def _build_auth(self) -> None:
-        layout = self._entry_card("authPage")
+        layout = self._entry_card("authPage", pinned=True)
         self.auth_heading = QLabel()
         self.auth_heading.setObjectName("authHeading")
         self.auth_heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -791,23 +829,29 @@ class NativeWindow(QMainWindow):
         self.auth_note.setWordWrap(True)
         layout.addWidget(self.auth_note)
         layout.addSpacing(SPACING[0])
+        # A hint belongs to its own field: 4 px under it, then the card's 16 before the next (#74).
         self.username = QLineEdit()
         self.username.setObjectName("username")
         self.username.setMaxLength(32)
         self.username.setPlaceholderText("Username")
         self.username.setAccessibleName("Username")
-        layout.addWidget(self.username)
+        username_box = QVBoxLayout()
+        username_box.setSpacing(SPACING[0])
+        username_box.addWidget(self.username)
         self.username_hint = QLabel(USERNAME_HINT)
         self.username_hint.setObjectName("usernameHint")
         self.username_hint.setWordWrap(True)
-        layout.addWidget(self.username_hint)
+        username_box.addWidget(self.username_hint)
+        layout.addLayout(username_box)
         self.password = PasswordField()
         self.password.setObjectName("password")
         self.password.setMaxLength(128)
         self.password.setPlaceholderText("Password")
         self.password.setAccessibleName("Password")
         self.password_reveal = self.password.reveal
-        layout.addWidget(self.password)
+        password_box = QVBoxLayout()
+        password_box.setSpacing(SPACING[0])
+        password_box.addWidget(self.password)
         # A wrong sign-in is said here, right under the box it is about, so it is read with the box.
         self.auth_error = QWidget()
         self.auth_error.setObjectName("authError")
@@ -831,11 +875,12 @@ class NativeWindow(QMainWindow):
         self.auth_why.clicked.connect(self._explain_wrong_sign_in)
         error_box.addWidget(self.auth_why, 0, Qt.AlignmentFlag.AlignLeft)
         self.auth_error.setVisible(False)
-        layout.addWidget(self.auth_error)
+        password_box.addWidget(self.auth_error)
         self.password_hint = QLabel(PASSWORD_LENGTH_HINT)
         self.password_hint.setObjectName("passwordHint")
         self.password_hint.setWordWrap(True)
-        layout.addWidget(self.password_hint)
+        password_box.addWidget(self.password_hint)
+        layout.addLayout(password_box)
         self.recovery_code = QLineEdit()
         self.recovery_code.setObjectName("recoveryCode")
         self.recovery_code.setPlaceholderText("Recovery code")
@@ -1406,10 +1451,17 @@ class NativeWindow(QMainWindow):
         self._set_notice(f"Finished {title}.", "Undo", self._undo_from_notice)
 
     def _look_inputs(self) -> tuple[str, bool, str]:
+        system_dark = QGuiApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
+        if self.session.account is None:
+            # Nobody is signed in: the device's own look, not the last account's (#74).
+            return "system", system_dark, "default"
         pack = (self.session.preferences or {}).get("theme_pack") or "system"
         accent = (self.session.preferences or {}).get("accent") or "default"
-        system_dark = QGuiApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
         return pack, system_dark, accent
+
+    def _worn_look(self) -> dict:
+        """The look on screen: the device's own while nobody is signed in, else the one kept here."""
+        return self._look if self.session.account is not None else sanitize_look(None)
 
     def _account_id(self) -> str | None:
         account = self.session.account
@@ -1656,8 +1708,10 @@ class NativeWindow(QMainWindow):
             self.password.clear()
             # Left shown on a shared computer, the next student's password would be shown too.
             self.password_reveal.setChecked(False)
+            self._apply_appearance()
             self._show_page("authPage")
             return
+        self._apply_appearance()
         if self._settings is not None and self._settings.account_id != account["id"]:
             self._discard_settings_page()
         self.account_name.setText(account["username"])
@@ -4051,21 +4105,22 @@ class NativeWindow(QMainWindow):
         (decision 3 of 0.17). When the design dressed the chrome, three accents were on screen before
         a student had placed any homework."""
         pack, system_dark, accent = self._look_inputs()
+        look = self._worn_look()
         # Blocks and month cells are painted per item, which a stylesheet cannot reach.
-        palette = resolved_palette(pack, system_dark, self._look, accent)
+        palette = resolved_palette(pack, system_dark, look, accent)
         art = control_art(palette)
-        sheet = pack_stylesheet(pack, system_dark, self._look, accent, palette, art)
-        ctx = context_for(self._layout, self._look, palette, sheet)
+        sheet = pack_stylesheet(pack, system_dark, look, accent, palette, art)
+        ctx = context_for(self._layout, look, palette, sheet)
         heroes = ("settingsTitle", "sheetTitle", "setupTitle", "authBrand")
-        extra = extra_stylesheet(sheet, ctx.feel, palette, ctx.tokens, self._look, heroes)
+        extra = extra_stylesheet(sheet, ctx.feel, palette, ctx.tokens, look, heroes)
         page = self._page_palette(palette)
         page_sheet = ""
         if page is not None:
-            page_sheet = pack_stylesheet(pack, system_dark, self._look, accent, page, control_art(page))
+            page_sheet = pack_stylesheet(pack, system_dark, look, accent, page, control_art(page))
         chips = bool((self.session.preferences or {}).get("accent_chips"))
         chosen_motion = (self.session.preferences or {}).get("motion")
-        self._motion = motion_level(chosen_motion, look_motion(self._look))
-        dressed = (sheet, repr(self._look), repr(palette), chips, self._motion, ctx.feel.key)
+        self._motion = motion_level(chosen_motion, look_motion(look))
+        dressed = (sheet, repr(look), repr(palette), chips, self._motion, ctx.feel.key)
         # Every change to the week comes through here. Restyling the whole window each time, when the
         # look had not changed, cost about 26 ms a change and repainted everything on screen.
         set_current(ctx)
@@ -4077,12 +4132,12 @@ class NativeWindow(QMainWindow):
             self.toast.motion = self._motion
             self.command_bar.motion = self._motion
             self._dress_overlays(palette)
-            self.week_table.set_look(self._look, palette)
-            self.day_view.set_look(self._look, palette)
-            self.rail.set_look(self._look, palette)
+            self.week_table.set_look(look, palette)
+            self.day_view.set_look(look, palette)
+            self.rail.set_look(look, palette)
             self.month_grid.set_palette(palette)
             self.add_menu.set_palette(palette, chips)
-            self._dress_entry(palette)
+            self._dress_entry(palette, look)
             self.setup_page.set_palette(palette)
             self._dress_feel(ctx, sheet, extra)
         if page_sheet != self._page_sheet:
@@ -4110,21 +4165,22 @@ class NativeWindow(QMainWindow):
             root.setStyleSheet(sheet + extra if extra else "")
             apply_feel(root, ctx)
 
-    def _dress_entry(self, palette: dict) -> None:
+    def _dress_entry(self, palette: dict, look: dict) -> None:
         """The eye in the muted text colour, and the sign-in and recovery cards lifted off the page
         with the large shadow, unless the look's shadows are flat or drawn as hard edges."""
         for field in (self.password, self.new_recovery_password):
             field.set_colour(palette["muted"])
-        self.auth_error_icon.setPixmap(icons.pixmap("triangle-alert", palette["error"], REVEAL_ICON_PX))
-        knobs = effective_look(self._look)
+        self.auth_error_icon.setPixmap(icons.pixmap("triangle-alert", palette["error"], ERROR_ICON_PX))
+        knobs = effective_look(look)
         soft = knobs["depth"] == "soft"
         for card in self._entry_cards:
             # As wide as its words: a card sized for Normal text cut Large text's lines short.
-            card.setFixedWidth(round(AUTH_CARD_WIDTH * text_scale(self._look)))
+            card.setFixedWidth(round(AUTH_CARD_WIDTH * text_scale(look)))
             if soft:
                 lift(card, SHADOW_LARGE, palette["axis"] == "dark")
             else:
                 card.setGraphicsEffect(None)
+        self._pin_auth_height()
 
     def _dress_overlays(self, palette: dict) -> None:
         """What a style sheet cannot reach in the focus screen, the toast, Ctrl+K and the menus: the

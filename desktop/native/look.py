@@ -1370,6 +1370,13 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
     title = f"font-size: {type_pt('title', text)}pt; font-weight: {WEIGHT_STRONG};"
     sheet = RADIUS_SHEET if card_radius else 0
     ring = mix(palette["accent"], palette["field"], 0.4)
+    # Only a look that draws soft hairlines: a flat look draws none, and a bold one its own heavy ones.
+    field_rules = (
+        f"QWidget#authCard QLineEdit {{ border: 1px solid {readable_edge(palette)}; }}"
+        f"QWidget#authCard QLineEdit:focus {{ border: 1px solid {palette['accent']}; }}"
+        if knobs["depth"] == "soft"
+        else ""
+    )
     links = "QPushButton#authSwitch, QPushButton#forgotPassword"
     # Still the accent, a step toward the text colour: it stays a link instead of going near-black.
     deeper = mix(palette["accent"], palette["text"], 0.7)
@@ -1390,6 +1397,9 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         f"QLabel#recoveryList {{ font-family: {FONT_FAMILIES['mono']}; "
         f"background: {mix(palette['text'], palette['panel'], 0.05)}; "
         f"border-radius: {radius}px; padding: {SPACING[2]}px {SPACING[3]}px; letter-spacing: 0.5px; }}"
+        # The sign-in fields' edge reads at 3 to 1 on the field and the card (#74): the look's own where
+        # it does, else the text colour thinned only as far as that takes.
+        f"{field_rules}"
         f"QToolButton#passwordReveal {{ background: transparent; border: none; padding: 0; "
         f"border-radius: {radius}px; }}"
         f"QToolButton#passwordReveal:hover {{ background: {palette['hairline']}; }}"
@@ -1436,6 +1446,20 @@ def accent_words(palette: dict) -> str:
     Readability offers its fix; words in it are drawn darker until then (0.17.2)."""
     grounds = (palette["window"], palette["panel"], palette.get("grid", palette["panel"]))
     return fit_lightness(palette["accent"], grounds, AA_TEXT)
+
+
+def readable_edge(palette: dict) -> str:
+    """An edge that reads at 3 to 1 on the field and on the card: the look's strong hairline, or the
+    card edge where it has one, else the text colour laid thicker over the field until it does."""
+    grounds = (palette["field"], palette["panel"])
+    for edge in (palette.get("card_edge"), palette["hairline_strong"]):
+        if edge and min(contrast(edge, ground) for ground in grounds) >= AA_GRAPHIC:
+            return edge
+    for share in range(30, 101, 5):
+        edge = mix(palette["text"], palette["field"], share / 100)
+        if min(contrast(edge, ground) for ground in grounds) >= AA_GRAPHIC:
+            return edge
+    return palette["text"]
 
 
 def outline_edge(palette: dict) -> str:

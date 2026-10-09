@@ -1,8 +1,8 @@
-"""The sign-in card's greeting and the recovery codes page (0.16 review rows R23 and R24).
+"""The sign-in card's heading and the recovery codes page (0.16 review rows R23 and R24).
 
 "Welcome back." greeted a student who had never been there. The recovery codes were a plain label of
-eight lines, kept only by selecting them with the mouse. Since 0.17 the greeting is the card's one
-heading (decision 25), where it sat as a second heading under "Sign in".
+eight lines, kept only by selecting them with the mouse. Since 0.17 the heading is the card's one
+heading (decision 25), and since 0.18.5 (#74) it is "Sign in" on a first launch and on a return alike.
 """
 
 from __future__ import annotations
@@ -31,8 +31,7 @@ from desktop.tests.window_support import (  # noqa: F401
     wait_until,
 )
 
-FIRST = "Welcome"
-AGAIN = "Welcome back"
+FIRST = AGAIN = "Sign in"
 
 
 def page(window: NativeWindow) -> str:
@@ -75,7 +74,7 @@ def greeting(window: NativeWindow) -> str:
     return window.auth_heading.text()
 
 
-def test_a_first_launch_says_welcome_and_a_return_says_welcome_back(
+def test_a_first_launch_and_a_return_both_say_sign_in(
     qapp: QApplication,  # noqa: F811
     server: LocalServer,  # noqa: F811
     kept: KeptSession,
