@@ -538,6 +538,7 @@ class FocusPanel(QWidget):
         self.phase.setObjectName("focusPhase")
         self.time = QLabel()
         self.time.setObjectName("focusTime")
+        self.time.setFont(time_font(self.time.font()))
         for widget in (self.task, self.phase, self.time):
             status.addWidget(widget)
         status.addStretch(1)

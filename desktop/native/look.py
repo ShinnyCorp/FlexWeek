@@ -418,6 +418,9 @@ PRESET_PALETTES = {
         muted="#5c5750",
         hairline="#e6e0d6",
         hairline_strong="#cfc7b9",
+        # Page, card and raised card are within 1.1 to 1 of each other, so a card is told from the page
+        # by a 1 px edge at 3 to 1 (#60): the strong hairline with only its lightness moved.
+        card_edge="#8f877a",
         error="#9b1b30",
         block_locked="#f6f1e8",
         block_locked_ink="#1a1a1a",
@@ -438,6 +441,7 @@ PRESET_PALETTES = {
         muted="#b3ab9c",
         hairline="#3a3833",
         hairline_strong="#4a4740",
+        card_edge="#706c65",
         rule=mix("#f3eee3", "#1c1b19", 0.08),
         error="#ff8a7a",
         block_locked="#2c2a26",
@@ -934,12 +938,16 @@ def block_time_colour(ink: str, fill: str) -> str:
 def _depth_rules(depth: str, palette: dict) -> str:
     # Qt stylesheets have no shadows. Depth is drawn with edges instead: a hairline for Soft, nothing
     # for None, and for Bold a heavy bottom and right edge, which reads as Poster's offset shadow.
-    if depth == "none":
-        return "border: none;"
+    # Paper and Ink name a card edge: their cards sit too near the page to be told apart by a tint.
+    edge = palette.get("card_edge")
     if depth == "bold":
         strong = palette["hairline_strong"]
         heavy = f"4px solid {strong}"
         return f"border: 2px solid {strong}; border-bottom: {heavy}; border-right: {heavy};"
+    if edge:
+        return f"border: 1px solid {edge};"
+    if depth == "none":
+        return "border: none;"
     return f"border: 1px solid {palette['hairline']};"
 
 
@@ -1245,7 +1253,10 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     strong = f"font-weight: {WEIGHT_STRONG};"
     heading = f"font-size: {type_pt('heading', text)}pt; {strong}"
     card_radius = max(radius, 10)
-    ring = "transparent" if depth == "none" else mix(palette["hairline_strong"], palette["panel"], 0.6)
+    if palette.get("card_edge"):
+        ring = palette["card_edge"]
+    else:
+        ring = "transparent" if depth == "none" else mix(palette["hairline_strong"], palette["panel"], 0.6)
     # A tag is a label, not a control: one hairline, or none in a flat look like everything else.
     tag_edge = "border: none;" if depth == "none" else f"border: 1px solid {palette['hairline_strong']};"
     # A card is larger than a control, so it is lifted with the text colour, never the accent.
@@ -1652,6 +1663,9 @@ def pack_stylesheet(
     family = measures["body"]
     radius, card_radius = measures["radius"], measures["card_radius"]
     edges = _depth_rules(knobs["depth"], palette)
+    serif = measures["heading"] == FONT_FAMILIES["serif"]
+    timer_face = FONT_FAMILIES["serif"] if serif else MONO_FAMILY
+    timer_ring = f"QWidget#countdownRing {{ font-family: {FONT_FAMILIES['serif']}; }}" if serif else ""
     item_h = 36 if knobs["text"] == "large" else 22
     button_min = f" min-height: {item_h}px;" if knobs["text"] == "large" else ""
     field_min = FIELD_MIN_PX[knobs["text"]]
@@ -1716,7 +1730,9 @@ def pack_stylesheet(
         f"QLabel#nowNext {{ font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#focusTask {{ font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#focusPhase {{ color: {palette['muted']}; }}"
-        f"QLabel#focusTime {{ font-family: {MONO_FAMILY}; font-weight: {WEIGHT_STRONG}; }}"
+        # A serif look writes its timers in its own face (#60), the figures set to one width in code.
+        f"QLabel#focusTime {{ font-family: {timer_face}; font-weight: {WEIGHT_STRONG}; }}"
+        f"{timer_ring}"
         f"QLabel#recoveryStatus {{ color: {palette['error']}; }}"
         # How many recovery codes are left is an ordinary fact until none are.
         f"QLabel#recoveryCount {{ color: {palette['muted']}; }}"
