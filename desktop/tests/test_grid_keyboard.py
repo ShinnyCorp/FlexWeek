@@ -52,7 +52,7 @@ def test_the_menu_keys_ask_at_the_next_free_quarter_hour_after_now_without_scrol
     qapp.processEvents()
     assert not hours.in_view(WEDNESDAY, 20 * 60 + 15), "the slot has to start off screen"
     key(window, which, mods)
-    assert [shown["rows"][0] for shown in menus] == ["Add fixed time at 20:15"]
+    assert [shown["rows"][0] for shown in menus] == ["Add fixed time at 8:15 PM"]
     assert bar.value() == 0, "the menu key scrolled the grid"
     assert hours.focus_slot() == (WEDNESDAY, 20 * 60 + 15)
 
@@ -66,7 +66,7 @@ def test_the_menu_key_skips_slots_that_are_taken(
     hold_clock(window, WEDNESDAY, 14 * 60 + 7)
     grid(window).setFocus(Qt.FocusReason.MouseFocusReason)
     key(window, Qt.Key.Key_F10, Qt.KeyboardModifier.ShiftModifier)
-    assert [shown["rows"][0] for shown in menus] == ["Add fixed time at 14:45"]
+    assert [shown["rows"][0] for shown in menus] == ["Add fixed time at 2:45 PM"]
 
 
 def test_the_grid_is_one_tab_stop_and_shows_where_the_student_is(
@@ -157,7 +157,8 @@ def test_enter_on_a_free_slot_opens_the_free_time_menu(
     tab_to_grid(window)
     key(window, Qt.Key.Key_Down)
     key(window, Qt.Key.Key_Return)
-    assert [(shown["name"], shown["rows"][0]) for shown in menus] == [("spotMenu", "Add fixed time at 14:30")]
+    asked = [(shown["name"], shown["rows"][0]) for shown in menus]
+    assert asked == [("spotMenu", "Add fixed time at 2:30 PM")]
 
 
 def test_shift_f10_on_a_block_opens_its_menu(
