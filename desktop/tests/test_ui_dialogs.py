@@ -256,7 +256,7 @@ def test_a_fixed_activity_that_ends_before_it_starts_is_refused_beside_the_times
     qapp.processEvents()
     dialog.end.setTime(QTime(7, 30))
     qapp.processEvents()
-    assert dialog.duration_line.text() == "End must be after Start."
+    assert dialog.duration_line.text() == "End needs to be later than Start (08:00)."
     dialog.accept()
     assert dialog.result() != dialog.DialogCode.Accepted
     # Said once, beside the times, as an error; not repeated at the bottom of the form.
@@ -384,7 +384,7 @@ def test_study_hours_that_end_before_they_start_are_refused(qapp: QApplication) 
     dialog.picker_start.setTime(QTime(10, 0))
     dialog.picker_end.setTime(QTime(9, 45))
     dialog.picker_add.click()
-    assert dialog.error.text() == "End must be after Start."
+    assert dialog.error.text() == "End needs to be later than Start (10:00)."
     assert dialog.picker.isVisibleTo(dialog), "the picker stays open to fix the time"
     dialog.picker_cancel.click()
     assert dialog.error.text() == ""

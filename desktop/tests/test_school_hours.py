@@ -128,7 +128,7 @@ def test_an_end_before_the_start_is_said_and_nothing_is_saved(qapp: QApplication
     dialog.times.end.set_minutes(7 * 60)
     dialog.accept()
     assert dialog.result() != QDialog.DialogCode.Accepted
-    assert dialog.error.text() == "End must be after Start."
+    assert dialog.error.text() == "End needs to be later than Start (08:00)."
     assert dialog.block() is None
     buttons = dialog.findChild(QDialogButtonBox)
     save = buttons.button(QDialogButtonBox.StandardButton.Save)

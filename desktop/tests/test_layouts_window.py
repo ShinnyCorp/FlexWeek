@@ -2886,7 +2886,7 @@ def test_study_hours_can_be_kept_for_one_subject(qapp: QApplication) -> None:
     dialog._open_picker(kind="study", day=0)
     dialog.picker_end.setTime(QTime(15, 0))
     dialog.picker_add.click()
-    assert dialog.error.text() == "End must be after Start."
+    assert dialog.error.text() == "End needs to be later than Start (16:00)."
     assert len(dialog.work_windows()) == 1
     dialog.deleteLater()
 

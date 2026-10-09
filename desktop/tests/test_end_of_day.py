@@ -68,7 +68,7 @@ def test_the_block_editor_still_refuses_an_end_before_its_start(qapp: QApplicati
     type_over(dialog.end, "21:00")
     dialog.accept()
     assert dialog.result() != dialog.DialogCode.Accepted
-    assert dialog.duration_line.text() == "End must be after Start."
+    assert dialog.duration_line.text() == "End needs to be later than Start (22:00)."
 
 
 @CLOCKS

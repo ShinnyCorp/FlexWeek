@@ -376,7 +376,7 @@ def test_setup_refuses_a_work_window_that_ends_before_it_starts(qapp: QApplicati
     ends.setCurrentIndex(ends.findData("14:45"))
     setup.next.click()
     assert setup.step == HOMEWORK
-    assert row.findChild(QLabel, "validationError").text() == "End must be after Start."
+    assert row.findChild(QLabel, "validationError").text() == "End needs to be later than Start (3:00 PM)."
     setup.close()
 
 

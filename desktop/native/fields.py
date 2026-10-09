@@ -415,9 +415,15 @@ class ClockField(QTimeEdit):
     to type; the box's time is still the last good one. An `end` box reads 00:00 as 24:00, the end of
     the day, which a QTime cannot hold."""
 
+    # The time is settled: the student finished typing or stepped it (by hand), or a caller set it. Unlike
+    # `timeChanged`, it does not fire on each key of a half-typed time.
+    settled = Signal(bool)
+
     # Set again in __init__; Qt asks for the text while the base class is still being made.
     _end = False
     _typing = False
+    _touched = False
+    _settling = False
     _problem = ""
     _line: ProblemLine | None = None
     _first_click = False
@@ -461,6 +467,8 @@ class ClockField(QTimeEdit):
     def setTime(self, time: QTime) -> None:  # noqa: N802
         self._mend()
         super().setTime(time)
+        if not self._typing and not self._settling:
+            self.settled.emit(False)
 
     def _take(self, minutes: int, *, as_typed: bool = False) -> bool:
         """Make `minutes` the time; `as_typed` leaves the text as the student wrote it."""
@@ -475,6 +483,7 @@ class ClockField(QTimeEdit):
         return True
 
     def _edited(self, text: str) -> None:
+        self._touched = True
         if self._before is None:
             self._before = self.minutes()
         minutes = read_clock(text, end=self._end)
@@ -491,17 +500,28 @@ class ClockField(QTimeEdit):
         low, high = self._limits()
         before, self._before = self._before, None
         if minutes is None or not low <= minutes <= high:
-            if before is not None and before != self.minutes():
-                self._take(before, as_typed=True)
+            self._settling = True
+            try:
+                if before is not None and before != self.minutes():
+                    self._take(before, as_typed=True)
+            finally:
+                self._settling = False
             if minutes is None:
                 self._complain(f"Type a time like {clock_text(17 * 60 + 30)}.")
             else:
                 self._complain(f"Type a time from {clock_text(low)} to {clock_text(high)}.")
             return
-        self._take(minutes)
+        self._settling = True
+        try:
+            self._take(minutes)
+        finally:
+            self._settling = False
         line.blockSignals(True)
         line.setText(clock_text(self.minutes()))
         line.blockSignals(False)
+        if self._touched:
+            self._touched = False
+            self.settled.emit(True)
 
     def _complain(self, words: str) -> None:
         fresh = words != self._problem
@@ -554,8 +574,13 @@ class ClockField(QTimeEdit):
         if steps < 0 and now % SLOT_MIN:
             steps += 1
         low, high = self._limits()
-        self._take(max(low, min(now - now % SLOT_MIN + steps * SLOT_MIN, high)))
+        self._settling = True
+        try:
+            self._take(max(low, min(now - now % SLOT_MIN + steps * SLOT_MIN, high)))
+        finally:
+            self._settling = False
         self.lineEdit().selectAll()
+        self.settled.emit(True)
 
     def stepEnabled(self) -> QAbstractSpinBox.StepEnabledFlag:  # noqa: N802
         low, high = self._limits()

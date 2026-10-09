@@ -6,6 +6,10 @@ All notable changes to FlexWeek are documented here. Format follows
 ## [Unreleased]
 
 ### Fixed
+- The block editor's End follows Start only once Start is settled (Enter, Tab or leaving the box), not on each
+  key, and never after End was typed in that sheet. It stops at 24:00 instead of wrapping to the morning, and
+  says "End moved to 17:30" (screen readers hear it). The End-before-Start message now reads "End needs to be
+  later than Start (16:00)." in every sheet that shows it.
 - Time boxes: the first click into one selects the whole time, as Tab does,
   and Ctrl+A selects the whole text. Enter keeps a typed time in every time
   zone; it moved by the computer's UTC offset before. A time that cannot be

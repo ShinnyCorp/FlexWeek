@@ -113,7 +113,7 @@ from desktop.native.calendar import (
     span_problem,
 )
 from desktop.native.elevation import lift
-from desktop.native.fields import QUICK_LENGTHS, ClockField, DateField, DayPicker, Stepper
+from desktop.native.fields import QUICK_LENGTHS, ClockField, DateField, DayPicker, Stepper, announce
 from desktop.native.fonts import caption, time_font, weighted
 from desktop.native.hours.geometry import next_slot
 from desktop.native.icons import pixmap as icon_pixmap
@@ -158,7 +158,7 @@ from desktop.native.tokens import (
     Shadow,
     type_pt,
 )
-from desktop.native.weekmodel import due_label, hhmm_text, length_label
+from desktop.native.weekmodel import clock_text, due_label, end_after_start_words, hhmm_text, length_label
 
 # Meals first: 18:00–19:30 sits inside the afternoon activity window.
 _MEAL_WINDOWS = ((7 * 60, 8 * 60), (12 * 60, 13 * 60), (18 * 60, 19 * 60 + 30))
@@ -2735,8 +2735,14 @@ class BlockDialog(Dialog):
         self.duration_line = QLabel()
         self.duration_line.setObjectName("blockDurationLine")
         form.addRow("Duration", self.duration_line)
-        self.start.timeChanged.connect(self._keep_length)
-        self.end.timeChanged.connect(self._show_length)
+        # End follows Start once Start is settled, not on each key of a half-typed time, and stops
+        # following once the student has set End by hand in this sheet.
+        self._end_by_hand = False
+        self._following = False
+        self._moved = ""
+        self.start.settled.connect(self._keep_length)
+        self.end.settled.connect(self._end_settled)
+        self.end.timeChanged.connect(self._end_changed)
         self._show_length()
         self.category = QComboBox()
         self.category.setObjectName("blockCategory")
@@ -2843,26 +2849,50 @@ class BlockDialog(Dialog):
         return clock.hour() * 60 + clock.minute()
 
     def _minutes_clock(self, minutes: int) -> QTime:
-        minutes %= 24 * 60
+        # The end of the day is 00:00 in an End box; later than that is the end of the day, not morning.
+        minutes = min(minutes, 24 * 60) % (24 * 60)
         return QTime(minutes // 60, minutes % 60)
 
     def _span(self) -> int:
         return self.end.minutes() - self.start.minutes()
 
     def _span_problem(self) -> str:
-        return "End must be after Start." if self._span() <= 0 else ""
+        return end_after_start_words(clock_text(self.start.minutes())) if self._span() <= 0 else ""
+
+    def _end_settled(self, by_hand: bool) -> None:
+        self._end_by_hand = self._end_by_hand or by_hand
+        self._show_length()
+
+    def _end_changed(self, *_args: object) -> None:
+        if self._following:
+            return
+        self._moved = ""
+        if not self._span_problem():
+            self._length = self._span()
+        self._show_length()
 
     def _keep_length(self, *_args: object) -> None:
-        """Moving the start moves the end with it, as a calendar does, so the length stays."""
-        self.end.setTime(self._minutes_clock(self._clock_to_minutes(self.start.time()) + self._length))
+        """A settled start moves the end with it, as a calendar does, so the length stays, up to the end
+        of the day. Once End was typed here, it is the student's and stays."""
+        end = min(self.start.minutes() + self._length, 24 * 60)
+        if self._end_by_hand:
+            self._moved = ""
+        elif end != self.end.minutes():
+            self._following = True
+            try:
+                self.end.setTime(self._minutes_clock(end))
+            finally:
+                self._following = False
+            self._moved = f"End moved to {clock_text(end)}"
+            announce(self.end, self._moved)
+        self._show_length()
 
-    def _show_length(self, *_args: object) -> None:
+    def _show_length(self) -> None:
         problem = self._span_problem()
-        if not problem:
-            self._length = self._span()
         # The problem is said here, beside the times, in the error colour; nowhere else, so it is
         # not the same sentence twice.
-        self.duration_line.setText(problem or length_label(self._span()))
+        length = length_label(self._span())
+        self.duration_line.setText(problem or (f"{self._moved} ({length})" if self._moved else length))
         self.duration_line.setProperty("problem", bool(problem))
         self.duration_line.style().unpolish(self.duration_line)
         self.duration_line.style().polish(self.duration_line)
@@ -2992,7 +3022,7 @@ class SchoolHoursDialog(Dialog):
             super().accept()
             return
         if minutes <= 0:
-            self.error.setText("End must be after Start.")
+            self.error.setText(end_after_start_words(hhmm_text(start)))
             self.times.end.setFocus()
             return
         school = deepcopy(self._original) if self._original is not None else {
@@ -5058,7 +5088,7 @@ class AvailabilityDialog(Dialog):
         start, end = self.picker_start.minutes(), self.picker_end.minutes()
         start, end = start - start % SLOT_MIN, end - end % SLOT_MIN
         if end - start < SLOT_MIN:
-            self.error.setText("End must be after Start.")
+            self.error.setText(end_after_start_words(clock_text(start)))
             return
         if kind == "study":
             entry: dict = {"day": day, "start": minutes_to_hhmm(start), "end": minutes_to_hhmm(end)}

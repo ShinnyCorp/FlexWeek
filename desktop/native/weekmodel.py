@@ -51,6 +51,11 @@ def clock_text(minute: int) -> str:
     return str(flexweek_engine.week_clock_text(minute))
 
 
+def end_after_start_words(start: str) -> str:
+    """The line when an End is not after its Start; `start` is written as the clock writes it."""
+    return f"End needs to be later than Start ({start})."
+
+
 def hhmm_text(hhmm: str) -> str:
     """A saved "16:00" as the clock writes it."""
     return str(flexweek_engine.week_hhmm_text(hhmm))
