@@ -8,7 +8,7 @@ from typing import cast
 import flexweek_engine  # type: ignore[import-untyped]
 
 from backend.models import AssignmentContent, TimeBlock
-from desktop.native.wire import plain, restore
+from desktop.native.wire import plain, restored
 
 EXPORT_FORMAT = "flexweek-week"
 DAY_FORMAT = "flexweek-day"
@@ -18,7 +18,7 @@ EXPORT_VERSION = 2
 def assignment_body(item: dict) -> dict:
     fields = list(AssignmentContent.model_fields)
     body = AssignmentContent.model_validate(
-        restore(json.loads(flexweek_engine.files_assignment_input(plain(item), fields)))
+        restored(flexweek_engine.files_assignment_input(plain(item), fields))
     ).model_dump(mode="json")
     return body
 
@@ -96,7 +96,7 @@ def _checked_import(blocks: str, homework: str) -> tuple[list[dict], list[dict],
 
 
 def _read_list(text: str) -> list[dict]:
-    return cast(list[dict], restore(json.loads(text)))
+    return cast(list[dict], restored(text))
 
 
 def parse_import_payload(raw: str) -> dict:
