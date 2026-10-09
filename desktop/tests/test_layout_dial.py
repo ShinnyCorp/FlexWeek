@@ -26,7 +26,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QPoint, QPointF, Qt
     from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPalette
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
+    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QScrollArea, QWidget
 
     from desktop.native.layouts.base import Scene
     from desktop.native.layouts.dial import DayDialView, DialFace
@@ -537,7 +537,7 @@ def test_names_are_written_along_the_arcs_that_fit_and_left_off_the_ones_that_do
     qapp: QApplication,
 ) -> None:
     """#25: the arcs carried no words. School's arc is wide enough for its name; Dinner's is half an
-    hour, which the name would run off, so it is left off and the key under the list explains."""
+    hour, which the name would run off, so it is left off and the key above the list explains."""
     view = shown(qapp, "13:40")
     words = arc_words(view)
     assert "School" in words
@@ -608,7 +608,7 @@ def key_of(view: DayDialView) -> tuple[QFrame, list[str]]:
     return key, [item.text() for item in key.findChildren(QLabel, "dialKeyWord")]
 
 
-def test_the_key_under_the_list_names_the_kinds_of_arc_the_ring_shows(qapp: QApplication) -> None:
+def test_the_key_above_the_list_names_the_kinds_of_arc_the_ring_shows(qapp: QApplication) -> None:
     # School is over at 15:40; Dinner and the homework are still to come.
     view = shown(qapp, "15:40")
     key, words = key_of(view)
@@ -620,7 +620,7 @@ def test_the_key_under_the_list_names_the_kinds_of_arc_the_ring_shows(qapp: QApp
         "Free time, still ahead",
         "Free time, already gone",
     ]
-    assert key.mapTo(view, key.rect().topLeft()).y() > view.findChild(QFrame, "dialList").y()
+    assert key.mapTo(view, key.rect().topLeft()).y() < view.findChild(QFrame, "dialList").y()
     # With nothing planned only the two kinds of free time are on the ring.
     assert key_of(shown(qapp, "13:40", []))[1] == ["Free time, still ahead", "Free time, already gone"]
     # With the day over, what was planned is over, and the evening left is still ahead.
@@ -633,6 +633,18 @@ def test_the_key_under_the_list_names_the_kinds_of_arc_the_ring_shows(qapp: QApp
     kinds = face(view).key_rows()
     assert [len(colours) for _words, colours in kinds] == [2, 1, 1, 1], "Dinner and homework, School"
     assert len(key.findChildren(QWidget, "dialKeySwatch")) == 4
+
+
+def test_the_key_is_whole_in_view_at_1300_by_720_with_school_running(qapp: QApplication) -> None:
+    """Under the Today list the key sat below the fold of the page scroller at this size, so the
+    words that explain the arcs were out of sight."""
+    view = shown(qapp, "13:40")
+    scroll = view.findChild(QScrollArea, "dialScroll")
+    key = view.findChild(QFrame, "dialKey")
+    assert key.isVisible()
+    top = key.mapTo(scroll.viewport(), key.rect().topLeft()).y()
+    bottom = key.mapTo(scroll.viewport(), key.rect().bottomLeft()).y()
+    assert top >= 0 and bottom < scroll.viewport().height(), (top, bottom, scroll.viewport().height())
 
 
 def test_with_nothing_else_planned_the_card_heading_drops_to_the_heading_size(qapp: QApplication) -> None:

@@ -100,7 +100,7 @@ EVENING = 22 * 60
 # in the ring's thickness; a name that does not fit is left off, and the key still explains the ring.
 ARC_PAD = 6
 ARC_ROOM = 4
-# The key under the list names each kind of arc the ring shows, in this order.
+# The key above the list names each kind of arc the ring shows, in this order.
 KEY_TITLE = "Reading the ring"
 KEY_WORDS = {
     "coming": "Still to come",
@@ -851,9 +851,10 @@ class DayDialView(LayoutView):
         side.setContentsMargins(0, px(SPACING[4]), 0, 0)
         side.setSpacing(px(SPACING[3]))
         side.addWidget(self._card(scene, day, is_today))
+        # Above the list, which can run long: under it the key sat below the fold at 1300 by 720.
+        side.addWidget(self._key(scene, self._face.key_rows()))
         if scene.options.get("list") != "hide":
             side.addWidget(self._list(scene, day, is_today))
-        side.addWidget(self._key(scene, self._face.key_rows()))
         side.addStretch(1)
         self._root.addWidget(self._side, 1)
         empty(self._strip)
