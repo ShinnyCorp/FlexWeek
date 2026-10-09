@@ -17,6 +17,8 @@ from uuid import uuid4
 
 from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTime, QTimer, Signal
 from PySide6.QtGui import (
+    QAccessible,
+    QAccessibleAnnouncementEvent,
     QColor,
     QFocusEvent,
     QFont,
@@ -344,6 +346,49 @@ def step_badge(number: int, state: str, palette: dict, family: str, ratio: float
 def _repolish(widget: QWidget) -> None:
     widget.style().unpolish(widget)
     widget.style().polish(widget)
+
+
+def _focus_stops(widget: QWidget) -> list[QWidget]:
+    """The controls Tab reaches inside `widget`, in the order they were made. A spin box's own line
+    edit is left out: the spin box is the stop."""
+    return [
+        child
+        for child in widget.findChildren(QWidget)
+        if child.focusPolicy() & Qt.FocusPolicy.TabFocus
+        and not (
+            isinstance(child, QLineEdit) and isinstance(child.parentWidget(), (QAbstractSpinBox, QComboBox))
+        )
+    ]
+
+
+def _stop_before(widget: QWidget) -> QWidget:
+    """The nearest control Tab reaches before `widget` in the chain. Qt ignores a label given to
+    setTabOrder as the first widget, so the anchor has to be a control."""
+    before = widget.previousInFocusChain()
+    while before is not widget and not before.focusPolicy() & Qt.FocusPolicy.TabFocus:
+        before = before.previousInFocusChain()
+    return before
+
+
+def _tab_after(after: QWidget, stops: list[QWidget]) -> QWidget:
+    """Put `stops` straight after `after` in the Tab order, in the order given. Returns the last one."""
+    for stop in stops:
+        QWidget.setTabOrder(after, stop)
+        after = stop
+    return after
+
+
+def _leave_row_focus(row: QWidget, rows: list, fallback: QWidget) -> None:
+    """Before a row is removed, move focus to its name field's neighbour: the same field in the row
+    after it, else the row before, else the add button. Otherwise Qt moves focus to the next widget
+    in the chain, which can be the rail."""
+    index = rows.index(row)
+    if index + 1 < len(rows):
+        rows[index + 1].name.setFocus(Qt.FocusReason.OtherFocusReason)
+    elif index > 0:
+        rows[index - 1].name.setFocus(Qt.FocusReason.OtherFocusReason)
+    else:
+        fallback.setFocus(Qt.FocusReason.OtherFocusReason)
 
 
 def _quiet(text: str, name: str = "setupQuiet") -> QPushButton:
@@ -948,6 +993,8 @@ class ActivityRow(QFrame):
         bottom.addWidget(Level(self.days, self.times.start))
         bottom.addWidget(self.times)
         box.addLayout(bottom)
+        # Tab order follows the screen: name, sport or activity, remove, then the days and times.
+        self.stops = [self.name, self.category, remove, *_focus_stops(self.days), *_focus_stops(self.times)]
 
     def _keep_category(self, _index: int = 0) -> None:
         self._category_touched = True
@@ -1004,10 +1051,19 @@ class HomeworkRow(QFrame):
         # On the line of the box, not the middle of the box and the lengths under it.
         takes = Level(_label("Takes", "setupFieldLabel", wrap=False), self.minutes)
         grid.addWidget(takes, 1, 0, Qt.AlignmentFlag.AlignTop)
-        grid.addWidget(Stepper(self.minutes, QUICK_LENGTHS), 1, 1)
+        stepper = Stepper(self.minutes, QUICK_LENGTHS)
+        grid.addWidget(stepper, 1, 1)
         grid.addWidget(_label("Due", "setupFieldLabel", wrap=False), 1, 2)
         grid.addWidget(self.due, 1, 3, 1, 2)
         grid.setColumnStretch(3, 1)
+        # Tab order follows the screen: name, remove, then the length, the due date.
+        self.stops = [
+            self.name,
+            remove,
+            *_focus_stops(takes),
+            *_focus_stops(stepper),
+            *_focus_stops(self.due),
+        ]
 
 
 class SetupPage(QWidget):
@@ -1313,6 +1369,8 @@ class SetupPage(QWidget):
         self.add_activity = _quiet("+ Add a sport, club or job", "setupAddActivity")
         self.add_activity.clicked.connect(lambda: self._add_activity(focus=True))
         box.addWidget(self.add_activity, 0, Qt.AlignmentFlag.AlignLeft)
+        # The control Tab reaches just before the add button: the last School control.
+        self._activity_anchor = _stop_before(self.add_activity)
         self._section(box, "Bedtime")
         self.cutoff = QComboBox()
         self.cutoff.setObjectName("setupCutoff")
@@ -1446,6 +1504,7 @@ class SetupPage(QWidget):
         self.add_homework = _quiet("+ Add another", "setupAddHomework")
         self.add_homework.clicked.connect(lambda: self._add_homework_row(focus=True))
         box.addWidget(self.add_homework, 0, Qt.AlignmentFlag.AlignLeft)
+        self._homework_anchor = _stop_before(self.add_homework)
         return content
 
     def _build_done(self) -> QWidget:
@@ -1899,18 +1958,32 @@ class SetupPage(QWidget):
         self.activity_box.addWidget(row)
         self.activities.append(row)
         self.add_activity.setEnabled(len(self.activities) < MAX_ACTIVITIES)
+        self._chain_activities()
         if focus:
             row.name.setFocus(Qt.FocusReason.OtherFocusReason)
             appear(row, self.motion, rise=False)
 
+    def _chain_activities(self) -> None:
+        """Tab goes down the activity rows as they sit, then to the add button, then on to Bedtime.
+        Run after every row is added or removed."""
+        last = self._activity_anchor
+        for row in self.activities:
+            last = _tab_after(last, row.stops)
+        _tab_after(last, [self.add_activity])
+
     def _remove_activity(self, row: object) -> None:
         if not isinstance(row, ActivityRow) or row not in self.activities:
             return
+        _leave_row_focus(row, self.activities, self.add_activity)
         self.activities.remove(row)
         self.activity_box.removeWidget(row)
         row.setParent(None)
         row.deleteLater()
         self.add_activity.setEnabled(True)
+        self._chain_activities()
+        announce = QAccessibleAnnouncementEvent(self, "Activity removed")
+        announce.setPoliteness(QAccessible.AnnouncementPoliteness.Polite)
+        QAccessible.updateAccessibility(announce)
 
     def week_blocks(self) -> list[dict]:
         blocks: list[dict] = []
@@ -1992,20 +2065,30 @@ class SetupPage(QWidget):
         self.homework_box.addWidget(row)
         self.homework_rows.append(row)
         self.add_homework.setEnabled(len(self.homework_rows) < MAX_FIRST_HOMEWORK)
+        self._chain_homework()
         if focus:
             row.name.setFocus(Qt.FocusReason.OtherFocusReason)
             appear(row, self.motion)
 
+    def _chain_homework(self) -> None:
+        """Tab goes down the first homework rows as they sit, then to the add button."""
+        last = self._homework_anchor
+        for row in self.homework_rows:
+            last = _tab_after(last, row.stops)
+        _tab_after(last, [self.add_homework])
+
     def _remove_homework_row(self, row: object) -> None:
         if not isinstance(row, HomeworkRow) or row not in self.homework_rows:
             return
+        if len(self.homework_rows) == 1:
+            self._add_homework_row()
+        _leave_row_focus(row, self.homework_rows, self.add_homework)
         self.homework_rows.remove(row)
         self.homework_box.removeWidget(row)
         row.setParent(None)
         row.deleteLater()
         self.add_homework.setEnabled(True)
-        if not self.homework_rows:
-            self._add_homework_row()
+        self._chain_homework()
 
     def first_homework(self) -> list[dict]:
         made = []

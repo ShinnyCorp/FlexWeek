@@ -182,9 +182,6 @@ def test_0h_tab_leaves_notes_and_shift_tab_comes_back(qapp, made) -> None:
 
 # 0i / 0j ----------------------------------------------------------------------------------------
 
-KNOWN_0I = "known failure (item 0i): activity rows are made after Next, so they come after it in Tab order"
-KNOWN_0J = "known failure (item 0j): removing an activity never sets focus; it lands on 'Step 1: Style'"
-
 
 def tab_walk(setup, start: QWidget, limit: int = 120) -> list[QWidget]:
     start.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -201,7 +198,6 @@ def tab_walk(setup, start: QWidget, limit: int = 120) -> list[QWidget]:
 
 
 @pytest.mark.parametrize("rows", [1, 2], ids=["one-activity", "two-activities"])
-@pytest.mark.xfail(strict=True, reason=KNOWN_0I)
 def test_0i_tab_from_school_reaches_every_activity_before_next(qapp, made, rows) -> None:
     setup = open_setup_week(qapp, made)
     while len(setup.activities) < rows:
@@ -224,7 +220,6 @@ def remove_by_keyboard(setup, row) -> None:
         QApplication.processEvents()
 
 
-@pytest.mark.xfail(strict=True, reason=KNOWN_0J)
 def test_0j_removing_activities_keeps_focus_in_the_list(qapp, made) -> None:
     setup = open_setup_week(qapp, made)
     while len(setup.activities) < 3:

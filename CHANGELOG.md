@@ -9,6 +9,9 @@ All notable changes to FlexWeek are documented here. Format follows
 - Tab leaves the Notes box in Add homework and the other multi-line boxes in
   sheets and Settings; Shift+Tab goes back. Tab no longer types a tab
   character into them.
+- Setup's Tab order follows the screen: a new activity or first-homework row
+  is reached before Next, not after it. Removing an activity keeps focus in
+  the list and says "Activity removed" to a screen reader.
 
 ## [0.18.4] - 2026-10-09
 
