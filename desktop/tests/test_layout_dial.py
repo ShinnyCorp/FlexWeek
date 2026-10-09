@@ -24,16 +24,17 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QPoint, QPointF, Qt
-    from PySide6.QtGui import QColor, QPalette
+    from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPalette
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
+    from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QWidget
 
     from desktop.native.layouts.base import Scene
     from desktop.native.layouts.dial import DayDialView, DialFace
     from desktop.native.layouts.registry import LAYOUTS, options_for, tokens_for
     from desktop.native.look import ACCENTS, category_paint, contrast, resolved_palette
     from desktop.native.motion import apply_ui_effects, duration
-    from desktop.native.weekmodel import build_week, minute_of, set_clock_24h
+    from desktop.native.tokens import type_pt
+    from desktop.native.weekmodel import build_week, clock_label, minute_of, set_clock_24h
     from desktop.native.widgets import FittedLabel
 
 THURSDAY = 3
@@ -292,7 +293,8 @@ def test_what_is_over_is_paler_and_neighbours_are_two_degrees_apart(qapp: QAppli
 
     school_fill, _ = paint(tokens, "class")
     _, dinner_mark = paint(tokens, "meals")
-    assert near(ring(11 * 60), school_fill), "School is over, so pale"
+    # Nine, not the middle of the arc, where School's name is written.
+    assert near(ring(9 * 60), school_fill), "School is over, so pale"
     assert near(ring(18 * 60 + 15), dinner_mark), "Dinner is to come"
     # School ends at 14:30 and free time begins: the page shows between them, a degree (four minutes)
     # to either side, and ten minutes away each is solid again.
@@ -525,3 +527,128 @@ def test_the_hand_eases_to_where_the_time_moved_it_and_jumps_where_nothing_may_t
             assert hand_on(face, minute_of("15:10")), level
     finally:
         apply_ui_effects("normal")
+
+
+def arc_words(view: DayDialView) -> list[str]:
+    return [arc.words for arc in face(view).arc_labels()]
+
+
+def test_names_are_written_along_the_arcs_that_fit_and_left_off_the_ones_that_do_not(
+    qapp: QApplication,
+) -> None:
+    """#25: the arcs carried no words. School's arc is wide enough for its name; Dinner's is half an
+    hour, which the name would run off, so it is left off and the key under the list explains."""
+    view = shown(qapp, "13:40")
+    words = arc_words(view)
+    assert "School" in words
+    assert "Dinner" not in words
+    assert "Earlier today" in words, "free time already gone"
+    assert "Free until 18:00" in words, "free time still ahead, to where the next block begins"
+    # Nothing is written that is wider than its arc: the names would overlap what is next to them.
+    dial = face(view)
+    _centre, inner, outer = dial._radii()
+    metrics = QFontMetricsF(dial._arc_font())
+    for arc in dial.arc_labels():
+        along = math.radians(arc.last - arc.first) * (inner + outer) / 2
+        assert metrics.horizontalAdvance(arc.words) <= along, arc.words
+
+
+def test_a_ring_too_thin_for_words_or_a_day_without_a_now_writes_less(qapp: QApplication) -> None:
+    small = shown(qapp, "13:40")
+    small.resize(700, 420)
+    qapp.processEvents()
+    assert arc_words(small) == [], "a ring thinner than the words are tall is left bare"
+    # Another week has no now, so no free time is said to be gone or ahead.
+    other = shown(qapp, "13:40", today=None)
+    assert [words for words in arc_words(other) if words.startswith(("Earlier", "Free"))] == []
+    assert "School" in arc_words(other)
+
+
+@pytest.mark.parametrize("dark", [False, True])
+def test_the_words_on_every_arc_read_at_4_5_to_1(qapp: QApplication, dark: bool) -> None:
+    palette = resolved_palette("dark-frost" if dark else "light-frost", dark, None, "default")
+    view = shown(qapp, "13:40", palette=palette)
+    plan = face(view).arc_labels()
+    assert {"School", "Earlier today"} <= {arc.words for arc in plan}
+    for arc in plan:
+        assert contrast(arc.ink, arc.ground) >= 4.5, (arc.words, arc.ink, arc.ground)
+
+
+def test_free_until_follows_the_clock_setting(qapp: QApplication) -> None:
+    set_clock_24h(False)
+    try:
+        wanted = f"Free until {clock_label(22 * 60)}"
+        assert "PM" in wanted
+        assert wanted in arc_words(shown(qapp, "13:40", []))
+    finally:
+        set_clock_24h(True)
+    assert "Free until 22:00" in arc_words(shown(qapp, "13:40", []))
+
+
+def test_the_words_are_painted_on_the_arc(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pixels, not just the plan: School's arc differs from the same arc drawn without words."""
+    dial = face(shown(qapp, "13:40"))
+    with_words = dial.grab().toImage()
+    monkeypatch.setattr(DialFace, "arc_labels", lambda self: [])
+    without = dial.grab().toImage()
+    track = dial.track
+    changed = 0
+    for minute in range(9 * 60, 14 * 60, 5):
+        spot = track.point_for(minute)
+        for dx in range(-4, 5):
+            for dy in range(-4, 5):
+                x, y = round(spot.x()) + dx, round(spot.y()) + dy
+                if with_words.pixelColor(x, y) != without.pixelColor(x, y):
+                    changed += 1
+    assert changed > 40, f"only {changed} pixels differ"
+
+
+def key_of(view: DayDialView) -> tuple[QFrame, list[str]]:
+    key = view.findChild(QFrame, "dialKey")
+    return key, [item.text() for item in key.findChildren(QLabel, "dialKeyWord")]
+
+
+def test_the_key_under_the_list_names_the_kinds_of_arc_the_ring_shows(qapp: QApplication) -> None:
+    # School is over at 15:40; Dinner and the homework are still to come.
+    view = shown(qapp, "15:40")
+    key, words = key_of(view)
+    assert key.findChild(QLabel, "dialListLabel").text() == "Reading the ring"
+    assert words == ["Still to come", "Already over", "Free time, still ahead", "Free time, already gone"]
+    # At 13:40 School is still running, so nothing is over yet.
+    assert key_of(shown(qapp, "13:40"))[1] == [
+        "Still to come",
+        "Free time, still ahead",
+        "Free time, already gone",
+    ]
+    assert key.mapTo(view, key.rect().topLeft()).y() > view.findChild(QFrame, "dialList").y()
+    # With nothing planned only the two kinds of free time are on the ring.
+    assert key_of(shown(qapp, "13:40", []))[1] == ["Free time, still ahead", "Free time, already gone"]
+    # With the day over, what was planned is over, and the evening left is still ahead.
+    assert key_of(shown(qapp, "22:30"))[1] == [
+        "Already over",
+        "Free time, still ahead",
+        "Free time, already gone",
+    ]
+    # Each row carries the colours of its arcs.
+    kinds = face(view).key_rows()
+    assert [len(colours) for _words, colours in kinds] == [2, 1, 1, 1], "Dinner and homework, School"
+    assert len(key.findChildren(QWidget, "dialKeySwatch")) == 4
+
+
+def test_with_nothing_else_planned_the_card_heading_drops_to_the_heading_size(qapp: QApplication) -> None:
+    """#25: "Nothing else scheduled today" was set in the 20 pt title size, as big as the date in the top
+    bar, for a sentence about having nothing to do."""
+    view = shown(qapp, "13:40", [])
+    title = view.findChild(QLabel, "dialTitle")
+    title.ensurePolished()
+    assert title.font().pointSizeF() == type_pt("heading") == 15
+    assert title.font().weight() == QFont.Weight.DemiBold
+    assert text(view, "dialThen") == "Your evening is free until 22:00."
+    # A running block keeps the title size.
+    busy = shown(qapp, "13:40").findChild(QLabel, "dialTitle")
+    busy.ensurePolished()
+    assert busy.font().pointSizeF() == type_pt("title") == 20
+    # Once the evening is over there is nothing to say about it.
+    late = shown(qapp, "22:30")
+    assert text(late, "dialTitle") == "Nothing else scheduled today"
+    assert late.findChild(QLabel, "dialThen") is None
