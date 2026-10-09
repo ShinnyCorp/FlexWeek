@@ -15,7 +15,9 @@ from PySide6.QtCore import (
     Property,
     QAbstractAnimation,
     QDate,
+    QElapsedTimer,
     QEvent,
+    QEventLoop,
     QObject,
     QPoint,
     QRect,
@@ -126,6 +128,7 @@ from desktop.native.motion import (
     duration,
     frame_interval_ms,
     moves,
+    screen_rate,
     settle,
     vanish,
 )
@@ -2254,11 +2257,58 @@ class SheetShade(QWidget):
         super().__init__(host)
         self.setObjectName("sheetShade")
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        # Made by the window before its sheet is built (dim_window), and not yet taken by that sheet.
+        self.waiting = False
+        # Its fade has begun, so the sheet that takes it does not start the fade over.
+        self.fading = False
 
     def paintEvent(self, _event: object) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(0, 0, 0, round(255 * SHEET_DIM)))
         painter.end()
+
+
+def dim_window(host: QWidget) -> SheetShade:
+    """Start dimming `host` for a sheet that is about to be built. Building a sheet takes tens of
+    milliseconds with nothing drawn, so the dim starts first and the sheet's constructor runs behind
+    it. The sheet takes this dim when it shows, so there is one dim, fading from the click."""
+    top = host.window()
+    shade = SheetShade(top)
+    shade.waiting = True
+    shade.setGeometry(top.rect())
+    shade.show()
+    shade.raise_()
+    level = app_level()
+    appear(shade, level)
+    # No fade was started on a window that is not on screen or at motion Off; the sheet decides then.
+    shade.fading = shade.graphicsEffect() is not None
+    _draw_first_frames(shade)
+    return shade
+
+
+def drop_waiting_dim(host: QWidget) -> None:
+    """Take down a dim no sheet took, because building or opening the sheet failed."""
+    # children(), not findChildren(): the latter hands a sheet to the window to own.
+    for child in host.window().children():
+        if isinstance(child, SheetShade) and child.waiting:
+            child.waiting = False
+            child.hide()
+            child.deleteLater()
+
+
+def _draw_first_frames(shade: SheetShade) -> None:
+    """Let the event loop paint the dim's first frame before the sheet's build holds it up. Typing and
+    clicks stay queued for the sheet."""
+    effect = shade.graphicsEffect()
+    if effect is None:
+        return
+    limit = 2 * frame_interval_ms(screen_rate(shade))
+    started = QElapsedTimer()
+    started.start()
+    flags = QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
+    while getattr(effect, "opacity", 1.0) <= 0 and started.elapsed() < limit:
+        QApplication.processEvents(flags)
+    QApplication.processEvents(flags)
 
 
 class Dialog(QDialog):
@@ -2362,7 +2412,7 @@ class Dialog(QDialog):
             level = app_level()
             for part in self._content():
                 appear(part, level, rise=True)
-            if self._shade is not None:
+            if self._shade is not None and not self._shade.fading:
                 appear(self._shade, level)
             if self.sheet and duration(EASE_MS) > 0:
                 self._freeze_page()
@@ -2498,13 +2548,22 @@ class Dialog(QDialog):
             dark = self.palette().color(QPalette.ColorRole.WindowText).lightness() > 128
             lift(self.card, SHADOW_LARGE, dark)
         if self._shade is None:
-            self._shade = SheetShade(host)
+            # The one the window made before building this sheet, if it did.
+            self._shade = self._waiting_shade(host) or SheetShade(host)
             # Gone with the sheet however it goes, even if it is freed while still on screen.
             self.destroyed.connect(self._shade.deleteLater)
             host.installEventFilter(self)
         self._shade.setGeometry(host.rect())
         self._shade.show()
         self._shade.raise_()
+
+    @staticmethod
+    def _waiting_shade(host: QWidget) -> SheetShade | None:
+        for child in host.children():
+            if isinstance(child, SheetShade) and child.waiting:
+                child.waiting = False
+                return child
+        return None
 
     def scaled_width(self) -> int:
         """The card's width on the scale at the student's text size: 440 and 600 are at Normal, and

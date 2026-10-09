@@ -184,6 +184,8 @@ from desktop.native.widgets import (
     add_heading,
     confirm,
     control_art,
+    dim_window,
+    drop_waiting_dim,
     keyboard_focus_rings,
     overdue_unfinished,
     steady_wheel,
@@ -2313,9 +2315,23 @@ class NativeWindow(QMainWindow):
     def _run_sheet(self, dialog: QDialog) -> bool:
         """Open a sheet and wait for it. Once it is closed the keyboard is back on the week, not on the
         button that opened it."""
-        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        try:
+            accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        finally:
+            # A dim made for this sheet that it never took, because it could not open.
+            drop_waiting_dim(self)
         self._focus_week()
         return accepted
+
+    def _sheet[D: QDialog](self, build: Callable[[], D]) -> D:
+        """Build a sheet with the window already dimming behind it (J15). The dim starts at the click, and
+        the sheet shows over it once built; a sheet that cannot be built leaves no dim."""
+        dim_window(self)
+        try:
+            return build()
+        except BaseException:
+            drop_waiting_dim(self)
+            raise
 
     def _commit_block(self, dialog: BlockDialog) -> None:
         if not self._run_sheet(dialog):
@@ -2376,7 +2392,7 @@ class NativeWindow(QMainWindow):
         category = self.session.armed_category
         if category in FLEX_CATEGORIES:
             category = None
-        self._commit_block(self._new_event(category))
+        self._commit_block(self._sheet(lambda: self._new_event(category)))
 
     def _new_event(self, category: str | None) -> BlockDialog:
         """A new event opens on the next quarter hour still ahead today, or with none left, the first one
@@ -2394,13 +2410,17 @@ class NativeWindow(QMainWindow):
         category = self.session.armed_category
         if category in FLEX_CATEGORIES:
             category = None
-        self._commit_block(BlockDialog(self, day=day, start=minutes_to_hhmm(minute), category=category))
+        self._commit_block(
+            self._sheet(lambda: BlockDialog(self, day=day, start=minutes_to_hhmm(minute), category=category))
+        )
 
     def _add_homework_due(self, due: str) -> None:
         category = self.session.armed_category
         if category not in FLEX_CATEGORIES:
             category = "assignments"
-        self._commit_homework(HomeworkDialog(self, today=self._today(), category=category, due=due))
+        self._commit_homework(
+            self._sheet(lambda: HomeworkDialog(self, today=self._today(), category=category, due=due))
+        )
 
     def _delete_block(self, block: dict, scope: str, day: int | None) -> None:
         self.session.delete_block(block["id"], scope=scope, day=day)
@@ -2438,7 +2458,9 @@ class NativeWindow(QMainWindow):
         category = self.session.armed_category
         if category not in FLEX_CATEGORIES:
             category = "assignments"
-        self._commit_homework(HomeworkDialog(self, today=self._today(), category=category))
+        self._commit_homework(
+            self._sheet(lambda: HomeworkDialog(self, today=self._today(), category=category))
+        )
 
     def _today(self) -> str:
         return clock_parts(self.session.now_ms())["iso"]
@@ -2707,9 +2729,11 @@ class NativeWindow(QMainWindow):
         self.session.arm_category(category)
         self._sync_add_button()
         if category in FLEX_CATEGORIES:
-            self._commit_homework(HomeworkDialog(self, today=self._today(), category=category))
+            self._commit_homework(
+                self._sheet(lambda: HomeworkDialog(self, today=self._today(), category=category))
+            )
             return
-        self._commit_block(self._new_event(category))
+        self._commit_block(self._sheet(lambda: self._new_event(category)))
 
     def _create_by_drag(self, span: Span) -> None:
         before = {item["id"] for item in self.session.blocks}
@@ -2724,23 +2748,27 @@ class NativeWindow(QMainWindow):
         category = self.session.armed_category
         if category in FLEX_CATEGORIES:
             self._commit_homework(
-                HomeworkDialog(
-                    self,
-                    category=category,
-                    estimate_min=duration,
-                    due=sunday_due(self.session.week_start),
+                self._sheet(
+                    lambda: HomeworkDialog(
+                        self,
+                        category=category,
+                        estimate_min=duration,
+                        due=sunday_due(self.session.week_start),
+                    )
                 ),
                 days=[day],
             )
             return
         self._commit_block(
-            BlockDialog(
-                self,
-                day=day,
-                start=start,
-                duration_min=duration,
-                category=category,
-                from_range=True,
+            self._sheet(
+                lambda: BlockDialog(
+                    self,
+                    day=day,
+                    start=start,
+                    duration_min=duration,
+                    category=category,
+                    from_range=True,
+                )
             )
         )
 
@@ -2771,8 +2799,9 @@ class NativeWindow(QMainWindow):
         sessions = [block for block in self.session.blocks if block.get("assignment_id") == assignment_id]
         waiting = any(not block.get("start") and not block.get("completed") for block in sessions)
         pinned = any(block.get("pinned") for block in sessions)
-        dialog = HomeworkDialog(self, assignment, waiting=waiting, pinned=pinned)
-        self._commit_homework(dialog)
+        self._commit_homework(
+            self._sheet(lambda: HomeworkDialog(self, assignment, waiting=waiting, pinned=pinned))
+        )
 
     def _choose_time_for_homework(self) -> None:
         """The first homework this week that still needs a time, opened in Choose a time."""
@@ -2871,12 +2900,9 @@ class NativeWindow(QMainWindow):
             return
         if block.get("kind") != "locked":
             return
-        dialog = BlockDialog(
-            self,
-            block,
-            occurrence_day=self.session.selected_occurrence_day,
+        self._commit_block(
+            self._sheet(lambda: BlockDialog(self, block, occurrence_day=self.session.selected_occurrence_day))
         )
-        self._commit_block(dialog)
 
     def _block_menu(self, block_id: str, day: int, at: QPoint) -> None:
         """A block's right-click menu: Open, Duplicate, Finished for homework, and Delete, each the
