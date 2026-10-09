@@ -604,6 +604,10 @@ Notepad, #95's wording and parts of #74, #90 and #101 were already done):
   status ("Not placed yet", "Placed Tue 16:00") and "planned" a time total
   ("2 h 30 min planned"), as 0.18.2 already made "Planned" the total in every
   design; no sweep of either word.
+- Mockup round 3 is approved (`docs/mockups/round3-0185/`, its README lists
+  each choice): "Sign in" as the one heading, words on the dial's arcs with a
+  key, Lucide `calendar-sync` for Replan, the warm edge on every card in Paper
+  and Ink.
 
 - **Designs.** #21 Clay: Soccer's visible sliver is a bare bar and Friday's
   side card an outlined bar with no name; the side cards use a smaller hour
