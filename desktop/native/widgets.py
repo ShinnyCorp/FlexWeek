@@ -2391,10 +2391,15 @@ class Dialog(QDialog):
             return
         host = parent.window()
         frozen: list[QWidget] = []
-        for child in host.findChildren(QWidget):
-            if child is self._shade or child is self or self.isAncestorOf(child):
+        # Walked with children(), not findChildren(): findChildren hands the sheet itself to the
+        # window to own, and an exec()'d sheet then outlives its last reference.
+        waiting: list[QObject] = list(host.children())
+        while waiting:
+            child = waiting.pop()
+            if child is self or not isinstance(child, QWidget):
                 continue
-            if not child.updatesEnabled():
+            waiting.extend(child.children())
+            if child is self._shade or not child.updatesEnabled():
                 continue
             child.setUpdatesEnabled(False)
             frozen.append(child)
