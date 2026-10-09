@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import cached_property
 
-from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QContextMenuEvent,
@@ -59,7 +59,7 @@ from desktop.native.look import (
     readable_ink,
     text_scale,
 )
-from desktop.native.motion import EASE_MS, between, duration, moves
+from desktop.native.motion import EASE_MS, OUT, Clock, between, duration, moves
 from desktop.native.tokens import RADIUS_CONTROL, TYPE_PT, WEIGHT_REGULAR, WEIGHT_STRONG, fit_lightness
 from desktop.native.weekmodel import Occurrence, clock_label, length_label, range_label, short_clock
 
@@ -1016,11 +1016,7 @@ class HoursCanvas(QWidget):
         self._fresh: set[Key] = set()
         self._progress = 1.0
         # A child, so it goes with the canvas and never paints one that is gone.
-        self._settling = QVariantAnimation(self)
-        self._settling.setStartValue(0.0)
-        self._settling.setEndValue(1.0)
-        self._settling.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._settling.valueChanged.connect(self._settle_step)
+        self._settling = Clock(self)
         self._settling.finished.connect(self._settled)
         hand.preview_changed.connect(self.update)
 
@@ -1075,8 +1071,7 @@ class HoursCanvas(QWidget):
                     self._fresh.add(key)
         if self._slides or self._fresh:
             self._progress = 0.0
-            self._settling.setDuration(length)
-            self._settling.start()
+            self._settling.start(length, lambda at: self._settle_step(OUT.valueForProgress(at / length)))
 
     def _settle_step(self, value: object) -> None:
         self._progress = float(value)

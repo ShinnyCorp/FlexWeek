@@ -23,7 +23,6 @@ from dataclasses import dataclass
 from datetime import date
 
 from PySide6.QtCore import (
-    QAbstractAnimation,
     QEvent,
     QObject,
     QPoint,
@@ -33,7 +32,6 @@ from PySide6.QtCore import (
     QSize,
     Qt,
     QTimer,
-    QVariantAnimation,
     Signal,
 )
 from PySide6.QtGui import (
@@ -97,7 +95,7 @@ from desktop.native.layouts.base import (
 )
 from desktop.native.layouts.colourways import RETRO
 from desktop.native.look import AA_TEXT, category_paint, look_measures, type_sizes
-from desktop.native.motion import app_level, appear, between, duration, moves
+from desktop.native.motion import Clock, app_level, appear, between, duration, moves
 from desktop.native.reuse import MONTHS, planner_title
 from desktop.native.tokens import (
     WEIGHT_REGULAR,
@@ -1515,13 +1513,10 @@ class RetroView(LayoutView):
         flight = Zoom(self, self._scheme, start, end)
         # Live at once, as every window is, and seen once its title bar has landed.
         appear(window, level, delay_ms=ZOOM_MS, ms=0)
-        clock = QVariantAnimation(flight)
-        clock.setStartValue(0.0)
-        clock.setEndValue(1.0)
-        clock.setDuration(duration(ZOOM_MS, level))
-        clock.valueChanged.connect(flight.fly)
+        clock = Clock(flight)
         clock.finished.connect(flight.deleteLater)
-        clock.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
+        length = duration(ZOOM_MS, level)
+        clock.start(length, lambda at: flight.fly(at / length))
 
     def _hide(self, key: str) -> None:
         self._open[key] = False

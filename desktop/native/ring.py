@@ -12,11 +12,11 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QVariantAnimation
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPaintEvent, QPen, QResizeEvent
 from PySide6.QtWidgets import QSizePolicy, QSpacerItem, QVBoxLayout, QWidget
 
-from desktop.native.motion import OUT, duration, moves
+from desktop.native.motion import OUT, Clock, duration, moves
 from desktop.native.tokens import WEIGHT_NUMBER, WEIGHT_STRONG, mix_oklab, type_pt
 
 # The mock-up's ring (designs/one.js): 18 wide on a 340 circle in a 440 box, the scale outside it.
@@ -67,9 +67,7 @@ class CountdownRing(QWidget):
         self._scale = 1.0
         self._ticks = 0
         self._labels: tuple[str, ...] = ()
-        self._ease = QVariantAnimation(self)
-        self._ease.setEasingCurve(OUT)
-        self._ease.valueChanged.connect(self._eased)
+        self._ease = Clock(self)
         column = QVBoxLayout(self)
         column.setSpacing(0)
         column.addStretch(1)
@@ -108,10 +106,11 @@ class CountdownRing(QWidget):
         length = duration(ARC_MS, level)
         if since <= self._left or length == 0 or not moves(level):
             return
-        self._ease.setStartValue(min(since, 1.0))
-        self._ease.setEndValue(self._left)
-        self._ease.setDuration(length)
-        self._ease.start()
+        start, goal = min(since, 1.0), self._left
+        self._eased(start)
+        self._ease.start(
+            length, lambda at: self._eased(start + (goal - start) * OUT.valueForProgress(at / length))
+        )
 
     def _eased(self, share: object) -> None:
         self._left = float(share)

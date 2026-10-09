@@ -19,7 +19,6 @@ from datetime import date
 from functools import cached_property
 
 from PySide6.QtCore import (
-    QEasingCurve,
     QEvent,
     QObject,
     QPoint,
@@ -27,7 +26,6 @@ from PySide6.QtCore import (
     QRectF,
     QSize,
     Qt,
-    QVariantAnimation,
 )
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QFontMetricsF, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
@@ -79,7 +77,7 @@ from desktop.native.layouts.base import (
     short_length,
 )
 from desktop.native.look import category_paint, look_measures, readable_ink
-from desktop.native.motion import duration, moves
+from desktop.native.motion import OUT, Clock, duration, moves
 from desktop.native.tokens import (
     RADIUS_CARD,
     RADIUS_CONTROL,
@@ -830,10 +828,7 @@ class DayTile(QPushButton):
         self.lift = 0.0
         # Reduce motion and Off lift it at once and in place: the shadow and the edge, no rise.
         self.moves = moves()
-        self._lifting = QVariantAnimation(self)
-        self._lifting.setDuration(duration(LIFT_MS))
-        self._lifting.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._lifting.valueChanged.connect(self._lifted)
+        self._lifting = Clock(self)
 
     def _said(self) -> str:
         shown = self.shown
@@ -877,12 +872,14 @@ class DayTile(QPushButton):
     def _aim(self, lifted: bool) -> None:
         target = 1.0 if lifted else 0.0
         self._lifting.stop()
-        if not self.moves:
+        length = duration(LIFT_MS)
+        if not self.moves or not length:
             self._lifted(target)
             return
-        self._lifting.setStartValue(self.lift)
-        self._lifting.setEndValue(target)
-        self._lifting.start()
+        start = self.lift
+        self._lifting.start(
+            length, lambda at: self._lifted(start + (target - start) * OUT.valueForProgress(at / length))
+        )
 
     def _lifted(self, value: object) -> None:
         self.lift = float(value)
