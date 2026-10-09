@@ -982,3 +982,99 @@ def test_a_card_entering_from_off_screen_has_a_picture(qapp: QApplication) -> No
     assert 0 in starts or 0 in ends, "Monday has no start or end picture"
     view.row._slide.stop()
     view.row._land()
+
+
+def _drawn_at(qapp: QApplication, view: ClayDeckView, share: float, monkeypatch) -> list[dict]:
+    """Every picture the sliding row draws with the slide held at `share`: which day and end it is,
+    its logical size, where it is drawn, its opacity and the clip it is drawn through."""
+    row = view.row
+    assert row._slide.state() != QAbstractAnimation.State.Stopped
+    row._slide.pause()
+    starts, ends = _slide_pictures(row)
+    keys = {shot.picture.cacheKey(): (day, "start") for day, shot in starts.items()}
+    keys.update({shot.picture.cacheKey(): (day, "end") for day, shot in ends.items()})
+    seen: list[dict] = []
+    original = type(row)._blit
+
+    def record(self, painter, picture, target):
+        ratio = picture.devicePixelRatio() or 1.0
+        day, end = keys[picture.cacheKey()]
+        seen.append({
+            "day": day, "end": end, "opacity": painter.opacity(), "target": QRectF(target),
+            "size": (picture.width() / ratio, picture.height() / ratio),
+            "clip": painter.clipPath().boundingRect(), "card": QRectF(self._rects[day]),
+        })
+        original(self, painter, picture, target)
+
+    monkeypatch.setattr(type(row), "_blit", record)
+    row._slid(share)
+    row.repaint()
+    return seen
+
+
+def _stop(row) -> None:
+    row._slide.stop()
+    row._land()
+
+
+def _slide_week(qapp: QApplication):
+    view = shown(qapp)
+    motion.apply_ui_effects("normal")
+    view.findChild(QPushButton, "clayAhead").click()
+    return view
+
+
+def _slide_day(qapp: QApplication):
+    view = shown(qapp, tab="day")
+    motion.apply_ui_effects("normal")
+    scene = view.scene
+    view.show_week(Scene(
+        scene.week, scene.today, scene.minute, scene.options, scene.tokens,
+        surface="day", iso_day=scene.week.date_of(4).isoformat(),
+    ))
+    return view
+
+
+@pytest.mark.parametrize("start", [_slide_week, _slide_day], ids=["week", "day"])
+def test_mid_slide_a_picture_is_scaled_alike_both_ways_and_clipped_to_its_card(
+    qapp: QApplication, monkeypatch, start
+) -> None:
+    """A picture squeezed into another shape stretched its words. One factor on both sides, and the
+    card's own rectangle as the clip, keep them as they were drawn."""
+    view = start(qapp)
+    scaled = 0
+    for share in (0.05, 0.3, 0.5, 0.7):
+        for item in _drawn_at(qapp, view, share, monkeypatch):
+            wide, tall = item["size"]
+            target = item["target"]
+            assert abs(target.width() - target.height() * wide / tall) <= 1, (share, item)
+            scaled += abs(target.height() - tall) > 2
+            assert item["clip"].isEmpty() is False
+            assert item["clip"].adjusted(-0.5, -0.5, 0.5, 0.5).contains(item["card"]), (share, item)
+            assert item["card"].adjusted(-0.5, -0.5, 0.5, 0.5).contains(item["clip"]), (share, item)
+        monkeypatch.undo()
+    assert scaled > 0, "no picture was scaled, so the check saw nothing"
+    _stop(view.row)
+
+
+@pytest.mark.parametrize("start", [_slide_week, _slide_day], ids=["week", "day"])
+def test_the_end_picture_takes_over_from_the_start_picture_between_15_and_55_percent(
+    qapp: QApplication, monkeypatch, start
+) -> None:
+    """Before the window only the start picture shows, after it only the end, so two layouts overlap
+    for a few frames and not the whole slide."""
+    view = start(qapp)
+    early = _drawn_at(qapp, view, 0.1, monkeypatch)
+    monkeypatch.undo()
+    late = _drawn_at(qapp, view, 0.6, monkeypatch)
+    monkeypatch.undo()
+    middle = _drawn_at(qapp, view, 0.35, monkeypatch)
+    monkeypatch.undo()
+    assert early and {item["end"] for item in early} == {"start"}
+    assert {item["opacity"] for item in early} == {1.0}
+    assert late and {item["end"] for item in late} == {"end"}
+    assert {item["opacity"] for item in late} == {1.0}
+    # Halfway through the window (a smoothstep at its middle) each has half.
+    assert {item["end"] for item in middle} == {"start", "end"}
+    assert {round(item["opacity"], 3) for item in middle} == {0.5}
+    _stop(view.row)

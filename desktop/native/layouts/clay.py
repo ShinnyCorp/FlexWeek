@@ -20,6 +20,7 @@ import math
 import time
 from collections.abc import Callable, Iterable
 from datetime import date
+from typing import NamedTuple
 
 from PySide6.QtCore import (
     QAbstractAnimation,
@@ -150,6 +151,9 @@ _KEEP = object()
 DWELL_S = 0.5
 # The page's colour over the cards beside the one in front, at this strength (J10, board 5b).
 VEIL = 0.6
+# The slide's share between which the end picture takes over from the start picture: before it only the
+# start shows, after it only the end, so two layouts overlap for a few frames and not the whole slide.
+SWAP_FROM, SWAP_TO = 0.15, 0.55
 # A sideways drag on the row shorter than this, at Normal text, goes back to the day it left.
 DRAG_LEAST = 40
 # The stretch of the day Day's summary counts, as the mock-up does.
@@ -754,6 +758,34 @@ class Fade(QWidget):
         painter.end()
 
 
+class Shot(NamedTuple):
+    """A card's picture for the slide: the card's rectangle when it was taken, where the picture's
+    top-left lay (the shadow reaches past the card), and the state the card was in."""
+
+    picture: QPixmap
+    card: QRectF
+    origin: QPoint
+    veiled: bool
+    lifted: bool
+
+
+def swap(share: float) -> float:
+    """How far the end picture has taken over at `share` of the slide: a smoothstep over SWAP_FROM
+    to SWAP_TO."""
+    x = min(max((share - SWAP_FROM) / (SWAP_TO - SWAP_FROM), 0.0), 1.0)
+    return x * x * (3 - 2 * x)
+
+
+def fitted(shot: Shot, card: QRectF) -> QRectF:
+    """Where `shot`'s picture is drawn when its card is at `card`: one factor on both sides, the
+    cards' heights, anchored at the card's top-left, so what is on it keeps its proportions."""
+    factor = card.height() / shot.card.height() if shot.card.height() > 0 else 1.0
+    ratio = shot.picture.devicePixelRatio() or 1.0
+    left = card.x() + (shot.origin.x() - shot.card.x()) * factor
+    top = card.y() + (shot.origin.y() - shot.card.y()) * factor
+    return QRectF(left, top, shot.picture.width() / ratio * factor, shot.picture.height() / ratio * factor)
+
+
 class Veil(QWidget):
     """The page's colour over the cards beside the one in front and their shadows, so the front holds
     the eye; never over the card in front or its shadow. Over the bare page it is the page's own
@@ -806,7 +838,7 @@ class Row(QWidget):
         self._from: dict[int, QRectF] = {}
         self._to: dict[int, QRectF] = {}
         # Start and end pictures of each card for the slide, and the widgets hidden while they move.
-        self._snaps: tuple[dict[int, QPixmap], dict[int, QPixmap]] | None = None
+        self._snaps: tuple[dict[int, Shot], dict[int, Shot]] | None = None
         self._share = 0.0
         self._held_back: list[QWidget] = []
         self._quiet: list[QWidget] = []
@@ -1097,7 +1129,7 @@ class Row(QWidget):
         self._slide.stop()
         self._drop_snaps()
 
-    def _pictures(self, rects: dict[int, QRectF], *, front: int) -> dict[int, QPixmap]:
+    def _pictures(self, rects: dict[int, QRectF], *, front: int) -> dict[int, Shot]:
         """A picture of every day's card at `rects`, whole shadow included, even past the row's edge."""
         if not self.tokens or not rects:
             return {}
@@ -1109,21 +1141,29 @@ class Row(QWidget):
         for widget in apart:
             widget.show()
         ratio = self.devicePixelRatioF() if whole.isNull() else whole.devicePixelRatio()
-        snaps: dict[int, QPixmap] = {}
+        snaps: dict[int, Shot] = {}
         for day, rect in rects.items():
             if day != front and not self._peeks:
                 continue
-            picture = self._picture_of(day, rect, front, whole, ratio)
-            if picture is not None and not picture.isNull():
-                snaps[day] = picture
+            shot = self._picture_of(day, rect, front, whole, ratio)
+            if shot is not None and not shot.picture.isNull():
+                snaps[day] = shot
         return snaps
 
     def _picture_of(
         self, day: int, rect: QRectF, front: int, whole: QPixmap, ratio: float,
-    ) -> QPixmap | None:
+    ) -> Shot | None:
         area = shadowed(rect, self.tokens, day == front).toRect()
         if area.width() <= 0 or area.height() <= 0:
             return None
+        picture = self._pixmap_of(day, rect, front, area, whole, ratio)
+        if picture is None:
+            return None
+        return Shot(picture, QRectF(rect), area.topLeft(), day != front, day == front)
+
+    def _pixmap_of(
+        self, day: int, rect: QRectF, front: int, area: QRect, whole: QPixmap, ratio: float,
+    ) -> QPixmap | None:
         if not whole.isNull() and self.rect().contains(area):
             kept = whole.copy(
                 QRect(
@@ -1201,11 +1241,15 @@ class Row(QWidget):
         self._put(self._to)
 
     def _paint_snaps(self) -> None:
+        """Each card as the clay of its current rectangle with its start picture and its end picture
+        over it. A picture is scaled by one factor, the card's height over its own, and clipped to the
+        card, so words keep their proportions; where it falls short the card's own surface shows."""
         snaps = self._snaps
         if not snaps or not self.tokens:
             return
         starts, ends = snaps
-        share = self._share
+        mix = swap(self._share)
+        radius = RADIUS * self.scale
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
@@ -1219,17 +1263,40 @@ class Row(QWidget):
                 continue
             if rect.right() < -FADE or rect.left() > self.width() + FADE:
                 continue
-            dest = shadowed(rect, self.tokens, day == self._front).toRect()
             start, end = starts.get(day), ends.get(day)
-            if start is not None and share < 1:
-                painter.setOpacity(1.0 - share)
-                self._blit(painter, dest, start)
-            if end is not None and share > 0:
-                painter.setOpacity(share)
-                self._blit(painter, dest, end)
+            if start is None or end is None:
+                layers = [(shot, 1.0) for shot in (start, end) if shot is not None]
+            else:
+                layers = [(shot, weight) for shot, weight in ((start, 1.0 - mix), (end, mix)) if weight > 0]
+            if not layers:
+                continue
+            self._paint_ground(painter, rect, layers, radius)
+            shape = QPainterPath()
+            shape.addRoundedRect(rect, radius, radius)
+            painter.setClipPath(shape)
+            for shot, weight in layers:
+                painter.setOpacity(weight)
+                self._blit(painter, shot.picture, fitted(shot, rect))
+            painter.setClipping(False)
             painter.setOpacity(1.0)
         self._paint_arrow_clay(painter)
         painter.end()
+
+    def _paint_ground(
+        self, painter: QPainter, rect: QRectF, layers: list[tuple[Shot, float]], radius: float,
+    ) -> None:
+        """The card's clay at `rect`, which shows where a picture does not reach: the shadow of each
+        picture's state at its share, one surface, and the veil as far as the pictures are veiled."""
+        for shot, weight in layers:
+            for y, blur, spread, colour, alpha in _shadows(self.tokens, shot.lifted):
+                _soft(painter, rect, radius, y, blur, spread, colour, alpha * weight)
+        lifted = max(layers, key=lambda layer: layer[1])[0].lifted
+        paint_clay(painter, rect, self.tokens, radius, lifted=lifted, shadow=False)
+        veiled = sum(weight for shot, weight in layers if shot.veiled)
+        if veiled > 0:
+            colour = QColor(self.tokens["bg"])
+            colour.setAlphaF(VEIL * min(veiled, 1.0))
+            painter.fillRect(shadowed(rect, self.tokens, False), colour)
 
     def _paint_arrow_clay(self, painter: QPainter) -> None:
         for arrow in (self.back, self.ahead):
@@ -1237,14 +1304,14 @@ class Row(QWidget):
                 body = QRectF(arrow.geometry())
                 paint_clay(painter, body, self.tokens, body.height() / 2, lifted=False)
 
-    def _blit(self, painter: QPainter, dest: QRect, picture: QPixmap) -> None:
-        """Draw `picture` in `dest`. At the same size it is copied, not stretched."""
+    def _blit(self, painter: QPainter, picture: QPixmap, target: QRectF) -> None:
+        """Draw `picture` in `target`, which has its proportions. At its own size it is copied."""
         ratio = picture.devicePixelRatio() or 1.0
         wide, tall = picture.width() / ratio, picture.height() / ratio
-        if dest.width() == round(wide) and dest.height() == round(tall):
-            painter.drawPixmap(dest.topLeft(), picture)
+        if abs(target.width() - wide) < 1e-3 and abs(target.height() - tall) < 1e-3:
+            painter.drawPixmap(QPoint(round(target.x()), round(target.y())), picture)
             return
-        painter.drawPixmap(dest, picture)
+        painter.drawPixmap(target, picture, QRectF(picture.rect()))
 
     def _targets(self) -> dict[int, QRectF]:
         return slots(self.width(), self.height(), self._front, self.scale, wide=self._open)
