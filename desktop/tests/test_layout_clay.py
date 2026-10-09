@@ -864,3 +864,121 @@ def test_the_row_is_seven_eighths_of_the_way_at_half_time(qapp, monkeypatch):
     view.row._slide.setCurrentTime(120)
     assert shares == [pytest.approx(0.875)]
     view.row._slide.stop()
+
+
+def _slide_pictures(row) -> tuple[dict[int, object], dict[int, object]]:
+    """Start and end pictures the row keeps while it slides, whatever shape it stores them in."""
+    snaps = row._snaps
+    assert snaps is not None
+    if isinstance(snaps, tuple) and len(snaps) == 2:
+        return snaps[0], snaps[1]
+    starts, ends = {}, {}
+    for day, pair in snaps.items():
+        if isinstance(pair, tuple) and len(pair) == 2:
+            starts[day], ends[day] = pair
+        else:
+            starts[day] = pair
+    return starts, ends
+
+
+def _frame_gap(qapp: QApplication, row) -> int:
+    """The largest difference in any colour channel between the running slide's last frame and the
+    row once it has landed. A sliver of antialiasing may differ at the arrows' and cards' edges;
+    another hour, heading or card is a difference of 100 or more."""
+    assert row._slide.state() == QAbstractAnimation.State.Running
+    row._slide.pause()
+    row._on_clock(float(row._slide.duration()))
+    row.repaint()
+    at_end = row.grab().toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    row._land()
+    qapp.processEvents()
+    row.repaint()
+    landed = row.grab().toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    row._slide.stop()
+    assert at_end.size() == landed.size()
+    return max(abs(a - b) for a, b in zip(bytes(at_end.constBits()), bytes(landed.constBits()), strict=True))
+
+
+def test_the_last_slide_frame_matches_the_landed_row(qapp: QApplication) -> None:
+    """At t=1 the row is already the landed layout: start pictures are gone, end pictures sit at
+    their finished size, so a grab matches one taken after the slide stops."""
+    view = shown(qapp)
+    motion.apply_ui_effects("normal")
+    view.findChild(QPushButton, "clayAhead").click()
+    assert _frame_gap(qapp, view.row) <= 16
+
+
+def test_the_last_day_slide_frame_matches_the_landed_row(qapp: QApplication) -> None:
+    """Day opens its hours and summary for the new day as the row starts to slide, so the end
+    pictures hold the day as it lands, not the hours where the last day left them."""
+    view = shown(qapp, tab="day")
+    motion.apply_ui_effects("normal")
+    scene = view.scene
+    view.show_week(Scene(
+        scene.week, scene.today, scene.minute, scene.options, scene.tokens,
+        surface="day", iso_day=scene.week.date_of(4).isoformat(),
+    ))
+    assert _frame_gap(qapp, view.row) <= 16
+
+
+def test_the_live_hours_stay_where_they_land_while_the_row_slides(qapp: QApplication) -> None:
+    """The hours in front are not painted while the pictures move, so they must not be moved
+    either: a widget moved with its updates off leaves stale pixels behind."""
+    view = shown(qapp)
+    motion.apply_ui_effects("normal")
+    row = view.row
+    view.findChild(QPushButton, "clayAhead").click()
+    assert row._slide.state() == QAbstractAnimation.State.Running
+    row._slide.pause()
+    row._on_clock(row._slide.duration() / 2)
+    assert row._snaps is not None
+    mid = row.hours.geometry()
+    row._land()
+    assert mid == row.hours.geometry()
+    row._slide.stop()
+
+
+def test_day_hides_live_side_cards_while_the_row_slides(qapp: QApplication) -> None:
+    """Day's render used to _put after the slide had started, which showed the live neighbours
+    beside the moving pictures."""
+    view = shown(qapp, tab="day")
+    motion.apply_ui_effects("normal")
+    row = view.row
+    row._go(4, "slide")
+    assert row._slide.state() == QAbstractAnimation.State.Running
+    row.set_summary(view._summary(view.scene, 4))
+    assert row._snaps is not None
+    live = [card for card in row.findChildren(Card) if card.isVisible()]
+    assert live == [], f"live side cards still showing: {[card.day for card in live]}"
+    row._slide.stop()
+    row._land()
+
+
+def test_only_one_day_summary_shows_while_the_row_slides(qapp: QApplication) -> None:
+    """The new day's summary must not sit live over the baked picture of the old one."""
+    view = shown(qapp, tab="day")
+    motion.apply_ui_effects("normal")
+    row = view.row
+    row._go(4, "slide")
+    row.set_summary(view._summary(view.scene, 4))
+    assert row._snaps is not None
+    summaries = [widget for widget in view.findChildren(QWidget, "claySummary") if widget.isVisible()]
+    assert summaries == [], "a live claySummary is stacking on the slide's pictures"
+    row._slide.stop()
+    row._land()
+
+
+def test_a_card_entering_from_off_screen_has_a_picture(qapp: QApplication) -> None:
+    """Saturday in front leaves Monday past the left edge; sliding to Sunday still keeps a picture
+    of it, so it does not pop if it comes into view."""
+    view = shown(qapp)
+    view.row._go(5, "jump")
+    monday = view.row._rects[0]
+    assert monday.right() < 0, "Monday should start past the left edge"
+    motion.apply_ui_effects("normal")
+    view.row._go(6, "slide")
+    assert view.row._slide.state() == QAbstractAnimation.State.Running
+    starts, ends = _slide_pictures(view.row)
+    assert 0 in starts or 0 in ends, "Monday has no start or end picture"
+    view.row._slide.stop()
+    view.row._land()
