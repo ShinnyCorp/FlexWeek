@@ -51,7 +51,6 @@ from desktop.native.hours.geometry import (
 )
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
 from desktop.native.look import (
-    AA_GRAPHIC,
     AA_TEXT,
     block_paint,
     block_time_colour,
@@ -84,6 +83,8 @@ NOW_CLEAR = 3
 # Homework: a block of it carries a book as well as its colour, for a student who cannot tell the colours.
 HOMEWORK_CATEGORIES = ("assignments", "homework")
 BOOK = "book-open"
+# A category icon's size on a block (#60); 11 px was a smudge beside the words.
+BOOK_PX = 16
 FREE_HINT = "+ drag to create, or click"
 # How much of the text colour washes today's column when a week is shown (decision 13 of 0.17).
 TODAY_WASH = 0.03
@@ -412,16 +413,14 @@ class BlockPainter:
                              icon_name=category_icon(drawn.category) or BOOK)
 
     def _book_colour(self, drawn: Drawn, ink: QColor, paper: QColor, edge: QColor | None) -> QColor | None:
-        """A category icon is a graphic, not text: the category's mark, moved only as far as 3 to 1 on
-        the block takes, in every block style and never in the text ink. School's is the one drawn to
-        4.5 to 1, the pale blue being the faintest of the fills (#26)."""
+        """A category icon is the category's mark, moved only as far as 4.5 to 1 on its own block takes
+        (#60), in every block style and never in the text ink."""
         if category_icon(drawn.category) is None:
             return None
         if edge is None:
             mark = category_paint(drawn.category, self.colours)[1] or self.colours["block_edge"]
             edge = QColor(mark)
-        reach = AA_TEXT if drawn.category == "class" else AA_GRAPHIC
-        return QColor(fit_lightness(edge.name(), (paper.name(),), reach))
+        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_TEXT))
 
     def ghost(self, painter: QPainter, rect: QRectF, words: str, ok: bool) -> None:
         """Something about to be made: a tinted block where it would go, with its times."""
@@ -589,9 +588,14 @@ class Written:
 INLINE_GAP = 6
 
 
+def book_px(metrics: QFontMetricsF) -> int:
+    """A category icon's size at a font: 16 px, or the font's ascent where the text is bigger."""
+    return max(BOOK_PX, round(metrics.ascent()))
+
+
 def _book_room(metrics: QFontMetricsF) -> float:
     """The book's size at a font, and the room it takes before the title."""
-    return round(metrics.ascent()) + 3
+    return book_px(metrics) + 3
 
 
 def _wrap(text: str, metrics: QFontMetricsF, width: float, indent: float) -> tuple[list[str], bool]:
@@ -709,6 +713,8 @@ def _block_words(
     short for the usual margins, as a half-hour Dinner is on the week."""
     tight = tight if tight is not None else room
     tm, sm = QFontMetricsF(title_font), QFontMetricsF(small)
+    # The icon is taller than a line of words, so a block with no room for its full height keeps the words.
+    book = book and max(room.height(), tight.height()) >= book_px(tm)
     indent = _book_room(tm) if book else 0.0
     width, height = room.width(), room.height()
     tl, sl = tm.lineSpacing(), sm.lineSpacing()
@@ -942,13 +948,16 @@ def _paint_layout(
         wide = metrics.horizontalAdvance(line.text)
         left = line.box.right() - wide if line.right else line.box.left()
         written.append(QRectF(left, line.box.top(), wide, metrics.height()))
-        size = round(metrics.ascent())
-        top = line.box.top() + (metrics.height() - size) / 2
         if line.book and book is not None:
             left = line.box.left() - _book_room(metrics)
-            painter.drawPixmap(QPointF(left, top), icons.pixmap(icon_name, book.name(), size, ratio))
-            written.append(QRectF(left, top, size, size))
+            side = book_px(metrics)
+            # A line shorter than the icon lets it hang below, never above the block's top.
+            top = line.box.top() + max(metrics.height() - side, 0) / 2
+            painter.drawPixmap(QPointF(left, top), icons.pixmap(icon_name, book.name(), side, ratio))
+            written.append(QRectF(left, top, side, side))
         if line.pin and pin is not None:
+            size = round(metrics.ascent())
+            top = line.box.top() + (metrics.height() - size) / 2
             left = line.box.right() - metrics.horizontalAdvance(line.text) - _book_room(metrics)
             painter.drawPixmap(QPointF(left, top), icons.pixmap("pin", pin.name(), size, ratio))
             written.append(QRectF(left, top, size, size))

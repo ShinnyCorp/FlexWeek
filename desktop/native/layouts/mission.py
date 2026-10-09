@@ -51,6 +51,7 @@ from desktop.native.hours.canvas import (
     Drawn,
     HoursCanvas,
     block_layout,
+    book_px,
 )
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.geometry import Axis, LinearTrack, overlap_columns
@@ -401,7 +402,7 @@ class MissionPainter(BlockPainter):
         top = rect.top() + 8
         icon_paint = None
         if category_icon(drawn.category) is not None:
-            size = round(QFontMetricsF(self.fonts(painter.font())[0]).ascent())
+            size = book_px(QFontMetricsF(self.fonts(painter.font())[0]))
             fill, ink, _outline, edge = self.fills(drawn)
             colour = self._book_colour(drawn, ink, fill, edge) or ink
             at = QPointF(rect.center().x() - size / 2, top)
@@ -475,7 +476,7 @@ class MissionPainter(BlockPainter):
         """No words: the category keeps its icon at the top of the block."""
         if category_icon(drawn.category) is None:
             return []
-        size = round(QFontMetricsF(self.fonts(painter.font())[0]).ascent())
+        size = book_px(QFontMetricsF(self.fonts(painter.font())[0]))
         if rect.width() < size + 4:
             return []
         colour = self._book_colour(drawn, ink, fill or self.c("window"), edge)

@@ -748,7 +748,7 @@ def test_a_short_block_on_a_side_card_keeps_its_name_where_a_shortened_one_fits(
         def written(width: float) -> list[str]:
             Wrote.words = []
             paint = Wrote(image)
-            painter.block(paint, QRectF(10, 10, width, 10), drawn, page)
+            painter.block(paint, QRectF(10, 10, width, 18), drawn, page)
             paint.end()
             return Wrote.words
 
@@ -786,7 +786,7 @@ def test_the_icon_gives_way_on_a_card_where_it_would_cost_the_name(
         Wrote.words = []
         drew.clear()
         paint = Wrote(image)
-        painter.block(paint, QRectF(10, 10, width, 10), drawn, page)
+        painter.block(paint, QRectF(10, 10, width, 18), drawn, page)
         paint.end()
         return Wrote.words, list(drew)
 
@@ -872,14 +872,15 @@ def test_a_half_hour_on_a_card_says_its_start_time_rather_than_its_icon(
         Wrote.words = []
         drew.clear()
         paint = Wrote(image)
-        painter.block(paint, QRectF(10, 10, width, 10), drawn, page)
+        painter.block(paint, QRectF(10, 10, width, 18), drawn, page)
         paint.end()
         return Wrote.words, list(drew)
 
     title, small = painter.fonts(qapp.font())
     both = QFontMetricsF(title).horizontalAdvance("Dinner") + 6
     both += QFontMetricsF(small).horizontalAdvance("18:30")
-    icon = round(QFontMetricsF(title).ascent()) + 4
+    # The 16 px icon and the 4 px before the name; a block shorter than the icon keeps the words.
+    icon = 16 + 4
     # The 14 and 8 pixels a side card keeps clear at a block's ends.
     assert written(both + 23) == (["Dinner", "18:30"], [])
     assert written(both + 23 + icon) == (["Dinner", "18:30"], ["clock"])

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from math import dist
-
 import pytest
 
 from desktop.native.calendar import CATEGORIES
@@ -12,9 +10,15 @@ from desktop.native.look import AA_GRAPHIC, AA_TEXT, ACCENT_COLORS, look_measure
 from desktop.native.tokens import contrast, oklab, oklch_of
 from desktop.tests.test_hours_painter import qapp as qapp
 
-# The most an icon's colour may sit from its mark in OKLab. Ink's red mark on a dark block has to be
-# lightened by 0.19 to reach 3 to 1; the text ink is further from every mark.
-NEAR_ITS_MARK = 0.2
+# The most an icon's hue may sit from its mark's, in degrees of OKLCH. Reaching 4.5 to 1 on a dark
+# block lightens a mark a long way (Ink's red by 0.3), so lightness is free to move and the hue is
+# what says the category.
+SAME_HUE = 12.0
+
+
+def same_hue(colour: str, mark: str) -> bool:
+    gap = abs(oklch_of(colour)[2] - oklch_of(mark)[2]) % 360
+    return min(gap, 360 - gap) < SAME_HUE
 
 
 @pytest.mark.parametrize(("category", "hue"), [
@@ -328,21 +332,20 @@ def test_each_category_paints_its_approved_icon_in_its_mark(
     mark = edge.name() if edge is not None else category_paint(category, palette)[1]
     for name, colour in used:
         if name == wanted:
-            needs = AA_TEXT if category == "class" else AA_GRAPHIC
+            needs = AA_TEXT
             assert contrast(colour, fill.name()) >= needs
-            assert dist(oklab(colour), oklab(mark)) < NEAR_ITS_MARK, (colour, mark)
+            assert same_hue(colour, mark), (colour, mark)
 
 
 @pytest.mark.parametrize("look_name", [
     "light", "dark", "high-contrast", "slate", "nocturne", "paper", "ink", "terminal", "poster", "pastel",
 ])
 @pytest.mark.parametrize("style", ["edge", "filled", "outline", "none"])
-def test_category_icons_are_their_marks_at_3_to_1_on_each_block_style(
+def test_category_icons_are_their_marks_at_4_5_to_1_on_each_block_style(
     qapp, look_name: str, style: str,
 ) -> None:
-    """An icon is a graphic: its category's mark, darkened or lightened only as far as 3 to 1 on its
-    block takes, in every block style and never the text ink. Free time has no icon. School's is taken
-    to 4.5 to 1 (#26), the pale blue being the faintest fill."""
+    """An icon is its category's mark, darkened or lightened only as far as 4.5 to 1 on its own block
+    takes (#60), in every block style and never the text ink. Free time has no icon."""
     from desktop.native.hours.canvas import BlockPainter, Drawn
     from desktop.native.hours.geometry import Span
     from desktop.native.look import LOOK_BASES, category_paint, sanitize_look
@@ -361,10 +364,10 @@ def test_category_icons_are_their_marks_at_3_to_1_on_each_block_style(
         assert colour is not None
         where = (look_name, style, category)
         ratio = contrast(colour.name(), fill.name())
-        needs = AA_TEXT if category == "class" else AA_GRAPHIC
+        needs = AA_TEXT
         assert ratio >= needs, where
         _fill, mark = category_paint(category, palette)
-        assert dist(oklab(colour.name()), oklab(mark)) < NEAR_ITS_MARK, where
+        assert same_hue(colour.name(), mark), where
         if colour.name() != mark:
             assert ratio < needs + 0.05, (where, f"moved past the {needs} it needs")
 

@@ -71,6 +71,7 @@ from desktop.native.hours.canvas import (
     BlockPainter,
     Drawn,
     HoursCanvas,
+    book_px,
     name_kept,
     word_elide,
 )
@@ -456,7 +457,7 @@ class ClayPainter(BlockPainter):
         width = rect.width() - left - right
         tall = rect.height() - top - 3
         homework = category_icon(drawn.category) is not None
-        book = round(tm.ascent())
+        book = book_px(tm)
         indent = book + 4 if homework else 0
         least = tm.horizontalAdvance(drawn.title.strip()[:3])
         if self._too_short(rect, scale) or width < least:
