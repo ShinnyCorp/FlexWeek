@@ -3007,3 +3007,29 @@ def test_mission_counts_focus_minutes_while_a_session_runs(qapp: QApplication, w
     qapp.processEvents()
     assert plain(mission.findChild(QLabel, "missionFocusValue")) == "4 min"
     assert plain(mission.findChild(QLabel, "missionFocusLine")) == "Focus paused"
+
+
+def test_month_fits_a_1024_by_640_window_with_the_unfinished_card_open(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """#28: with the panel above it open, Month's last row was half cut and a scroll bar showed."""
+    window.resize(1024, 640)
+    window.show()
+    click(window, "viewMonth")
+    settled(qapp, window)
+    wait_until(qapp, lambda: window.month_grid.canvas.rows() > 1)
+    window.unfinished_panel.set_items(
+        [{"id": "old", "title": "Old", "remaining_min": 60, "due": "2020-01-01T10:00"}]
+    )
+    wait_until(qapp, lambda: window.unfinished_panel.isVisible())
+    for _ in range(5):
+        qapp.processEvents()
+    grid = window.month_grid
+    canvas, view = grid.canvas, grid.scroll.viewport().height()
+    assert window.unfinished_panel.isVisible()
+    assert grid.scroll.verticalScrollBar().maximum() == 0, "no scroll bar"
+    last = canvas.cell_rect((canvas.rows() - 1) * 7)
+    assert last.bottom() <= view, f"the last row ends at {last.bottom():.0f} in a view of {view}"
+    window.unfinished_panel.hide()
+    wait_until(qapp, lambda: not window.unfinished_panel.isVisible())
+    assert canvas.cell_rect(0).height() >= canvas.least_row(), "closed, the rows are their full size again"

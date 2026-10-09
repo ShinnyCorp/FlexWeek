@@ -1302,6 +1302,9 @@ class NativeWindow(QMainWindow):
         self._week_page = page
         self.plan_review.setParent(page)
         self.plan_review.hide()
+        # Month's rows shrink to fit while either panel is open (#28).
+        for panel in (self.plan_review, self.unfinished_panel):
+            panel.installEventFilter(self)
         self.toast = Toast(self, self.planner)
         self._toast_week: str | None = None
 
@@ -4368,6 +4371,13 @@ class NativeWindow(QMainWindow):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize and watched in (self.week_table, self.day_view):
             self._center_empty_card()
+        if event.type() in (QEvent.Type.Show, QEvent.Type.Hide) and watched in (
+            self.plan_review,
+            self.unfinished_panel,
+        ):
+            self.month_grid.set_tight(
+                any(panel.isVisibleTo(self._week_page) for panel in (self.plan_review, self.unfinished_panel))
+            )
         if event.type() != QEvent.Type.KeyPress:
             return super().eventFilter(watched, event)
         if isinstance(watched, EDITABLE):

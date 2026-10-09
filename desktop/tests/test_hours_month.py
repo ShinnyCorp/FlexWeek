@@ -518,3 +518,79 @@ def test_a_month_never_shows_another_students_grid_while_it_loads(qapp: QApplica
     grid.set_month(september(), False, "2026-09-16", "ana")
     grid.set_month(None, False, "2026-09-16", None)
     assert grid.canvas.cells == [], "with nobody named there is nothing to be sure of"
+
+
+def busy_september() -> dict:
+    """September with a quiet week, a date with one chip and a date with five."""
+    snapshot = build_month("2026-09", [], [])
+    for day in snapshot["days"]:
+        if day["date"] == "2026-09-16":
+            day["blocks"] = [
+                {"id": f"b{hour}", "title": f"Club {hour}", "start": f"{hour:02d}:00", "duration_min": 60}
+                for hour in range(8, 13)
+            ]
+        if day["date"] == "2026-09-09":
+            day["blocks"] = [{"id": "solo", "title": "Piano", "start": "17:00", "duration_min": 60}]
+    return snapshot
+
+
+def tight_grid(qapp: QApplication, height: int, tight: bool) -> MonthGrid:
+    grid = MonthGrid()
+    grid.resize(1024, height)
+    grid.set_tight(tight)
+    snapshot = busy_september()
+    grid.set_month(snapshot, False, "2026-09-16")
+    grid.show()
+    qapp.processEvents()
+    return grid
+
+
+def test_with_panels_open_every_week_fits_the_view_and_a_date_still_shows_a_chip(qapp: QApplication) -> None:
+    """#28: at 1024 x 640 the plan and Unfinished panels left Month about 300 px, so its last row was half
+    cut and a scroll bar came. Tight, the five rows share the view; each keeps its number and a chip."""
+    grid = tight_grid(qapp, 360, True)
+    canvas, view = grid.canvas, grid.scroll.viewport().height()
+    assert canvas.rows() == 5
+    assert grid.scroll.verticalScrollBar().maximum() == 0, "no scroll bar"
+    last = canvas.cell_rect(7 * 4)
+    assert last.bottom() <= view, f"the last row ends at {last.bottom():.0f} in a view of {view}"
+    for row in range(5):
+        assert canvas.cell_rect(row * 7).height() >= canvas.tight_row(), row
+    shown, more = canvas.chip_boxes(canvas.index_of("2026-09-09"))
+    assert [chip.words for chip, _box in shown] == ["17:00 Piano"] and more == 0
+    shown, more = canvas.chip_boxes(canvas.index_of("2026-09-16"))
+    assert len(shown) == 1 and more == 4, "a busy date shows one chip and counts the rest"
+    cell = canvas.cell_rect(canvas.index_of("2026-09-16"))
+    count = canvas.more_box(canvas.index_of("2026-09-16"), len(shown))
+    assert cell.contains(shown[0][1]) and cell.contains(count)
+    assert not count.intersects(shown[0][1]), "the count does not cover the chip"
+    grid.close()
+
+
+def test_a_row_with_one_line_keeps_its_chip_and_writes_the_count_by_the_number(qapp: QApplication) -> None:
+    grid = tight_grid(qapp, 360, True)
+    canvas = grid.canvas
+    overhead = grid.height() - grid.scroll.viewport().height()
+    grid.resize(1024, 5 * canvas.tight_row() + overhead + 2)
+    qapp.processEvents()
+    index = canvas.index_of("2026-09-16")
+    shown, more = canvas.chip_boxes(index)
+    assert len(shown) == 1 and more == 4
+    count = canvas.more_box(index, 1)
+    assert count.bottom() <= shown[0][1].top() and canvas.cell_rect(index).contains(count)
+    grid.close()
+
+
+def test_without_panels_the_month_still_scrolls_rather_than_squeezing(qapp: QApplication) -> None:
+    """Decision 17 of 0.17 stands when nothing is open: the same view that fits when tight scrolls."""
+    grid = tight_grid(qapp, 360, False)
+    assert grid.scroll.verticalScrollBar().maximum() > 0
+    assert grid.canvas.cell_rect(0).height() >= grid.canvas.least_row()
+    grid.close()
+
+
+def test_a_view_too_short_for_the_tight_rows_scrolls_as_before(qapp: QApplication) -> None:
+    grid = tight_grid(qapp, 180, True)
+    assert grid.scroll.verticalScrollBar().maximum() > 0
+    assert grid.canvas.cell_rect(0).height() >= grid.canvas.tight_row()
+    grid.close()

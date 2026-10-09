@@ -51,6 +51,8 @@ LEAST_CHIPS = 2
 # A week's row grows with its busiest date up to this many chips; past them it says "+N more"
 # (decision 17 of 0.17: rows sized to their chips, not six even rows).
 MOST_CHIPS = 6
+# While panels above it take the view, a row shrinks to its number and this many chips (#28).
+TIGHT_CHIPS = 1
 # This week's band: this much of the text colour over its dates, as the week washes today.
 BAND = 0.04
 # A month opened on a week late in it still shows at least this many weeks.
@@ -291,6 +293,8 @@ class MonthCanvas(QWidget):
         self._lead = 0
         self._room = 0
         self._heights: list[float] = []
+        # Set while the plan or Unfinished panel is open: the rows then shrink to fit rather than scroll.
+        self._tight = False
         hand.preview_changed.connect(self.update)
 
     def set_cells(self, cells: list[MonthCell]) -> None:
@@ -313,6 +317,11 @@ class MonthCanvas(QWidget):
             self._room = room
             self._fit()
 
+    def set_tight(self, tight: bool) -> None:
+        if tight != self._tight:
+            self._tight = tight
+            self._fit()
+
     def lead_with(self, row: int) -> None:
         """Open on this row: the weeks from it to the month's end fill the view."""
         self._lead = max(0, min(row, self.rows() - 1))
@@ -323,6 +332,13 @@ class MonthCanvas(QWidget):
         by the weeks from the one the month opened on, which fill the view; the ones before it are
         above, a scroll away."""
         heights = [self.base_row(row) for row in range(self.rows())]
+        if self._tight and sum(heights) > self._room:
+            squeezed = self._squeezed(heights)
+            if squeezed is not None:
+                self._heights = squeezed
+                self.setMinimumHeight(math.ceil(sum(squeezed)))
+                self.update()
+                return
         start = min(self._lead, max(len(heights) - LEAST_AHEAD, 0))
         spare = self._room - sum(heights[start:])
         if spare > 0 and heights:
@@ -331,6 +347,15 @@ class MonthCanvas(QWidget):
         self._heights = heights
         self.setMinimumHeight(math.ceil(sum(heights)))
         self.update()
+
+    def _squeezed(self, heights: list[float]) -> list[float] | None:
+        """Every row between its tight size and its own, so together they are exactly the view; None when
+        even the tight rows do not fit, and the month scrolls as it does with nothing open."""
+        low = self.tight_row()
+        if self._room < low * len(heights):
+            return None
+        share = (self._room - low * len(heights)) / sum(height - low for height in heights)
+        return [math.floor(low + (height - low) * share) for height in heights]
 
     def base_row(self, row: int) -> float:
         """A week's row at its own size: its busiest date's chips, from LEAST_CHIPS to MOST_CHIPS,
@@ -367,6 +392,9 @@ class MonthCanvas(QWidget):
     def number_height(self) -> float:
         return max(27.0, QFontMetrics(self.font()).height() + 11)
 
+    def tight_row(self) -> int:
+        return round(self.number_height() + TIGHT_CHIPS * self.pitch() + 4)
+
     def least_row(self) -> int:
         return round(self.number_height() + LEAST_CHIPS * self.pitch() + self.pitch() + 4)
 
@@ -391,9 +419,8 @@ class MonthCanvas(QWidget):
         """The chips a date shows, each with its box, and how many more did not fit."""
         box = self.cell_rect(index)
         chips = self.cells[index].chips
-        room = box.height() - self.number_height() - 2
-        fits = max(0, int(room // self.pitch()))
-        if len(chips) > fits:
+        fits = self._slots(index)
+        if len(chips) > fits and fits != 1:
             fits = max(0, fits - 1)
         shown = [
             (
@@ -408,6 +435,29 @@ class MonthCanvas(QWidget):
             for at, chip in enumerate(chips[:fits])
         ]
         return shown, len(chips) - len(shown)
+
+    def _slots(self, index: int) -> int:
+        """How many chip lines a date has room for."""
+        room = self.cell_rect(index).height() - self.number_height() - 2
+        return max(0, int(room // self.pitch()))
+
+    def _more_beside_number(self, index: int) -> bool:
+        """With room for one chip line, the chip keeps it and "+N more" goes by the date's number."""
+        return self._slots(index) == 1
+
+    def more_box(self, index: int, shown: int) -> QRectF:
+        """Where "+N more" is written: under the chips, or by the number when there is one line."""
+        box = self.cell_rect(index)
+        if self._more_beside_number(index):
+            side = max(22.0, QFontMetrics(self.font()).height() + 4)
+            left = box.left() + 5 + side
+            return QRectF(left, box.top() + 3, box.right() - left - 3, side)
+        return QRectF(
+            box.left(),
+            box.top() + self.number_height() + shown * self.pitch(),
+            box.width(),
+            self.chip_height(),
+        )
 
     def _chip_at(self, point: QPointF) -> tuple[MonthCell, MonthChip, QRectF] | None:
         for at, cell in enumerate(self.cells):
@@ -439,8 +489,7 @@ class MonthCanvas(QWidget):
                 lifted = held is not None and chip.block_id == held.block_id and cell.iso == held.from_iso
                 self.painter.chip(painter, chip_box, chip, not cell.in_month, lifted)
             if more:
-                last = box.top() + self.number_height() + len(shown) * self.pitch()
-                self.painter.more(painter, QRectF(box.left(), last, box.width(), self.chip_height()), more)
+                self.painter.more(painter, self.more_box(at, len(shown)), more)
             if target == cell.iso:
                 self.painter.target(painter, box, self.hand.month_verdict)
         painter.end()
@@ -535,7 +584,8 @@ class MonthCanvas(QWidget):
             raise LookupError(f"{iso} is not in this month")
         box = self.cell_rect(at)
         shown, more = self.chip_boxes(at)
-        used = self.number_height() + (len(shown) + (1 if more else 0)) * self.pitch()
+        below = 1 if more and not self._more_beside_number(at) else 0
+        used = self.number_height() + (len(shown) + below) * self.pitch()
         free = (used + box.height()) / 2 if used < box.height() - 6 else box.height() - 3
         return self.mapToGlobal(QPointF(box.center().x(), box.top() + free).toPoint())
 
@@ -633,6 +683,10 @@ class MonthGrid(QWidget):
         self._shown: tuple[dict | None, bool, str | None, str | None] | None = None
         # Whose month is drawn, so a month on its way never shows another student's grid.
         self._drawn_for: str | None = None
+
+    def set_tight(self, tight: bool) -> None:
+        """Panels above the month are open: its rows shrink to fit the view rather than scroll."""
+        self.canvas.set_tight(tight)
 
     def set_palette(self, palette: dict) -> None:
         self._palette = palette
