@@ -153,7 +153,8 @@ def test_appearance_opens_on_colours_then_the_designs_and_ends_with_animations(
         (label for label in appearance.findChildren(QLabel) if label.isVisibleTo(dialog) and label.text()),
         key=lambda label: top(label, appearance),
     )
-    assert [label.text() for label in shown[:3]] == ["Look", "Colours", "Look"]
+    # Text size is its own card above Colours (0.18.5, item 5), so it leads the page.
+    assert [label.text() for label in shown[:5]] == ["Look", "Text", "Text size", "Colours", "Look"]
     assert not any("has its own colours" in label.text() for label in shown)
     notes = [label.text() for label in appearance.findChildren(QLabel, "settingsCardNote")]
     design_line = (
@@ -305,7 +306,9 @@ def test_every_heading_on_appearance_stands_out_from_the_rows_under_it(
         ),
         key=lambda label: top(label, appearance),
     )
-    assert [label.text() for label in headings] == ["Colours", "Main view", "Day screen", "Every screen"]
+    assert [label.text() for label in headings] == [
+        "Text", "Colours", "Main view", "Day screen", "Every screen",
+    ]
     plain = appearance.findChild(QLabel, "settingsCardNote")
     for heading in headings:
         assert heading.font().bold() and not plain.font().bold(), heading.text()

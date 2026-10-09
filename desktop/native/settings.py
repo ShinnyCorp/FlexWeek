@@ -721,7 +721,9 @@ class SettingsPage(QWidget):
             labelled = tuple((KNOB_VALUE_LABELS[value], value) for value in values)
             box = Segmented(labelled, "look" + knob.title())
             self.knobs[knob] = box
-            fine_form.addRow(KNOB_LABELS.get(knob, knob.title()), box)
+            # Text size is not a fine-tune: it has its own card above Colours, always on screen.
+            if knob != "text":
+                fine_form.addRow(KNOB_LABELS.get(knob, knob.title()), box)
         self.own_look_note = _note("", "settingsCardNote")
         fine_form.addRow(self.own_look_note)
         self.fine_tune = Switch(FINE_TUNE_LOOK)
@@ -831,6 +833,8 @@ class SettingsPage(QWidget):
             for slot, role, title, blurb in SLOTS
         ]
         main_section, day_section = self.layout_sections
+        text_card, text_form = _card("Text")
+        text_form.addRow(KNOB_LABELS["text"], self.knobs["text"])
         self.colours_card, appear = _card("Colours")
         appear.addRow("Look", self.look)
         appear.addRow(OWN_LOOK, self.customise)
@@ -845,10 +849,10 @@ class SettingsPage(QWidget):
         self.changed.connect(self._fit_look_cards)
         everywhere_card, everywhere = _card("Every screen")
         everywhere.addRow("Animations", self.motion)
-        # Colours first: it is what most students change, and below every design card it was not found
-        # (Grok Bot's 0.17.0 audit, X1 and A11).
+        # Text size, then Colours: it is what most students change, and below every design card it was
+        # not found (Grok Bot's 0.17.0 audit, X1 and A11).
         appearance = _section_page(
-            "Look", (self.colours_card, main_section, day_section, everywhere_card)
+            "Look", (text_card, self.colours_card, main_section, day_section, everywhere_card)
         )
         planning_card, planning_form = _card("How homework gets a time")
         self.planning_style = QButtonGroup(planning_card)

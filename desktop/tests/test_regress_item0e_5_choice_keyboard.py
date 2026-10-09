@@ -28,7 +28,6 @@ from desktop.tests.window_support import free, qapp, server, signed_out, window 
 KNOWN_0E = (
     "known failure (item 0e): only the first segment is a Tab stop and Left/Right/Home/End do nothing"
 )
-KNOWN_5 = "known failure (item 5): Text size is hidden until 'Show shape, spacing and type' is on"
 # (section of Settings, or "homework" for the Add homework sheet; objectName), found on 0.18.4.
 CONTROLS = [
     (0, "prefThemeMain"), (0, "lookSurface"), (0, "lookCorners"), (0, "lookDepth"), (0, "lookFont"),
@@ -107,13 +106,12 @@ def appearance(qapp, window):
     window.resize(1280, 800)
     window._open_settings()
     page = window._settings
-    page.nav.setCurrentRow(SECTIONS.index("Appearance & layout"))
+    page.nav.setCurrentRow(SECTIONS.index("Look"))
     for _ in range(5):
         qapp.processEvents()
     return page
 
 
-@pytest.mark.xfail(strict=True, reason=KNOWN_5)
 def test_5_text_size_is_shown_on_a_fresh_account_without_any_switch(qapp, window) -> None:
     page = appearance(qapp, window)
     assert not page.fine_tune.isChecked()
@@ -124,7 +122,6 @@ def test_5_text_size_is_shown_on_a_fresh_account_without_any_switch(qapp, window
     assert top >= 0 and top + text.height() <= viewport.height(), "not visible without scrolling at 1280x800"
 
 
-@pytest.mark.xfail(strict=True, reason=KNOWN_5)
 def test_5_choosing_large_leaves_the_switch_off(qapp, window) -> None:
     page = appearance(qapp, window)
     text = page.findChild(Segmented, "lookText")

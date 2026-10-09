@@ -12,6 +12,8 @@ All notable changes to FlexWeek are documented here. Format follows
 - Setup's Tab order follows the screen: a new activity or first-homework row
   is reached before Next, not after it. Removing an activity keeps focus in
   the list and says "Activity removed" to a screen reader.
+- Text size is always on screen: the first card of Settings > Look, above
+  Colours. It is no longer hidden behind "Show shape, spacing and type".
 
 ## [0.18.4] - 2026-10-09
 
