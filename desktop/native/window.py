@@ -1503,7 +1503,7 @@ class NativeWindow(QMainWindow):
     def _set_clock(self) -> bool:
         """Whether the clock changed. Only a change redraws the week, so this is safe to call from
         the redraw itself."""
-        changed = set_clock_24h((self.session.preferences or {}).get("clock_24h", True) is not False)
+        changed = set_clock_24h((self.session.preferences or {}).get("clock_24h", False) is True)
         if changed:
             # Every design's hours, shown or not: a redraw that finds no new blocks does not tell
             # them their labels got wider or narrower.
@@ -1773,6 +1773,7 @@ class NativeWindow(QMainWindow):
                 "reminder_lead_min",
                 "alarm_tone",
                 "default_spotify_url",
+                "clock_24h",
             ):
                 if key in answer:
                     updates[key] = answer[key]

@@ -110,7 +110,9 @@ def test_settings_offers_the_clock_under_this_computer_and_saves_it(
     dialog = settings.SettingsPage(window, window.session.preferences or {}, window._look, window._layout)
     clock = dialog.findChild(Segmented, "prefClock")
     assert [clock.itemText(index) for index in range(clock.count())] == ["24-hour", "12-hour"]
-    assert clock.currentText() == "24-hour"
+    assert clock.currentText() == "12-hour", "a new account starts on the 12-hour clock"
+    assert dialog.updates()["clock_24h"] is False
+    clock.setCurrentIndex(0)
     assert dialog.updates()["clock_24h"] is True
     clock.setCurrentIndex(1)
     assert dialog.updates()["clock_24h"] is False
@@ -135,6 +137,8 @@ def test_the_week_says_4_pm_everywhere_once_the_12_hour_clock_is_chosen(
     session.save()
     settled(qapp, window)
     window.resize(1280, 800)
+    session.preferences = {**(session.preferences or {}), "clock_24h": True}
+    window._sync_chrome()
     qapp.processEvents()
     assert any("16:00–17:30" in words for words in canvas_words(window))
     session.preferences = {**(session.preferences or {}), "clock_24h": False}
@@ -156,6 +160,6 @@ def test_the_clock_saved_to_the_account_is_the_one_the_window_writes(
     for chosen, written in ((False, "4:00 PM"), (True, "16:00")):
         assert window.session.save_preferences({"clock_24h": chosen})
         wait_until(qapp, lambda: not window.session.busy)
-        # 24-hour is the default, so the server leaves it out.
-        assert window.session.preferences.get("clock_24h", True) is chosen
+        # 12-hour is the default, so the server leaves it out.
+        assert window.session.preferences.get("clock_24h", False) is chosen
         assert clock_text(16 * 60) == written

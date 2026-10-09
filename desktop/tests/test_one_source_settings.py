@@ -203,7 +203,7 @@ def summary_reminders(page: SetupPage) -> str:
 
 
 def test_setup_and_availability_offer_the_same_cutoffs(qapp: QApplication) -> None:
-    setup_box = setup_page(qapp).cutoff
+    setup_box = setup_page(qapp, preferences={"clock_24h": True}).cutoff
     availability = AvailabilityDialog(None, {})
     assert [words for words, _ in texts(setup_box)] == NO_HOMEWORK_AFTER
     assert texts(availability.cutoff) == texts(setup_box)

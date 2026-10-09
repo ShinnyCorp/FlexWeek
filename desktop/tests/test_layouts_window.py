@@ -172,7 +172,7 @@ def test_the_day_screen_reads_the_real_week_at_the_real_minute(
     click(window, "viewMyDay")
     view = window.planner.currentWidget()
     said = tuple(view.findChild(QLabel, name).text() for name in ("oneLabel", "oneTitle", "oneLine"))
-    assert said == ("Now", "History essay", "18:45–19:45")
+    assert said == ("Now", "History essay", "6:45–7:45 PM")
 
 
 def test_homework_finished_finishes_it_the_way_the_product_does(

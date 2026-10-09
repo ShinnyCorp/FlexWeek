@@ -801,7 +801,7 @@ class SettingsPage(QWidget):
             max(0, self.preferred_view.findData(preferences.get("preferred_view")))
         )
         self.clock = Segmented((("24-hour", True), ("12-hour", False)), "prefClock")
-        self.clock.setCurrentIndex(0 if preferences.get("clock_24h", True) is not False else 1)
+        self.clock.setCurrentIndex(0 if preferences.get("clock_24h", False) is True else 1)
         self.spotify = QLineEdit(preferences.get("default_spotify_url") or "")
         self.spotify.setObjectName("prefSpotify")
         self.spotify.setPlaceholderText("Paste a Spotify link")

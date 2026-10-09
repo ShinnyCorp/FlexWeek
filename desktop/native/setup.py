@@ -103,7 +103,7 @@ from desktop.native.settings import (
 from desktop.native.sound import Bell
 from desktop.native.tokens import WEIGHT_STRONG
 from desktop.native.tones import FALLBACK, RECIPES
-from desktop.native.weekmodel import clock_text, hhmm_text
+from desktop.native.weekmodel import clock_text, hhmm_text, set_clock_24h, time_format
 from desktop.native.widgets import (
     CARD_WIDTH_PAD,
     DAYS,
@@ -154,6 +154,8 @@ NOTES = {
 NEXT_LABEL, FINISH_LABEL = "Next", "Open my week"
 SKIP_STEP_LABEL, SKIP_ALL_LABEL = "Skip this step", "Skip setup"
 OWN_LOOK_LABEL = "Choose my own look instead"
+# 12-hour first and pre-selected: it is the clock a new account starts with.
+CLOCK_CHOICES = ((False, "12-hour clock (4:00 PM)"), (True, "24-hour clock (16:00)"))
 MAX_ACTIVITIES = 8
 MAX_FIRST_HOMEWORK = 3
 # A tap adds one of these rather than making the student type hours for the usual answers.
@@ -1272,7 +1274,24 @@ class SetupPage(QWidget):
         box = QVBoxLayout(content)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
-        box.addWidget(_label("School", "setupSection"))
+        box.addWidget(_label("Clock", "setupSection"))
+        self.clock_choice = QButtonGroup(content)
+        self.clock_buttons: dict[bool, QRadioButton] = {}
+        clock = QFrame()
+        clock.setObjectName("setupGroup")
+        clock_line = QHBoxLayout(clock)
+        clock_line.setContentsMargins(12, 10, 12, 10)
+        clock_line.setSpacing(24)
+        for twenty_four, text in CLOCK_CHOICES:
+            button = QRadioButton(text)
+            button.setObjectName(f"setupClock-{24 if twenty_four else 12}")
+            self.clock_choice.addButton(button)
+            self.clock_buttons[twenty_four] = button
+            clock_line.addWidget(button)
+        clock_line.addStretch(1)
+        box.addWidget(clock)
+        self.clock_choice.buttonToggled.connect(lambda _button, _on: self._follow_clock())
+        self._section(box, "School")
         self.school_days = DayPicker([0, 1, 2, 3, 4], "setupDay")
         self.school_times = TimeRange("08:00", "14:30", "School")
         school = QFrame()
@@ -1518,8 +1537,23 @@ class SetupPage(QWidget):
         if self._pending_pictures:
             self._warm.start()
 
+    def _clock_chosen(self) -> bool:
+        return self.clock_buttons[True].isChecked()
+
+    def _show_clock(self, twenty_four: bool) -> None:
+        """Choose the clock and write every time box on the pages in it."""
+        self.clock_buttons[twenty_four].setChecked(True)
+        self._follow_clock()
+
+    def _follow_clock(self) -> None:
+        set_clock_24h(self._clock_chosen())
+        for field_box in self.findChildren(ClockField):
+            field_box.setDisplayFormat(time_format())
+        fill_cutoff(self.cutoff, self.cutoff.currentData())
+
     def _fill_week(self) -> None:
         blocks = self._state.blocks
+        self._show_clock(self._state.preferences.get("clock_24h") is True)
         school = next((block for block in blocks if block.get("id") == SETUP_SCHOOL_ID), None)
         if school is not None and school.get("start"):
             self.school_days.set_days(list(school.get("days") or []))
@@ -1625,6 +1659,9 @@ class SetupPage(QWidget):
         elif step in LOOK_STEPS and destination not in LOOK_STEPS:
             # A look tried and then skipped is not kept, so the app goes back to the one it had.
             self._restore_entered()
+        elif step == WEEK:
+            # A clock tried and then skipped is not kept either.
+            self._show_clock(self._state.preferences.get("clock_24h") is True)
         self.error.clear()
         if answer is not None:
             self._absorb(step, answer)
@@ -2017,7 +2054,11 @@ class SetupPage(QWidget):
         if step in LOOK_STEPS:
             return {"pack": self._pack, "look": deepcopy(self._look), "layout": deepcopy(self._layout)}
         if step == WEEK:
-            return {"blocks": self.week_blocks(), "day_cutoff": self.cutoff.currentData()}
+            return {
+                "blocks": self.week_blocks(),
+                "day_cutoff": self.cutoff.currentData(),
+                "clock_24h": self._clock_chosen(),
+            }
         if step == HOMEWORK:
             checked = next(
                 (value for value, button in self.planning_buttons.items() if button.isChecked()), "suggest"
@@ -2055,6 +2096,7 @@ class SetupPage(QWidget):
             kept = [block for block in self._state.blocks if not is_setup_block(block)]
             self._state.blocks = kept + deepcopy(answer["blocks"])
             self._state.preferences["day_cutoff"] = answer["day_cutoff"]
+            self._state.preferences["clock_24h"] = answer["clock_24h"]
         elif step in (HOMEWORK, REMINDERS):
             self._state.preferences.update(deepcopy(answer))
         elif step == FIRST:

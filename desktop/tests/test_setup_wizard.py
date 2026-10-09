@@ -7,6 +7,7 @@ import contextlib
 import importlib.util
 import json
 import os
+import sqlite3
 import time
 from collections.abc import Callable, Iterator
 from datetime import date, datetime, timedelta
@@ -26,7 +27,7 @@ if importlib.util.find_spec("PySide6") is not None:
 
     from desktop.native.calendar import monday_of, sunday_due
     from desktop.native.layouts.registry import EXPERIMENTAL, sanitize_layout
-    from desktop.native.look import pack_stylesheet
+    from desktop.native.look import pack_stylesheet, sanitize_look
     from desktop.native.setup import (
         COLOURS,
         DONE,
@@ -43,6 +44,7 @@ if importlib.util.find_spec("PySide6") is not None:
         SetupState,
         activity_category_for,
     )
+    from desktop.native.weekmodel import clock_text
     from desktop.native.widgets import AvailabilityDialog
     from desktop.native.window import NativeWindow
     from desktop.server import LocalServer
@@ -247,7 +249,8 @@ def test_every_page_is_kept_when_the_student_leaves_it(qapp: QApplication, serve
     assert setup.step == DONE
     summary = setup.summary_text()
     assert summary[0] == "Bento in Indigo"
-    assert "Soccer Tue, Thu 15:30–17:00" in summary[1] and "Band Mon 16:00–17:00" in summary[1]
+    # Untouched, the clock is the new account's 12-hour one.
+    assert "Soccer Tue, Thu 3:30 PM–5:00 PM" in summary[1] and "Band Mon 4:00 PM–5:00 PM" in summary[1]
     assert summary[4] == "History essay"
     setup.next.click()
     written(qapp, window)
@@ -369,7 +372,8 @@ def test_setup_refuses_a_work_window_that_ends_before_it_starts(qapp: QApplicati
     setup._show(HOMEWORK)
     setup.work_editor.set_windows([{"days": [0], "start": "15:00", "end": "16:00"}])
     row = setup.work_editor.findChild(QWidget, "workWindowRow")
-    row.findChild(QComboBox, "workWindowEnd").setCurrentText("14:45")
+    ends = row.findChild(QComboBox, "workWindowEnd")
+    ends.setCurrentIndex(ends.findData("14:45"))
     setup.next.click()
     assert setup.step == HOMEWORK
     assert row.findChild(QLabel, "validationError").text() == "End must be after Start."
@@ -909,3 +913,99 @@ def test_a_restored_activity_keeps_the_category_the_student_chose(qapp: QApplica
     assert setup.activities[0].name.text() == "Soccer"
     assert setup.activities[0].findChild(QComboBox, "setupActivityCategory").currentData() == "extra"
     setup.close()
+
+
+def test_a_new_account_that_leaves_the_clock_alone_ends_with_a_12_hour_clock(
+    qapp: QApplication, server: LocalServer
+) -> None:
+    window = new_account(qapp, server, "setup_clock_default")
+    setup = window.setup_page
+    setup.style_cards["dashboard"].chosen.emit()
+    setup.next.click()
+    assert setup.step == WEEK
+    assert setup.clock_buttons[False].isChecked(), "12-hour is picked before the student chooses"
+    setup.next.click()
+    written(qapp, window)
+    assert window.session.preferences.get("clock_24h", False) is False
+    assert clock_text(15 * 60 + 30) == "3:30 PM"
+    close(qapp, window)
+
+    again = sign_in(qapp, server, "setup_clock_default")
+    assert again.session.preferences.get("clock_24h", False) is False
+    assert clock_text(15 * 60 + 30) == "3:30 PM"
+    close(qapp, again)
+
+
+def test_skipping_the_clock_page_still_gives_a_new_account_a_12_hour_clock(
+    qapp: QApplication, server: LocalServer
+) -> None:
+    window = new_account(qapp, server, "setup_clock_skipped")
+    setup = window.setup_page
+    while setup.step != DONE:
+        setup.skip.click()
+    setup.next.click()
+    written(qapp, window)
+    assert window.session.preferences.get("clock_24h", False) is False
+    assert clock_text(15 * 60 + 30) == "3:30 PM"
+    close(qapp, window)
+
+
+def test_choosing_24_hour_in_setup_sticks(qapp: QApplication, server: LocalServer) -> None:
+    window = new_account(qapp, server, "setup_clock_24")
+    setup = window.setup_page
+    setup.style_cards["dashboard"].chosen.emit()
+    setup.next.click()
+    setup.clock_buttons[True].setChecked(True)
+    assert clock_text(15 * 60 + 30) == "15:30", "the page's own times follow the choice at once"
+    assert setup.school_times.start.displayFormat() == "HH:mm"
+    setup.next.click()
+    written(qapp, window)
+    assert window.session.preferences["clock_24h"] is True
+    assert clock_text(15 * 60 + 30) == "15:30"
+    close(qapp, window)
+
+    again = sign_in(qapp, server, "setup_clock_24")
+    assert again.session.preferences["clock_24h"] is True
+    assert clock_text(15 * 60 + 30) == "15:30"
+    close(qapp, again)
+
+
+def test_a_clock_tried_and_skipped_on_the_page_is_put_back(qapp: QApplication) -> None:
+    setup = SetupPage()
+    state = SetupState("system", sanitize_look(None), sanitize_layout(None), {}, [], "")
+    setup.open(state, WEEK)
+    assert setup.clock_buttons[False].isChecked()
+    setup.clock_buttons[True].setChecked(True)
+    assert clock_text(15 * 60) == "15:00"
+    setup.skip.click()
+    assert setup.clock_buttons[False].isChecked()
+    assert clock_text(15 * 60) == "3:00 PM"
+    setup.deleteLater()
+
+
+def test_an_account_from_before_the_clock_choice_that_never_chose_stays_on_24_hour(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """0.18.4 sent no clock for a 24-hour account; the update must not turn that into 12-hour."""
+    database = tmp_path / "before.db"
+    first = LocalServer(database)
+    first.start()
+    try:
+        window = new_account(qapp, first, "setup_clock_veteran")
+        window.setup_page.skip_all.click()
+        written(qapp, window)
+        close(qapp, window)
+    finally:
+        first.stop()
+    with sqlite3.connect(database) as db:
+        db.execute("UPDATE preferences SET prefs_version = 1, comfort_json = '{}'")
+
+    second = LocalServer(database)
+    second.start()
+    try:
+        again = sign_in(qapp, second, "setup_clock_veteran")
+        assert again.session.preferences.get("clock_24h") is True
+        assert clock_text(15 * 60 + 30) == "15:30"
+        close(qapp, again)
+    finally:
+        second.stop()

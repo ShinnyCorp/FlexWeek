@@ -199,14 +199,13 @@ def test_a_setup_preference_outside_its_values_is_refused(alice: TestClient, cha
     assert "siren" not in refused.text and "sometimes" not in refused.text
 
 
-def test_the_clock_is_24_hour_unless_chosen_and_the_default_stays_off_the_wire(alice: TestClient) -> None:
-    """A 0.15 client reads an account that never chose a clock exactly as before."""
+def test_the_clock_is_12_hour_unless_chosen_and_the_default_stays_off_the_wire(alice: TestClient) -> None:
     assert "clock_24h" not in alice.get("/api/preferences").json()
-    twelve = {**defaults(), "clock_24h": False}
-    saved = alice.put("/api/preferences", json=twelve, headers=WRITE)
+    twenty_four = {**defaults(), "clock_24h": True}
+    saved = alice.put("/api/preferences", json=twenty_four, headers=WRITE)
     assert saved.status_code == 200, saved.text
-    assert alice.get("/api/preferences").json() == twelve
-    back = alice.put("/api/preferences", json={**defaults(), "clock_24h": True}, headers=WRITE)
+    assert alice.get("/api/preferences").json() == twenty_four
+    back = alice.put("/api/preferences", json={**defaults(), "clock_24h": False}, headers=WRITE)
     assert back.status_code == 200, back.text
     assert "clock_24h" not in alice.get("/api/preferences").json()
 
