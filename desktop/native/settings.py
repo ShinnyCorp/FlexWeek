@@ -1474,6 +1474,9 @@ class SettingsPage(QWidget):
 
     def _choose_motion(self, _index: int) -> None:
         self._motion_chosen = self.motion.currentData()
+        # The window hands the level over when Settings opens; a choice made on this page counts now,
+        # so Off does not still slide the next section in.
+        self.motion_level = self._motion_chosen
 
     def _choose_accent(self, _index: int) -> None:
         self._accent_chosen = self.accent.currentData()

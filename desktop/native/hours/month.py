@@ -631,7 +631,9 @@ class MonthGrid(QWidget):
         layout.addWidget(self.overdue)
         self._week: WeekModel | None = None
         self._unsaved: Mapping[str, WeekModel] = {}
-        self._shown: tuple[dict | None, bool, str | None] | None = None
+        self._shown: tuple[dict | None, bool, str | None, str | None] | None = None
+        # Whose month is drawn, so a month on its way never shows another student's grid.
+        self._drawn_for: str | None = None
 
     def set_palette(self, palette: dict) -> None:
         self._palette = palette
@@ -673,13 +675,19 @@ class MonthGrid(QWidget):
         if self._shown is not None:
             self.set_month(*self._shown)
 
-    def set_month(self, snapshot: dict | None, dirty: bool, today_iso: str | None = None) -> None:
-        self._shown = (snapshot, dirty, today_iso)
+    def set_month(
+        self, snapshot: dict | None, dirty: bool, today_iso: str | None = None, account: str | None = None
+    ) -> None:
+        """`snapshot` is None while a month is on its way. The grid then stays as the same `account`
+        last had it, under "Loading month…", rather than flashing empty."""
+        self._shown = (snapshot, dirty, today_iso, account)
         if snapshot is None:
-            self.canvas.set_cells([])
+            if account is None or account != self._drawn_for:
+                self.canvas.set_cells([])
             self._say(self.warning, "Loading month…")
             self._say(self.overdue, "")
             return
+        self._drawn_for = account
         # Every week is drawn as the student has it, saved or not, so there is no "saved only" to say.
         self._say(self.warning, "")
         weeks = dict(self._unsaved)

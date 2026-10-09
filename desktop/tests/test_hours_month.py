@@ -440,3 +440,38 @@ def test_a_weeks_row_is_as_tall_as_its_busiest_date_and_this_week_is_banded(qapp
     assert abs(QColor(ground(16)).lightness() - QColor(band).lightness()) <= 2
     assert ground(0) == palette["panel"], "only this week is banded"
     grid.close()
+
+
+def test_a_month_on_its_way_keeps_the_last_one_drawn_under_loading_month(qapp: QApplication) -> None:
+    """0.18.5 #96: Week to Month flashed an empty grid while the new month was fetched. The grid the
+    student last had stays, with "Loading month…", until the new one arrives."""
+    grid = MonthGrid()
+    grid.set_week(build_week(MONDAY, [ESSAY], {}, None))
+    grid.set_month(september(), False, "2026-09-16", "ana")
+    kept = [cell.iso for cell in grid.canvas.cells]
+    assert kept and "2026-09-16" in kept
+    grid.set_month(None, False, "2026-09-16", "ana")
+    assert [cell.iso for cell in grid.canvas.cells] == kept, "the old grid is still drawn"
+    assert grid.warning.text() == "Loading month…" and not grid.warning.isHidden()
+    # A change to the open week while it waits redraws the kept grid, not an empty one.
+    grid.set_unsaved({})
+    assert [cell.iso for cell in grid.canvas.cells] == kept
+    november = build_month("2026-11", [], [])
+    grid.set_month(november, False, "2026-09-16", "ana")
+    assert grid.canvas.cells and grid.canvas.cells[10].iso in {day["date"] for day in november["days"]}
+    assert [cell.iso for cell in grid.canvas.cells] != kept, "the new month replaces it"
+    assert grid.warning.text() == "" and grid.warning.isHidden()
+
+
+def test_a_month_never_shows_another_students_grid_while_it_loads(qapp: QApplication) -> None:
+    """The kept grid is the same student's: after another one signs in, loading shows nothing."""
+    grid = MonthGrid()
+    grid.set_week(build_week(MONDAY, [ESSAY], {}, None))
+    grid.set_month(september(), False, "2026-09-16", "ana")
+    assert grid.canvas.cells
+    grid.set_month(None, False, "2026-09-16", "ben")
+    assert grid.canvas.cells == []
+    assert grid.warning.text() == "Loading month…"
+    grid.set_month(september(), False, "2026-09-16", "ana")
+    grid.set_month(None, False, "2026-09-16", None)
+    assert grid.canvas.cells == [], "with nobody named there is nothing to be sure of"

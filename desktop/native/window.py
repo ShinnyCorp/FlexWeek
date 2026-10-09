@@ -1410,6 +1410,10 @@ class NativeWindow(QMainWindow):
         system_dark = QGuiApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
         return pack, system_dark, accent
 
+    def _account_id(self) -> str | None:
+        account = self.session.account
+        return str(account["id"]) if account else None
+
     def _scene_for(self, layout_id: str) -> Scene:
         clock = clock_parts(self.session.now_ms())
         options = options_for(self._layout, layout_id)
@@ -1438,6 +1442,7 @@ class NativeWindow(QMainWindow):
             unsaved_weeks=session.unsaved_weeks(),
             focus=focus_now(session.focus),
             today_iso=clock["iso"],
+            account=self._account_id(),
         )
 
     def _refresh_layout(self) -> None:
@@ -1926,6 +1931,7 @@ class NativeWindow(QMainWindow):
         self.month_grid.set_month(
             self.session.month_data, self.session.dirty,
             datetime.fromtimestamp(self.session.now_ms() / 1000).date().isoformat(),
+            self._account_id(),
         )
         opened = (self.session.planner_view, self.session.selected_month, self.session.month_data is not None)
         if opened[0] == "month" and opened[2] and opened != self._month_revealed:

@@ -143,6 +143,20 @@ def test_normal_runs_the_plans_numbers_and_the_other_levels_scale_them() -> None
     assert [moves(level) for level in MOTION_LEVELS] == [True, True, False, False]
 
 
+def test_more_is_clearly_longer_than_normal_with_the_standard_ease_at_about_450_ms() -> None:
+    """0.18.5 #96: Normal and More used to look much alike (a Normal switch about 0.3 s, More about
+    0.23 s in Jonathan's check). The roadmap asks for about 0.45 s for More's standard ease against
+    Normal's 0.18 s, and every other length scales with it, so no part of More is only a little
+    longer than Normal's."""
+    assert duration(EASE_MS, "normal") == 180
+    assert duration(EASE_MS, "extra") == 450
+    for ms in (PAGE_OUT_MS, PAGE_IN_MS, PAGE_IN_AFTER_MS, OVER_MS, SEGMENT_MS, EASE_MS):
+        assert duration(ms, "extra") >= 2 * duration(ms, "normal"), ms
+    # Reduce keeps Normal's lengths, so More is clearly longer than it too; Off is at once.
+    assert duration(EASE_MS, "reduce") == 180 and duration(EASE_MS, "off") == 0
+    assert distance(SLIDE_PX, "extra") > distance(SLIDE_PX, "normal")
+
+
 def test_a_switch_is_immediate_and_its_fade_clears_itself(qapp: QApplication) -> None:
     stack, _first, second = two_pages(qapp)
     switch_page(stack, second, "normal")
