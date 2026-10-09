@@ -896,9 +896,9 @@ def test_after_a_plan_the_hours_ease_to_homework_off_screen_and_stay_for_homewor
 
 
 def test_a_greyed_zoom_says_why_in_one_line_under_the_pill(qapp: QApplication) -> None:
-    """A disabled button shows no tooltip, so at a limit the − or + stays greyed and one caption line
-    under the pill says "Smallest zoom reached" or "Largest zoom reached"; away from a limit there is
-    no line, and the line never covers the hours."""
+    """A disabled button shows no tooltip, so after zooming to a limit the − or + stays greyed and one
+    caption line under the pill says "Smallest zoom reached" or "Largest zoom reached"; away from a
+    limit there is no line, and the line never covers the hours."""
     view = a_week(qapp)
     scroll = view.scroll
     assert not scroll.reason.isVisible()
@@ -919,6 +919,80 @@ def test_a_greyed_zoom_says_why_in_one_line_under_the_pill(qapp: QApplication) -
     assert scroll.reason.isVisible() and scroll.reason.words == "Smallest zoom reached"
     scroll.zoom_by(1)
     assert not scroll.reason.isVisible(), "the line stays after the zoom left its limit"
+
+
+def test_a_view_opened_at_a_zoom_limit_says_nothing_about_it(qapp: QApplication) -> None:
+    """Day opens at its smallest zoom, so "Smallest zoom reached" showed all the time. The line is for
+    a student who has just zoomed to a limit, not for a view that opens at one."""
+    day = a_day(qapp, [], 3)
+    scroll = day.scroll
+    assert scroll.px == DAY_SCALE.levels[0], "Day opens at its smallest zoom"
+    assert not scroll.buttons.out.isEnabled(), "the button is still greyed at the limit"
+    assert not scroll.reason.isVisible() and scroll.reason.words == ""
+    week = a_week(qapp)
+    week.scroll.restore({WEEK_SCALE.key: WEEK_SCALE.levels[-1]})
+    settle(qapp)
+    assert week.scroll.px == WEEK_SCALE.levels[-1] and not week.scroll.buttons.into.isEnabled()
+    assert not week.scroll.reason.isVisible() and week.scroll.reason.words == ""
+
+
+def zoom_with_button(view: ClassicWeek | ClassicDay, steps: int) -> None:
+    button = view.scroll.buttons.into if steps > 0 else view.scroll.buttons.out
+    QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+
+
+def zoom_with_keyboard(view: ClassicWeek | ClassicDay, steps: int) -> None:
+    """The window's Ctrl+= and Ctrl+- call zoom_by on whichever hours show."""
+    view.scroll.zoom_by(steps)
+
+
+def zoom_with_wheel(view: ClassicWeek | ClassicDay, steps: int) -> None:
+    wheel(view.hours, QPointF(300, view.scroll.verticalScrollBar().value() + 100), steps)
+
+
+@pytest.mark.parametrize("how", [zoom_with_button, zoom_with_keyboard, zoom_with_wheel])
+@pytest.mark.parametrize("steps", [-1, 1])
+def test_zooming_to_a_limit_says_so_for_about_three_seconds_then_gives_the_line_back(
+    qapp: QApplication, how, steps: int
+) -> None:
+    """By the button, the keyboard or the wheel. The caption goes on its own after about 3 seconds
+    (the timer is driven here, not slept on), the header gives its line back, and the button stays
+    greyed."""
+    view = a_week(qapp)
+    scroll = view.scroll
+    plain_top = scroll.viewportMargins().top()
+    limit = WEEK_SCALE.levels[-1] if steps > 0 else WEEK_SCALE.levels[0]
+    words = "Largest zoom reached" if steps > 0 else "Smallest zoom reached"
+    while scroll.px != limit:
+        assert not scroll.reason.isVisible(), "no line on the way to the limit"
+        how(view, steps)
+        settle(qapp)
+    assert scroll.px == limit
+    assert scroll.reason.isVisible() and scroll.reason.words == words
+    assert scroll.viewportMargins().top() > plain_top, "the header makes room for the line"
+    assert scroll.reason_timer.isActive() and scroll.reason_timer.interval() == 3000
+    scroll.reason_timer.timeout.emit()
+    settle(qapp)
+    assert not scroll.reason.isVisible() and scroll.reason.words == ""
+    assert scroll.viewportMargins().top() == plain_top, "the header gives its line back"
+    greyed = scroll.buttons.into if steps > 0 else scroll.buttons.out
+    assert not greyed.isEnabled(), "the button stays greyed at the limit"
+
+
+def test_pressing_on_at_a_limit_says_so_again_and_leaving_it_clears_the_line_at_once(
+    qapp: QApplication,
+) -> None:
+    """The keyboard and the wheel still ask while the button is greyed, so asking past the end gets the
+    line back; zooming away from the limit takes it away before its time is up."""
+    view = a_week(qapp)
+    scroll = view.scroll
+    scroll.zoom_by(10)
+    scroll.reason_timer.timeout.emit()
+    assert not scroll.reason.isVisible()
+    scroll.zoom_by(1)
+    assert scroll.reason.isVisible() and scroll.reason.words == "Largest zoom reached"
+    scroll.zoom_by(-1)
+    assert not scroll.reason.isVisible() and not scroll.reason_timer.isActive()
 
 
 def test_each_zoom_button_has_a_24_pixel_square_to_press_that_is_not_drawn_larger(qapp: QApplication) -> None:

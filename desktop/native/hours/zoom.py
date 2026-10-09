@@ -20,7 +20,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from math import ceil
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetricsF, QMouseEvent, QPainter, QWheelEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -51,6 +51,8 @@ OPENS = 8 * 60
 NOW_MARGIN = 45
 # The zoom pill's minus and plus, as the mock-up draws them.
 ZOOM_ICON_PX = 14
+# How long "Smallest zoom reached" stays under the pill after the student zooms to a limit.
+REASON_MS = 3000
 
 
 @dataclass(frozen=True)
@@ -259,6 +261,13 @@ class HoursScroll(QScrollArea):
         self._row.addWidget(self.buttons, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.reason = ZoomReason(f"{name}ZoomReason", self.header, self._muted)
         self._said = ""
+        # The limit the student last zoomed to, until the timer takes the line away. A view that opens
+        # at a limit has not been zoomed there, so it says nothing.
+        self._reached = ""
+        self.reason_timer = QTimer(self)
+        self.reason_timer.setSingleShot(True)
+        self.reason_timer.setInterval(REASON_MS)
+        self.reason_timer.timeout.connect(self._forget_reached)
         self.header.installEventFilter(self)
         self.setFrameShape(QFrame.Shape.NoFrame)
         # The hours inside it are the Tab stop; the sheet around them is not a second one.
@@ -314,9 +323,26 @@ class HoursScroll(QScrollArea):
         if self.canvas.hand.busy:
             return
         px = self.scale.default if steps == 0 else self.scale.step(self.px, steps)
+        self._reached = self._limit_reached(px, steps)
+        if self._reached:
+            self.reason_timer.start()
+        else:
+            self.reason_timer.stop()
         if px != self.px:
             self._apply(px, anchor)
             self.zoomed.emit(self.scale.key, px)
+        self._show_limits()
+
+    def _limit_reached(self, px: int, steps: int) -> str:
+        """The words for a limit that a zoom in `steps`' direction ends at, or "". Asking on at the end
+        counts: the keyboard and the wheel still ask while the button is greyed."""
+        if steps < 0 and px == self.scale.levels[0]:
+            return "Smallest zoom reached"
+        return "Largest zoom reached" if steps > 0 and px == self.scale.levels[-1] else ""
+
+    def _forget_reached(self) -> None:
+        self._reached = ""
+        self._show_limits()
 
     def _asked(self, steps: int, at: object) -> None:
         if isinstance(at, QPointF):
@@ -357,13 +383,17 @@ class HoursScroll(QScrollArea):
             self._place_header()
 
     def _limit_words(self) -> str:
-        """Why a button is greyed, for the line under the pill. Time running across keeps its corner at
-        the strip's fixed height, so only down hours have the line."""
+        """Why a button is greyed, for the line under the pill, while it is news: for a few seconds after
+        the student zoomed to that limit. Time running across keeps its corner at the strip's fixed
+        height, so only down hours have the line."""
         if not self._down:
             return ""
+        at = ""
         if not self.buttons.out.isEnabled():
-            return "Smallest zoom reached"
-        return "Largest zoom reached" if not self.buttons.into.isEnabled() else ""
+            at = "Smallest zoom reached"
+        elif not self.buttons.into.isEnabled():
+            at = "Largest zoom reached"
+        return at if at == self._reached else ""
 
     # Scrolling to a time
 
