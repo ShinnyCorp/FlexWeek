@@ -798,6 +798,54 @@ def test_the_icon_gives_way_on_a_card_where_it_would_cost_the_name(
     assert words[0] == "Piano lesson" and pictures == ["sparkles"]
 
 
+def test_a_quarter_hour_on_a_side_card_is_named_beside_its_bar_clear_of_its_neighbours(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A quarter hour is under 7 pixels tall on a card at 70 %: too short for a line inside it. It is
+    still named, by its name or else its start time, and two of them one after the other do not write
+    over each other nor over a block tall enough for its own words."""
+    monkeypatch.setattr(canvas_module, "QPainter", Wrote)
+    quarters = [
+        block("call", "locked", [2], "15:00", 15, title="Call", category="extra"),
+        block("tidy", "locked", [2], "15:15", 15, title="Tidy", category="extra"),
+        block("stretch", "locked", [2], "16:30", 15, title="Stretch", category="extra"),
+    ]
+    view = shown(qapp, blocks=[*BLOCKS, *quarters])
+    side = view.findChild(HoursCanvas, "clayPeek2")
+
+    def local(name: str) -> QRectF:
+        found = side.block_rect(name, 2)
+        assert found is not None
+        return QRectF(QRect(side.mapFromGlobal(found.topLeft()), found.size()))
+
+    bars = {name: local(name) for name in ("call", "tidy", "stretch")}
+    assert all(bar.height() < 8 for bar in bars.values()), bars
+    Wrote.words, Wrote.boxes = [], []
+    side.repaint()
+    named: dict[str, QRectF] = {}
+    ways = (("call", "Call", "15:00"), ("tidy", "Tidy", "15:15"), ("stretch", "Stretch", "16:30"))
+    for name, title, start in ways:
+        # The hour labels in the gutter are also times: only words written over the block's own rows count.
+        found = [
+            box
+            for words, box in Wrote.boxes
+            if words in (title, start)
+            and box.left() >= bars[name].left() - 1
+            and abs(box.center().y() - bars[name].center().y()) < 14
+        ]
+        assert found, f"{title} is neither named nor given its start time: {Wrote.boxes}"
+        named[name] = found[0]
+    labels = list(named.values())
+    for at, label in enumerate(labels):
+        assert QRectF(side.rect()).contains(label), (at, label)
+        for other in labels[at + 1:]:
+            assert not label.intersects(other), "two labels write over each other"
+    tall = [local("school"), local("dinner")]
+    assert all(bar.height() >= 8 for bar in tall)
+    for label in labels:
+        assert not any(label.intersects(bar) for bar in tall), "a label is written over a tall block"
+
+
 def test_a_half_hour_on_a_card_says_its_start_time_rather_than_its_icon(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
