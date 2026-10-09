@@ -155,10 +155,16 @@ def test_the_dim_is_the_same_in_every_design(qapp: QApplication, style_key: str)
     apply_ui_effects("normal")
     host, _ctx = _host(qapp, style_key)
     dim = dim_window(host)
+    # The dim waits for its sheet; the sheet that takes it lets the fade go on.
+    sheet = Dialog(host, sheet=True)
+    sheet.card_body("A sheet")
+    sheet.show()
     wait_until(qapp, lambda: not busy())
     assert painted_alpha(dim) == DIM_ALPHA
     assert painted(dim)[:3] == (0, 0, 0)
     assert dim.geometry() == host.rect()
+    sheet.close()
+    free(sheet)
     free(host)
 
 
@@ -296,3 +302,48 @@ def test_every_opener_of_a_block_or_homework_sheet_dims_first(
         drained(qapp)
     assert dims == [1] * len(openers)
     assert shades(window) == []
+
+
+def test_a_slow_build_does_not_make_the_dim_jump_ahead(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+) -> None:
+    """The dim waits for the sheet: however long the build takes, the fade goes on from where its first
+    frame left it, rather than leaping by the build's length in one frame."""
+    import time
+
+    apply_ui_effects("normal")
+    seen: list[dict] = []
+
+    class Slow(HomeworkDialog):
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            (dim,) = shades(window)
+            seen.append({"at_build": dim.graphicsEffect().opacity})
+            super().__init__(*args, **kwargs)
+            # Longer than the whole fade: a clock left running would be at the end by now.
+            time.sleep(duration(EASE_MS) / 1000 + 0.05)
+
+    made: list[HomeworkDialog] = []
+
+    def run(dialog: HomeworkDialog) -> int:
+        made.append(dialog)
+        dialog.show()
+        # Whatever is overdue runs now, with no time passing: a clock that ran through the build is
+        # past its end and lands the dim in one step.
+        for _ in range(3):
+            qapp.processEvents()
+        (dim,) = shades(window)
+        effect = dim.graphicsEffect()
+        seen.append({"at_show": None if effect is None else effect.opacity})
+        wait_until(qapp, lambda: not busy())
+        return 0
+
+    monkeypatch.setattr(window_module, "HomeworkDialog", Slow)
+    monkeypatch.setattr(Slow, "exec", run)
+    window._add_homework()
+    assert seen[0]["at_build"] > 0
+    assert seen[1]["at_show"] is not None, "the fade is still going when the sheet shows"
+    assert seen[1]["at_show"] == pytest.approx(seen[0]["at_build"], abs=0.05), (
+        "the dim held still while it waited, and goes on from there"
+    )
+    made[0].close()
+    free(made[0])

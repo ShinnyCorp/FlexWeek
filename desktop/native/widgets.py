@@ -2283,6 +2283,11 @@ def dim_window(host: QWidget) -> SheetShade:
     # No fade was started on a window that is not on screen or at motion Off; the sheet decides then.
     shade.fading = shade.graphicsEffect() is not None
     _draw_first_frames(shade)
+    running = getattr(shade, "_motion_running", None)
+    if running is not None:
+        # Held while the sheet is built, so the dim goes on from its first frame when the sheet shows
+        # rather than jumping ahead by the time the build took.
+        running[0].pause()
     return shade
 
 
@@ -2414,6 +2419,10 @@ class Dialog(QDialog):
                 appear(part, level, rise=True)
             if self._shade is not None and not self._shade.fading:
                 appear(self._shade, level)
+            elif self._shade is not None:
+                running = getattr(self._shade, "_motion_running", None)
+                if running is not None:
+                    running[0].resume()
             if self.sheet and duration(EASE_MS) > 0:
                 self._freeze_page()
 
