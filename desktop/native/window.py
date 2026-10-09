@@ -2121,7 +2121,7 @@ class NativeWindow(QMainWindow):
         # A month that arrives while it is still sliding in: its picture is taken again once the
         # month has scrolled to its first row, which is a turn of the event loop after this.
         if sliding_in(self.planner):
-            QTimer.singleShot(0, self._retake_slide)
+            QTimer.singleShot(0, self, self._retake_slide)
         self._finish_turn(turn)
 
     def _retake_slide(self) -> None:
@@ -2743,7 +2743,7 @@ class NativeWindow(QMainWindow):
         for view in self._views.values():
             view.hold(holding)
         if not holding:
-            QTimer.singleShot(0, self._refresh_after_hold)
+            QTimer.singleShot(0, self, self._refresh_after_hold)
 
     def _refresh_after_hold(self) -> None:
         if self.session.account is not None and not self.hand.busy:

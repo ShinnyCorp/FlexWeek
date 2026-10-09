@@ -7,7 +7,9 @@ import gc
 import importlib.util
 import os
 import shutil
+import sys
 import tempfile
+import traceback
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -27,6 +29,39 @@ if os.environ.get("PYTEST_XDIST_WORKER"):
     os.environ.setdefault("XDG_CACHE_HOME", str(Path.home() / ".cache"))
     os.environ["HOME"] = tempfile.mkdtemp(prefix=f"flexweek-{os.environ['PYTEST_XDIST_WORKER']}-")
     atexit.register(shutil.rmtree, os.environ["HOME"], True)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "slot_errors_allowed(reason): the test may raise inside a Qt slot; the reason names the error"
+        " left unfixed",
+    )
+
+
+@pytest.fixture(autouse=True)
+def no_error_is_lost_inside_a_qt_slot(request: pytest.FixtureRequest) -> Iterator[None]:
+    """A Python error inside a Qt slot or virtual only reaches sys.excepthook, which prints it and
+    carries on, so a test stayed green over it (the plan bar's layout error hid for weeks). The hook
+    records every call and the test fails on them. A test that sets its own hook, to look at one
+    error, replaces this one for its length and is not affected."""
+    mark = request.node.get_closest_marker("slot_errors_allowed")
+    if mark is not None:
+        assert mark.args and mark.args[0], "slot_errors_allowed needs the reason as its first argument"
+        yield
+        return
+    previous = sys.excepthook
+    raised: list[str] = []
+
+    def record(kind: type[BaseException], error: BaseException, trace: object) -> None:
+        raised.append("".join(traceback.format_exception(kind, error, trace)))  # type: ignore[arg-type]
+
+    sys.excepthook = record
+    try:
+        yield
+    finally:
+        sys.excepthook = previous
+    assert raised == [], "an error was raised inside a Qt slot:\n" + "\n".join(raised)
 
 
 @pytest.fixture(autouse=True)
