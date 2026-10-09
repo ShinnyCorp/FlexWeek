@@ -3761,8 +3761,10 @@ class NativeWindow(QMainWindow):
 
         def finish(keep: bool) -> None:
             saver.stop()
-            with contextlib.suppress(RuntimeError, TypeError):
-                self.session.status.disconnect(page.say)
+            if getattr(page, "_hears_status", False):
+                page._hears_status = False  # type: ignore[attr-defined]
+                with contextlib.suppress(RuntimeError, TypeError):
+                    self.session.status.disconnect(page.say)
             if keep:
                 save()
 
@@ -3825,9 +3827,11 @@ class NativeWindow(QMainWindow):
         page = self._settings
         if page is None:
             return
-        with contextlib.suppress(RuntimeError, TypeError):
-            self.session.status.disconnect(page.say)
-        self.session.status.connect(page.say)
+        # Connected once while it is open. Disconnecting what was never connected only warns, so the
+        # page keeps whether it hears the status.
+        if not getattr(page, "_hears_status", False):
+            self.session.status.connect(page.say)
+            page._hears_status = True  # type: ignore[attr-defined]
         self._show_page("settingsPage")
         page.nav.setFocus()
 

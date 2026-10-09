@@ -97,3 +97,33 @@ def test_a_new_account_never_sees_the_last_accounts_settings(
     assert fresh is not None
     assert fresh.account_id == window.session.account["id"]
     assert fresh.updates()["alarms"] == []
+
+
+def test_settings_hears_the_status_once_and_never_warns_on_open(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+) -> None:
+    """Opening Settings tried to disconnect a status line that was never connected, which PySide
+    warns about on every first open. Open twice and a status still arrives once, with no warning."""
+    import warnings
+
+    heard: list[str] = []
+    real = SettingsPage.say
+
+    def counting(self: SettingsPage, text: str) -> None:
+        heard.append(text)
+        real(self, text)
+
+    monkeypatch.setattr(SettingsPage, "say", counting)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        window._open_settings()
+        still(window)
+        window._settings.close_page()
+        still(window)
+        window._open_settings()
+        still(window)
+    assert not [w for w in caught if "disconnect" in str(w.message)], [str(w.message) for w in caught]
+    window.session.status.emit("Saved")
+    assert heard.count("Saved") == 1
+    window._settings.close_page()
+    still(window)
