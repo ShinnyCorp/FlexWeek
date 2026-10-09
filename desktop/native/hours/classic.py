@@ -60,6 +60,8 @@ AGENDA_PX = 288
 WEEKEND = (5, 6)
 EMPTY_SHARE = 0.6
 EMPTY_MIN_PX = 96
+# The other designs' week columns are narrower than this, so their empty weekend days keep less.
+EMPTY_MIN_NARROW_PX = 40
 # How much of the accent the time now's line across the rest of the week takes.
 NOW_ACROSS = 0.45
 
@@ -265,19 +267,22 @@ class DayName(QLabel):
         super().mousePressEvent(event)
 
 
-def column_widths(total: float, empty: frozenset[int]) -> list[float]:
-    """The seven days' widths over `total` pixels: equal, except that an empty weekend day is narrower
-    (see EMPTY_SHARE) and the days with something in them share what that leaves, equally."""
-    share = total / 7
-    quiet = [day for day in WEEKEND if day in empty]
-    if not quiet:
-        return [share] * 7
-    narrow = min(share, max(EMPTY_MIN_PX, share * EMPTY_SHARE))
-    full = (total - narrow * len(quiet)) / (7 - len(quiet))
-    return [narrow if day in quiet else full for day in range(7)]
+def column_widths(
+    total: float, empty: frozenset[int], days: tuple[int, ...] = tuple(range(7)), floor: int = EMPTY_MIN_PX
+) -> list[float]:
+    """The widths of `days` over `total` pixels: equal, except that an empty weekend day is narrower
+    (see EMPTY_SHARE, and `floor`, the least it keeps) and the days with something in them share what
+    that leaves, equally. The other designs' narrower columns pass a smaller `floor`."""
+    share = total / len(days)
+    quiet = [day for day in WEEKEND if day in empty and day in days]
+    if not quiet or len(quiet) == len(days):
+        return [share] * len(days)
+    narrow = min(share, max(floor, share * EMPTY_SHARE))
+    full = (total - narrow * len(quiet)) / (len(days) - len(quiet))
+    return [narrow if day in quiet else full for day in days]
 
 
-def _empty_days(week: WeekModel) -> frozenset[int]:
+def empty_days(week: WeekModel) -> frozenset[int]:
     return frozenset(day for day in range(7) if not week.on_day(day))
 
 
@@ -350,7 +355,7 @@ class ClassicWeek(QFrame):
 
     def set_week(self, week: WeekModel, today: int | None, now_min: int | None) -> None:
         self.week_start = week.week_start
-        empty = _empty_days(week)
+        empty = empty_days(week)
         if empty != self._empty:
             # Laid out for the new widths before the blocks arrive, so none slides for a change of width.
             self._empty = empty

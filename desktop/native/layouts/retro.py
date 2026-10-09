@@ -75,7 +75,7 @@ from desktop.native.hours.canvas import (
     fit_lines,
 )
 from desktop.native.hours.chips import TrayChip
-from desktop.native.hours.classic import open_hours
+from desktop.native.hours.classic import EMPTY_MIN_NARROW_PX, column_widths, empty_days, open_hours
 from desktop.native.hours.geometry import FIRST, LAST, Axis, LinearTrack
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import HoursScroll, Scale
@@ -342,14 +342,6 @@ def dither(painter: QPainter, rect: QRect, colours: Scheme) -> None:
 
 def _height(px: int) -> int:
     return round((LAST - FIRST) / 60 * px) + 2 * PAD
-
-
-def _columns(area: QRectF) -> list[LinearTrack]:
-    width = area.width() / 7
-    return [
-        LinearTrack(day, QRectF(area.left() + day * width, area.top() + PAD, width, area.height() - 2 * PAD))
-        for day in range(7)
-    ]
 
 
 def arrange(size: QSize, next_tall: int, scale: float) -> tuple[dict[str, QRect], bool]:
@@ -644,8 +636,22 @@ class RetroCanvas(HoursCanvas):
     """The week's names sit over the hours in Windows 98 buttons, while the rig can find them."""
 
     def __init__(self, hand: Hand, painter: RetroPainter, *, week: bool) -> None:
-        super().__init__(hand, painter, _columns if week else None, gutter=GUTTER)
+        super().__init__(hand, painter, self._columns if week else None, gutter=GUTTER)
         self.day_buttons: dict[int, QWidget] = {}
+        # The days with nothing on them take less of the week's width, and their buttons follow.
+        self.empty: frozenset[int] = frozenset()
+        self.names_row: QHBoxLayout | None = None
+
+    def _columns(self, area: QRectF) -> list[LinearTrack]:
+        widths = column_widths(area.width(), self.empty, floor=EMPTY_MIN_NARROW_PX)
+        left, tracks = area.left(), []
+        for day, width in enumerate(widths):
+            tracks.append(LinearTrack(day, QRectF(left, area.top() + PAD, width, area.height() - 2 * PAD)))
+            left += width
+        if self.names_row is not None:
+            for day, width in enumerate(widths):
+                self.names_row.setStretch(day, max(1, round(width * 10)))
+        return tracks
 
     def day_name(self, day: int) -> QPoint:
         pick = self.day_buttons.get(day)
@@ -1839,6 +1845,7 @@ class RetroView(LayoutView):
                     )
                     canvas.day_buttons[target] = head
                     row.addWidget(head, 1)
+                canvas.names_row = row
             else:
                 row.addWidget(DayHead("retroDayHead", self._scheme, None), 1)
             scroll.set_header(names)
@@ -1856,6 +1863,11 @@ class RetroView(LayoutView):
             items = scene.week.occurrences
             for target, head in canvas.day_buttons.items():
                 head.show_day(target, scene.week.date_of(target).day, target == scene.today)
+            empty = empty_days(scene.week)
+            if empty != canvas.empty:
+                # Laid out for the new widths before the blocks arrive, so none slides for a change of width.
+                canvas.empty = empty
+                canvas.relayout()
         canvas.set_week(items, scene.today, scene.minute)
         open_hours(
             scroll,
