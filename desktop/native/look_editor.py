@@ -57,6 +57,7 @@ from desktop.native.custom_look import (
 )
 from desktop.native.hours.canvas import EDGE_WIDTH
 from desktop.native.look import (
+    AA_TEXT,
     ACCENT_COLORS,
     ACCENTS,
     BASE_LABELS,
@@ -80,7 +81,7 @@ from desktop.native.look import (
 from desktop.native.motion import switch_page
 from desktop.native.previews import CANVAS, system_dark
 from desktop.native.previews import render as render_preview
-from desktop.native.tokens import MARK, SPACING, mix, oklch, oklch_of
+from desktop.native.tokens import MARK, SPACING, fit_lightness, mix, oklch, oklch_of
 from desktop.native.widgets import (
     SHEET_LIST,
     SHEET_PAD,
@@ -315,6 +316,8 @@ def editor_rules(palette: dict, radius: int) -> str:
     contrast_look = palette.get("family") == "contrast"
     tint = "transparent" if contrast_look else mix(accent, panel, 0.12)
     tag_edge = f"1px solid {accent}" if contrast_look else "none"
+    # The plain accent is 2.3 to 1 on its own tint when pale (#94): its hue, moved only as far as 4.5 takes.
+    tag_words = fit_lightness(accent, (panel if contrast_look else tint,), AA_TEXT)
     hover = mix(text, panel, 0.06)
     light, chroma = MARK[palette.get("family", "light")]
     stops = ", ".join(f"stop:{step / 8:.3f} {oklch(light, chroma, step * 45)}" for step in range(9))
@@ -328,7 +331,7 @@ def editor_rules(palette: dict, radius: int) -> str:
         "QScrollArea#lookPicture { background: transparent; border: none; border-radius: 0; padding: 0; }"
         "QLabel#lookInlineLabel, QLabel#lookNote, QLabel#lookOut, QLabel#lookEditorState, "
         f'QLabel#lookEverythingReads, QCheckBox[exact="true"] {{ color: {muted}; }}'
-        f"QLabel#lookTag {{ background: {tint}; color: {accent}; border: {tag_edge}; border-radius: 10px; "
+        f"QLabel#lookTag {{ background: {tint}; color: {tag_words}; border: {tag_edge}; border-radius: 10px; "
         "padding: 2px 6px; }"
         f"QWidget#lookGroupLine {{ background: {line}; }}"
         f"QPushButton#lookGroupToggle {{ background: transparent; border: 2px solid transparent; "
