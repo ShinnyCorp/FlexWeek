@@ -358,11 +358,11 @@ def test_a_block_on_the_narrowest_weekend_day_keeps_the_start_of_its_name_and_it
     assert any(text.startswith("16:00") for text in said), said
 
 
-def test_the_hours_end_at_23_00_with_no_24_00_label(
+def test_the_hours_end_with_their_end_label_and_keep_the_room_below_it(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Midnight at the end of the day is not labelled "24:00" on Today's app's Week or Day. The rule
-    is still drawn, and the room below it is kept so 23:00 is never cut."""
+    """Today's app's Week or Day labels the end of the day as every design does: "24:00", or "12:00 AM"
+    on the 12-hour clock. The room below the last rule is kept so the label is never cut."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
     view = week_view(qapp, (SCHOOL,))
     view.hours.reveal(3, LAST - 60, LAST)
@@ -370,8 +370,7 @@ def test_the_hours_end_at_23_00_with_no_24_00_label(
     Said.words = []
     view.hours.repaint()
     labels = [text for text, _where in Said.words if text.endswith(":00") and len(text) == 5]
-    assert "23:00" in labels, labels
-    assert "24:00" not in labels, labels
+    assert "23:00" in labels and "24:00" in labels, labels
     track = view.hours.track_for(3)
     assert track.last == LAST and view.hours.height() - track.area.bottom() >= 12, "the room below was lost"
 

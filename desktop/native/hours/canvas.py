@@ -162,8 +162,6 @@ class BlockPainter:
     now_in_gutter = False
     # Whether a block narrower than NARROW_BLOCK keeps its words closer to its sides.
     trims_narrow = False
-    # Whether the hour at the end of the day is labelled "24:00". The rule is drawn either way.
-    end_label = True
 
     def __init__(self, colours: dict[str, str], look: dict | None = None, *, wide: bool = False) -> None:
         self.colours = colours
@@ -246,8 +244,6 @@ class BlockPainter:
         tall = metrics.height() + 2
         shown: list[tuple[QRectF, str, Qt.AlignmentFlag, bool]] = []
         for minute in range(((track.first + every - 1) // every) * every, track.last + 1, every):
-            if minute == track.last and not self.end_label:
-                continue
             at = track.offset(minute)
             words = clock_label(minute)
             moved = False

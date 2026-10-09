@@ -97,7 +97,6 @@ class ClassicPainter(BlockPainter):
     the gutter where the hour labels are."""
 
     now_in_gutter = True
-    end_label = False
 
     def background(self, painter: QPainter, rect: QRectF) -> None:
         painter.fillRect(rect, self.c("panel") if "panel" in self.colours else self.c("window"))
