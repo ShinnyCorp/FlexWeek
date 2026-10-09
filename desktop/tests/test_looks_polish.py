@@ -59,7 +59,8 @@ def test_readability_names_each_use_of_a_pale_accent_and_fixes_them() -> None:
     custom = {"name": "Lime", "base": "light", "accent": "#dfff00"}
     problems = readability(custom)
     named = {problem.words: problem for problem in problems}
-    for words, need in (("Plan button words", 4.5), ("Today's day name", 4.5), ("Now line", AA_GRAPHIC)):
+    rows = (("The Plan button's words", 4.5), ("Today's day name", 4.5), ("Now line", AA_GRAPHIC))
+    for words, need in rows:
         assert words in named
         fixed = apply_fix(custom, named[words])
         palette = resolved_palette("light-frost", False, {"custom": fixed})

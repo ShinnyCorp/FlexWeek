@@ -40,6 +40,8 @@ def card(window: NativeWindow, page: str = "authPage") -> QFrame:
 
 
 def dress(window: NativeWindow, monkeypatch: pytest.MonkeyPatch, pack: str, **look: object) -> None:
+    # Signed out, the page wears the device's look (#74); these tests dress it as an account's.
+    window.session.account = {"id": "dressed", "username": "dressed"}
     monkeypatch.setattr(window, "_look_inputs", lambda: (pack, False, "default"))
     window._look = sanitize_look(look)
     window._apply_appearance()
@@ -65,16 +67,18 @@ def test_the_wordmark_sits_on_the_page_centred_above_the_card(signed_out: Native
     assert brand is not None and logo is not None, "the sign-in page has no wordmark and logo"
     assert not held.isAncestorOf(brand), "the wordmark is on the page, not in the card"
     brand_box = brand.geometry().united(logo.geometry())
-    card_box = held.geometry()
-    assert brand.mapTo(page, QPoint(0, brand.height())).y() < card_box.top()
-    assert abs(brand_box.center().x() - card_box.center().x()) <= 2, "centred over the card"
+    # The card sits in a holder, so its place on the page is mapped, not read off its own geometry.
+    card_top = held.mapTo(page, QPoint(0, 0)).y()
+    card_centre = held.mapTo(page, QPoint(held.width() // 2, 0)).x()
+    assert brand.mapTo(page, QPoint(0, brand.height())).y() < card_top
+    assert abs(brand_box.center().x() - card_centre) <= 2, "centred over the card"
 
 
 def test_the_card_has_one_heading_and_create_account_hides_forgot_password(
     signed_out: NativeWindow,  # noqa: F811
 ) -> None:
     window = signed_out
-    assert window.auth_heading.text() == "Welcome"
+    assert window.auth_heading.text() == "Sign in"
     assert not window.auth_note.isVisibleTo(window), "no second heading under the first"
     assert shown(window, "forgotPassword")
     window.auth_switch.click()
@@ -103,7 +107,7 @@ def test_forgot_password_is_the_cards_own_page_with_one_filled_button(
     assert not shown(window, "forgotPassword")
     assert window.auth_switch.text() == "Back to sign in"
     window.auth_switch.click()
-    assert window.auth_heading.text() == "Welcome"
+    assert window.auth_heading.text() == "Sign in"
     assert [name for name in ("signIn", "createAccount", "recoverAccount") if shown(window, name)] == [
         "signIn"
     ]

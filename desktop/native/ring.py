@@ -16,6 +16,7 @@ from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPaintEvent, QPen, QResizeEvent
 from PySide6.QtWidgets import QSizePolicy, QSpacerItem, QVBoxLayout, QWidget
 
+from desktop.native.fonts import time_font
 from desktop.native.motion import OUT, Clock, duration, moves
 from desktop.native.tokens import WEIGHT_NUMBER, WEIGHT_STRONG, mix_oklab, type_pt
 
@@ -192,7 +193,7 @@ class CountdownRing(QWidget):
         return self._radius() - self._stroke() / 2
 
     def _fonts(self) -> tuple[QFont, QFont]:
-        number = QFont(self.font())
+        number = time_font(self.font())
         number.setWeight(QFont.Weight(WEIGHT_NUMBER))
         number.setPointSizeF(type_pt("display", self._scale) * NUMBER_TIMES)
         unit = QFont(self.font())

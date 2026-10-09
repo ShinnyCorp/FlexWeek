@@ -260,7 +260,7 @@ def test_a_recovery_error_does_not_follow_back_to_sign_in(
     assert returning.auth_status.text() == "Incorrect username or recovery code."
     returning.findChild(QPushButton, "authSwitch").click()
     qapp.processEvents()
-    assert returning.auth_heading.text() in {"Welcome", "Welcome back"}
+    assert returning.auth_heading.text() == "Sign in"
     assert returning.auth_status.text() == ""
     assert not returning.auth_status.isVisible()
 

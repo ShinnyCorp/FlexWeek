@@ -738,7 +738,7 @@ def test_plain_pages_inherit_the_window_sheet(qapp: QApplication, window: Native
             assert page.styleSheet() == ""
     assert window.setup_page.styleSheet() == ""
     text = Path(__file__).resolve().parents[1].joinpath("native/window.py").read_text()
-    assert text.count("self._dress_entry(palette)") == 1
+    assert text.count("self._dress_entry(palette, look)") == 1
 
 
 def test_setup_style_page_wears_the_style_being_picked(

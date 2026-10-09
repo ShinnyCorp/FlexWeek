@@ -20,6 +20,7 @@ pub const FILE_MAX_BYTES: usize = 64 * 1024;
 pub const AA_TEXT: f64 = 4.5;
 pub const AA_GRAPHIC: f64 = 3.0;
 pub const MID_GREY: f64 = 0.18;
+const ACCENT_FIT_ROUNDS: usize = 8;
 pub const NAME_MAX: usize = 40;
 
 /// Each base as the (pack, preset) it stands for.
@@ -208,6 +209,8 @@ pub struct BlockInk {
 #[derive(Clone, Debug)]
 pub struct ReadabilityProblem {
     pub words: String,
+    /// The words are a plural ("The Plan button's words"), so a sentence says "are" and not "is".
+    pub plural: bool,
     pub ink: String,
     pub ground: String,
     pub ratio: f64,
@@ -1076,6 +1079,25 @@ pub fn effective_look(choice: &Value) -> Dict {
     knobs
 }
 
+/// `accent` moved in lightness only until it reads at 4.5 to 1 on the page, the cards, the calendar and
+/// its own tint. The tint is a tenth of the accent over the page, so it moves with the fix; each round
+/// refits the original colour against the last round's tint, which settles within a few rounds.
+fn fit_accent(accent: &str, surfaces: &[&str; 3], window: &str) -> EngineResult<String> {
+    let mut fixed = accent.to_string();
+    for _ in 0..ACCENT_FIT_ROUNDS {
+        let tint = mix(&fixed, window, 0.10)?;
+        let mut grounds: Vec<Value> = surfaces.iter().map(|ground| json!(ground)).collect();
+        grounds.push(json!(tint));
+        let next = fit_lightness(accent, &grounds, AA_TEXT)?;
+        let own_tint = mix(&next, window, 0.10)?;
+        if next == fixed || contrast(&next, &own_tint)? >= AA_TEXT {
+            return Ok(next);
+        }
+        fixed = next;
+    }
+    Ok(fixed)
+}
+
 pub fn readability(
     custom: &Map<String, Value>,
     palette: &ReadabilityPalette,
@@ -1092,6 +1114,7 @@ pub fn readability(
         .and_then(Value::as_str)
         .is_some_and(|a| a.starts_with('#'));
     let tint = mix(&palette.accent, &palette.window, 0.10)?;
+    let now_is_text = custom.get("now_line").and_then(Value::as_str) == Some("text");
     let dark_page = luminance(&palette.window)? < MID_GREY;
     let mut alike: Vec<&str> = Vec::new();
     for block in filled_blocks {
@@ -1151,7 +1174,7 @@ pub fn readability(
             "accent",
         ),
         (
-            "Plan button words",
+            "The Plan button's words",
             palette.accent.as_str(),
             tint.as_str(),
             "accent",
@@ -1164,13 +1187,13 @@ pub fn readability(
         ),
         (
             "Now line",
-            if custom.get("now_line").and_then(Value::as_str) == Some("text") {
+            if now_is_text {
                 palette.text.as_str()
             } else {
                 palette.accent.as_str()
             },
             palette.grid.as_str(),
-            "accent",
+            if now_is_text { "text" } else { "accent" },
         ),
         (
             "Text on accent buttons",
@@ -1191,11 +1214,9 @@ pub fn readability(
         let ratio = contrast(ink, ground)?;
         if ratio < need {
             let fixed = if field == "accent" {
-                fit_lightness(
-                    &palette.accent,
-                    &grounds_of(&[surfaces[0], surfaces[1], surfaces[2], tint.as_str()]),
-                    need,
-                )?
+                // The hardest check among everything the accent is: as words on all three surfaces
+                // and on its own tint, so no other row is left failing by this one's Fix.
+                fit_accent(&palette.accent, &surfaces, &palette.window)?
             } else if field == "text" {
                 text_fixed.clone()
             } else {
@@ -1208,6 +1229,7 @@ pub fn readability(
             };
             found.push(ReadabilityProblem {
                 words: words.to_string(),
+                plural: words.ends_with("words"),
                 ink: ink.to_string(),
                 ground: ground.to_string(),
                 ratio,
@@ -1221,6 +1243,7 @@ pub fn readability(
         if ratio < AA_TEXT {
             found.push(ReadabilityProblem {
                 words: format!("Text on {} blocks", block.label),
+                plural: false,
                 ink: block.ink.clone(),
                 ground: block.fill.clone(),
                 ratio,

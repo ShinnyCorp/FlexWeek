@@ -115,7 +115,13 @@ from desktop.native.fields import QUICK_LENGTHS, ClockField, DateField, DayPicke
 from desktop.native.fonts import caption, time_font, weighted
 from desktop.native.hours.geometry import next_slot
 from desktop.native.icons import pixmap as icon_pixmap
-from desktop.native.look import CONFLICT_TEXT, resolved_palette
+from desktop.native.look import (
+    CONFLICT_TEXT,
+    FOCUS_GAP_PX,
+    FOCUS_RING_PX,
+    RING_BUTTONS,
+    resolved_palette,
+)
 from desktop.native.menus import Menu
 from desktop.native.motion import (
     EASE_MS,
@@ -142,7 +148,15 @@ from desktop.native.reuse import (
     routine_source_blocks,
     row_conflict,
 )
-from desktop.native.tokens import SHADOW_LARGE, SPACING, WEIGHT_REGULAR, WEIGHT_STRONG, Shadow, type_pt
+from desktop.native.tokens import (
+    RADIUS_CONTROL,
+    SHADOW_LARGE,
+    SPACING,
+    WEIGHT_REGULAR,
+    WEIGHT_STRONG,
+    Shadow,
+    type_pt,
+)
 from desktop.native.weekmodel import due_label, hhmm_text, length_label
 
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -185,8 +199,8 @@ def day_range_words(days: list[int] | tuple[int, ...]) -> str:
 
 SWATCH_PX = 12
 # The eye inside the password box, and the room it keeps clear of the typing.
-REVEAL_PX = 28
-REVEAL_ICON_PX = 16
+REVEAL_PX = 32
+REVEAL_ICON_PX = 24
 DETAIL_BOX_HEIGHT = 84
 SCROLL_GAP = 16
 DUE_SWITCH_EXTRA = 1
@@ -279,13 +293,64 @@ def steady_wheel(app: QApplication) -> None:
 KEYED = (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason, Qt.FocusReason.ShortcutFocusReason)
 
 
+class FocusRing(QWidget):
+    """The keyboard focus ring of a top-bar button: FOCUS_RING_PX in the accent with FOCUS_GAP_PX of the
+    page between it and the button, laid over the window just outside the button so the button keeps its
+    size, its hover tint and its place. A stylesheet has no gap, and the gap here is simply not painted.
+    The stylesheet gives the colour (`qproperty-colour`)."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setObjectName("barFocusRing")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._colour = QColor("transparent")
+        self.hide()
+
+    def _get_colour(self) -> QColor:
+        return self._colour
+
+    def _set_colour(self, value: QColor) -> None:
+        self._colour = QColor(value)
+        self.update()
+
+    colour = Property(QColor, _get_colour, _set_colour)
+
+    def around(self, button: QWidget) -> None:
+        corner = button.mapTo(self.parentWidget(), QPoint(0, 0))
+        reach = FOCUS_RING_PX + FOCUS_GAP_PX
+        self.setGeometry(QRect(corner, button.size()).adjusted(-reach, -reach, reach, reach))
+        self.raise_()
+        self.show()
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(self._colour, FOCUS_RING_PX))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        half = FOCUS_RING_PX / 2
+        radius = RADIUS_CONTROL + FOCUS_RING_PX + FOCUS_GAP_PX
+        painter.drawRoundedRect(QRectF(self.rect()).adjusted(half, half, -half, -half), radius, radius)
+
+
 class KeyFocus(QObject):
     """Marks a button reached with the keyboard, so its focus ring shows, and clears the mark when a click
     focuses it: Qt's `:focus` also holds after a click, which would ring every button pressed. Other
     reasons, such as the window coming back to the front, leave the mark as it was."""
 
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._owner: QWidget | None = None
+
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        if event.type() == QEvent.Type.FocusIn and isinstance(watched, QAbstractButton):
+        kind = event.type()
+        if watched is self._owner:
+            if kind in (QEvent.Type.FocusOut, QEvent.Type.Hide):
+                self._unring()
+            elif kind in (QEvent.Type.Move, QEvent.Type.Resize):
+                self._ring_round(watched)
+        elif kind == QEvent.Type.Resize and self._owner is not None and watched is self._owner.window():
+            self._ring_round(self._owner)
+        if kind == QEvent.Type.FocusIn and isinstance(watched, QAbstractButton):
             reason = event.reason()
             if reason in KEYED or reason == Qt.FocusReason.MouseFocusReason:
                 keyed = reason in KEYED
@@ -293,7 +358,27 @@ class KeyFocus(QObject):
                     watched.setProperty("keyfocus", keyed)
                     watched.style().unpolish(watched)
                     watched.style().polish(watched)
+            if watched.objectName() in RING_BUTTONS:
+                if watched.property("keyfocus"):
+                    self._ring_round(watched)
+                else:
+                    self._unring()
         return False
+
+    def _ring_round(self, button: QWidget) -> None:
+        window = button.window()
+        ring = next((child for child in window.children() if isinstance(child, FocusRing)), None)
+        if ring is None:
+            ring = FocusRing(window)
+        self._owner = button
+        ring.around(button)
+
+    def _unring(self) -> None:
+        owner, self._owner = self._owner, None
+        if owner is not None:
+            for child in owner.window().children():
+                if isinstance(child, FocusRing):
+                    child.hide()
 
 
 def keyboard_focus_rings(app: QApplication) -> None:
