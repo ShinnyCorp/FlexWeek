@@ -665,8 +665,10 @@ class ClockField(QTimeEdit):
                 return True
             if kind == QEvent.Type.MouseButtonPress and self._first_click:
                 self._first_click = False
-                # After the click is handled, or it would put the caret back.
-                QTimer.singleShot(0, self.lineEdit().selectAll)
+                # After the click is handled, or it would put the caret back. Tied to the box, so a
+                # field closed before the timer fires is not called.
+                line = self.lineEdit()
+                QTimer.singleShot(0, line, line.selectAll)
             elif kind == QEvent.Type.KeyPress and event.matches(QKeySequence.StandardKey.SelectAll):
                 self.lineEdit().selectAll()
                 return True

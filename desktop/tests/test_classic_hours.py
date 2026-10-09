@@ -377,7 +377,8 @@ def test_the_hours_end_with_their_end_label_and_keep_the_room_below_it(
 
 def test_a_focus_row_cuts_a_homework_title_only_when_the_row_has_no_room_for_it(qapp: QApplication) -> None:
     """The rail is 280 pixels wide, and "Math worksheet" beside today's "Today 16:15" has room in it,
-    so it is said whole; a narrower row still cuts it, and says the day and time whole."""
+    so it is said whole; a row too narrow for both beside each other puts the time under the name; a row with
+    no room for the name cuts it, and says the day and time whole."""
     from desktop.native.hours.rail import RAIL_PX, Rail
 
     load_fonts()
@@ -403,5 +404,13 @@ def test_a_focus_row_cuts_a_homework_title_only_when_the_row_has_no_room_for_it(
 
     wide = said(rail.tasks.viewport().width())
     assert wide[0] == "Today 16:15" and "Math worksheet" in " ".join(wide[1:])
+    # Too narrow for the time beside the name, the name takes the row whole and the time drops under it.
     narrow = said(200)
-    assert narrow[0] == "Today 16:15" and narrow[-1].endswith("…"), narrow
+    assert narrow[0] == "Today 16:15" and "Math worksheet" in " ".join(narrow[1:]), narrow
+    # A single word wider than the whole row is the only thing still cut, and the time is said whole.
+    long_word = "Supercalifragilisticexpialidocious"
+    rail.set_tasks([{"id": "long", "title": long_word, "day": 3, "start": "16:15"}], 3)
+    qapp.processEvents()
+    index = rail.tasks.indexFromItem(rail.tasks.item(0))
+    cut = said(200)
+    assert cut[0] == "Today 16:15" and cut[-1].endswith("…"), cut

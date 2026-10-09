@@ -17,9 +17,11 @@ import json
 import math
 import re
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from functools import lru_cache
+from types import MappingProxyType
+from typing import Any
 
 import flexweek_engine  # type: ignore[import-untyped]
 
@@ -51,7 +53,7 @@ from desktop.native.tokens import (
     oklch_of,
     type_pt,
 )
-from desktop.native.wire import plain, restore
+from desktop.native.wire import plain, restore, restored
 
 # The knobs of 0.17 (plan, "The knobs"), each value in the order Settings offers them. Round's id is
 # "rounded" because "round" was 0.16's name for what is now Soft; a look saved then still opens as it
@@ -596,7 +598,9 @@ HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
 _LOOK_JSON_CACHE: OrderedDict[str, str] = OrderedDict()
 _LOOK_JSON_CACHE_MAX = 128
-_LOOK_MEASURES_CACHE: OrderedDict[str, dict] = OrderedDict()
+_LOOK_MEASURES_CACHE: OrderedDict[str, Mapping[str, Any]] = OrderedDict()
+# By the look object's identity, with the object itself kept so the identity stays its own.
+_LOOK_MEASURES_BY_OBJECT: OrderedDict[int, tuple[dict | None, Mapping[str, Any]]] = OrderedDict()
 _LOOK_MEASURES_CACHE_MAX = 128
 
 
@@ -635,7 +639,7 @@ def sanitize_look(raw: object) -> dict:
     custom look when the student made one."""
     key = _look_json_key(raw)
     text = _cached_look_json("sanitize_look", key, lambda: flexweek_engine.look_sanitize_look(key))
-    return restore(json.loads(text))
+    return restored(text)
 
 
 def effective_look(choice: dict | None) -> dict:
@@ -643,7 +647,7 @@ def effective_look(choice: dict | None) -> dict:
     knob, such as setup's chips, still reads something true."""
     key = _look_json_key(choice)
     text = _cached_look_json("effective_look", key, lambda: flexweek_engine.look_effective_look(key))
-    return restore(json.loads(text))
+    return restored(text)
 
 
 def _look_measures_uncached(choice: dict | None) -> dict:
@@ -679,20 +683,31 @@ def _look_measures_uncached(choice: dict | None) -> dict:
     }
 
 
-def look_measures(choice: dict | None) -> dict:
+def look_measures(choice: dict | None) -> Mapping[str, Any]:
     """What a look draws that is not a colour, worked out from its knobs and any custom measures: the
     corners of controls and cards, the text size in points, the body and heading faces, and how blocks
-    and the grid are drawn. `edge_width` None is the painter's own."""
+    and the grid are drawn. `edge_width` None is the painter's own.
+
+    Asked for on every paint, so a look dict seen before is found by its identity. That holds because
+    the window replaces its look when it changes and never edits one; the dict is kept in the cache so
+    its identity cannot be given to another. The answer is shared and read-only."""
+    seen = _LOOK_MEASURES_BY_OBJECT.get(id(choice))
+    if seen is not None and seen[0] is choice:
+        _LOOK_MEASURES_BY_OBJECT.move_to_end(id(choice))
+        return seen[1]
     key = _look_json_key(choice)
     hit = _LOOK_MEASURES_CACHE.get(key)
-    if hit is not None:
+    if hit is None:
+        hit = MappingProxyType(_look_measures_uncached(choice))
+        _LOOK_MEASURES_CACHE[key] = hit
+        if len(_LOOK_MEASURES_CACHE) > _LOOK_MEASURES_CACHE_MAX:
+            _LOOK_MEASURES_CACHE.popitem(last=False)
+    else:
         _LOOK_MEASURES_CACHE.move_to_end(key)
-        return deepcopy(hit)
-    hit = _look_measures_uncached(choice)
-    _LOOK_MEASURES_CACHE[key] = hit
-    if len(_LOOK_MEASURES_CACHE) > _LOOK_MEASURES_CACHE_MAX:
-        _LOOK_MEASURES_CACHE.popitem(last=False)
-    return deepcopy(hit)
+    _LOOK_MEASURES_BY_OBJECT[id(choice)] = (choice, hit)
+    if len(_LOOK_MEASURES_BY_OBJECT) > _LOOK_MEASURES_CACHE_MAX:
+        _LOOK_MEASURES_BY_OBJECT.popitem(last=False)
+    return hit
 
 
 def text_scale(choice: dict | None) -> float:

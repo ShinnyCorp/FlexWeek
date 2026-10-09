@@ -37,7 +37,7 @@ if importlib.util.find_spec("PySide6") is not None:
 PASSWORD = "a-long-test-password"
 TRACK = "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT"
 TRACK_ADDRESS = "spotify:track:4cOdK2wGLETKBW3PvgPWqT"
-REMINDER = "Guitar practice starts soon — 18:45 · Thu"
+REMINDER = "Guitar practice starts soon — 6:45 PM · Thu"
 # The preferences table as 0.14 left it, for an account made before reminders were on by default.
 PREFERENCES_0_14 = """
     CREATE TABLE preferences (
@@ -306,13 +306,13 @@ def test_a_block_saved_inside_its_lead_reminds_at_once_and_only_once(
     add_practice(qapp, window)
     tick(qapp, window, clock, 38)
     assert seen(window) == {
-        "tray": [("Guitar practice starts soon", "18:45 · Thu")],
+        "tray": [("Guitar practice starts soon", "6:45 PM · Thu")],
         "toast": REMINDER,
     }
     assert window._bell.once_rung == ["chime"]
     for minute in range(39, 49):
         tick(qapp, window, clock, minute)
-    assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")]
+    assert window._tray_icon.shown == [("Guitar practice starts soon", "6:45 PM · Thu")]
     assert window._bell.once_rung == ["chime"]
 
 
@@ -343,7 +343,7 @@ def test_a_new_account_reminds_without_being_asked(qapp: QApplication, database:
     clock = hold(window, 18, 20)
     add_practice(qapp, window)
     tick(qapp, window, clock, 45 - lead)
-    assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")]
+    assert window._tray_icon.shown == [("Guitar practice starts soon", "6:45 PM · Thu")]
 
 
 def make_it_0_14(database: Path, reminders: bool) -> None:
@@ -377,7 +377,7 @@ def test_an_account_from_0_14_with_reminders_off_reminds_after_the_update(
     choose(qapp, window, reminder_lead_min=10)
     add_practice(qapp, window)
     tick(qapp, window, clock, 35)
-    assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")]
+    assert window._tray_icon.shown == [("Guitar practice starts soon", "6:45 PM · Thu")]
 
 
 def test_reminders_turned_off_after_the_update_stay_off(
@@ -411,16 +411,16 @@ def test_a_block_with_a_spotify_link_plays_it_at_its_start_and_dismiss_stops_it(
     choose(qapp, window, reminder_lead_min=10)
     add_practice(qapp, window, spotify_url=TRACK)
     tick(qapp, window, clock, 35)
-    assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")]
+    assert window._tray_icon.shown == [("Guitar practice starts soon", "6:45 PM · Thu")]
     assert spotify_app.asked == [], "the reminder before the start plays no music"
     heard: list = []
     answer_alarm(qapp, window, "alarmDismiss", heard)
     tick(qapp, window, clock, 45)
-    assert heard and heard[0][:2] == ["Guitar practice", "18:45 · Starting now"]
+    assert heard and heard[0][:2] == ["Guitar practice", "6:45 PM · Starting now"]
     assert spotify_app.asked == [TRACK_ADDRESS]
     assert spotify_app.paused == 1, "dismissing stops the song"
     assert window._alarm_dialog is None and window.session.active_alarm is None
-    assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")], "one notice"
+    assert window._tray_icon.shown == [("Guitar practice starts soon", "6:45 PM · Thu")], "one notice"
     for minute in range(46, 55):
         tick(qapp, window, clock, minute)
     assert spotify_app.asked == [TRACK_ADDRESS], "it plays once"
@@ -461,7 +461,7 @@ def test_a_block_without_a_link_plays_nothing_at_its_start(
     for minute in range(30, 50):
         tick(qapp, window, clock, minute)
     assert rang == [] and window._bell.started == [] and spotify_app.asked == []
-    assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")]
+    assert window._tray_icon.shown == [("Guitar practice starts soon", "6:45 PM · Thu")]
 
 
 def test_a_block_without_a_link_plays_the_settings_link_when_the_sound_is_spotify(
@@ -472,15 +472,15 @@ def test_a_block_without_a_link_plays_the_settings_link_when_the_sound_is_spotif
     choose(qapp, window, reminder_lead_min=10, alarm_tone="spotify", default_spotify_url=TRACK)
     add_practice(qapp, window)
     tick(qapp, window, clock, 35)
-    assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")]
+    assert window._tray_icon.shown == [("Guitar practice starts soon", "6:45 PM · Thu")]
     assert window._bell.once_rung == ["chime"], "the reminder before the start stays Chime"
     assert spotify_app.asked == []
     heard: list = []
     answer_alarm(qapp, window, "alarmDismiss", heard)
     tick(qapp, window, clock, 45)
-    assert heard and heard[0][:2] == ["Guitar practice", "18:45 · Starting now"]
+    assert heard and heard[0][:2] == ["Guitar practice", "6:45 PM · Starting now"]
     assert spotify_app.asked == [TRACK_ADDRESS]
-    assert window._tray_icon.shown == [("Guitar practice starts soon", "18:45 · Thu")], "one notice"
+    assert window._tray_icon.shown == [("Guitar practice starts soon", "6:45 PM · Thu")], "one notice"
 
 
 def test_a_block_with_its_own_link_beats_the_settings_link(

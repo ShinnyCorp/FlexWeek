@@ -2503,7 +2503,8 @@ class Dialog(QDialog):
     def refit(self, *_changed: object) -> None:
         """Size the dialog to what it holds again, once what changed has been laid out: its fonts
         and padding arrive with the style sheet after it shows, and More details makes it taller."""
-        QTimer.singleShot(0, self._refit_now)
+        # With the dialog as the receiver, a dialog deleted before the turn comes is not called on.
+        QTimer.singleShot(0, self, self._refit_now)
 
     def _refit_now(self) -> None:
         if not self.isVisible():

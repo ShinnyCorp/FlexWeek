@@ -17,7 +17,7 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, Qt
+    from PySide6.QtCore import QAbstractAnimation, QEvent, QPoint, QRect, QRectF, Qt
     from PySide6.QtGui import QColor, QImage, QPalette, QPixmap
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import (
@@ -48,6 +48,7 @@ if importlib.util.find_spec("PySide6") is not None:
         SEGMENT_MS,
         SLIDE_NAME,
         SLIDE_PX,
+        Clock,
         Dim,
         app_level,
         appear,
@@ -64,6 +65,7 @@ if importlib.util.find_spec("PySide6") is not None:
     )
     from desktop.native.weekmodel import Occurrence
     from desktop.native.widgets import Dialog, PlanReview, Segment, SegmentTrack
+    from desktop.tests.motion_support import ManualTime, manual_time  # noqa: F401
 
 
 @pytest.fixture(scope="module")
@@ -213,7 +215,30 @@ def test_quick_switches_never_stack_pictures(qapp: QApplication) -> None:
     stack.close()
 
 
-def test_a_notice_rises_into_place_and_leaves_no_effect_behind(qapp: QApplication) -> None:
+def test_a_clock_reads_the_time_source_and_a_paused_one_stands_still(
+    qapp: QApplication, manual_time: ManualTime  # noqa: F811
+) -> None:
+    host = QWidget()
+    seen: list[float] = []
+    clock = Clock(host)
+    clock.start(100, seen.append)
+    manual_time.advance(30)
+    assert clock.currentTime() == 30 and seen[-1] == 30.0
+    clock.pause()
+    manual_time.advance(500)
+    assert clock.currentTime() == 30 and seen[-1] == 30.0, "time that passes while paused is not counted"
+    clock.resume()
+    manual_time.advance(20)
+    assert clock.currentTime() == 50 and seen[-1] == 50.0
+    manual_time.advance(1_000)
+    assert seen[-1] == 100.0, "a late frame still ends on the end"
+    assert clock.state() == QAbstractAnimation.State.Stopped
+    host.close()
+
+
+def test_a_notice_rises_into_place_and_leaves_no_effect_behind(
+    qapp: QApplication, manual_time: ManualTime  # noqa: F811
+) -> None:
     host = QWidget()
     host.resize(400, 300)
     notice = QLabel("Saved.", host)
@@ -224,38 +249,52 @@ def test_a_notice_rises_into_place_and_leaves_no_effect_behind(qapp: QApplicatio
     effect = notice.graphicsEffect()
     assert effect is not None and effect.offset == QPoint(0, 8), "it starts 8 pixels low"
     assert (notice.x(), notice.y()) == (40, 60), "painted low: the notice itself is already in place"
-    QTest.qWait(duration(EASE_MS, "normal") + 150)
+    manual_time.advance(duration(EASE_MS, "normal") // 2)
+    # Half the 180 ms on the out-cubic ease: 1 - (1 - 1/2)^3 = 7/8 of the way, so 1/8 of the 8 pixels left.
+    assert effect.opacity == pytest.approx(0.875) and effect.offset == QPoint(0, 1)
+    manual_time.advance(duration(EASE_MS, "normal") // 2)
     assert (notice.x(), notice.y()) == (40, 60)
     assert notice.graphicsEffect() is None, "an effect left in place slows every later repaint"
     host.close()
 
 
-def test_a_page_slides_in_from_the_side_it_is_heading_and_lands_in_place(qapp: QApplication) -> None:
+def test_a_page_slides_in_from_the_side_it_is_heading_and_lands_in_place(
+    qapp: QApplication, manual_time: ManualTime  # noqa: F811
+) -> None:
     stack, _first, second = two_pages(qapp)
     switch_page(stack, second, "normal", 1)
     assert stack.currentWidget() is second, "the new page is live before any animation"
     assert second.graphicsEffect().offset == QPoint(24, 0), "going forward, it comes in from the right"
     assert second.pos().isNull(), "painted to the side: the page itself is where clicks find it"
-    QTest.qWait(40)
+    manual_time.advance(40)
     (old,) = pictures(stack)
-    assert old.graphicsEffect().offset.x() < 0, "the old page drifts away to the left"
-    QTest.qWait(THROUGH_MS)
+    # The old page fades evenly over 120 ms and drifts 24 pixels left: a third of the way at 40 ms.
+    assert old.graphicsEffect().offset == QPoint(-8, 0), "the old page drifts away to the left"
+    assert old.graphicsEffect().opacity == pytest.approx(2 / 3)
+    # The new one starts 30 ms behind and takes 160, out-cubic: 10/160 in, 1 - (15/16)^3 of the way.
+    assert second.graphicsEffect().opacity == pytest.approx(1 - (15 / 16) ** 3)
+    assert second.graphicsEffect().offset == QPoint(20, 0)
+    manual_time.advance(THROUGH_MS)
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     assert second.pos().isNull()
     assert second.graphicsEffect() is None
     assert pictures(stack) == []
     stack.close()
 
 
-def test_under_reduce_a_page_fades_through_and_moves_nothing(qapp: QApplication) -> None:
+def test_under_reduce_a_page_fades_through_and_moves_nothing(
+    qapp: QApplication, manual_time: ManualTime  # noqa: F811
+) -> None:
     stack, _first, second = two_pages(qapp)
     switch_page(stack, second, "reduce", 1)
     effect = second.graphicsEffect()
     assert effect.offset == QPoint() and effect.opacity == 0, "no slide, and still a fade"
-    QTest.qWait(40)
+    manual_time.advance(40)
     (old,) = pictures(stack)
     assert old.graphicsEffect().offset == QPoint(), "no drift"
-    assert old.graphicsEffect().opacity < 1
-    QTest.qWait(THROUGH_MS)
+    assert old.graphicsEffect().opacity == pytest.approx(2 / 3), "a third of 120 ms gone"
+    manual_time.advance(THROUGH_MS)
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     assert pictures(stack) == [] and second.graphicsEffect() is None
     stack.close()
 
@@ -362,7 +401,9 @@ def test_under_reduce_settings_fades_through_rather_than_over_the_page(qapp: QAp
     stack.close()
 
 
-def test_an_animation_cut_short_by_another_leaves_the_widget_where_it_belongs(qapp: QApplication) -> None:
+def test_an_animation_cut_short_by_another_leaves_the_widget_where_it_belongs(
+    qapp: QApplication, manual_time: ManualTime  # noqa: F811
+) -> None:
     """Stopping an animation does not say it finished, so its tidying has to happen anyway. A notice
     shown twice in a row rose from wherever the first rise had got to, and stayed that far down."""
     host = QWidget()
@@ -372,9 +413,9 @@ def test_an_animation_cut_short_by_another_leaves_the_widget_where_it_belongs(qa
     host.show()
     qapp.processEvents()
     appear(notice, "extra", rise=True)
-    QTest.qWait(40)
+    manual_time.advance(40)
     appear(notice, "extra", rise=True)
-    QTest.qWait(duration(EASE_MS, "extra") + 150)
+    manual_time.advance(duration(EASE_MS, "extra"))
     assert (notice.x(), notice.y()) == (40, 60)
     assert notice.graphicsEffect() is None
     host.close()
@@ -442,7 +483,7 @@ def test_where_nothing_travels_the_plan_review_is_full_height_at_once(qapp: QApp
     host.close()
 
 
-def test_a_glide_ends_on_its_target(qapp: QApplication) -> None:
+def test_a_glide_ends_on_its_target(qapp: QApplication, manual_time: ManualTime) -> None:  # noqa: F811
     host = QWidget()
     host.resize(200, 300)
     marker = QFrame(host)
@@ -450,10 +491,11 @@ def test_a_glide_ends_on_its_target(qapp: QApplication) -> None:
     host.show()
     qapp.processEvents()
     glide(marker, QRect(10, 120, 3, 24), "normal")
-    QTest.qWait(40)
-    assert 10 < marker.y() < 120, "it moves there rather than jumping"
+    manual_time.advance(40)
+    # 40 of the 240 ms on the out-cubic ease is 1 - (5/6)^3 = 0.4213 of the way: 10 + 110 * 0.4213.
+    assert marker.geometry() == QRect(10, 56, 3, 22), "it moves there rather than jumping"
     glide(marker, QRect(10, 200, 3, 24), "normal")
-    QTest.qWait(duration(EASE_MS + 60, "normal") + 200)
+    manual_time.advance(duration(EASE_MS + 60, "normal"))
     assert marker.geometry() == QRect(10, 200, 3, 24)
     glide(marker, QRect(10, 40, 3, 24), "off")
     assert marker.geometry() == QRect(10, 40, 3, 24), "with animations off it is simply there"
@@ -462,7 +504,9 @@ def test_a_glide_ends_on_its_target(qapp: QApplication) -> None:
     host.close()
 
 
-def test_a_notice_that_arrives_while_the_last_one_rises_lands_where_it_belongs(qapp: QApplication) -> None:
+def test_a_notice_that_arrives_while_the_last_one_rises_lands_where_it_belongs(
+    qapp: QApplication, manual_time: ManualTime  # noqa: F811
+) -> None:
     """The hours a notice floats over can move while one rises, as large text grows the bar. A rise
     still running from the last notice carried the new one back to where the last was meant to go."""
     from desktop.native.widgets import TOAST_FOOT, Toast
@@ -476,10 +520,10 @@ def test_a_notice_that_arrives_while_the_last_one_rises_lands_where_it_belongs(q
     host.show()
     qapp.processEvents()
     toast.show_message("Moved History essay to Fri 18:00.")
-    QTest.qWait(30)
+    manual_time.advance(30)
     hours.setGeometry(0, 72, 600, 280)
     toast.show_message("Running late: 16:30-17:00 is now locked.")
-    QTest.qWait(duration(EASE_MS, "extra") + 150)
+    manual_time.advance(duration(EASE_MS, "extra"))
     # The card, inside the room the toast keeps round it for its shadow.
     assert toast.y() + toast.card.geometry().bottom() + 1 == 72 + 280 - TOAST_FOOT
     host.close()
@@ -532,13 +576,17 @@ class Hours:
 LATER = [occurrence("essay", 3, 15 * 60, 16 * 60), occurrence("club", 5, 12 * 60, 13 * 60)]
 
 
-def test_after_a_plan_blocks_slide_to_their_places_and_new_ones_fade_in(qapp: QApplication) -> None:
+def test_after_a_plan_blocks_slide_to_their_places_and_new_ones_fade_in(
+    qapp: QApplication, manual_time: ManualTime  # noqa: F811
+) -> None:
     hours = Hours(qapp)
     final = hours.settled_picture(LATER)
     hours.canvas.set_week(LATER)
-    QTest.qWait(40)
+    manual_time.advance(40)
+    # 40 of the 180 ms on the out-cubic ease: 1 - (1 - 2/9)^3.
+    assert hours.canvas._progress == pytest.approx(1 - (7 / 9) ** 3)
     assert hours.picture() != final, "partway there, not already there"
-    QTest.qWait(duration(EASE_MS) + 150)
+    manual_time.advance(duration(EASE_MS) - 40)
     assert hours.picture() == final
     hours.window.close()
 
@@ -568,16 +616,18 @@ def test_under_reduce_a_moved_block_fades_in_where_it_went_rather_than_sliding(q
         apply_ui_effects("normal")
 
 
-def test_laying_the_hours_out_again_where_nothing_moved_keeps_the_slide(qapp: QApplication) -> None:
+def test_laying_the_hours_out_again_where_nothing_moved_keeps_the_slide(
+    qapp: QApplication, manual_time: ManualTime  # noqa: F811
+) -> None:
     """Decision 34 of 0.17: after Plan the hours scroll to what it placed, and the slide was cut
     short by that scroll's layout, so nothing was seen to move."""
     hours = Hours(qapp)
     final = hours.settled_picture(LATER)
     hours.canvas.set_week(LATER)
     hours.canvas.relayout()
-    QTest.qWait(40)
+    manual_time.advance(40)
     assert hours.picture() != final, "still on its way"
-    QTest.qWait(duration(EASE_MS) + 150)
+    manual_time.advance(duration(EASE_MS) - 40)
     assert hours.picture() == final
     hours.window.close()
 
@@ -615,7 +665,9 @@ def test_animations_off_means_no_animation_anywhere(qapp: QApplication) -> None:
         apply_ui_effects("normal")
 
 
-def test_a_dialog_fades_and_rises_through_its_content_once(qapp: QApplication) -> None:
+def test_a_dialog_fades_and_rises_through_its_content_once(
+    qapp: QApplication, manual_time: ManualTime  # noqa: F811
+) -> None:
     """Decision 31 of 0.17: a window's own opacity is ignored on Wayland, so dialogs appeared in one
     frame there. What the dialog holds fades and rises instead; the window is never faded."""
     apply_ui_effects("normal")
@@ -628,10 +680,10 @@ def test_a_dialog_fades_and_rises_through_its_content_once(qapp: QApplication) -
     dialog.show()
     effect = words.graphicsEffect()
     assert effect is not None and effect.offset == QPoint(0, RISE_PX)
-    QTest.qWait(40)
-    assert 0 < effect.opacity < 1
+    manual_time.advance(40)
+    assert effect.opacity == pytest.approx(1 - (7 / 9) ** 3)
     assert dialog.windowOpacity() == 1.0
-    QTest.qWait(duration(EASE_MS) + 150)
+    manual_time.advance(duration(EASE_MS) - 40)
     assert words.graphicsEffect() is None
     dialog.hide()
     dialog.show()

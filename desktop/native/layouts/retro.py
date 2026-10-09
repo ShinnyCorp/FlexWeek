@@ -1119,7 +1119,7 @@ class Mirror(QObject):
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize:
-            QTimer.singleShot(0, self.sync)
+            QTimer.singleShot(0, self, self.sync)
         return False
 
 
@@ -1156,7 +1156,7 @@ class Grid(Field):
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
-        QTimer.singleShot(0, self.fit_cap)
+        QTimer.singleShot(0, self, self.fit_cap)
 
 
 class NoteLines:
@@ -1663,7 +1663,7 @@ class RetroView(LayoutView):
         self._taskbar(scene)
         self._mark_front()
         self._arrange()
-        QTimer.singleShot(0, self._arrange)
+        QTimer.singleShot(0, self, self._arrange)
 
     def _sheet(self, scene: Scene) -> str:
         colours, sizes = self._scheme, type_sizes(scene.scale)
@@ -2154,4 +2154,4 @@ class RetroView(LayoutView):
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
-        QTimer.singleShot(0, self._arrange)
+        QTimer.singleShot(0, self, self._arrange)

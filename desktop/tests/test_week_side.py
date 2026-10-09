@@ -394,3 +394,19 @@ def test_rail_chips_and_focus_rows_wrap_long_names_on_two_lines_at_large_text(
             assert len(drawn) <= 2 and " ".join(drawn) == title, (width, title, drawn)
         lowest = max(rect.bottom() for rect in rows.values())
         assert lowest < tasks.viewport().height(), (width, lowest, tasks.viewport().height())
+
+
+@pytest.mark.parametrize(
+    ("twenty_four", "words"), [(True, "18:45 · Starting now"), (False, "6:45 PM · Starting now")]
+)
+def test_the_ringing_alarm_says_its_time_on_the_clock_the_student_chose(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+    twenty_four: bool,
+    words: str,
+) -> None:
+    from desktop.native.settings import AlarmRingDialog
+
+    use_clock(qapp, window, twenty_four)
+    dialog = AlarmRingDialog(window, {"name": "Guitar practice", "time": "18:45", "block": "guitar"}, "")
+    assert dialog.findChild(QLabel, "alarmDetail").text() == words

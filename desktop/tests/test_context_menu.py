@@ -308,7 +308,7 @@ def test_a_delete_row_is_painted_red_and_the_rest_in_the_text_colour(
 
 
 # What an empty spot offers: nothing is copied yet, so Paste is greyed and says why on its row.
-SPOT_ROWS = ["Add fixed time at 17:00", "Add homework due this day", "Paste"]
+SPOT_ROWS = ["Add fixed time at 5:00 PM", "Add homework due this day", "Paste"]
 
 
 def free_spot(hours: object, minute: int = 17 * 60 + 5) -> QPoint:
@@ -330,10 +330,22 @@ def test_a_right_click_on_free_time_offers_what_can_be_added_there(
     assert menus["rows"][0][2].toolTip() == "Copy a block or a day first."
     # The step the pointer is in: 17:20 is past the 17:15 step's start, not at 17:30.
     right_click(hours, free_spot(hours, 17 * 60 + 20))
-    assert menus["shown"][-1][0] == "Add fixed time at 17:15"
+    assert menus["shown"][-1][0] == "Add fixed time at 5:15 PM"
     assert window.session.blocks == before, "choosing nothing changes nothing"
     right_click(hours, centre(window, "school", 3))
     assert menus["shown"][-1] == ["Open\tEnter", "Duplicate\tCtrl+D", "Copy\tCtrl+C", "---", "Delete\tDel"]
+
+
+def test_the_free_time_menu_names_its_time_on_the_clock_the_student_chose(
+    qapp: QApplication, window: NativeWindow, menus: dict
+) -> None:
+    window.session.preferences = {**(window.session.preferences or {}), "clock_24h": True}
+    window._sync_chrome()
+    for _ in range(5):
+        qapp.processEvents()
+    hours = window.week_table.hours
+    right_click(hours, free_spot(hours))
+    assert menus["shown"][-1][0] == "Add fixed time at 17:00"
 
 
 def test_add_fixed_time_opens_the_sheet_on_that_day_at_that_time(
@@ -349,7 +361,7 @@ def test_add_fixed_time_opens_the_sheet_on_that_day_at_that_time(
     hours = window.week_table.hours
     menus["choose"] = "spotMenuFixed"
     right_click(hours, free_spot(hours))
-    assert seen == [([1], "17:00")]
+    assert seen == [([1], "5:00 PM")]
 
 
 def test_add_homework_opens_the_sheet_due_on_that_day(
@@ -426,7 +438,7 @@ def test_the_menu_key_and_shift_f10_ask_at_the_next_free_time_after_now_when_not
     hours.hand.clear_selection()
     hours.setFocus()
     press(hours, key, mods)
-    assert [rows[0] for rows in menus["shown"]] == ["Add fixed time at 14:30"]
+    assert [rows[0] for rows in menus["shown"]] == ["Add fixed time at 2:30 PM"]
     assert hours.focus_slot() == (3, 14 * 60 + 30)
 
 
@@ -450,7 +462,7 @@ def test_every_design_with_shared_hours_has_the_free_time_menu(
     assert canvases, f"{design} shows no hours with Tuesday in them"
     hours = canvases[0]
     right_click(hours, free_spot(hours))
-    assert [rows[0] for rows in menus["shown"]] == ["Add fixed time at 17:00"]
+    assert [rows[0] for rows in menus["shown"]] == ["Add fixed time at 5:00 PM"]
 
 
 def test_day_has_the_free_time_menu_at_its_own_day(
@@ -463,4 +475,4 @@ def test_day_has_the_free_time_menu_at_its_own_day(
     hours.reveal(day, 17 * 60, 17 * 60 + 30)
     qapp.processEvents()
     right_click(hours, hours.point_for(day, 17 * 60 + 5))
-    assert [rows[0] for rows in menus["shown"]] == ["Add fixed time at 17:00"]
+    assert [rows[0] for rows in menus["shown"]] == ["Add fixed time at 5:00 PM"]
