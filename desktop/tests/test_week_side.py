@@ -325,15 +325,19 @@ def test_the_focus_list_has_no_row_limit_of_its_own(
     assert tasks.height() >= 9 * tasks.sizeHintForRow(0)
 
 
+@pytest.mark.parametrize("twenty_four", [True, False])
 def test_rail_chips_and_focus_rows_wrap_long_names_on_two_lines_at_large_text(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
+    twenty_four: bool,
 ) -> None:
-    """#84: "Math worksheet, chapter 4" and "History / essay" stay whole on two lines, not "Math worksh…"."""
+    """#84: "Math worksheet, chapter 4" and "History / essay" stay whole on two lines, not "Math worksh…".
+    On the 12-hour clock the time ("Today 7:00 PM") is wider and left too little room for "worksheet,"."""
     from desktop.native.hours.rail import rail_title_lines
     from desktop.native.look import sanitize_look
 
     seeded(qapp, window)
+    use_clock(qapp, window, twenty_four)
     session = window.session
     due = sunday_due(session.week_start)
     for key, title in (
@@ -378,5 +382,15 @@ def test_rail_chips_and_focus_rows_wrap_long_names_on_two_lines_at_large_text(
         rows = {tasks.item(row).text(): tasks.visualItemRect(tasks.item(row)) for row in range(tasks.count())}
         for title in ("Math worksheet, chapter 4", "History / essay"):
             assert rows[title].height() >= 2 * line, (width, title, rows[title].height(), line)
+        shown = {tasks.item(row).text(): tasks.item(row) for row in range(tasks.count())}
+        assert shown["Math worksheet, chapter 4"].data(Qt.ItemDataRole.ToolTipRole) == (
+            "Today 19:00" if twenty_four else "Today 7:00 PM"
+        )
+        # Whole, not "Math wor…": the lines the row draws spell the name.
+        for title in ("Math worksheet, chapter 4", "History / essay"):
+            drawn, _below, _timing = tasks.itemDelegate().row_lines(
+                tasks.indexFromItem(shown[title]), tasks.viewport().width()
+            )
+            assert len(drawn) <= 2 and " ".join(drawn) == title, (width, title, drawn)
         lowest = max(rect.bottom() for rect in rows.values())
         assert lowest < tasks.viewport().height(), (width, lowest, tasks.viewport().height())
