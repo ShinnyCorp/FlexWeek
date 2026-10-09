@@ -116,6 +116,8 @@ def window(qapp: QApplication, server: LocalServer) -> Iterator[NativeWindow]:
         session = made.session
         thursday = datetime.fromisoformat(session.week_start) + timedelta(days=3, hours=10)
         session.now_ms = lambda: int(thursday.timestamp() * 1000)
+        # Signing up put the day on screen on the real today; the held clock's day is the one shown.
+        session.selected_day = thursday.date().isoformat()
         session.add_block(
             {
                 "id": "school",
