@@ -548,13 +548,16 @@ def test_the_toast_belongs_to_the_page_it_was_said_on(qapp: QApplication, window
     assert window.toast.isVisible(), "the page it is on, asked for again, is not leaving"
 
 
-def test_a_view_switch_takes_the_toast_away(qapp: QApplication, window: NativeWindow) -> None:
+def test_a_view_switch_keeps_the_toast_and_its_undo(qapp: QApplication, window: NativeWindow) -> None:
+    """0.18.5 #97: the Undo toast vanished on the first view switch. It stays through Day, Month, Week
+    and My day, until it times out or is used."""
     window._set_notice("Moved History essay to Fri 18:00.", "Undo", lambda: None)
     qapp.processEvents()
     assert window.toast.isVisible()
-    QTest.mouseClick(window.findChild(QPushButton, "viewMonth"), LEFT)
-    settled(qapp, window)
-    assert not window.toast.isVisible() and not window.toast.button.isVisible()
+    for name in ("viewMonth", "viewDay", "viewWeek", "viewMyDay", "viewWeek"):
+        QTest.mouseClick(window.findChild(QPushButton, name), LEFT)
+        settled(qapp, window)
+        assert window.toast.isVisible() and window.toast.button.isVisible(), name
 
 
 def test_a_routine_save_says_nothing_and_a_refusal_says_why(qapp: QApplication, window: NativeWindow) -> None:

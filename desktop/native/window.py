@@ -1302,7 +1302,7 @@ class NativeWindow(QMainWindow):
         self.plan_review.setParent(page)
         self.plan_review.hide()
         self.toast = Toast(self, self.planner)
-        self._toast_where: tuple | None = None
+        self._toast_week: str | None = None
 
     def _planner_widget(self, view: str) -> QWidget:
         """The chosen main view stands in for the week grid, and for Day and Month too.
@@ -1904,9 +1904,10 @@ class NativeWindow(QMainWindow):
             self.hand.cancel()
         if not self.hand.busy:
             self._shown = self._where()
-        if self._where() != self._toast_where:
-            # Another view, week, day or design: what the toast said was about where the student was.
-            self._toast_where = self._where()
+        if self.session.week_start != self._toast_week:
+            # Another week: Undo applies to the week where the change was saved, so a toast still
+            # offering it would offer nothing. Another view, day or design keeps it.
+            self._toast_week = self.session.week_start
             self.toast.hide()
         if self.unfinished_panel.isVisible():
             # A row deleted, planned or finished leaves the list, and an Undo brings it back.
