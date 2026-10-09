@@ -601,10 +601,46 @@ def slide_over(stack: QStackedWidget, page: QWidget, level: str, *, back: bool =
     stack.setCurrentWidget(page)
     if picture is None:
         return
+    coming = None
+    if not back:
+        _fit_for_picture(page)
+        coming = page.grab()
+    _slide_pictures(stack, picture, stack.rect(), level, back=back, live=page, coming=coming)
+
+
+def slide_view(host: QWidget, picture: QLabel, live: QWidget, level: str, *, back: bool = False) -> None:
+    """Slide a view in or out as `slide_over` slides a page, for a view that lives inside `host`
+    rather than on a page of its own. `picture` is the one `hold_picture` took of `host` (or of an
+    area of it) before the view changed; `live` is the part of `host` that changed. Going in, the
+    picture of what was there stays under a dim and a picture of the new view slides over it. With
+    `back`, the picture is of the view going away: it slides off over the live view, which brightens."""
+    coming = None
+    if not back:
+        # The held picture lies over the very thing being grabbed.
+        picture.hide()
+        coming = host.grab(picture.geometry())
+        picture.show()
+    _slide_pictures(host, picture, picture.geometry(), level, back=back, live=live, coming=coming)
+
+
+def _slide_pictures(
+    host: QWidget,
+    picture: QLabel,
+    area: QRect,
+    level: str,
+    *,
+    back: bool,
+    live: QWidget,
+    coming: QPixmap | None,
+) -> None:
+    """The slide itself, over `area` of `host`. `picture` is held of what was there. Going in,
+    `coming` is a picture of what slides over it and `live` lies under both, with its painting
+    waiting, until it lands; going back, `picture` is what slides away. The clock is `live`'s going
+    in, so settling it ends the slide."""
     length = duration(OVER_MS, level)
-    far = QPoint(stack.width(), 0)
-    dim = Dim(stack if back else picture)
-    dim.setGeometry(stack.rect() if back else picture.rect())
+    far = QPoint(area.width(), 0)
+    dim = Dim(host if back else picture)
+    dim.setGeometry(area if back else picture.rect())
     dim.show()
     # What moves is a picture either way: of the page going away, or of the page coming in. The page
     # coming in used to move itself, drawn through an effect, which painted the whole of Settings
@@ -615,15 +651,14 @@ def slide_over(stack: QStackedWidget, page: QWidget, level: str, *, back: bool =
         effect = Shift(moving, far, _kept(moving))
         moving.setGraphicsEffect(effect)
     else:
-        moving = QLabel(stack)
+        moving = QLabel(host)
         moving.setObjectName(SLIDE_NAME)
         moving.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        _fit_for_picture(page)
-        moving.setPixmap(page.grab())
+        moving.setPixmap(coming)
         # The page lies under both pictures until the slide ends. Qt would still paint it for every
         # frame the picture above it moves, so its painting waits for the landing.
-        page.setUpdatesEnabled(False)
-        moving.setGeometry(stack.rect().translated(far))
+        live.setUpdatesEnabled(False)
+        moving.setGeometry(area.translated(far))
         moving.show()
         moving.raise_()
 
@@ -632,7 +667,7 @@ def slide_over(stack: QStackedWidget, page: QWidget, level: str, *, back: bool =
         if back:
             effect.set(1.0, far * share)
         else:
-            moving.move(round(far.x() * (1 - share)), 0)
+            moving.move(area.x() + round(far.x() * (1 - share)), area.y())
         dim.share = 1 - share if back else share
         dim.update()
 
@@ -640,11 +675,11 @@ def slide_over(stack: QStackedWidget, page: QWidget, level: str, *, back: bool =
         dim.deleteLater()
         picture.deleteLater()
         if not back:
-            page.setUpdatesEnabled(True)
+            live.setUpdatesEnabled(True)
             moving.deleteLater()
 
     # The clock is the page's when it comes in, so settling the page ends its slide.
-    _run(picture if back else page, length, step, done)
+    _run(picture if back else live, length, step, done)
 
 
 def slide_down(widget: QWidget, level: str, *, ms: int = EASE_MS) -> None:

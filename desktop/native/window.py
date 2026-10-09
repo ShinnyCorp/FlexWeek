@@ -110,8 +110,11 @@ from desktop.native.motion import (
     fade_through,
     hold_picture,
     motion_level,
+    moves,
+    settle,
     slide_down,
     slide_over,
+    slide_view,
     switch_page,
     trim_picture,
 )
@@ -2215,15 +2218,18 @@ class NativeWindow(QMainWindow):
             for piece in self._turn_pieces()
         }
 
-    def _begin_turn(self) -> tuple[QLabel, dict, int, QLabel | None, str] | None:
+    def _begin_turn(self) -> tuple[QLabel, dict, int, QLabel | None, str, str] | None:
         """Before another view, My day or another design is shown: a picture of everything under the
         top bar, where each part of it was, and which way the segments go, so the new page, with its
-        chrome and colours, fades through in one frame once it is built (decisions 28 and 29)."""
+        chrome and colours, fades through in one frame once it is built (decisions 28 and 29). In
+        Retro, Month is not faded to but slid in over the dimmed desk, as Settings is (J17)."""
         was, now = self._planner_shown, self._planner_now()
         self._planner_shown = now
         page = self._week_page
         if was is None or was == now or self._stack.currentWidget() is not page:
             return None
+        # A month still sliding in holds the planner's painting back until it lands.
+        settle(self.planner)
         top = self._top_bar.geometry().bottom() + 1
         picture = hold_picture(page, self._motion, QRect(0, top, page.width(), page.height() - top))
         if picture is None:
@@ -2236,20 +2242,26 @@ class NativeWindow(QMainWindow):
         if not was[0] and not now[0] and was[2:] == now[2:] and {was[1], now[1]} <= set(VIEW_ORDER):
             step = VIEW_ORDER.index(now[1]) - VIEW_ORDER.index(was[1])
             direction = (step > 0) - (step < 0)
-        return picture, self._places(), direction, title_picture, title.full_text()
+        over = ""
+        if direction and now[2] == "retro" and "month" in (was[1], now[1]) and moves(self._motion):
+            over = "back" if was[1] == "month" else "in"
+        return picture, self._places(), direction, title_picture, title.full_text(), over
 
-    def _finish_turn(self, turn: tuple[QLabel, dict, int, QLabel | None, str] | None) -> None:
+    def _finish_turn(self, turn: tuple[QLabel, dict, int, QLabel | None, str, str] | None) -> None:
         """The new page is built and dressed: what changed fades through to it, the title with it. The
         parts that stayed where they were are left out of the picture, so they neither blink nor
         drift."""
         if turn is None:
             return
-        picture, before, direction, title_picture, title_was = turn
+        picture, before, direction, title_picture, title_was, over = turn
         if title_picture is not None and self.week_title.full_text() != title_was:
             fade_through(title_picture, [self.week_title], self._motion)
         elif title_picture is not None:
             title_picture.deleteLater()
         self._week_page.layout().activate()
+        if over:
+            slide_view(self._week_page, picture, self.planner, self._motion, back=over == "back")
+            return
         after = self._places()
         changed = [piece for piece in self._turn_pieces() if before[piece] != after[piece]]
         area = before[self.planner] or QRect()
