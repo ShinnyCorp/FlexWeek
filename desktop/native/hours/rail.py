@@ -57,7 +57,7 @@ from desktop.native.fonts import at_scale, time_font, weighted
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.hand import Hand
 from desktop.native.look import category_paint, mix, text_scale
-from desktop.native.tokens import RADIUS_CONTROL, SPACING, WEIGHT_STRONG
+from desktop.native.tokens import RADIUS_CONTROL, SPACING, WEIGHT_STRONG, fit_lightness
 from desktop.native.weekmodel import (
     HOMEWORK,
     Occurrence,
@@ -164,6 +164,20 @@ def _scaled(base: QFont, role: str, look: dict | None, weight: QFont.Weight = QF
     return at_scale(base, role, text_scale(look), weight)
 
 
+# What a mark needs against the page and the cards under it, with a little over for rounding.
+MARK_FLOOR = 3.2
+
+
+def homework_red(palette: dict) -> str:
+    """Homework's mark for the rail's due dots, bars and book. In a dark look it is lightened, in the
+    same hue, until it reaches 3 to 1 on the page and the cards; the category's own mark is not, as a
+    lighter one sits too near sports' green for a deuteranope on the week's blocks."""
+    mark = category_paint(HOMEWORK, palette)[1] or palette["text"]
+    if palette.get("family") != "dark":
+        return mark
+    return fit_lightness(mark, tuple(palette[ground] for ground in ("window", "panel", "field")), MARK_FLOOR)
+
+
 @dataclass(frozen=True)
 class Colours:
     """What the rail paints with, from the look's palette."""
@@ -190,7 +204,7 @@ class Colours:
             accent=palette["accent"],
             accent_text=palette.get("accent_text", palette["accent"]),
             accent_ink=palette["accent_ink"],
-            homework=category_paint(HOMEWORK, palette)[1] or palette["text"],
+            homework=homework_red(palette),
             contrast=palette.get("family") == "contrast",
         )
 
