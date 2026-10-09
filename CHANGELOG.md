@@ -6,6 +6,10 @@ All notable changes to FlexWeek are documented here. Format follows
 ## [Unreleased]
 
 ### Fixed
+- The keyboard's place on the week follows the pointer. A click on the hours moves it to the slot or block
+  pressed and hides the ring; closing the sheet that click opened leaves it there, so Shift+F10 asks about
+  what was clicked, and a block saved from a sheet gets the keyboard. Only that block shows as chosen.
+  In Today's app, Timeline, Mission, Bento and Retro.
 - Buttons no longer cut their words ("Accept late start" read "ccept late sta"). Every button in a sheet and in
   the top bar is at least its words plus 20 px at each side and 36 px tall (40 at Large text), and buttons
   measure again when the text size or the look changes while a sheet or Settings is open. Running late's

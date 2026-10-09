@@ -2407,11 +2407,15 @@ class NativeWindow(QMainWindow):
     def _run_sheet(self, dialog: QDialog) -> bool:
         """Open a sheet and wait for it. Once it is closed the keyboard is back on the week, not on the
         button that opened it."""
+        # What the student pressed in the sheet says nothing about the week: the ring comes back only if
+        # the keyboard, not the pointer, took them to the sheet.
+        keyboard = self._last_input.keyboard
         try:
             accepted = dialog.exec() == QDialog.DialogCode.Accepted
         finally:
             # A dim made for this sheet that it never took, because it could not open.
             drop_waiting_dim(self)
+        self._last_input.keyboard = keyboard
         self._focus_week()
         return accepted
 
@@ -2447,6 +2451,21 @@ class NativeWindow(QMainWindow):
                 self.session.recover_missed(holder["id"], day)
                 return
         self.session.save()
+        self._keyboard_to_new_block(before)
+
+    def _keyboard_to_new_block(self, before: set[str]) -> None:
+        """A block the sheet made is where the keyboard goes on the week, on the day the spot was on if the
+        block is there."""
+        made = next(
+            (item for item in self.session.blocks if item["id"] not in before and item.get("days")), None
+        )
+        surfaces = self._week_surfaces()
+        if made is None or not surfaces or not made.get("start"):
+            return
+        spot = surfaces[0].focus_slot()
+        day = spot[0] if spot is not None and spot[0] in made["days"] else made["days"][0]
+        placed = (made["id"], day, hhmm_to_minutes(made["start"]))
+        self._focus_week(placed)
 
     def _commit_homework(self, dialog: HomeworkDialog, days: list[int] | None = None) -> None:
         if not self._run_sheet(dialog):

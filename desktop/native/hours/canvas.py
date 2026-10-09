@@ -1380,11 +1380,17 @@ class HoursCanvas(QWidget):
             self.day_opened.emit(name)
             return
         self.setFocus(Qt.FocusReason.MouseFocusReason)
+        # The keyboard's spot goes where the pointer pressed, and the ring is for the keyboard only.
+        self._ring = False
         at = event.globalPosition().toPoint()
         hit = self._block_at(point)
         if hit is not None:
             drawn, rect, track = hit
             minute = track.minute_at(point)
+            self._cursor = (
+                drawn.span.day,
+                min(max(self._step_at(track, point), drawn.span.start), drawn.span.end - SLOT_MIN),
+            )
             upright = track.upright(point)
             kind = self._edge_kind(rect, upright, track)
             # How far the pointer is from the edge it moves, so nothing jumps on the first move.
@@ -1408,8 +1414,11 @@ class HoursCanvas(QWidget):
             return
         step = self.hand.step
         anchor = self._step_at(track, point)
+        self._cursor = (track.day, anchor)
         held = Held(Gesture.CREATE, "", step, None, track.day, Span(track.day, anchor, anchor + step))
-        self.hand.selection = None
+        # Told to the week too: a block outlined as chosen while the spot is on free time is two things
+        # looking focused.
+        self.hand.clear_selection()
         self.hand.press(self, held, at, tap=lambda: self._quick_create(track, anchor), home=(self, track))
 
     def _step_at(self, track: LinearTrack, point: QPointF) -> int:
