@@ -23,7 +23,6 @@ from datetime import date
 
 from PySide6.QtCore import (
     QAbstractAnimation,
-    QEasingCurve,
     QEvent,
     QObject,
     QPoint,
@@ -33,7 +32,6 @@ from PySide6.QtCore import (
     QSize,
     Qt,
     QTimer,
-    QVariantAnimation,
     Signal,
 )
 from PySide6.QtGui import (
@@ -94,7 +92,7 @@ from desktop.native.layouts.base import (
     scrolling,
 )
 from desktop.native.look import category_paint, readable_ink
-from desktop.native.motion import app_level, between, duration, fade_away, hold_picture, moves
+from desktop.native.motion import OUT, Clock, app_level, between, duration, fade_away, hold_picture, moves
 from desktop.native.tokens import (
     RADIUS_CARD,
     RADIUS_CONTROL,
@@ -832,11 +830,7 @@ class Row(QWidget):
         self.ahead = Arrow("clayAhead", "chevron-right", self)
         self.back.clicked.connect(lambda _=False: self.turn(-1))
         self.ahead.clicked.connect(lambda _=False: self.turn(1))
-        self._slide = QVariantAnimation(self)
-        self._slide.setStartValue(0.0)
-        self._slide.setEndValue(1.0)
-        self._slide.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._slide.valueChanged.connect(self._slid)
+        self._slide = Clock(self)
         self._slide.finished.connect(self._land)
         self._dwell = QTimer(self)
         self._dwell.setInterval(50)
@@ -1021,11 +1015,16 @@ class Row(QWidget):
             self._from, self._to = before, after
             self._put(before)
             self._capture()
-            self._slide.setDuration(duration(SLIDE_MS, level))
-            self._slide.start()
+            self._slide.start(duration(SLIDE_MS, level), self._on_clock)
+            self._on_clock(0.0)
             return
         self._put(after)
         fade_away(picture, level, ms=SLIDE_MS)
+
+    def _on_clock(self, ms: float) -> None:
+        total = self._slide.duration()
+        share = OUT.valueForProgress(ms / total) if total else 1.0
+        self._slid(share)
 
     def _slid(self, value: object) -> None:
         share = float(value)
@@ -1427,8 +1426,8 @@ class Row(QWidget):
         if length > 0 and moves(motion_level) and self.isVisible() and self._rects:
             self._from, self._to = dict(self._rects), rects
             self._capture()
-            self._slide.setDuration(length)
-            self._slide.start()
+            self._slide.start(length, self._on_clock)
+            self._on_clock(0.0)
             return
         self._put(rects)
 

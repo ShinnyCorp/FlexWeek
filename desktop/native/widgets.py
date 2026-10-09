@@ -13,6 +13,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 from PySide6.QtCore import (
     Property,
+    QAbstractAnimation,
     QDate,
     QEvent,
     QObject,
@@ -24,7 +25,6 @@ from PySide6.QtCore import (
     Qt,
     QTime,
     QTimer,
-    QVariantAnimation,
     Signal,
 )
 from PySide6.QtGui import (
@@ -119,6 +119,7 @@ from desktop.native.motion import (
     EASE_MS,
     OUT,
     SEGMENT_MS,
+    Clock,
     app_level,
     appear,
     between,
@@ -387,10 +388,7 @@ class SegmentTrack(QFrame):
         # Where the chosen pill was last drawn, and where it leaves from for the segment just chosen.
         self._drawn: QRectF | None = None
         self._from = QRectF()
-        self._slide = QVariantAnimation(self)
-        self._slide.setStartValue(0.0)
-        self._slide.setEndValue(1.0)
-        self._slide.valueChanged.connect(lambda _share: self.update())
+        self._slide = Clock(self)
 
     def _get_shade(self) -> int:
         return self._shade
@@ -419,14 +417,13 @@ class SegmentTrack(QFrame):
         if on and self._drawn is not None and self.isVisible() and length:
             self._from = QRectF(self._drawn)
             self._slide.stop()
-            self._slide.setDuration(length)
-            self._slide.start()
+            self._slide.start(length, lambda _at: self.update())
         self.update()
 
     def _pills(self, target: QRectF) -> list[tuple[QRectF, float]]:
         """The chosen pill as drawn now, with its opacity: sliding from where it was, or where things
         may not travel, fading from there to here."""
-        if self._slide.state() == QVariantAnimation.State.Stopped:
+        if self._slide.state() == QAbstractAnimation.State.Stopped:
             return [(target, 1.0)]
         share = OUT.valueForProgress(self._slide.currentTime() / max(self._slide.duration(), 1))
         start = self._from

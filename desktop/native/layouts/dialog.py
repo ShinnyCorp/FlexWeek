@@ -152,8 +152,9 @@ class DesignPicker(Choices):
 
     def _draw_next(self) -> None:
         self._scheduled = False
-        if busy():
-            # A picture takes about 100 ms; drawn now it would stop whatever is moving for that long.
+        if busy() and not self.isVisible():
+            # Off screen, a picture would steal a turn from whatever is moving. On screen the slide
+            # has already been given its wait, and a leftover clock must not leave the cards blank.
             self._scheduled = True
             QTimer.singleShot(PICTURE_WAIT_MS, self._draw_next)
             return

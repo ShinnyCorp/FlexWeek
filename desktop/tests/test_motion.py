@@ -26,6 +26,7 @@ if importlib.util.find_spec("PySide6") is not None:
         QGraphicsDropShadowEffect,
         QHBoxLayout,
         QLabel,
+        QLineEdit,
         QStackedWidget,
         QVBoxLayout,
         QWidget,
@@ -878,3 +879,63 @@ def test_design_pictures_are_drawn_one_a_turn_and_can_be_drawn_ahead(
     assert len(drawn) == len(picker.cards)
     picker.deleteLater()
     QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_a_page_is_pictured_at_the_size_it_will_have_on_screen(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stacked page grabbed at its old size is drawn once small, then resized and drawn again
+    while it fades. The picture is taken after it has the stack's size."""
+    from desktop.native import motion as moving
+
+    apply_ui_effects("normal")
+    stack = QStackedWidget()
+    first = QLabel("Week")
+    second = QWidget()
+    QVBoxLayout(second).addWidget(QLabel("Day"))
+    stack.addWidget(first)
+    stack.addWidget(second)
+    stack.resize(640, 400)
+    stack.show()
+    qapp.processEvents()
+    stack.setCurrentWidget(second)
+    qapp.processEvents()
+    # Stale size, as a newly shown view can still have until its layout runs.
+    second.resize(80, 40)
+    sizes: list[tuple[int, int]] = []
+    real = moving._kept
+
+    def spy(widget: QWidget) -> QPixmap | None:
+        sizes.append((widget.width(), widget.height()))
+        return real(widget)
+
+    monkeypatch.setattr(moving, "_kept", spy)
+    appear(second, "normal")
+    assert sizes, "the incoming page was pictured"
+    assert sizes[0] == (stack.width(), stack.height()), sizes
+    stack.close()
+
+
+def test_typing_during_a_sheet_fade_shows_at_once(qapp: QApplication) -> None:
+    """While a sheet fades, the title field already has focus. Letters typed then must show, not
+    wait under a still picture until the fade ends."""
+    apply_ui_effects("normal")
+    window = QWidget()
+    window.resize(900, 700)
+    window.show()
+    qapp.processEvents()
+    sheet = Dialog(window, sheet=True)
+    field = QLineEdit()
+    sheet.card_body("Add homework").addWidget(field)
+    sheet.show()
+    qapp.processEvents()
+    face = sheet._face
+    assert face is not None
+    effect = face.graphicsEffect()
+    assert effect is not None and getattr(effect, "_picture", None) is not None
+    field.setFocus()
+    QTest.keyClicks(field, "Math")
+    assert field.text() == "Math"
+    assert getattr(effect, "_picture", "missing") is None, "the still picture gave way so the letters show"
+    sheet.close()
+    window.close()
