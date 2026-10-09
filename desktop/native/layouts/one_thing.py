@@ -29,20 +29,35 @@ from desktop.native.layouts.base import (
     plural,
     rules,
 )
+from desktop.native.layouts.dial import free_minutes
 from desktop.native.look import category_paint
 from desktop.native.motion import app_level
 from desktop.native.ring import CountdownRing, ring_colours
 from desktop.native.tokens import RADIUS_CARD, SPACING, WEIGHT_STRONG, type_pt
-from desktop.native.weekmodel import Occurrence, Waiting, clock_label, length_label, range_label
+from desktop.native.weekmodel import (
+    Occurrence,
+    Waiting,
+    clock_label,
+    length_label,
+    range_label,
+    short_clock,
+)
 from desktop.native.widgets import FittedLabel
 
 DAY_START, DAY_END = 6 * 60, 22 * 60
 BAR_TALL = 22
+# The bar's hours are named every three hours from its start, and its end (#25).
+HOUR_EVERY = 180
 # The ring's side in the mock-up at Normal text. Then's rows give way before it goes under RING_ROOMY.
 RING_MAX, RING_ROOMY, RING_MIN = 440, 320, 200
 THEN_ROWS = 4
 # The most of the ring's inside the title may take, so the number stays the thing that is read.
 TITLE_SHARE = 0.4
+
+
+def label_minutes(first: int, last: int) -> list[int]:
+    """The minutes the bar names: 06:00 09:00 12:00 15:00 18:00 and the end, 22:00."""
+    return [*range(first, last - HOUR_EVERY // 2, HOUR_EVERY), last]
 
 
 def _small(font: QFont) -> QFont:
@@ -56,7 +71,7 @@ class BarPainter(BlockPainter):
     """The day as one thin bar: every block a segment, the thing on screen in the accent, now as a
     tick. A carried block is drawn where it would land, outlined, with its words on a pill above."""
 
-    def __init__(self, tokens: dict[str, str], chosen: str | None) -> None:
+    def __init__(self, tokens: dict[str, str], chosen: str | None, caption: str = "") -> None:
         super().__init__(
             {
                 "track": tokens["line"],
@@ -69,10 +84,30 @@ class BarPainter(BlockPainter):
             }
         )
         self.chosen = chosen
+        self.caption = caption
+        # The top of the row the caption and the time now share.
+        self.row = 0.0
         self._middle = 0.0
 
     def background(self, painter: QPainter, rect: QRectF) -> None:
-        pass
+        """What the bar is, in words over its left end, on the row of the time now and clear of it."""
+        font = _small(painter.font())
+        painter.setFont(font)
+        painter.setPen(self.c("other"))
+        metrics = QFontMetrics(font)
+        row = QRectF(rect.left(), rect.top() + self.row, rect.width(), metrics.height())
+        if self.now_minute is not None and DAY_START <= self.now_minute <= DAY_END:
+            # Where the time now will be written, which the words give way to.
+            along = rect.width() * (self.now_minute - DAY_START) / (DAY_END - DAY_START)
+            row.setRight(min(row.right(), self._now_left(rect.left(), rect.width(), along, metrics) - 8))
+        words = metrics.elidedText(self.caption, Qt.TextElideMode.ElideRight, max(int(row.width()), 0))
+        painter.drawText(row, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, words)
+
+    @staticmethod
+    def _now_left(left: float, width: float, along: float, metrics: QFontMetrics) -> float:
+        """Where "Now 13:40" starts: centred on its tick and kept inside the bar's ends."""
+        wide = metrics.horizontalAdvance("Now 00:00") + 8
+        return min(max(left + along - wide / 2, left), left + width - wide)
 
     def track(self, painter: QPainter, track: LinearTrack, today: bool) -> None:
         area = track.area
@@ -87,7 +122,24 @@ class BarPainter(BlockPainter):
         every: int = 60,
         visible: QRectF | None = None,
     ) -> None:
-        pass
+        """The hours under the bar, each inside its edges and clear of the one before."""
+        font = _small(painter.font())
+        painter.setFont(font)
+        painter.setPen(self.c("other"))
+        metrics = QFontMetrics(font)
+        area, right = track.area, float("-inf")
+        for minute in label_minutes(track.first, track.last):
+            words = short_clock(minute)
+            wide = metrics.horizontalAdvance(words)
+            left = min(max(area.left() + track.offset(minute) - wide / 2, area.left()), area.right() - wide)
+            if left < right + 6:
+                continue
+            right = left + wide
+            painter.drawText(
+                QRectF(left, area.bottom() + 1, wide + 2, metrics.height()),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                words,
+            )
 
     def block(self, painter: QPainter, rect: QRectF, drawn: Drawn, visible: QRectF) -> None:
         tall = min(10.0, rect.height())
@@ -114,6 +166,20 @@ class BarPainter(BlockPainter):
         painter.fillRect(
             QRectF(area.left() + track.offset(minute) - 1.5, area.top(), 3, area.height()), self.c("tick")
         )
+        # Named over its tick, kept inside the bar's ends.
+        font = _small(painter.font())
+        font.setWeight(QFont.Weight(WEIGHT_STRONG))
+        painter.setFont(font)
+        painter.setPen(self.c("tick"))
+        metrics = QFontMetrics(font)
+        words = f"Now {clock_label(minute)}"
+        wide = metrics.horizontalAdvance(words)
+        left = self._now_left(area.left(), area.width(), track.offset(minute), metrics) + 4
+        painter.drawText(
+            QRectF(left, area.top() - metrics.height() - 2, wide + 2, metrics.height()),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            words,
+        )
 
     def label(self, painter: QPainter, beside: QRectF, words: str, ok: bool, room: QRectF) -> None:
         """Above the carried segment, in the room left over the bar for it."""
@@ -136,19 +202,33 @@ class DayBar(HoursCanvas):
 
     block_clicked = Signal(str)
 
-    def __init__(self, hand: Hand, day: int, tokens: dict[str, str], chosen: str | None) -> None:
+    def __init__(
+        self, hand: Hand, day: int, tokens: dict[str, str], chosen: str | None, caption: str = ""
+    ) -> None:
         super().__init__(
             hand,
-            BarPainter(tokens, chosen),
-            lambda area: [LinearTrack(day, area, Axis.ACROSS, DAY_START, DAY_END)],
+            BarPainter(tokens, chosen, caption),
+            # The bar only, so the hours under it are not part of what a block can be dropped on.
+            lambda area: [
+                LinearTrack(
+                    day,
+                    QRectF(area.left(), area.top(), area.width(), BAR_TALL),
+                    Axis.ACROSS,
+                    DAY_START,
+                    DAY_END,
+                )
+            ],
         )
         self.setObjectName("oneDayBar")
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setAccessibleName(f"Today from {clock_label(DAY_START)} to {clock_label(DAY_END)}")
         self.setAccessibleDescription("Drag a block along the bar to move it, or click it to open it.")
-        # Room over the bar for the carried block's words.
-        self.header = QFontMetrics(_small(self.font())).height() + 18
-        self.setFixedHeight(round(self.header) + BAR_TALL)
+        # Room over the bar for what it is, the time now and the carried block's words, and under it
+        # for its hours.
+        line = QFontMetrics(_small(self.font())).height()
+        self.header = line + 10
+        self.painter.row = self.header - line - 2
+        self.setFixedHeight(round(self.header) + BAR_TALL + line + 2)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if event.button() != Qt.MouseButton.LeftButton:
@@ -289,11 +369,24 @@ class OneThingView(LayoutView):
         self._root.addLayout(self._actions(scene, item))
         self._root.addStretch(1)
         if scene.options.get("daybar") != "hide" and scene.today is not None:
-            bar = DayBar(self.hand, scene.today, scene.tokens, item.block_id if item is not None else None)
+            bar = DayBar(
+                self.hand,
+                scene.today,
+                scene.tokens,
+                item.block_id if item is not None else None,
+                self._bar_caption(scene),
+            )
             bar.set_week(scene.week.on_day(scene.today), scene.today, scene.minute)
             bar.block_clicked.connect(self.block_activated.emit)
             self._root.addWidget(bar)
         self._fit()
+
+    def _bar_caption(self, scene: Scene) -> str:
+        """What the day bar is: the day's hours, and that nothing is planned on it when nothing is."""
+        words = f"Today, {clock_label(DAY_START)} to {clock_label(DAY_END)}."
+        if scene.today is not None and not scene.week.on_day(scene.today):
+            words += " Nothing planned."
+        return words
 
     def _sheet(self, scene: Scene) -> str:
         tokens = scene.tokens
@@ -352,7 +445,11 @@ class OneThingView(LayoutView):
             )
         )
         ring.set_text_scale(scene.scale)
-        ring.set_scale(12, ("0", "15", "30", "45"))
+        if item is None:
+            # No countdown runs, so the minutes round the ring would mean nothing.
+            ring.set_quiet(True)
+        else:
+            ring.set_scale(12, ("0", "15", "30", "45"))
         heading, line = self._words(scene, item, is_now, has_current)
         self._title = Thing(self.hand)
         self._title_words = item.title if item else self._empty_title(scene)
@@ -445,8 +542,13 @@ class OneThingView(LayoutView):
         if item is None:
             heading, _title, line = scene.week.leftover_parts(scene.today)
             tomorrow = scene.week.on_day(scene.today + 1)
-            if scene.week.leftover_kind(scene.today) == "calendar_only" and scene.today < 6 and tomorrow:
-                line = f"Tomorrow starts with {tomorrow[0].title} at {clock_label(tomorrow[0].start)}"
+            if scene.week.leftover_kind(scene.today) == "calendar_only":
+                if scene.minute < DAY_END:
+                    # The evening still ahead, said in minutes; once it is over, what comes next.
+                    free = free_minutes(scene.week.on_day(scene.today), scene.minute, DAY_END)
+                    return f"Free until {clock_label(DAY_END)}", f"{length_label(free)} free"
+                if scene.today < 6 and tomorrow:
+                    line = f"Tomorrow starts with {tomorrow[0].title} at {clock_label(tomorrow[0].start)}"
             return heading, line or heading
         if is_now:
             return "Now", range_label(item.start, item.end)

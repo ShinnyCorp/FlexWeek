@@ -6,6 +6,7 @@ its Layout section changes what is on screen.
 from __future__ import annotations
 
 import importlib.util
+import math
 import os
 from collections.abc import Iterator
 
@@ -25,12 +26,12 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
     from desktop.native.layouts.base import Scene, rules
-    from desktop.native.layouts.one_thing import RING_ROOMY, DayBar, OneThingView
+    from desktop.native.layouts.one_thing import RING_ROOMY, DayBar, OneThingView, label_minutes
     from desktop.native.layouts.registry import options_for, tokens_for
     from desktop.native.look import resolved_palette
     from desktop.native.motion import apply_ui_effects, duration
     from desktop.native.ring import ARC_MS, CountdownRing
-    from desktop.native.weekmodel import build_week, minute_of
+    from desktop.native.weekmodel import build_week, clock_label, minute_of, set_clock_24h
     from desktop.native.widgets import FittedLabel
 
 THURSDAY = 3
@@ -380,3 +381,96 @@ def test_in_a_short_window_then_gives_way_before_the_ring_gets_small(qapp: QAppl
     short = shown(qapp, "13:40", size=(1366, 560))
     assert then(short) == []
     assert short.findChild(CountdownRing).width() >= RING_ROOMY
+
+
+def test_with_no_countdown_the_ring_is_quiet_and_says_how_long_is_free(qapp: QApplication) -> None:
+    """#25: the empty state drew a full minute ring with 0 / 15 / 30 / 45 and twelve ticks though nothing
+    counts down, and said "Nothing else scheduled today" twice. At 21:40 nothing is left before 22:00."""
+    view = shown(qapp, "21:40")
+    assert says(view) == ("Free until 22:00", "Nothing else scheduled today", "20 min free")
+    assert ring_of(view).scale() == (0, ()), "no minute scale when no countdown runs"
+    assert counts(view)[0] == ""
+    # With a countdown running the scale is there.
+    assert ring_of(shown(qapp, "13:40")).scale() == (12, ("0", "15", "30", "45"))
+
+
+def test_the_quiet_rings_surroundings_are_bare_where_the_scale_would_be(qapp: QApplication) -> None:
+    def marks_outside(view: OneThingView) -> int:
+        ring = ring_of(view)
+        image = ring.grab().toImage()
+        background = image.pixelColor(2, 2)
+        reach = ring._radius() + ring._side() * 20 / 440
+        found = 0
+        for step in range(360):
+            angle = math.radians(step)
+            x = round(ring.width() / 2 + reach * math.sin(angle))
+            y = round(ring.height() / 2 - reach * math.cos(angle))
+            found += image.pixelColor(x, y) != background
+        return found
+
+    assert marks_outside(shown(qapp, "21:40")) == 0
+    assert marks_outside(shown(qapp, "13:40")) > 0, "the same probe finds the countdown's ticks"
+
+
+def test_the_empty_state_keeps_its_old_words_once_the_evening_is_over(qapp: QApplication) -> None:
+    view = shown(qapp, "22:30")
+    assert says(view)[2] == "Tomorrow starts with School at 08:00"
+    assert ring_of(view).scale() == (0, ())
+
+
+def test_the_day_bar_names_its_hours_the_time_now_and_what_it_is(qapp: QApplication) -> None:
+    assert label_minutes(6 * 60, 22 * 60) == [6 * 60, 9 * 60, 12 * 60, 15 * 60, 18 * 60, 22 * 60]
+    view = shown(qapp, "13:40")
+    bar = view.findChild(DayBar)
+    assert bar.painter.caption == "Today, 06:00 to 22:00."
+    # Nothing on the day at all says so.
+    empty_day = [block for block in BLOCKS if block["id"] == "chem-1"]
+    nothing = OneThingView()
+    nothing.resize(1200, 820)
+    options = options_for(None, "one")
+    palette = resolved_palette("light-frost", False, None)
+    nothing.show_week(
+        Scene(
+            build_week(WEEK, empty_day, {}, None),
+            THURSDAY,
+            minute_of("13:40"),
+            options,
+            tokens_for("one", options["colour"], palette),
+        )
+    )
+    nothing.show()
+    qapp.processEvents()
+    assert nothing.findChild(DayBar).painter.caption == "Today, 06:00 to 22:00. Nothing planned."
+    # On the 12-hour clock the times follow it.
+    set_clock_24h(False)
+    try:
+        twelve = shown(qapp, "13:40").findChild(DayBar).painter.caption
+        wanted = f"Today, {clock_label(6 * 60)} to {clock_label(22 * 60)}."
+    finally:
+        set_clock_24h(True)
+    assert twelve == wanted and "AM" in twelve
+
+
+def test_the_day_bar_draws_those_words_where_it_names_them(qapp: QApplication) -> None:
+    """Pixels: ink under the bar at each named hour and over its mark, none in the corner."""
+    view = shown(qapp, "13:40")
+    bar = view.findChild(DayBar)
+    track = bar.tracks[0]
+    image = bar.grab().toImage()
+    ground = image.pixelColor(2, 2)
+
+    def inked(x: float, top: float, bottom: float) -> bool:
+        return any(
+            image.pixelColor(round(x) + dx, y) != ground
+            for dx in range(-6, 7)
+            for y in range(round(top), round(bottom))
+        )
+
+    below = (track.area.bottom() + 1, bar.height())
+    for minute in (9 * 60, 12 * 60, 15 * 60, 18 * 60):
+        assert inked(track.area.left() + track.offset(minute), *below), minute
+    assert inked(track.area.left() + 8, *below), "the first hour sits inside the bar's left end"
+    above_now = (track.area.top() - 14, track.area.top() - 3)
+    assert inked(track.area.left() + track.offset(minute_of("13:40")), *above_now), "Now 13:40"
+    assert inked(track.area.left() + 20, *above_now), "what the bar is, over its left end"
+    assert not inked(track.area.left() + track.offset(minute_of("20:00")), *above_now)

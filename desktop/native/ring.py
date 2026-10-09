@@ -22,6 +22,8 @@ from desktop.native.tokens import WEIGHT_NUMBER, WEIGHT_STRONG, mix_oklab, type_
 # The mock-up's ring (designs/one.js): 18 wide on a 340 circle in a 440 box, the scale outside it.
 STROKE_SHARE = 18 / 440
 SCALE_ROOM = 50 / 440
+# A quiet ring, drawn when no countdown runs, is thinner and has no scale (#25).
+QUIET_STROKE_SHARE = 10 / 440
 # The number is the display size several times over, as One thing's count is, and shrinks to fit.
 NUMBER_TIMES = 3.2
 # How far the track sits from the page towards the text, by the look's family.
@@ -67,6 +69,7 @@ class CountdownRing(QWidget):
         self._scale = 1.0
         self._ticks = 0
         self._labels: tuple[str, ...] = ()
+        self._quiet = False
         self._ease = Clock(self)
         column = QVBoxLayout(self)
         column.setSpacing(0)
@@ -135,6 +138,19 @@ class CountdownRing(QWidget):
         self._place()
         self.update()
 
+    def set_quiet(self, quiet: bool) -> None:
+        """A plain thin ring with no scale, for when nothing is counting down: the minutes round it would
+        mean nothing. It keeps the room the scale takes, so the ring is the size it would be."""
+        self._quiet = quiet
+        if quiet:
+            self._ticks, self._labels = 0, ()
+        self._place()
+        self.update()
+
+    def scale(self) -> tuple[int, tuple[str, ...]]:
+        """The marks round the outside and their labels, for the tests."""
+        return self._ticks, self._labels
+
     def lines_changed(self) -> None:
         """The owner's lines above or below the number changed their words or size: the number gives
         them the room they now need."""
@@ -163,11 +179,13 @@ class CountdownRing(QWidget):
         return float(min(self.width(), self.height()))
 
     def _stroke(self) -> float:
+        if self._quiet:
+            return max(4.0, round(self._side() * QUIET_STROKE_SHARE))
         return max(6.0, round(self._side() * STROKE_SHARE))
 
     def _radius(self) -> float:
         """The track's centre line."""
-        room = self._side() * SCALE_ROOM if self._ticks else 2.0
+        room = self._side() * SCALE_ROOM if self._ticks or self._quiet else 2.0
         return self._side() / 2 - room - self._stroke() / 2
 
     def _inner(self) -> float:
