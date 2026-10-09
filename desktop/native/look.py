@@ -1298,8 +1298,6 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         # A margin on a label turns on its indent, which set each section 5 pixels right of the title.
         f"QLabel#setupSection {{ {heading} margin-top: {SPACING[1]}px; qproperty-indent: 0; }}"
         f"QLabel#setupError {{ color: {palette['error']}; {strong} }}"
-        # An example in a box is not an answer: the muted colour, and "e.g." in the words.
-        f"QWidget#setupPage QLineEdit {{ placeholder-text-color: {palette['muted']}; }}"
         f"QLabel#setupSummaryName {{ {strong} }}"
         f"QFrame#setupChoice {{ background: {palette['panel']}; border: 2px solid {ring}; "
         f"border-radius: {card_radius}px; padding: 0; }}"
@@ -1698,6 +1696,10 @@ def pack_stylesheet(
         # frame line, over the first row of what it names.
         f"QGroupBox {{ margin-top: {round(type_pt('body', knobs['text']) * 1.9) + 4}px; }}"
         f"QGroupBox::title {{ subcontrol-origin: margin; left: {card + 4}px; padding: 0 4px; }}"
+        # Qt draws an example in a box at half the text colour, about 3.5 to 1 on white (#95): the muted
+        # colour, moved only as far as 4.5 to 1 on the field and the card takes.
+        f"QLineEdit, QPlainTextEdit {{ placeholder-text-color: "
+        f"{fit_lightness(palette['muted'], (palette['field'], palette['panel']), AA_TEXT)}; }}"
         f"QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {{ background: {palette['field']}; "
         f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; "
         f"min-height: {field_min}px; {edges} }}"
