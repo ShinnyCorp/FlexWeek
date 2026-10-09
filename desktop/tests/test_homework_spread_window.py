@@ -4,6 +4,8 @@ second sheet to answer. The clock is held at Thursday 10:00 of the week on scree
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -29,6 +31,34 @@ def sessions_of(win: NativeWindow, assignment_id: str) -> list[dict]:
         (block for block in win.session.blocks if block.get("assignment_id") == assignment_id),
         key=lambda block: (block["days"][0], block.get("start") or ""),
     )
+
+
+def test_spread_starts_on_the_held_clock_when_selected_day_is_still_wall_friday(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert date.today().weekday() == 4, "needs wall calendar Friday to expose the signup leak"
+    window.session.selected_day = date.today().isoformat()
+    due = sunday_due(window.session.week_start)[:10]
+
+    def enter(dialog: HomeworkDialog) -> int:
+        dialog.show()
+        dialog.title.setText("Wall Friday leak")
+        dialog.estimate.setValue(180)
+        dialog.due.date.setDate(QDate.fromString(due, "yyyy-MM-dd"))
+        dialog.spread_choice.setCurrentIndex(1)
+        dialog.accept()
+        return dialog.result()
+
+    opened_with(monkeypatch, enter)
+    window._add_homework()
+    settled(qapp, window)
+    project = next(
+        item for item in window.session.assignments.values() if item["title"] == "Wall Friday leak"
+    )
+    sessions = sessions_of(window, project["id"])
+    assert [(block["days"], block["duration_min"]) for block in sessions] == [([3], 60), ([4], 60), ([5], 60)]
 
 
 def test_a_new_homework_is_saved_and_spread_over_the_days_to_its_due(
