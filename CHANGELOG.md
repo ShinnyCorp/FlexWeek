@@ -3,6 +3,13 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- Tab leaves the Notes box in Add homework and the other multi-line boxes in
+  sheets and Settings; Shift+Tab goes back. Tab no longer types a tab
+  character into them.
+
 ## [0.18.4] - 2026-10-09
 
 ### Changed

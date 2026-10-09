@@ -3308,6 +3308,8 @@ class HomeworkDialog(Dialog):
         extra.addRow("Spotify link", self.spotify)
         self.notes = QPlainTextEdit(self._original.get("notes") or "")
         self.notes.setObjectName("homeworkNotes")
+        # Tab leaves the note; a keyboard student must not type a tab character into it.
+        self.notes.setTabChangesFocus(True)
         # Three boxes at their 192px default made this dialog taller than a laptop screen.
         self.notes.setMaximumHeight(DETAIL_BOX_HEIGHT)
         extra.addRow("Notes", self.notes)

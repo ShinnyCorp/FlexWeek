@@ -1864,6 +1864,7 @@ class TransferPreviewDialog(QDialog):
         changes = preview.get("changes") or {}
         detail = QPlainTextEdit()
         detail.setReadOnly(True)
+        detail.setTabChangesFocus(True)
         detail.setPlainText(str(changes))
         layout.addWidget(detail)
         buttons = QDialogButtonBox(
