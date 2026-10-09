@@ -600,6 +600,10 @@ Notepad, #95's wording and parts of #74, #90 and #101 were already done):
   #28 (Month rows shrink when the plan panel is open), #29 (slide, not jump),
   #30 (a lighter red in Dark), #86 (narrow empty weekends where cut), #102
   (one short and one long date format); close #31.
+- #101 (Claude's call, Jonathan may override): "placed" names one homework's
+  status ("Not placed yet", "Placed Tue 16:00") and "planned" a time total
+  ("2 h 30 min planned"), as 0.18.2 already made "Planned" the total in every
+  design; no sweep of either word.
 
 - **Designs.** #21 Clay: Soccer's visible sliver is a bare bar and Friday's
   side card an outlined bar with no name; the side cards use a smaller hour
