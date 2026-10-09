@@ -137,6 +137,21 @@ in 0.18.2.
   times for each animation on the built app, worst first), then animate
   still pictures where effects are the cost, as J12 did for the Settings
   slide. → 0.18.4.
+- J15 (2026-10-09): opening a sheet, the background behind it lags a little
+  as it comes in. The sheet is built in the click (57 to 75 ms at 2560x1400)
+  before its dimmed background can start. Decided: the dim starts at the
+  click and the sheet is built behind it. → 0.18.4.
+- J16 (2026-10-09): Clay's change of day shows harsh artifacts. Frames of
+  the slide show each card's still picture stretched between its old and new
+  size (the old front shrinks to a blurred miniature, the next day grows to
+  about one and a half times with soft text), then a jump at landing to the
+  real layout (other hours shown, another heading, Saturday appearing). On
+  Day the side cards also come back live mid-slide and the day summary
+  shows twice. Decided: each card moves as two pictures, at its start and
+  end size, crossfading as it goes. → 0.18.4.
+- J17 (2026-10-09): Retro's Month should appear more like Retro's Settings
+  does. Decided: Month slides in over the dimmed desk as Settings does; Day
+  and Week keep their crossfade; Month keeps its look. → 0.18.4.
 - Noted, no new item: appearance lives on the account (pack and accent from
   short lists) and on the device (look, any-colour accent, knobs); this is
   the open decision about looks following the account.
