@@ -60,6 +60,14 @@ def seeded(qapp: QApplication, window: NativeWindow) -> None:  # noqa: F811
         qapp.processEvents()
 
 
+def use_clock(qapp: QApplication, window: NativeWindow, twenty_four: bool) -> None:  # noqa: F811
+    """Chooses the clock the way Settings does, so every surface redraws its times."""
+    window.session.preferences = {**(window.session.preferences or {}), "clock_24h": twenty_four}
+    window._sync_chrome()
+    for _ in range(5):
+        qapp.processEvents()
+
+
 def chips(window: NativeWindow) -> list[QPushButton]:  # noqa: F811
     found = window.rail.findChildren(QPushButton)
     return [chip for chip in found if chip.property("tray") and chip.isVisible()]
@@ -81,12 +89,16 @@ def test_the_rail_holds_next_not_placed_yet_and_the_focus_list_left_of_the_week(
     card = rail.next
     assert card.isVisible()
     assert (card.label.text(), card.title.text(), card.when.text(), card.then.text()) == (
-        "Next", "Soccer practice", "16:00 · in 20 min", "Then Dinner at 18:30"
+        "Next", "Soccer practice", "4:00 PM · in 20 min", "Then Dinner at 6:30 PM"
     )
     # In time order with the time at the right, today's said as Today.
-    assert rail.task_rows() == [("Chem lab report", "Mon 20:00"), ("History essay", "Today 19:00")]
+    assert rail.task_rows() == [("Chem lab report", "Mon 8:00 PM"), ("History essay", "Today 7:00 PM")]
     assert [chip.accessibleName() for chip in chips(window)] == ["Math worksheet · 1 h"]
     assert rail.waiting_count.text() == "1"
+    use_clock(qapp, window, True)
+    assert (card.when.text(), card.then.text()) == ("16:00 · in 20 min", "Then Dinner at 18:30")
+    assert rail.task_rows() == [("Chem lab report", "Mon 20:00"), ("History essay", "Today 19:00")]
+    use_clock(qapp, window, False)
     assert not window.focus_panel.isVisible()
     bar_bottom = window.solve_button.mapTo(window, QPoint(0, window.solve_button.height())).y()
     assert window.planner.mapTo(window, QPoint(0, 0)).y() - bar_bottom < 32
@@ -235,7 +247,10 @@ def test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_keep_their_time
     assert line_foot < hours.mapTo(window, hours.rect().topLeft()).y(), "the line sits above the hours"
     assert rail.height() < 80, "one slim line"
     # #82: what waits is a chip with the book and a chevron after the line, not words in it.
+    assert rail.line.text() == "Next: Soccer practice, 4:00 PM · in 20 min"
+    use_clock(qapp, window, True)
     assert rail.line.text() == "Next: Soccer practice, 16:00 · in 20 min"
+    use_clock(qapp, window, False)
     assert not rail.tasks.isVisible() and not rail.month.isVisible()
     waiting = rail.waiting_chip
     assert waiting.isVisible()
