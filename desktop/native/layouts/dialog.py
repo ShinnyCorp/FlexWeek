@@ -61,6 +61,7 @@ SEGMENTED_MOST = 3
 PICTURES_AFTER_SLIDE_MS = 40
 # How long a picture waits before looking again while something is moving.
 PICTURE_WAIT_MS = 50
+PICTURE_MAX_WAITS = 10
 
 
 class DesignGrid(CardGrid):
@@ -96,6 +97,7 @@ class DesignPicker(Choices):
         self._drawn: dict[int, int] = {}
         self._waiting: list[int] = []
         self._scheduled = False
+        self._picture_waits = 0
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
@@ -152,12 +154,15 @@ class DesignPicker(Choices):
 
     def _draw_next(self) -> None:
         self._scheduled = False
-        if busy() and not self.isVisible():
-            # Off screen, a picture would steal a turn from whatever is moving. On screen the slide
-            # has already been given its wait, and a leftover clock must not leave the cards blank.
+        if busy() and (not self.isVisible() or self._picture_waits < PICTURE_MAX_WAITS):
+            # Pictures can hold a fade for a tenth of a second. Bound the visible wait so a stuck
+            # clock cannot leave the cards blank; off-screen work can keep waiting.
+            if self.isVisible():
+                self._picture_waits += 1
             self._scheduled = True
             QTimer.singleShot(PICTURE_WAIT_MS, self._draw_next)
             return
+        self._picture_waits = 0
         if not self._draw_one():
             return
         if self._waiting:

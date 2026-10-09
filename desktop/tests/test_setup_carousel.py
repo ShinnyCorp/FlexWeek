@@ -307,3 +307,38 @@ def test_a_jump_during_a_step_leaves_only_the_middle_bright(qapp: QApplication) 
         QTest.qWait(450)
         for key, slide in setup.style_cards.items():
             assert (opacity(slide) == 1.0) == (key == middle(setup)), (key, opacity(slide))
+
+
+def test_the_carousel_neighbour_fades_through_its_midpoint(qapp):
+    with dressed(qapp) as (setup, _palette):
+        setup.motion = "normal"
+        before = middle(setup)
+        setup.carousel.step(1)
+        slide = setup.style_cards[before]
+        slide.fading.pause()
+        slide.fading.setCurrentTime(slide.fading.duration() // 2)
+        assert 0.45 < opacity(slide) < 1.0
+        slide.fading.setCurrentTime(slide.fading.duration())
+        assert opacity(slide) == pytest.approx(0.45)
+
+
+def test_setup_look_pictures_wait_for_a_fade_and_draw_after(qapp, monkeypatch):
+    from PySide6.QtGui import QPixmap
+
+    from desktop.native import motion
+
+    with dressed(qapp) as (setup, _palette):
+        setup._warm.stop()
+        card = next(iter(setup.look_cards.values()))
+        setup._pending_pictures = [(card, "retro", None, "slate", 206)]
+        calls = []
+        monkeypatch.setattr(setup._previews, "get", lambda *_: calls.append(1) or QPixmap(4, 4))
+        owner = QWidget(setup)
+        owner.show()
+        clock = motion.Clock(owner)
+        clock.start(10000, lambda _: None)
+        setup._draw_next_picture()
+        assert calls == []
+        clock.setCurrentTime(10000)
+        setup._draw_next_picture()
+        assert calls == [1]

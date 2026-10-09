@@ -110,6 +110,8 @@ def render(
     host: QWidget | None = None
     if main in VIEW_CLASSES:
         view = VIEW_CLASSES[main]()
+        # Render in the picture's width, so showing it does not rebuild a narrow first layout.
+        view.resize(size)
         options = {**options_for(None, main), **({"colour": colour} if colour else {})}
         view.show_week(
             Scene(

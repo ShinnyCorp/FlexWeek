@@ -939,3 +939,97 @@ def test_typing_during_a_sheet_fade_shows_at_once(qapp: QApplication) -> None:
     assert getattr(effect, "_picture", "missing") is None, "the still picture gave way so the letters show"
     sheet.close()
     window.close()
+
+
+@pytest.mark.parametrize("design", ["timeline", "mission", "bento", "retro", "clay", "one", "dial"])
+def test_a_design_preview_renders_once_at_its_final_width(qapp, monkeypatch, design):
+    from desktop.native import previews
+    from desktop.native.layouts.views import VIEW_CLASSES
+
+    apply_ui_effects("off")
+    calls = []
+    cls = VIEW_CLASSES[design]
+    render = cls.render
+
+    def counted(self, scene, changed):
+        calls.append(self.width())
+        return render(self, scene, changed)
+
+    monkeypatch.setattr(cls, "render", counted)
+    previews.render(design, None, "slate", None, 206)
+    assert calls == [1280], "a preview must not rebuild after a stale narrow first render"
+
+
+def test_visible_design_pictures_wait_for_motion_but_not_forever(qapp, monkeypatch):
+    from desktop.native import motion
+    from desktop.native.layouts import dialog
+
+    picker = dialog.DesignPicker("plan", "designs", "Design", "slate")
+    picker.show()
+    calls = []
+    monkeypatch.setattr(picker, "_draw_one", lambda: calls.append(1) or False)
+    monkeypatch.setattr(dialog.QTimer, "singleShot", lambda *_: None)
+    owner = QWidget()
+    owner.show()
+    clock = motion.Clock(owner)
+    clock.start(10000, lambda _: None)
+    picker._draw_next()
+    assert calls == [], "visible previews must wait while a fade runs"
+    clock.stop()
+    picker._draw_next()
+    assert calls == [1], "drawing resumes as soon as motion stops"
+    calls.clear()
+    clock.start(10000, lambda _: None)
+    for _ in range(10):
+        picker._draw_next()
+        assert calls == [], "ten waits are allowed before drawing through a stuck clock"
+    picker._draw_next()
+    assert calls == [1]
+    clock.stop()
+    picker.close()
+    owner.close()
+
+
+def test_paused_stopped_and_hidden_clocks_are_not_busy(qapp):
+    from desktop.native import motion
+
+    owner = QWidget()
+    owner.show()
+    clock = motion.Clock(owner)
+    clock.start(10000, lambda _: None)
+    assert motion.busy()
+    clock.pause()
+    assert not motion.busy(), "a paused clock is not moving"
+    held = clock.currentTime()
+    QTest.qWait(20)
+    assert clock.currentTime() == held
+    clock.resume()
+    assert motion.busy()
+    owner.hide()
+    assert not motion.busy()
+    owner.show()
+    assert motion.busy()
+    clock.stop()
+    assert not motion.busy()
+    owner.close()
+
+
+def test_a_click_in_a_fade_drops_its_picture_but_another_windows_key_does_not(qapp):
+    apply_ui_effects("normal")
+    owner = QWidget()
+    field = QLineEdit(owner)
+    owner.resize(200, 80)
+    owner.show()
+    other = QLineEdit()
+    other.show()
+    qapp.processEvents()
+    appear(owner, "normal")
+    effect = owner.graphicsEffect()
+    assert effect._picture is not None
+    QTest.keyClicks(other, "Elsewhere")
+    assert other.text() == "Elsewhere"
+    assert effect._picture is not None, "input in another window must not end this picture"
+    QTest.mouseClick(field, Qt.MouseButton.LeftButton)
+    assert effect._picture is None, "a click inside the fade shows its live contents"
+    owner.close()
+    other.close()

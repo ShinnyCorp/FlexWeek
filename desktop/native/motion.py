@@ -216,8 +216,11 @@ def busy() -> bool:
     """Whether any animation is running now on a widget that is on screen."""
     for clock in list(_RUNNING):
         try:
-            if clock.state() == QAbstractAnimation.State.Stopped and not clock._paused:
+            state = clock.state()
+            if state == QAbstractAnimation.State.Stopped:
                 _RUNNING.discard(clock)
+                continue
+            if state == QAbstractAnimation.State.Paused:
                 continue
             parent = clock.parent()
             if isinstance(parent, QWidget) and not parent.isVisible():

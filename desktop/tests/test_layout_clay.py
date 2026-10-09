@@ -852,3 +852,15 @@ def test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not(qapp: QApp
         return image
 
     assert painted(2) == painted(1), "a block that shares its time has a mark on it"
+
+
+def test_the_row_is_seven_eighths_of_the_way_at_half_time(qapp, monkeypatch):
+    view = shown(qapp)
+    motion.apply_ui_effects("normal")
+    view.findChild(QPushButton, "clayAhead").click()
+    shares = []
+    monkeypatch.setattr(view.row, "_slid", shares.append)
+    view.row._slide.pause()
+    view.row._slide.setCurrentTime(120)
+    assert shares == [pytest.approx(0.875)]
+    view.row._slide.stop()
