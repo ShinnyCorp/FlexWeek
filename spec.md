@@ -272,7 +272,10 @@ off the calendar.
 The top bar is the week's arrows, Today and the title on the left; on the right, Day,
 Week, Month and My day as one segmented control, then Add, the one filled
 button (a click adds homework; its arrow offers a fixed time, School hours and
-the type the next drag makes), Plan my homework, More and the gear. Ctrl+K opens
+the type the next drag makes), Plan my homework (the one tinted button: the
+accent at 14 % behind accent words, as is its "Plan here" twin in rows), More
+and the gear. Secondary actions are outlined, and a button that only
+dismisses (Close) is plain text. Ctrl+K opens
 a command bar that adds, goes to any view or opens any homework by typing a few
 letters of it. Today's app has a rail left of Day and Week: a small month that
 folds away, what is next, Not placed yet, and the homework a focus timer can
