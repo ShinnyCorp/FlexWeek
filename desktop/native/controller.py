@@ -212,8 +212,7 @@ class NativeSession(QObject):
         self.busy = False
         self.message = ""
         self.planner_view = "week"
-        self._now_ms = lambda: int(time.time() * 1000)
-        self.selected_day = datetime.fromtimestamp(self._now_ms() / 1000).date().isoformat()
+        self.selected_day = date.today().isoformat()
         self.day_data: dict | None = None
         self.selected_month: str | None = None
         self.month_data: dict | None = None
@@ -264,6 +263,7 @@ class NativeSession(QObject):
         self.new_account = False
         self.focus_store: dict[int, dict | None] = {}
         self.look: dict = sanitize_look(None)
+        self.now_ms = lambda: int(time.time() * 1000)
         self._focus_busy = False
         self._pending_focus: dict | None = None
         self._record_history = True
@@ -339,7 +339,7 @@ class NativeSession(QObject):
         self.conflict = False
         self.pending_save = None
         self.planner_view = "week"
-        self.selected_day = datetime.fromtimestamp(self._now_ms() / 1000).date().isoformat()
+        self.selected_day = date.today().isoformat()
         self.day_data = None
         self.selected_month = None
         self.month_data = None
@@ -409,36 +409,6 @@ class NativeSession(QObject):
             self.selected_day = self.week_start
             return
         self.selected_day = date_for_day(self.week_start, weekday)
-
-    @property
-    def now_ms(self) -> Callable[[], int]:
-        return self._now_ms
-
-    @now_ms.setter
-    def now_ms(self, fn: Callable[[], int]) -> None:
-        self._now_ms = fn
-        self._realign_selected_day_with_clock_when_still_wall_today()
-
-    def _session_today_iso(self) -> str:
-        return datetime.fromtimestamp(self._now_ms() / 1000).date().isoformat()
-
-    def _realign_selected_day_with_clock_when_still_wall_today(self) -> None:
-        """Signup leaves selected_day on wall today; a held clock must not trail a day behind it."""
-        wall = date.today().isoformat()
-        if self.selected_day != wall:
-            return
-        clock_day = self._session_today_iso()
-        if clock_day == self.selected_day:
-            return
-        self.selected_day = clock_day
-        self._ensure_selected_day()
-
-    def _spread_from_date(self, from_date: str) -> str:
-        """Later of session today and the day on screen, unless the screen day is still wall today."""
-        today = self._session_today_iso()
-        if from_date > today and from_date == date.today().isoformat():
-            return today
-        return from_date
 
     def _held(self) -> bool:
         return bool(self.dirty or self.dirty_assignments or self.pending_save)
@@ -1012,7 +982,7 @@ class NativeSession(QObject):
     def spread_after_save(self, assignment_id: str, session_min: int, from_date: str) -> None:
         """Once the save now under way lands, spread this homework into sessions of `session_min` from
         `from_date` and add them, with no preview to answer: the editor already said what they would be."""
-        self._spread_after_save = (assignment_id, session_min, self._spread_from_date(from_date))
+        self._spread_after_save = (assignment_id, session_min, from_date)
 
     def place_session(
         self, block_id: str, day: int, start_min: int, duration_min: int | None = None
