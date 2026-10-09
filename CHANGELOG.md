@@ -14,6 +14,8 @@ All notable changes to FlexWeek are documented here. Format follows
   the list and says "Activity removed" to a screen reader.
 - Text size is always on screen: the first card of Settings > Look, above
   Colours. It is no longer hidden behind "Show shape, spacing and type".
+- Plan offers every day up to a due date after this Sunday, weekend included,
+  not only Monday to Friday.
 
 ## [0.18.4] - 2026-10-09
 

@@ -148,7 +148,7 @@ def test_the_native_client_only_accepts_a_loopback_origin(qapp: QApplication) ->
 def test_session_days_cover_the_due_date_inside_the_open_week() -> None:
     assert session_days("2026-09-07", "2026-09-07T21:00") == [0]
     assert session_days("2026-09-07", "2026-09-11T21:00") == [0, 1, 2, 3, 4]
-    assert session_days("2026-09-07", "2026-09-20T21:00") == [0, 1, 2, 3, 4]
+    assert session_days("2026-09-07", "2026-09-20T21:00") == [0, 1, 2, 3, 4, 5, 6]
     assert session_days("2026-09-07", "2026-08-31T21:00") == [0]
 
 
