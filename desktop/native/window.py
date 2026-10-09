@@ -3693,8 +3693,10 @@ class NativeWindow(QMainWindow):
             box = inner.layout()
             if box is not None:
                 box.activate()
+        # One picture a turn: drawn all at once, about a tenth of a second each, they held every key
+        # and click for most of a second just after the window opened.
         for picker in page.findChildren(DesignPicker):
-            picker.warm()
+            picker.draw_soon()
 
     def _build_settings_page(self) -> SettingsPage:
         account = self.session.account

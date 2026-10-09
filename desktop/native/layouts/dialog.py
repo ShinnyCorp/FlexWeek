@@ -168,6 +168,11 @@ class DesignPicker(Choices):
         if self._waiting:
             self._schedule()
 
+    def draw_soon(self) -> None:
+        """Start drawing the pictures still waiting now, one a turn, rather than after the slide's
+        wait. Each waits while anything moves, as on screen."""
+        self._schedule()
+
     def warm(self) -> None:
         """Draw every picture still waiting, now. Used while Settings is not on screen, so opening
         it does not spend the time."""

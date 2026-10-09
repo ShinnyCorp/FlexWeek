@@ -22,6 +22,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtGui import QColor, QCursor, QFont, QFontMetricsF, QImage, QPainter
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
+    from shiboken6 import isValid
 
     from desktop.native import motion
     from desktop.native.hours import canvas as canvas_module
@@ -966,6 +967,24 @@ def test_only_one_day_summary_shows_while_the_row_slides(qapp: QApplication) -> 
     assert summaries == [], "a live claySummary is stacking on the slide's pictures"
     row._slide.stop()
     row._land()
+
+
+def test_a_summary_replaced_mid_slide_is_the_one_shown_when_it_lands(qapp: QApplication) -> None:
+    """Day's summary can be replaced while the row slides. When it lands, the new one shows in the
+    row, and the replaced one is never shown again, least of all as a window of its own."""
+    view = shown(qapp, tab="day")
+    motion.apply_ui_effects("normal")
+    row = view.row
+    row._go(4, "slide", summary=view._summary(view.scene, 4))
+    assert row._snaps is not None
+    old = row._summary
+    fresh = view._summary(view.scene, 4)
+    row.set_summary(fresh)
+    row._slide.stop()
+    row._land()
+    assert row._summary is fresh
+    assert fresh.parentWidget() is row and fresh.isVisible(), "the new summary shows once landed"
+    assert old is None or not isValid(old) or not old.isVisible(), "the replaced summary stays hidden"
 
 
 def test_a_card_entering_from_off_screen_has_a_picture(qapp: QApplication) -> None:

@@ -127,3 +127,35 @@ def test_settings_hears_the_status_once_and_never_warns_on_open(
     assert heard.count("Saved") == 1
     window._settings.close_page()
     still(window)
+
+
+def test_settings_pictures_made_ahead_are_drawn_a_turn_at_a_time(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+) -> None:
+    """Settings is built ahead, off screen, after the window opens. Its design pictures take about a
+    tenth of a second each; drawn all at once they held every key and click for most of a second.
+    Getting Settings ready draws none of them itself, and all of them are drawn soon after."""
+    from desktop.native.layouts import dialog as dialog_module
+    from desktop.native.layouts.dialog import DesignPicker
+    from desktop.tests.window_support import wait_until
+
+    if window._settings is None:
+        window._prepare_settings_page()
+    page = window._settings
+    assert page is not None
+    pickers = page.findChildren(DesignPicker)
+    assert pickers
+    drawn: list[str] = []
+
+    class Counting(dialog_module.Previews):  # type: ignore[misc, valid-type]
+        def get(self, layout_id: str, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            drawn.append(layout_id)
+            return super().get(layout_id, *args, **kwargs)
+
+    monkeypatch.setattr(dialog_module, "Previews", Counting)
+    for picker in pickers:
+        picker._waiting = list(range(len(picker.cards)))
+    window._warm_settings_pictures()
+    assert drawn == [], "getting Settings ready drew pictures in the same turn"
+    wait_until(qapp, lambda: all(not picker._waiting for picker in pickers), 10.0)
+    assert len(drawn) == sum(len(picker.cards) for picker in pickers)

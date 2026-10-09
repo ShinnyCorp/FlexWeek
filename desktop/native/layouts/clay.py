@@ -950,13 +950,24 @@ class Row(QWidget):
             self.ahead.raise_()
 
     def _bind_summary(self, summary: QWidget | None, *, show: bool) -> None:
-        if self._summary is not None and self._summary is not summary:
-            self._summary.setParent(None)
-            self._summary.deleteLater()
+        old = self._summary
+        if old is not None and old is not summary:
+            # A panel replaced mid-slide must not be given back at landing: it has no parent then,
+            # and shown it would be a window of its own.
+            if old in self._held_back:
+                self._held_back.remove(old)
+            old.setParent(None)
+            old.deleteLater()
         self._summary = summary
         if summary is None:
             return
         summary.setParent(self)
+        if self._snaps is not None:
+            # Under the pictures until the slide lands or stops, with the rest of what is held.
+            summary.hide()
+            if summary not in self._held_back:
+                self._held_back.append(summary)
+            return
         summary.setVisible(show)
 
     def _build(self, scene: Scene) -> None:
