@@ -16,6 +16,8 @@ All notable changes to FlexWeek are documented here. Format follows
   Colours. It is no longer hidden behind "Show shape, spacing and type".
 - Plan offers every day up to a due date after this Sunday, weekend included,
   not only Monday to Friday.
+- Screen readers name each field in the homework, event and Setup forms by
+  its label, not by its current value or its hint.
 
 ## [0.18.4] - 2026-10-09
 

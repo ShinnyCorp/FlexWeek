@@ -1976,6 +1976,18 @@ def _first_line(field: QWidget | QLayout | None) -> QWidget | None:
     return field
 
 
+def _name_field(label: QLabel, field: QWidget | QLayout | None, words: str) -> None:
+    """Tie a label to its field's first control, so a screen reader reads the words as the field's
+    name. A combo box is named by its current text unless it has a label, so the buddy is what counts.
+    The placeholder is a hint and never the name."""
+    line = _first_line(field)
+    if not words or line is None:
+        return
+    label.setBuddy(line)
+    if not line.accessibleName():
+        line.setAccessibleName(words)
+
+
 class FieldLabel(QLabel):
     """A form's label, as tall as its field's first line and centred in it, so its words sit on the
     same line as the words in the field. QFormLayout set a label level with the field's top edge,
@@ -2023,10 +2035,13 @@ class Form(QFormLayout):
         if len(row) == 2 and isinstance(row[0], str):
             words, field = row
             if not self.stacked:
-                super().addRow(FieldLabel(words, _first_line(field)), field)
+                label = FieldLabel(words, _first_line(field))
+                _name_field(label, field, words)
+                super().addRow(label, field)
             elif words:
                 label = QLabel(words)
                 label.setObjectName("fieldLabel")
+                _name_field(label, field, words)
                 super().addRow(label, field)
             else:
                 super().addRow(field)
@@ -2045,6 +2060,7 @@ class Form(QFormLayout):
             column.setSpacing(STACKED_GAP)
             label = QLabel(words)
             label.setObjectName("fieldLabel")
+            _name_field(label, field, words)
             column.addWidget(label)
             column.addWidget(field)
             line.addLayout(column)
@@ -3316,8 +3332,10 @@ class HomeworkDialog(Dialog):
         link_row = QHBoxLayout()
         self.link_label = _line("homeworkLinkLabel", "", 80)
         self.link_label.setPlaceholderText("Link label")
+        self.link_label.setAccessibleName("Link text")
         self.link_url = _line("homeworkLinkUrl", "", 500)
         self.link_url.setPlaceholderText("https://")
+        self.link_url.setAccessibleName("Link address")
         # Save is the answer; Add link, Add step and Spread are plain beside it.
         add_link = QPushButton("Add link")
         add_link.setProperty("quiet", True)
@@ -3339,6 +3357,7 @@ class HomeworkDialog(Dialog):
         check_row = QHBoxLayout()
         self.check_text = _line("homeworkCheckText", "", 80)
         self.check_text.setPlaceholderText("Checklist step")
+        self.check_text.setAccessibleName("Step text")
         add_check = QPushButton("Add step")
         add_check.setProperty("quiet", True)
         add_check.setObjectName("addHomeworkCheck")

@@ -55,9 +55,6 @@ def made(qapp):
 
 # 0f ---------------------------------------------------------------------------------------------
 
-KNOWN_0F = "known failure (item 0f): stacked Form rows never setBuddy; fields are named '' or by their value"
-
-
 def fields_of(root: QWidget) -> list[QWidget]:
     out: list[QWidget] = []
     for widget in root.findChildren(QWidget):
@@ -74,16 +71,22 @@ def unnamed(root: QWidget) -> list[str]:
     bad = []
     buddies = {label.buddy() for label in root.findChildren(QLabel) if label.buddy() is not None}
     for field in fields_of(root):
+        label = f"{type(field).__name__}:{field.objectName()}"
+        if isinstance(field, QComboBox):
+            # Qt 6.11 answers a combo box's accessible Name with its current text whatever is set, so
+            # a screen reader takes its label from the "labelled by" relation that a buddy creates.
+            # A combo with no visible label carries its own accessible name instead.
+            own = field.accessibleName().strip()
+            if field not in buddies and (not own or own == field.currentText()):
+                bad.append(f"{label} has no buddy label and no name of its own")
+            continue
         name = a11y_name(field).strip()
-        value = field.currentText() if isinstance(field, (QComboBox, Segmented)) else ""
+        value = field.currentText() if isinstance(field, Segmented) else ""
         if isinstance(field, QLineEdit):
             value = field.text()
         placeholder = getattr(field, "placeholderText", lambda: "")()
-        label = f"{type(field).__name__}:{field.objectName()}"
         if not name or name in (value, placeholder):
             bad.append(f"{label} named {name!r}")
-        if isinstance(field, QComboBox) and field not in buddies:
-            bad.append(f"{label} has no buddy label")
     return bad
 
 
@@ -119,7 +122,6 @@ SHEETS = {"add-homework": open_add_homework, "block-editor": open_block_editor, 
 
 
 @pytest.mark.parametrize("sheet", list(SHEETS))
-@pytest.mark.xfail(strict=True, reason=KNOWN_0F)
 def test_0f_every_field_has_a_name_that_is_not_its_value_and_combos_have_a_buddy(qapp, made, sheet) -> None:
     root = SHEETS[sheet](qapp, made)
     assert fields_of(root), "found no fields"
@@ -181,6 +183,7 @@ def test_0h_tab_leaves_notes_and_shift_tab_comes_back(qapp, made) -> None:
 
 
 # 0i / 0j ----------------------------------------------------------------------------------------
+
 
 
 def tab_walk(setup, start: QWidget, limit: int = 120) -> list[QWidget]:
