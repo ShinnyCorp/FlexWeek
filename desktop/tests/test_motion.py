@@ -818,6 +818,41 @@ def test_the_clock_follows_the_screen_and_falls_back_to_60(qapp: QApplication) -
     host.close()
 
 
+def test_a_design_picture_waits_while_something_moves(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A picture takes about a tenth of a second, so drawn in the middle of a fade it held that fade
+    still for as long (Retro's week to day, 2026-10-08). It waits until nothing moves."""
+    from desktop.native import motion as moving
+    from desktop.native.layouts import dialog
+    from desktop.native.layouts.dialog import DesignPicker
+
+    drawn: list[int] = []
+
+    class Counting:
+        def get(self, *_args: object) -> QPixmap:
+            drawn.append(1)
+            return QPixmap(4, 4)
+
+    monkeypatch.setattr(dialog, "Previews", Counting)
+    picker = DesignPicker("plan", "designs", "Design", "slate")
+    owner = QWidget()
+    owner.resize(40, 40)
+    owner.show()
+    moving.appear(owner, "normal")
+    assert moving.busy()
+    picker._draw_next()
+    assert drawn == [], "nothing is drawn while the fade runs"
+    deadline = time.monotonic() + 3
+    while not drawn and time.monotonic() < deadline:
+        qapp.processEvents()
+    assert not moving.busy()
+    assert drawn == [1], "once the fade has ended the picture is drawn"
+    for widget in (picker, owner):
+        widget.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
 def test_design_pictures_are_drawn_one_a_turn_and_can_be_drawn_ahead(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:

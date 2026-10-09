@@ -29,7 +29,7 @@ from desktop.native.layouts.registry import (
     layouts_for,
     options_for,
 )
-from desktop.native.motion import OVER_MS, duration
+from desktop.native.motion import OVER_MS, busy, duration
 from desktop.native.previews import Previews
 from desktop.native.widgets import (
     CARD_GAP,
@@ -59,6 +59,8 @@ EXPERIMENTAL_TAG = "Experimental"
 SEGMENTED_MOST = 3
 # A moment past the slide before the first design picture is drawn, so its last frame is not caught.
 PICTURES_AFTER_SLIDE_MS = 40
+# How long a picture waits before looking again while something is moving.
+PICTURE_WAIT_MS = 50
 
 
 class DesignGrid(CardGrid):
@@ -150,6 +152,11 @@ class DesignPicker(Choices):
 
     def _draw_next(self) -> None:
         self._scheduled = False
+        if busy():
+            # A picture takes about 100 ms; drawn now it would stop whatever is moving for that long.
+            self._scheduled = True
+            QTimer.singleShot(PICTURE_WAIT_MS, self._draw_next)
+            return
         if not self._draw_one():
             return
         if self._waiting:

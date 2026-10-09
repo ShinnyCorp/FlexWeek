@@ -10,6 +10,7 @@ and every design's own motion asks this module how far and how long.
 from __future__ import annotations
 
 import contextlib
+import weakref
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
@@ -183,6 +184,15 @@ class Shift(QGraphicsEffect):
         painter.restore()
 
 
+# Every clock still running, so slow work can wait until nothing is moving.
+_RUNNING: weakref.WeakSet[Clock] = weakref.WeakSet()
+
+
+def busy() -> bool:
+    """Whether any animation is running now."""
+    return len(_RUNNING) > 0
+
+
 class Clock(QObject):
     """A frame clock for one animation. Qt's own animation clock stays near 60 Hz, and this PySide
     has no way to replace it, so a precise timer follows the screen. The time it reports is how long
@@ -210,11 +220,13 @@ class Clock(QObject):
         self._done = False
         self._elapsed.start()
         self._retarget()
+        _RUNNING.add(self)
         self._timer.start()
 
     def stop(self) -> None:
         self._stopped = True
         self._timer.stop()
+        _RUNNING.discard(self)
 
     def setCurrentTime(self, ms: int) -> None:  # noqa: N802
         """Jump to `ms` milliseconds in, and finish when that is the end."""
@@ -243,6 +255,7 @@ class Clock(QObject):
         if ms >= self._total:
             self._done = True
             self._timer.stop()
+            _RUNNING.discard(self)
             self._step(float(self._total))
             self.finished.emit()
             return
