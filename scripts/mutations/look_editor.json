@@ -44,8 +44,8 @@
  {
   "file": "desktop/native/look_editor.py",
   "name": "Fix all fixes nothing",
-  "old": "        custom = apply_fix(custom, found[0])",
-  "new": "        break",
+  "old": "            custom = apply_fix(custom, problem)\n",
+  "new": "            pass\n",
   "test": "desktop/tests/test_look_editor.py::test_every_pair_under_four_and_a_half_to_one_has_a_fix_and_fix_all_makes_them_read"
  },
  {

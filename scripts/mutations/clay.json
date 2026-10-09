@@ -121,7 +121,7 @@
  {
   "file": "desktop/native/layouts/clay.py",
   "name": "the dish names the day in full",
-  "old": "    words = f\"{DAYS[soonest.weekday()]} {soonest.day}\"\n",
+  "old": "    words = day_short(soonest)\n",
   "new": "    words = f\"{DAY_FULL[soonest.weekday()]} {soonest.day}\"\n",
   "test": "desktop/tests/test_layout_clay.py::test_the_dish_holds_what_is_not_placed_yet_with_when_it_is_due"
  },

@@ -324,7 +324,7 @@
  {
   "file": "desktop/native/window.py",
   "name": "a date carried on Month says nothing",
-  "old": "            self._say_when_saved(dated_words(self._title_of(change.block_id, change.from_iso), change.to_iso))\n",
+  "old": "            self._say_when_saved(dated_words(title, change.to_iso, self._today()))\n",
   "new": "            pass\n",
   "test": "desktop/tests/test_drag_results.py::test_a_chip_carried_on_month_says_what_it_did"
  },
@@ -386,10 +386,10 @@
  },
  {
   "file": "desktop/native/window.py",
-  "name": "a view switch leaves the toast up",
-  "old": "            self._toast_where = self._where()\n            self.toast.hide()\n",
-  "new": "            self._toast_where = self._where()\n",
-  "test": "desktop/tests/test_drag_results.py::test_a_view_switch_takes_the_toast_away"
+  "name": "a view switch takes the Undo toast away again",
+  "old": "        if self.session.week_start != self._toast_week:\n",
+  "new": "        if True:\n",
+  "test": "desktop/tests/test_drag_results.py::test_a_view_switch_keeps_the_toast_and_its_undo"
  },
  {
   "file": "desktop/native/widgets.py",
