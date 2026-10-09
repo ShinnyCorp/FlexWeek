@@ -339,6 +339,28 @@ def test_hours_cut_short_for_a_moment_go_back_to_where_they_were(qapp: QApplicat
     assert bar.value() == end
 
 
+def test_y_for_is_safe_when_the_canvas_has_no_tracks(qapp: QApplication) -> None:
+    """Clay's card slide can leave a kept centre while `_lay_out_now` clears the tracks; `_y_for` must
+    not index an empty list (often seen as IndexError from `viewportEvent`)."""
+    view = hours_placed_by_hand(qapp)
+    scroll = view.scroll
+    scroll.setGeometry(0, 0, 40, 520)
+    settle(qapp)
+    assert not scroll.canvas.tracks
+    assert scroll._y_for(8 * 60) == 0.0
+
+    scroll.setGeometry(0, 0, 760, 520)
+    settle(qapp)
+    scroll.scroll_to(10 * 60)
+    bar = scroll.verticalScrollBar()
+    scroll._placed = bar.value()
+    scroll.setGeometry(0, 0, 40, 520)
+    if scroll.canvas.tracks:
+        scroll._keep_centre()
+    QApplication.sendEvent(scroll.viewport(), QEvent(QEvent.Type.Resize))
+    settle(qapp)
+
+
 def test_a_time_asked_for_while_the_hours_have_no_room_is_shown_once_they_do(qapp: QApplication) -> None:
     """Clay deck's open card slides in from a narrow neighbour, and for a moment its hours have no width
     at all. A time asked for then waited for the hours to be shown again, which never came, and the

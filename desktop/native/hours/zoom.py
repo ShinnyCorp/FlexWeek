@@ -497,7 +497,9 @@ class HoursScroll(QScrollArea):
 
     def _y_for(self, minute: float) -> float:
         """How far along the hours, down or across, a minute lies."""
-        track = self.canvas.tracks[0]
+        track = self.canvas.tracks[0] if self.canvas.tracks else None
+        if track is None:
+            return 0.0
         start = track.area.top() if self._down else track.area.left()
         return start + track.offset(minute)
 
