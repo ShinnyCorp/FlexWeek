@@ -20,8 +20,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from math import ceil
 
-from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QWheelEvent
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFontMetricsF, QMouseEvent, QPainter, QWheelEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
     QFrame,
@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.native import icons
+from desktop.native.fonts import at_scale
 from desktop.native.hours.canvas import HoursCanvas
 from desktop.native.hours.geometry import FIRST, LAST, Axis
 from desktop.native.look import ZOOM_PILL_PX
@@ -109,6 +110,30 @@ class ZoomButton(QPushButton):
         return self.sizeHint()
 
 
+class ZoomReason(QWidget):
+    """One caption line under the pill, saying why a zoom button is greyed. A greyed button shows no
+    tooltip, so the reason is drawn here, in the look's muted ink."""
+
+    def __init__(self, name: str, parent: QWidget, ink: Callable[[], QColor]) -> None:
+        super().__init__(parent)
+        self.setObjectName(name)
+        self.words = ""
+        self.ink = ink
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.hide()
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        metrics = QFontMetricsF(self.font())
+        return QSize(ceil(metrics.horizontalAdvance(self.words)) + 2, ceil(metrics.height()))
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setPen(self.ink())
+        left_middle = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        painter.drawText(QRectF(self.rect()), left_middle, self.words)
+        painter.end()
+
+
 class ZoomButtons(QWidget):
     """Zoom out and zoom in for the corner above the hour labels: a small "− +" pill (decision 12)."""
 
@@ -135,6 +160,36 @@ class ZoomButtons(QWidget):
         inside.addWidget(self.into)
         row.addWidget(self.pill, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addStretch(1)
+        # Each button is drawn 22 px inside the pill's 1 px edge; a press on that edge counts for it.
+        self.pill.installEventFilter(self)
+        self._pressed: ZoomButton | None = None
+
+    def hit_area(self, button: ZoomButton) -> QRect:
+        """Where a press counts for `button`, in the pill's frame: the 24 px square the pill's height
+        gives it, so the look stays as drawn."""
+        return button.geometry().adjusted(-1, -1, 1, 1)
+
+    def _button_at(self, at: QPoint) -> ZoomButton | None:
+        """The button whose hit area holds `at` on the pill's own edge, the nearer where two do. A
+        press on a button itself is the button's."""
+        if any(button.geometry().contains(at) for button in (self.out, self.into)):
+            return None
+        near = [button for button in (self.out, self.into) if self.hit_area(button).contains(at)]
+        return min(near, key=lambda button: abs(button.geometry().center().x() - at.x()), default=None)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        left = Qt.MouseButton.LeftButton
+        if isinstance(event, QMouseEvent) and watched is self.pill and event.button() == left:
+            at = event.position().toPoint()
+            if event.type() == QEvent.Type.MouseButtonPress:
+                self._pressed = self._button_at(at)
+                return self._pressed is not None
+            if event.type() == QEvent.Type.MouseButtonRelease and self._pressed is not None:
+                pressed, self._pressed = self._pressed, None
+                if self._button_at(at) is pressed:
+                    pressed.click()
+                return True
+        return super().eventFilter(watched, event)
 
     def _button(self, icon: str, name: str, words: str, keys: str) -> ZoomButton:
         button = ZoomButton()
@@ -202,6 +257,8 @@ class HoursScroll(QScrollArea):
         self._row.setContentsMargins(0, 0, 0, 0)
         self._row.setSpacing(0)
         self._row.addWidget(self.buttons, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.reason = ZoomReason(f"{name}ZoomReason", self.header, self._muted)
+        self._said = ""
         self.header.installEventFilter(self)
         self.setFrameShape(QFrame.Shape.NoFrame)
         # The hours inside it are the Tab stop; the sheet around them is not a second one.
@@ -294,6 +351,19 @@ class HoursScroll(QScrollArea):
     def _show_limits(self) -> None:
         self.buttons.out.setEnabled(self.px > self.scale.levels[0])
         self.buttons.into.setEnabled(self.px < self.scale.levels[-1])
+        said = self._limit_words()
+        if said != self._said:
+            self._said = said
+            self._place_header()
+
+    def _limit_words(self) -> str:
+        """Why a button is greyed, for the line under the pill. Time running across keeps its corner at
+        the strip's fixed height, so only down hours have the line."""
+        if not self._down:
+            return ""
+        if not self.buttons.out.isEnabled():
+            return "Smallest zoom reached"
+        return "Largest zoom reached" if not self.buttons.into.isEnabled() else ""
 
     # Scrolling to a time
 
@@ -530,11 +600,29 @@ class HoursScroll(QScrollArea):
         if corner != self.canvas.gutter:
             self.canvas.gutter = corner
             self.canvas.relayout()
+        under = self._place_reason()
+        self._row.setContentsMargins(0, 0, 0, under)
         tall = max(30, self.header.sizeHint().height())
+        self.reason.move(4, tall - under + 1)
         if self.viewportMargins().top() != tall:
             self.setViewportMargins(0, tall, 0, 0)
         port = self.viewport().geometry()
         self.header.setGeometry(QRect(port.left(), port.top() - tall, port.width(), tall))
+
+    def _muted(self) -> QColor:
+        """The look's quiet ink, read when the line is drawn so a new look reaches it."""
+        colours = self.canvas.painter.colours
+        return QColor(colours["muted"]) if "muted" in colours else self.palette().windowText().color()
+
+    def _place_reason(self) -> int:
+        """Set the line under the pill and return the room it takes under the header's row, or 0."""
+        self.reason.words = self._said
+        self.reason.setVisible(bool(self._said))
+        if not self._said:
+            return 0
+        self.reason.setFont(at_scale(self.font(), "caption", self.canvas.painter.scale(self.font())))
+        self.reason.resize(self.reason.sizeHint())
+        return self.reason.height() + 2
 
     def _place_side(self, wide: int) -> None:
         """Across: the corner sits over the strip, as tall as the canvas's own header of hours, and

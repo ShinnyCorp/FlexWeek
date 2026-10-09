@@ -165,6 +165,8 @@ class DayName(QLabel):
         self.name, self.date, self.homework = DAYS[day], "", 0
         self.colours = Colours()
         self.look: dict | None = None
+        # Day's "Hours" is a heading as "Agenda" is: the heading size, the text colour, today or not.
+        self.heading = False
         self.setProperty("today", False)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setText(self.name)
@@ -181,8 +183,9 @@ class DayName(QLabel):
         self.update()
 
     def _fonts(self) -> tuple[QFont, QFont, QFont]:
-        body = _scaled(self.font(), "body", self.look)
-        strong = _scaled(self.font(), "body", self.look, QFont.Weight.DemiBold)
+        role = "heading" if self.heading else "body"
+        strong = _scaled(self.font(), role, self.look, QFont.Weight.DemiBold)
+        body = strong if self.heading else _scaled(self.font(), role, self.look)
         small = time_font(_scaled(self.font(), "caption", self.look))
         return body, strong, small
 
@@ -219,7 +222,8 @@ class DayName(QLabel):
         x = float(SPACING[2])
         name_font = strong if today else body
         painter.setFont(name_font)
-        painter.setPen(QColor(colours.accent_text if today else colours.muted))
+        ink = colours.text if self.heading else colours.accent_text if today else colours.muted
+        painter.setPen(QColor(ink))
         name_width = QFontMetricsF(name_font).horizontalAdvance(self.name)
         painter.drawText(QRectF(x, y, name_width + 1, top), Qt.AlignmentFlag.AlignVCenter, self.name)
         x += name_width + SPACING[0]
@@ -719,6 +723,7 @@ class ClassicDay(QFrame):
         row = QHBoxLayout(names)
         row.setContentsMargins(0, 0, 0, 0)
         self.name = DayName(0)
+        self.name.heading = True
         self.name.setObjectName("dayName")
         self.name.setCursor(Qt.CursorShape.ArrowCursor)
         row.addWidget(self.name, 1)

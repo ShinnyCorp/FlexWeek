@@ -21,7 +21,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, Qt
-    from PySide6.QtGui import QColor, QImage, QMouseEvent, QRegion, QWheelEvent
+    from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QRegion, QWheelEvent
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QWidget
 
@@ -893,3 +893,77 @@ def test_after_a_plan_the_hours_ease_to_homework_off_screen_and_stay_for_homewor
     settle(qapp)
     scroll.reveal(17 * 60, 60, "reduce")
     assert abs(minute_across(scroll, 0) - 16 * 60) <= 1, "under Reduce it goes at once"
+
+
+def test_a_greyed_zoom_says_why_in_one_line_under_the_pill(qapp: QApplication) -> None:
+    """A disabled button shows no tooltip, so at a limit the − or + stays greyed and one caption line
+    under the pill says "Smallest zoom reached" or "Largest zoom reached"; away from a limit there is
+    no line, and the line never covers the hours."""
+    view = a_week(qapp)
+    scroll = view.scroll
+    assert not scroll.reason.isVisible()
+    for _ in range(8):
+        QTest.mouseClick(scroll.buttons.into, Qt.MouseButton.LeftButton)
+    assert scroll.px == WEEK_SCALE.levels[-1]
+    assert not scroll.buttons.into.isEnabled() and scroll.buttons.into.isVisible()
+    assert scroll.reason.isVisible() and scroll.reason.words == "Largest zoom reached"
+    pill_bottom = scroll.buttons.pill.mapTo(scroll.header, QPoint(0, scroll.buttons.pill.height())).y()
+    assert scroll.reason.y() >= pill_bottom, "the line is not under the pill"
+    assert scroll.reason.geometry().bottom() < scroll.viewport().geometry().top() - scroll.header.y()
+    scroll.zoom_by(0)
+    assert not scroll.reason.isVisible()
+    for _ in range(8):
+        QTest.mouseClick(scroll.buttons.out, Qt.MouseButton.LeftButton)
+    assert scroll.px == WEEK_SCALE.levels[0]
+    assert not scroll.buttons.out.isEnabled() and scroll.buttons.out.isVisible()
+    assert scroll.reason.isVisible() and scroll.reason.words == "Smallest zoom reached"
+    scroll.zoom_by(1)
+    assert not scroll.reason.isVisible(), "the line stays after the zoom left its limit"
+
+
+def test_each_zoom_button_has_a_24_pixel_square_to_press_that_is_not_drawn_larger(qapp: QApplication) -> None:
+    """The pill is 24 pixels tall and its buttons are drawn inside its edge; a press on that edge, at
+    the outer side, top or bottom of a button, still counts for it."""
+    view = a_week(qapp)
+    buttons = view.scroll.buttons
+    view.scroll.zoom_by(1)
+    view.scroll.zoom_by(-1)
+    assert view.scroll.px == WEEK_SCALE.default
+    for button, edge in ((buttons.out, "left"), (buttons.into, "right")):
+        area = buttons.hit_area(button)
+        assert (area.width(), area.height()) == (24, 24), (button.objectName(), area)
+        assert button.width() < 24, "the button itself is not drawn larger"
+        middle = area.center().y()
+        side = area.left() if edge == "left" else area.right()
+        across = area.center().x()
+        for at in (QPoint(side, middle), QPoint(across, area.top()), QPoint(across, area.bottom())):
+            before = view.scroll.px
+            QTest.mouseClick(buttons.pill, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, at)
+            assert view.scroll.px != before, (button.objectName(), at)
+            view.scroll.zoom_by(0)
+
+
+def test_days_hours_heading_is_the_text_colour_at_the_heading_size_today_or_not(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """"Hours" was the accent on today and a small muted word otherwise, beside "Agenda" in the
+    heading size and the text colour. Both headings now read the same, whichever day it is."""
+    from desktop.native.hours import classic as classic_module
+
+    drew: list[tuple[str, float, int, QColor]] = []
+
+    class Heard(QPainter):
+        def drawText(self, *args) -> None:  # noqa: N802
+            words = next(arg for arg in reversed(args) if isinstance(arg, str))
+            drew.append((words, self.font().pointSizeF(), self.font().weight().value, self.pen().color()))
+            super().drawText(*args)
+
+    monkeypatch.setattr(classic_module, "QPainter", Heard)
+    text = QColor(resolved_palette("system", False, None)["text"])
+    for day in (3, 1):
+        view = a_day(qapp, [SCHOOL], day)
+        drew.clear()
+        view.name.repaint()
+        assert [d for d in drew if d[0] == "Hours"] == [("Hours", 15.0, 600, text)], (day, drew)
+    heading = view.agenda.heading
+    assert heading.text() == "Agenda" and heading.property("railHeading") is True
