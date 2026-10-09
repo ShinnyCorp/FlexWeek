@@ -1560,14 +1560,24 @@ def button_rules(
 
 
 VIEW_BUTTONS = ("viewDay", "viewWeek", "viewMonth", "viewMyDay")
-BAR_BUTTONS = ", ".join(
-    f"QPushButton#{name}"
-    for name in (
-        "prevWeek", "nextWeek", "todayWeek", "addButton", "addArrow", "solveButton", "retrySave",
-        "moreButton", "settingsGear",
-    )
+BAR_BUTTON_NAMES = (
+    "prevWeek", "nextWeek", "todayWeek", "addButton", "addArrow", "solveButton", "retrySave",
+    "moreButton", "settingsGear",
 )
+BAR_BUTTONS = ", ".join(f"QPushButton#{name}" for name in BAR_BUTTON_NAMES)
+# Every button of the top bar wears the keyboard focus ring `widgets.FocusRing` draws round it (#92).
+RING_BUTTONS = (*BAR_BUTTON_NAMES, *VIEW_BUTTONS)
+FOCUS_RING_PX = 2
+FOCUS_GAP_PX = 2
 ZOOM_PILL_PX = 24
+
+
+def focus_ring(palette: dict) -> str:
+    """The keyboard focus ring: the accent itself where it reads 3 to 1 on the page, else moved in
+    lightness only as far as that takes. High contrast's accent is its yellow and stays."""
+    if palette.get("family") == "contrast":
+        return palette["accent"]
+    return fit_lightness(palette["accent"], (palette["window"],), AA_GRAPHIC)
 
 
 def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | None) -> str:
@@ -1580,6 +1590,7 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
     text, muted, page = palette["text"], palette["muted"], palette["window"]
     contrast_look = palette.get("family") == "contrast"
     ring = palette["accent"] if contrast_look else mix(palette["accent"], page, 0.4)
+    ring_names = ", ".join(f'QPushButton#{name}[keyfocus="true"]:focus' for name in RING_BUTTONS)
     track = page if contrast_look else mix(text, page, 0.06)
     dark = palette.get("axis") == "dark"
     chosen = palette["accent"] if contrast_look else palette["hairline_strong"] if dark else palette["panel"]
@@ -1596,7 +1607,6 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
     def views(state: str = "") -> str:
         return ", ".join(f"QPushButton#{name}{state}" for name in VIEW_BUTTONS)
 
-    focused = views('[keyfocus="true"]:focus')
     menu = (
         # The chevron's room is added to the width by Qt; the padding only keeps it off the word.
         f"QPushButton#moreButton {{ padding-right: {pad + 14}px; }}"
@@ -1616,7 +1626,10 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
         f"{views(':hover')} {{ background: transparent; color: {text}; }}"
         f"{views(':checked')} {{ background: transparent; color: {chosen_words}; "
         f"font-weight: {WEIGHT_STRONG}; }}"
-        f"{focused} {{ border-color: {ring}; }}"
+        # The ring is drawn outside the button by widgets.FocusRing, so the button's own edge stays clear.
+        f"{ring_names} {{ border-color: transparent; }}"
+        f"QWidget#barFocusRing {{ background: transparent; border: none; padding: 0; "
+        f"qproperty-colour: {focus_ring(palette)}; }}"
         # The bar's controls are 32 pixels tall at Normal, as the mock-up's, not a dialog's 40.
         f"{BAR_BUTTONS} {{ padding-top: {max(pad - 4, 1)}px; padding-bottom: {max(pad - 4, 1)}px; }}"
         "QPushButton#prevWeek, QPushButton#nextWeek, QPushButton#settingsGear { "
