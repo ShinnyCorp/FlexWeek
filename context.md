@@ -1,26 +1,25 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-10-08: v0.18.3 released as latest (PR 44, merge b105885; Windows and Linux packages
-  attached; the updater offers it to 0.18.2's three install kinds). CI runs on GitHub-hosted runners
-  again (Blacksmith's account verification blocks its runners). After the release, old lane
-  worktrees, branches and pre-0.18 scratch were deleted on Jonathan's approval (list in
-  `~/.flexweek-ui-harness/scratch/cleanup-after-0183.md`); the 0.18.3 and 0.18.2 release worktrees
-  remain, detached. `release/0.18.4` started for J14 (animation lag: measure, then fix the worst).
-- 0.18.3 contents: batch B and J13 (a style's feel on every page), version 0.18.3 with its
-  CHANGELOG entry and `docs/release-notes-v0.18.3.md`. Final
-  check: the whole suite (75 files one per process, the other 102 with `-n 4`) green after six
-  fixes (feb3188, 5fb8f56); mypy clean; engine cargo fmt, clippy and 406 tests clean; every rig
-  passes (classic 41, timeline 41, mission 40, bento 40, retro 40, clay 41, one 3, dial 3) after
-  the Retro frame's freeze on garbage collection was fixed (5ab0a0c). spec.md and AGENTS.md gained
-  Branches and Storage (main plus two working branches; keep two releases' files).
-- 2026-10-04, `release/0.18.2` (local, not pushed): all of batch A is merged, with Grok's rounds
-  2-4 and Claude's fixes from the whole-suite and rig runs (folded rail drag, page margins and
-  the top bar's one order with "Plan" last, Unfinished staying open, the bar fitted as Large text
-  arrives). CHANGELOG has its `[Unreleased]` entry. Final check: whole suite 2893 passed, 0
-  failed; all seven rigs pass in full. Test
-  cleanup deletes each test's windows (a 4-worker suite takes about 1.5 GB). `test_ui_dialogs.py`'s
-  work-windows test fails when its file runs alone (sheet 622 px, wants 640), on main too.
+- 2026-10-09: v0.18.4 on `release/0.18.4` (worktree `~/.worktrees/flexweek-0184`, `.venv` is
+  `venv-0183-engine`): J14 to J17. Motion moves still pictures on `motion.Clock`, which follows the
+  screen's refresh rate; Settings' design previews wait on `motion.busy()`; a sheet's dim starts at
+  the click (`widgets.dim_window`, `NativeWindow._sheet`) and holds while the sheet is built; Clay's
+  day change crossfades two pictures per card; Retro's Month slides like Settings
+  (`motion.slide_view`). Also: the Timeline notes width under the app's style, the sheet freed when
+  closed mid-fade (`_freeze_page` walks `children()`, never `findChildren()`), the homework
+  fixture's held day, and Settings' status connected once. Version 0.18.4 with its CHANGELOG entry
+  and `docs/release-notes-v0.18.4.md`. Built by Grok, ChatGPT and Sonnet 5.5 subagents, reviewed
+  and fixed by Claude. The time before a sheet's or view's first frame is still 40-75 ms at
+  2560x1400 (roadmap J18, not scheduled).
+- 2026-10-08: v0.18.3 released (PR 44, b105885): batch B and J13 (a style's feel on every page).
+  After it, old lane worktrees, branches and pre-0.18 scratch were deleted on Jonathan's approval
+  (`~/.flexweek-ui-harness/scratch/cleanup-after-0183.md`). CI runs on GitHub-hosted runners
+  (Blacksmith's account verification blocks its runners).
+- Probing motion: `~/.flexweek-ui-harness/scratch/0.18.4/j14/claude-r3/probe_noprof.py` (copy into
+  `desktop/tests/` as `test_zz_*.py`, run through fwtest with `-s`; `PROBE_DRAIN=1` waits for
+  Settings' design previews, which otherwise land in the timed window; `PROBE_NOPROF=1` for real
+  times). On-screen frames: `scratch/0.18.4/j15/clay_frames.py`.
 - 2026-10-03. v0.18.1 is the latest release (PR 40, 907fa4b): the 20 Fix-first findings of the
   0.17.2 audit, Jonathan's J1-J6 and the engine leftovers. 0.18.2 is planned in full in roadmap.md
   (batch A for Grok, batch B after mockup round 2), as is 0.18.3; the decisions 0.18.1 left open are
@@ -136,18 +135,13 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-07, `release/0.18.3` in `~/.worktrees/flexweek-0183-release` (`.venv` is `venv-0183-engine`,
-  the engine with J7; the lane worktrees other than availability still link `venv-0182-engine`). Merged:
-  clay, settings, focus, account, availability, timeline-fold, homework, then Grok's wave 2:
-  settings-2, setup (with setup-2), sheets, large-text (each verified: ruff, tests one file per
-  process; Clay and Timeline rigs passed). Claude's follow-ups on top: Running late checks the week
-  itself; the view switcher stays in the bar's right group with a 16 px side-by-side gap
-  (`EndsLayout(between=)`, large-text had moved it beside the title); the focus list is as tall
-  as its two-line rows. Both tests that failed alone now pass. J13 (depth 1, Grok, `grok/0183-j13`)
-  is merged (d8af632) after three review rounds: Settings, sheets, Setup and sign-in wear the
-  style's feel (`desktop/native/feel.py`); the week and day pages are unchanged. Retro at Large text
-  still scrolls Add homework, as before J13. Open for Jonathan: Retro teal's
-  title bar end is darkened to reach 4.5:1; Clay, Mission, Dial and One thing keep Plain's feel.
-  The Quick focus hop is checked by eye in the 0.18.3 build.
-  spec.md now says study hours are one list (J7) and protected time may carry a title. Nothing pushed; `docs/mockup-round2` local only. #41 and "Open after 0.18.1"
-  still wait on him. Phase 8 (due 2026-10-25) is with Cursor and his partner.
+- 2026-10-09, `release/0.18.4`: version 0.18.4, docs, roadmap (J14-J17 shipped, J18 noted, the
+  polish phase renamed 0.18.5) and spec.md (motion paragraph, Clay row) written; release via PR to
+  main, then `gh release create v0.18.4 --latest` with the notes file. After the release, Branches
+  and Storage: list 0.18.2-era files (release worktree `flexweek-0182-release`, `venv-0182-engine`,
+  `release/0.18.2`, the four `grok/0182-*` branches, which Jonathan removes from Windows) with sizes
+  for Jonathan's approval.
+- Open for Jonathan: #41 and "Open after 0.18.1"; Retro teal's title bar end darkened to 4.5:1;
+  Retro's decorative caption buttons on Setup and sign-in do nothing; the Quick focus hop by eye;
+  the J16 slide's pinned-left content while a card shrinks, and J17's month slide, on his screens.
+  Phase 8 (due 2026-10-25) is with Cursor and his partner.

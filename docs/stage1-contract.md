@@ -47,7 +47,7 @@ An assignment is account-owned and outlives any single week.
 | `title` | 1–80 characters |
 | `course`, `category`, `priority`, `energy`, `spotify_url` | Same rules as on blocks today |
 | `due` | Required. Naive local `YYYY-MM-DDTHH:MM`, any minute, 2000-01-01..2099-12-31. No seconds, no timezone. |
-| `estimate_min` | Total work. Positive multiple of 15, at most 7140. |
+| `estimate_min` | Total work. Positive multiple of 15, at most 1440 (a day's work; longer work is split). |
 | `focus_minutes`, `focus_sessions` | Progress credited by focus sessions. 0–71400 and 0–9999. |
 | `completed` | The whole assignment is finished. |
 | `completed_at` | Naive local `YYYY-MM-DDTHH:MM`; required when `completed`, otherwise null. |
@@ -83,7 +83,7 @@ An account holds at most 1000 assignments (422 beyond that).
   assignment's sessions that are not completed, in that week and later weeks.
   Unplanned work is `max(0, remaining − planned)`.
 - **Need more time** raises `estimate_min` by the amount the student enters
-  (multiples of 15, total at most 7140).
+  (multiples of 15, total at most 1440).
 - **Finished** sets `completed` and `completed_at`. Sessions in later weeks stay
   stored but are no longer placed, and the week shows them as not needed.
 

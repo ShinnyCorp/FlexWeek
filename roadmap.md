@@ -8,14 +8,14 @@ desktop units, the 0.10.1 and 0.11 polish, the web client's retirement, the
 first implementation slice) was removed from this file on 2026-10-02. It is in
 this file's git history, in `CHANGELOG.md`, and in `docs/cac-build-plan.md`.
 
-## Where things stand (2026-10-04)
-- v0.18.1 is released as latest. v0.18.0 brought the Rust engine.
-- 0.18.2 is batch A alone (seven lanes, written by Grok, reviewed and fixed
-  by Claude), versioned and checked on `release/0.18.2`: whole suite and all
-  seven rigs pass. It waits for Jonathan's look at #98 and his word to ship.
-- Batch B moves to 0.18.3 and still waits for mockup round 2.
+## Where things stand (2026-10-09)
+- v0.18.4 (smoother motion, sheets dim at the click, Clay's day change, Retro
+  Month; J14 to J17) is released as latest. v0.18.3 (2026-10-08), v0.18.2
+  (2026-10-04) and v0.18.1 (2026-10-03) came before it. v0.18.0 brought the
+  Rust engine.
+- Next patch: 0.18.5, Consistency and polish (below).
 - Decisions left open by 0.18.1 are listed under "Open after 0.18.1".
-- 21 days to the contest submission (Phase 8).
+- 16 days to the contest submission (Phase 8).
 
 ## Phase 8 — Contest delivery (Oct 25, 2026)
 - README with account setup, both contributors and the AI-assistance disclosure.
@@ -136,11 +136,12 @@ in 0.18.2.
   the hours repainting while things move. Decided: measure first (frame
   times for each animation on the built app, worst first), then animate
   still pictures where effects are the cost, as J12 did for the Settings
-  slide. → 0.18.4.
+  slide. Shipped in 0.18.4 (2026-10-09); the time before the first frame
+  is J18.
 - J15 (2026-10-09): opening a sheet, the background behind it lags a little
   as it comes in. The sheet is built in the click (57 to 75 ms at 2560x1400)
   before its dimmed background can start. Decided: the dim starts at the
-  click and the sheet is built behind it. → 0.18.4.
+  click and the sheet is built behind it. Shipped in 0.18.4 (2026-10-09).
 - J16 (2026-10-09): Clay's change of day shows harsh artifacts. Frames of
   the slide show each card's still picture stretched between its old and new
   size (the old front shrinks to a blurred miniature, the next day grows to
@@ -148,10 +149,16 @@ in 0.18.2.
   real layout (other hours shown, another heading, Saturday appearing). On
   Day the side cards also come back live mid-slide and the day summary
   shows twice. Decided: each card moves as two pictures, at its start and
-  end size, crossfading as it goes. → 0.18.4.
+  end size, crossfading as it goes. Shipped in 0.18.4 (2026-10-09).
 - J17 (2026-10-09): Retro's Month should appear more like Retro's Settings
   does. Decided: Month slides in over the dimmed desk as Settings does; Day
-  and Week keep their crossfade; Month keeps its look. → 0.18.4.
+  and Week keep their crossfade; Month keeps its look. Shipped in 0.18.4
+  (2026-10-09).
+- J18 (2026-10-09): the time before the first frame of a sheet or view
+  switch is still 40 to 75 ms at 2560x1400 (offscreen, profiler off),
+  against J14's 20 ms target; it is building the sheet or the design's week.
+  Jonathan judged the motion smooth on his 180 and 360 Hz screens, so it is
+  not scheduled.
 - Noted, no new item: appearance lives on the account (pack and accent from
   short lists) and on the device (look, any-colour accent, knobs); this is
   the open decision about looks following the account.
@@ -571,7 +578,7 @@ large-text, and J13 (2026-10-07, after three review rounds).
   0.18.3. Left: #41 and the "Open after 0.18.1" decisions, the push, CI and
   publishing, on Jonathan's word.
 
-### 0.18.3 — Consistency and polish
+### 0.18.5 — Consistency and polish
 Mockup round 3 before the Designs, Buttons and Sign-in lanes: the Day dial and
 One thing (#25), the icons (#26), Paper's edges (#60), the sign-in pages
 (#74), the focus ring (#92), outlined secondary actions (#90).
@@ -665,7 +672,7 @@ One thing (#25), the icons (#26), Paper's edges (#60), the sign-in pages
 
 - Complete when: the lanes above are closed on the shipped build, every
   "maybe on purpose" item has a recorded decision, gate, rig and CI green,
-  v0.18.3 published as latest.
+  v0.18.5 published as latest.
 - Status: [ ] not started.
 
 ### Closed, no work ("Deliberate, leave it")
