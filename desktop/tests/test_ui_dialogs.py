@@ -500,6 +500,7 @@ def test_every_dialog_is_freed_once_it_has_closed_and_is_let_go(qapp: QApplicati
             )
         ],
         look_editor.ColourSheet: [lambda host: look_editor.ColourSheet(host, "#3d6fc4")],
+        look_editor.StartSheet: [lambda host: look_editor.StartSheet(host, "base:light", [])],
         widgets.BlockDialog: [lambda host: widgets.BlockDialog(host, school(), occurrence_day=1)],
         widgets.HomeworkDialog: [
             lambda host: widgets.HomeworkDialog(host, homework, "2026-09-21", waiting=True, pinned=True),

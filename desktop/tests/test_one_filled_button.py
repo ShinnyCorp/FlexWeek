@@ -90,6 +90,7 @@ def makers() -> dict[type, list[Callable[[QWidget], QDialog]]]:
             )
         ],
         look_editor.ColourSheet: [lambda host: look_editor.ColourSheet(host, "#3d6fc4")],
+        look_editor.StartSheet: [lambda host: look_editor.StartSheet(host, "base:light", [])],
         settings.RestoreDialog: [
             lambda host: settings.RestoreDialog(host, [RESTORE_POINT], None, None)
         ],
