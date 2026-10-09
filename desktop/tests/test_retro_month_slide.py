@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
@@ -15,7 +16,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import QRect, Qt
+    from PySide6.QtGui import QImage
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
     import desktop.native.motion as motion
@@ -243,4 +245,89 @@ def test_under_reduce_and_off_retro_month_does_not_slide(
         assert seen.with_fade(), "Reduce: the week fades through to the month"
     press(qapp, window, "viewWeek", lambda: window.session.planner_view == "week")
     assert seen.with_dim() == [] and seen.with_slide() == []
+    nothing_left_over(window)
+
+
+def month_from_the_engine(qapp: QApplication, window: NativeWindow) -> dict:
+    """A real month snapshot, kept so a test can hand it over at the moment it chooses, then back to
+    the week."""
+    press(qapp, window, "viewMonth", lambda: month_is_live(window))
+    data = window.session.month_data
+    assert data is not None
+    press(qapp, window, "viewWeek", lambda: window.session.planner_view == "week")
+    return data
+
+
+def month_arrives(window: NativeWindow, data: dict) -> None:
+    window.session.month_data = data
+    window.session.week_changed.emit()
+
+
+def slide_in_progress(window: NativeWindow) -> QLabel | None:
+    slides, _fades, _dims = pictures_over(window._week_page)
+    return slides[0] if slides else None
+
+
+def live_month_now(window: NativeWindow):  # type: ignore[no-untyped-def]
+    """The month on screen once the slide is over, in the area the slide covered."""
+    page = window._week_page
+    top = window._top_bar.geometry().bottom() + 1
+    return page.grab(QRect(0, top, page.width(), page.height() - top)).toImage()
+
+
+def blank_like(image):  # type: ignore[no-untyped-def]
+    """An image of one colour, the page's background, the size of `image`."""
+    blank = QImage(image.size(), image.format())
+    blank.fill(image.pixelColor(0, image.height() - 1))
+    return blank
+
+
+def test_a_month_that_arrives_mid_slide_shows_on_the_moving_picture(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    in_design(qapp, window, "retro")
+    data = month_from_the_engine(qapp, window)
+    # The engine has not answered yet when the slide starts, as on a real machine.
+    monkeypatch.setattr(window.session, "_fetch_month", lambda: None)
+    window.findChild(QPushButton, "viewMonth").click()
+    wait_until(qapp, lambda: slide_in_progress(window) is not None)
+    moving = slide_in_progress(window)
+    assert moving is not None and window.session.month_data is None
+    placeholder = moving.pixmap().toImage()
+    key = moving.pixmap().cacheKey()
+    month_arrives(window, data)
+    # The repaint waits one turn of the event loop, for the month to scroll to its first row.
+    qapp.processEvents()
+    qapp.processEvents()
+    assert motion.busy() and slide_in_progress(window) is moving, "the slide is still running"
+    assert moving.pixmap().cacheKey() != key, "the moving picture was taken again"
+    assert moving.pixmap().toImage() != placeholder, "the real month replaced the placeholder"
+    retaken = moving.pixmap().toImage()
+    assert retaken != blank_like(retaken), "it is not an empty page"
+    settle_everything(qapp, window)
+    assert month_is_live(window)
+    assert retaken == live_month_now(window), "it is the live month, laid out at its real size"
+    nothing_left_over(window)
+
+
+def test_a_month_that_arrives_after_landing_shows_live(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    in_design(qapp, window, "retro")
+    data = month_from_the_engine(qapp, window)
+    # An error inside a Qt slot only reaches the excepthook: a retake aimed at a deleted picture.
+    raised: list[object] = []
+    monkeypatch.setattr(sys, "excepthook", lambda kind, error, trace: raised.append(error))
+    monkeypatch.setattr(window.session, "_fetch_month", lambda: None)
+    window.findChild(QPushButton, "viewMonth").click()
+    wait_until(qapp, lambda: slide_in_progress(window) is not None)
+    settle_everything(qapp, window)
+    board = month_board(window)
+    assert board is not None and board.isVisible() and board.warning.isVisible(), "still loading"
+    month_arrives(window, data)
+    qapp.processEvents()
+    wait_until(qapp, lambda: not board.warning.isVisible())
+    settle_everything(qapp, window)
+    assert board.canvas.cells and not board.warning.isVisible(), "the live month shows"
+    assert raised == [], "no retake is tried once the slide has landed"
     nothing_left_over(window)

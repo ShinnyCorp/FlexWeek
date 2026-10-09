@@ -111,10 +111,12 @@ from desktop.native.motion import (
     hold_picture,
     motion_level,
     moves,
+    retake_slide,
     settle,
     slide_down,
     slide_over,
     slide_view,
+    sliding_in,
     switch_page,
     trim_picture,
 )
@@ -2046,7 +2048,15 @@ class NativeWindow(QMainWindow):
         self._sync_running_late()
         self._sync_chrome()
         self._apply_appearance()
+        # A month that arrives while it is still sliding in: its picture is taken again once the
+        # month has scrolled to its first row, which is a turn of the event loop after this.
+        if sliding_in(self.planner):
+            QTimer.singleShot(0, self._retake_slide)
         self._finish_turn(turn)
+
+    def _retake_slide(self) -> None:
+        self._week_page.layout().activate()
+        retake_slide(self.planner)
 
     def _on_status(self, message: str) -> None:
         """What the session says goes in the toast, on the week's page, unless it is still going

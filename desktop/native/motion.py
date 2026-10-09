@@ -671,15 +671,43 @@ def _slide_pictures(
         dim.share = 1 - share if back else share
         dim.update()
 
+    def regrab() -> None:
+        # The held picture and the dim on it lie over the very thing being grabbed.
+        picture.hide()
+        moving.hide()
+        # A widget whose painting waits is drawn blank into a picture.
+        live.setUpdatesEnabled(True)
+        shot = host.grab(area)
+        live.setUpdatesEnabled(False)
+        picture.show()
+        moving.show()
+        moving.setPixmap(shot)
+
     def done() -> None:
         dim.deleteLater()
         picture.deleteLater()
         if not back:
+            live._slide_regrab = None  # type: ignore[attr-defined]
             live.setUpdatesEnabled(True)
             moving.deleteLater()
 
+    if not back:
+        live._slide_regrab = regrab  # type: ignore[attr-defined]
     # The clock is the page's when it comes in, so settling the page ends its slide.
     _run(picture if back else live, length, step, done)
+
+
+def sliding_in(live: QWidget) -> bool:
+    """Whether a view is sliding in over the desk on `live`."""
+    return getattr(live, "_slide_regrab", None) is not None
+
+
+def retake_slide(live: QWidget) -> None:
+    """If a view is sliding in over the desk, take its picture again: what it shows has changed since
+    the slide began, such as a month whose data has just arrived. Nothing otherwise."""
+    regrab = getattr(live, "_slide_regrab", None)
+    if regrab is not None:
+        regrab()
 
 
 def slide_down(widget: QWidget, level: str, *, ms: int = EASE_MS) -> None:
