@@ -2094,6 +2094,34 @@ def field_kind(widget: QWidget) -> str | None:
     return None
 
 
+def fit_buttons(root: QWidget, *, roomy: bool = False) -> None:
+    """Measure every push button under `root` again. Qt keeps the size a button first reported, and a
+    look or text-size change moves the words' font and the padding without clearing it, so a button
+    kept its old width and clipped its words (item 4; "ccept late sta"). `roomy` also asks for the
+    roomy padding of a sheet's buttons, for a page that is not a dialog (Settings). It walks `children()`:
+    `findChildren` on a window that owns a sheet would hand the sheet to the window to own."""
+    pending = list(root.children())
+    while pending:
+        item = pending.pop()
+        pending.extend(item.children())
+        if not isinstance(item, QPushButton):
+            continue
+        if roomy and item.text().strip() and not is_roomy_exception(item) and not item.property("roomy"):
+            item.setProperty("roomy", True)
+            item.style().unpolish(item)
+            item.style().polish(item)
+        # Setting the icon clears the cached size hint, and asks the layout to ask again.
+        item.setIcon(item.icon())
+
+
+def is_roomy_exception(button: QPushButton) -> bool:
+    """The buttons that are not roomy on purpose: steps, segments, pills, chips, small ones and a
+    sheet's close."""
+    return button.objectName() == "sheetClose" or any(
+        button.property(name) for name in ("step", "segment", "pill", "chip", "small")
+    )
+
+
 def even_fields(root: QWidget) -> None:
     """One width per kind of field (decision 23 of 0.17): every time box as wide as the widest time box
     in `root`, and so for dates, numbers and dropdowns. Each was as wide as its text or its row: a
@@ -2388,6 +2416,7 @@ class Dialog(QDialog):
                 self.setProperty("feelBaseSheet", base)
             self.setStyleSheet((base + extra) if extra else base)
             apply_feel(self, ctx)
+        fit_buttons(self)
         self.refit()
         if not self._appeared:
             self._appeared = True
@@ -4618,7 +4647,10 @@ class LateDialog(Dialog):
         layout.addWidget(self.changes)
         self.error = _error_label()
         layout.addWidget(self.error)
-        buttons = QHBoxLayout()
+        # Preview at the left and the answers at the right; with no room for both, the answers go under.
+        buttons = EndsLayout(gap=SPACING[1])
+        first = QHBoxLayout()
+        first.setContentsMargins(0, 0, 0, 0)
         preview = QPushButton("Preview")
         preview.setObjectName("latePreview")
         preview.setProperty("outlined", True)
@@ -4633,9 +4665,12 @@ class LateDialog(Dialog):
         cancel.setProperty("quiet", True)
         answers.accepted.connect(self.accept)
         answers.rejected.connect(self.reject)
-        buttons.addWidget(preview)
-        buttons.addStretch(1)
-        buttons.addWidget(answers)
+        first.addWidget(preview)
+        last = QHBoxLayout()
+        last.setContentsMargins(0, 0, 0, 0)
+        last.addWidget(answers)
+        buttons.add_group(first)
+        buttons.add_group(last)
         layout.addLayout(buttons)
         layout.addWidget(WhyOff(self.accept_button, LATE_WAIT))
 

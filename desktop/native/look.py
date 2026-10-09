@@ -1201,6 +1201,11 @@ CONFLICT_FILL, CONFLICT_TEXT = "#fff4d6", "#6b4a00"
 ROOMY_PAD, ROOMY_SIDE, ROOMY_MIN, ROOMY_MIN_LARGE = 8, 20, 36, 40
 
 
+def roomy_height(large: bool) -> int:
+    """The `min-height` of a roomy button's words box, inside its padding and its 2 px border."""
+    return (ROOMY_MIN_LARGE if large else ROOMY_MIN) - 2 * (ROOMY_PAD + 2)
+
+
 def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str, text: float | str) -> str:
     """Dialogs (decision 23 of 0.17): the body is the card, a sheet's card is rounded as a sheet, and a
     button that cannot be pressed yet keeps its shape at 40 %, not a grey slab that looked broken.
@@ -1577,10 +1582,17 @@ def button_rules(
     ]
     # Roomy: an answer sitting in a row of text, sized to its words with room above and below them
     # (#79); a filled, tonal or outlined button takes the same height, the outline's border being 1 px.
+    # Every button in a sheet is roomy; the kinds that name their own padding (a step, a segment, a pill,
+    # a chip, the sheet's close and small buttons) have a rule of their own that is more specific than
+    # `QDialog QPushButton`, so they keep it. A button outside a sheet asks with `roomy`.
+    room = f"padding: {ROOMY_PAD}px {ROOMY_SIDE}px; min-height: {roomy_height(large)}px;"
+    wider = f"padding: {ROOMY_PAD + 1}px {ROOMY_SIDE + 1}px;"
     rules += [
-        f'QPushButton[roomy="true"] {{ padding: {ROOMY_PAD}px {ROOMY_SIDE}px; '
-        f"min-height: {(ROOMY_MIN_LARGE if large else ROOMY_MIN) - 2 * (ROOMY_PAD + 2)}px; }}",
-        f'QPushButton[roomy="true"][outlined="true"] {{ padding: {ROOMY_PAD + 1}px {ROOMY_SIDE + 1}px; }}',
+        f'QPushButton[roomy="true"] {{ {room} }}',
+        f'QPushButton[roomy="true"][outlined="true"], QPushButton[roomy="true"][outline="true"] '
+        f"{{ {wider} }}",
+        f"QDialog QPushButton {{ {room} }}",
+        f'QDialog QPushButton[outlined="true"], QDialog QPushButton[outline="true"] {{ {wider} }}',
     ]
     rules += [
         f'QPushButton[quiet="true"] {{ background: transparent; color: {text}; '
@@ -1599,6 +1611,9 @@ BAR_BUTTON_NAMES = (
     "moreButton", "settingsGear",
 )
 BAR_BUTTONS = ", ".join(f"QPushButton#{name}" for name in BAR_BUTTON_NAMES)
+BAR_WORDS = ", ".join(
+    f"QPushButton#{name}" for name in ("todayWeek", "addButton", "solveButton", "retrySave", "moreButton")
+)
 # Every button of the top bar wears the keyboard focus ring `widgets.FocusRing` draws round it (#92).
 RING_BUTTONS = (*BAR_BUTTON_NAMES, *VIEW_BUTTONS)
 FOCUS_RING_PX = 2
@@ -1614,7 +1629,9 @@ def focus_ring(palette: dict) -> str:
     return fit_lightness(palette["accent"], (palette["window"],), AA_GRAPHIC)
 
 
-def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | None) -> str:
+def top_bar_rules(
+    palette: dict, pad: int, depth: str, art: dict[str, str] | None, large: bool = False
+) -> str:
     """Decision 11's top bar, as the mock-up draws it. The arrows, Today, More and the gear are quiet
     buttons in the text colour. Add and its chevron are one pill split by a line of the accent's ink.
     The view control is a pill track with the chosen view raised on it by the small shadow, painted by
@@ -1643,9 +1660,9 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
 
     menu = (
         # The chevron's room is added to the width by Qt; the padding only keeps it off the word.
-        f"QPushButton#moreButton {{ padding-right: {pad + 14}px; }}"
+        f"QPushButton#moreButton {{ padding-right: {ROOMY_SIDE + 14}px; }}"
         f"QPushButton#moreButton::menu-indicator {{ image: url({more}); subcontrol-origin: padding; "
-        f"subcontrol-position: center right; width: 14px; height: 14px; right: {pad}px; }}"
+        f"subcontrol-position: center right; width: 14px; height: 14px; right: {ROOMY_SIDE}px; }}"
         if more
         else ""
     )
@@ -1656,7 +1673,7 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
         f"{views()} {{ background: transparent; color: {quiet_ink}; font-weight: {WEIGHT_REGULAR}; "
         # Inside a track 3 pixels in from the bar's other controls: a view's own padding is that much
         # less, or the track squeezed it and cut the tails off "Day" and "My day".
-        f"border: 2px solid transparent; padding: {max(pad - 7, 0)}px {pad + 2}px; min-height: 0; }}"
+        f"border: 2px solid transparent; padding: {max(pad - 7, 0)}px {pad}px; min-height: 0; }}"
         f"{views(':hover')} {{ background: transparent; color: {text}; }}"
         f"{views(':checked')} {{ background: transparent; color: {chosen_words}; "
         f"font-weight: {WEIGHT_STRONG}; }}"
@@ -1664,17 +1681,15 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
         f"{ring_names} {{ border-color: transparent; }}"
         f"QWidget#barFocusRing {{ background: transparent; border: none; padding: 0; "
         f"qproperty-colour: {focus_ring(palette)}; }}"
-        # The bar's controls are 32 pixels tall at Normal, as the mock-up's, not a dialog's 40.
-        f"{BAR_BUTTONS} {{ padding-top: {max(pad - 4, 1)}px; padding-bottom: {max(pad - 4, 1)}px; }}"
+        # The bar's buttons are as roomy as a sheet's: 36 pixels tall (40 at Large) and 20 at each side of
+        # their words. The icon buttons take the same height so the row stays level.
+        f"{BAR_BUTTONS} {{ padding-top: {ROOMY_PAD}px; padding-bottom: {ROOMY_PAD}px; "
+        f"min-height: {roomy_height(large)}px; }}"
         "QPushButton#prevWeek, QPushButton#nextWeek, QPushButton#settingsGear { "
         f"padding-left: {max(pad - 2, 2)}px; padding-right: {max(pad - 2, 2)}px; }}"
-        # Words-only controls sit as close to their words as the mock-up's: a filled button's
-        # padding made More 108 pixels wide and pushed a two-month title into its short form.
-        f"QPushButton#todayWeek, QPushButton#moreButton {{ padding-left: {pad}px; }}"
-        f"QPushButton#todayWeek {{ padding-right: {pad}px; }}"
-        "QPushButton#addButton { border-top-right-radius: 0; border-bottom-right-radius: 0; "
-        f"padding-right: {pad + 2}px; }}"
-        f"QPushButton#addArrow {{ padding: {pad}px {pad // 2 + 2}px; border-top-left-radius: 0; "
+        f"{BAR_WORDS} {{ padding-left: {ROOMY_SIDE}px; padding-right: {ROOMY_SIDE}px; }}"
+        "QPushButton#addButton { border-top-right-radius: 0; border-bottom-right-radius: 0; }"
+        f"QPushButton#addArrow {{ padding: {ROOMY_PAD}px {pad // 2 + 2}px; border-top-left-radius: 0; "
         f"border-bottom-left-radius: 0; border-left-width: 1px; border-left-color: {divider}; }}"
         "QPushButton#addArrow::menu-indicator { image: none; width: 0; }"
         f"{menu}"
@@ -1809,7 +1824,7 @@ def pack_stylesheet(
         f"QLabel#blockDurationLine[problem=\"true\"] {{ color: {palette['error']}; "
         f"font-weight: {WEIGHT_STRONG}; }}"
         + help_rules(palette, scale, radius, knobs["depth"])
-        + top_bar_rules(palette, pad, knobs["depth"], art)
+        + top_bar_rules(palette, pad, knobs["depth"], art, knobs["text"] == "large")
         + setup_rules(palette, radius, scale, pad, knobs["depth"])
         + settings_rules(palette, radius, scale, pad, knobs["depth"])
         + auth_rules(palette, knobs, radius, card_radius)

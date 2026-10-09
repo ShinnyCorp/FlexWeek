@@ -6,6 +6,11 @@ All notable changes to FlexWeek are documented here. Format follows
 ## [Unreleased]
 
 ### Fixed
+- Buttons no longer cut their words ("Accept late start" read "ccept late sta"). Every button in a sheet and in
+  the top bar is at least its words plus 20 px at each side and 36 px tall (40 at Large text), and buttons
+  measure again when the text size or the look changes while a sheet or Settings is open. Running late's
+  answers go under Preview when the row has no room, and This computer's three buttons are no longer a fixed
+  width.
 - The block editor's End follows Start only once Start is settled (Enter, Tab or leaving the box), not on each
   key, and never after End was typed in that sheet. It stops at 24:00 instead of wrapping to the morning, and
   says "End moved to 17:30" (screen readers hear it). The End-before-Start message now reads "End needs to be

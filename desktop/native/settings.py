@@ -112,6 +112,7 @@ from desktop.native.widgets import (
     bare,
     even_fields,
     even_labels,
+    fit_buttons,
     overlay_scroll_bars,
     sheet_button,
     sheet_footer,
@@ -132,7 +133,8 @@ SECTION_GAP_BELOW = 24
 # One width for every control in a column of Focus or Alerts, and for the three buttons of This
 # computer, so a column reads as one edge (#68). A wider control, at Large text, widens the rest.
 CONTROL_WIDTH = 260
-BUTTON_WIDTH = 190
+# Room for the longest of the three at their roomy padding (193 px at Normal); at Large they grow it.
+BUTTON_WIDTH = 200
 SECTIONS = ("Look", "Planning", "Focus", "Alerts", "This computer")
 # Each section's icon in the list, Lucide's names (decision 24 of 0.17). None on the rows themselves.
 SECTION_ICONS = ("palette", "calendar", "timer", "bell", "laptop")
@@ -1214,6 +1216,8 @@ class SettingsPage(QWidget):
     def _even_controls(self) -> None:
         """Every control in Focus's column one width, the preset as wide as the steppers (T20 of the
         0.17.0 audit), and so for Alerts' and the three buttons of This computer."""
+        # The widths below come from the buttons' sizes, which must be today's.
+        fit_buttons(self, roomy=True)
         columns = (
             [self.preset_timer, *self.focus_steppers],
             [
@@ -1234,9 +1238,12 @@ class SettingsPage(QWidget):
                     control.box.setFixedWidth(width - self._stepper_chrome(control))
                 else:
                     control.setFixedWidth(width)
+        # A least width, never a fixed one: a button with words must be free to grow with them.
+        for button in self.computer_buttons:
+            button.setMinimumWidth(0)
         width = max(BUTTON_WIDTH, *(button.sizeHint().width() for button in self.computer_buttons))
         for button in self.computer_buttons:
-            button.setFixedWidth(width)
+            button.setMinimumWidth(width)
 
     @staticmethod
     def _stepper_chrome(stepper: Stepper) -> int:

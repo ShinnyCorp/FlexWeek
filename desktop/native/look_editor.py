@@ -149,8 +149,8 @@ LEAVE_NEW = "Save your look as {name}?"
 LEAVE_NOTE = "Keep without saving leaves the changes on until you choose another look."
 SAVE, KEEP, DISCARD = "Save", "Keep without saving", "Discard changes"
 CANCEL = "Cancel"
-# Four answers in one row, which take the list's width between the card's margins.
-LEAVE_WIDTH = SHEET_LIST + 2 * SHEET_PAD
+# Wide enough for its four answers in one row at their roomy sizes, which a plain list's width was not.
+LEAVE_WIDTH = SHEET_LIST + 2 * SHEET_PAD + 24
 DELETE_TITLE = "Delete look"
 DELETE_QUESTION = "Delete {name}? This can't be undone."
 EXPORT_TITLE, IMPORT_TITLE = "Export look", "Import look"

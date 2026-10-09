@@ -191,6 +191,7 @@ from desktop.native.widgets import (
     control_art,
     dim_window,
     drop_waiting_dim,
+    fit_buttons,
     keyboard_focus_rings,
     overdue_unfinished,
     steady_wheel,
@@ -4150,6 +4151,7 @@ class NativeWindow(QMainWindow):
             self._dress_entry(palette, look)
             self.setup_page.set_palette(palette)
             self._dress_feel(ctx, sheet, extra)
+            fit_buttons(self)
         if page_sheet != self._page_sheet:
             # The planner holds the design's page and nothing of the chrome.
             self._page_sheet = page_sheet
