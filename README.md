@@ -189,10 +189,18 @@ ICU (`icuuc`/`icuin`) is part of Windows 10 1809+; the bundle check requires
 those imports to be satisfied without copying Microsoft's DLLs. The saved
 theme names `nocturne` and `slate` come from Daily Scheduler (the GPL-3.0
 `Local-Schedule-Assistant` project); the hybrid frost colors replaced its
-palette in September 2026. AI assistance was used in development: Claude
-(Anthropic), Grok (xAI, through Cursor), ChatGPT and Codex (OpenAI) and
-GLM-5.3 Flash (Z.ai) wrote and reviewed code, tests and documents under
-j0nsh1n's direction, who decided what was built and checked what shipped.
+palette in September 2026.
+
+AI assistance was used throughout development. These models wrote, reviewed
+or checked code, tests and documents under j0nsh1n's direction, who decided
+what was built and checked what shipped:
+- Claude (Anthropic): Opus 5 and 5.5, Fable 5.1, Sonnet 5.5, Haiku 5.5.
+- Grok 4.6 and 4.7 (xAI) and Composer 2.5, through Cursor.
+- ChatGPT and Codex (OpenAI): GPT-6.1 Sol, GPT-6 Luna.
+- GLM-5.3 Flash (Z.ai), through OpenCode.
+- TypeSafe's Jev and Laya: small typed-decision models used for checks of
+  wording and documents.
+
 The app itself uses no AI service.
 
 The original Sep 6 contest brief (working title Reslot) is in
