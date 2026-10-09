@@ -55,6 +55,7 @@ if importlib.util.find_spec("PySide6") is not None:
         distance,
         duration,
         glide,
+        hold_picture,
         motion_level,
         moves,
         slide_down,
@@ -1033,3 +1034,34 @@ def test_a_click_in_a_fade_drops_its_picture_but_another_windows_key_does_not(qa
     assert effect._picture is None, "a click inside the fade shows its live contents"
     owner.close()
     other.close()
+
+
+def test_a_fade_picture_shows_the_week_as_it_looks_after_a_block_is_added(qapp: QApplication) -> None:
+    """A reused grab must not keep a picture from before the week changed."""
+    apply_ui_effects("normal")
+    week = QWidget()
+    week.setAutoFillBackground(True)
+    palette = week.palette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#111111"))
+    week.setPalette(palette)
+    week.resize(200, 120)
+    week.show()
+    qapp.processEvents()
+    stale = hold_picture(week, "normal")
+    assert stale is not None
+    stale.hide()
+    stale.deleteLater()
+    qapp.processEvents()
+    block = QWidget(week)
+    block.setGeometry(24, 24, 48, 48)
+    block.setAutoFillBackground(True)
+    ink = block.palette()
+    ink.setColor(QPalette.ColorRole.Window, QColor("#ff00aa"))
+    block.setPalette(ink)
+    block.show()
+    qapp.processEvents()
+    picture = hold_picture(week, "normal")
+    assert picture is not None
+    sample = picture.pixmap().toImage().pixelColor(48, 48)
+    assert sample.name() == "#ff00aa", "the fade shows the block, not the empty week"
+    week.close()

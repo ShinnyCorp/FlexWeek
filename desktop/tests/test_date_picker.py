@@ -7,8 +7,9 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QDate, QModelIndex, QPoint, QRect
+from PySide6.QtCore import QDate, QModelIndex, QPoint, QRect, Qt
 from PySide6.QtGui import QColor, QImage
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QTableView, QWidget
 
 from desktop.native.fields import LookCalendar
@@ -157,6 +158,44 @@ def test_the_month_drops_on_a_rounded_card_with_an_edge(qapp: QApplication, pack
     middle = picture.height() // 2
     assert picture.pixelColor(0, middle).name() != palette["panel"], "an edge"
     assert picture.pixelColor(4, middle).name() == palette["panel"], "the card's colour inside it"
+    free(dialog)
+    free(parent)
+
+
+def test_the_date_calendar_is_not_built_until_its_popup_opens(
+    qapp: QApplication,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The month is only for the popup, so building it with the sheet delayed the first frame."""
+    made = 0
+    real = LookCalendar.__init__
+
+    def counting(self, *args: object, **kwargs: object) -> None:
+        nonlocal made
+        made += 1
+        real(self, *args, **kwargs)
+
+    monkeypatch.setattr(LookCalendar, "__init__", counting)
+    parent, _palette = dressed("light-frost")
+    dialog = HomeworkDialog(parent, today=WEEK)
+    dialog.show()
+    for _ in range(6):
+        qapp.processEvents()
+    assert made == 0
+    field = dialog.due.date
+    QTest.mouseClick(
+        field,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        QPoint(field.width() - 6, field.height() // 2),
+    )
+    for _ in range(8):
+        qapp.processEvents()
+    assert made == 1
+    month = field.calendarWidget()
+    assert isinstance(month, LookCalendar)
+    view = month.findChild(QTableView, "qt_calendar_calendarview")
+    assert view is not None and view.model().rowCount() > 1
     free(dialog)
     free(parent)
 

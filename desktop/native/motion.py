@@ -152,6 +152,56 @@ def _fit_for_picture(widget: QWidget) -> None:
         layout.activate()
 
 
+class _PaintWatch(QObject):
+    """Counts paints on a widget so a later grab can reuse the last picture when nothing drew."""
+
+    def __init__(self, widget: QWidget) -> None:
+        super().__init__(widget)
+        self.count = 0
+        widget.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() == QEvent.Type.Paint and watched is self.parent():
+            self.count += 1
+        return False
+
+
+_WATCH: dict[int, _PaintWatch] = {}
+_GRAB: dict[int, tuple[int, int, int, int, QPixmap]] = {}
+
+
+def _watch(widget: QWidget) -> _PaintWatch:
+    key = id(widget)
+    found = _WATCH.get(key)
+    if found is not None:
+        return found
+    found = _PaintWatch(widget)
+    _WATCH[key] = found
+
+    def gone(*_args: object, gone_key: int = key) -> None:
+        _WATCH.pop(gone_key, None)
+        _GRAB.pop(gone_key, None)
+
+    widget.destroyed.connect(gone)
+    return found
+
+
+def _snapshot(widget: QWidget, area: QRect | None = None) -> QPixmap:
+    """A picture of `widget`, reused when it has not painted or changed size or children since."""
+    if area is not None:
+        return widget.grab(area)
+    watch = _watch(widget)
+    key = id(widget)
+    stamp = (watch.count, widget.width(), widget.height(), len(widget.children()))
+    hit = _GRAB.get(key)
+    if hit is not None and hit[:4] == stamp:
+        return hit[4]
+    shot = widget.grab()
+    if not shot.isNull():
+        _GRAB[key] = (*stamp, shot)
+    return shot
+
+
 def _kept(widget: QWidget) -> QPixmap | None:
     """One picture of `widget` as it looks now. A label that already holds a picture gives that,
     rather than drawing it again."""
@@ -159,7 +209,7 @@ def _kept(widget: QWidget) -> QPixmap | None:
         shot = widget.pixmap()
         if not shot.isNull():
             return shot
-    shot = widget.grab()
+    shot = _snapshot(widget)
     return None if shot.isNull() else shot
 
 
@@ -435,7 +485,7 @@ def hold_picture(
     picture = QLabel(host)
     picture.setObjectName(FADE_NAME)
     picture.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-    picture.setPixmap(host.grab(shown))
+    picture.setPixmap(_snapshot(host, None if area is None else shown))
     picture.setGeometry(shown)
     picture.show()
     picture.raise_()
@@ -619,7 +669,7 @@ def slide_over(stack: QStackedWidget, page: QWidget, level: str, *, back: bool =
         moving.setObjectName(SLIDE_NAME)
         moving.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         _fit_for_picture(page)
-        moving.setPixmap(page.grab())
+        moving.setPixmap(_snapshot(page))
         # The page lies under both pictures until the slide ends. Qt would still paint it for every
         # frame the picture above it moves, so its painting waits for the landing.
         page.setUpdatesEnabled(False)

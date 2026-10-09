@@ -13,6 +13,7 @@ from PySide6.QtGui import (
     QColor,
     QFocusEvent,
     QKeyEvent,
+    QMouseEvent,
     QPainter,
     QPalette,
     QPen,
@@ -256,16 +257,59 @@ class DateField(QDateEdit):
         self._typed = False
         self.editingFinished.connect(self._next_matching_date)
         self.setCalendarPopup(True)
+        self._look_calendar_ready = False
+        self._popup_filters: list[QObject] = []
+        self.installEventFilter(self)
+        for child in self.findChildren(QWidget):
+            child.installEventFilter(self)
+        if day is not None:
+            self.setDate(day)
+
+    def watch_popup(self, watcher: QObject) -> None:
+        """Install `watcher` on the month's popup once that popup exists."""
+        self._popup_filters.append(watcher)
+        if self._look_calendar_ready:
+            popup = QDateEdit.calendarWidget(self).parentWidget()
+            if popup is not None:
+                popup.installEventFilter(watcher)
+
+    def calendarWidget(self) -> QCalendarWidget:  # noqa: N802
+        self._ensure_look_calendar()
+        return QDateEdit.calendarWidget(self)
+
+    def _ensure_look_calendar(self) -> None:
+        if self._look_calendar_ready:
+            return
+        self._look_calendar_ready = True
         # Made with this field as its parent, so Qt owns it, not Python's garbage collector.
         self.setCalendarWidget(LookCalendar(self))
-        popup = self.calendarWidget().parentWidget()
+        popup = QDateEdit.calendarWidget(self).parentWidget()
         # A rounded card with an edge, on nothing at its corners. The style sheet cannot draw it: Qt
         # left the popup's background unpainted whatever its rule said.
         popup.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         popup.layout().setContentsMargins(POPUP_PAD, POPUP_PAD, POPUP_PAD, POPUP_PAD)
         popup.installEventFilter(PopupCard(self))
-        if day is not None:
-            self.setDate(day)
+        for watcher in self._popup_filters:
+            popup.installEventFilter(watcher)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick) and isinstance(
+            event, QMouseEvent
+        ):
+            if isinstance(watched, QToolButton):
+                self._ensure_look_calendar()
+            elif isinstance(watched, QWidget):
+                point = event.position().toPoint()
+                local = point if watched is self else watched.mapTo(self, point)
+                if local.x() >= self.width() - 24:
+                    self._ensure_look_calendar()
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and isinstance(event, QKeyEvent)
+            and event.key() in (Qt.Key.Key_Down, Qt.Key.Key_F4)
+        ):
+            self._ensure_look_calendar()
+        return super().eventFilter(watched, event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 - Qt virtual
         if event.text().strip() and event.text().isprintable():

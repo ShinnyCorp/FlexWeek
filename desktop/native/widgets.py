@@ -3016,7 +3016,7 @@ class DueField(QWidget):
         self.date.setAccessibleName("Due date")
         if today:
             self.date.today = QDate.fromString(today, "yyyy-MM-dd")
-        self.date.calendarWidget().parentWidget().installEventFilter(self)
+        self.date.watch_popup(self)
         # "At a set time" read like "do it at", and it sets the time the work must be done by.
         self.timed = Switch("Due by")
         self.timed.setObjectName(f"{name}Timed")
