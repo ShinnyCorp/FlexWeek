@@ -93,10 +93,14 @@ def window(qapp: QApplication, tmp_path: Path) -> Iterator[tuple[NativeWindow, l
         server.stop()
 
 
+@pytest.mark.parametrize("twenty_four", [True, False])
 def test_the_next_and_now_countdowns_move_with_the_minute_without_a_focus_timer(
-    qapp: QApplication, window: tuple[NativeWindow, list[datetime]]
+    qapp: QApplication, window: tuple[NativeWindow, list[datetime]], twenty_four: bool
 ) -> None:
     made, clock = window
+    made.session.preferences = {**(made.session.preferences or {}), "clock_24h": twenty_four}
+    made._sync_chrome()
+    dinner, half_past = ("18:00", "18:30") if twenty_four else ("6:00 PM", "6:30 PM")
     # On the week, what is next is the rail's card: "Next", what, and when.
     card = made.rail.next
 
@@ -106,18 +110,18 @@ def test_the_next_and_now_countdowns_move_with_the_minute_without_a_focus_timer(
     line = card
     assert made.session.focus is None
     assert card.isVisible()
-    assert said() == ("Next", "Dinner", "18:00 · in 2 h 20 min")
+    assert said() == ("Next", "Dinner", f"{dinner} · in 2 h 20 min")
     # The window looks at the clock on its own timer; here it looks every 20 ms, not every 20 s.
     made._layout_tick.setInterval(20)
     clock[0] += timedelta(minutes=1)
     pump(qapp, 0.3)
-    assert said() == ("Next", "Dinner", "18:00 · in 2 h 19 min")
+    assert said() == ("Next", "Dinner", f"{dinner} · in 2 h 19 min")
     clock[0] += timedelta(hours=2, minutes=29)
     pump(qapp, 0.3)
-    assert said() == ("Now", "Dinner", "until 18:30 · 20 min left")
+    assert said() == ("Now", "Dinner", f"until {half_past} · 20 min left")
     clock[0] += timedelta(minutes=1)
     pump(qapp, 0.3)
-    assert said() == ("Now", "Dinner", "until 18:30 · 19 min left")
+    assert said() == ("Now", "Dinner", f"until {half_past} · 19 min left")
     clock[0] += timedelta(minutes=19)
     pump(qapp, 0.3)
     assert not line.isVisible(), "nothing now or next today, so the card takes no room"
