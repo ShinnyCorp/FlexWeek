@@ -10,19 +10,24 @@ and every design's own motion asks this module how far and how long.
 from __future__ import annotations
 
 import contextlib
+import weakref
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from PySide6.QtCore import (
     QAbstractAnimation,
     QEasingCurve,
+    QElapsedTimer,
+    QEvent,
+    QObject,
     QPoint,
     QRect,
     QRectF,
     Qt,
-    QVariantAnimation,
+    QTimer,
+    Signal,
 )
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QGraphicsEffect, QLabel, QStackedWidget, QWidget
 
 
@@ -113,19 +118,73 @@ def moves(level: str | None = None) -> bool:
     return LEVELS[level or _app_level].reach > 0
 
 
+def frame_interval_ms(rate: float) -> int:
+    """How many milliseconds between frames at `rate` Hz. An unknown rate, or one too low to be a
+    screen, is 60. The interval is never 0, which would run the next frame inside the same turn."""
+    if rate <= 1:
+        return round(1000 / 60)
+    return max(1, round(1000 / rate))
+
+
+def screen_rate(widget: QWidget | None) -> float:
+    """The refresh rate of the screen `widget` is on, or 0 when Qt cannot say. Called on the class:
+    a focus panel keeps a button on `screen`, which would hide the method."""
+    if widget is None:
+        return 0.0
+    screen = QWidget.screen(widget)
+    if screen is None:
+        return 0.0
+    return float(screen.refreshRate())
+
+
+def _fit_for_picture(widget: QWidget) -> None:
+    """Give `widget` the size it will have on screen before a picture is taken of it. A stacked
+    page grabbed at its old size is drawn once small, then resized, then drawn again while it
+    fades."""
+    parent = widget.parentWidget()
+    if isinstance(parent, QStackedWidget):
+        area = parent.size()
+        if area.width() > 0 and area.height() > 0 and widget.size() != area:
+            widget.resize(area)
+    widget.ensurePolished()
+    layout = widget.layout()
+    if layout is not None:
+        layout.activate()
+
+
+def _kept(widget: QWidget) -> QPixmap | None:
+    """One picture of `widget` as it looks now. A label that already holds a picture gives that,
+    rather than drawing it again."""
+    if isinstance(widget, QLabel):
+        shot = widget.pixmap()
+        if not shot.isNull():
+            return shot
+    shot = widget.grab()
+    return None if shot.isNull() else shot
+
+
 class Shift(QGraphicsEffect):
     """Paints its widget at `opacity`, `offset` pixels from where it is. The widget itself does not
     move, so its layout keeps it in place and a click lands where it will be. `far` is the furthest
-    it is ever painted from home, which Qt needs to know to repaint enough."""
+    it is ever painted from home, which Qt needs to know to repaint enough. `picture`, when it is
+    given, is drawn on each frame instead of asking the widget to paint itself again."""
 
-    def __init__(self, parent: QWidget, far: QPoint) -> None:
+    def __init__(self, parent: QWidget, far: QPoint, picture: QPixmap | None = None) -> None:
         super().__init__(parent)
         self.opacity = 1.0
         self.offset = QPoint()
         self._far = far
+        self._picture = picture if picture is not None and not picture.isNull() else None
 
     def set(self, opacity: float, offset: QPoint) -> None:
         self.opacity, self.offset = opacity, offset
+        self.update()
+
+    def drop_picture(self) -> None:
+        """Draw the live widget from now on, so typing or a click is seen during the fade."""
+        if self._picture is None:
+            return
+        self._picture = None
         self.update()
 
     def boundingRectFor(self, rect: QRectF) -> QRectF:  # noqa: N802
@@ -137,12 +196,144 @@ class Shift(QGraphicsEffect):
         if self.opacity >= 1 and self.offset.isNull():
             self.drawSource(painter)
             return
-        system = Qt.CoordinateSystem.LogicalCoordinates
-        pixmap = self.sourcePixmap(system, QPoint(), QGraphicsEffect.PixmapPadMode.NoPad)
         painter.save()
         painter.setOpacity(painter.opacity() * self.opacity)
-        painter.drawPixmap(self.sourceBoundingRect(system).topLeft().toPoint() + self.offset, pixmap)
+        if self._picture is not None:
+            painter.drawPixmap(self.offset, self._picture)
+        else:
+            system = Qt.CoordinateSystem.LogicalCoordinates
+            pixmap = self.sourcePixmap(system, QPoint(), QGraphicsEffect.PixmapPadMode.NoPad)
+            origin = self.sourceBoundingRect(system).topLeft().toPoint()
+            painter.drawPixmap(origin + self.offset, pixmap)
         painter.restore()
+
+
+# Every clock still running, so slow work can wait until nothing is moving.
+_RUNNING: weakref.WeakSet[Clock] = weakref.WeakSet()
+
+
+def busy() -> bool:
+    """Whether any animation is running now on a widget that is on screen."""
+    for clock in list(_RUNNING):
+        try:
+            state = clock.state()
+            if state == QAbstractAnimation.State.Stopped:
+                _RUNNING.discard(clock)
+                continue
+            if state == QAbstractAnimation.State.Paused:
+                continue
+            parent = clock.parent()
+            if isinstance(parent, QWidget) and not parent.isVisible():
+                continue
+            return True
+        except RuntimeError:
+            _RUNNING.discard(clock)
+    return False
+
+
+class Clock(QObject):
+    """A frame clock for one animation. Qt's own animation clock stays near 60 Hz, and this PySide
+    has no way to replace it, so a precise timer follows the screen. The time it reports is how long
+    the animation has been running, so a late frame still lands on the right part of the easing."""
+
+    finished = Signal()
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self._total = 0
+        self._step: Callable[[float], None] | None = None
+        self._base = 0
+        self._stopped = False
+        self._done = False
+        self._paused = False
+        self._elapsed = QElapsedTimer()
+        self._timer = QTimer(self)
+        self._timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self._timer.timeout.connect(self._tick)
+        self.destroyed.connect(self._dropped)
+
+    def start(self, total: int, step: Callable[[float], None]) -> None:
+        self._total = total
+        self._step = step
+        self._base = 0
+        self._stopped = False
+        self._done = False
+        self._paused = False
+        self._elapsed.start()
+        self._retarget()
+        _RUNNING.add(self)
+        self._timer.start()
+
+    def stop(self) -> None:
+        self._stopped = True
+        self._paused = False
+        self._timer.stop()
+        _RUNNING.discard(self)
+
+    def pause(self) -> None:
+        if self._paused or self._done or self._stopped or not self._timer.isActive():
+            return
+        self._base += self._elapsed.elapsed()
+        self._paused = True
+        self._timer.stop()
+
+    def resume(self) -> None:
+        if not self._paused or self._done or self._stopped:
+            return
+        self._paused = False
+        self._elapsed.restart()
+        self._timer.start()
+
+    def duration(self) -> int:
+        return self._total
+
+    def currentTime(self) -> int:  # noqa: N802
+        if self._paused or not self._elapsed.isValid():
+            return min(self._base, self._total)
+        return min(self._base + self._elapsed.elapsed(), self._total)
+
+    def state(self) -> QAbstractAnimation.State:
+        if self._paused:
+            return QAbstractAnimation.State.Paused
+        if self._timer.isActive():
+            return QAbstractAnimation.State.Running
+        return QAbstractAnimation.State.Stopped
+
+    def setCurrentTime(self, ms: int) -> None:  # noqa: N802
+        """Jump to `ms` milliseconds in, and finish when that is the end."""
+        self._base = ms
+        self._elapsed.restart()
+        self._apply(self._base)
+
+    def interval(self) -> int:
+        return self._timer.interval()
+
+    def _dropped(self) -> None:
+        _RUNNING.discard(self)
+
+    def _retarget(self) -> None:
+        parent = self.parent()
+        gap = frame_interval_ms(screen_rate(parent if isinstance(parent, QWidget) else None))
+        if self._timer.interval() != gap:
+            self._timer.setInterval(gap)
+
+    def _tick(self) -> None:
+        if self._stopped or self._done:
+            return
+        self._retarget()
+        self._apply(self._base + self._elapsed.elapsed())
+
+    def _apply(self, ms: int) -> None:
+        if self._done or self._step is None:
+            return
+        if ms >= self._total:
+            self._done = True
+            self._timer.stop()
+            _RUNNING.discard(self)
+            self._step(float(self._total))
+            self.finished.emit()
+            return
+        self._step(float(ms))
 
 
 class Dim(QWidget):
@@ -162,6 +353,10 @@ class Dim(QWidget):
 def settle(widget: QWidget) -> None:
     """End an animation still running on `widget` where it would have ended, so a second one starts
     from where the widget belongs. Stopping one does not emit `finished`, so its tidying runs here."""
+    kick = getattr(widget, "_motion_live", None)
+    if kick is not None:
+        kick.detach()
+        widget._motion_live = None  # type: ignore[attr-defined]
     running = getattr(widget, "_motion_running", None)
     widget._motion_running = None  # type: ignore[attr-defined]
     if running is None:
@@ -171,25 +366,29 @@ def settle(widget: QWidget) -> None:
         animation.finished.disconnect(done)
         animation.stop()
     done()
+    with contextlib.suppress(RuntimeError):
+        animation.deleteLater()
 
 
 def _run(owner: QWidget, total: int, step: Callable[[float], None], done: Callable[[], None]) -> None:
-    """Call `step` with the milliseconds gone, from 0 to `total`, each frame, then `done`. The clock
-    belongs to `owner`, and `settle(owner)` ends it early."""
+    """Call `step` with the milliseconds gone, from 0 to `total`, each frame, then `done`. The first
+    call is immediate, so the fade is on screen before the first interval. The clock belongs to
+    `owner`, and `settle(owner)` ends it early."""
+    if total <= 0:
+        done()
+        return
     step(0.0)
-    clock = QVariantAnimation(owner)
-    clock.setStartValue(0.0)
-    clock.setEndValue(float(total))
-    clock.setDuration(total)
-    clock.valueChanged.connect(lambda value: step(float(value)))
+    clock = Clock(owner)
 
     def finish() -> None:
         owner._motion_running = None  # type: ignore[attr-defined]
         done()
+        with contextlib.suppress(RuntimeError):
+            clock.deleteLater()
 
     clock.finished.connect(finish)
     owner._motion_running = (clock, finish)  # type: ignore[attr-defined]
-    clock.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
+    clock.start(total, step)
 
 
 def between(start: QRectF, end: QRectF, share: float) -> QRectF:
@@ -274,7 +473,7 @@ def fade_away(
         picture.deleteLater()
         return
     end = QPoint(distance(drift, level), 0)
-    effect = Shift(picture, end)
+    effect = Shift(picture, end, _kept(picture))
     picture.setGraphicsEffect(effect)
     fading = LINEAR if steady else OUT
 
@@ -283,6 +482,33 @@ def fade_away(
         effect.set(1 - share, end * share)
 
     _run(picture, length, step, picture.deleteLater)
+
+
+class _LiveOnInput(QObject):
+    """The first key or click on `widget` drops its fade picture so the live widget shows through."""
+
+    def __init__(self, effect: Shift, widget: QWidget) -> None:
+        super().__init__(widget)
+        self._effect = effect
+        self._widget = widget
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.MouseButtonPress):
+            return False
+        if not isinstance(watched, QWidget):
+            return False
+        if watched is self._widget or self._widget.isAncestorOf(watched):
+            self._effect.drop_picture()
+            self.detach()
+        return False
+
+    def detach(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
 
 
 def appear(
@@ -306,9 +532,16 @@ def appear(
     if wait + length == 0 or not widget.isVisible():
         return
     start = QPoint(distance(shift, level), distance(RISE_PX, level) if rise else 0)
-    effect = Shift(widget, start)
+    live = grow and moves(level)
+    if not live:
+        _fit_for_picture(widget)
+    # Growing changes the widget's height on every frame, so that one has to be drawn live. Anything
+    # else is painted once and the picture moves.
+    effect = Shift(widget, start, None if live else _kept(widget))
     widget.setGraphicsEffect(effect)
-    full = widget.sizeHint().height() if grow and moves(level) else 0
+    kick = None if live else _LiveOnInput(effect, widget)
+    widget._motion_live = kick  # type: ignore[attr-defined]
+    full = widget.sizeHint().height() if live else 0
     limit = widget.maximumHeight()
 
     def step(at: float) -> None:
@@ -318,6 +551,9 @@ def appear(
             widget.setMaximumHeight(round(full * share))
 
     def done() -> None:
+        if kick is not None:
+            kick.detach()
+        widget._motion_live = None  # type: ignore[attr-defined]
         # An effect left in place makes every later repaint of the widget go through it.
         widget.setGraphicsEffect(None)
         widget.setMaximumHeight(limit)
@@ -365,10 +601,46 @@ def slide_over(stack: QStackedWidget, page: QWidget, level: str, *, back: bool =
     stack.setCurrentWidget(page)
     if picture is None:
         return
+    coming = None
+    if not back:
+        _fit_for_picture(page)
+        coming = page.grab()
+    _slide_pictures(stack, picture, stack.rect(), level, back=back, live=page, coming=coming)
+
+
+def slide_view(host: QWidget, picture: QLabel, live: QWidget, level: str, *, back: bool = False) -> None:
+    """Slide a view in or out as `slide_over` slides a page, for a view that lives inside `host`
+    rather than on a page of its own. `picture` is the one `hold_picture` took of `host` (or of an
+    area of it) before the view changed; `live` is the part of `host` that changed. Going in, the
+    picture of what was there stays under a dim and a picture of the new view slides over it. With
+    `back`, the picture is of the view going away: it slides off over the live view, which brightens."""
+    coming = None
+    if not back:
+        # The held picture lies over the very thing being grabbed.
+        picture.hide()
+        coming = host.grab(picture.geometry())
+        picture.show()
+    _slide_pictures(host, picture, picture.geometry(), level, back=back, live=live, coming=coming)
+
+
+def _slide_pictures(
+    host: QWidget,
+    picture: QLabel,
+    area: QRect,
+    level: str,
+    *,
+    back: bool,
+    live: QWidget,
+    coming: QPixmap | None,
+) -> None:
+    """The slide itself, over `area` of `host`. `picture` is held of what was there. Going in,
+    `coming` is a picture of what slides over it and `live` lies under both, with its painting
+    waiting, until it lands; going back, `picture` is what slides away. The clock is `live`'s going
+    in, so settling it ends the slide."""
     length = duration(OVER_MS, level)
-    far = QPoint(stack.width(), 0)
-    dim = Dim(stack if back else picture)
-    dim.setGeometry(stack.rect() if back else picture.rect())
+    far = QPoint(area.width(), 0)
+    dim = Dim(host if back else picture)
+    dim.setGeometry(area if back else picture.rect())
     dim.show()
     # What moves is a picture either way: of the page going away, or of the page coming in. The page
     # coming in used to move itself, drawn through an effect, which painted the whole of Settings
@@ -376,17 +648,17 @@ def slide_over(stack: QStackedWidget, page: QWidget, level: str, *, back: bool =
     if back:
         moving = picture
         dim.stackUnder(picture)
-        effect = Shift(moving, far)
+        effect = Shift(moving, far, _kept(moving))
         moving.setGraphicsEffect(effect)
     else:
-        moving = QLabel(stack)
+        moving = QLabel(host)
         moving.setObjectName(SLIDE_NAME)
         moving.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        moving.setPixmap(page.grab())
+        moving.setPixmap(coming)
         # The page lies under both pictures until the slide ends. Qt would still paint it for every
         # frame the picture above it moves, so its painting waits for the landing.
-        page.setUpdatesEnabled(False)
-        moving.setGeometry(stack.rect().translated(far))
+        live.setUpdatesEnabled(False)
+        moving.setGeometry(area.translated(far))
         moving.show()
         moving.raise_()
 
@@ -395,19 +667,47 @@ def slide_over(stack: QStackedWidget, page: QWidget, level: str, *, back: bool =
         if back:
             effect.set(1.0, far * share)
         else:
-            moving.move(round(far.x() * (1 - share)), 0)
+            moving.move(area.x() + round(far.x() * (1 - share)), area.y())
         dim.share = 1 - share if back else share
         dim.update()
+
+    def regrab() -> None:
+        # The held picture and the dim on it lie over the very thing being grabbed.
+        picture.hide()
+        moving.hide()
+        # A widget whose painting waits is drawn blank into a picture.
+        live.setUpdatesEnabled(True)
+        shot = host.grab(area)
+        live.setUpdatesEnabled(False)
+        picture.show()
+        moving.show()
+        moving.setPixmap(shot)
 
     def done() -> None:
         dim.deleteLater()
         picture.deleteLater()
         if not back:
-            page.setUpdatesEnabled(True)
+            live._slide_regrab = None  # type: ignore[attr-defined]
+            live.setUpdatesEnabled(True)
             moving.deleteLater()
 
+    if not back:
+        live._slide_regrab = regrab  # type: ignore[attr-defined]
     # The clock is the page's when it comes in, so settling the page ends its slide.
-    _run(picture if back else page, length, step, done)
+    _run(picture if back else live, length, step, done)
+
+
+def sliding_in(live: QWidget) -> bool:
+    """Whether a view is sliding in over the desk on `live`."""
+    return getattr(live, "_slide_regrab", None) is not None
+
+
+def retake_slide(live: QWidget) -> None:
+    """If a view is sliding in over the desk, take its picture again: what it shows has changed since
+    the slide began, such as a month whose data has just arrived. Nothing otherwise."""
+    regrab = getattr(live, "_slide_regrab", None)
+    if regrab is not None:
+        regrab()
 
 
 def slide_down(widget: QWidget, level: str, *, ms: int = EASE_MS) -> None:
@@ -449,7 +749,7 @@ def vanish(widget: QWidget, level: str) -> None:
     if length == 0 or not widget.isVisible():
         widget.hide()
         return
-    effect = Shift(widget, QPoint())
+    effect = Shift(widget, QPoint(), _kept(widget))
     widget.setGraphicsEffect(effect)
     fading = QEasingCurve(QEasingCurve.Type.InCubic)
 

@@ -11,7 +11,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRect, QRectF, Qt, QVariantAnimation, Signal
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QContextMenuEvent,
@@ -58,7 +58,7 @@ from desktop.native.layouts.base import (
     scrolling,
 )
 from desktop.native.look import category_paint
-from desktop.native.motion import duration, moves
+from desktop.native.motion import OUT, Clock, duration, moves
 from desktop.native.tokens import (
     RADIUS_CARD,
     RADIUS_CONTROL,
@@ -195,9 +195,8 @@ class DialFace(QWidget):
         self._now: int | None = None
         # The minute the hand points at while it eases to `_now`.
         self._hand_at: float | None = None
-        self._easing = QVariantAnimation(self)
-        self._easing.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._easing.valueChanged.connect(self._eased)
+        self._hand_goal: int | None = None
+        self._easing = Clock(self)
         self._tokens: dict[str, str] = {}
         self._scale = 1.0
         self.setObjectName(f"dialMini{day}" if mini else "dialFace")
@@ -230,14 +229,15 @@ class DialFace(QWidget):
         if self._now is None or since == self._now or not moves() or not length:
             return
         self._easing.stop()
-        self._easing.setStartValue(float(since))
-        self._easing.setEndValue(float(self._now))
-        self._easing.setDuration(length)
         self._hand_at = float(since)
-        self._easing.start()
+        goal = self._now
+        self._hand_goal = goal
+        self._easing.start(
+            length, lambda at: self._eased(since + (goal - since) * OUT.valueForProgress(at / length))
+        )
 
     def _eased(self, minute: object) -> None:
-        self._hand_at = None if minute == self._easing.endValue() else float(minute)
+        self._hand_at = None if minute == self._hand_goal else float(minute)
         self.update()
 
     def _radii(self) -> tuple[QPointF, float, float]:

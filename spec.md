@@ -466,7 +466,7 @@ or hide option starts at Show:
 | Mission control | main view, experimental | Four figures across the top, the days as lanes of hours, and deadlines by time left | Colours (Flight deck, Cyan, Amber, Green), Figures across the top |
 | Bento | main view, experimental | A big tile of the week's hours, or of today's with the other days as small tiles, and homework around it | Colours (Indigo, Sunset, Mono, Midnight), Hero (Week, Today), Tile corners (Soft, Square) |
 | Retro desktop | main view, experimental | Windows 98: Week.exe, deadlines.txt in Notepad, Up next and a taskbar | Colours (Teal, Plum and Slate desktop), Windows open at start (All three, Main window only) |
-| Clay deck | main view, experimental | One day at a time on a large card, the days either side peeking | Colours (Clay, Mint, Sunset, Dusk), Days either side |
+| Clay deck | main view, experimental | One day at a time on a large card, the days either side dimmed and still | Colours (Clay, Mint, Sunset, Dusk), Days either side |
 | Day dial | day screen, default | The day as a 24-hour ring, read out hour by hour beside it | Colours (Night, Daylight), Hour by hour list, Small dials for the week |
 | One thing | day screen, experimental | What is on or next, counted down on a ring, and what comes after | Colours (Poster, Paper and ink), Lead with (What is on now, What is next), Buttons, Day bar |
 
@@ -488,14 +488,21 @@ accent and Fine-tune knobs it sets, does not let them change, and says to open
 Customise….
 
 Motion (`desktop/native/motion.py`) never makes the student wait: the new page
-is live at once while a picture of the old one fades over it. A page change
-fades through, the old page out in 90 ms and the new one in over 120 ms; Day,
-Week and Month also slide 12 pixels toward the segment chosen, and the arrows
-drift the old page 16 pixels the way the student went. A change of view, My day
-or design changes the top bar and the page in one frame. Settings slides in
-from the right over the week, dimmed 20 %, in 200 ms. Notices, sheets, dialogs
-and Ctrl+K fade in and rise 8 pixels, and the top bar's selection slides to the
-view chosen in 160 ms. Animations has four levels: Normal; More (`extra`), 1.45
+is live at once while a picture of the old one fades over it. Animations move
+still pictures of what fades or slides, not the live widgets, on a timer that
+follows the screen's refresh rate (60 Hz when the rate cannot be read); a
+widget is drawn live while its height changes, or from the first key or click
+in it during a fade. A page change fades through, the old page out in 120 ms
+and the new one in over 160 ms, starting 30 ms after it; Day, Week and Month
+also slide 24 pixels toward the segment chosen, and the arrows drift the old
+page 16 pixels the way the student went. A change of view, My day or design
+changes the top bar and the page in one frame. Settings slides in from the
+right over the week, dimmed 20 %, in 200 ms; in Retro desktop, Month slides in
+and out over the dimmed desk the same way. Notices, sheets, dialogs and Ctrl+K
+fade in and rise 8 pixels, and the top bar's selection slides to the view
+chosen in 160 ms. A new or edited block's or homework's sheet starts its dim at
+the click and is built behind it. Clay deck's change of day moves each card as
+two still pictures, at its start and end size, crossfading between them. Animations has four levels: Normal; More (`extra`), 1.45
 times as long and a third further; Reduce, the same fades with nothing
 travelling (no slide, rise, drift, zoom, lift or sliding blocks); and Off,
 where nothing animates. Each design's own motion asks the same module, and

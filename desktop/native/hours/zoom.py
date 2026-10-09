@@ -20,7 +20,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from math import ceil
 
-from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QSize, Qt, QVariantAnimation, Signal
+from PySide6.QtCore import QEvent, QObject, QPointF, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -37,7 +37,7 @@ from desktop.native import icons
 from desktop.native.hours.canvas import HoursCanvas
 from desktop.native.hours.geometry import FIRST, LAST, Axis
 from desktop.native.look import ZOOM_PILL_PX
-from desktop.native.motion import EASE_MS, OUT, duration, moves
+from desktop.native.motion import EASE_MS, OUT, Clock, duration, moves
 from desktop.native.weekmodel import WeekModel
 from desktop.native.widgets import overlay_scroll_bars
 
@@ -344,14 +344,12 @@ class HoursScroll(QScrollArea):
         length = duration(EASE_MS + 60, level)
         if end == start or length == 0 or not moves(level):
             return
-        glide = QVariantAnimation(self)
-        glide.setStartValue(start)
-        glide.setEndValue(end)
-        glide.setDuration(length)
-        glide.setEasingCurve(OUT)
-        glide.valueChanged.connect(lambda value: bar.setValue(round(value)))
+        glide = Clock(self)
+        glide.finished.connect(glide.deleteLater)
         bar.setValue(start)
-        glide.start(QVariantAnimation.DeletionPolicy.DeleteWhenStopped)
+        glide.start(
+            length, lambda at: bar.setValue(round(start + (end - start) * OUT.valueForProgress(at / length)))
+        )
 
     def open_at(
         self, key: object, minute: int, above: int | None = 90, end: bool = False, keep: int | None = None
@@ -499,7 +497,9 @@ class HoursScroll(QScrollArea):
 
     def _y_for(self, minute: float) -> float:
         """How far along the hours, down or across, a minute lies."""
-        track = self.canvas.tracks[0]
+        track = self.canvas.tracks[0] if self.canvas.tracks else None
+        if track is None:
+            return 0.0
         start = track.area.top() if self._down else track.area.left()
         return start + track.offset(minute)
 

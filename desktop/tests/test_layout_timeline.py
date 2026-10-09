@@ -66,7 +66,7 @@ if importlib.util.find_spec("PySide6") is not None:
     )
     from desktop.native.tokens import contrast
     from desktop.native.weekmodel import build_week, minute_of
-    from desktop.native.widgets import FittedLabel
+    from desktop.native.widgets import FittedLabel, use_app_style
 
 THURSDAY = 3
 HOSTS: list = []
@@ -75,6 +75,7 @@ HOSTS: list = []
 @pytest.fixture(scope="module")
 def qapp() -> Iterator[QApplication]:
     application = QApplication.instance() or QApplication(["flexweek-timeline-test"])
+    use_app_style(application)
     yield application
 
 

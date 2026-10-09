@@ -13,6 +13,7 @@ from PySide6.QtGui import (
     QColor,
     QFocusEvent,
     QKeyEvent,
+    QMouseEvent,
     QPainter,
     QPalette,
     QPen,
@@ -256,18 +257,46 @@ class DateField(QDateEdit):
         self._typed = False
         self.editingFinished.connect(self._next_matching_date)
         self.setCalendarPopup(True)
+        # The month is made on the first press or key, before Qt opens its popup: built with the
+        # field, it held up the first frame of every sheet that has a date.
+        self._look_calendar_ready = False
+        self._popup_filters: list[QObject] = []
+        if day is not None:
+            self.setDate(day)
+
+    def watch_popup(self, watcher: QObject) -> None:
+        """Install `watcher` on the month's popup once that popup exists."""
+        self._popup_filters.append(watcher)
+        if self._look_calendar_ready:
+            popup = QDateEdit.calendarWidget(self).parentWidget()
+            if popup is not None:
+                popup.installEventFilter(watcher)
+
+    def calendarWidget(self) -> QCalendarWidget:  # noqa: N802
+        self._ensure_look_calendar()
+        return QDateEdit.calendarWidget(self)
+
+    def _ensure_look_calendar(self) -> None:
+        if self._look_calendar_ready:
+            return
+        self._look_calendar_ready = True
         # Made with this field as its parent, so Qt owns it, not Python's garbage collector.
         self.setCalendarWidget(LookCalendar(self))
-        popup = self.calendarWidget().parentWidget()
+        popup = QDateEdit.calendarWidget(self).parentWidget()
         # A rounded card with an edge, on nothing at its corners. The style sheet cannot draw it: Qt
         # left the popup's background unpainted whatever its rule said.
         popup.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         popup.layout().setContentsMargins(POPUP_PAD, POPUP_PAD, POPUP_PAD, POPUP_PAD)
         popup.installEventFilter(PopupCard(self))
-        if day is not None:
-            self.setDate(day)
+        for watcher in self._popup_filters:
+            popup.installEventFilter(watcher)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt virtual
+        self._ensure_look_calendar()
+        super().mousePressEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 - Qt virtual
+        self._ensure_look_calendar()
         if event.text().strip() and event.text().isprintable():
             # Typing in the year gives a year; typing a day or a month leaves it to the field.
             self._typed = self.currentSection() != QDateTimeEdit.Section.YearSection

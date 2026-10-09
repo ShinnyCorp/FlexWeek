@@ -25,6 +25,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, QStandardPaths
     from PySide6.QtWidgets import QApplication, QPushButton, QScrollBar
 
+    from desktop.native import motion
     from desktop.native.calendar import monday_of, sunday_due
     from desktop.native.hours.geometry import Axis
     from desktop.native.hours.zoom import HoursScroll
@@ -133,7 +134,14 @@ def opens_at(qapp: QApplication, window: NativeWindow, minute: int, where: str) 
     sliding depended on how soon the server answered."""
     view = window.planner.currentWidget()
     running = QAbstractAnimation.State.Running
-    wait_until(qapp, lambda: all(item.state() != running for item in view.findChildren(QAbstractAnimation)))
+    # The app's own motion runs on `motion.Clock`, which is not a Qt animation.
+    wait_until(
+        qapp,
+        lambda: (
+            not motion.busy()
+            and all(item.state() != running for item in view.findChildren(QAbstractAnimation))
+        ),
+    )
     for _ in range(4):
         qapp.processEvents()
     scroll = hours(window)

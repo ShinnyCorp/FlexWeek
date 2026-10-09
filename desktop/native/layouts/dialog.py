@@ -29,7 +29,7 @@ from desktop.native.layouts.registry import (
     layouts_for,
     options_for,
 )
-from desktop.native.motion import OVER_MS, duration
+from desktop.native.motion import OVER_MS, busy, duration
 from desktop.native.previews import Previews
 from desktop.native.widgets import (
     CARD_GAP,
@@ -59,6 +59,9 @@ EXPERIMENTAL_TAG = "Experimental"
 SEGMENTED_MOST = 3
 # A moment past the slide before the first design picture is drawn, so its last frame is not caught.
 PICTURES_AFTER_SLIDE_MS = 40
+# How long a picture waits before looking again while something is moving.
+PICTURE_WAIT_MS = 50
+PICTURE_MAX_WAITS = 10
 
 
 class DesignGrid(CardGrid):
@@ -93,6 +96,8 @@ class DesignPicker(Choices):
         self.cards: list[ChoiceCard] = []
         self._drawn: dict[int, int] = {}
         self._waiting: list[int] = []
+        self._scheduled = False
+        self._picture_waits = 0
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
@@ -121,14 +126,22 @@ class DesignPicker(Choices):
         if drawn is None or drawn == width or index in self._waiting:
             return
         self._waiting.append(index)
-        QTimer.singleShot(0, self._draw_next)
+        self._schedule()
 
     def _card_chosen(self) -> None:
         self.setCurrentIndex(int(self.sender().property("index")))
 
-    def _draw_next(self) -> None:
-        if not self._waiting:
+    def _schedule(self) -> None:
+        """One picture on a later turn. A zero timer would run inside the turn that posted it, and
+        several of those, each a tenth of a second, became one long turn."""
+        if self._scheduled or not self._waiting:
             return
+        self._scheduled = True
+        QTimer.singleShot(1, self._draw_next)
+
+    def _draw_one(self) -> bool:
+        if not self._waiting:
+            return False
         index = self._waiting.pop(0)
         layout_id = str(self._data[index])
         colourways = LAYOUTS[layout_id].colourways
@@ -137,8 +150,35 @@ class DesignPicker(Choices):
         width = card.picture.width()
         card.set_picture(Previews().get(layout_id, colour, self._pack, None, width))
         self._drawn[index] = width
+        return True
+
+    def _draw_next(self) -> None:
+        self._scheduled = False
+        if busy() and (not self.isVisible() or self._picture_waits < PICTURE_MAX_WAITS):
+            # Pictures can hold a fade for a tenth of a second. Bound the visible wait so a stuck
+            # clock cannot leave the cards blank; off-screen work can keep waiting.
+            if self.isVisible():
+                self._picture_waits += 1
+            self._scheduled = True
+            QTimer.singleShot(PICTURE_WAIT_MS, self._draw_next)
+            return
+        self._picture_waits = 0
+        if not self._draw_one():
+            return
         if self._waiting:
-            QTimer.singleShot(0, self._draw_next)
+            self._schedule()
+
+    def draw_soon(self) -> None:
+        """Start drawing the pictures still waiting now, one a turn, rather than after the slide's
+        wait. Each waits while anything moves, as on screen."""
+        self._schedule()
+
+    def warm(self) -> None:
+        """Draw every picture still waiting, now. Used while Settings is not on screen, so opening
+        it does not spend the time."""
+        self._scheduled = False
+        while self._draw_one():
+            pass
 
     def _show(self, index: int) -> None:
         for at, card in enumerate(self.cards):

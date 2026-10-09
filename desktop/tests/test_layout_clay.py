@@ -18,10 +18,11 @@ pytestmark = pytest.mark.skipif(
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 if importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QAbstractAnimation, QPoint, QPointF, QRect, QRectF, Qt
+    from PySide6.QtCore import QAbstractAnimation, QEvent, QObject, QPoint, QPointF, QRect, QRectF, Qt
     from PySide6.QtGui import QColor, QCursor, QFont, QFontMetricsF, QImage, QPainter
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
+    from shiboken6 import isValid
 
     from desktop.native import motion
     from desktop.native.hours import canvas as canvas_module
@@ -337,6 +338,46 @@ def test_the_wheel_slides_the_row_over_a_neighbour_and_scrolls_the_hours_over_th
     visible_scrolls(view)[0].verticalScrollBar().setValue(0)
     wheel(front(view), 1)
     assert view.row.front == 4
+
+
+def test_a_sliding_row_does_not_repaint_its_cards_every_frame(qapp: QApplication) -> None:
+    """The row slides a picture of its cards. The cards themselves stay unpainted until it lands."""
+
+    class Count(QObject):
+        def __init__(self) -> None:
+            super().__init__()
+            self.paints = 0
+
+        def eventFilter(self, _watched: QObject, event: QEvent) -> bool:  # noqa: N802
+            if event.type() == QEvent.Type.Paint:
+                self.paints += 1
+            return False
+
+    view = shown(qapp)
+    motion.apply_ui_effects("normal")
+    cards = []
+    for day in range(7):
+        canvas = view.row.findChild(QWidget, f"clayPeek{day}")
+        assert canvas is not None
+        cards.append(canvas.parentWidget())
+    counter = Count()
+    for card in cards:
+        card.installEventFilter(counter)
+    view.findChild(QPushButton, "clayAhead").click()
+    assert view.row._slide.state() == QAbstractAnimation.State.Running
+    counter.paints = 0
+    frames = 0
+    deadline = time.monotonic() + 0.2
+    while time.monotonic() < deadline and view.row._slide.state() == QAbstractAnimation.State.Running:
+        qapp.processEvents()
+        frames += 1
+        QTest.qWait(8)
+    assert frames >= 8, "the row slid for several frames"
+    assert counter.paints <= 3, f"the cards painted {counter.paints} times over {frames} frames"
+    rest(qapp, 0.3)
+    assert view.row.front == 4
+    thursday = view.row.findChild(QWidget, "clayPeek3").parentWidget()
+    assert thursday.isVisible()
 
 
 def test_the_row_slides_in_240_ms_and_jumps_with_motion_off(qapp: QApplication) -> None:
@@ -812,3 +853,247 @@ def test_a_block_that_shares_its_time_is_drawn_like_one_that_does_not(qapp: QApp
         return image
 
     assert painted(2) == painted(1), "a block that shares its time has a mark on it"
+
+
+def test_the_row_is_seven_eighths_of_the_way_at_half_time(qapp, monkeypatch):
+    view = shown(qapp)
+    motion.apply_ui_effects("normal")
+    view.findChild(QPushButton, "clayAhead").click()
+    shares = []
+    monkeypatch.setattr(view.row, "_slid", shares.append)
+    view.row._slide.pause()
+    view.row._slide.setCurrentTime(120)
+    assert shares == [pytest.approx(0.875)]
+    view.row._slide.stop()
+
+
+def _slide_pictures(row) -> tuple[dict[int, object], dict[int, object]]:
+    """Start and end pictures the row keeps while it slides, whatever shape it stores them in."""
+    snaps = row._snaps
+    assert snaps is not None
+    if isinstance(snaps, tuple) and len(snaps) == 2:
+        return snaps[0], snaps[1]
+    starts, ends = {}, {}
+    for day, pair in snaps.items():
+        if isinstance(pair, tuple) and len(pair) == 2:
+            starts[day], ends[day] = pair
+        else:
+            starts[day] = pair
+    return starts, ends
+
+
+def _frame_gap(qapp: QApplication, row) -> int:
+    """The largest difference in any colour channel between the running slide's last frame and the
+    row once it has landed. A sliver of antialiasing may differ at the arrows' and cards' edges;
+    another hour, heading or card is a difference of 100 or more."""
+    assert row._slide.state() == QAbstractAnimation.State.Running
+    row._slide.pause()
+    row._on_clock(float(row._slide.duration()))
+    row.repaint()
+    at_end = row.grab().toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    row._land()
+    qapp.processEvents()
+    row.repaint()
+    landed = row.grab().toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    row._slide.stop()
+    assert at_end.size() == landed.size()
+    return max(abs(a - b) for a, b in zip(bytes(at_end.constBits()), bytes(landed.constBits()), strict=True))
+
+
+def test_the_last_slide_frame_matches_the_landed_row(qapp: QApplication) -> None:
+    """At t=1 the row is already the landed layout: start pictures are gone, end pictures sit at
+    their finished size, so a grab matches one taken after the slide stops."""
+    view = shown(qapp)
+    motion.apply_ui_effects("normal")
+    view.findChild(QPushButton, "clayAhead").click()
+    assert _frame_gap(qapp, view.row) <= 16
+
+
+def test_the_last_day_slide_frame_matches_the_landed_row(qapp: QApplication) -> None:
+    """Day opens its hours and summary for the new day as the row starts to slide, so the end
+    pictures hold the day as it lands, not the hours where the last day left them."""
+    view = shown(qapp, tab="day")
+    motion.apply_ui_effects("normal")
+    scene = view.scene
+    view.show_week(Scene(
+        scene.week, scene.today, scene.minute, scene.options, scene.tokens,
+        surface="day", iso_day=scene.week.date_of(4).isoformat(),
+    ))
+    assert _frame_gap(qapp, view.row) <= 16
+
+
+def test_the_live_hours_stay_where_they_land_while_the_row_slides(qapp: QApplication) -> None:
+    """The hours in front are not painted while the pictures move, so they must not be moved
+    either: a widget moved with its updates off leaves stale pixels behind."""
+    view = shown(qapp)
+    motion.apply_ui_effects("normal")
+    row = view.row
+    view.findChild(QPushButton, "clayAhead").click()
+    assert row._slide.state() == QAbstractAnimation.State.Running
+    row._slide.pause()
+    row._on_clock(row._slide.duration() / 2)
+    assert row._snaps is not None
+    mid = row.hours.geometry()
+    row._land()
+    assert mid == row.hours.geometry()
+    row._slide.stop()
+
+
+def test_day_hides_live_side_cards_while_the_row_slides(qapp: QApplication) -> None:
+    """Day's render used to _put after the slide had started, which showed the live neighbours
+    beside the moving pictures."""
+    view = shown(qapp, tab="day")
+    motion.apply_ui_effects("normal")
+    row = view.row
+    row._go(4, "slide")
+    assert row._slide.state() == QAbstractAnimation.State.Running
+    row.set_summary(view._summary(view.scene, 4))
+    assert row._snaps is not None
+    live = [card for card in row.findChildren(Card) if card.isVisible()]
+    assert live == [], f"live side cards still showing: {[card.day for card in live]}"
+    row._slide.stop()
+    row._land()
+
+
+def test_only_one_day_summary_shows_while_the_row_slides(qapp: QApplication) -> None:
+    """The new day's summary must not sit live over the baked picture of the old one."""
+    view = shown(qapp, tab="day")
+    motion.apply_ui_effects("normal")
+    row = view.row
+    row._go(4, "slide")
+    row.set_summary(view._summary(view.scene, 4))
+    assert row._snaps is not None
+    summaries = [widget for widget in view.findChildren(QWidget, "claySummary") if widget.isVisible()]
+    assert summaries == [], "a live claySummary is stacking on the slide's pictures"
+    row._slide.stop()
+    row._land()
+
+
+def test_a_summary_replaced_mid_slide_is_the_one_shown_when_it_lands(qapp: QApplication) -> None:
+    """Day's summary can be replaced while the row slides. When it lands, the new one shows in the
+    row, and the replaced one is never shown again, least of all as a window of its own."""
+    view = shown(qapp, tab="day")
+    motion.apply_ui_effects("normal")
+    row = view.row
+    row._go(4, "slide", summary=view._summary(view.scene, 4))
+    assert row._snaps is not None
+    old = row._summary
+    fresh = view._summary(view.scene, 4)
+    row.set_summary(fresh)
+    row._slide.stop()
+    row._land()
+    assert row._summary is fresh
+    assert fresh.parentWidget() is row and fresh.isVisible(), "the new summary shows once landed"
+    assert old is None or not isValid(old) or not old.isVisible(), "the replaced summary stays hidden"
+
+
+def test_a_card_entering_from_off_screen_has_a_picture(qapp: QApplication) -> None:
+    """Saturday in front leaves Monday past the left edge; sliding to Sunday still keeps a picture
+    of it, so it does not pop if it comes into view."""
+    view = shown(qapp)
+    view.row._go(5, "jump")
+    monday = view.row._rects[0]
+    assert monday.right() < 0, "Monday should start past the left edge"
+    motion.apply_ui_effects("normal")
+    view.row._go(6, "slide")
+    assert view.row._slide.state() == QAbstractAnimation.State.Running
+    starts, ends = _slide_pictures(view.row)
+    assert 0 in starts or 0 in ends, "Monday has no start or end picture"
+    view.row._slide.stop()
+    view.row._land()
+
+
+def _drawn_at(qapp: QApplication, view: ClayDeckView, share: float, monkeypatch) -> list[dict]:
+    """Every picture the sliding row draws with the slide held at `share`: which day and end it is,
+    its logical size, where it is drawn, its opacity and the clip it is drawn through."""
+    row = view.row
+    assert row._slide.state() != QAbstractAnimation.State.Stopped
+    row._slide.pause()
+    starts, ends = _slide_pictures(row)
+    keys = {shot.picture.cacheKey(): (day, "start") for day, shot in starts.items()}
+    keys.update({shot.picture.cacheKey(): (day, "end") for day, shot in ends.items()})
+    seen: list[dict] = []
+    original = type(row)._blit
+
+    def record(self, painter, picture, target):
+        ratio = picture.devicePixelRatio() or 1.0
+        day, end = keys[picture.cacheKey()]
+        seen.append({
+            "day": day, "end": end, "opacity": painter.opacity(), "target": QRectF(target),
+            "size": (picture.width() / ratio, picture.height() / ratio),
+            "clip": painter.clipPath().boundingRect(), "card": QRectF(self._rects[day]),
+        })
+        original(self, painter, picture, target)
+
+    monkeypatch.setattr(type(row), "_blit", record)
+    row._slid(share)
+    row.repaint()
+    return seen
+
+
+def _stop(row) -> None:
+    row._slide.stop()
+    row._land()
+
+
+def _slide_week(qapp: QApplication):
+    view = shown(qapp)
+    motion.apply_ui_effects("normal")
+    view.findChild(QPushButton, "clayAhead").click()
+    return view
+
+
+def _slide_day(qapp: QApplication):
+    view = shown(qapp, tab="day")
+    motion.apply_ui_effects("normal")
+    scene = view.scene
+    view.show_week(Scene(
+        scene.week, scene.today, scene.minute, scene.options, scene.tokens,
+        surface="day", iso_day=scene.week.date_of(4).isoformat(),
+    ))
+    return view
+
+
+@pytest.mark.parametrize("start", [_slide_week, _slide_day], ids=["week", "day"])
+def test_mid_slide_a_picture_is_scaled_alike_both_ways_and_clipped_to_its_card(
+    qapp: QApplication, monkeypatch, start
+) -> None:
+    """A picture squeezed into another shape stretched its words. One factor on both sides, and the
+    card's own rectangle as the clip, keep them as they were drawn."""
+    view = start(qapp)
+    scaled = 0
+    for share in (0.05, 0.3, 0.5, 0.7):
+        for item in _drawn_at(qapp, view, share, monkeypatch):
+            wide, tall = item["size"]
+            target = item["target"]
+            assert abs(target.width() - target.height() * wide / tall) <= 1, (share, item)
+            scaled += abs(target.height() - tall) > 2
+            assert item["clip"].isEmpty() is False
+            assert item["clip"].adjusted(-0.5, -0.5, 0.5, 0.5).contains(item["card"]), (share, item)
+            assert item["card"].adjusted(-0.5, -0.5, 0.5, 0.5).contains(item["clip"]), (share, item)
+        monkeypatch.undo()
+    assert scaled > 0, "no picture was scaled, so the check saw nothing"
+    _stop(view.row)
+
+
+@pytest.mark.parametrize("start", [_slide_week, _slide_day], ids=["week", "day"])
+def test_the_end_picture_takes_over_from_the_start_picture_between_15_and_55_percent(
+    qapp: QApplication, monkeypatch, start
+) -> None:
+    """Before the window only the start picture shows, after it only the end, so two layouts overlap
+    for a few frames and not the whole slide."""
+    view = start(qapp)
+    early = _drawn_at(qapp, view, 0.1, monkeypatch)
+    monkeypatch.undo()
+    late = _drawn_at(qapp, view, 0.6, monkeypatch)
+    monkeypatch.undo()
+    middle = _drawn_at(qapp, view, 0.35, monkeypatch)
+    monkeypatch.undo()
+    assert early and {item["end"] for item in early} == {"start"}
+    assert {item["opacity"] for item in early} == {1.0}
+    assert late and {item["end"] for item in late} == {"end"}
+    assert {item["opacity"] for item in late} == {1.0}
+    # Halfway through the window (a smoothstep at its middle) each has half.
+    assert {item["end"] for item in middle} == {"start", "end"}
+    assert {round(item["opacity"], 3) for item in middle} == {0.5}
+    _stop(view.row)

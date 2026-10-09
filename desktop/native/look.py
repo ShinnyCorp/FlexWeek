@@ -592,6 +592,8 @@ HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
 _LOOK_JSON_CACHE: OrderedDict[str, str] = OrderedDict()
 _LOOK_JSON_CACHE_MAX = 128
+_LOOK_MEASURES_CACHE: OrderedDict[str, dict] = OrderedDict()
+_LOOK_MEASURES_CACHE_MAX = 128
 
 
 def _look_json_key(raw: object) -> str:
@@ -640,10 +642,7 @@ def effective_look(choice: dict | None) -> dict:
     return restore(json.loads(text))
 
 
-def look_measures(choice: dict | None) -> dict:
-    """What a look draws that is not a colour, worked out from its knobs and any custom measures: the
-    corners of controls and cards, the text size in points, the body and heading faces, and how blocks
-    and the grid are drawn. `edge_width` None is the painter's own."""
+def _look_measures_uncached(choice: dict | None) -> dict:
     selected = sanitize_look(choice)
     custom = selected.get("custom") or {}
     knobs = effective_look(selected)
@@ -674,6 +673,22 @@ def look_measures(choice: dict | None) -> dict:
         "show_lengths": custom.get("show_lengths", True),
         "today_highlight": custom.get("today_highlight", True),
     }
+
+
+def look_measures(choice: dict | None) -> dict:
+    """What a look draws that is not a colour, worked out from its knobs and any custom measures: the
+    corners of controls and cards, the text size in points, the body and heading faces, and how blocks
+    and the grid are drawn. `edge_width` None is the painter's own."""
+    key = _look_json_key(choice)
+    hit = _LOOK_MEASURES_CACHE.get(key)
+    if hit is not None:
+        _LOOK_MEASURES_CACHE.move_to_end(key)
+        return deepcopy(hit)
+    hit = _look_measures_uncached(choice)
+    _LOOK_MEASURES_CACHE[key] = hit
+    if len(_LOOK_MEASURES_CACHE) > _LOOK_MEASURES_CACHE_MAX:
+        _LOOK_MEASURES_CACHE.popitem(last=False)
+    return deepcopy(hit)
 
 
 def text_scale(choice: dict | None) -> float:

@@ -26,6 +26,7 @@ if importlib.util.find_spec("PySide6") is not None:
         QGraphicsDropShadowEffect,
         QHBoxLayout,
         QLabel,
+        QLineEdit,
         QStackedWidget,
         QVBoxLayout,
         QWidget,
@@ -54,6 +55,7 @@ if importlib.util.find_spec("PySide6") is not None:
         distance,
         duration,
         glide,
+        hold_picture,
         motion_level,
         moves,
         slide_down,
@@ -696,3 +698,370 @@ def test_the_segmented_selection_slides_to_the_segment_chosen(qapp: QApplication
     assert pill_on(track, day) and not pill_on(track, month), "with animations off it is simply there"
     apply_ui_effects("normal")
     track.close()
+
+
+class _Counted(QWidget):
+    """A child whose paints can be counted. A page drawn through an effect paints these every frame."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.paints = 0
+        self.setMinimumHeight(24)
+
+    def paintEvent(self, _event: object) -> None:  # noqa: N802
+        self.paints += 1
+
+
+def _frames(qapp: QApplication, seconds: float) -> int:
+    frames = 0
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        qapp.processEvents()
+        frames += 1
+        QTest.qWait(8)
+    return frames
+
+
+def test_a_page_change_does_not_repaint_the_live_page_every_frame(qapp: QApplication) -> None:
+    """The page coming in is live at once. Its widgets are painted into one picture for the fade,
+    not again on every frame."""
+    apply_ui_effects("normal")
+    stack = QStackedWidget()
+    first = QLabel("Week")
+    second = QWidget()
+    column = QVBoxLayout(second)
+    children = [_Counted() for _ in range(6)]
+    for child in children:
+        column.addWidget(child)
+    stack.addWidget(first)
+    stack.addWidget(second)
+    stack.resize(400, 300)
+    stack.show()
+    qapp.processEvents()
+    for child in children:
+        child.paints = 0
+    switch_page(stack, second, "normal")
+    frames = _frames(qapp, (duration(PAGE_IN_AFTER_MS + PAGE_IN_MS, "normal") + 80) / 1000)
+    assert frames >= 8, "the page change ran for several frames"
+    for child in children:
+        assert child.paints <= 3, f"a live widget painted {child.paints} times over {frames} frames"
+    stack.close()
+
+
+def test_a_sheet_does_not_repaint_the_page_under_it_every_frame(qapp: QApplication) -> None:
+    """The shade covers the window. The page under it stays as it was for the fade, instead of
+    being painted again because the shade moved."""
+    apply_ui_effects("normal")
+    window = QWidget()
+    column = QVBoxLayout(window)
+    children = [_Counted() for _ in range(6)]
+    for child in children:
+        column.addWidget(child)
+    window.resize(900, 700)
+    window.show()
+    qapp.processEvents()
+    for child in children:
+        child.paints = 0
+    sheet = Dialog(window, sheet=True)
+    sheet.card_body("Add homework").addWidget(QLabel("Homework"))
+    sheet.show()
+    qapp.processEvents()
+    assert all(not child.updatesEnabled() for child in children), "the page under the sheet holds still"
+    frames = _frames(qapp, (duration(EASE_MS, "normal") + 80) / 1000)
+    assert frames >= 8, "the sheet ran for several frames"
+    for child in children:
+        assert child.paints <= 4, f"the page painted {child.paints} times over {frames} frames"
+    assert within(2, lambda: all(child.updatesEnabled() for child in children))
+    sheet.close()
+    window.close()
+
+
+def test_a_page_change_ends_where_motion_off_leaves_it(qapp: QApplication) -> None:
+    """The fade is only on the way. Where it ends is the page motion Off shows at once."""
+
+    def landed(level: str) -> QImage:
+        apply_ui_effects(level)
+        stack, _first, second = two_pages(qapp)
+        switch_page(stack, second, level)
+        assert within(2, lambda: second.graphicsEffect() is None and pictures(stack) == [])
+        assert second.pos() == QPoint(0, 0)
+        image = stack.grab().toImage()
+        stack.close()
+        return image
+
+    try:
+        assert landed("normal") == landed("off")
+    finally:
+        apply_ui_effects("normal")
+
+
+def test_the_clock_follows_the_screen_and_falls_back_to_60(qapp: QApplication) -> None:
+    """Frames follow the screen. An unknown rate is 60, whose interval is 17 ms, never 0."""
+    from desktop.native import motion as motion_module
+
+    assert motion_module.frame_interval_ms(180) == round(1000 / 180) == 6
+    assert motion_module.frame_interval_ms(360) == 3
+    assert motion_module.frame_interval_ms(60) == 17
+    assert motion_module.frame_interval_ms(0) == 17
+    assert motion_module.frame_interval_ms(-5) == 17
+    assert motion_module.frame_interval_ms(59.94) == round(1000 / 59.94)
+    apply_ui_effects("normal")
+    host = QWidget()
+    notice = QLabel("Saved.", host)
+    notice.move(10, 10)
+    host.resize(200, 80)
+    host.show()
+    qapp.processEvents()
+    appear(notice, "normal")
+    clock = notice._motion_running[0]
+    rate = notice.screen().refreshRate() if notice.screen() is not None else 0
+    assert clock.interval() == motion_module.frame_interval_ms(rate or 0)
+    assert clock.interval() >= 1
+    host.close()
+
+
+def test_a_design_picture_waits_while_something_moves(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A picture takes about a tenth of a second, so drawn in the middle of a fade it held that fade
+    still for as long (Retro's week to day, 2026-10-08). It waits until nothing moves."""
+    from desktop.native import motion as moving
+    from desktop.native.layouts import dialog
+    from desktop.native.layouts.dialog import DesignPicker
+
+    drawn: list[int] = []
+
+    class Counting:
+        def get(self, *_args: object) -> QPixmap:
+            drawn.append(1)
+            return QPixmap(4, 4)
+
+    monkeypatch.setattr(dialog, "Previews", Counting)
+    picker = DesignPicker("plan", "designs", "Design", "slate")
+    owner = QWidget()
+    owner.resize(40, 40)
+    owner.show()
+    moving.appear(owner, "normal")
+    assert moving.busy()
+    picker._draw_next()
+    assert drawn == [], "nothing is drawn while the fade runs"
+    deadline = time.monotonic() + 3
+    while not drawn and time.monotonic() < deadline:
+        qapp.processEvents()
+    assert not moving.busy()
+    assert drawn == [1], "once the fade has ended the picture is drawn"
+    for widget in (picker, owner):
+        widget.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_design_pictures_are_drawn_one_a_turn_and_can_be_drawn_ahead(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each design picture takes about a tenth of a second. Chained on a zero timer they become one
+    long turn. Ahead of time, while Settings is not on screen, they can all be drawn now."""
+    from desktop.native.layouts import dialog
+    from desktop.native.layouts.dialog import DesignPicker
+
+    drawn: list[int] = []
+
+    class Counting:
+        def get(self, *_args: object) -> QPixmap:
+            drawn.append(1)
+            return QPixmap(4, 4)
+
+    monkeypatch.setattr(dialog, "Previews", Counting)
+    picker = DesignPicker("plan", "designs", "Design", "slate")
+    picker._draw_next()
+    assert len(drawn) == 1
+    qapp.processEvents()
+    assert len(drawn) == 1, "the next picture waits until the next turn"
+    picker.warm()
+    assert len(drawn) == len(picker.cards)
+    picker.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_a_page_is_pictured_at_the_size_it_will_have_on_screen(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stacked page grabbed at its old size is drawn once small, then resized and drawn again
+    while it fades. The picture is taken after it has the stack's size."""
+    from desktop.native import motion as moving
+
+    apply_ui_effects("normal")
+    stack = QStackedWidget()
+    first = QLabel("Week")
+    second = QWidget()
+    QVBoxLayout(second).addWidget(QLabel("Day"))
+    stack.addWidget(first)
+    stack.addWidget(second)
+    stack.resize(640, 400)
+    stack.show()
+    qapp.processEvents()
+    stack.setCurrentWidget(second)
+    qapp.processEvents()
+    # Stale size, as a newly shown view can still have until its layout runs.
+    second.resize(80, 40)
+    sizes: list[tuple[int, int]] = []
+    real = moving._kept
+
+    def spy(widget: QWidget) -> QPixmap | None:
+        sizes.append((widget.width(), widget.height()))
+        return real(widget)
+
+    monkeypatch.setattr(moving, "_kept", spy)
+    appear(second, "normal")
+    assert sizes, "the incoming page was pictured"
+    assert sizes[0] == (stack.width(), stack.height()), sizes
+    stack.close()
+
+
+def test_typing_during_a_sheet_fade_shows_at_once(qapp: QApplication) -> None:
+    """While a sheet fades, the title field already has focus. Letters typed then must show, not
+    wait under a still picture until the fade ends."""
+    apply_ui_effects("normal")
+    window = QWidget()
+    window.resize(900, 700)
+    window.show()
+    qapp.processEvents()
+    sheet = Dialog(window, sheet=True)
+    field = QLineEdit()
+    sheet.card_body("Add homework").addWidget(field)
+    sheet.show()
+    qapp.processEvents()
+    face = sheet._face
+    assert face is not None
+    effect = face.graphicsEffect()
+    assert effect is not None and getattr(effect, "_picture", None) is not None
+    field.setFocus()
+    QTest.keyClicks(field, "Math")
+    assert field.text() == "Math"
+    assert getattr(effect, "_picture", "missing") is None, "the still picture gave way so the letters show"
+    sheet.close()
+    window.close()
+
+
+@pytest.mark.parametrize("design", ["timeline", "mission", "bento", "retro", "clay", "one", "dial"])
+def test_a_design_preview_renders_once_at_its_final_width(qapp, monkeypatch, design):
+    from desktop.native import previews
+    from desktop.native.layouts.views import VIEW_CLASSES
+
+    apply_ui_effects("off")
+    calls = []
+    cls = VIEW_CLASSES[design]
+    render = cls.render
+
+    def counted(self, scene, changed):
+        calls.append(self.width())
+        return render(self, scene, changed)
+
+    monkeypatch.setattr(cls, "render", counted)
+    previews.render(design, None, "slate", None, 206)
+    assert calls == [1280], "a preview must not rebuild after a stale narrow first render"
+
+
+def test_visible_design_pictures_wait_for_motion_but_not_forever(qapp, monkeypatch):
+    from desktop.native import motion
+    from desktop.native.layouts import dialog
+
+    picker = dialog.DesignPicker("plan", "designs", "Design", "slate")
+    picker.show()
+    calls = []
+    monkeypatch.setattr(picker, "_draw_one", lambda: calls.append(1) or False)
+    monkeypatch.setattr(dialog.QTimer, "singleShot", lambda *_: None)
+    owner = QWidget()
+    owner.show()
+    clock = motion.Clock(owner)
+    clock.start(10000, lambda _: None)
+    picker._draw_next()
+    assert calls == [], "visible previews must wait while a fade runs"
+    clock.stop()
+    picker._draw_next()
+    assert calls == [1], "drawing resumes as soon as motion stops"
+    calls.clear()
+    clock.start(10000, lambda _: None)
+    for _ in range(10):
+        picker._draw_next()
+        assert calls == [], "ten waits are allowed before drawing through a stuck clock"
+    picker._draw_next()
+    assert calls == [1]
+    clock.stop()
+    picker.close()
+    owner.close()
+
+
+def test_paused_stopped_and_hidden_clocks_are_not_busy(qapp):
+    from desktop.native import motion
+
+    owner = QWidget()
+    owner.show()
+    clock = motion.Clock(owner)
+    clock.start(10000, lambda _: None)
+    assert motion.busy()
+    clock.pause()
+    assert not motion.busy(), "a paused clock is not moving"
+    held = clock.currentTime()
+    QTest.qWait(20)
+    assert clock.currentTime() == held
+    clock.resume()
+    assert motion.busy()
+    owner.hide()
+    assert not motion.busy()
+    owner.show()
+    assert motion.busy()
+    clock.stop()
+    assert not motion.busy()
+    owner.close()
+
+
+def test_a_click_in_a_fade_drops_its_picture_but_another_windows_key_does_not(qapp):
+    apply_ui_effects("normal")
+    owner = QWidget()
+    field = QLineEdit(owner)
+    owner.resize(200, 80)
+    owner.show()
+    other = QLineEdit()
+    other.show()
+    qapp.processEvents()
+    appear(owner, "normal")
+    effect = owner.graphicsEffect()
+    assert effect._picture is not None
+    QTest.keyClicks(other, "Elsewhere")
+    assert other.text() == "Elsewhere"
+    assert effect._picture is not None, "input in another window must not end this picture"
+    QTest.mouseClick(field, Qt.MouseButton.LeftButton)
+    assert effect._picture is None, "a click inside the fade shows its live contents"
+    owner.close()
+    other.close()
+
+
+def test_a_fade_picture_shows_the_week_as_it_looks_after_a_block_is_added(qapp: QApplication) -> None:
+    """A reused grab must not keep a picture from before the week changed."""
+    apply_ui_effects("normal")
+    week = QWidget()
+    week.setAutoFillBackground(True)
+    palette = week.palette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#111111"))
+    week.setPalette(palette)
+    week.resize(200, 120)
+    week.show()
+    qapp.processEvents()
+    stale = hold_picture(week, "normal")
+    assert stale is not None
+    stale.hide()
+    stale.deleteLater()
+    qapp.processEvents()
+    block = QWidget(week)
+    block.setGeometry(24, 24, 48, 48)
+    block.setAutoFillBackground(True)
+    ink = block.palette()
+    ink.setColor(QPalette.ColorRole.Window, QColor("#ff00aa"))
+    block.setPalette(ink)
+    block.show()
+    qapp.processEvents()
+    picture = hold_picture(week, "normal")
+    assert picture is not None
+    sample = picture.pixmap().toImage().pixelColor(48, 48)
+    assert sample.name() == "#ff00aa", "the fade shows the block, not the empty week"
+    week.close()

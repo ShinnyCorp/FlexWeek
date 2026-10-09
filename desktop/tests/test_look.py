@@ -12,6 +12,9 @@ from __future__ import annotations
 from itertools import product
 from math import dist
 
+import pytest
+
+import desktop.native.look as look_module
 from desktop.native.calendar import CATEGORIES
 from desktop.native.look import (
     AA_GRAPHIC,
@@ -30,6 +33,7 @@ from desktop.native.look import (
     category_paint,
     contrast,
     effective_look,
+    look_measures,
     look_menu_items,
     look_menu_token,
     look_menu_value,
@@ -52,6 +56,29 @@ EVERY_LOOK = list(product(PACKS, (False, True), LOOK_PRESETS, ACCENTS, LOOK_KNOB
 
 def look_of(preset: str, **knobs: str) -> dict:
     return {"preset": preset, "knobs": knobs}
+
+
+def test_look_measures_memoises_sanitize_look_per_look(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repeated look_measures for one look must not re-sanitize; a different look gets fresh measures."""
+    real = look_module.sanitize_look
+    calls = 0
+
+    def counting(raw: object) -> dict:
+        nonlocal calls
+        calls += 1
+        return real(raw)
+
+    monkeypatch.setattr(look_module, "sanitize_look", counting)
+    look_module._LOOK_MEASURES_CACHE.clear()
+    look = look_of("default", text="normal")
+    other = look_of("default", text="large")
+    for _ in range(100):
+        look_measures(look)
+    assert calls == 1
+    normal_scale = look_measures(look)["scale"]
+    large = look_measures(other)
+    assert calls == 2
+    assert large["scale"] != normal_scale
 
 
 def test_the_look_menu_offers_four_looks_then_the_experimental_ones() -> None:

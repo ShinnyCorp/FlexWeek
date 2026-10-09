@@ -13,8 +13,11 @@ from uuid import uuid4
 from pydantic import ValidationError
 from PySide6.QtCore import (
     Property,
+    QAbstractAnimation,
     QDate,
+    QElapsedTimer,
     QEvent,
+    QEventLoop,
     QObject,
     QPoint,
     QRect,
@@ -24,7 +27,6 @@ from PySide6.QtCore import (
     Qt,
     QTime,
     QTimer,
-    QVariantAnimation,
     Signal,
 )
 from PySide6.QtGui import (
@@ -115,7 +117,21 @@ from desktop.native.hours.geometry import next_slot
 from desktop.native.icons import pixmap as icon_pixmap
 from desktop.native.look import CONFLICT_TEXT, resolved_palette
 from desktop.native.menus import Menu
-from desktop.native.motion import OUT, SEGMENT_MS, app_level, appear, between, duration, moves, settle, vanish
+from desktop.native.motion import (
+    EASE_MS,
+    OUT,
+    SEGMENT_MS,
+    Clock,
+    app_level,
+    appear,
+    between,
+    duration,
+    frame_interval_ms,
+    moves,
+    screen_rate,
+    settle,
+    vanish,
+)
 from desktop.native.reuse import (
     AVAILABILITY_LIMIT,
     DAYS_LONG,
@@ -375,10 +391,7 @@ class SegmentTrack(QFrame):
         # Where the chosen pill was last drawn, and where it leaves from for the segment just chosen.
         self._drawn: QRectF | None = None
         self._from = QRectF()
-        self._slide = QVariantAnimation(self)
-        self._slide.setStartValue(0.0)
-        self._slide.setEndValue(1.0)
-        self._slide.valueChanged.connect(lambda _share: self.update())
+        self._slide = Clock(self)
 
     def _get_shade(self) -> int:
         return self._shade
@@ -407,14 +420,13 @@ class SegmentTrack(QFrame):
         if on and self._drawn is not None and self.isVisible() and length:
             self._from = QRectF(self._drawn)
             self._slide.stop()
-            self._slide.setDuration(length)
-            self._slide.start()
+            self._slide.start(length, lambda _at: self.update())
         self.update()
 
     def _pills(self, target: QRectF) -> list[tuple[QRectF, float]]:
         """The chosen pill as drawn now, with its opacity: sliding from where it was, or where things
         may not travel, fading from there to here."""
-        if self._slide.state() == QVariantAnimation.State.Stopped:
+        if self._slide.state() == QAbstractAnimation.State.Stopped:
             return [(target, 1.0)]
         share = OUT.valueForProgress(self._slide.currentTime() / max(self._slide.duration(), 1))
         start = self._from
@@ -2245,11 +2257,63 @@ class SheetShade(QWidget):
         super().__init__(host)
         self.setObjectName("sheetShade")
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        # Made by the window before its sheet is built (dim_window), and not yet taken by that sheet.
+        self.waiting = False
+        # Its fade has begun, so the sheet that takes it does not start the fade over.
+        self.fading = False
 
     def paintEvent(self, _event: object) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(0, 0, 0, round(255 * SHEET_DIM)))
         painter.end()
+
+
+def dim_window(host: QWidget) -> SheetShade:
+    """Start dimming `host` for a sheet that is about to be built. Building a sheet takes tens of
+    milliseconds with nothing drawn, so the dim starts first and the sheet's constructor runs behind
+    it. The sheet takes this dim when it shows, so there is one dim, fading from the click."""
+    top = host.window()
+    shade = SheetShade(top)
+    shade.waiting = True
+    shade.setGeometry(top.rect())
+    shade.show()
+    shade.raise_()
+    level = app_level()
+    appear(shade, level)
+    # No fade was started on a window that is not on screen or at motion Off; the sheet decides then.
+    shade.fading = shade.graphicsEffect() is not None
+    _draw_first_frames(shade)
+    running = getattr(shade, "_motion_running", None)
+    if running is not None:
+        # Held while the sheet is built, so the dim goes on from its first frame when the sheet shows
+        # rather than jumping ahead by the time the build took.
+        running[0].pause()
+    return shade
+
+
+def drop_waiting_dim(host: QWidget) -> None:
+    """Take down a dim no sheet took, because building or opening the sheet failed."""
+    # children(), not findChildren(): the latter hands a sheet to the window to own.
+    for child in host.window().children():
+        if isinstance(child, SheetShade) and child.waiting:
+            child.waiting = False
+            child.hide()
+            child.deleteLater()
+
+
+def _draw_first_frames(shade: SheetShade) -> None:
+    """Let the event loop paint the dim's first frame before the sheet's build holds it up. Typing and
+    clicks stay queued for the sheet."""
+    effect = shade.graphicsEffect()
+    if effect is None:
+        return
+    limit = 2 * frame_interval_ms(screen_rate(shade))
+    started = QElapsedTimer()
+    started.start()
+    flags = QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
+    while getattr(effect, "opacity", 1.0) <= 0 and started.elapsed() < limit:
+        QApplication.processEvents(flags)
+    QApplication.processEvents(flags)
 
 
 class Dialog(QDialog):
@@ -2277,6 +2341,8 @@ class Dialog(QDialog):
         # The sheet's card and the room for its shadow, which fade in as one: the card's own effect
         # is its shadow, and a widget holds one effect.
         self._face: QWidget | None = None
+        # Widgets of the page under a sheet, held still while the sheet fades in.
+        self._frozen: list[QWidget] = []
         if self.sheet:
             self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -2351,8 +2417,14 @@ class Dialog(QDialog):
             level = app_level()
             for part in self._content():
                 appear(part, level, rise=True)
-            if self._shade is not None:
+            if self._shade is not None and not self._shade.fading:
                 appear(self._shade, level)
+            elif self._shade is not None:
+                running = getattr(self._shade, "_motion_running", None)
+                if running is not None:
+                    running[0].resume()
+            if self.sheet and duration(EASE_MS) > 0:
+                self._freeze_page()
 
     def _content(self) -> list[QWidget]:
         """What fades in and rises the first time the dialog shows (decision 31 of 0.17): a window's
@@ -2369,7 +2441,48 @@ class Dialog(QDialog):
             if not child.isWindow() and child.graphicsEffect() is None
         ]
 
+    def _freeze_page(self) -> None:
+        """The shade covers the whole window, and a frame of it would repaint everything under it.
+        Those widgets keep the picture they already have until the fade has landed. The shade and the
+        sheet still paint. The window itself is left able to paint, or the shade could not."""
+        parent = self.parentWidget()
+        if parent is None:
+            return
+        host = parent.window()
+        frozen: list[QWidget] = []
+        # Walked with children(), not findChildren(): findChildren hands the sheet itself to the
+        # window to own, and an exec()'d sheet then outlives its last reference.
+        waiting: list[QObject] = list(host.children())
+        while waiting:
+            child = waiting.pop()
+            if child is self or not isinstance(child, QWidget):
+                continue
+            waiting.extend(child.children())
+            if child is self._shade or not child.updatesEnabled():
+                continue
+            child.setUpdatesEnabled(False)
+            frozen.append(child)
+        self._frozen = frozen
+        QTimer.singleShot(0, self._thaw_when_settled)
+
+    def _thaw_when_settled(self) -> None:
+        if not isValid(self):
+            return
+        for widget in (self._face, self._shade, *self._content()):
+            if widget is not None and getattr(widget, "_motion_running", None) is not None:
+                QTimer.singleShot(frame_interval_ms(60), self._thaw_when_settled)
+                return
+        self._thaw()
+
+    def _thaw(self) -> None:
+        frozen = self._frozen
+        self._frozen = []
+        for child in frozen:
+            if isValid(child):
+                child.setUpdatesEnabled(True)
+
     def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802
+        self._thaw()
         super().hideEvent(event)
         if self._came_from is not None:
             QTimer.singleShot(0, partial(_give_focus_back, self._came_from))
@@ -2444,13 +2557,22 @@ class Dialog(QDialog):
             dark = self.palette().color(QPalette.ColorRole.WindowText).lightness() > 128
             lift(self.card, SHADOW_LARGE, dark)
         if self._shade is None:
-            self._shade = SheetShade(host)
+            # The one the window made before building this sheet, if it did.
+            self._shade = self._waiting_shade(host) or SheetShade(host)
             # Gone with the sheet however it goes, even if it is freed while still on screen.
             self.destroyed.connect(self._shade.deleteLater)
             host.installEventFilter(self)
         self._shade.setGeometry(host.rect())
         self._shade.show()
         self._shade.raise_()
+
+    @staticmethod
+    def _waiting_shade(host: QWidget) -> SheetShade | None:
+        for child in host.children():
+            if isinstance(child, SheetShade) and child.waiting:
+                child.waiting = False
+                return child
+        return None
 
     def scaled_width(self) -> int:
         """The card's width on the scale at the student's text size: 440 and 600 are at Normal, and
@@ -2962,7 +3084,7 @@ class DueField(QWidget):
         self.date.setAccessibleName("Due date")
         if today:
             self.date.today = QDate.fromString(today, "yyyy-MM-dd")
-        self.date.calendarWidget().parentWidget().installEventFilter(self)
+        self.date.watch_popup(self)
         # "At a set time" read like "do it at", and it sets the time the work must be done by.
         self.timed = Switch("Due by")
         self.timed.setObjectName(f"{name}Timed")

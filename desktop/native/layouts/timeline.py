@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -670,7 +671,7 @@ class Heads(QFrame):
                 )
         handle, split = self.handle, self.canvas.split
         if handle is not None and split is not None and not handle.carrying():
-            across = fold_at(split[0], self.canvas.width()) - self.canvas.gutter
+            across = fold_at(split[0], self.canvas.fold_span()) - self.canvas.gutter
             handle.move(round(across - handle.width() / 2), round((self.height() - handle.height()) / 2))
             # Over the day names, which are made again when the days shown change.
             handle.raise_()
@@ -702,11 +703,32 @@ class TimelineCanvas(HoursCanvas):
         # While the fold's handle is carried: the days the left page has, and would have if let go.
         self.landing: tuple[int, int] | None = None
 
+    def _bar_overlap(self) -> int:
+        """How far an overlay bar draws over the canvas. Zero when the bar sits beside it."""
+        scroll = self._scroll_area()
+        if scroll is None:
+            return 0
+        bar = scroll.verticalScrollBar()
+        return int(
+            scroll.style().pixelMetric(QStyle.PixelMetric.PM_ScrollView_ScrollBarOverlap, None, bar)
+        )
+
+    def fold_span(self) -> float:
+        """Width the fold is measured on: the canvas without an overlay bar's overlap, which takes
+        no content width."""
+        return max(self.width() - self._bar_overlap(), 1)
+
+    def lay_out(self, area: QRectF) -> list[LinearTrack]:
+        overlap = self._bar_overlap()
+        if overlap:
+            area = area.adjusted(0, 0, -overlap, 0)
+        return super().lay_out(area)
+
     def relayout(self) -> None:
         super().relayout()
         if self.feet is not None and self.split is not None:
             left, inner = self.split
-            fold = fold_at(left, self.width())
+            fold = fold_at(left, self.fold_span())
             # The feet run under the hours' scroll bar too, so the right one reaches past the canvas.
             scroll = self._scroll_area()
             reach = scroll.width() if scroll is not None else self.width()
@@ -718,7 +740,7 @@ class TimelineCanvas(HoursCanvas):
 
     def fold_x(self) -> float:
         """Where the fold runs across the hours."""
-        return fold_at(self.split[0], self.width()) if self.split is not None else self.width() / 2
+        return fold_at(self.split[0], self.fold_span()) if self.split is not None else self.width() / 2
 
     def show_landing(self, landing: tuple[int, int] | None) -> None:
         self.landing = landing

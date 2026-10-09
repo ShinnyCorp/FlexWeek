@@ -65,8 +65,8 @@
   {
     "name": "a sheet's dimming appears at once",
     "file": "desktop/native/widgets.py",
-    "old": "            if self._shade is not None:\n                appear(self._shade, level)",
-    "new": "            if self._shade is not None:\n                pass",
+    "old": "            if self._shade is not None and not self._shade.fading:\n                appear(self._shade, level)",
+    "new": "            if self._shade is not None and not self._shade.fading:\n                pass",
     "test": "desktop/tests/test_motion.py::test_a_sheet_fades_its_card_and_shadow_as_one_and_keeps_the_shadow"
   },
   {

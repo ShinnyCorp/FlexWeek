@@ -45,6 +45,7 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.layouts.retro import (
         NOT_PLACED,
         ZOOM_MS,
+        DayHead,
         Deadline,
         Mirror,
         RetroPainter,
@@ -236,6 +237,37 @@ def test_a_narrow_week_names_every_day_alike(qapp: QApplication) -> None:
     ]
     wide = shown(qapp, 1366, 720)
     assert wide.findChild(QPushButton, "retroDay2").parts() == [("Wed ", False), ("16", True)]
+
+
+def test_day_head_fits_runs_once_per_head_for_size_hint(qapp: QApplication) -> None:
+    view = shown(qapp, 1366, 720)
+    heads = [view.findChild(DayHead, f"retroDay{day}") for day in range(7)]
+    assert all(head is not None for head in heads)
+    original = DayHead._fits
+    counts: dict[int, int] = {}
+
+    def counting_fits(self: DayHead) -> bool:
+        counts[id(self)] = counts.get(id(self), 0) + 1
+        return original(self)
+
+    DayHead._fits = counting_fits  # type: ignore[method-assign]
+    try:
+        for head in heads:
+            head.sizeHint()
+        total = sum(counts.values())
+        assert total <= 7, f"expected at most 7 _fits calls, got {total}"
+
+        counts.clear()
+        for head in heads:
+            head.sizeHint()
+        assert sum(counts.values()) == 0, "unchanged heads must not call _fits again"
+
+        heads[0].resize(50, heads[0].height())
+        counts.clear()
+        heads[0].sizeHint()
+        assert counts.get(id(heads[0]), 0) >= 1, "a new width must recompute _fits"
+    finally:
+        DayHead._fits = original  # type: ignore[method-assign]
 
 
 def test_the_week_scrolls_on_windows_98s_bar_in_step_with_the_hours(qapp: QApplication) -> None:

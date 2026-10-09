@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from uuid import uuid4
 
-from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTime, QTimer, QVariantAnimation, Signal
+from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTime, QTimer, Signal
 from PySide6.QtGui import (
     QColor,
     QFocusEvent,
@@ -81,7 +81,9 @@ from desktop.native.look import (
 )
 from desktop.native.motion import (
     EASE_MS,
+    Clock,
     appear,
+    busy,
     duration,
     fade_away,
     glide,
@@ -502,10 +504,14 @@ class StyleSlide(QFrame):
             self.tag.move(8, 8)
         self.fade = QGraphicsOpacityEffect(self)
         # One fade at a time: a second one started over a running one ended where the first was going.
-        self.fading = QVariantAnimation(self)
-        self.fading.valueChanged.connect(lambda value: self.fade.setOpacity(float(value)))
+        self._fade_target = 1.0
+        self.fading = Clock(self)
+        self.fading.finished.connect(self._snap_fade)
         self.setGraphicsEffect(self.fade)
         self.select(False)
+
+    def _snap_fade(self) -> None:
+        self.fade.setOpacity(self._fade_target)
 
     def set_picture(self, picture: QPixmap) -> None:
         self._source = picture
@@ -699,10 +705,14 @@ class StyleCarousel(QFrame):
         if length == 0:
             slide.fade.setOpacity(goal)
             return
-        slide.fading.setStartValue(slide.fade.opacity())
-        slide.fading.setEndValue(goal)
-        slide.fading.setDuration(length)
-        slide.fading.start()
+        start = slide.fade.opacity()
+        slide._fade_target = goal
+        slide.fade.setOpacity(start)
+
+        def step(at: float, s: float = start, g: float = goal, ln: int = length) -> None:
+            slide.fade.setOpacity(s + (g - s) * (at / ln))
+
+        slide.fading.start(length, step)
 
     def _refresh(self) -> None:
         count = len(self._order)
@@ -1498,6 +1508,11 @@ class SetupPage(QWidget):
     def _draw_next_picture(self) -> None:
         if not self._pending_pictures:
             return
+        if busy():
+            self._warm.setInterval(50)
+            self._warm.start()
+            return
+        self._warm.setInterval(0)
         card, main, colour, pack, width = self._pending_pictures.pop(0)
         card.set_picture(self._previews.get(main, colour, pack, None, width))
         if self._pending_pictures:

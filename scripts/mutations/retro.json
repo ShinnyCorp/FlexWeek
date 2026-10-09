@@ -58,7 +58,7 @@
  {
   "file": "desktop/native/layouts/retro.py",
   "name": "each day name shortens on its own",
-  "old": "if all(head._fits() for head in row)",
+  "old": "if all(DayHead._row_fits(row))",
   "new": "if self._fits()",
   "test": "desktop/tests/test_layout_retro.py::test_a_narrow_week_names_every_day_alike"
  },

@@ -3,6 +3,26 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.4] - 2026-10-09
+
+### Changed
+- Motion is smoother. Pages, views, sheets and slides move as still pictures
+  on a clock that follows the screen's refresh rate, so fast displays keep
+  up. Typing or clicking in a sheet while it fades shows the sheet at once.
+- A sheet's dim starts at the click. The sheet is built behind the dim, so
+  the window darkens at once instead of after the sheet is ready.
+- Clay: a change of day moves each card as sharp pictures at its start and
+  end sizes, with a short crossfade. The text is not stretched, no card
+  doubles up on Day, and nothing jumps when the move lands.
+- Retro desktop: Month slides in over the dimmed desk the way Settings does,
+  and slides away when you go back. Its contents appear as soon as they load.
+
+### Fixed
+- Timeline at 1280 px wide, with the fold at 6 | 1: notes no longer run past
+  the right page's edge, and the hour tracks stop short of the scroll bar.
+- A sheet closed while it is still fading in is freed again.
+- The hours zoom no longer reports an error during a Clay slide.
+
 ## [0.18.3] - 2026-10-08
 
 ### Added

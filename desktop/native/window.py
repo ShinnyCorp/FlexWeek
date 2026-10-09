@@ -110,8 +110,13 @@ from desktop.native.motion import (
     fade_through,
     hold_picture,
     motion_level,
+    moves,
+    retake_slide,
+    settle,
     slide_down,
     slide_over,
+    slide_view,
+    sliding_in,
     switch_page,
     trim_picture,
 )
@@ -184,6 +189,8 @@ from desktop.native.widgets import (
     add_heading,
     confirm,
     control_art,
+    dim_window,
+    drop_waiting_dim,
     keyboard_focus_rings,
     overdue_unfinished,
     steady_wheel,
@@ -2041,7 +2048,15 @@ class NativeWindow(QMainWindow):
         self._sync_running_late()
         self._sync_chrome()
         self._apply_appearance()
+        # A month that arrives while it is still sliding in: its picture is taken again once the
+        # month has scrolled to its first row, which is a turn of the event loop after this.
+        if sliding_in(self.planner):
+            QTimer.singleShot(0, self._retake_slide)
         self._finish_turn(turn)
+
+    def _retake_slide(self) -> None:
+        self._week_page.layout().activate()
+        retake_slide(self.planner)
 
     def _on_status(self, message: str) -> None:
         """What the session says goes in the toast, on the week's page, unless it is still going
@@ -2213,15 +2228,18 @@ class NativeWindow(QMainWindow):
             for piece in self._turn_pieces()
         }
 
-    def _begin_turn(self) -> tuple[QLabel, dict, int, QLabel | None, str] | None:
+    def _begin_turn(self) -> tuple[QLabel, dict, int, QLabel | None, str, str] | None:
         """Before another view, My day or another design is shown: a picture of everything under the
         top bar, where each part of it was, and which way the segments go, so the new page, with its
-        chrome and colours, fades through in one frame once it is built (decisions 28 and 29)."""
+        chrome and colours, fades through in one frame once it is built (decisions 28 and 29). In
+        Retro, Month is not faded to but slid in over the dimmed desk, as Settings is (J17)."""
         was, now = self._planner_shown, self._planner_now()
         self._planner_shown = now
         page = self._week_page
         if was is None or was == now or self._stack.currentWidget() is not page:
             return None
+        # A month still sliding in holds the planner's painting back until it lands.
+        settle(self.planner)
         top = self._top_bar.geometry().bottom() + 1
         picture = hold_picture(page, self._motion, QRect(0, top, page.width(), page.height() - top))
         if picture is None:
@@ -2234,20 +2252,26 @@ class NativeWindow(QMainWindow):
         if not was[0] and not now[0] and was[2:] == now[2:] and {was[1], now[1]} <= set(VIEW_ORDER):
             step = VIEW_ORDER.index(now[1]) - VIEW_ORDER.index(was[1])
             direction = (step > 0) - (step < 0)
-        return picture, self._places(), direction, title_picture, title.full_text()
+        over = ""
+        if direction and now[2] == "retro" and "month" in (was[1], now[1]) and moves(self._motion):
+            over = "back" if was[1] == "month" else "in"
+        return picture, self._places(), direction, title_picture, title.full_text(), over
 
-    def _finish_turn(self, turn: tuple[QLabel, dict, int, QLabel | None, str] | None) -> None:
+    def _finish_turn(self, turn: tuple[QLabel, dict, int, QLabel | None, str, str] | None) -> None:
         """The new page is built and dressed: what changed fades through to it, the title with it. The
         parts that stayed where they were are left out of the picture, so they neither blink nor
         drift."""
         if turn is None:
             return
-        picture, before, direction, title_picture, title_was = turn
+        picture, before, direction, title_picture, title_was, over = turn
         if title_picture is not None and self.week_title.full_text() != title_was:
             fade_through(title_picture, [self.week_title], self._motion)
         elif title_picture is not None:
             title_picture.deleteLater()
         self._week_page.layout().activate()
+        if over:
+            slide_view(self._week_page, picture, self.planner, self._motion, back=over == "back")
+            return
         after = self._places()
         changed = [piece for piece in self._turn_pieces() if before[piece] != after[piece]]
         area = before[self.planner] or QRect()
@@ -2313,9 +2337,23 @@ class NativeWindow(QMainWindow):
     def _run_sheet(self, dialog: QDialog) -> bool:
         """Open a sheet and wait for it. Once it is closed the keyboard is back on the week, not on the
         button that opened it."""
-        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        try:
+            accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        finally:
+            # A dim made for this sheet that it never took, because it could not open.
+            drop_waiting_dim(self)
         self._focus_week()
         return accepted
+
+    def _sheet[D: QDialog](self, build: Callable[[], D]) -> D:
+        """Build a sheet with the window already dimming behind it (J15). The dim starts at the click, and
+        the sheet shows over it once built; a sheet that cannot be built leaves no dim."""
+        dim_window(self)
+        try:
+            return build()
+        except BaseException:
+            drop_waiting_dim(self)
+            raise
 
     def _commit_block(self, dialog: BlockDialog) -> None:
         if not self._run_sheet(dialog):
@@ -2376,7 +2414,7 @@ class NativeWindow(QMainWindow):
         category = self.session.armed_category
         if category in FLEX_CATEGORIES:
             category = None
-        self._commit_block(self._new_event(category))
+        self._commit_block(self._sheet(lambda: self._new_event(category)))
 
     def _new_event(self, category: str | None) -> BlockDialog:
         """A new event opens on the next quarter hour still ahead today, or with none left, the first one
@@ -2394,13 +2432,17 @@ class NativeWindow(QMainWindow):
         category = self.session.armed_category
         if category in FLEX_CATEGORIES:
             category = None
-        self._commit_block(BlockDialog(self, day=day, start=minutes_to_hhmm(minute), category=category))
+        self._commit_block(
+            self._sheet(lambda: BlockDialog(self, day=day, start=minutes_to_hhmm(minute), category=category))
+        )
 
     def _add_homework_due(self, due: str) -> None:
         category = self.session.armed_category
         if category not in FLEX_CATEGORIES:
             category = "assignments"
-        self._commit_homework(HomeworkDialog(self, today=self._today(), category=category, due=due))
+        self._commit_homework(
+            self._sheet(lambda: HomeworkDialog(self, today=self._today(), category=category, due=due))
+        )
 
     def _delete_block(self, block: dict, scope: str, day: int | None) -> None:
         self.session.delete_block(block["id"], scope=scope, day=day)
@@ -2438,7 +2480,9 @@ class NativeWindow(QMainWindow):
         category = self.session.armed_category
         if category not in FLEX_CATEGORIES:
             category = "assignments"
-        self._commit_homework(HomeworkDialog(self, today=self._today(), category=category))
+        self._commit_homework(
+            self._sheet(lambda: HomeworkDialog(self, today=self._today(), category=category))
+        )
 
     def _today(self) -> str:
         return clock_parts(self.session.now_ms())["iso"]
@@ -2707,9 +2751,11 @@ class NativeWindow(QMainWindow):
         self.session.arm_category(category)
         self._sync_add_button()
         if category in FLEX_CATEGORIES:
-            self._commit_homework(HomeworkDialog(self, today=self._today(), category=category))
+            self._commit_homework(
+                self._sheet(lambda: HomeworkDialog(self, today=self._today(), category=category))
+            )
             return
-        self._commit_block(self._new_event(category))
+        self._commit_block(self._sheet(lambda: self._new_event(category)))
 
     def _create_by_drag(self, span: Span) -> None:
         before = {item["id"] for item in self.session.blocks}
@@ -2724,23 +2770,27 @@ class NativeWindow(QMainWindow):
         category = self.session.armed_category
         if category in FLEX_CATEGORIES:
             self._commit_homework(
-                HomeworkDialog(
-                    self,
-                    category=category,
-                    estimate_min=duration,
-                    due=sunday_due(self.session.week_start),
+                self._sheet(
+                    lambda: HomeworkDialog(
+                        self,
+                        category=category,
+                        estimate_min=duration,
+                        due=sunday_due(self.session.week_start),
+                    )
                 ),
                 days=[day],
             )
             return
         self._commit_block(
-            BlockDialog(
-                self,
-                day=day,
-                start=start,
-                duration_min=duration,
-                category=category,
-                from_range=True,
+            self._sheet(
+                lambda: BlockDialog(
+                    self,
+                    day=day,
+                    start=start,
+                    duration_min=duration,
+                    category=category,
+                    from_range=True,
+                )
             )
         )
 
@@ -2771,8 +2821,9 @@ class NativeWindow(QMainWindow):
         sessions = [block for block in self.session.blocks if block.get("assignment_id") == assignment_id]
         waiting = any(not block.get("start") and not block.get("completed") for block in sessions)
         pinned = any(block.get("pinned") for block in sessions)
-        dialog = HomeworkDialog(self, assignment, waiting=waiting, pinned=pinned)
-        self._commit_homework(dialog)
+        self._commit_homework(
+            self._sheet(lambda: HomeworkDialog(self, assignment, waiting=waiting, pinned=pinned))
+        )
 
     def _choose_time_for_homework(self) -> None:
         """The first homework this week that still needs a time, opened in Choose a time."""
@@ -2871,12 +2922,9 @@ class NativeWindow(QMainWindow):
             return
         if block.get("kind") != "locked":
             return
-        dialog = BlockDialog(
-            self,
-            block,
-            occurrence_day=self.session.selected_occurrence_day,
+        self._commit_block(
+            self._sheet(lambda: BlockDialog(self, block, occurrence_day=self.session.selected_occurrence_day))
         )
-        self._commit_block(dialog)
 
     def _block_menu(self, block_id: str, day: int, at: QPoint) -> None:
         """A block's right-click menu: Open, Duplicate, Finished for homework, and Delete, each the
@@ -3616,6 +3664,39 @@ class NativeWindow(QMainWindow):
         if self._settings is not None or self.session.account is None or self.session.preferences is None:
             return
         self._attach_settings_page(self._build_settings_page())
+        self._warm_settings_pictures()
+
+    def _warm_settings_pictures(self) -> None:
+        """Draw each design's picture while Settings is still off screen, at the width it will open
+        at. Drawn as the page slides in, the pictures were one long turn."""
+        page = self._settings
+        if page is None or not isValid(page) or self._stack.currentWidget() is page:
+            return
+        size = self._stack.size()
+        if size.width() <= 0 or size.height() <= 0:
+            return
+        page.resize(size)
+        page.ensurePolished()
+        layout = page.layout()
+        if layout is not None:
+            layout.activate()
+        from PySide6.QtWidgets import QScrollArea
+
+        from desktop.native.layouts.dialog import DesignPicker
+
+        for area in page.findChildren(QScrollArea):
+            inner = area.widget()
+            view = area.viewport()
+            if inner is None or view.width() <= 0:
+                continue
+            inner.resize(view.size())
+            box = inner.layout()
+            if box is not None:
+                box.activate()
+        # One picture a turn: drawn all at once, about a tenth of a second each, they held every key
+        # and click for most of a second just after the window opened.
+        for picker in page.findChildren(DesignPicker):
+            picker.draw_soon()
 
     def _build_settings_page(self) -> SettingsPage:
         account = self.session.account
@@ -3682,8 +3763,10 @@ class NativeWindow(QMainWindow):
 
         def finish(keep: bool) -> None:
             saver.stop()
-            with contextlib.suppress(RuntimeError, TypeError):
-                self.session.status.disconnect(page.say)
+            if getattr(page, "_hears_status", False):
+                page._hears_status = False  # type: ignore[attr-defined]
+                with contextlib.suppress(RuntimeError, TypeError):
+                    self.session.status.disconnect(page.say)
             if keep:
                 save()
 
@@ -3746,9 +3829,11 @@ class NativeWindow(QMainWindow):
         page = self._settings
         if page is None:
             return
-        with contextlib.suppress(RuntimeError, TypeError):
-            self.session.status.disconnect(page.say)
-        self.session.status.connect(page.say)
+        # Connected once while it is open. Disconnecting what was never connected only warns, so the
+        # page keeps whether it hears the status.
+        if not getattr(page, "_hears_status", False):
+            self.session.status.connect(page.say)
+            page._hears_status = True  # type: ignore[attr-defined]
         self._show_page("settingsPage")
         page.nav.setFocus()
 
