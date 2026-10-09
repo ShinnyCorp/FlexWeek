@@ -1341,7 +1341,7 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         f"color: {mix(palette['text'], palette['field'], 0.5)}; }}"
         f"{day}:checked:disabled {{ background: {mix(palette['accent'], palette['field'], 0.6)}; "
         f"color: {palette['accent_ink']}; }}"
-        f"{quiet_rule} {{ background: transparent; color: {palette['accent']}; border: none; "
+        f"{quiet_rule} {{ background: transparent; color: {accent_words(palette)}; border: none; "
         f"padding: {pad}px 2px; font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
         f"{quiet_hover} {{ color: {palette['text']}; text-decoration: underline; }}"
         f"QPushButton#setupAddActivity:disabled, QPushButton#setupAddHomework:disabled {{ "
@@ -1381,7 +1381,7 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         f"QLabel#authHeading {{ {title} }}"
         f"QLabel#authNote {{ color: {palette['muted']}; }}"
         f"QLabel#authErrorText {{ color: {palette['error']}; }}"
-        f"QPushButton#authWhy {{ background: transparent; color: {palette['accent']}; border: none; "
+        f"QPushButton#authWhy {{ background: transparent; color: {accent_words(palette)}; border: none; "
         f"padding: {SPACING[0]}px 0; min-height: 0; text-align: left; font-weight: {WEIGHT_REGULAR}; }}"
         f"QPushButton#authWhy:hover, QPushButton#authWhy[keyfocus=\"true\"]:focus "
         f"{{ color: {deeper}; text-decoration: underline; }}"
@@ -1396,7 +1396,7 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         f"QToolButton#passwordReveal:focus {{ border: 2px solid {ring}; }}"
         # Creating an account is the way in for most students on a first run, so it is the link that
         # carries weight and Forgot password sits quieter under it.
-        f"{links} {{ background: transparent; color: {palette['accent']}; border: none; "
+        f"{links} {{ background: transparent; color: {accent_words(palette)}; border: none; "
         f"padding: {SPACING[0]}px 0; min-height: 0; font-weight: {WEIGHT_REGULAR}; }}"
         f"QPushButton#authSwitch {{ font-weight: {WEIGHT_STRONG}; }}"
         f"{reached} {{ color: {deeper}; text-decoration: underline; }}"
@@ -1428,6 +1428,14 @@ def _veil(colour: str, amount: float) -> str:
     """`colour` at `amount` opacity, laid over whatever the control sits on."""
     red, green, blue = _channels(colour)
     return f"rgba({red}, {green}, {blue}, {round(amount * 255)})"
+
+
+def accent_words(palette: dict) -> str:
+    """The accent as words: itself where it reads at 4.5 to 1 on the page, the cards and the calendar, else
+    its lightness moved as far as that takes. A typed accent stays as typed for fills and lines, and
+    Readability offers its fix; words in it are drawn darker until then (0.17.2)."""
+    grounds = (palette["window"], palette["panel"], palette.get("grid", palette["panel"]))
+    return fit_lightness(palette["accent"], grounds, AA_TEXT)
 
 
 def outline_edge(palette: dict) -> str:
@@ -1775,7 +1783,7 @@ def pack_stylesheet(
         + auth_rules(palette, knobs, radius, card_radius)
         + dialog_rules(palette, card_radius, knobs["depth"], quiet_edge, scale)
         + f"QPushButton#updateSkip {{ background: transparent; "
-        f"color: {palette['accent']}; border: none; padding: {pad}px 0; "
+        f"color: {accent_words(palette)}; border: none; padding: {pad}px 0; "
         f"font-size: {pt['caption']}; text-align: left; min-height: 0; }}"
         f"QPushButton#updateSkip:hover {{ color: {palette['text']}; text-decoration: underline; }}"
         # A ringing alarm is the one thing in the app that has to be read from across a room.
@@ -1901,7 +1909,7 @@ def planner_rules(
     links."""
     caption, body, heading = (f"{type_pt(role, text)}pt" for role in ("caption", "body", "heading"))
     link = (
-        f"background: transparent; color: {palette['accent']}; border: none; "
+        f"background: transparent; color: {accent_words(palette)}; border: none; "
         f"padding: 2px {pad // 2}px; min-height: 0; font-weight: {WEIGHT_STRONG};"
     )
     bare = "background: transparent; border: none; padding: 0; border-radius: 0;"

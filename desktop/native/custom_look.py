@@ -169,6 +169,7 @@ class Problem:
     ratio: float
     field: tuple[str, ...]
     fixed: str
+    plural: bool = False
 
 
 def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
@@ -191,6 +192,7 @@ def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
             item["ratio"],
             tuple(item["field"]),
             item["fixed"],
+            bool(item.get("plural", False)),
         )
         for item in found
     ]

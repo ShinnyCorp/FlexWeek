@@ -12,6 +12,7 @@ use flexweek_engine::desk::custom_look::{
     free_name, import_look, readability, rename_look, reset_look, sanitize_saved, save_look,
     start_custom, wear,
 };
+use flexweek_engine::desk::tokens::{contrast, mix};
 use flexweek_engine::{EngineResult, ErrorKind};
 use serde_json::{Map, Value, json};
 
@@ -265,8 +266,99 @@ fn test_an_accent_fix_reads_on_the_calendar_as_well_as_the_page_and_cards() {
         .filter(|problem| problem.field == ["accent"])
         .map(|problem| (problem.words.as_str(), problem.fixed.as_str()))
         .collect();
-    assert_eq!(
-        fixes,
-        [("Today's day name", "#ffb9cc"), ("Now line", "#eb8a9d")]
+    let names: Vec<&str> = fixes.iter().map(|(words, _)| *words).collect();
+    assert_eq!(names, ["Today's day name", "Now line"]);
+    // Every row of the accent is fixed to the hardest check, so one Fix leaves no other row failing (#58).
+    assert_eq!(fixes[0].1, fixes[1].1);
+    let tint = mix(fixes[0].1, &palette.window, 0.10).expect("mixed");
+    for ground in [
+        palette.window.as_str(),
+        palette.panel.as_str(),
+        palette.grid.as_str(),
+        tint.as_str(),
+    ] {
+        assert!(
+            contrast(fixes[0].1, ground).expect("ratio") >= 4.5,
+            "{ground}"
+        );
+    }
+}
+
+fn pale_lime_palette() -> ReadabilityPalette {
+    ReadabilityPalette {
+        window: "#f7f8fa".into(),
+        panel: "#ffffff".into(),
+        grid: "#ffffff".into(),
+        text: "#111827".into(),
+        muted: "#5b6474".into(),
+        accent: "#dfff00".into(),
+        accent_ink: "#000000".into(),
+    }
+}
+
+/// A pale accent fails four rows. Fixing any one of them must leave none of the others failing: the
+/// Plan button's tint is a tenth of the accent, so it moves with the fix. (At 0.18.4 the first fix left
+/// "Plan button words" at 4.0 to 1.)
+#[test]
+fn test_one_accent_fix_leaves_no_other_accent_row_failing() {
+    let custom = object(json!({"base": "light", "accent": "#dfff00"}));
+    let palette = pale_lime_palette();
+    let found = readability(&custom, &palette, &[]).expect("checked");
+    let rows: Vec<_> = found
+        .iter()
+        .filter(|problem| problem.field == ["accent"])
+        .collect();
+    assert_eq!(rows.len(), 4, "{rows:?}");
+    for row in rows {
+        let tint = mix(&row.fixed, &palette.window, 0.10).expect("mixed");
+        for ground in [
+            palette.window.as_str(),
+            palette.panel.as_str(),
+            palette.grid.as_str(),
+            tint.as_str(),
+        ] {
+            assert!(
+                contrast(&row.fixed, ground).expect("ratio") >= 4.5,
+                "{}: {} on {ground}",
+                row.words,
+                row.fixed
+            );
+        }
+    }
+}
+
+/// The Plan button's words are plural ("The Plan button's words are 4.1:1"); no other line is.
+#[test]
+fn test_the_plan_buttons_row_is_named_in_plain_english_and_is_plural() {
+    let custom = object(json!({"base": "light", "accent": "#dfff00"}));
+    let found = readability(&custom, &pale_lime_palette(), &[]).expect("checked");
+    let plan = found
+        .iter()
+        .find(|problem| problem.words.contains("Plan"))
+        .expect("a Plan row");
+    assert_eq!(plan.words, "The Plan button's words");
+    assert!(plan.plural);
+    assert!(
+        found
+            .iter()
+            .filter(|problem| problem.words != plan.words)
+            .all(|problem| !problem.plural)
     );
+}
+
+/// With the now line set to the text colour, its row is about the text, not the accent: its Fix moves
+/// the text.
+#[test]
+fn test_a_now_line_in_the_text_colour_is_fixed_by_moving_the_text() {
+    let custom =
+        object(json!({"base": "light", "now_line": "text", "colours": {"text": "#c8cbd0"}}));
+    let mut palette = pale_lime_palette();
+    palette.text = "#c8cbd0".into();
+    palette.accent = "#3d6fc4".into();
+    let found = readability(&custom, &palette, &[]).expect("checked");
+    let now = found
+        .iter()
+        .find(|problem| problem.words == "Now line")
+        .expect("flagged");
+    assert_eq!(now.field, ["colours", "text"]);
 }

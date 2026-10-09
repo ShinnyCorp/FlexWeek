@@ -1175,6 +1175,7 @@ fn look_readability(custom: &str, palette: &str, blocks: &str) -> PyResult<Strin
                 .map(|problem| {
                     serde_json::json!({
                         "words": problem.words,
+                        "plural": problem.plural,
                         "ink": problem.ink,
                         "ground": problem.ground,
                         "ratio": problem.ratio,

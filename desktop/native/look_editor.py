@@ -274,7 +274,12 @@ def problem_rows(problems: list[Problem]) -> list[Row]:
     blocks = [problem for problem in problems if problem.field[0] == "categories"]
     together = len(blocks) >= 3
     rows = [
-        Row(f"{problem.words} is {ratio_words(problem.ratio)}:1", problem.ink, problem.ground, (problem,))
+        Row(
+            f"{problem.words} {'are' if problem.plural else 'is'} {ratio_words(problem.ratio)}:1",
+            problem.ink,
+            problem.ground,
+            (problem,),
+        )
         for problem in problems
         if not (together and problem in blocks)
     ]
@@ -286,11 +291,15 @@ def problem_rows(problems: list[Problem]) -> list[Row]:
 
 
 def fix_all(custom: dict, dark: bool) -> dict:
+    """Every problem fixed, not the first only: each round applies the Fix of one problem for each colour
+    that has any (two rows of the accent share one), then looks again, since a moved colour can change
+    what another reads on."""
     for _round in range(FIX_ALL_ROUNDS):
         found = readability(custom, dark)
         if not found:
             break
-        custom = apply_fix(custom, found[0])
+        for problem in {problem.field: problem for problem in reversed(found)}.values():
+            custom = apply_fix(custom, problem)
     return custom
 
 
@@ -1024,11 +1033,12 @@ class LookEditor(QWidget):
         self.accent_box.setSpacing(SPACING[1])
         any_line = QHBoxLayout()
         any_line.addWidget(_label(ANY_COLOUR, "lookNote"))
+        # Its swatch and code box end where the other colours' do, so the column reads as one.
+        any_line.addStretch(1)
         self.any_accent = ColourField("Accent")
         self.any_accent.setObjectName("lookColour-accent")
         self.any_accent.picked.connect(lambda colour: self._set(("accent",), colour))
         any_line.addWidget(self.any_accent)
-        any_line.addStretch(1)
         self.accent_box.addLayout(any_line)
         self._field(fields, "Accent", accent, "accent")
         for key, words in (("page", "Page"), ("card", "Cards"), ("text", "Text"), ("line", "Lines")):
@@ -1134,11 +1144,11 @@ class LookEditor(QWidget):
         line = QHBoxLayout(foot)
         line.setContentsMargins(SPACING[2], SPACING[1], SPACING[3], SPACING[1])
         line.setSpacing(SPACING[1])
-        self.reset_all = _button(RESET_ALL, "lookResetAll", "rotate-ccw", "quiet")
+        self.reset_all = _button(RESET_ALL, "lookResetAll", "rotate-ccw", "outlined")
         self.reset_all.clicked.connect(lambda: self._change(replace(self._draft, look=self._named_start())))
-        export = _button(EXPORT, "lookExport", "download", "quiet")
+        export = _button(EXPORT, "lookExport", "download", "outlined")
         export.clicked.connect(self._export)
-        load = _button(IMPORT, "lookImport", "upload", "quiet")
+        load = _button(IMPORT, "lookImport", "upload", "outlined")
         load.clicked.connect(self._import)
         for button in (self.reset_all, export, load):
             line.addWidget(button)
