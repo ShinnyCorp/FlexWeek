@@ -342,6 +342,10 @@ BAR_ICON_PX = 20
 # Between the week's date and the view switcher beside it: at 6 px they ran together at Large text (#84).
 TITLE_SWITCHER_GAP = 16
 AUTH_CARD_WIDTH = 420
+# The room a card's large shadow needs above and below it, which its holder keeps (a widget clips what
+# it holds, shadow included).
+AUTH_SHADOW_ABOVE = SHADOW_LARGE.blur - SHADOW_LARGE.y
+AUTH_SHADOW_BELOW = SHADOW_LARGE.blur + SHADOW_LARGE.y
 # One heading on the sign-in card, the same on a first launch and on a return, and what the page is for
 # when making an account.
 SIGN_IN_HEADING = "Sign in"
@@ -721,7 +725,7 @@ class NativeWindow(QMainWindow):
         )
         self._lay_mode(shown)
         card.layout().activate()
-        holder.setMinimumHeight(tallest)
+        holder.setMinimumHeight(tallest + AUTH_SHADOW_ABOVE + AUTH_SHADOW_BELOW)
 
     def listen_for_instances(self, name: str) -> bool:
         server = QLocalServer(self)
@@ -778,7 +782,8 @@ class NativeWindow(QMainWindow):
         outer = QVBoxLayout(page)
         outer.addStretch(1)
         outer.addLayout(brand_row())
-        outer.addSpacing(SPACING[4])
+        # A pinned card's holder starts above the card by the shadow's reach, so the shadow is not cut.
+        outer.addSpacing(SPACING[4] - (AUTH_SHADOW_ABOVE if pinned else 0))
         middle = QHBoxLayout()
         middle.addStretch(1)
         card = QFrame()
@@ -793,7 +798,7 @@ class NativeWindow(QMainWindow):
             holder = QWidget()
             holder.setObjectName("authHolder")
             holder.setLayout(middle)
-            middle.setContentsMargins(0, 0, 0, 0)
+            middle.setContentsMargins(0, AUTH_SHADOW_ABOVE, 0, AUTH_SHADOW_BELOW)
             outer.addWidget(holder)
             self._auth_holder, self._auth_card = holder, card
         else:

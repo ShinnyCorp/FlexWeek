@@ -110,8 +110,9 @@ def test_the_pinned_position_is_the_one_the_create_card_needs(signed_out) -> Non
     brand = stage.findChild(QLabel, "authBrand")
     above = brand.mapTo(stage, QPoint(0, 0)).y()
     held = card_of(window)
-    below = stage.height() - (held.mapTo(stage, QPoint(0, 0)).y() + held.height())
-    assert abs(above - below) <= 40, (above, below)
+    # The holder keeps 44 px under the card for its shadow; the group is centred with that room in it.
+    below = stage.height() - (held.mapTo(stage, QPoint(0, 0)).y() + held.height() + 44)
+    assert abs(above - below) <= 2, (above, below)
     go(window, "sign in")
     assert brand.mapTo(stage, QPoint(0, 0)).y() == above
 
@@ -261,3 +262,18 @@ def test_the_focused_sign_in_field_still_shows_the_accent(qapp, signed_out) -> N
     palette = resolved_palette("system", False, sanitize_look(None))
     edge = image.pixelColor(0, image.height() // 2)
     assert near(edge, palette["accent"], slack=8), edge.name()
+
+
+def test_the_cards_shadow_is_not_cut_off_by_its_holder(signed_out) -> None:
+    window = signed_out
+    window.resize(1366, 768)
+    for mode in ("sign in", "create"):
+        go(window, mode)
+        held = card_of(window)
+        left = held.mapTo(window, QPoint(0, 0)).x() + held.width() // 2
+        bottom = held.mapTo(window, QPoint(0, 0)).y() + held.height()
+        picture = window.grab().toImage()
+        page = picture.pixelColor(left, bottom + 60)
+        # Under the card the shadow darkens the page, and it does not stop at the card's own height.
+        for gap in (4, 16, 28):
+            assert picture.pixelColor(left, bottom + gap).lightness() < page.lightness(), (mode, gap)
