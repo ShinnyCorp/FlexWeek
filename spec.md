@@ -250,9 +250,11 @@ JavaScript, no npm, no build step, no framework.** There is no browser client:
 the web app was retired in September 2026 and `frontend/` deleted.
 
 First paint with no session is Sign in, with creating an account offered as a
-line of small print that switches the same card over. It says "Welcome to
-FlexWeek" until someone has signed in on this computer, and "Welcome back"
-after. The card offers "Keep me
+line of small print that switches the same card over. Its heading is "Sign in"
+on the first launch and every later one; the wordmark and the card's top stay
+put when the card switches, and the page wears this computer's own look (the
+System pack, light or dark with the computer), not the last account's. The card
+offers "Keep me
 signed in on this computer", on by default. A kept session opens the week at
 the next launch until the server ends it (seven days after sign-in) or the
 student logs out.
