@@ -1102,6 +1102,10 @@ def control_rules(palette: dict, radius: int, text: float | str, art: dict[str, 
         f"QProgressBar::chunk {{ background: {palette['accent']}; border-radius: 4px; }}"
         f"QLineEdit:focus, QComboBox:focus, QAbstractSpinBox:focus, QPlainTextEdit:focus {{ "
         f"border: 1px solid {palette['accent']}; }}"
+        # The line under a time box whose text says no time.
+        f"QFrame#clockError {{ background: {palette['panel']}; border: 1px solid {palette['error']}; "
+        f"border-radius: {radius}px; }}"
+        f"QLabel#clockErrorText {{ color: {palette['error']}; }}"
         # A switch is a check box whose box is a pill with a knob, drawn whole by `control_art`.
         'QCheckBox[switch="true"] { spacing: 10px; }'
         'QCheckBox[switch="true"]::indicator { width: 34px; height: 20px; border: none; '
@@ -1737,6 +1741,10 @@ def pack_stylesheet(
         f"min-height: {field_min}px; {edges} }}"
         # A typed time and a stepped number have no arrows inside, so no room kept for them.
         f'QAbstractSpinBox[typed="true"], QAbstractSpinBox[stepped="true"] {{ padding-right: {pad}px; }}'
+        # A typed time that says no time: a 2 px outline in the error colour, over the focus outline, with
+        # a pixel less padding so the box keeps its size.
+        f'QAbstractSpinBox[invalid="true"], QAbstractSpinBox[invalid="true"]:focus {{ '
+        f"border: 2px solid {palette['error']}; padding: {max(pad - 1, 0)}px; }}"
         f"QPlainTextEdit {{ background: {palette['field']}; color: {palette['text']}; "
         f"padding: {pad}px; border-radius: {radius}px; {edges} }}"
         f"QTableWidget {{ gridline-color: {palette['hairline']}; "

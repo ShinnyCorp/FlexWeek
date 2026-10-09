@@ -16,7 +16,7 @@ Tests never assert the withdrawn cases (Ctrl+A saving 01:00, Tab not saving, Tab
 Required (item 0): 1 first click selects the whole time; 2 Ctrl+A selects the whole text; 3 with it
 selected, Backspace and Delete clear it; 4 a typed time saves on Tab, Enter and Next/Save; 5 an
 unreadable time stays in the box with an error that is the box's accessible description, never a
-silent revert or 23:59. Known failures are xfail(strict=True).
+silent revert or 23:59. All of it passes since 0.18.5.
 """
 
 # ruff: noqa: F811  (pytest fixtures imported by name)
@@ -63,23 +63,6 @@ ENTRIES = (*CLICKS, "ctrl-a", "tab-in")
 LEAVES = ("tab", "enter", "next")
 CLOCKS = {"24h": True, "12h": False}
 TYPED = {"24h": "15:15", "12h": "3:15 PM"}
-KNOWN_CLICK = (
-    "known failure (item 0.1): a click into a time box only places the caret, so typing goes into the "
-    "old time (19:001730) and the box silently puts the old time back"
-)
-# Qt 6 QTimeEdit is zoned UTC, ClockField.dateTimeFromText makes a LocalTime QDateTime: Enter runs Qt's
-# interpret path through it and the time moves by the zone's offset on 2000-01-01 (15:15 -> 23:15 in PT).
-LOCAL_OFFSET = datetime(2000, 1, 1, 12, 0).astimezone().utcoffset()
-SHIFTED = bool(LOCAL_OFFSET)
-KNOWN_ENTER = (
-    "known failure (item 0 step 4, the Enter UTC-offset bug): Enter moves a typed time by the local "
-    f"UTC offset ({LOCAL_OFFSET}); "
-    "ClockField.dateTimeFromText returns local time to a UTC QTimeEdit"
-)
-KNOWN_UNREADABLE = (
-    "known failure (item 0.5): an unreadable time is silently replaced by the last good one; "
-    "no error is shown and the box has no accessible description"
-)
 CTRL = Qt.KeyboardModifier.ControlModifier
 NONE = Qt.KeyboardModifier.NoModifier
 
@@ -413,15 +396,9 @@ def leave(box: Box, how: str) -> None:
         QApplication.processEvents()
 
 
-def marked(entry: str, *extra) -> list:
-    return [pytest.mark.xfail(strict=True, reason=KNOWN_CLICK)] if entry in CLICKS else list(extra)
-
-
 def retype_cases() -> list:
-    enter_mark = [pytest.mark.xfail(strict=True, reason=KNOWN_ENTER)] if SHIFTED else []
     return [
-        pytest.param(name, entry, way, marks=marked(entry, *(enter_mark if way == "enter" else [])),
-                     id=f"{name}-{entry}-{way}")
+        pytest.param(name, entry, way, id=f"{name}-{entry}-{way}")
         for name in BOXES
         for entry in ENTRIES
         for way in LEAVES
@@ -442,7 +419,7 @@ def test_retyping_15_15_saves_exactly_15_15(opened, clock, name, entry, way) -> 
 
 
 @pytest.mark.parametrize("name", list(BOXES))
-@pytest.mark.parametrize("entry", [pytest.param(e, marks=marked(e), id=e) for e in ENTRIES])
+@pytest.mark.parametrize("entry", ENTRIES)
 def test_any_way_in_selects_the_whole_time(opened, name, entry) -> None:
     box = opened(name)
     enter(box.field, entry)
@@ -469,14 +446,7 @@ print(field.time().toString("HH:mm"))
 
 
 @pytest.mark.parametrize("typed", ["15:15", "17:30"])
-@pytest.mark.parametrize(
-    "zone",
-    [
-        "UTC",
-        pytest.param("America/Los_Angeles", marks=pytest.mark.xfail(strict=True, reason=KNOWN_ENTER)),
-        pytest.param("Asia/Kolkata", marks=pytest.mark.xfail(strict=True, reason=KNOWN_ENTER)),
-    ],
-)
+@pytest.mark.parametrize("zone", ["UTC", "America/Los_Angeles", "Asia/Kolkata"])
 def test_enter_keeps_a_typed_time_in_every_time_zone(zone, typed) -> None:
     """Item 0 step 4, the Enter UTC-offset bug: in a fresh app per zone (Qt reads the zone at start), so it
     fails on any machine. Asserts the exact typed time is kept, not any particular wrong value (Coder saw
@@ -533,7 +503,7 @@ def _limited(field: ClockField) -> ClockField:
 
 
 @pytest.mark.parametrize("typed", ["17:30", "1730", "5:30p"])
-@pytest.mark.parametrize("entry", [pytest.param(e, marks=marked(e), id=e) for e in ENTRIES])
+@pytest.mark.parametrize("entry", ENTRIES)
 @pytest.mark.parametrize("bare", list(BARE))
 def test_a_bare_box_takes_half_past_five_however_typed(qapp, bare, entry, typed) -> None:
     top = QWidget()
@@ -558,7 +528,6 @@ def test_a_bare_box_takes_half_past_five_however_typed(qapp, bare, entry, typed)
 
 @pytest.mark.parametrize("text", ["abc", "25:00", "8::00"])
 @pytest.mark.parametrize("name", list(BOXES))
-@pytest.mark.xfail(strict=True, reason=KNOWN_UNREADABLE)
 def test_an_unreadable_time_stays_with_an_error_never_23_59(opened, name, text) -> None:
     box = opened(name)
     enter(box.field, "tab-in")
@@ -569,3 +538,63 @@ def test_an_unreadable_time_stays_with_an_error_never_23_59(opened, name, text) 
     said = box.field.accessibleDescription()
     shown = [label.text() for label in box.field.window().findChildren(QLabel) if label.isVisible()]
     assert said and said in shown, f"accessibleDescription {said!r}; visible labels {shown}"
+
+
+# The line under a box that says no time -----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("clock_24h", "words"), [(True, "Type a time like 17:30."), (False, "Type a time like 5:30 PM.")]
+)
+def test_the_unreadable_time_line_follows_the_clock(opened, monkeypatch, clock_24h, words) -> None:
+    set_clock_24h(clock_24h)
+    try:
+        box = opened("block-editor-start")
+        said: list[str] = []
+        monkeypatch.setattr("desktop.native.fields.announce", lambda widget, text, **_: said.append(text))
+        enter(box.field, "tab-in")
+        type_text(box.field, "abc")
+        press(box.field, Qt.Key.Key_Tab)
+        assert box.field.accessibleDescription() == words
+        assert box.field.problem() == words
+        assert box.field.property("invalid") is True
+        assert said == [words], "announced once, when it appeared"
+        # Back in, fixed: the line, the outline and the description go.
+        enter(box.field, "tab-in")
+        type_text(box.field, "17:30")
+        assert box.field.time() == QTime(17, 30)
+        press(box.field, Qt.Key.Key_Tab)
+        assert box.field.accessibleDescription() == ""
+        assert box.field.property("invalid") is False
+        shown = [label.text() for label in box.field.window().findChildren(QLabel) if label.isVisible()]
+        assert words not in shown
+    finally:
+        set_clock_24h(True)
+
+
+def test_an_empty_box_is_unreadable_not_put_back(opened) -> None:
+    box = opened("school-hours-start")
+    enter(box.field, "tab-in")
+    press(box.field, Qt.Key.Key_Backspace)
+    press(box.field, Qt.Key.Key_Tab)
+    assert box.field.lineEdit().text() == ""
+    assert box.field.problem()
+
+
+def test_a_time_outside_the_limits_stays_with_a_line_naming_them(qapp) -> None:
+    top = QWidget()
+    column = QVBoxLayout(top)
+    column.addWidget(QLineEdit())
+    field = _limited(ClockField(QTime(19, 0)))
+    column.addWidget(field)
+    _up(qapp, top)
+    try:
+        enter(field, "tab-in")
+        type_text(field, "23:30")
+        press(field, Qt.Key.Key_Tab)
+        assert field.lineEdit().text() == "23:30"
+        assert field.time() == QTime(19, 0)
+        assert field.problem() == "Type a time from 06:00 to 23:00."
+    finally:
+        top.hide()
+        free(top)

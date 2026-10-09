@@ -6,6 +6,12 @@ All notable changes to FlexWeek are documented here. Format follows
 ## [Unreleased]
 
 ### Fixed
+- Time boxes: the first click into one selects the whole time, as Tab does,
+  and Ctrl+A selects the whole text. Enter keeps a typed time in every time
+  zone; it moved by the computer's UTC offset before. A time that cannot be
+  read stays in the box with a red outline, a warning icon and "Type a time
+  like 17:30." (or "5:30 PM." on the 12-hour clock), which a screen reader
+  says; it is no longer swapped for the old time.
 - Tab leaves the Notes box in Add homework and the other multi-line boxes in
   sheets and Settings; Shift+Tab goes back. Tab no longer types a tab
   character into them.

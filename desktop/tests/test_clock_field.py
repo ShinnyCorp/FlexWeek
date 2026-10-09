@@ -141,7 +141,7 @@ def test_twelve_thirty_am_typed_over_eleven_pm_is_half_past_midnight(
 
 @pytest.mark.parametrize("twenty_four", CLOCKS)
 @pytest.mark.parametrize("junk", ["99:99", "abc", "25:00", "12:75", "1:2:3", "15:15x", "", "24:00"])
-def test_junk_is_refused_and_the_box_shows_the_last_good_time(
+def test_junk_keeps_the_last_good_time_and_stays_in_the_box_with_a_line(
     qapp: QApplication,  # noqa: F811
     host: QWidget,  # noqa: F811
     twenty_four: bool,
@@ -155,17 +155,19 @@ def test_junk_is_refused_and_the_box_shows_the_last_good_time(
     field.clearFocus()
     qapp.processEvents()
     assert field.time() == good
-    assert line_of(field).text() == good.toString("HH:mm" if twenty_four else "h:mm AP")
+    # What was typed stays, with the line saying what to type; nothing is put back quietly.
+    assert line_of(field).text() == (junk or good.toString("HH:mm" if twenty_four else "h:mm AP"))
+    assert bool(field.problem()) == bool(junk)
     free(field)
 
 
 @pytest.mark.parametrize("twenty_four", CLOCKS)
-def test_a_good_time_typed_past_into_junk_is_refused_whole(
+def test_a_good_time_typed_past_into_junk_stays_whole_with_a_line(
     qapp: QApplication,  # noqa: F811
     host: QWidget,  # noqa: F811
     twenty_four: bool,
 ) -> None:
-    """15:155 is not a time, so the box goes back to what it held before, not to its 15:15."""
+    """15:155 is not a time, so the box keeps its old time and shows 15:155 with the line, not 15:15."""
     set_clock_24h(twenty_four)
     field = shown(ClockField(start_of(twenty_four)), qapp, host)
     before = field.time()
@@ -173,6 +175,8 @@ def test_a_good_time_typed_past_into_junk_is_refused_whole(
     QTest.keyClicks(field, "15:155")
     field.clearFocus()
     assert field.time() == before
+    assert line_of(field).text() == "15:155"
+    assert field.problem()
     free(field)
 
 

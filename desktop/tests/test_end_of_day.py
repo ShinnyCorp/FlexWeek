@@ -187,5 +187,7 @@ def test_a_start_box_keeps_00_00_as_midnight_and_refuses_24_00(
     QTest.keyClicks(field, "24:00")
     field.clearFocus()
     assert field.time() == QTime(0, 0)
-    assert line_of(field).text() == "00:00"
+    # Refused with a line, the text left as typed.
+    assert line_of(field).text() == "24:00"
+    assert field.problem()
     free(field)
