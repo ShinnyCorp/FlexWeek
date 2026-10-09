@@ -42,9 +42,11 @@ class Level:
 
 # The stored ids (look.MOTION_LEVELS), which saved preferences and custom looks use. "extra" is
 # shown as More. Reduce keeps the fades and nothing travels: no slide, rise, drift, zoom or lift.
+# More is 2.5 times as slow, so the standard ease of 180 ms is 450 ms: at 1.45 it was only 260 ms and
+# hard to tell from Normal.
 LEVELS = {
     "normal": Level(1.0, 1.0),
-    "extra": Level(1.45, 4 / 3),
+    "extra": Level(2.5, 4 / 3),
     "reduce": Level(1.0, 0.0),
     "off": Level(0.0, 0.0),
 }
@@ -419,6 +421,15 @@ def clear_fades(host: QWidget) -> None:
     ):
         leftover.hide()
         leftover.deleteLater()
+
+
+def raise_pictures(host: QWidget) -> None:
+    """Put the pictures and dims over `host` back on top, in the order they were. A widget given a new
+    parent, or raised, lands above them and was drawn over the picture that is meant to cover it."""
+    for child in host.children():
+        picture = isinstance(child, QLabel) and child.objectName() in (FADE_NAME, SLIDE_NAME)
+        if picture or isinstance(child, Dim):
+            child.raise_()
 
 
 def hold_picture(

@@ -179,7 +179,7 @@ def test_ctrl_k_opens_a_centred_box_listing_what_can_be_done(
     assert bar.shown_words() == [
         "Add homework", "Add fixed time", "School hours",
         "Day", "Week", "Month", "My day", "Focus screen", "Settings", "Help",
-        "Look and colours", "Customise…", "Planning settings", "Focus settings", "Alerts",
+        "Look", "Edit look…", "Planning settings", "Focus settings", "Alerts",
         "This computer",
         "Plan my homework", "Choose a time…", "History essay", "Math worksheet",
     ]
@@ -413,7 +413,7 @@ def test_look_finds_the_look_and_opens_settings_where_it_is(
     open_bar(window)
     bar = window.command_bar
     QTest.keyClicks(bar.input, "look")
-    assert bar.shown_words()[:2] == ["Look and colours", "Customise…"]
+    assert bar.shown_words()[:2] == ["Look", "Edit look…"]
     QTest.keyClick(bar.input, Qt.Key.Key_Return)
     settings = window._settings
     assert settings is not None and window._stack.currentWidget() is settings
@@ -424,6 +424,23 @@ def test_look_finds_the_look_and_opens_settings_where_it_is(
     QTest.keyClick(bar.input, Qt.Key.Key_Return)
     assert window._settings.nav.currentRow() == 3
     window._settings.close_page()
+
+
+def test_the_command_bar_and_settings_name_the_look_the_same_way(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """#101: the look was "Look and colours" in the command bar and "Appearance & layout" in Settings,
+    and its editor "Customise…" in one and "Edit your own look…" in the other. One name for each."""
+    open_bar(window)
+    bar = window.command_bar
+    QTest.keyClicks(bar.input, "look")
+    look_entry, editor_entry = bar.shown_words()[:2]
+    QTest.keyClick(bar.input, Qt.Key.Key_Return)
+    settings = window._settings
+    assert settings is not None
+    assert settings.nav.item(0).text() == look_entry == "Look"
+    assert settings.customise.text() == editor_entry == "Edit look…"
+    settings.close_page()
 
 
 def test_the_chosen_row_is_accent_tinted_a_list_that_fits_never_scrolls_and_keys_are_caps(

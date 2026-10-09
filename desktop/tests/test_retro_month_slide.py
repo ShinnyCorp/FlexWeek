@@ -51,8 +51,8 @@ class Seen:
         return [frame for frame in self.frames if frame.dims]
 
     def slid(self, length: int) -> list[Frame]:
-        """The frames of the one motion that dims, which the title and the pieces fading beside it
-        (other lengths) are not."""
+        """The frames of the one motion that dims, which the pieces fading beside it (other lengths)
+        are not."""
         return [frame for frame in self.with_dim() if frame.total == length]
 
     def with_fade(self) -> list[Frame]:
@@ -66,8 +66,9 @@ def pictures_over(page: QWidget) -> tuple[list[QLabel], list[QLabel], list[Dim]]
     """The slide, the held pictures and the dims on `page`. Walks `children()`, not `findChildren()`."""
     labels = [kid for kid in page.children() if isinstance(kid, QLabel) and kid.isVisible()]
     slides = [label for label in labels if label.objectName() == SLIDE_NAME]
-    # The title's own small picture fades beside it; the desk or month is the one as wide as the page.
-    fades = [label for label in labels if label.objectName() == FADE_NAME and label.width() == page.width()]
+    # The picture of the desk or month, trimmed to what changed, not a small one of a part of it.
+    tall = page.height() // 2
+    fades = [label for label in labels if label.objectName() == FADE_NAME and label.height() > tall]
     dims = [kid for holder in (page, *fades) for kid in holder.children() if isinstance(kid, Dim)]
     return slides, fades, dims
 
@@ -211,7 +212,8 @@ def test_in_retro_day_and_week_still_crossfade(
 def test_another_design_keeps_its_month_crossfade(
     qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    in_design(qapp, window, "classic")
+    """Mission has no rail, so Week and Month only fade through; Today's app slides (test_motion_0185)."""
+    in_design(qapp, window, "mission")
     seen = watch(window, monkeypatch)
     press(qapp, window, "viewMonth", lambda: window.session.planner_view == "month")
     assert seen.with_fade(), "the week fades through to the month"

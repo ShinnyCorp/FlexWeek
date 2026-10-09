@@ -111,6 +111,7 @@ from desktop.native.motion import (
     hold_picture,
     motion_level,
     moves,
+    raise_pictures,
     retake_slide,
     settle,
     slide_down,
@@ -131,7 +132,7 @@ from desktop.native.reuse import (
     week_label,
 )
 from desktop.native.settings import (
-    CUSTOMISE,
+    EDIT_OWN_LOOK,
     SECTIONS,
     AboutDialog,
     AccountDialog,
@@ -891,7 +892,6 @@ class NativeWindow(QMainWindow):
         )
         note.setWordWrap(True)
         note.setObjectName("authNote")
-        note.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(note)
         self.recovery_list = QLabel()
         self.recovery_list.setObjectName("recoveryList")
@@ -1303,7 +1303,7 @@ class NativeWindow(QMainWindow):
         self.plan_review.setParent(page)
         self.plan_review.hide()
         self.toast = Toast(self, self.planner)
-        self._toast_where: tuple | None = None
+        self._toast_week: str | None = None
 
     def _planner_widget(self, view: str) -> QWidget:
         """The chosen main view stands in for the week grid, and for Day and Month too.
@@ -1411,6 +1411,10 @@ class NativeWindow(QMainWindow):
         system_dark = QGuiApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
         return pack, system_dark, accent
 
+    def _account_id(self) -> str | None:
+        account = self.session.account
+        return str(account["id"]) if account else None
+
     def _scene_for(self, layout_id: str) -> Scene:
         clock = clock_parts(self.session.now_ms())
         options = options_for(self._layout, layout_id)
@@ -1439,6 +1443,7 @@ class NativeWindow(QMainWindow):
             unsaved_weeks=session.unsaved_weeks(),
             focus=focus_now(session.focus),
             today_iso=clock["iso"],
+            account=self._account_id(),
         )
 
     def _refresh_layout(self) -> None:
@@ -1901,9 +1906,10 @@ class NativeWindow(QMainWindow):
             self.hand.cancel()
         if not self.hand.busy:
             self._shown = self._where()
-        if self._where() != self._toast_where:
-            # Another view, week, day or design: what the toast said was about where the student was.
-            self._toast_where = self._where()
+        if self.session.week_start != self._toast_week:
+            # Another week: Undo applies to the week where the change was saved, so a toast still
+            # offering it would offer nothing. Another view, day or design keeps it.
+            self._toast_week = self.session.week_start
             self.toast.hide()
         if self.unfinished_panel.isVisible():
             # A row deleted, planned or finished leaves the list, and an Undo brings it back.
@@ -1928,6 +1934,7 @@ class NativeWindow(QMainWindow):
         self.month_grid.set_month(
             self.session.month_data, self.session.dirty,
             datetime.fromtimestamp(self.session.now_ms() / 1000).date().isoformat(),
+            self._account_id(),
         )
         opened = (self.session.planner_view, self.session.selected_month, self.session.month_data is not None)
         if opened[0] == "month" and opened[2] and opened != self._month_revealed:
@@ -2229,11 +2236,12 @@ class NativeWindow(QMainWindow):
             for piece in self._turn_pieces()
         }
 
-    def _begin_turn(self) -> tuple[QLabel, dict, int, QLabel | None, str, str] | None:
+    def _begin_turn(self) -> tuple[QLabel, dict, int, str] | None:
         """Before another view, My day or another design is shown: a picture of everything under the
         top bar, where each part of it was, and which way the segments go, so the new page, with its
         chrome and colours, fades through in one frame once it is built (decisions 28 and 29). In
-        Retro, Month is not faded to but slid in over the dimmed desk, as Settings is (J17)."""
+        Retro, Month is not faded to but slid in over the dimmed desk, as Settings is (J17). The title
+        is in the top bar, outside the picture, and changes at once."""
         was, now = self._planner_shown, self._planner_now()
         self._planner_shown = now
         page = self._week_page
@@ -2245,9 +2253,6 @@ class NativeWindow(QMainWindow):
         picture = hold_picture(page, self._motion, QRect(0, top, page.width(), page.height() - top))
         if picture is None:
             return None
-        # The title is in the top bar, outside the picture: it changes with the page, not a frame early.
-        title = self.week_title
-        title_picture = hold_picture(title.parentWidget(), self._motion, title.geometry(), beside=True)
         direction = 0
         # Day, Week and Month slide toward the segment chosen; My day and a new design only fade.
         if not was[0] and not now[0] and was[2:] == now[2:] and {was[1], now[1]} <= set(VIEW_ORDER):
@@ -2256,24 +2261,25 @@ class NativeWindow(QMainWindow):
         over = ""
         if direction and now[2] == "retro" and "month" in (was[1], now[1]) and moves(self._motion):
             over = "back" if was[1] == "month" else "in"
-        return picture, self._places(), direction, title_picture, title.full_text(), over
+        return picture, self._places(), direction, over
 
-    def _finish_turn(self, turn: tuple[QLabel, dict, int, QLabel | None, str, str] | None) -> None:
-        """The new page is built and dressed: what changed fades through to it, the title with it. The
-        parts that stayed where they were are left out of the picture, so they neither blink nor
-        drift."""
+    def _finish_turn(self, turn: tuple[QLabel, dict, int, str] | None) -> None:
+        """The new page is built and dressed: what changed fades through to it. The parts that stayed
+        where they were are left out of the picture, so they neither blink nor drift. When the rail
+        comes or goes the whole page moves sideways, so it slides as Settings does rather than jump
+        (#29), which also keeps a panel from being drawn at both of its places."""
         if turn is None:
             return
-        picture, before, direction, title_picture, title_was, over = turn
-        if title_picture is not None and self.week_title.full_text() != title_was:
-            fade_through(title_picture, [self.week_title], self._motion)
-        elif title_picture is not None:
-            title_picture.deleteLater()
+        picture, before, direction, over = turn
         self._week_page.layout().activate()
+        # A piece that changed parent (the timer from the rail to the column) came up over the picture.
+        raise_pictures(self._week_page)
+        after = self._places()
+        if not over and moves(self._motion) and (before[self.rail] is None) != (after[self.rail] is None):
+            over = "in" if after[self.rail] is None else "back"
         if over:
             slide_view(self._week_page, picture, self.planner, self._motion, back=over == "back")
             return
-        after = self._places()
         changed = [piece for piece in self._turn_pieces() if before[piece] != after[piece]]
         area = before[self.planner] or QRect()
         for piece in changed:
@@ -3418,8 +3424,8 @@ class NativeWindow(QMainWindow):
                 "clock",
             ),
             # Settings' pages by what they hold: "look" found nothing (Grok Bot's 0.17.0 audit, X1).
-            Command("settings:0", "Look and colours", "Look, accent and design", "Settings", "palette"),
-            Command("customise", f"{CUSTOMISE}…", "Make a look of your own", "Settings", "swatch-book"),
+            Command("settings:0", "Look", "Look, accent and design", "Settings", "palette"),
+            Command("customise", EDIT_OWN_LOOK, "Make a look of your own", "Settings", "swatch-book"),
             Command("settings:1", "Planning settings", "How homework gets a time", "Settings", "calendar"),
             Command("settings:2", "Focus settings", "The focus timer's lengths", "Settings", "timer"),
             Command("settings:3", "Alerts", "Reminders, alarms and sounds", "Settings", "bell"),
@@ -3635,17 +3641,19 @@ class NativeWindow(QMainWindow):
     def _layout_plan_review(self) -> None:
         """The plan bar floats over the planner, under the panels above it, without pushing them."""
         host = self._week_page
-        anchor = self._column
-        top_left = anchor.mapTo(host, QPoint(0, 0))
-        top = top_left.y()
+        # The column is a layout, so its rectangle is already in the page's coordinates.
+        anchor = self._column.geometry()
+        top = anchor.top()
         for piece in (self.focus_panel, self.unfinished_panel):
             if piece.isVisibleTo(host):
                 top = max(top, piece.mapTo(host, QPoint(0, piece.height())).y())
         width = anchor.width()
         self.plan_review.setFixedWidth(width)
         height = self.plan_review.sizeHint().height()
-        self.plan_review.setGeometry(top_left.x(), top, width, height)
+        self.plan_review.setGeometry(anchor.left(), top, width, height)
         self.plan_review.raise_()
+        # Raised over everything, it would be drawn over a picture sliding or fading across the page.
+        raise_pictures(host)
 
     def _maybe_prepare_settings(self) -> None:
         if (

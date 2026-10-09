@@ -266,7 +266,7 @@ def test_the_button_and_the_description_have_their_new_words(
     qapp: QApplication, window: NativeWindow
 ) -> None:
     page = open_settings(qapp, window, (1280, 800))
-    assert page.findChild(QPushButton, "prefCustomise").text() == "Edit your own look…"
+    assert page.findChild(QPushButton, "prefCustomise").text() == "Edit look…"
     sentence = "The week grid with the sidebar. Its colours come from the look you choose above."
     assert LAYOUTS["classic"].summary == sentence
     card = next(card for card in page.findChildren(ChoiceCard) if card.accessibleName() == "Today's app")

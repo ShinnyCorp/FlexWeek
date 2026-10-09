@@ -2491,6 +2491,8 @@ class Dialog(QDialog):
             QTimer.singleShot(0, partial(_give_focus_back, self._came_from))
             self._came_from = None
         if self._shade is not None:
+            # Hidden as the sheet goes: left for deleteLater alone it stayed over the page for a frame.
+            self._shade.hide()
             self._shade.deleteLater()
             self._shade = None
             self.parentWidget().window().removeEventFilter(self)

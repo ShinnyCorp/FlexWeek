@@ -43,6 +43,8 @@ class Scene:
     # The focus timer: "" when none runs, else "focusing", "paused" or "break".
     focus: str = ""
     today_iso: str = ""
+    # Whose month this is, so a month still loading keeps only the same student's last grid.
+    account: str | None = None
 
     def px(self, size: float) -> int:
         """A size in pixels that follows the student's Text size knob."""
@@ -344,7 +346,7 @@ class LayoutView(QWidget):
         board.set_tokens(scene.tokens)
         board.set_unsaved(scene.unsaved_weeks)
         board.set_week(scene.week)
-        board.set_month(scene.month, scene.dirty, scene.today_iso or None)
+        board.set_month(scene.month, scene.dirty, scene.today_iso or None, scene.account)
         opened = ((scene.month or {}).get("month"), scene.iso_day)
         if scene.month and scene.iso_day and opened != getattr(self, "_month_revealed", None):
             # Once per month opened, and after the board has its size: after that it stays wherever

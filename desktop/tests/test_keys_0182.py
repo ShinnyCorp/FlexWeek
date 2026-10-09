@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
 from desktop.native.calendar import sunday_due
 from desktop.native.command_bar import KEY_ROLE, match_span
-from desktop.native.settings import CUSTOMISE, HELP_KEYS, HelpDialog
+from desktop.native.settings import HELP_KEYS, HelpDialog
 from desktop.native.widgets import HomeworkDialog
 from desktop.native.window import NativeWindow
 from desktop.server import LocalServer
@@ -139,8 +139,8 @@ def test_ctrl_k_lists_help_add_homework_choose_time_and_settings_pages(
     assert "Choose a time…" in words
     assert "Alerts" in words
     assert "This computer" in words
-    assert f"{CUSTOMISE}…" in words
-    assert "Customise look…" not in words
+    assert "Edit look…" in words
+    assert "Customise…" not in words
     bar.close_bar()
 
 

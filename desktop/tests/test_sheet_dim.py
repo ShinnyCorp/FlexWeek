@@ -347,3 +347,50 @@ def test_a_slow_build_does_not_make_the_dim_jump_ahead(
     )
     made[0].close()
     free(made[0])
+
+
+def test_the_dim_leaves_in_the_same_instant_as_its_sheet(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+) -> None:
+    """0.18.5 #97: the dim lingered a frame after a sheet closed. It was only deleted later, so it stayed
+    on screen until the event loop got to it."""
+    seen: list[tuple[bool, bool]] = []
+
+    def run(dialog: HomeworkDialog) -> int:
+        dialog.show()
+        qapp.processEvents()
+        (dim,) = shades(window)
+        wait_until(qapp, lambda: not busy())
+        dialog.reject()
+        # No event has run since the sheet went: the dim must already be gone with it.
+        seen.append((dialog.isVisible(), dim.isVisible()))
+        return 0
+
+    for level in ("normal", "extra", "off"):
+        apply_ui_effects(level)
+        monkeypatch.setattr(HomeworkDialog, "exec", run)
+        window._add_homework()
+        drained(qapp)
+    assert seen == [(False, False)] * 3
+
+
+def test_a_sheet_closed_while_its_dim_is_still_fading_takes_the_dim_down_at_once(
+    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+) -> None:
+    apply_ui_effects("extra")
+    seen: list[tuple[bool, bool]] = []
+
+    def run(dialog: HomeworkDialog) -> int:
+        dialog.show()
+        qapp.processEvents()
+        (dim,) = shades(window)
+        assert busy(), "the fade is still going"
+        dialog.reject()
+        seen.append((dialog.isVisible(), dim.isVisible()))
+        return 0
+
+    monkeypatch.setattr(HomeworkDialog, "exec", run)
+    window._add_homework()
+    drained(qapp)
+    assert seen == [(False, False)]
+    assert not busy(), "the fade went with the dim"
