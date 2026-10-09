@@ -231,9 +231,8 @@ class MonthPainter:
         ink = self.c("text")
         flag = self.c("error") if chip.late else self.c("text")
         if faded or chip.done or held:
+            # Only the fill says "done"; dimmed words were too faint to read (#93).
             fill.setAlpha(fill.alpha() // 2)
-            ink.setAlpha(120)
-            flag.setAlpha(120)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(fill)
         painter.drawRoundedRect(box, 4, 4)

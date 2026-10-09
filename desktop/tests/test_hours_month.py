@@ -311,6 +311,49 @@ def test_a_block_on_month_is_its_category_as_the_week_fills_it(qapp: QApplicatio
             assert category_paint(category, palette)[0] in seen, (pack, category)
 
 
+def test_a_done_or_held_chip_keeps_its_words_at_full_strength_and_only_its_fill_is_lighter(
+    qapp: QApplication,
+) -> None:
+    """#93: dimming the words of a done chip to 47 % made them hard to read. The fill carries "done"."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QColor, QFont, QImage, QPainter
+
+    from desktop.native.hours.month import MonthChip, MonthPainter
+    from desktop.native.look import category_paint, resolved_palette
+
+    palette = resolved_palette("light-frost", False, None)
+    chip = MonthChip("block:class", "School", "class", block_id="class", start=8 * 60)
+    box = QRectF(0, 0, 240, 40)
+    ground = QColor("#123456")
+
+    def draw(faded: bool, held: bool, done: bool) -> QImage:
+        image = QImage(240, 40, QImage.Format.Format_ARGB32)
+        image.fill(ground)
+        painter = QPainter(image)
+        painter.setFont(QFont("Inter", 12))
+        shown = MonthChip("block:class", "School", "class", block_id="class", start=8 * 60, done=done)
+        MonthPainter(palette).chip(painter, box, shown, faded, held)
+        painter.end()
+        return image
+
+    def seen(image: QImage) -> set[str]:
+        return {image.pixelColor(x, y).name() for x in range(image.width()) for y in range(image.height())}
+
+    fill = QColor(category_paint(chip.category, palette)[0])
+    half = 127 / 255
+    # The fill at half strength over the ground, worked out from the requirement, per channel.
+    rgb = fill.getRgb()[:3], ground.getRgb()[:3]
+    lighter = [round(c * half + g * (1 - half)) for c, g in zip(*rgb, strict=True)]
+    for faded, held, done in ((True, False, False), (False, True, False), (False, False, True)):
+        image = draw(faded, held, done)
+        assert palette["text"] in seen(image), "the words keep the text colour at full strength"
+        corner = image.pixelColor(3, 20).getRgb()[:3]
+        close = all(abs(a - b) <= 2 for a, b in zip(corner, lighter, strict=True))
+        assert close, (faded, held, done, corner, lighter)
+    plain = draw(False, False, False).pixelColor(3, 20).getRgb()[:3]
+    assert plain == fill.getRgb()[:3], "a chip not done keeps its full fill"
+
+
 def test_a_date_outside_the_month_is_told_by_its_dimmed_number_not_a_tint(qapp: QApplication) -> None:
     """Outside dates took the page's tint, the same as today's wash, so 1 to 4 September looked like
     today. They are cards like the rest, with the number in the muted colour."""
