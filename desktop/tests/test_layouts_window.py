@@ -2257,29 +2257,29 @@ def test_a_new_view_is_live_at_once_while_the_old_one_fades(qapp: QApplication, 
     at_level(window, "normal")
     title = window.week_title
     week_title = title.full_text()
-    click(window, "viewMonth")
-    month = window._planner_widget("month")
-    assert window.planner.currentWidget() is month
+    click(window, "viewDay")
+    day = window._planner_widget("day")
+    assert window.planner.currentWidget() is day
     assert title.full_text() != week_title
-    over_title = [picture for picture in _fades(window) if picture.geometry().topLeft() == title.pos()]
-    assert len(_fades(window)) == 2 and len(over_title) == 1, "the page and, over the new title, the old one"
-    assert title.graphicsEffect() is not None, "the new title comes in through a fade of its own"
-    assert title.graphicsEffect().opacity == 0, "and the new title comes in with the page, not a frame early"
-    effect = month.graphicsEffect()
-    assert effect.opacity == 0, "Month starts under the week, which is still there"
-    assert effect.offset.x() > 0, "and comes in from the right, where its segment is"
+    assert len(_fades(window)) == 1, "the old page only: the title has no picture of its own"
+    assert title.graphicsEffect() is None, "the new title is not faded: both were seen overlapping"
+    effect = day.graphicsEffect()
+    assert effect.opacity == 0, "Day starts under the week, which is still there"
+    assert effect.offset.x() < 0, "and comes in from the left, where its segment is"
     faded_in()
     assert title.graphicsEffect() is None
-    assert _fades(window) == [] and month.graphicsEffect() is None
-    click(window, "viewDay")
-    assert window.planner.currentWidget().graphicsEffect().offset.x() < 0, "Day comes in from the left"
+    assert _fades(window) == [] and day.graphicsEffect() is None
+    click(window, "viewWeek")
+    assert window.planner.currentWidget().graphicsEffect().offset.x() > 0, "Week comes in from the right"
+    faded_in()
 
 
 def test_my_day_changes_its_chrome_and_its_page_in_the_same_frame(
     qapp: QApplication, window: NativeWindow
 ) -> None:
     """Decision 29 of 0.17: the planning chrome and the rail went at once while the old week still
-    faded, so for a moment neither page was on screen as it is."""
+    faded, so for a moment neither page was on screen as it is. With the rail going, the week stays
+    under the picture of itself while My day slides in over it (0.18.5 #29)."""
     at_level(window, "normal")
     page = window._week_page
     top = window._top_bar.geometry().bottom() + 1
@@ -2289,7 +2289,7 @@ def test_my_day_changes_its_chrome_and_its_page_in_the_same_frame(
     click(window, "viewMyDay")
     assert not window.rail.isVisible() and not window.plan_chrome.isVisible()
     assert page.grab(under_bar).toImage() == before, "the first frame is still the week, rail and all"
-    assert window.planner.currentWidget().graphicsEffect().opacity == 0
+    assert window.planner.currentWidget().graphicsEffect() is None, "My day does not fade, it slides over"
     faded_in()
     assert _fades(window) == []
     assert page.grab(under_bar).toImage() != before

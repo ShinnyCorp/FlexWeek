@@ -423,6 +423,15 @@ def clear_fades(host: QWidget) -> None:
         leftover.deleteLater()
 
 
+def raise_pictures(host: QWidget) -> None:
+    """Put the pictures and dims over `host` back on top, in the order they were. A widget given a new
+    parent, or raised, lands above them and was drawn over the picture that is meant to cover it."""
+    for child in host.children():
+        picture = isinstance(child, QLabel) and child.objectName() in (FADE_NAME, SLIDE_NAME)
+        if picture or isinstance(child, Dim):
+            child.raise_()
+
+
 def hold_picture(
     host: QWidget, level: str, area: QRect | None = None, *, beside: bool = False
 ) -> QLabel | None:
