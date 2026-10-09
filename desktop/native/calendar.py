@@ -23,7 +23,7 @@ SERIES_DRAG_MESSAGE = (
 # sink the tone into their own card for a fill.
 CATEGORIES = {
     "class": {
-        "icon": "house",
+        "icon": "school",
         "label": "School",
         "hue": 250,
         "color": "#cfe8ff",

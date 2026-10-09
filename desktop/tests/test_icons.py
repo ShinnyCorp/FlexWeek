@@ -104,3 +104,76 @@ def test_a_lifted_card_casts_the_small_shadow_and_stronger_on_a_dark_look(qapp: 
     dark = lift(card, SHADOW_LARGE, dark=True)
     assert card.graphicsEffect() is dark
     assert (dark.offset().y(), dark.blurRadius(), dark.color().alpha()) == (12, 32, 128)
+
+
+def test_replan_has_its_own_icon_and_it_ships(qapp: QApplication) -> None:
+    """#26: Replan all my homework wore Activity's sparkles. Lucide's calendar-sync is its own."""
+    from desktop.native.calendar import CATEGORIES
+    from desktop.native.window import MORE_ICONS
+
+    assert "calendar-sync" in icons.names()
+    assert MORE_ICONS["replanAll"] == "calendar-sync"
+    taken = {name for key, name in MORE_ICONS.items() if key != "replanAll"}
+    taken |= {info.get("icon") for info in CATEGORIES.values()}
+    assert "calendar-sync" not in taken
+    assert set(MORE_ICONS.values()) <= set(icons.names()), "every icon More names has a file"
+    drawn = icons.pixmap("calendar-sync", "#111827", 20).toImage()
+    inked = [
+        (x, y)
+        for x in range(drawn.width())
+        for y in range(drawn.height())
+        if drawn.pixelColor(x, y).alpha() >= 128
+    ]
+    assert len(inked) > 20, "the SVG loads and draws"
+    assert b"<path" in icons.svg("calendar-sync", "#111827") and b"currentColor" not in icons.svg(
+        "calendar-sync", "#111827"
+    )
+
+
+def test_school_is_the_school_building_everywhere_it_has_an_icon() -> None:
+    """#26: the block and the category were a house while School hours was a school building."""
+    from desktop.native import calendar
+    from desktop.native.calendar import CATEGORIES
+
+    assert CATEGORIES["class"]["icon"] == "school"
+    assert calendar.category_icon("class") == "school", "the engine draws the block with it"
+    assert "school" in icons.names()
+
+
+@pytest.mark.parametrize(("pack", "dark"), [("light-frost", False), ("dark-frost", True)])
+def test_the_school_icon_reaches_4_5_to_1_on_its_block_and_its_edge_keeps_its_colour(
+    qapp: QApplication, pack: str, dark: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QFont, QImage, QPainter
+
+    from desktop.native.hours.canvas import BlockPainter, Drawn
+    from desktop.native.hours.geometry import Span
+    from desktop.native.look import AA_TEXT, category_paint, contrast, resolved_palette
+
+    palette = resolved_palette(pack, dark, None)
+    painter = BlockPainter(palette)
+    drawn = Drawn("test", "School", "class", False, Span(0, 480, 660), 0, 1)
+    fill, ink, _outline, edge = painter.fills(drawn)
+    colour = painter._book_colour(drawn, ink, fill, edge)
+    assert colour is not None
+    assert contrast(colour.name(), fill.name()) >= AA_TEXT, (pack, colour.name(), fill.name())
+    mark = category_paint("class", palette)[1]
+    assert edge is None or edge.name() == mark, "the 3 px edge keeps the category's colour"
+
+    used: list[tuple[str, str]] = []
+    original = icons.pixmap
+
+    def record(name, colour, *args):
+        used.append((name, colour))
+        return original(name, colour, *args)
+
+    monkeypatch.setattr(icons, "pixmap", record)
+    picture = QImage(500, 300, QImage.Format.Format_ARGB32)
+    picture.fill(fill)
+    paint = QPainter(picture)
+    paint.setFont(QFont("Inter", 12))
+    painter.words(paint, QRectF(0, 0, 480, 280), drawn, ink, QRectF(0, 0, 500, 300), fill, edge)
+    paint.end()
+    drawn_in = [colour for name, colour in used if name == "school"]
+    assert drawn_in and all(contrast(seen, fill.name()) >= AA_TEXT for seen in drawn_in), used

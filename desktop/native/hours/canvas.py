@@ -52,6 +52,7 @@ from desktop.native.hours.geometry import (
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
 from desktop.native.look import (
     AA_GRAPHIC,
+    AA_TEXT,
     block_paint,
     block_time_colour,
     category_paint,
@@ -412,13 +413,15 @@ class BlockPainter:
 
     def _book_colour(self, drawn: Drawn, ink: QColor, paper: QColor, edge: QColor | None) -> QColor | None:
         """A category icon is a graphic, not text: the category's mark, moved only as far as 3 to 1 on
-        the block takes, in every block style and never in the text ink."""
+        the block takes, in every block style and never in the text ink. School's is the one drawn to
+        4.5 to 1, the pale blue being the faintest of the fills (#26)."""
         if category_icon(drawn.category) is None:
             return None
         if edge is None:
             mark = category_paint(drawn.category, self.colours)[1] or self.colours["block_edge"]
             edge = QColor(mark)
-        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_GRAPHIC))
+        reach = AA_TEXT if drawn.category == "class" else AA_GRAPHIC
+        return QColor(fit_lightness(edge.name(), (paper.name(),), reach))
 
     def ghost(self, painter: QPainter, rect: QRectF, words: str, ok: bool) -> None:
         """Something about to be made: a tinted block where it would go, with its times."""

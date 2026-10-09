@@ -8,7 +8,7 @@ import pytest
 
 from desktop.native.calendar import CATEGORIES
 from desktop.native.custom_look import apply_fix, readability
-from desktop.native.look import AA_GRAPHIC, ACCENT_COLORS, look_measures, resolved_palette
+from desktop.native.look import AA_GRAPHIC, AA_TEXT, ACCENT_COLORS, look_measures, resolved_palette
 from desktop.native.tokens import contrast, oklab, oklch_of
 from desktop.tests.test_hours_painter import qapp as qapp
 
@@ -277,7 +277,7 @@ def test_a_line_with_room_for_the_name_the_time_and_the_icon_has_all_three(qapp)
 
 
 @pytest.mark.parametrize(("category", "wanted"), [
-    ("class", "house"), ("assignments", "book-open"), ("study", "pencil"),
+    ("class", "school"), ("assignments", "book-open"), ("study", "pencil"),
     ("exercise", "target"), ("extra", "sparkles"), ("meals", "clock"), ("sleep", "moon"),
     # Free time has none: the mock-up draws no icon on it.
     ("free", None),
@@ -327,7 +327,8 @@ def test_each_category_paints_its_approved_icon_in_its_mark(
     mark = edge.name() if edge is not None else category_paint(category, palette)[1]
     for name, colour in used:
         if name == wanted:
-            assert contrast(colour, fill.name()) >= AA_GRAPHIC
+            needs = AA_TEXT if category == "class" else AA_GRAPHIC
+            assert contrast(colour, fill.name()) >= needs
             assert dist(oklab(colour), oklab(mark)) < NEAR_ITS_MARK, (colour, mark)
 
 
@@ -339,7 +340,8 @@ def test_category_icons_are_their_marks_at_3_to_1_on_each_block_style(
     qapp, look_name: str, style: str,
 ) -> None:
     """An icon is a graphic: its category's mark, darkened or lightened only as far as 3 to 1 on its
-    block takes, in every block style and never the text ink. Free time has no icon."""
+    block takes, in every block style and never the text ink. Free time has no icon. School's is taken
+    to 4.5 to 1 (#26), the pale blue being the faintest fill."""
     from desktop.native.hours.canvas import BlockPainter, Drawn
     from desktop.native.hours.geometry import Span
     from desktop.native.look import LOOK_BASES, category_paint, sanitize_look
@@ -358,11 +360,12 @@ def test_category_icons_are_their_marks_at_3_to_1_on_each_block_style(
         assert colour is not None
         where = (look_name, style, category)
         ratio = contrast(colour.name(), fill.name())
-        assert ratio >= AA_GRAPHIC, where
+        needs = AA_TEXT if category == "class" else AA_GRAPHIC
+        assert ratio >= needs, where
         _fill, mark = category_paint(category, palette)
         assert dist(oklab(colour.name()), oklab(mark)) < NEAR_ITS_MARK, where
         if colour.name() != mark:
-            assert ratio < AA_GRAPHIC + 0.05, (where, "moved past the 3 it needs")
+            assert ratio < needs + 0.05, (where, f"moved past the {needs} it needs")
 
 
 def test_terminal_next_card_shows_its_whole_time_sentence(qapp) -> None:

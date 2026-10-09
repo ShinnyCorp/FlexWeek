@@ -274,7 +274,7 @@ MORE_ICONS = {
     "routinesButton": "repeat",
     "quickFocusAction": "timer",
     "openSpotify": "circle-play",
-    "replanAll": "sparkles",
+    "replanAll": "calendar-sync",
     "undoButton": "undo-2",
     "redoButton": "redo-2",
     "copyBlock": "copy",
