@@ -773,6 +773,8 @@ class DayHead(Button98):
     the week it opens the day; over Day's one column it is only its name. When one of the row has no
     room for its date too, every one says its day alone, "Mon", so the row reads alike."""
 
+    _row_fits_cache: tuple[tuple[tuple[object, ...], ...], tuple[bool, ...]] | None = None
+
     def __init__(self, name: str, colours: Scheme, opens: int | None) -> None:
         super().__init__("", name, colours)
         self.setProperty("role", "head")
@@ -784,6 +786,7 @@ class DayHead(Button98):
             self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.number = ""
         self.day = 0
+        self._fits_cache: tuple[tuple[object, ...], bool] | None = None
 
     def show_day(self, day: int, number: int, today: bool) -> None:
         self.day, self.number = day, str(number)
@@ -796,15 +799,38 @@ class DayHead(Button98):
     def _whole(self) -> list[tuple[str, bool]]:
         return [(self.text().removesuffix(self.number), self.strong), (self.number, True)]
 
+    def _fits_key(self) -> tuple[object, ...]:
+        parts: list[tuple[object, ...]] = []
+        for words, strong in self._whole():
+            font = self._font(strong)
+            parts.append((words, font.family(), font.pointSizeF(), int(font.weight())))
+        return (self.width(), tuple(parts))
+
     def _fits(self) -> bool:
+        key = self._fits_key()
+        cached = self._fits_cache
+        if cached is not None and cached[0] == key:
+            return cached[1]
         need = sum(
             QFontMetricsF(self._font(strong)).horizontalAdvance(words) for words, strong in self._whole()
         )
-        return not self.width() or need <= self.width() - 12
+        result = not self.width() or need <= self.width() - 12
+        self._fits_cache = (key, result)
+        return result
+
+    @classmethod
+    def _row_fits(cls, row: list[DayHead]) -> list[bool]:
+        keys = tuple(head._fits_key() for head in row)
+        cached = cls._row_fits_cache
+        if cached is not None and cached[0] == keys:
+            return list(cached[1])
+        results = tuple(head._fits() for head in row)
+        cls._row_fits_cache = (keys, results)
+        return list(results)
 
     def parts(self) -> list[tuple[str, bool]]:
         row = self.parentWidget().findChildren(DayHead) if self.parentWidget() is not None else [self]
-        return self._whole() if all(head._fits() for head in row) else [(DAYS[self.day], self.strong)]
+        return self._whole() if all(DayHead._row_fits(row)) else [(DAYS[self.day], self.strong)]
 
 
 class Cap(QWidget):

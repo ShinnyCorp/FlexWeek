@@ -9,6 +9,7 @@ import itertools
 
 import pytest
 
+from desktop.native.layouts import registry as layouts_registry
 from desktop.native.layouts.registry import (
     LAYOUTS,
     LEVELS,
@@ -310,6 +311,55 @@ def test_a_dark_looks_accent_already_reads_on_night_and_is_worn_as_it_is() -> No
     palette = resolved_palette("nocturne", True, None, "default")
     tokens = tokens_for("dial", "midnight", palette)
     assert (tokens["accent"], tokens["accent_ink"]) == (palette["accent"], palette["accent_ink"])
+
+
+def test_tokens_for_tints_once_per_distinct_input_and_skips_repeats(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Repeats of the same design, colour and palette must not call _tint again.
+
+    complete() tints cards a-d once per tokens_for, so the first call may invoke _tint
+    several times. One call per distinct _tint input; none extra on repeats. A changed
+    colour or palette must miss the cache.
+    """
+    cache = getattr(layouts_registry, "_tokens_for_cache", None)
+    if cache is not None:
+        cache.clear()
+
+    tint_calls: list[tuple] = []
+    real_tint = layouts_registry._tint
+
+    def counting_tint(*args: object, **kwargs: object) -> str:
+        tint_calls.append((args, tuple(sorted(kwargs.items()))))
+        return real_tint(*args, **kwargs)
+
+    monkeypatch.setattr(layouts_registry, "_tint", counting_tint)
+
+    layout_id, colour = "bento", MATCH
+    palette = resolved_palette("light-frost", False, None, "default")
+    first = tokens_for(layout_id, colour, palette)
+    after_first = len(tint_calls)
+    # complete() tints four cards; MATCH then overwrites them, but the four calls still happen.
+    assert after_first >= 4
+    assert len(tint_calls) == len(set(tint_calls))
+
+    for _ in range(9):
+        assert tokens_for(layout_id, colour, palette) == first
+    assert len(tint_calls) == after_first
+
+    mutated = tokens_for(layout_id, colour, palette)
+    mutated["bg"] = "#000000"
+    assert tokens_for(layout_id, colour, palette)["bg"] == first["bg"]
+
+    other_colour = tokens_for(layout_id, "indigo", palette)
+    assert other_colour != first
+    after_colour = len(tint_calls)
+    assert after_colour > after_first
+    assert len(tint_calls) == len(set(tint_calls))
+
+    other_palette = resolved_palette("nocturne", True, None, "default")
+    other_look = tokens_for(layout_id, colour, other_palette)
+    assert other_look != first
+    assert len(tint_calls) > after_colour
+    assert len(tint_calls) == len(set(tint_calls))
 
 
 def test_a_refusal_never_wears_the_accent() -> None:

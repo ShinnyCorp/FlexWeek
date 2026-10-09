@@ -336,20 +336,34 @@ def match_tokens(palette: dict) -> dict[str, str]:
     )
 
 
+def _palette_key(palette: dict) -> tuple:
+    return tuple(sorted((key, value) for key, value in palette.items() if isinstance(value, str)))
+
+
+_tokens_for_cache: dict[tuple[str, str, tuple], dict[str, str]] = {}
+
+
 def tokens_for(layout_id: str, colour: str, palette: dict) -> dict[str, str]:
     """The colours a layout paints with. Every design can ask for every token, so a view never has to
     guard a missing key."""
+    key = (layout_id, colour, _palette_key(palette))
+    hit = _tokens_for_cache.get(key)
+    if hit is not None:
+        return dict(hit)
     chosen = next((tokens for value, _, tokens in LAYOUTS[layout_id].colourways if value == colour), None)
     if chosen is None:
-        return match_tokens(palette)
-    if "accent" in chosen:
-        return complete(chosen)
-    # A colourway that names no accent, as One thing's Poster and Day dial's Night, wears the
-    # student's own. Its lightness moves as little as it takes to read on the colourway's page, as
-    # the look moves it for the look's: a light look's blue on Poster's black read at 4.2 to 1.
-    accent = fit_lightness(palette["accent"], (chosen["bg"], chosen["surface"]), AA_TEXT)
-    ink = palette["accent_ink"] if accent == palette["accent"] else readable_ink(accent)
-    return complete({"accent": accent, "accent_ink": ink, **chosen})
+        tokens = match_tokens(palette)
+    elif "accent" in chosen:
+        tokens = complete(chosen)
+    else:
+        # A colourway that names no accent, as One thing's Poster and Day dial's Night, wears the
+        # student's own. Its lightness moves as little as it takes to read on the colourway's page, as
+        # the look moves it for the look's: a light look's blue on Poster's black read at 4.2 to 1.
+        accent = fit_lightness(palette["accent"], (chosen["bg"], chosen["surface"]), AA_TEXT)
+        ink = palette["accent_ink"] if accent == palette["accent"] else readable_ink(accent)
+        tokens = complete({"accent": accent, "accent_ink": ink, **chosen})
+    _tokens_for_cache[key] = tokens
+    return dict(tokens)
 
 
 def contrast_failures(tokens: dict[str, str], floor: float = 4.5) -> list[str]:
