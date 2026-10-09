@@ -4049,7 +4049,7 @@ class UnfinishedPanel(QWidget):
         row = QHBoxLayout()
         dismiss = QPushButton("Hide")
         dismiss.setObjectName("unfinishedDismiss")
-        dismiss.setProperty("quiet", True)
+        dismiss.setProperty("outlined", True)
         dismiss.clicked.connect(self._collapse)
         row.addWidget(dismiss)
         row.addStretch(1)

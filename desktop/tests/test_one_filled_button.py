@@ -23,7 +23,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtCore import QStandardPaths
     from PySide6.QtGui import QColor
-    from PySide6.QtWidgets import QApplication, QDialog, QPushButton, QWidget
+    from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QPushButton, QWidget
 
     from desktop.native import look_editor, settings, widgets
     from desktop.native.look import pack_stylesheet, resolved_palette
@@ -169,6 +169,47 @@ def test_the_filled_button_is_the_answer(qapp: QApplication) -> None:
     late = widgets.LateDialog(None, "School")
     assert late.findChild(QPushButton, "latePreview").property("outlined") is True
     assert not late.accept_button.property("quiet")
+
+
+@pytest.mark.parametrize("pack", ["light-frost", "dark-frost"])
+def test_hide_preview_and_save_restore_point_are_outlined_and_close_stays_plain(
+    qapp: QApplication, pack: str
+) -> None:
+    """#90: the three bare-text actions are outlined, as Delete beside Hide is; Restore stays the one
+    filled button and Close, which only dismisses, stays plain."""
+    from desktop.native.look import outline_edge
+
+    palette = resolved_palette(pack, False, None, "default")
+    host = QWidget()
+    host.setStyleSheet(pack_stylesheet(pack, False, None, "default", palette, control_art(palette)))
+    host.show()
+    panel = widgets.UnfinishedPanel(host)
+    panel.show()
+    dialog = settings.RestoreDialog(host, [RESTORE_POINT], None, None)
+    dialog.show()
+    for _ in range(3):
+        qapp.processEvents()
+    still(dialog)
+    close = dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Close)
+    wanted = QColor(outline_edge(palette))
+    try:
+        for button in (
+            panel.findChild(QPushButton, "unfinishedDismiss"),
+            dialog.findChild(QPushButton, "restorePreview"),
+            dialog.findChild(QPushButton, "restoreCreate"),
+        ):
+            assert button.property("outlined") is True and not button.property("quiet"), button.text()
+            image = button.grab().toImage()
+            assert image.pixelColor(image.width() // 2, 0) == wanted, (button.text(), "its 1 px edge")
+            assert image.pixelColor(image.width() // 2, image.height() // 2) != wanted
+        assert close.property("quiet") is True and not close.property("outlined")
+        restore = dialog.findChild(QPushButton, "restoreApply")
+        assert not restore.property("quiet") and not restore.property("outlined")
+        assert filled(dialog, palette["accent"]) == ["Restore"]
+    finally:
+        dialog.close()
+        host.deleteLater()
+        qapp.processEvents()
 
 
 def test_routines_and_running_late_say_what_each_part_is_for(qapp: QApplication) -> None:
