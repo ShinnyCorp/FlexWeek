@@ -229,3 +229,62 @@ def test_the_box_is_as_tall_as_it_needs_and_no_taller(qapp: QApplication) -> Non
     qapp.processEvents()
     assert one.list.height() < many.list.height()
     assert many.list.height() <= 132
+
+
+def sessions(*per_day: tuple[int, int]) -> list[dict]:
+    """Homework sessions as the solver's trace lists them: (day, minutes) each."""
+    return [
+        {
+            "id": f"hw-{index}",
+            "kind": "flexible",
+            "assignment_id": f"a-{index}",
+            "start": "16:00",
+            "days": [day],
+            "duration_min": minutes,
+        }
+        for index, (day, minutes) in enumerate(per_day)
+    ]
+
+
+def overfull_lines(placed: list[dict]) -> list[str]:
+    trace = {"placed": placed, "unplaced": [], "moves": [], "explanations": []}
+    return PlanReview().rows_for(trace, {}, WEEK)
+
+
+def test_a_day_with_more_than_three_hours_of_homework_is_named_with_its_total(qapp: QApplication) -> None:
+    # Thursday: 2 h + 2 h 30 min. Monday stays under: 1 h 30 min + 1 h 30 min is exactly 3 h.
+    placed = sessions((3, 120), (3, 150), (0, 90), (0, 90))
+    assert overfull_lines(placed) == ["Thursday has 4 h 30 min of homework."]
+
+
+def test_exactly_three_hours_on_a_day_is_not_overfull(qapp: QApplication) -> None:
+    assert overfull_lines(sessions((1, 100), (1, 80))) == []
+
+
+def test_one_minute_over_three_hours_is_overfull(qapp: QApplication) -> None:
+    assert overfull_lines(sessions((2, 181))) == ["Wednesday has 3 h 1 min of homework."]
+
+
+def test_only_homework_counts_toward_a_full_day(qapp: QApplication) -> None:
+    school = {"id": "school", "kind": "locked", "start": "08:00", "days": [0], "duration_min": 390}
+    assert overfull_lines([school, *sessions((0, 60))]) == []
+
+
+def test_each_overfull_day_gets_its_own_sentence_in_week_order(qapp: QApplication) -> None:
+    placed = sessions((4, 200), (1, 190))
+    assert overfull_lines(placed) == [
+        "Tuesday has 3 h 10 min of homework.",
+        "Friday has 3 h 20 min of homework.",
+    ]
+
+
+def test_an_overfull_day_opens_the_panel_even_when_everything_has_a_time(qapp: QApplication) -> None:
+    panel = PlanReview()
+    panel.show()
+    trace = {"placed": sessions((3, 330)), "unplaced": [], "moves": [], "explanations": []}
+    panel.set_trace(trace, {}, WEEK, (1, 0))
+    qapp.processEvents()
+    assert panel.isVisible() and panel.list.isVisible()
+    assert [panel.list.item(i).text() for i in range(panel.list.count())] == [
+        "Thursday has 5 h 30 min of homework."
+    ]

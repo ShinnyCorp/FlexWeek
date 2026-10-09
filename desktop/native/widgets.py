@@ -216,6 +216,9 @@ HOMEWORK_PROBLEMS = {
 }
 HOMEWORK_REFUSED = "Check the homework details and try again."
 PLAN_REVIEW_MAX = 132
+# A day with more homework than this is called overfull in the plan's list. The planner still places
+# earliest first (#41); the note only tells the student.
+OVERFULL_DAY_MIN = 3 * 60
 # How many rows of Unfinished homework show before the list scrolls: the half row says there is more.
 UNFINISHED_ROWS = 3.5
 REPEAT_NOTE = "Pick more days to repeat it."
@@ -4171,6 +4174,17 @@ class AlertStrip(QWidget):
         self.text.setText(f"{notice.get('title') or 'FlexWeek'}{' — ' + body if body else ''}{more}")
 
 
+def overfull_days(trace: dict) -> list[tuple[int, int]]:
+    """Each day, in week order, whose planned homework adds up to more than OVERFULL_DAY_MIN, with its
+    minutes. School and other fixed blocks are not homework, and finished sessions are not planned."""
+    minutes = [0] * 7
+    for block in trace.get("placed") or []:
+        days = block.get("days") or []
+        if block.get("assignment_id") and block.get("start") and not block.get("completed") and days:
+            minutes[days[0]] += int(block.get("duration_min") or 0)
+    return [(day, total) for day, total in enumerate(minutes) if total > OVERFULL_DAY_MIN]
+
+
 class PlanReview(QFrame):
     """What the plan just did, in the solver's own words, as one slim bar (decision 18 of 0.17):
     "Placed 2 · 1 without a time · Details", Got it filled and Replan as text. Details opens the
@@ -4269,6 +4283,8 @@ class PlanReview(QFrame):
         for item in trace.get("explanations") or []:
             if item.get("slack_status") in {"tight", "danger"} and item.get("message"):
                 said.append(f"{titles.get(item['block_id'], 'Homework')}: {item['message']}")
+        for day, total in overfull_days(trace):
+            said.append(f"{DAY_FULL[day]} has {length_label(total)} of homework.")
         return said
 
     def set_trace(
@@ -4291,8 +4307,10 @@ class PlanReview(QFrame):
         # As tall as it needs and no taller. One line in a box four lines deep reads as an error.
         row = self.list.sizeHintForRow(0) if self.list.count() else 0
         self.list.setFixedHeight(min(row * len(said) + 2 * self.list.frameWidth() + 4, PLAN_REVIEW_MAX))
-        self.details.setChecked(bool(waiting))
-        self._show_details(bool(waiting))
+        # Open when something needs reading: homework with no time, or a day that is too full.
+        open_list = bool(waiting) or bool(overfull_days(trace or {}))
+        self.details.setChecked(open_list)
+        self._show_details(open_list)
         self.show()
 
 
