@@ -131,7 +131,7 @@ from desktop.native.reuse import (
     week_label,
 )
 from desktop.native.settings import (
-    CUSTOMISE,
+    EDIT_OWN_LOOK,
     SECTIONS,
     AboutDialog,
     AccountDialog,
@@ -891,7 +891,6 @@ class NativeWindow(QMainWindow):
         )
         note.setWordWrap(True)
         note.setObjectName("authNote")
-        note.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(note)
         self.recovery_list = QLabel()
         self.recovery_list.setObjectName("recoveryList")
@@ -3417,8 +3416,8 @@ class NativeWindow(QMainWindow):
                 "clock",
             ),
             # Settings' pages by what they hold: "look" found nothing (Grok Bot's 0.17.0 audit, X1).
-            Command("settings:0", "Look and colours", "Look, accent and design", "Settings", "palette"),
-            Command("customise", f"{CUSTOMISE}…", "Make a look of your own", "Settings", "swatch-book"),
+            Command("settings:0", "Look", "Look, accent and design", "Settings", "palette"),
+            Command("customise", EDIT_OWN_LOOK, "Make a look of your own", "Settings", "swatch-book"),
             Command("settings:1", "Planning settings", "How homework gets a time", "Settings", "calendar"),
             Command("settings:2", "Focus settings", "The focus timer's lengths", "Settings", "timer"),
             Command("settings:3", "Alerts", "Reminders, alarms and sounds", "Settings", "bell"),

@@ -153,7 +153,7 @@ def test_appearance_opens_on_colours_then_the_designs_and_ends_with_animations(
         (label for label in appearance.findChildren(QLabel) if label.isVisibleTo(dialog) and label.text()),
         key=lambda label: top(label, appearance),
     )
-    assert [label.text() for label in shown[:3]] == ["Appearance & layout", "Colours", "Look"]
+    assert [label.text() for label in shown[:3]] == ["Look", "Colours", "Look"]
     assert not any("has its own colours" in label.text() for label in shown)
     notes = [label.text() for label in appearance.findChildren(QLabel, "settingsCardNote")]
     design_line = (

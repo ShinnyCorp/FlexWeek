@@ -143,7 +143,7 @@ LAYOUTS: dict[str, LayoutSpec] = {
             "retro",
             "plan",
             "Retro desktop",
-            "Your week in a Windows 98 window, with the homework in Notepad, what is next and a taskbar.",
+            "Your week in a retro desktop window, with the homework in Notepad, what is next and a taskbar.",
             (
                 _colour(RETRO),
                 Option(

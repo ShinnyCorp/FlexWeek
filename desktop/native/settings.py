@@ -133,7 +133,7 @@ SECTION_GAP_BELOW = 24
 # computer, so a column reads as one edge (#68). A wider control, at Large text, widens the rest.
 CONTROL_WIDTH = 260
 BUTTON_WIDTH = 190
-SECTIONS = ("Appearance & layout", "Planning", "Focus", "Alerts", "This computer")
+SECTIONS = ("Look", "Planning", "Focus", "Alerts", "This computer")
 # Each section's icon in the list, Lucide's names (decision 24 of 0.17). None on the rows themselves.
 SECTION_ICONS = ("palette", "calendar", "timer", "bell", "laptop")
 # The three looks most people choose between; every other look is under More looks.
@@ -146,11 +146,10 @@ ACCENT_LABELS = {"default": "Blue"}
 OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
 # A look of the student's own sets the accent and every knob (look.py's resolved_palette and
 # effective_look), so while one is worn they show its values and say where they change instead.
-OWN_LOOK_ACCENT_NOTE = "{name} sets the accent. To change it, open Edit your own look…"
-OWN_LOOK_KNOBS_NOTE = "{name} sets these. To change them, open Edit your own look… in Colours."
-CUSTOMISE = "Customise"
-# The button on the Colours card; the command bar and menus keep the shorter name.
-EDIT_OWN_LOOK = "Edit your own look…"
+OWN_LOOK_ACCENT_NOTE = "{name} sets the accent. To change it, open Edit look…"
+OWN_LOOK_KNOBS_NOTE = "{name} sets these. To change them, open Edit look… in Colours."
+# The button on the Colours card and the command bar's entry for the same editor.
+EDIT_OWN_LOOK = "Edit look…"
 CUSTOMISE_TIP = "Change any look, colours, corners and fonts included, and save it as your own."
 # A saved look's choice under More looks, after the ten, by its name.
 SAVED_LOOK = "saved:"
@@ -848,7 +847,7 @@ class SettingsPage(QWidget):
         # Colours first: it is what most students change, and below every design card it was not found
         # (Grok Bot's 0.17.0 audit, X1 and A11).
         appearance = _section_page(
-            "Appearance & layout", (self.colours_card, main_section, day_section, everywhere_card)
+            "Look", (self.colours_card, main_section, day_section, everywhere_card)
         )
         planning_card, planning_form = _card("How homework gets a time")
         self.planning_style = QButtonGroup(planning_card)
@@ -867,7 +866,7 @@ class SettingsPage(QWidget):
             hint.setContentsMargins(26, 0, 0, 4)
             planning_form.addRow(hint)
         where_card, where_form = _card(
-            "Study times", "Preferred study times, including ones kept for one subject, are in Availability."
+            "Study hours", "Preferred study hours, including ones kept for one subject, are in Availability."
         )
         open_availability = _page_button("Availability…", "prefsAvailability")
         open_availability.clicked.connect(self.availability_requested.emit)

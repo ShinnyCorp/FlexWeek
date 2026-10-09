@@ -15,7 +15,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
@@ -140,6 +140,20 @@ def test_the_codes_are_in_jetbrains_mono_with_every_character_of_one_width(recov
     assert evenly_spaced(font), "letters and figures have one width"
     metrics = QFontMetrics(font)
     assert metrics.horizontalAdvance("1111") == metrics.horizontalAdvance("0000"), "figures of one width"
+
+
+def test_the_recovery_note_is_left_aligned_like_the_codes(
+    qapp: QApplication,  # noqa: F811
+    recovering: NativeWindow,
+) -> None:
+    """#77: the note over the codes was centred over four lines while the codes sat left."""
+    pages = recovering._stack.findChildren(QWidget)
+    card = next(page for page in pages if page.objectName() == "recoveryPage")
+    note = card.findChild(QLabel, "authNote")
+    assert note is not None
+    assert not note.alignment() & Qt.AlignmentFlag.AlignHCenter, "the note is not centred"
+    codes = recovering.recovery_list
+    assert note.alignment() == codes.alignment(), "the note and the codes share one alignment"
 
 
 def test_copy_puts_every_code_on_the_clipboard_and_says_so_for_a_moment(
