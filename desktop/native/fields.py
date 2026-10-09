@@ -257,11 +257,10 @@ class DateField(QDateEdit):
         self._typed = False
         self.editingFinished.connect(self._next_matching_date)
         self.setCalendarPopup(True)
+        # The month is made on the first press or key, before Qt opens its popup: built with the
+        # field, it held up the first frame of every sheet that has a date.
         self._look_calendar_ready = False
         self._popup_filters: list[QObject] = []
-        self.installEventFilter(self)
-        for child in self.findChildren(QWidget):
-            child.installEventFilter(self)
         if day is not None:
             self.setDate(day)
 
@@ -292,26 +291,12 @@ class DateField(QDateEdit):
         for watcher in self._popup_filters:
             popup.installEventFilter(watcher)
 
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick) and isinstance(
-            event, QMouseEvent
-        ):
-            if isinstance(watched, QToolButton):
-                self._ensure_look_calendar()
-            elif isinstance(watched, QWidget):
-                point = event.position().toPoint()
-                local = point if watched is self else watched.mapTo(self, point)
-                if local.x() >= self.width() - 24:
-                    self._ensure_look_calendar()
-        if (
-            event.type() == QEvent.Type.KeyPress
-            and isinstance(event, QKeyEvent)
-            and event.key() in (Qt.Key.Key_Down, Qt.Key.Key_F4)
-        ):
-            self._ensure_look_calendar()
-        return super().eventFilter(watched, event)
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt virtual
+        self._ensure_look_calendar()
+        super().mousePressEvent(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 - Qt virtual
+        self._ensure_look_calendar()
         if event.text().strip() and event.text().isprintable():
             # Typing in the year gives a year; typing a day or a month leaves it to the field.
             self._typed = self.currentSection() != QDateTimeEdit.Section.YearSection

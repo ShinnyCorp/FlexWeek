@@ -117,7 +117,6 @@ from desktop.native.widgets import (
     sheet_footer,
     sheet_section,
 )
-from desktop.native.wire import plain
 
 UPDATE_MIN_WIDTH = 420
 ALARM_MIN_WIDTH = 380
@@ -1114,9 +1113,6 @@ class SettingsPage(QWidget):
         self._show_what_applies()
         self.alarm_tone.currentIndexChanged.connect(self._follow_tone)
         self._follow_tone()
-        self._sync_open_key = self._open_fingerprint(
-            preferences, look, week_layout, saved_looks, reminder_limits
-        )
 
     def say(self, text: str) -> None:
         """What the footer says: anything that needs reading, and otherwise the one standing sentence."""
@@ -1292,22 +1288,6 @@ class SettingsPage(QWidget):
         self._round_if_splitting()
         self.closed.emit()
 
-    def _open_fingerprint(
-        self,
-        preferences: dict,
-        look: dict,
-        week_layout: dict | None,
-        saved_looks: list[dict] | None,
-        reminder_limits: dict,
-    ) -> tuple[str, str, str, str, str]:
-        return (
-            plain(preferences),
-            plain(look),
-            plain(week_layout),
-            plain(saved_looks),
-            plain(reminder_limits),
-        )
-
     def sync_open(
         self,
         preferences: dict,
@@ -1317,10 +1297,6 @@ class SettingsPage(QWidget):
         reminder_limits: dict,
     ) -> None:
         """What the account and this device hold now, before Settings is shown again."""
-        key = self._open_fingerprint(preferences, look, week_layout, saved_looks, reminder_limits)
-        if key == getattr(self, "_sync_open_key", None):
-            return
-        self._sync_open_key = key
         self.blockSignals(True)
         self._preferences = deepcopy(preferences)
         self._look = sanitize_look(look)

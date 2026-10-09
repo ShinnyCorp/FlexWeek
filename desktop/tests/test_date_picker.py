@@ -10,9 +10,9 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import QDate, QModelIndex, QPoint, QRect, Qt
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QTableView, QWidget
+from PySide6.QtWidgets import QApplication, QDateEdit, QLabel, QTableView, QWidget
 
-from desktop.native.fields import LookCalendar
+from desktop.native.fields import DateField, LookCalendar
 from desktop.native.look import pack_stylesheet, resolved_palette
 from desktop.native.tokens import contrast
 from desktop.native.widgets import HomeworkDialog, RoutineDialog, SpreadDialog, control_art
@@ -197,6 +197,35 @@ def test_the_date_calendar_is_not_built_until_its_popup_opens(
     view = month.findChild(QTableView, "qt_calendar_calendarview")
     assert view is not None and view.model().rowCount() > 1
     free(dialog)
+    free(parent)
+
+
+def test_a_month_made_late_still_shows_the_fields_day_and_limits(qapp: QApplication) -> None:  # noqa: F811
+    """The month is made when the field is first used. The day and the limits the field was given
+    before that must be the month's too: a due date cannot be picked before its earliest day."""
+    parent, _palette = dressed("light-frost")
+    field = DateField(parent=parent)
+    field.setMinimumDate(QDate(2026, 9, 1))
+    field.setMaximumDate(QDate(2026, 12, 31))
+    field.setDate(QDate(2026, 10, 14))
+    month = field.calendarWidget()
+    assert isinstance(month, LookCalendar)
+    assert month.minimumDate() == QDate(2026, 9, 1)
+    assert month.maximumDate() == QDate(2026, 12, 31)
+    assert month.selectedDate() == QDate(2026, 10, 14)
+    free(parent)
+
+
+def test_any_press_on_a_date_field_makes_the_looks_month_first(qapp: QApplication) -> None:  # noqa: F811
+    """Wherever the press lands, the month that opens is the look's, not Qt's plain one: the arrow
+    is wider at Large text than at Normal."""
+    parent, _palette = dressed("light-frost")
+    field = DateField(parent=parent)
+    field.resize(220, 32)
+    parent.show()
+    QTest.mousePress(field, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(150, 16))
+    assert isinstance(QDateEdit.calendarWidget(field), LookCalendar)
+    QTest.mouseRelease(field, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(150, 16))
     free(parent)
 
 

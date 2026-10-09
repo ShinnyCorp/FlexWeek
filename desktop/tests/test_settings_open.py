@@ -19,7 +19,6 @@ if importlib.util.find_spec("PySide6") is not None:
     from PySide6.QtWidgets import QApplication, QLabel
 
     import desktop.native.motion as motion
-    from desktop.native.layouts.dialog import LayoutSection
     from desktop.native.motion import SLIDE_NAME, apply_ui_effects
     from desktop.native.settings import SettingsPage
     from desktop.native.window import NativeWindow
@@ -79,39 +78,6 @@ def test_the_second_settings_open_starts_sliding_without_building_again(
     assert slides, "the slide picture is on screen at once"
     assert open_ms < 50, f"the second open waited {open_ms:.0f} ms before the slide could start"
     assert stamps and stamps[0] * 1000 < 20, "the first slide frame came within one frame of the click"
-    window._settings.close_page()
-    still(window)
-
-
-def test_settings_skips_rebuild_when_nothing_shown_has_changed(
-    qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Reopening Settings with the same preferences must not rebuild its design sections; a changed
-    preference must."""
-    rebuilt = 0
-    real = LayoutSection._rebuild
-
-    def counting(self, fresh: bool) -> None:
-        nonlocal rebuilt
-        rebuilt += 1
-        real(self, fresh)
-
-    monkeypatch.setattr(LayoutSection, "_rebuild", counting)
-    window._open_settings()
-    still(window)
-    rebuilt = 0
-    window._settings.close_page()
-    still(window)
-    window._open_settings()
-    still(window)
-    assert rebuilt == 0
-    window._settings.close_page()
-    still(window)
-    window.session.preferences["clock_24h"] = not window.session.preferences.get("clock_24h")
-    rebuilt = 0
-    window._open_settings()
-    still(window)
-    assert rebuilt >= 1
     window._settings.close_page()
     still(window)
 
