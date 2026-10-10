@@ -2629,14 +2629,15 @@ def test_a_block_moved_on_the_week_while_a_save_is_under_way_is_not_lost(
     )
     window.session.save()
     assert window.session.busy
-    _drag_on_the_week(qapp, window, 2, "16:30", 3, "17:30")
+    # To Friday: the clock is Thursday 19:00, and a time already past is refused (0.19.0 item 2).
+    _drag_on_the_week(qapp, window, 2, "16:30", 4, "17:30")
     settled(qapp, window)
     wait_until(
-        qapp, lambda: next(b for b in window.session.blocks if b["id"] == waiting["id"])["days"] == [3]
+        qapp, lambda: next(b for b in window.session.blocks if b["id"] == waiting["id"])["days"] == [4]
     )
     settled(qapp, window)
     moved = next(block for block in window.session.blocks if block["id"] == waiting["id"])
-    assert (moved["days"], moved["start"]) == ([3], "17:00")
+    assert (moved["days"], moved["start"]) == ([4], "17:00")
     assert "poster" in window.session.assignments, "the save under way went through too"
 
 
@@ -2654,7 +2655,8 @@ def test_choose_a_time_places_homework_without_dragging(
     def pick(dialog: ChooseTimeDialog) -> int:
         # The clock is held at Thursday, so that is where it opens, not on Monday.
         seen.append(f"opened on {dialog.day.currentData()}")
-        dialog.day.setCurrentIndex(dialog.day.findData(1))
+        # Friday, ahead of the clock: a time already past is refused (0.19.0 item 2).
+        dialog.day.setCurrentIndex(dialog.day.findData(4))
         dialog.start.setTime(QTime(10, 0))
         seen.append(dialog.beside.text())
         ok = dialog.buttons.button(dialog.buttons.StandardButton.Ok)
@@ -2672,10 +2674,10 @@ def test_choose_a_time_places_homework_without_dragging(
         "ok",
     ]
     placed = next(block for block in window.session.blocks if block["id"] == waiting["id"])
-    assert (placed["days"], placed["start"], placed.get("pinned")) == ([1], "16:07", True), "the time picked"
+    assert (placed["days"], placed["start"], placed.get("pinned")) == ([4], "16:07", True), "the time picked"
     hours = _hours(window)
     shown = next(
-        item for item, _rect in hours.drawn(hours.track_for(1, 16 * 60)) if item.block_id == waiting["id"]
+        item for item, _rect in hours.drawn(hours.track_for(4, 16 * 60)) if item.block_id == waiting["id"]
     )
     assert "Pinned" in shown.detail
 
