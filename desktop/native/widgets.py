@@ -131,6 +131,7 @@ from desktop.native.look import (
     FOCUS_RING_PX,
     RING_BUTTONS,
     resolved_palette,
+    switch_track_edge,
 )
 from desktop.native.menus import Menu
 from desktop.native.motion import (
@@ -1288,7 +1289,7 @@ def control_art(palette: dict) -> dict[str, str]:
         "down": _art_file("down", palette["muted"]),
         "up": _art_file("up", palette["muted"]),
         "switch_on": _switch_file(True, palette["accent"], palette["accent_ink"]),
-        "switch_off": _switch_file(False, palette["hairline_strong"], "#ffffff"),
+        "switch_off": _switch_file(False, switch_track_edge(palette), "#ffffff"),
         "switch_on_off": _switch_file(True, palette["hairline_strong"], palette["hairline"]),
         "switch_off_off": _switch_file(False, palette["hairline"], palette["hairline_strong"]),
     }

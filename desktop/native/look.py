@@ -1116,7 +1116,7 @@ def control_rules(palette: dict, radius: int, text: float | str, art: dict[str, 
         f"max-height: 8px; text-align: center; color: transparent; }}"
         f"QProgressBar::chunk {{ background: {palette['accent']}; border-radius: 4px; }}"
         f"QLineEdit:focus, QComboBox:focus, QAbstractSpinBox:focus, QPlainTextEdit:focus {{ "
-        f"border: 1px solid {palette['accent']}; }}"
+        f"border: 2px solid {readable_focus_edge(palette)}; }}"
         # The line under a time box whose text says no time.
         f"QFrame#clockError {{ background: {palette['panel']}; border: 1px solid {palette['error']}; "
         f"border-radius: {radius}px; }}"
@@ -1142,7 +1142,7 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
     edges = _depth_rules(depth, palette)
     card_radius = max(radius, 10)
     track = mix(palette["text"], palette["panel"], 0.07)
-    chosen_edge = "none" if depth == "none" else f"1px solid {palette['hairline_strong']}"
+    chosen_edge = f"1px solid {readable_edge(palette)}"
     # The chosen section is marked by a bar in the accent; its row takes only a little of the text.
     selected = mix(palette["text"], palette["panel"], 0.06)
     # Nothing runs under the footer: a hairline above it ends the page, but on a look with no
@@ -1486,6 +1486,21 @@ def readable_edge(palette: dict) -> str:
     return palette["text"]
 
 
+def readable_focus_edge(palette: dict) -> str:
+    """An accent edge that reads on the field and card, and stands out from the resting edge."""
+    grounds = (palette["field"], palette["panel"])
+    resting = readable_edge(palette)
+    target = max(AA_GRAPHIC, *(contrast(resting, ground) + 0.2 for ground in grounds))
+    return fit_lightness(palette["accent"], grounds, target)
+
+
+def switch_track_edge(palette: dict) -> str:
+    """The off switch track is a control edge against the card behind it."""
+    return fit_lightness(
+        palette["text"], (palette["field"], palette["panel"], palette["window"]), AA_GRAPHIC + 0.1
+    )
+
+
 def outline_edge(palette: dict) -> str:
     """The edge of an outlined button: the look's own hairline when it is seen at 3 to 1 on the card and
     on the page, else the text colour at 55 %, which is in every shipped look. Most looks' hairline is
@@ -1746,6 +1761,7 @@ def pack_stylesheet(
     item_h = 36 if knobs["text"] == "large" else 22
     button_min = f" min-height: {item_h}px;" if knobs["text"] == "large" else ""
     field_min = FIELD_MIN_PX[knobs["text"]]
+    field_edge = readable_edge(palette)
     # A flat look has no edges, so a plain button is told from its words by a faint fill instead.
     if knobs["depth"] == "none":
         quiet_edge = f"background: {palette['hairline']}; border: none;"
@@ -1768,7 +1784,7 @@ def pack_stylesheet(
         f"{fit_lightness(palette['muted'], (palette['field'], palette['panel']), AA_TEXT)}; }}"
         f"QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {{ background: {palette['field']}; "
         f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; "
-        f"min-height: {field_min}px; {edges} }}"
+        f"min-height: {field_min}px; border: 1px solid {field_edge}; }}"
         # A typed time and a stepped number have no arrows inside, so no room kept for them.
         f'QAbstractSpinBox[typed="true"], QAbstractSpinBox[stepped="true"] {{ padding-right: {pad}px; }}'
         # A typed time that says no time: a 2 px outline in the error colour, over the focus outline, with
@@ -1776,7 +1792,7 @@ def pack_stylesheet(
         f'QAbstractSpinBox[invalid="true"], QAbstractSpinBox[invalid="true"]:focus {{ '
         f"border: 2px solid {palette['error']}; padding: {max(pad - 1, 0)}px; }}"
         f"QPlainTextEdit {{ background: {palette['field']}; color: {palette['text']}; "
-        f"padding: {pad}px; border-radius: {radius}px; {edges} }}"
+        f"padding: {pad}px; border-radius: {radius}px; border: 1px solid {field_edge}; }}"
         f"QTableWidget {{ gridline-color: {palette['hairline']}; "
         f"selection-background-color: {palette['accent']}; selection-color: {palette['accent_ink']}; }}"
         # Headers and the view stack are QFrames too. Left to the panel rule, each header is padded and
