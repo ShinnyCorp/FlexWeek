@@ -71,6 +71,7 @@ from desktop.native.look import (
     LOOK_KNOBS,
     OWN_ACCENT,
     effective_look,
+    keep_text,
     known_pack,
     look_menu_items,
     look_menu_token,
@@ -145,6 +146,7 @@ MORE_LOOKS = "More looks"
 # card a little more (ChoiceCard).
 LOOK_TILE = 150
 ACCENT_LABELS = {"default": "Blue"}
+TEXT_KEPT_NOTE = "Kept for every look."
 OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
 # A look of the student's own sets the accent and every knob (look.py's resolved_palette and
 # effective_look), so while one is worn they show its values and say where they change instead.
@@ -682,7 +684,9 @@ class SettingsPage(QWidget):
         self.setWindowTitle("Settings")
         self.account_id = 0
         self._preferences = deepcopy(preferences)
-        self._look = sanitize_look(look)
+        self._look = keep_text(sanitize_look(look))
+        # Knobs the student moved by hand stay saved even when they equal the worn preset's own.
+        self._moved = set(self._look["knobs"]) - {"text"}
         chosen_layout = sanitize_layout(week_layout)
         self._alarms = [deepcopy(item) for item in preferences.get("alarms") or []]
         self._pack = known_pack(preferences.get("theme_pack"))
@@ -726,11 +730,12 @@ class SettingsPage(QWidget):
             # Text size is not a fine-tune: it has its own card above Colours, always on screen.
             if knob != "text":
                 fine_form.addRow(KNOB_LABELS.get(knob, knob.title()), box)
+                box.currentIndexChanged.connect(lambda _index, moved=knob: self._moved.add(moved))
         self.own_look_note = _note("", "settingsCardNote")
         fine_form.addRow(self.own_look_note)
         self.fine_tune = Switch(FINE_TUNE_LOOK)
         self.fine_tune.setObjectName("prefFineTune")
-        self.fine_tune.setChecked(bool(self._look.get("knobs")))
+        self.fine_tune.setChecked(bool(self._look["knobs"].keys() - {"text"}))
         self.fine_host.setVisible(self.fine_tune.isChecked())
         self.fine_tune.toggled.connect(self.fine_host.setVisible)
         self.look.currentIndexChanged.connect(self._apply_look_menu)
@@ -837,6 +842,21 @@ class SettingsPage(QWidget):
         main_section, day_section = self.layout_sections
         text_card, text_form = _card("Text")
         text_form.addRow(KNOB_LABELS["text"], self.knobs["text"])
+        # High contrast suggests Large and leaves the choice to the student.
+        self.text_suggest = QWidget()
+        self.text_suggest.setObjectName("prefTextSuggest")
+        suggest_row = QHBoxLayout(self.text_suggest)
+        suggest_row.setContentsMargins(0, 0, 0, 0)
+        suggest_row.addWidget(QLabel("Suggests Large text"))
+        use_large = _page_button("Use", "prefTextSuggestUse")
+        text_box = self.knobs["text"]
+        use_large.clicked.connect(lambda: text_box.setCurrentIndex(text_box.findData("large")))
+        suggest_row.addWidget(use_large)
+        suggest_row.addStretch(1)
+        text_form.addRow(self.text_suggest)
+        text_form.addRow(_note(TEXT_KEPT_NOTE, "settingsCardNote"))
+        self.knobs["text"].currentIndexChanged.connect(self._show_text_suggestion)
+        self._show_text_suggestion()
         self.colours_card, appear = _card("Colours")
         appear.addRow("Look", self.look)
         appear.addRow(OWN_LOOK, self.customise)
@@ -1310,7 +1330,8 @@ class SettingsPage(QWidget):
         """What the account and this device hold now, before Settings is shown again."""
         self.blockSignals(True)
         self._preferences = deepcopy(preferences)
-        self._look = sanitize_look(look)
+        self._look = keep_text(sanitize_look(look))
+        self._moved = set(self._look["knobs"]) - {"text"}
         self.saved_looks = sanitize_saved(saved_looks)
         self._alarms = [deepcopy(item) for item in preferences.get("alarms") or []]
         self._pack = known_pack(preferences.get("theme_pack"))
@@ -1523,7 +1544,8 @@ class SettingsPage(QWidget):
             return {key: value for key, value in self._look.items() if key != "custom"}
         preset = self._look["preset"]
         shown = {knob: box.currentData() for knob, box in self.knobs.items()}
-        return {"preset": preset, "knobs": look_overrides(preset, shown)}
+        moved = look_overrides(preset, shown) | {knob: shown[knob] for knob in self._moved}
+        return {"preset": preset, "knobs": {**moved, "text": shown["text"]}}
 
     def _show_look_settings(self) -> None:
         """The knobs and the accent as the look worn draws them. A look of the student's own sets
@@ -1551,6 +1573,11 @@ class SettingsPage(QWidget):
         own_accent = custom is None and self._look["preset"] in OWN_ACCENT
         self._colours_form.setRowVisible(self.accent_note, custom is not None or own_accent)
         self._fine_form.setRowVisible(self.own_look_note, custom is not None)
+        self._show_text_suggestion()
+
+    def _show_text_suggestion(self) -> None:
+        worn = "custom" not in self._look and self._look["preset"] == "high-contrast"
+        self.text_suggest.setVisible(worn and self.knobs["text"].currentData() != "large")
 
     def _fit_look_cards(self) -> None:
         self.look.set_text_scale(text_scale(self.look_choice()))
