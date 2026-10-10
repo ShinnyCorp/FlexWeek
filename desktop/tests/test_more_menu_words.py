@@ -301,7 +301,7 @@ def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_
     said = [label.text() for label in dialog.findChildren(QLabel) if label.text()]
     assert said == [
         "About FlexWeek",
-        "FlexWeek 0.18.5",
+        "FlexWeek 0.19.0",
         "FlexWeek plans your homework around school, sports and everything else in your week.",
         "Your week is saved on this computer, under this account.",
     ]

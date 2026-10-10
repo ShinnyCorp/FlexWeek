@@ -13,10 +13,10 @@ this file's git history, in `CHANGELOG.md`, and in `docs/cac-build-plan.md`.
   Month; J14 to J17) is released as latest. v0.18.3 (2026-10-08), v0.18.2
   (2026-10-04) and v0.18.1 (2026-10-03) came before it. v0.18.0 brought the
   Rust engine.
-- v0.18.5 (Consistency and polish, below) is the release being prepared on
-  `release/0.18.5`. Next: 0.19.0 (the QA handoff's Fix first items, about
-  Oct 14-15), then 1.0.0 with the Android companion and device sync (about
-  Oct 22).
+- v0.18.5 (Consistency and polish) is released. v0.19.0 (the QA handoff's Fix
+  first items and the Codex audit's findings) is being prepared on
+  `release/0.19.0`. Next: 1.0.0 with the Android companion and device sync
+  (about Oct 22).
 - Decisions left open by 0.18.1 are listed under "Open after 0.18.1".
 - 16 days to the contest submission (Phase 8).
 
@@ -702,8 +702,7 @@ Notepad, #95's wording and parts of #74, #90 and #101 were already done):
 - Complete when: the lanes above are closed on the shipped build, every
   "maybe on purpose" item has a recorded decision, gate, rig and CI green,
   v0.18.5 published as latest.
-- Status: [x] built 2026-10-10 (lanes 1-9, the engineering lane and the
-  12-hour test sweep); done once v0.18.5 is published as latest.
+- Status: [x] done 2026-10-10: v0.18.5 published as latest (PR 46).
 
 ### Closed, no work ("Deliberate, leave it")
 #47 a toast replaces the plan bar; #62 five accent swatches; #63 now line and

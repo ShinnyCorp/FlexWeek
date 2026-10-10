@@ -5,6 +5,42 @@ All notable changes to FlexWeek are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-11
+
+### Added
+- Before the week grid there is a list of this week's blocks for screen readers and keyboard users. It stays folded until the keyboard reaches it (Tab, or Ctrl+Shift+L), so it takes no room on the page.
+
+### Changed
+- School and your Setup activities now stand in every week, so next week has school and Plan keeps homework out of it. Before, next week had none. Removing one asks "Just this week" or "Every week".
+- Plan gives work due after this Sunday a fair share of this week, and its details say how much is left for next week, such as "Science project: 1 h this week, 1 h left for next week." The earliest work is still placed first.
+- Choosing a time, Do it at, or dropping a block onto a time that has already passed is refused with "That's in the past." A block already under way can still be lengthened.
+- Choosing a time on an empty week says "No time left this week. Choose a day in next week." instead of a generic message.
+- Plan's Undo message stays up while the pointer or the keyboard is on it, and shows how long is left. A second Plan with nothing new no longer replaces it. After Plan, the keyboard goes to the week.
+- Text size is your own setting in every look. Large text stays Large when you pass through High contrast, Terminal or another look, and after a restart. High contrast now suggests Large with a Use button instead of switching it.
+- Restore points keep the standing week. Restoring one brings back the School and activity times that stood when it was made; points from before 0.19.0 leave the current times as they are.
+- Wording is plainer: the Priority field is now Type (Test prep, Quiz prep, Everyday homework, Reading), a pinned time reads "Pinned to Thu at 5:00 PM. Plan won't move it." with an Unpin button, and Export and Import account are now Export and Import backup file.
+- Segmented choices, such as the look picker and "Let FlexWeek pick a time" in Add homework, are radio buttons for screen readers. Each group is one Tab stop; arrow keys, Home and End move and choose, and a focus ring shows the group.
+- Account and recovery errors sit beside their fields, the field that needs attention gets focus, and a screen reader announces the message at once.
+- Linux: the download and the AppImage include libxkbcommon and libxkbcommon-x11, so the window opens on desktops that lack them.
+- AppImage: if libEGL is missing, FlexWeek stops with one line that names the library and the install command for Ubuntu, Mint, Debian and Fedora, instead of the loader's error. It starts when it cannot read the library list.
+- If PySide6 or the engine fails to load, FlexWeek shows one plain message instead of a Python traceback. On Windows the message appears in a message box.
+
+### Fixed
+- Homework left unfinished in an earlier week now shows in More > Unfinished ("1 left") and after Plan, as "N unfinished from last week" with "Plan them" and "I did these". Before, it read "None left" and Plan said everything had a time.
+- Quit and closing the window save unsaved changes first. If a save fails, FlexWeek stays open and says so.
+- Focus minutes earned while a save is under way are kept. Before, the save could replace them and they were lost.
+- Changing the timer length during a focus session no longer changes that session's credit or its progress ring. The change applies to the next work phase.
+- A setting that failed to save, such as while offline, is sent again when Settings closes. Before, it was taken for saved and the old value came back on the next start.
+- A restore point named the same as an earlier one in the same sitting now saves the week as it is now. Before, it returned the old point, so a later restore brought back the old week.
+- Importing a changed version of a week file gives the changed homework its own entry instead of attaching it to the old one. Importing homework that is new to the account saves.
+- A block whose length is not whole quarter hours, such as 17 minutes, stays a block. Before, it became homework that the app then refused at start-up, and account export failed.
+- Signing in with an old password while it is being reset or changed no longer opens a session after everyone else was signed out.
+- A file that is not a FlexWeek export is refused with a message that says it is not recognized. Before, the import failed with no message.
+- Downloaded updates are deleted once they are installed or fail to install. Before, each one stayed in the temp folder, and hundreds of megabytes could pile up.
+- Control edges and focused fields have enough contrast in every look, and a focused field no longer grows by 2 px.
+- In Retro, segmented choices keep their raised look. "Please sign in again" after a session ends shows under the form, not on the Username box.
+- The sign-in card keeps keyboard focus when it measures itself, and Skip setup puts a 24-hour clock you tried back on the Week step.
+
 ## [0.18.5] - 2026-10-10
 
 ### Added

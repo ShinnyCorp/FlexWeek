@@ -121,22 +121,22 @@ def test_every_field_in_a_forms_column_starts_at_the_same_left_edge(
     dialog.close_page()
 
 
-def test_this_build_says_0_18_5_and_is_not_offered_0_18_4(
+def test_this_build_says_0_19_0_and_is_not_offered_0_18_5(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
-    assert VERSION == "0.18.5"
+    assert VERSION == "0.19.0"
     release = {
-        "tag_name": "v0.18.4",
+        "tag_name": "v0.18.5",
         "assets": [
             {"name": name, "browser_download_url": f"https://example.invalid/{name}"}
             for name in (WINDOWS_SETUP, WINDOWS_SETUP + ".sha256")
         ],
     }
     assert available(release, "windows") is None
-    assert available({**release, "tag_name": "v0.18.6"}, "windows")["version"] == "0.18.6"
+    assert available({**release, "tag_name": "v0.19.1"}, "windows")["version"] == "0.19.1"
     dialog = prefs(window)
-    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.18.5"
+    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.19.0"
     dialog.close_page()
 
 
