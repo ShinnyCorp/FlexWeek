@@ -102,9 +102,18 @@ Contract for the finished app:
 - Account-owned weekly routines contain fixed commitments only. Applying one
   to a Monday-keyed destination week previews every occurrence and lets the
   student omit or adjust one-week exceptions without changing the routine.
+- School and Setup's activities make the account's standing week: one row per
+  block, keyed by its Setup id and the week it stands from, so every week shows
+  them unless that week has its own copy. Changing or removing School or an
+  activity asks "Just this week" or "Every week"; every week rewrites the saved
+  later weeks in the same save (`standing` in `/api/changes`), and only the open
+  week's part has Undo. Restore points and account exports carry the standing
+  rows.
 - A later week reviews unfinished homework using the original assignment ID,
   exact deadline and progress. Repeated planning and request retries cannot
-  duplicate or over-plan it.
+  duplicate or over-plan it. Homework left unfinished in an earlier week shows
+  under More > Unfinished and, after a plan, as "N unfinished from last week"
+  with Plan them and I did these.
 - Account-owned restore points snapshot weeks and assignments. Clear week,
   routine application and restore preserve the replaced schedule first; a
   stale restore preview returns 409 and no failure stores partial state. The UI
@@ -148,9 +157,15 @@ Contract for the finished app:
   the student, with the button reading Suggest times. Homework dragged onto a
   time, or given one with Choose a time, is `pinned`: every plan, Replan all
   included, keeps it where the student put it, even beside a fixed block. The
-  planner places homework at the earliest times that fit; after a plan, the
-  review names each day with more than 3 hours of homework on it ("Thursday has
-  5 h 30 min of homework.") and moves nothing itself. Details live in
+  planner places homework at the earliest times that fit. Work due after this
+  Sunday gets only a fair share of this week (the minutes left divided by the
+  plannable days up to its due date), and the review says what waits ("Science
+  project: 1 h this week, 1 h left for next week"). After a plan, the review
+  names each day with more than 3 hours of homework on it ("Thursday has
+  5 h 30 min of homework.") and moves nothing itself. A time already past is
+  refused wherever a time is chosen (a drag, Choose a time, Do it at): "That's
+  in the past."; one day of a fixed series already on a past day may still
+  change its start there. Details live in
   `docs/stage2-contract.md`.
 - Running late is a solve preview of a 15, 30 or 60 minute delay from a
   15-minute cutoff on one day of the open week. Fixed commitments and sleep stay
@@ -283,8 +298,13 @@ letters of it. Today's app has a rail left of Day and Week: a small month that
 folds away, what is next, Not placed yet, and the homework a focus timer can
 start on. Day lists the day beside its hours. Everything FlexWeek
 says after an action (a move, a plan, a deletion, a reminder) is one toast at
-the bottom right of the page, with Undo when the step can be undone; it goes after a
-few seconds or on a switch to another view. There is no status line. Month opens
+the bottom right of the page, with Undo when the step can be undone. It goes after a few seconds (at least 10
+when it offers Undo, held while the pointer or the keyboard is on it, with a
+thin line showing the time left), on a change of week, or when its Undo is
+used; a switch of view or design keeps it, and Plan finding nothing new leaves
+an Undo toast up. There is no status line. Before the week grid, a list of the
+week's blocks for screen readers and the keyboard stays folded until the
+keyboard reaches it (Tab, or Ctrl+Shift+L). Month opens
 with the student's week as its first row. A new account with no homework sees
 "Nothing here yet." and one "Add your first homework" button in place of empty
 hours. A focus timer has a screen of its own (Start focus, Quick focus or F):
@@ -440,6 +460,8 @@ the look's text colour. `clock_24h` chooses 16:00 or 4:00 PM for every time
 written on screen; times are still sent and saved as HH:MM. Setup's week page
 asks for it, with 12-hour chosen; a new account is 12-hour (`clock_24h` false),
 and accounts from before 0.18.5 that never chose were stamped 24-hour once.
+Text size is the student's own setting, kept in every look: a look may suggest
+Large (High contrast does, with a Use button) but never changes it.
 Dates have one short form ("Thu 1 Oct") and one long form ("Thursday 1
 October"), both made by the engine; the year shows only outside the current
 year, a week across New Year puts it on its end date ("28 Dec – 3 Jan 2027"),

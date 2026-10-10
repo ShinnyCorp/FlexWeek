@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 from copy import deepcopy
+from datetime import datetime
 
 from desktop.native.calendar import date_for_day
 from desktop.tests import logic_support
@@ -19,6 +20,13 @@ if importlib.util.find_spec("PySide6") is not None:
     from desktop.native.controller import NativeSession
     from desktop.server import LocalServer
     from desktop.tests.logic_support import PASSWORD, fixed, settled, signed_in, titles, week_after
+
+
+def hold_the_open_week_ahead(session: NativeSession) -> None:
+    """Move to a date refuses a start before now, so a test about moving holds the clock at the start
+    of the open week, whatever day the suite runs on."""
+    moment = datetime.fromisoformat(session.week_start)
+    session.now_ms = lambda: int(moment.timestamp() * 1000)
 
 
 def read_week(qapp: QApplication, session: NativeSession, week_start: str) -> dict:
@@ -40,6 +48,7 @@ def test_move_to_date_keeps_the_time_on_another_day_of_the_same_week(
     qapp: QApplication, server: LocalServer
 ) -> None:
     session = signed_in(qapp, server.origin, "alice", create=True)
+    hold_the_open_week_ahead(session)
     session.add_block(fixed("soccer", "Soccer", 0, "16:00"))
     session.save()
     settled(qapp, session)
@@ -79,6 +88,7 @@ def test_move_to_date_writes_both_weeks_going_forward(qapp: QApplication, server
 
 def test_move_to_date_writes_both_weeks_going_back(qapp: QApplication, server: LocalServer) -> None:
     session = signed_in(qapp, server.origin, "alice", create=True)
+    hold_the_open_week_ahead(session)
     first = session.week_start
     second = week_after(first)
     session.load_week(second)
@@ -134,6 +144,7 @@ def test_date_problem_and_move_to_date_refuse_homework_past_due(
     qapp: QApplication, server: LocalServer
 ) -> None:
     session = signed_in(qapp, server.origin, "alice", create=True)
+    hold_the_open_week_ahead(session)
     due = date_for_day(session.week_start, 3) + "T15:00"
     session.add_homework({"id": "essay", "title": "Essay", "due": due, "estimate_min": 60, "revision": 0})
     session.save()
@@ -398,6 +409,7 @@ def test_date_problem_judges_a_chip_when_its_week_is_not_loaded(
 ) -> None:
     """Month has the chip's start and length from the month reply, not from the open week."""
     session = signed_in(qapp, server.origin, "alice", create=True)
+    hold_the_open_week_ahead(session)
     first = session.week_start
     second = week_after(first)
     due = date_for_day(first, 3) + "T15:00"

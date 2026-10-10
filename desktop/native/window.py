@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import time
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import replace
@@ -19,9 +20,11 @@ from PySide6.QtGui import (
     QGuiApplication,
     QIcon,
     QKeyEvent,
+    QKeySequence,
     QPalette,
     QPixmap,
     QResizeEvent,
+    QShortcut,
 )
 from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import (
@@ -35,6 +38,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -55,15 +60,18 @@ from desktop.native.calendar import (
     FLEX_CATEGORIES,
     date_for_day,
     is_series,
+    is_setup_block,
     monday_of,
     span_clash,
     sunday_due,
 )
 from desktop.native.client import (
     PASSWORD_LENGTH_HINT,
+    SIGN_IN_AGAIN,
     SIGN_IN_WHY,
     SIGN_IN_WHY_LINK,
     SIGN_IN_WRONG,
+    USERNAME_ERROR,
     USERNAME_HINT,
     sign_in_problem,
     sign_up_problem,
@@ -73,11 +81,12 @@ from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.custom_look import sanitize_saved
 from desktop.native.elevation import lift
 from desktop.native.feel import Context, apply_feel, context_for, current, extra_stylesheet, set_current
+from desktop.native.fields import ProblemLine, announce
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import QUICK_TITLE, FocusScreen
 from desktop.native.fonts import load_fonts
-from desktop.native.hours.canvas import HoursCanvas
+from desktop.native.hours.canvas import Drawn, HoursCanvas
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
 from desktop.native.hours.geometry import Span, drag_step, next_slot
 from desktop.native.hours.hand import Create, Hand, Move, MoveDate, Place, span_words
@@ -248,6 +257,9 @@ BUSY_BUTTONS = (
 )
 # The views in the order the top bar's segments show them, which a change of view slides along.
 VIEW_ORDER = ("day", "week", "month")
+# The week list for screen readers: its height while the keyboard is on it, and folded away otherwise.
+WEEK_LIST_OPEN = 132
+WEEK_LIST_FOLDED = 0
 PLAN_LABEL = "Plan my homework"
 SUGGEST_LABEL = "Suggest times"
 PLAN_TIP = (
@@ -328,7 +340,15 @@ GREYED_TIPS = {
     "pasteBlock": "Copy a block or a day first.",
     "runningLate": "Open this week to use Running late.",
 }
-WAIT_TIP = "Wait a moment: FlexWeek is still saving or planning."
+# Said without the system's own words, which a student cannot act on.
+READ_FAILED = "Couldn't open that file. Choose a FlexWeek backup file (it ends in .json)."
+WRITE_FAILED = "Couldn't save there. Choose another folder, like Documents."
+REPLACE_WEEK_QUESTION = (
+    "Replace everything in {week} with this file? Other weeks aren't changed. You can undo this."
+)
+WAIT_TIP = "Saving your last change… this will work in a moment."
+PLANNING_TIP = "Planning… one moment."
+CONFLICT_TIP = "This week changed in another window. Reload it from More first."
 SIGN_OUT_QUESTION = "Your week is saved on {where}, under this account. Sign in again to see it."
 RECOVERY_KEEP = "Keep this file somewhere private. Anyone who has it can reset your password."
 RECOVERY_CHOOSE = "Choose where to save"
@@ -355,10 +375,14 @@ ERROR_ICON_PX = 16
 CREATE_HEADING = "Create your account"
 CREATE_NOTE = (
     "FlexWeek fits homework around school and sports. "
-    "Your week is saved on this computer, under this account."
+    "Your week is saved on this computer, under this account. "
+    "Export a backup file now and then, in Settings."
 )
 RESET_HEADING = "Reset your password"
-RESET_NOTE = "Use one of the recovery codes you saved when you made your account."
+RESET_NOTE = (
+    "Use one of the recovery codes you saved when you made your account. Lost them too? Create a new "
+    "account and import a backup file, or start fresh."
+)
 # What the sign-in card is for at the moment.
 SIGN_IN, CREATE, RESET = "sign in", "create", "reset"
 # Long enough for the student to read that the update installed before the window goes.
@@ -373,6 +397,9 @@ LAYOUT_TICK_MS = 20_000
 # How long Settings waits after the last change before saving it to the account. Long enough that
 # typing a number or clicking through a menu is one save.
 SETTINGS_SAVE_MS = 600
+# Leaving the app waits this long, checking this often, for what is unsaved to reach the server.
+LEAVE_WAIT_MS = 5000
+LEAVE_POLL_MS = 100
 LOGO = Path(__file__).resolve().parents[1] / "assets" / "logo.png"
 LOGO_PX = 28
 RECOVERY_COPY = "Copy"
@@ -498,6 +525,7 @@ class NativeWindow(QMainWindow):
         self._views: dict[str, LayoutView] = {}
         self._entry_mode = SIGN_IN
         self._auth_mode_shown: str | None = None
+        self._last_auth_announcement: tuple[QLineEdit, str] | None = None
         self._auth_holder: QWidget | None = None
         self._auth_card: QFrame | None = None
         self._updates = sanitize_updates(None)
@@ -527,7 +555,12 @@ class NativeWindow(QMainWindow):
         # Settings while it is on screen, and what closing it has to save.
         self._settings: SettingsPage | None = None
         self._settings_finish: Callable[[bool], None] | None = None
+        # Send a changed Settings page now, and say whether the server still lacks something on it.
+        self._settings_save: Callable[[], None] | None = None
+        self._settings_unsaved: Callable[[], bool] | None = None
         self._settings_prepare_scheduled = False
+        self._leaving: QTimer | None = None
+        self._saved_to_leave = False
         # A block let go while a save is under way, moved once it is done: the save's reply replaces
         # the week, so a move made before it arrived would be lost.
         self._move_waiting: tuple[str, int, int, int, int] | None = None
@@ -658,6 +691,106 @@ class NativeWindow(QMainWindow):
         self.auth_status.clear()
         self.auth_status.setVisible(False)
         self.auth_error.setVisible(False)
+        self._clear_auth_problems()
+
+    def _auth_problem_field(self, message: str) -> QLineEdit | None:
+        words = message.lower()
+        if message == SIGN_IN_AGAIN:
+            return None
+        if message == USERNAME_ERROR:
+            return self.username
+        if message.startswith("Wrong username or password"):
+            return self.password
+        if "recovery code" in words or "each code" in words or "too many tries" in words:
+            return self.recovery_code
+        if "username" in words:
+            return self.username
+        if "password" in words:
+            return self.new_recovery_password if self._entry_mode == RESET else self.password
+        return None
+
+    def _clear_auth_problems(self) -> None:
+        for field, line in (
+            (self.username, self.username_problem),
+            (self.password, self.password_problem),
+            (self.recovery_code, self.recovery_code_problem),
+            (self.new_recovery_password, self.recovery_password_problem),
+        ):
+            field.setAccessibleDescription("")
+            field.setProperty("invalid", False)
+            field.style().unpolish(field)
+            field.style().polish(field)
+            line.hide()
+
+    def _show_auth_problem(self, field: QLineEdit, message: str, *, focus: bool) -> None:
+        line = {
+            self.username: self.username_problem,
+            self.password: self.password_problem,
+            self.recovery_code: self.recovery_code_problem,
+            self.new_recovery_password: self.recovery_password_problem,
+        }[field]
+        field.setAccessibleDescription(message)
+        field.setProperty("invalid", True)
+        field.style().unpolish(field)
+        field.style().polish(field)
+        line.say(message)
+        if focus:
+            field.setFocus(Qt.FocusReason.OtherFocusReason)
+            field.selectAll()
+            announce(field, f"Error: {message}", assertive=True)
+            self._last_auth_announcement = (field, message)
+
+    def _announce_auth_problem(self, field: QLineEdit) -> None:
+        if field.accessibleDescription() and self._last_auth_announcement != (
+            field,
+            field.accessibleDescription(),
+        ):
+            announce(field, f"Error: {field.accessibleDescription()}", assertive=True)
+            self._last_auth_announcement = (field, field.accessibleDescription())
+
+    def _refresh_auth_problems(
+        self, *_args: object, focus: bool = False, mode: str | None = None
+    ) -> None:
+        if (
+            mode is None
+            and not focus
+            and not any(
+                line.isVisible()
+                for line in (
+                    self.username_problem,
+                    self.password_problem,
+                    self.recovery_code_problem,
+                    self.recovery_password_problem,
+                )
+            )
+        ):
+            return
+        mode = mode or self._entry_mode
+        visible_fields = {
+            field
+            for field, line in (
+                (self.username, self.username_problem),
+                (self.password, self.password_problem),
+                (self.recovery_code, self.recovery_code_problem),
+                (self.new_recovery_password, self.recovery_password_problem),
+            )
+            if line.isVisible()
+        }
+        if mode == CREATE:
+            problem = sign_up_problem(self.username.text().strip(), self.password.text())
+        elif mode == SIGN_IN:
+            problem = sign_in_problem(self.username.text().strip(), self.password.text())
+        elif mode == RESET:
+            problem = self._recovery_problem()
+        else:
+            problem = ""
+        self._clear_auth_problems()
+        field = self._auth_problem_field(problem) if problem else None
+        if field is not None:
+            move_focus = focus or (
+                self.sender() in visible_fields and field is not self.sender()
+            )
+            self._show_auth_problem(field, problem, focus=move_focus)
 
     def _explain_wrong_sign_in(self) -> None:
         sheet = ConfirmSheet(
@@ -710,22 +843,31 @@ class NativeWindow(QMainWindow):
         self.recover_button.setDefault(mode == RESET)
 
     def _pin_auth_height(self) -> None:
-        """Hold the sign-in page's wordmark and card top where the tallest page, Create, puts them, so
-        nothing jumps between pages (#74): the card sits at the top of a holder that is always as tall
-        as the Create card, and the pages that are shorter simply end sooner."""
+        """Hold the sign-in page's wordmark and card top where the tallest page, Create or Reset, puts
+        them, so nothing jumps between pages (#74): the card sits at the top of a holder that is always as
+        tall as that card, and the pages that are shorter simply end sooner."""
         holder, card = self._auth_holder, self._auth_card
         if holder is None or card is None:
             return
         shown = self._auth_mode_shown or SIGN_IN
-        self._lay_mode(CREATE)
-        card.layout().activate()
-        # What the layout will ask of the holder, which a wrapped label's minimum makes taller than the
-        # card is drawn.
-        tallest = max(
-            card.sizeHint().height(), card.minimumSizeHint().height(), card.heightForWidth(card.width())
-        )
+        # Laying out another page hides the widget that has focus, and Qt does not give it back.
+        focused = self.focusWidget()
+        tallest = 0
+        for mode in (CREATE, RESET):
+            self._lay_mode(mode)
+            card.layout().activate()
+            # What the layout will ask of the holder, which a wrapped label's minimum makes taller than
+            # the card is drawn.
+            tallest = max(
+                tallest,
+                card.sizeHint().height(),
+                card.minimumSizeHint().height(),
+                card.heightForWidth(card.width()),
+            )
         self._lay_mode(shown)
         card.layout().activate()
+        if focused is not None:
+            focused.setFocus(Qt.FocusReason.OtherFocusReason)
         holder.setMinimumHeight(tallest + AUTH_SHADOW_ABOVE + AUTH_SHADOW_BELOW)
 
     def listen_for_instances(self, name: str) -> bool:
@@ -844,6 +986,8 @@ class NativeWindow(QMainWindow):
         username_box = QVBoxLayout()
         username_box.setSpacing(SPACING[0])
         username_box.addWidget(self.username)
+        self.username_problem = ProblemLine(self.username)
+        self.username_problem.setObjectName("usernameProblem")
         self.username_hint = QLabel(USERNAME_HINT)
         self.username_hint.setObjectName("usernameHint")
         self.username_hint.setWordWrap(True)
@@ -858,6 +1002,8 @@ class NativeWindow(QMainWindow):
         password_box = QVBoxLayout()
         password_box.setSpacing(SPACING[0])
         password_box.addWidget(self.password)
+        self.password_problem = ProblemLine(self.password)
+        self.password_problem.setObjectName("passwordProblem")
         # A wrong sign-in is said here, right under the box it is about, so it is read with the box.
         self.auth_error = QWidget()
         self.auth_error.setObjectName("authError")
@@ -891,11 +1037,16 @@ class NativeWindow(QMainWindow):
         self.recovery_code.setObjectName("recoveryCode")
         self.recovery_code.setPlaceholderText("Recovery code")
         self.recovery_code.setAccessibleName("Recovery code")
+        self.recovery_code_problem = ProblemLine(self.recovery_code)
+        self.recovery_code_problem.setObjectName("recoveryCodeProblem")
         layout.addWidget(self.recovery_code)
         self.new_recovery_password = PasswordField()
         self.new_recovery_password.setObjectName("recoverPassword")
+        self.new_recovery_password.setMaxLength(128)
         self.new_recovery_password.setPlaceholderText("New password")
         self.new_recovery_password.setAccessibleName("New password")
+        self.recovery_password_problem = ProblemLine(self.new_recovery_password)
+        self.recovery_password_problem.setObjectName("recoveryPasswordProblem")
         layout.addWidget(self.new_recovery_password)
         # On by default: most students plan on their own laptop, and signing in was the first thing
         # FlexWeek asked at every launch. Log out forgets it, for a shared computer.
@@ -929,6 +1080,16 @@ class NativeWindow(QMainWindow):
         # Nothing said, nothing drawn: an empty line left a band of card under the last link.
         self.auth_status.setVisible(False)
         layout.addWidget(self.auth_status)
+        self.username.textEdited.connect(self._refresh_auth_problems)
+        self.password.textEdited.connect(self._refresh_auth_problems)
+        self.username.editingFinished.connect(lambda: self._announce_auth_problem(self.username))
+        self.password.editingFinished.connect(lambda: self._announce_auth_problem(self.password))
+        self.recovery_code.textEdited.connect(self._refresh_auth_problems)
+        self.new_recovery_password.textEdited.connect(self._refresh_auth_problems)
+        self.recovery_code.editingFinished.connect(lambda: self._announce_auth_problem(self.recovery_code))
+        self.new_recovery_password.editingFinished.connect(
+            lambda: self._announce_auth_problem(self.new_recovery_password)
+        )
 
     def _build_recovery(self) -> None:
         layout = self._entry_card("recoveryPage")
@@ -1298,6 +1459,26 @@ class NativeWindow(QMainWindow):
         self.unfinished_panel.collapsed.connect(self._collapse_unfinished)
         column.addWidget(self.unfinished_panel)
         column.addWidget(self.unfinished_badge)
+        # Item 1b: after Plan, homework whose time was in an earlier week and never ticked done. Plan
+        # never moves it on its own; the student says which.
+        self.left_chip = QFrame()
+        self.left_chip.setObjectName("leftChip")
+        chip_row = QHBoxLayout(self.left_chip)
+        self.left_chip_text = QLabel()
+        self.left_chip_text.setObjectName("leftChipText")
+        chip_row.addWidget(self.left_chip_text, 1)
+        plan_them = QPushButton("Plan them")
+        plan_them.setObjectName("leftPlan")
+        plan_them.setProperty("tonal", True)
+        plan_them.clicked.connect(self._plan_left)
+        chip_row.addWidget(plan_them)
+        did_these = QPushButton("I did these")
+        did_these.setObjectName("leftDone")
+        did_these.setProperty("outlined", True)
+        did_these.clicked.connect(self._did_left)
+        chip_row.addWidget(did_these)
+        self.left_chip.hide()
+        column.addWidget(self.left_chip)
         self.plan_review = PlanReview()
         self.plan_review.replan_requested.connect(lambda: self.session.solve(everything=True))
         self.alert_strip = AlertStrip()
@@ -1305,6 +1486,17 @@ class NativeWindow(QMainWindow):
         column.addWidget(self.alert_strip)
         self.planner = QStackedWidget()
         self.planner.setObjectName("plannerStack")
+        self.week_access_list = QListWidget()
+        self.week_access_list.setObjectName("weekAccessList")
+        self.week_access_list.setAccessibleName("This week's blocks")
+        self.week_access_list.setAccessibleDescription("A list of each day and its blocks in time order.")
+        # Folded to nothing until the keyboard reaches it: screen readers and Tab still find it, and the
+        # week keeps its room for everyone who reads the grid.
+        self.week_access_list.setMaximumHeight(WEEK_LIST_FOLDED)
+        self.week_access_list.itemActivated.connect(self._week_access_activate)
+        self.week_access_list.installEventFilter(self)
+        self._week_list_shortcut = QShortcut(QKeySequence("Ctrl+Shift+L"), self)
+        self._week_list_shortcut.activated.connect(self._focus_week_access_list)
         # One pointer for every gesture on every surface: it follows a drag and reports one change.
         self.hand = Hand(self._hand_judge, self)
         self.hand.committed.connect(self._apply_change)
@@ -1347,6 +1539,7 @@ class NativeWindow(QMainWindow):
             widget.installEventFilter(self)
         # The calendar is the point of this page, so it takes whatever height the rest does not need,
         # down to the window's foot. Notices float over it rather than taking a row.
+        column.addWidget(self.week_access_list)
         column.addWidget(self.planner, 1)
         layout.addLayout(body, 1)
         self._stack.addWidget(page)
@@ -1976,7 +2169,8 @@ class NativeWindow(QMainWindow):
             self.toast.hide()
         if self.unfinished_panel.isVisible():
             # A row deleted, planned or finished leaves the list, and an Undo brings it back.
-            self.unfinished_panel.set_items(overdue_unfinished(self.session.unfinished()))
+            self._fill_unfinished(self._unfinished_items())
+        self._sync_left_chip()
         if self.session.dirty:
             # Every change reaches here, so this is where the clock on "stopped changing" restarts.
             self._changed_ms = self.session.now_ms()
@@ -2029,6 +2223,7 @@ class NativeWindow(QMainWindow):
         self.next_nav.setToolTip(f"Next {period}")
         self.prev_nav.setAccessibleName(f"Previous {period}")
         self.next_nav.setAccessibleName(f"Next {period}")
+        self.week_access_list.setVisible(view == "week" and not self._day_mode)
         title_view = "myday" if self._day_mode else view
         watched = shown.watched_date() if self._day_mode and isinstance(shown, LayoutView) else None
         self.week_title.set_full_text(
@@ -2083,18 +2278,18 @@ class NativeWindow(QMainWindow):
                 paste.setText("Paste into a selected day")
             else:
                 paste.setText("Paste into " + DAY_FULL[destination[0]])
-        items = overdue_unfinished(self.session.unfinished())
+        items = self._unfinished_items()
         unfinished = self.findChild(QPushButton, "unfinishedOpen")
         if unfinished is not None:
             unfinished.setEnabled(bool(items))
-        prompt = overdue_unfinished(self.session.consume_unfinished())
+        prompt = self._unfinished_items(self.session.consume_unfinished())
         if prompt:
-            self.unfinished_panel.set_items(prompt)
+            self._fill_unfinished(prompt)
             self._unfinished_introduced = True
             self.unfinished_badge.hide()
         elif items and self._unfinished_introduced:
             if self._unfinished_opened and not self.unfinished_panel.isHidden():
-                self.unfinished_panel.set_items(items)
+                self._fill_unfinished(items)
             else:
                 self._unfinished_opened = False
                 self.unfinished_panel.hide()
@@ -2132,11 +2327,17 @@ class NativeWindow(QMainWindow):
     def _on_status(self, message: str) -> None:
         """What the session says goes in the toast, on the week's page, unless it is still going
         ("Saving…") or routine ("Saved."). The student's own request is answered either way."""
-        wrong = message == SIGN_IN_WRONG
-        self.auth_status.setText("" if wrong else message)
-        self.auth_status.setVisible(bool(message) and not wrong)
-        self.auth_error.setVisible(wrong)
+        auth_page = self._stack.currentWidget() is self._stack.findChild(QWidget, "authPage")
+        field = self._auth_problem_field(message) if auth_page and message else None
+        if field is not None:
+            self._clear_auth_problems()
+            self._show_auth_problem(field, message, focus=True)
+        self.auth_status.setText("" if field is not None else message)
+        self.auth_status.setVisible(bool(message) and field is None)
+        self.auth_error.setVisible(False)
         if not message:
+            if auth_page:
+                self._clear_auth_problems()
             # The session took back what it said, as Cancel on Running late's preview does.
             if not self.toast.button.isVisible():
                 self.toast.hide()
@@ -2151,8 +2352,29 @@ class NativeWindow(QMainWindow):
         if self.toast.isVisible() and self.toast.text() == message:
             # Said again as its save lands: the toast already says it, perhaps with its Undo.
             return
+        if self._keeps_undo(message):
+            self.toast.bump()
+            return
         self._notice_step = None
         self.toast.show_message(message)
+
+    def _keeps_undo(self, message: str) -> bool:
+        """Plan finding nothing new leaves a visible Undo toast. So does a plain repeat from the
+        same button in the first second. An error or a reminder still replaces it."""
+        if not self._toast_offers_undo():
+            return False
+        if getattr(self.session, "_plan_idle", False):
+            return True
+        shown = getattr(self, "_undo_at", None)
+        button = getattr(self, "_undo_button", "")
+        if shown is None or not button or time.monotonic() - shown > 1:
+            return False
+        focus = QApplication.focusWidget()
+        if focus is None or focus.objectName() != button:
+            return False
+        if message == self._reminder_said:
+            return False
+        return not any(part in message for part in ("Try again", "Wait a moment", "could not", "Couldn't"))
 
     def _reminder_handled(self) -> None:
         """Got it on a reminder left on screen: the toast saying the same goes too."""
@@ -2173,14 +2395,15 @@ class NativeWindow(QMainWindow):
         if unfinished is not None:
             # Worked out as the menu opens: the busy flag turns every action back on when a save
             # ends, and left to that "Unfinished" was pressable with nothing to show.
-            unfinished.setEnabled(
-                not self.session.busy and bool(overdue_unfinished(self.session.unfinished()))
-            )
+            unfinished.setEnabled(not self.session.busy and bool(self._unfinished_items()))
+        count = len(self._unfinished_items())
         for action, button in self._more_pairs:
             action.setEnabled(button.isEnabled())
             tip = self._more_tip(button.objectName(), button.isEnabled())
             # Greyed with nothing to show, Unfinished says so on its row, not only in a tooltip (T23).
             said = f"\t{NONE_UNFINISHED}" if tip == NOTHING_UNFINISHED else ""
+            if button.objectName() == "unfinishedOpen" and count:
+                said = f"\t{count} left"
             action.setText(button.text() + said)
             action.setToolTip(tip)
         if self._spotify_action is not None:
@@ -2193,6 +2416,10 @@ class NativeWindow(QMainWindow):
         if enabled:
             return MORE_TIPS.get(name, "")
         session = self.session
+        if session.conflict:
+            return CONFLICT_TIP
+        if session.planning:
+            return PLANNING_TIP
         if session.busy or session.dirty or session.pending_save is not None:
             return WAIT_TIP
         if name == "pasteBlock" and session.clipboard is not None:
@@ -2259,20 +2486,18 @@ class NativeWindow(QMainWindow):
         self.recovery_continue.setEnabled(checked and not self.session.busy)
 
     def _create_account(self) -> None:
-        name, password = self.username.text().strip(), self.password.text()
-        problem = sign_up_problem(name, password)
-        if problem:
-            self.session._say(problem)
+        self._refresh_auth_problems(focus=True, mode=CREATE)
+        if sign_up_problem(self.username.text().strip(), self.password.text()):
             return
+        name, password = self.username.text().strip(), self.password.text()
         self.session.keep_signed_in = self.keep_signed_in.isChecked()
         self.session.register(name, password)
 
     def _sign_in(self) -> None:
-        name, password = self.username.text().strip(), self.password.text()
-        problem = sign_in_problem(name, password)
-        if problem:
-            self.session._say(problem)
+        self._refresh_auth_problems(focus=True, mode=SIGN_IN)
+        if sign_in_problem(self.username.text().strip(), self.password.text()):
             return
+        name, password = self.username.text().strip(), self.password.text()
         self.session.keep_signed_in = self.keep_signed_in.isChecked()
         self.session.login(name, password)
 
@@ -2533,11 +2758,36 @@ class NativeWindow(QMainWindow):
             self._sheet(lambda: HomeworkDialog(self, today=self._today(), category=category, due=due))
         )
 
-    def _delete_block(self, block: dict, scope: str, day: int | None) -> None:
-        self.session.delete_block(block["id"], scope=scope, day=day)
+    def _delete_block(
+        self, block: dict, scope: str, day: int | None, every_week: bool | None = None
+    ) -> None:
+        title = block.get("title") or "the event"
+        whole = scope != "occurrence" or len(block.get("days") or []) <= 1
+        if every_week is None and whole and is_setup_block(block):
+            # School and Setup's activities are in every week, so taking one out asks which.
+            sheet = ConfirmSheet(
+                self,
+                "Remove " + title,
+                f"Remove {title} from this week only, or from this week and every week after it?",
+                (
+                    ("stay", "Cancel", "outlined"),
+                    ("week", "Just this week", ""),
+                    ("every", "Every week", "danger"),
+                ),
+                default="stay",
+            )
+            sheet.exec()
+            if sheet.answer not in ("week", "every"):
+                return
+            every_week = sheet.answer == "every"
+        self.session.delete_block(block["id"], scope=scope, day=day, every_week=bool(every_week))
         self.session.save()
+        if every_week:
+            # Undo takes back this week only, so the toast offers none.
+            self._set_notice(f"Removed {title} from this week and every week after it.", "", None)
+            return
         # The question before deleting promised an undo; this is where it is.
-        self._set_notice(f"Deleted {block.get('title') or 'the event'}.", "Undo", self._undo_from_notice)
+        self._set_notice(f"Deleted {title}.", "Undo", self._undo_from_notice)
 
     def _school_hours(self) -> None:
         """School's days and times, asked as setup asks them: the student's School if they have one,
@@ -2553,9 +2803,10 @@ class NativeWindow(QMainWindow):
         made = dialog.block()
         if made is not None:
             self.session.add_block(made)
+            self.session.stand_open_week()
             self.session.save()
         elif school is not None:
-            self._delete_block(school, "series", None)
+            self._delete_block(school, "series", None, every_week=True)
 
     def _add_now(self) -> None:
         """Add adds homework, or the type picked in its menu for a drag, which the button then names."""
@@ -2604,11 +2855,64 @@ class NativeWindow(QMainWindow):
             self.session.week_start, self.session.blocks, self.session.assignments, self.session.trace
         )
         today, minute = self._clock_in_week()
+        self._sync_week_access_list(week)
         self.week_table.set_week(week, today, minute)
         self.day_view.set_day(week, date.fromisoformat(self.session.selected_day).weekday(), today, minute)
         self.rail.set_week(week, today, minute, self.session.assignments)
         self.month_grid.set_unsaved(self.session.unsaved_weeks())
         self.month_grid.set_week(week)
+
+    def _sync_week_access_list(self, week) -> None:
+        selected = self.week_access_list.currentItem()
+        selected_key = selected.data(Qt.ItemDataRole.UserRole) if selected is not None else None
+        self.week_access_list.clear()
+        for day in range(7):
+            items = sorted(week.on_day(day), key=lambda item: (item.start, item.end, item.title))
+            if not items:
+                words = f"{DAY_FULL[day]}: nothing planned"
+                row = QListWidgetItem(words)
+                self.week_access_list.addItem(row)
+                continue
+            for occurrence in items:
+                drawn = Drawn(
+                    occurrence.block_id,
+                    occurrence.title,
+                    occurrence.category,
+                    occurrence.work,
+                    Span(day, occurrence.start, occurrence.end),
+                    0,
+                    1,
+                    done=occurrence.done,
+                    missed=occurrence.missed,
+                    pinned=occurrence.pinned,
+                )
+                detail = drawn.detail
+                if not occurrence.work:
+                    detail += " · Fixed time"
+                elif occurrence.due and occurrence.due < self.session.week_start and not occurrence.done:
+                    detail += " · Unfinished from last week"
+                words = f"{DAY_FULL[day]}: {occurrence.title}, {detail}"
+                row = QListWidgetItem(words)
+                row.setData(Qt.ItemDataRole.UserRole, (occurrence.block_id, day))
+                self.week_access_list.addItem(row)
+        self.week_access_list.setVisible(self.session.planner_view == "week" and not self._day_mode)
+        if selected_key is not None:
+            for index in range(self.week_access_list.count()):
+                row = self.week_access_list.item(index)
+                if row.data(Qt.ItemDataRole.UserRole) == selected_key:
+                    self.week_access_list.setCurrentRow(index)
+                    break
+
+    def _focus_week_access_list(self) -> None:
+        if self.week_access_list.isVisible():
+            self.week_access_list.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def _week_access_activate(self, row: QListWidgetItem) -> None:
+        target = row.data(Qt.ItemDataRole.UserRole)
+        if target is not None:
+            block_id, day = target
+            self.session.select_block(block_id, day)
+            self._edit_block(block_id)
 
     def _where(self) -> tuple:
         """What the planner is showing: a held block belongs to this, and to nothing else."""
@@ -2775,6 +3079,10 @@ class NativeWindow(QMainWindow):
         """Words with one thing to do about them, such as Undo, in the toast."""
         self._notice_step = None
         self.toast.show_message(text, button, callback)
+        if button == "Undo":
+            self._undo_at = time.monotonic()
+            focus = QApplication.focusWidget()
+            self._undo_button = focus.objectName() if focus is not None else ""
 
     def _first_placed(self) -> tuple[str, int, int] | None:
         """The block the plan placed first: its id, the day it is on and where it starts."""
@@ -2817,9 +3125,18 @@ class NativeWindow(QMainWindow):
         # The answer to Plan my homework, so no later status is taken for it.
         self._telling = False
         self._set_notice(said, "Undo", self._undo_from_notice)
+        # Plan caused this Undo, even when the click has already moved the keyboard.
+        self._undo_button = "solveButton"
+        self._undo_at = time.monotonic()
         self._sync_undo_enabled()
         self._notice_step = self.session.last_step()
-        self._focus_week(self._first_placed())
+        # The week redraws in this same turn and can take the keyboard (a Clay day header, or More
+        # on Dial). Focusing on the next turn lands after that.
+        self._focus_placed = self._first_placed()
+        QTimer.singleShot(0, self, self._focus_after_plan)
+
+    def _focus_after_plan(self) -> None:
+        self._focus_week(getattr(self, "_focus_placed", None))
 
     def _on_plan_conflicts(self, lost: list) -> None:
         if not lost:
@@ -2950,7 +3267,15 @@ class NativeWindow(QMainWindow):
         clock = clock_parts(self.session.now_ms())
         today = clock["day"] if monday_of(clock["iso"]) == self.session.week_start else None
         dialog = ChooseTimeDialog(
-            self, block, self.session.week_start, days, self.session.blocks, due, today, clock["minute"]
+            self,
+            block,
+            self.session.week_start,
+            days,
+            self.session.blocks,
+            due,
+            today,
+            clock["minute"],
+            now=(clock["iso"], int(clock["minute"])),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -3054,6 +3379,10 @@ class NativeWindow(QMainWindow):
     def _delete_from_block_menu(self, block: dict, assignment: dict | None, on: int | None) -> None:
         if assignment is None:
             one_day = is_series(block) and on is not None
+            if is_setup_block(block) and not (one_day and len(block.get("days") or []) > 1):
+                # _delete_block asks this week or every week.
+                self._delete_block(block, "occurrence" if one_day else "series", on)
+                return
             name = (block.get("title") or "this event") + (f" on {DAY_FULL[on]}" if one_day else "")
             if confirm(self, "Delete event", f"Delete {name}? You can undo this.", "Delete"):
                 self._delete_block(block, "occurrence" if one_day else "series", on)
@@ -3253,18 +3582,52 @@ class NativeWindow(QMainWindow):
     def _collapse_unfinished(self) -> None:
         self._unfinished_introduced = True
         self._unfinished_opened = False
-        items = self.session.unfinished()
+        items = self._unfinished_items()
         if items:
             self._sync_unfinished_badge(items)
 
     def _open_unfinished_from_badge(self) -> None:
-        items = self.session.unfinished()
+        items = self._unfinished_items()
         if not items:
             self.unfinished_badge.hide()
             return
         self.unfinished_badge.hide()
-        self.unfinished_panel.set_items(items)
+        self._fill_unfinished(items)
         self._unfinished_opened = True
+
+    def _unfinished_items(self, items: list[dict] | None = None) -> list[dict]:
+        """Unfinished homework: late, or left in an earlier week whether or not it is due yet (1b).
+        Asked with the session's own clock, so the app and its tests agree."""
+        found = self.session.unfinished() if items is None else items
+        now = datetime.fromtimestamp(self.session.now_ms() / 1000)
+        keep = {item["id"] for item in overdue_unfinished(found, now)}
+        keep |= {item["id"] for item in self.session.left_unfinished()}
+        return [item for item in found if item["id"] in keep]
+
+    def _fill_unfinished(self, items: list[dict]) -> None:
+        self.unfinished_panel.set_items(
+            items, datetime.fromtimestamp(self.session.now_ms() / 1000), {item["id"] for item in items}
+        )
+
+    def _sync_left_chip(self) -> None:
+        """Shown once Plan was asked for in this week, while homework from an earlier week waits."""
+        asked = self.session.plan_asked_week == self.session.week_start
+        left = self.session.left_unfinished() if asked else []
+        words = f"{len(left)} unfinished from last week"
+        self.left_chip_text.setText(words)
+        self.left_chip.setAccessibleName(words)
+        self.left_chip.setVisible(bool(left))
+
+    def _plan_left(self) -> None:
+        self.session.plan_left([item["id"] for item in self.session.left_unfinished()])
+
+    def _did_left(self) -> None:
+        left = self.session.left_unfinished()
+        if not left:
+            return
+        self.session.did_these([item["id"] for item in left])
+        words = left[0]["title"] if len(left) == 1 else f"{len(left)} homework"
+        self._set_notice(f"Marked {words} finished.", "Undo", self._undo_from_notice)
 
     def _copy_last_week_fixed(self) -> None:
         def offer(rows: list[dict] | None) -> None:
@@ -3281,11 +3644,11 @@ class NativeWindow(QMainWindow):
         self.session.copy_last_week_fixed_rows(offer)
 
     def _show_unfinished(self) -> None:
-        items = overdue_unfinished(self.session.unfinished())
+        items = self._unfinished_items()
         if not items:
             self.session._say(NOTHING_UNFINISHED)
         self.unfinished_badge.hide()
-        self.unfinished_panel.set_items(items)
+        self._fill_unfinished(items)
         self._unfinished_opened = bool(items)
 
     def _plan_unfinished(self, assignment_id: str) -> None:
@@ -3407,12 +3770,28 @@ class NativeWindow(QMainWindow):
             widget.setVisible(shown)
 
     def _recover_account(self) -> None:
+        self._refresh_auth_problems(focus=True, mode=RESET)
+        if self._recovery_problem():
+            return
         self.session.keep_signed_in = self.keep_signed_in.isChecked()
         self.session.recover(
             self.username.text().strip(),
             self.recovery_code.text().strip(),
             self.new_recovery_password.text(),
         )
+
+    def _recovery_problem(self) -> str:
+        password = self.new_recovery_password.text()
+        if not self.username.text().strip():
+            return "Type your username."
+        if not self.recovery_code.text().strip():
+            return "Enter a recovery code."
+        if not password:
+            return "Choose a password with at least 12 characters."
+        if len(password) < 12:
+            remaining = 12 - len(password)
+            return f"Add {remaining} more characters. Passwords need at least 12."
+        return ""
 
     def _start_focus(self, block_id: str, day: object) -> None:
         if self.session.start_focus(block_id or None, day if isinstance(day, int) else None):
@@ -3814,13 +4193,24 @@ class NativeWindow(QMainWindow):
         page.setup_requested.connect(self._run_setup_again)
         page.closed.connect(self._close_settings)
         stored = page.updates()
+        sending: dict | None = None
         login = bool(stored["start_at_login"])
 
         def save() -> None:
-            nonlocal stored
+            nonlocal sending
             wanted = page.updates()
-            if wanted != stored and self.session.save_preferences(wanted):
-                stored = wanted
+            if wanted != stored and wanted != sending:
+                sending = wanted
+                if not self.session.save_preferences(wanted, lambda kept: remember(wanted, kept)):
+                    sending = None
+
+        def remember(saved: dict, kept: bool) -> None:
+            # Only the server's answer makes a value stored: a request that failed leaves the page
+            # still holding a change to send again when Settings close.
+            nonlocal stored, sending
+            sending = None
+            if kept:
+                stored = saved
 
         def apply() -> None:
             nonlocal login
@@ -3862,6 +4252,10 @@ class NativeWindow(QMainWindow):
             if keep:
                 save()
 
+        def save_now() -> None:
+            saver.stop()
+            save()
+
         saver = QTimer(page)
         saver.setSingleShot(True)
         saver.setInterval(SETTINGS_SAVE_MS)
@@ -3869,6 +4263,8 @@ class NativeWindow(QMainWindow):
         page.changed.connect(apply)
         self._settings = page
         self._settings_finish = finish
+        self._settings_save = save_now
+        self._settings_unsaved = lambda: page.updates() != stored
         self._stack.addWidget(page)
         ctx = current()
         if ctx is not None:
@@ -3902,6 +4298,7 @@ class NativeWindow(QMainWindow):
         if page is None:
             return
         self._settings, self._settings_finish = None, None
+        self._settings_save = self._settings_unsaved = None
         if finish is not None:
             finish(False)
         self._stack.removeWidget(page)
@@ -4007,16 +4404,16 @@ class NativeWindow(QMainWindow):
         elif dialog.action == "export":
             self.session.export_account(password, self._write_account_file)
         elif dialog.action == "import":
-            path, _ = QFileDialog.getOpenFileName(self, "Import account", "", "JSON (*.json)")
+            path, _ = QFileDialog.getOpenFileName(self, "Import backup file", "", "JSON (*.json)")
             if not path:
                 return
             try:
                 snapshot = json.loads(Path(path).read_text())
-            except (OSError, UnicodeDecodeError, ValueError) as error:
-                self.session._say("Could not read that file. " + str(error))
+            except (OSError, UnicodeDecodeError, ValueError):
+                self.session._say(READ_FAILED)
                 return
             if not isinstance(snapshot, dict):
-                self.session._say("Choose a FlexWeek account transfer file.")
+                self.session._say(READ_FAILED)
                 return
             self.session.preview_account_import(snapshot, self._confirm_transfer)
         elif dialog.action == "week":
@@ -4034,22 +4431,18 @@ class NativeWindow(QMainWindow):
                 return
             try:
                 raw = Path(path).read_text()
-            except (OSError, UnicodeDecodeError) as error:
-                self.session._say("Could not read that file. " + str(error))
+            except (OSError, UnicodeDecodeError):
+                self.session._say(READ_FAILED)
                 return
             parsed = parse_import_payload(raw)
             if parsed.get("error"):
                 self.session._say(parsed["error"])
                 return
             if parsed.get("format") == EXPORT_FORMAT and self.session.blocks:
-                answer = QMessageBox.question(
-                    self,
-                    "Replace week",
-                    "Replace blocks in "
-                    + week_label(self.session.week_start, self._today())
-                    + " with the import? Other weeks stay untouched.",
+                question = REPLACE_WEEK_QUESTION.format(
+                    week=week_label(self.session.week_start, self._today())
                 )
-                if answer != QMessageBox.StandardButton.Yes:
+                if not confirm(self, "Replace week", question, "Replace week"):
                     return
                 self.session.import_week_file(raw, replace=True)
             else:
@@ -4075,8 +4468,8 @@ class NativeWindow(QMainWindow):
             return
         try:
             Path(path).write_text(json.dumps(payload, indent=2) + "\n")
-        except OSError as error:
-            self.session._say("Could not write that file. " + str(error))
+        except OSError:
+            self.session._say(WRITE_FAILED)
 
     def _look_path(self) -> Path:
         root = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation))
@@ -4251,10 +4644,86 @@ class NativeWindow(QMainWindow):
         self.activateWindow()
 
     def quit_app(self) -> None:
+        if self._save_before_leaving(self._quit_now):
+            self._quit_now()
+
+    def _quit_now(self) -> None:
         self._quitting = True
         if self._tray_icon is not None:
             self._tray_icon.hide()
         QApplication.quit()
+
+    def _settings_unsent(self) -> bool:
+        """Settings are open with a change the server does not have yet."""
+        page = self._settings
+        if page is None or self._stack.currentWidget() is not page or self._settings_unsaved is None:
+            return False
+        return self._settings_unsaved()
+
+    def _save_before_leaving(self, leave: Callable[[], None]) -> bool:
+        """Leave once what is unsaved has reached the server. Returns True when there was nothing to
+        wait for and `leave` has not been called; otherwise it saves in the background and calls
+        `leave` when done, or stays open and says so when the save fails or takes too long."""
+        session = self.session
+        if self._leaving is not None:
+            return False
+        if session.account is None or not (
+            self._settings_unsent() or session._held() or session.parked_unsaved_week()
+        ):
+            return True
+        timer = QTimer(self)
+        timer.setInterval(LEAVE_POLL_MS)
+        self._leaving = timer
+        tried = {"settings": False, "week": False}
+        waited = 0
+
+        def stop() -> None:
+            timer.stop()
+            timer.deleteLater()
+            self._leaving = None
+
+        def give_up() -> None:
+            stop()
+            session._say("Not saved, so FlexWeek is still open. Your changes are still here.")
+            self.restore_window()
+
+        def poll() -> None:
+            nonlocal waited
+            waited += LEAVE_POLL_MS
+            if waited > LEAVE_WAIT_MS:
+                give_up()
+                return
+            if session.busy:
+                return
+            if self._settings_unsent():
+                if tried["settings"] or self._settings_save is None:
+                    give_up()
+                    return
+                tried["settings"] = True
+                self._settings_save()
+                return
+            if session._held():
+                if tried["week"]:
+                    give_up()
+                    return
+                tried["week"] = True
+                session.save()
+                return
+            parked = session.parked_unsaved_week()
+            if parked is not None:
+                tried["week"] = False
+                session.load_week(parked)
+                return
+            stop()
+            self._saved_to_leave = True
+            try:
+                leave()
+            finally:
+                self._saved_to_leave = False
+
+        timer.timeout.connect(poll)
+        timer.start()
+        return False
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
         """Qt gives a right-click's context menu to the widget under the pointer only when the pointer
@@ -4292,13 +4761,18 @@ class NativeWindow(QMainWindow):
                     4000,
                 )
             return
+        if not self._saved_to_leave and not self._save_before_leaving(self.close):
+            event.ignore()
+            return
         super().closeEvent(event)
 
-    def _week_surfaces(self) -> list[HoursCanvas]:
+    def _week_surfaces(self) -> list:
         page = self.planner.currentWidget()
         if page is None or self._stack.currentWidget() is not self._week_page:
             return []
-        return [hours for hours in page.findChildren(HoursCanvas) if hours.isVisible()]
+        # The design's own order: Clay's front card first, and Dial's ring, which is not an hours canvas.
+        found = page.hours_surfaces() if hasattr(page, "hours_surfaces") else page.findChildren(HoursCanvas)
+        return [hours for hours in found if hours.isVisible() and hasattr(hours, "take_focus")]
 
     def _focus_week(self, placed: tuple[str, int, int] | None = None) -> None:
         """Keyboard focus back on the week: on `placed` (a block's id, day and start) when it is shown,
@@ -4452,6 +4926,23 @@ class NativeWindow(QMainWindow):
         super().keyPressEvent(event)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self.week_access_list and event.type() in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
+            opened = event.type() == QEvent.Type.FocusIn
+            self.week_access_list.setMaximumHeight(WEEK_LIST_OPEN if opened else WEEK_LIST_FOLDED)
+        if watched is self.week_access_list and event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            if key == Qt.Key.Key_Menu or (
+                key == Qt.Key.Key_F10 and event.modifiers() == Qt.KeyboardModifier.ShiftModifier
+            ):
+                row = self.week_access_list.currentItem()
+                target = row.data(Qt.ItemDataRole.UserRole) if row is not None else None
+                if target is not None:
+                    block_id, day = target
+                    point = self.week_access_list.mapToGlobal(
+                        self.week_access_list.visualItemRect(row).center()
+                    )
+                    self._block_menu(block_id, day, point)
+                return True
         if event.type() == QEvent.Type.Resize and watched in (self.week_table, self.day_view):
             self._center_empty_card()
         if event.type() in (QEvent.Type.Show, QEvent.Type.Hide) and watched in (

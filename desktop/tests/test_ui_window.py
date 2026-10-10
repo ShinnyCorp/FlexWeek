@@ -11,6 +11,7 @@ import importlib.util
 import os
 import time
 from collections.abc import Callable, Iterator
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -162,6 +163,9 @@ def test_the_block_editor_saves_any_minute_and_shows_it_back(
     qapp: QApplication, window: NativeWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """18:37 to 19:22 was taken by the editor and refused by the server after Save."""
+    # A start before now is refused, so the clock sits at the start of the open week, where Monday is ahead.
+    opened = datetime.fromisoformat(window.session.week_start)
+    window.session.now_ms = lambda: int(opened.timestamp() * 1000)
     saved(qapp, window, soccer())
     dialog = BlockDialog(window, soccer())
 
@@ -232,8 +236,9 @@ def test_creating_an_account_shows_password_length_before_submit(qapp: QApplicat
         window.findChild(QPushButton, "createAccount").click()
         qapp.processEvents()
         assert window.session.account is None
-        assert "12" in window.auth_status.text()
-        assert "password" in window.auth_status.text().lower()
+        assert window.password_problem.isVisible()
+        assert "12" in window.password_problem.text.text()
+        assert "password" in window.password_problem.text.text().lower()
     finally:
         with contextlib.suppress(RuntimeError):
             window.session.client.reset()

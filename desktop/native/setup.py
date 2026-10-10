@@ -1712,6 +1712,8 @@ class SetupPage(QWidget):
     def _skip_all(self) -> None:
         if self._step in LOOK_STEPS:
             self._restore_entered()
+        elif self._step == WEEK:
+            self._show_clock(self._state.preferences.get("clock_24h") is True)
         self.finished.emit()
 
     def _leave(self, destination: int, keep: bool) -> None:

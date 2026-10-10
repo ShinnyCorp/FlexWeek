@@ -321,6 +321,13 @@ def is_setup_block(block: dict) -> bool:
     return bool(flexweek_engine.calendar_setup_block(json.dumps(block)))
 
 
+def past_problem(
+    week_start: str, day: int, start_min: int, now_iso: str, now_min: int
+) -> str | None:
+    """Why this start is already over, or None. `now_iso` and `now_min` are the local date and minute."""
+    return flexweek_engine.calendar_past_problem(week_start, day, start_min, now_iso, now_min)
+
+
 def span_problem(
     blocks: list[dict],
     block_id: str,

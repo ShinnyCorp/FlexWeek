@@ -44,6 +44,28 @@ pub fn phase_duration_ms(phase: &Value, prefs: &Value) -> EngineResult<i128> {
     Ok(minutes * 60_000)
 }
 
+/// The length the running work phase began with, in minutes. A timer length changed in Settings
+/// applies to the next work phase, so it must not change this one's credit (0.19.0 audit finding 9).
+/// A state saved before 0.19.0 has none and falls back to the preference.
+pub fn work_minutes(state: &Value, prefs: &Value) -> EngineResult<i128> {
+    if let Some(Value::Number(kept)) = get(state, "workMin")?
+        && let Some(minutes) = kept.as_i64()
+        && minutes > 0
+    {
+        return Ok(i128::from(minutes));
+    }
+    Ok(phase_duration_ms(&json!("work"), prefs)? / 60_000)
+}
+
+/// How long the phase the state is in was set to run, for the ring and the minutes spent.
+pub fn phase_total_ms(state: &Value, prefs: &Value) -> EngineResult<i128> {
+    let phase = get(state, "phase")?.unwrap_or(null());
+    if eq(phase, &json!("work")) {
+        return Ok(work_minutes(state, prefs)? * 60_000);
+    }
+    phase_duration_ms(phase, prefs)
+}
+
 pub fn format_countdown(milliseconds: i64) -> String {
     let seconds = ((i128::from(milliseconds) + 999).div_euclid(1000)).max(0);
     format!(
@@ -95,7 +117,7 @@ pub fn persist_payload(state: &Value) -> EngineResult<Option<Value>> {
     let field = |name: &str| -> EngineResult<Value> {
         Ok(get(state, name)?.cloned().unwrap_or(Value::Null))
     };
-    Ok(Some(json!({
+    let mut payload = json!({
         "assignmentId": field("assignmentId")?,
         "sessionId": field("blockId")?,
         "weekStart": field("weekStart")?,
@@ -105,7 +127,19 @@ pub fn persist_payload(state: &Value) -> EngineResult<Option<Value>> {
         "cycles": int_json(to_int(&or_default(get(state, "cycles")?, json!(0)))?),
         "endsAt": if running { field("endsAt")? } else { Value::Null },
         "remainingMs": if running { Value::Null } else { field("remainingMs")? },
-    })))
+    });
+    keep_work_minutes(state, &mut payload)?;
+    Ok(Some(payload))
+}
+
+/// Carries the running work phase's own length from one shape of the focus state to another.
+fn keep_work_minutes(from: &Value, into: &mut Value) -> EngineResult<()> {
+    if let Some(kept) = get(from, "workMin")?.filter(|value| !value.is_null())
+        && let Value::Object(fields) = into
+    {
+        fields.insert("workMin".into(), kept.clone());
+    }
+    Ok(())
 }
 
 fn text_or_none(value: Option<&Value>) -> Value {
@@ -203,6 +237,7 @@ pub fn restore_state(
         fields.insert("remainingMs".into(), json!(0));
         fields.insert("expired".into(), json!(true));
     }
+    keep_work_minutes(saved, &mut state)?;
     Ok(Some(state))
 }
 
@@ -214,6 +249,7 @@ pub fn begin_state(target: &Value, prefs: &Value, now_ms: i64) -> EngineResult<V
     state.insert("running".into(), json!(true));
     state.insert("remainingMs".into(), int_json(duration));
     state.insert("endsAt".into(), int_json(i128::from(now_ms) + duration));
+    state.insert("workMin".into(), int_json(duration / 60_000));
     Ok(Value::Object(state))
 }
 
@@ -259,6 +295,9 @@ pub fn set_phase(state: &Value, phase: &Value, prefs: &Value, now_ms: i64) -> En
     next.insert("running".into(), json!(true));
     next.insert("remainingMs".into(), int_json(duration));
     next.insert("endsAt".into(), int_json(i128::from(now_ms) + duration));
+    if eq(phase, &json!("work")) {
+        next.insert("workMin".into(), int_json(duration / 60_000));
+    }
     Ok(Value::Object(next))
 }
 
@@ -473,5 +512,74 @@ mod tests {
             "endsAt": 10000, "assignmentId": "a1"});
         let result = restore_state(&saved, &json!({"a1": null}), &json!([]), 5000);
         assert!(matches!(result, Ok(None)), "{result:?}");
+    }
+
+    #[test]
+    fn a_work_phase_keeps_the_length_it_began_with() {
+        let thirty = json!({"timer_work_min": 30});
+        let sixty = json!({"timer_work_min": 60});
+        let begun = begin_state(&json!({"blockId": "b1"}), &thirty, 0).unwrap();
+        assert_eq!(
+            work_minutes(&begun, &sixty).unwrap(),
+            30,
+            "a later preference must not change it"
+        );
+        assert_eq!(phase_total_ms(&begun, &sixty).unwrap(), 30 * 60_000);
+        let paused = pause_state(&begun, 1000).unwrap();
+        assert_eq!(
+            work_minutes(&paused, &sixty).unwrap(),
+            30,
+            "kept through a pause"
+        );
+        let next = set_phase(&paused, &json!("work"), &sixty, 2000).unwrap();
+        assert_eq!(
+            work_minutes(&next, &thirty).unwrap(),
+            60,
+            "a new work phase takes the new length"
+        );
+        let resting = set_phase(
+            &next,
+            &json!("break"),
+            &json!({"timer_break_min": 10}),
+            3000,
+        )
+        .unwrap();
+        assert_eq!(
+            phase_total_ms(&resting, &json!({"timer_break_min": 10})).unwrap(),
+            10 * 60_000
+        );
+    }
+
+    #[test]
+    fn a_saved_focus_state_carries_its_work_length_across_a_restart() {
+        let begun = begin_state(
+            &json!({"weekStart": "2026-09-28"}),
+            &json!({"timer_work_min": 45}),
+            0,
+        )
+        .unwrap();
+        let saved = persist_payload(&begun).unwrap().unwrap();
+        assert_eq!(saved["workMin"], json!(45));
+        let back = restore_state(&saved, &json!({}), &json!([]), 1000)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            work_minutes(&back, &json!({"timer_work_min": 20})).unwrap(),
+            45
+        );
+    }
+
+    #[test]
+    fn a_state_from_before_the_kept_length_falls_back_to_the_preference() {
+        let old = json!({"phase": "work"});
+        assert_eq!(
+            work_minutes(&old, &json!({"timer_work_min": 25})).unwrap(),
+            25
+        );
+        let odd = json!({"phase": "work", "workMin": true});
+        assert_eq!(
+            work_minutes(&odd, &json!({"timer_work_min": 25})).unwrap(),
+            25
+        );
     }
 }

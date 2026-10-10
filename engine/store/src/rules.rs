@@ -11,7 +11,7 @@ use serde_json::{Map, Value, json};
 
 use crate::{
     StoreError, StoreResult, assignment_exists, capture_account, count_assignments, digest,
-    insert_assignment, insert_restore_point, load_assignment_rows,
+    insert_assignment, insert_restore_point, load_assignment_rows, standing_rows,
 };
 
 /// Either the rule failed, or the function it called did, and that failure goes back untouched.
@@ -420,9 +420,12 @@ pub fn create_restore_point(
             "revision": item["revision"],
         }));
     }
+    // The standing week goes in too, so a restore brings back the School and activities that
+    // stood then; points made before 0.19.0 have no `standing` and a restore leaves it alone.
+    let standing = parse_stored(&standing_rows(conn, user_id)?)?;
     let point_id = format!("rp-{token}");
     let (week_count, assignment_count) = (weeks.len() as i64, assignments.len() as i64);
-    let snapshot = json!({"weeks": weeks, "assignments": assignments});
+    let snapshot = json!({"weeks": weeks, "assignments": assignments, "standing": standing});
     let mut protected: Vec<String> = keep_ids.to_vec();
     if !protected.contains(&point_id) {
         protected.push(point_id.clone());
@@ -877,7 +880,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             body,
-            r#"{"assignments":[{"body":{"title":"T"},"id":"hw","revision":1}],"weeks":[{"blocks":[{"id":"a"}],"revision":2,"week_start":"2026-09-07"}]}"#
+            r#"{"assignments":[{"body":{"title":"T"},"id":"hw","revision":1}],"standing":[],"weeks":[{"blocks":[{"id":"a"}],"revision":2,"week_start":"2026-09-07"}]}"#
         );
         let keep = ["rp-one".to_string()];
         create_restore_point(&conn, 1, "two", "Two", "2026-10-02T10:01", &[], 2).unwrap();

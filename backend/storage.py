@@ -16,7 +16,8 @@ SESSION_SECONDS = flexweek_engine.SESSION_SECONDS
 # reaches every account once and a choice made after it is never undone by it.
 # 1: reminders on (0.15). Setup never asked, so they were off for everyone who had not turned them on.
 # 2: a 12-hour clock for new accounts (0.18.5). Every older account that never chose is stamped 24-hour.
-PREFS_VERSION = 2
+# 3: the standing week (0.19.0), built once from the Setup blocks an older account's weeks hold.
+PREFS_VERSION = 3
 
 
 def digest(value: str) -> str:
@@ -203,6 +204,16 @@ class Connection(Protocol):
     def week_blocks(self, user_id: int, week_start: str, /) -> str | None: ...
 
     def week_starts(self, user_id: int, /) -> list[str]: ...
+
+    def week_with_standing(self, user_id: int, week_start: str, blocks: str, /) -> str: ...
+
+    def set_standing(self, user_id: int, from_week: str, blocks: str, /) -> list[str]: ...
+
+    def standing_rows(self, user_id: int, /) -> str: ...
+
+    def replace_standing(self, user_id: int, rows: str, /) -> None: ...
+
+    def adopt_standing(self, user_id: int, /) -> None: ...
 
     def assignment_body(self, user_id: int, assignment_id: str, /) -> str | None: ...
 

@@ -37,9 +37,17 @@ def press(qapp: QApplication, window: NativeWindow, name: str, username: str, pa
     window.password.setText(password)
     window.session._say("")
     wanted.click()
-    answered = lambda: bool(window.auth_status.text() or window.auth_error.isVisibleTo(window))  # noqa: E731
+    answered = lambda: bool(  # noqa: E731
+        window.auth_status.text()
+        or window.username_problem.text.text()
+        or window.password_problem.text.text()
+    )
     wait_until(qapp, lambda: not window.session.busy and answered())
-    return window.auth_status.text() or window.auth_error_text.text()
+    return (
+        window.auth_status.text()
+        or window.username_problem.text.text()
+        or window.password_problem.text.text()
+    )
 
 
 @pytest.fixture()
@@ -50,7 +58,7 @@ def returning(qapp: QApplication, window: NativeWindow) -> NativeWindow:  # noqa
     return window
 
 
-WRONG = "Wrong username or password."
+WRONG = "Wrong username or password. Try again, or choose Forgot password."
 
 
 @pytest.mark.parametrize(
@@ -63,7 +71,7 @@ WRONG = "Wrong username or password."
         (
             USERNAME,
             "short",
-            "That password is too short to be right. FlexWeek passwords have 12–128 characters.",
+            "That isn't your password. FlexWeek passwords have at least 12 characters.",
         ),
         (
             "has spaces",
@@ -96,10 +104,10 @@ def test_sign_in_says_when_flexweek_cannot_be_reached(
 @pytest.mark.parametrize(
     ("username", "password", "said"),
     [
-        ("new_student", "", "Choose a password. It needs 12–128 characters."),
-        ("new_student", "short", "That password is too short. It needs at least 12 characters."),
-        ("", PASSWORD, "Choose a username: 3–32 letters, numbers or underscores."),
-        (USERNAME, PASSWORD, "That username is taken. Choose another one."),
+        ("new_student", "", "Choose a password with at least 12 characters."),
+        ("new_student", "short", "Add 7 more characters. Passwords need at least 12."),
+        ("", PASSWORD, "Choose a username."),
+        (USERNAME, PASSWORD, "That username is taken. Try another."),
     ],
 )
 def test_sign_up_says_what_went_wrong(
@@ -221,13 +229,13 @@ def test_a_sign_in_error_does_not_follow_onto_reset_your_password(
     returning: NativeWindow,
 ) -> None:
     press(qapp, returning, "signIn", USERNAME, "not-the-right-password")
-    assert returning.auth_error.isVisibleTo(returning)
+    assert returning.password_problem.isVisibleTo(returning)
     returning.findChild(QPushButton, "forgotPassword").click()
     qapp.processEvents()
     assert returning.auth_heading.text() == "Reset your password"
     assert returning.auth_status.text() == ""
     assert not returning.auth_status.isVisible()
-    assert not returning.auth_error.isVisibleTo(returning)
+    assert not returning.password_problem.isVisibleTo(returning)
 
 
 def test_signed_out_does_not_stay_on_reset_your_password(
@@ -256,13 +264,19 @@ def test_a_recovery_error_does_not_follow_back_to_sign_in(
     returning.recovery_code.setText("not-a-code")
     returning.new_recovery_password.setText(PASSWORD)
     returning.findChild(QPushButton, "recoverAccount").click()
-    wait_until(qapp, lambda: not returning.session.busy and bool(returning.auth_status.text()))
-    assert returning.auth_status.text() == "Incorrect username or recovery code."
+    wait_until(
+        qapp,
+        lambda: not returning.session.busy and returning.recovery_code_problem.isVisibleTo(returning),
+    )
+    assert returning.recovery_code_problem.text.text() == (
+        "Wrong username or recovery code. Each code works once; try another one."
+    )
     returning.findChild(QPushButton, "authSwitch").click()
     qapp.processEvents()
     assert returning.auth_heading.text() == "Sign in"
     assert returning.auth_status.text() == ""
     assert not returning.auth_status.isVisible()
+    assert not returning.recovery_code_problem.isVisibleTo(returning)
 
 
 def test_manage_account_password_boxes_have_the_eye_sign_in_has(

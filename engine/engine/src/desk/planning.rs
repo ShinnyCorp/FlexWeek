@@ -750,3 +750,114 @@ mod tests {
         );
     }
 }
+
+fn ceil_slot(minutes: i64) -> i64 {
+    (minutes.max(0) + SLOT_MIN - 1) / SLOT_MIN * SLOT_MIN
+}
+
+/// Item 1c, part C: homework due after this Sunday gets only a fair share of this week. The share is
+/// the minutes it has left from this week on, times the days left in this week from `first_day`,
+/// over the days from `first_day` to its due day; the rest waits for next week's Plan. Worked out from
+/// what is left, not from the session, so planning again never shrinks it further. The `targets`
+/// sessions Plan is about to place are cut to fit the share after any time it already has this week;
+/// one with nothing left to hold is taken out of the week. Returns the week's blocks and, for each
+/// homework cut, `{assignment_id, title, this_week_min, left_min}`.
+pub fn fair_share(
+    blocks: &[Value],
+    assignments: &serde_json::Map<String, Value>,
+    committed: &Value,
+    week_start: &str,
+    first_day: i64,
+    targets: &[String],
+) -> EngineResult<(Vec<Value>, Vec<Value>)> {
+    let monday = from_iso(week_start)?;
+    let id_of = |block: &Value| block.get("id").and_then(Value::as_str).map(str::to_string);
+    let homework_of = |block: &Value| {
+        block
+            .get("assignment_id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
+    let duration = |block: &Value| {
+        block
+            .get("duration_min")
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+    };
+    let mut order: Vec<String> = Vec::new();
+    for block in blocks {
+        if let (Some(id), Some(homework)) = (id_of(block), homework_of(block))
+            && targets.contains(&id)
+            && !order.contains(&homework)
+        {
+            order.push(homework);
+        }
+    }
+    let mut out = blocks.to_vec();
+    let mut notes = Vec::new();
+    for homework in order {
+        let Some(assignment) = assignments.get(&homework) else {
+            continue;
+        };
+        let Some(due) = assignment.get("due").and_then(Value::as_str) else {
+            continue;
+        };
+        let due_offset = (crate::model::parse_due(due)?.0 - monday).num_days();
+        if due_offset <= 6 {
+            continue;
+        }
+        let left = available_homework_minutes(assignment, &json!([]), committed)?;
+        let this_week = 7 - first_day.clamp(0, 6);
+        let all_days = (due_offset - first_day.clamp(0, 6)).max(this_week);
+        let share = ceil_slot((left * this_week + all_days - 1) / all_days).min(left);
+        let held: i64 = out
+            .iter()
+            .filter(|block| {
+                homework_of(block).as_deref() == Some(homework.as_str())
+                    && !id_of(block).is_some_and(|id| targets.contains(&id))
+                    && !block
+                        .get("completed")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+            })
+            .map(duration)
+            .sum();
+        let mut budget = (share - held).max(0);
+        let mut placed = held;
+        let mut cut = false;
+        let mut kept = Vec::with_capacity(out.len());
+        for block in out {
+            let target = homework_of(&block).as_deref() == Some(homework.as_str())
+                && id_of(&block).is_some_and(|id| targets.contains(&id));
+            if !target {
+                kept.push(block);
+                continue;
+            }
+            let wanted = duration(&block);
+            let given = floor_slot(wanted.min(budget));
+            if given < wanted {
+                cut = true;
+            }
+            if given < SLOT_MIN {
+                continue;
+            }
+            budget -= given;
+            placed += given;
+            let mut trimmed = block;
+            if let Some(fields) = trimmed.as_object_mut() {
+                fields.insert("duration_min".into(), json!(given));
+            }
+            kept.push(trimmed);
+        }
+        out = kept;
+        if cut {
+            notes.push(json!({
+                "assignment_id": homework,
+                "title": assignment.get("title").cloned().unwrap_or(Value::Null),
+                "this_week_min": placed,
+                "left_min": (left - placed).max(0),
+            }));
+        }
+    }
+    Ok((out, notes))
+}

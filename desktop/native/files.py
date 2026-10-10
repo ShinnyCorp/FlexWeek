@@ -79,7 +79,8 @@ def _read_import(raw: str) -> tuple[bool, bool, str | None]:
         return True, False, None
     try:
         return False, True, plain(json.loads(text))
-    except ValueError:
+    except (ValueError, RecursionError):
+        # A file nested past what the reader allows is no more a FlexWeek file than bad text is.
         return False, False, None
 
 

@@ -5,9 +5,10 @@ use serde_json::{Value, json};
 
 use crate::{StoreError, StoreResult, defer_write};
 
-const ACCOUNT_TABLES: [&str; 8] = [
+const ACCOUNT_TABLES: [&str; 9] = [
     "sessions",
     "weeks",
+    "standing_blocks",
     "assignments",
     "routines",
     "restore_points",

@@ -5,7 +5,7 @@ mod common;
 use common::desk::{object, with};
 use flexweek_engine::desk::files::{
     EXPORT_VERSION, assignment_input, block_inputs, export_finish, export_rest, import_finish,
-    import_start, merge_imported_blocks, plan_imported_homework,
+    import_start, merge_imported_blocks, migrated_assignment_id, plan_imported_homework,
 };
 use serde_json::{Map, Value, json};
 
@@ -187,6 +187,62 @@ fn test_plan_imported_homework_reuses_matching_ids_and_migrates_the_rest() {
             .starts_with("a-")
     );
     assert_eq!(plan["create"][0]["id"], plan["blocks"][1]["assignment_id"]);
+}
+
+// Audit finding 7: a destination without the source's own id already holds the id the first import
+// derived. Changed homework under the same source id must not be attached to that old body.
+#[test]
+fn test_reimported_homework_reuses_a_derived_id_only_for_the_same_homework() {
+    let week = json!("2026-09-14");
+    let first_id = migrated_assignment_id(&week, &json!("essay"));
+    let first = with(essay(), json!({"id": first_id, "title": "Essay draft"}));
+    let mut held = object(json!({}));
+    held.insert(first_id.clone(), first.clone());
+    let sessions = json!([{"id": "s1", "assignment_id": "essay"}]);
+
+    let changed = with(
+        essay(),
+        json!({"title": "Final essay", "due": "2026-09-19T21:00"}),
+    );
+    let plan = plan_imported_homework(
+        &json!([changed.clone()]),
+        &sessions,
+        &week,
+        &Value::Object(held.clone()),
+    )
+    .expect("a plan");
+    let fresh = plan["blocks"][0]["assignment_id"].clone();
+    assert_ne!(fresh, json!(first_id));
+    assert_eq!(plan["create"].as_array().map(Vec::len), Some(1));
+    assert_eq!(plan["create"][0]["id"], fresh);
+    assert_eq!(plan["create"][0]["title"], "Final essay");
+    assert_eq!(plan["create"][0]["due"], "2026-09-19T21:00");
+
+    // The same changed file again finds the homework the second import made.
+    held.insert(
+        fresh.as_str().expect("an id").to_string(),
+        plan["create"][0].clone(),
+    );
+    let again = plan_imported_homework(
+        &json!([changed]),
+        &sessions,
+        &week,
+        &Value::Object(held.clone()),
+    )
+    .expect("a plan");
+    assert_eq!(again["blocks"][0]["assignment_id"], fresh);
+    assert_eq!(again["create"], json!([]));
+
+    // And the first file still lands on the first import's homework, with nothing new made.
+    let original = plan_imported_homework(
+        &json!([with(essay(), json!({"title": "Essay draft"}))]),
+        &sessions,
+        &week,
+        &Value::Object(held),
+    )
+    .expect("a plan");
+    assert_eq!(original["blocks"][0]["assignment_id"], json!(first_id));
+    assert_eq!(original["create"], json!([]));
 }
 
 #[test]

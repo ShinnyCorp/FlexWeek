@@ -340,6 +340,10 @@ class MonthCard(QWidget):
     def _say(self) -> None:
         month = self.dates.month
         self.title.setText(month_title(month))
+        self.dates.setAccessibleName(f"Month, {month_title(month)}")
+        self.dates.setAccessibleDescription(
+            f"Shows the week beginning {self.dates.week_start}." if self.dates.week_start else ""
+        )
         self.dates.updateGeometry()
         self.dates.update()
 

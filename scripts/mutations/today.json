@@ -184,7 +184,7 @@
  {
   "file": "desktop/native/window.py",
   "name": "Unfinished opens its list",
-  "old": "        self.unfinished_panel.set_items(items)\n        self._unfinished_opened = bool(items)\n",
+  "old": "        self._fill_unfinished(items)\n        self._unfinished_opened = bool(items)\n",
   "new": "        self._unfinished_opened = bool(items)\n",
   "test": "desktop/tests/test_more_menu_words.py::test_unfinished_opens_its_list_in_any_design"
  },

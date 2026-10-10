@@ -702,6 +702,51 @@ impl PyConn {
         })
     }
 
+    fn week_with_standing(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        week_start: &str,
+        blocks: &str,
+    ) -> PyResult<String> {
+        let week_start = week_start.to_string();
+        let blocks = blocks.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::week_with_standing(conn, user_id, &week_start, &blocks)
+        })
+    }
+
+    fn set_standing(
+        &self,
+        py: Python<'_>,
+        user_id: i64,
+        from_week: &str,
+        blocks: &str,
+    ) -> PyResult<Vec<String>> {
+        let from_week = from_week.to_string();
+        let blocks = blocks.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::set_standing(conn, user_id, &from_week, &blocks)
+        })
+    }
+
+    fn standing_rows(&self, py: Python<'_>, user_id: i64) -> PyResult<String> {
+        self.store(py, move |conn| flexweek_store::standing_rows(conn, user_id))
+    }
+
+    fn replace_standing(&self, py: Python<'_>, user_id: i64, rows: &str) -> PyResult<()> {
+        let rows = rows.to_string();
+        self.store(py, move |conn| {
+            flexweek_store::replace_standing(conn, user_id, &rows)
+        })
+    }
+
+    fn adopt_standing(&self, py: Python<'_>, user_id: i64) -> PyResult<()> {
+        self.store(py, move |conn| {
+            flexweek_store::adopt_standing(conn, user_id)
+        })
+    }
+
     fn week_starts(&self, py: Python<'_>, user_id: i64) -> PyResult<Vec<String>> {
         self.store(py, move |conn| flexweek_store::week_starts(conn, user_id))
     }

@@ -282,6 +282,21 @@ fn calendar_span_problem(
 }
 
 #[pyfunction]
+fn calendar_past_problem(
+    week_start: &str,
+    day: i64,
+    start_min: i64,
+    now_iso: &str,
+    now_min: i64,
+) -> PyResult<Option<String>> {
+    guard(|| {
+        let found = grid::past_problem(week_start, day, start_min, now_iso, now_min)
+            .map_err(crate::raise)?;
+        Ok(found.map(str::to_string))
+    })
+}
+
+#[pyfunction]
 fn calendar_span_clash(
     blocks: &str,
     block_id: &str,
@@ -303,6 +318,24 @@ fn focus_phase_ms(phase: &str, prefs: &str) -> PyResult<String> {
     let (phase, prefs) = (parse(phase)?, parse(prefs)?);
     guard(|| {
         let found = focus::phase_duration_ms(&phase, &prefs).map_err(crate::raise)?;
+        Ok(found.to_string())
+    })
+}
+
+#[pyfunction]
+fn focus_work_minutes(state: &str, prefs: &str) -> PyResult<String> {
+    let (state, prefs) = (parse(state)?, parse(prefs)?);
+    guard(|| {
+        let found = focus::work_minutes(&state, &prefs).map_err(crate::raise)?;
+        Ok(found.to_string())
+    })
+}
+
+#[pyfunction]
+fn focus_phase_total_ms(state: &str, prefs: &str) -> PyResult<String> {
+    let (state, prefs) = (parse(state)?, parse(prefs)?);
+    guard(|| {
+        let found = focus::phase_total_ms(&state, &prefs).map_err(crate::raise)?;
         Ok(found.to_string())
     })
 }
@@ -463,6 +496,35 @@ fn reuse_homework(block: &str) -> PyResult<bool> {
 fn reuse_session_days(week_start: &str, due: &str) -> PyResult<Vec<i64>> {
     let due = parse(due)?;
     guard(|| planning::session_days(week_start, &due).map_err(crate::raise))
+}
+
+#[pyfunction]
+fn reuse_fair_share(
+    blocks: &str,
+    assignments: &str,
+    committed: &str,
+    week_start: &str,
+    first_day: i64,
+    targets: Vec<String>,
+) -> PyResult<(String, String)> {
+    let (blocks, assignments, committed) = (parse(blocks)?, parse(assignments)?, parse(committed)?);
+    guard(|| {
+        let blocks = blocks.as_array().cloned().unwrap_or_default();
+        let assignments = assignments.as_object().cloned().unwrap_or_default();
+        let (week, notes) = planning::fair_share(
+            &blocks,
+            &assignments,
+            &committed,
+            week_start,
+            first_day,
+            &targets,
+        )
+        .map_err(crate::raise)?;
+        Ok((
+            serde_json::Value::Array(week).to_string(),
+            serde_json::Value::Array(notes).to_string(),
+        ))
+    })
 }
 
 #[pyfunction]
@@ -1259,9 +1321,12 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         calendar_next_action,
         calendar_setup_block,
         calendar_span_problem,
+        calendar_past_problem,
         calendar_span_clash,
         calendar_category_icon,
         focus_phase_ms,
+        focus_work_minutes,
+        focus_phase_total_ms,
         focus_countdown,
         focus_remaining,
         focus_now,
@@ -1281,6 +1346,7 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         reuse_floor_slot,
         reuse_homework,
         reuse_session_days,
+        reuse_fair_share,
         reuse_planned,
         reuse_planning_days,
         reuse_apply_plan,

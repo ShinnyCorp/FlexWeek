@@ -1,6 +1,20 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-10: v0.19.0 released from `release/0.19.0` (worktree `~/.worktrees/flexweek-0190`, `.venv` is
+  `venv-0190`): the QA handoff's remaining Fix first items and the Codex audit of 0.18.5. School and
+  Setup's activities are a standing week in the store (`standing_blocks`, one row per Setup id and
+  the week it stands from; `/api/changes` takes `standing`; restore points and exports carry it);
+  unfinished homework from earlier weeks shows in More and after Plan; work due after Sunday gets a
+  fair share of this week (`desk/planning.rs` `fair_share`); a time already past is refused (engine
+  `past_problem`); the Undo toast stays at least 10 s and pauses under the pointer; Text size is its own
+  setting in every look; segmented choices are radio buttons for screen readers; account errors sit
+  under their fields; a folded week list for screen readers (Ctrl+Shift+L); 3:1 control edges; the
+  focus phase keeps its own work length in the engine (`workMin`). Audit findings 1, 3-11 fixed; 2
+  (revision reuse after restore/import) waits for the 1.0 sync store. Built by five lane worktrees
+  (Opus, Grok 4.7, GPT-6 Luna, Sonnet, Haiku) and an audit-fix lane, merged and checked by Claude.
+- Tests that pick a day of the current week on the real clock can fail on later weekdays since item
+  2: hold the clock (`grid_support.hold_clock`, `session.now_ms`).
 - 2026-10-10: v0.18.5 on `release/0.18.5` (worktree `~/.worktrees/flexweek-0185`, `.venv` is
   `venv-0185-engine`): roadmap's Consistency and polish. New accounts start on a 12-hour clock
   (`clock_24h`, Rust migration `keep_24_hour_clock` stamps older accounts 24-hour; the desktop
@@ -12,21 +26,6 @@
   (`no_error_is_lost_inside_a_qt_slot`; pass `QTimer.singleShot(0, receiver, fn)`, never a bare
   bound method); `fwtest gate` checks mutation patterns first. Built by Haiku 5.5 and Sonnet 5.5
   lanes, reviewed by Claude.
-- 2026-10-09: v0.18.4 on `release/0.18.4` (worktree `~/.worktrees/flexweek-0184`, `.venv` is
-  `venv-0183-engine`): J14 to J17. Motion moves still pictures on `motion.Clock`, which follows the
-  screen's refresh rate; Settings' design previews wait on `motion.busy()`; a sheet's dim starts at
-  the click (`widgets.dim_window`, `NativeWindow._sheet`) and holds while the sheet is built; Clay's
-  day change crossfades two pictures per card; Retro's Month slides like Settings
-  (`motion.slide_view`). Also: the Timeline notes width under the app's style, the sheet freed when
-  closed mid-fade (`_freeze_page` walks `children()`, never `findChildren()`), the homework
-  fixture's held day, and Settings' status connected once. Version 0.18.4 with its CHANGELOG entry
-  and `docs/release-notes-v0.18.4.md`. Built by Grok, ChatGPT and Sonnet 5.5 subagents, reviewed
-  and fixed by Claude. The time before a sheet's or view's first frame is still 40-75 ms at
-  2560x1400 (roadmap J18, not scheduled).
-- 2026-10-08: v0.18.3 released (PR 44, b105885): batch B and J13 (a style's feel on every page).
-  After it, old lane worktrees, branches and pre-0.18 scratch were deleted on Jonathan's approval
-  (`~/.flexweek-ui-harness/scratch/cleanup-after-0183.md`). CI runs on GitHub-hosted runners
-  (Blacksmith's account verification blocks its runners).
 - Probing motion: `~/.flexweek-ui-harness/scratch/0.18.4/j14/claude-r3/probe_noprof.py` (copy into
   `desktop/tests/` as `test_zz_*.py`, run through fwtest with `-s`; `PROBE_DRAIN=1` waits for
   Settings' design previews, which otherwise land in the timed window; `PROBE_NOPROF=1` for real
@@ -142,13 +141,18 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-10, `release/0.18.5`: lanes 1-9, the engineering lane and the 12-hour sweep merged; 16
-  mutation cases repointed; version, CHANGELOG, `docs/release-notes-v0.18.5.md`, roadmap and spec.md
-  (look editor Start from, dates, the gate's pattern check) written. Release via PR to main on
-  Jonathan's word, `@coderabbitai review`, then `gh release create v0.18.5 --latest`. Afterwards,
-  Branches and Storage: the 0.18.3 release worktree and branch, `lane/0185-eng` and its worktree.
-- Next: 0.19.0 (the QA handoff's Fix first items, about Oct 14-15), then 1.0.0 with the Android
-  companion (Rust core via UniFFI, Kotlin and Compose) and iroh device sync (about Oct 22).
-- Open for Jonathan: the time box's problem card can cover what is under the box until 0g puts the
-  line in the form; Clay and the Day dial were not checked for the keyboard-spot change; Bento's
-  weekend dates, Retro's cut names and the Add menu's swatches against icons.
+- 2026-10-10, `release/0.19.0`: all five lanes and the audit fixes merged; version, CHANGELOG,
+  `docs/release-notes-v0.19.0.md`, roadmap and spec.md (standing week, unfinished from earlier weeks,
+  fair share, past times, the toast, Text size, the week list) written under Jonathan's overnight
+  grant. Released through a PR to main on Jonathan's word. Minor fixes below go into 0.19.1.
+- Next: 1.0.0 with the Android companion (Rust core via UniFFI, Kotlin and Compose) and iroh device
+  sync with background sync on the phone (about Oct 22); plan in
+  `~/.flexweek-ui-harness/scratch/PLAN-0185-to-100.md`.
+- Open for Jonathan: at Large text Retro's window cannot get below 782 px tall (rig week-small-large
+  and day-small-large fail at 1150x768): the hidden sign-in page sets every window's least height,
+  and 0.19.0's taller Reset card pushed it past 768. A fix that lets hidden pages stop sizing the
+  window is saved in `~/.flexweek-ui-harness/scratch/0.19.0/hidden-pages-dont-size-window.patch`; it
+  lets windows shrink to 434-550 px, never laid out before, so it waits for his call (0.19.1).
+- Open for Jonathan: "12:00 AM" for the end of the day on the 12-hour clock (or "midnight"); the
+  shortened sign-in reset note; a series-wide typed start in the past is still allowed (single days
+  are refused); the dated day chips now stack the date under the day.

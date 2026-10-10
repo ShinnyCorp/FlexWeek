@@ -72,7 +72,7 @@
  {
   "file": "desktop/native/look_editor.py",
   "name": "four motion levels wider than the column",
-  "old": "        f'QScrollArea#lookEditorColumn QPushButton[segment=\"true\"] {{ padding: 4px {SPACING[1]}px; }}'",
+  "old": "        f'QScrollArea#lookEditorColumn QRadioButton[segment=\"true\"] {{ padding: 4px {SPACING[1]}px; }}'",
   "new": "        ''",
   "test": "desktop/tests/test_look_editor.py::test_every_group_open_fits_the_column[light]"
  },

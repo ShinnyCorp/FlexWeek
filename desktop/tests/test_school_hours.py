@@ -118,8 +118,9 @@ def test_no_day_ticked_takes_school_off_the_calendar(
     answer(monkeypatch, lambda dialog: dialog.days.set_days([]))
     window.findChild(QPushButton, "schoolHours").click()
     settled(qapp, window)
-    # Before reading back: reloading the week says so, in the same toast.
-    assert window.toast.text() == "Deleted School."
+    # Before reading back: reloading the week says so, in the same toast. School stands in every week
+    # (item 1), so it goes from every week after this one too, and Undo would take back this week only.
+    assert window.toast.text() == "Removed School from this week and every week after it."
     assert read_back(qapp, window) == []
 
 

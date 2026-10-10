@@ -264,6 +264,8 @@ def test_unfinished_is_greyed_when_every_item_is_not_yet_overdue(
     monkeypatch.setattr(widgets_module, "datetime", Clock)
     monkeypatch.setattr(window_module, "datetime", Clock)
     session = window.session
+    # Item 1b: the window asks with the session's own clock.
+    monkeypatch.setattr(session, "now_ms", lambda: int(now.timestamp() * 1000))
     week = date.fromisoformat(session.week_start)
     session.add_block({"id": "school", "title": "School", "kind": "locked", "start": "08:00",
                        "duration_min": 390, "days": [0, 1, 2, 3, 4]})
@@ -299,7 +301,7 @@ def test_about_gives_the_version_what_flexweek_is_and_opens_the_folder_its_data_
     said = [label.text() for label in dialog.findChildren(QLabel) if label.text()]
     assert said == [
         "About FlexWeek",
-        "FlexWeek 0.18.5",
+        "FlexWeek 0.19.0",
         "FlexWeek plans your homework around school, sports and everything else in your week.",
         "Your week is saved on this computer, under this account.",
     ]

@@ -8,6 +8,7 @@ point the native client at another loopback API.
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import json
 import secrets
@@ -18,19 +19,37 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths, QTimer
-from PySide6.QtGui import QIcon, QImage
-from PySide6.QtNetwork import QLocalSocket
-from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
 
-import backend
-from desktop.native.calendar import sunday_due
-from desktop.native.fonts import load_fonts
-from desktop.native.kept import KeptSession
-from desktop.native.setup import DONE as SETUP_DONE
-from desktop.native.window import NativeWindow
-from desktop.origin import configured_origin
-from desktop.server import LocalServer
+def report_missing_part(error: ImportError) -> None:
+    # Qt may be the part that failed, so this uses only the standard library and, on Windows,
+    # the system message box. The Windows build runs without a console, so stderr alone is not seen.
+    message = f"FlexWeek could not start because a part it needs did not load:\n{error}"
+    if sys.platform.startswith("linux"):
+        message += "\nThe Linux libraries section of the README lists what it needs."
+    print(message, file=sys.stderr)
+    if sys.platform == "win32":
+        mb_iconerror = 0x10
+        ctypes.windll.user32.MessageBoxW(None, message, "FlexWeek", mb_iconerror)
+
+
+try:
+    from PySide6.QtCore import QStandardPaths, QTimer
+    from PySide6.QtGui import QIcon, QImage
+    from PySide6.QtNetwork import QLocalSocket
+    from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
+
+    import backend
+    from desktop.native.calendar import sunday_due
+    from desktop.native.fonts import load_fonts
+    from desktop.native.kept import KeptSession
+    from desktop.native.setup import DONE as SETUP_DONE
+    from desktop.native.updater import collect_stale_downloads
+    from desktop.native.window import NativeWindow
+    from desktop.origin import configured_origin
+    from desktop.server import LocalServer
+except ImportError as error:
+    report_missing_part(error)
+    raise SystemExit(1) from error
 
 INSTANCE_WAIT_MS = 500
 SMOKE_FLAG = "--smoke-test"
@@ -234,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("FlexWeek")
     app.setDesktopFileName(DESKTOP_FILE_NAME)
     load_fonts()
+    collect_stale_downloads()
 
     try:
         origin = configured_origin()

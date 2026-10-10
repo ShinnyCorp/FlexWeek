@@ -32,6 +32,14 @@ def phase_duration_ms(phase: str, prefs: dict | None) -> int:
     return int(flexweek_engine.focus_phase_ms(json.dumps(phase), json.dumps(prefs)))
 
 
+def work_minutes(state: dict | None, prefs: dict | None) -> int:
+    return int(flexweek_engine.focus_work_minutes(json.dumps(state), json.dumps(prefs)))
+
+
+def phase_total_ms(state: dict, prefs: dict | None) -> int:
+    return int(flexweek_engine.focus_phase_total_ms(json.dumps(state), json.dumps(prefs)))
+
+
 def format_countdown(milliseconds: int) -> str:
     return str(flexweek_engine.focus_countdown(milliseconds))
 
