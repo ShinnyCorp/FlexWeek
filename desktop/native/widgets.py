@@ -4346,6 +4346,11 @@ class PlanReview(QFrame):
                 said.append(f"{titles.get(item['block_id'], 'Homework')}: {item['message']}")
         for day, total in overfull_days(trace):
             said.append(f"{DAY_FULL[day]} has {length_label(total)} of homework.")
+        for share in trace.get("shares") or []:
+            said.append(
+                f"{share['title']}: {length_label(share['this_week_min'])} this week, "
+                f"{length_label(share['left_min'])} left for next week"
+            )
         return said
 
     def set_trace(

@@ -1,0 +1,9086 @@
+[
+ {
+  "name": "1. Light week",
+  "note": "3 homework items, Monday-morning plan.",
+  "now": [
+   0,
+   "07:00"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "a",
+    "title": "Math worksheet",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "b",
+    "title": "English reading",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "c",
+    "title": "Spanish vocab",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   }
+  ]
+ },
+ {
+  "name": "2. Normal week",
+  "note": "School, soccer Tue/Thu, Sat job, 8 items 30-180 min.",
+  "now": [
+   0,
+   "07:00"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "calc",
+    "title": "Calculus problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "hist",
+    "title": "History essay",
+    "kind": "flexible",
+    "duration_min": 180,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "chem",
+    "title": "Chemistry lab write-up",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "eng",
+    "title": "English reading ch. 5-7",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "span",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "bio",
+    "title": "Study for Bio quiz",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "cs",
+    "title": "CS project",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "phys",
+    "title": "Physics problems",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   }
+  ]
+ },
+ {
+  "name": "3. Heavy week",
+  "note": "22 items, mixed lengths and due dates.",
+  "now": [
+   0,
+   "07:00"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "h00",
+    "title": "Math reading",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h01",
+    "title": "History study for quiz",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h02",
+    "title": "English problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 2,
+    "energy": "low",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h03",
+    "title": "Chemistry lab write-up",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h04",
+    "title": "Spanish reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h05",
+    "title": "Physics study for quiz",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h06",
+    "title": "Biology problem set",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h07",
+    "title": "CS study for quiz",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h08",
+    "title": "Math reading",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 1,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h09",
+    "title": "History reading",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h10",
+    "title": "English essay draft",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h11",
+    "title": "Chemistry lab write-up",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h12",
+    "title": "Spanish project work",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h13",
+    "title": "Physics lab write-up",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h14",
+    "title": "Biology study for quiz",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h15",
+    "title": "CS essay draft",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h16",
+    "title": "Math essay draft",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h17",
+    "title": "History project work",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h18",
+    "title": "English essay draft",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Saturday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h19",
+    "title": "Chemistry lab write-up",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h20",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 4,
+    "energy": "low",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h21",
+    "title": "Physics problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   }
+  ]
+ },
+ {
+  "name": "4. 60-item stress week",
+  "note": "60 short items (15-45 min) over the whole week.",
+  "now": [
+   0,
+   "07:00"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "h00",
+    "title": "Math reading",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h01",
+    "title": "History reading",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h02",
+    "title": "English project work",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h03",
+    "title": "Chemistry problem set",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h04",
+    "title": "Spanish project work",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h05",
+    "title": "Physics problem set",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h06",
+    "title": "Biology study for quiz",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 2,
+    "energy": "low",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h07",
+    "title": "CS problem set",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Saturday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h08",
+    "title": "Math lab write-up",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h09",
+    "title": "History essay draft",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h10",
+    "title": "English project work",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h11",
+    "title": "Chemistry lab write-up",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Sunday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h12",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h13",
+    "title": "Physics problem set",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h14",
+    "title": "Biology study for quiz",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h15",
+    "title": "CS study for quiz",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h16",
+    "title": "Math worksheet",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h17",
+    "title": "History worksheet",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h18",
+    "title": "English study for quiz",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h19",
+    "title": "Chemistry reading",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h20",
+    "title": "Spanish essay draft",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h21",
+    "title": "Physics problem set",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h22",
+    "title": "Biology problem set",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h23",
+    "title": "CS reading",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h24",
+    "title": "Math worksheet",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h25",
+    "title": "History lab write-up",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 4,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h26",
+    "title": "English project work",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h27",
+    "title": "Chemistry essay draft",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h28",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h29",
+    "title": "Physics project work",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h30",
+    "title": "Biology problem set",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h31",
+    "title": "CS essay draft",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h32",
+    "title": "Math lab write-up",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 4,
+    "energy": "high",
+    "latest": "Saturday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h33",
+    "title": "History essay draft",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h34",
+    "title": "English problem set",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h35",
+    "title": "Chemistry project work",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h36",
+    "title": "Spanish problem set",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h37",
+    "title": "Physics study for quiz",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h38",
+    "title": "Biology project work",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h39",
+    "title": "CS lab write-up",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 4,
+    "energy": "medium",
+    "latest": "Sunday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h40",
+    "title": "Math project work",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 4,
+    "energy": "high",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h41",
+    "title": "History lab write-up",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h42",
+    "title": "English reading",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h43",
+    "title": "Chemistry project work",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 1,
+    "energy": "high",
+    "latest": "Saturday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h44",
+    "title": "Spanish study for quiz",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h45",
+    "title": "Physics lab write-up",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h46",
+    "title": "Biology problem set",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 2,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h47",
+    "title": "CS essay draft",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h48",
+    "title": "Math project work",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h49",
+    "title": "History lab write-up",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h50",
+    "title": "English worksheet",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 4,
+    "energy": "low",
+    "latest": "Sunday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h51",
+    "title": "Chemistry essay draft",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h52",
+    "title": "Spanish reading",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h53",
+    "title": "Physics problem set",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h54",
+    "title": "Biology worksheet",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h55",
+    "title": "CS lab write-up",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h56",
+    "title": "Math problem set",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 4,
+    "energy": "high",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h57",
+    "title": "History study for quiz",
+    "kind": "flexible",
+    "duration_min": 15,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Saturday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h58",
+    "title": "English project work",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Saturday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h59",
+    "title": "Chemistry essay draft",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   }
+  ]
+ },
+ {
+  "name": "5. Six things due Thursday",
+  "note": "6 items all due Thu 08:00 plus 2 others.",
+  "now": [
+   0,
+   "07:00"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "t0",
+    "title": "Math due Thursday",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "t1",
+    "title": "History due Thursday",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "t2",
+    "title": "English due Thursday",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "t3",
+    "title": "Chemistry due Thursday",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "t4",
+    "title": "Spanish due Thursday",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "t5",
+    "title": "Physics due Thursday",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "x1",
+    "title": "Bio reading",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "x2",
+    "title": "CS quiz review",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   }
+  ]
+ },
+ {
+  "name": "6. Study hours + 'No homework after 21:00'",
+  "note": "Study hours weekdays 15:30-21:00, weekend 14:00-20:00, Math hours Mon/Wed 19-21; cut-off 21:00.",
+  "now": [
+   0,
+   "07:00"
+  ],
+  "work_windows": [
+   {
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "start": "15:30",
+    "end": "21:00"
+   },
+   {
+    "days": [
+     5,
+     6
+    ],
+    "start": "14:00",
+    "end": "20:00"
+   },
+   {
+    "days": [
+     0,
+     2
+    ],
+    "start": "19:00",
+    "end": "21:00",
+    "subject": "Math"
+   }
+  ],
+  "day_cutoff": "21:00",
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "h00",
+    "title": "Math project work",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h01",
+    "title": "History worksheet",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h02",
+    "title": "English project work",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h03",
+    "title": "Chemistry essay draft",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 4,
+    "energy": "high",
+    "latest": "Sunday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h04",
+    "title": "Spanish reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Saturday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h05",
+    "title": "Physics project work",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 4,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h06",
+    "title": "Biology project work",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h07",
+    "title": "CS project work",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Sunday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h08",
+    "title": "Math lab write-up",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h09",
+    "title": "History lab write-up",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   }
+  ]
+ },
+ {
+  "name": "7. Pinned 'Do it at' item",
+  "note": "Normal-ish week plus a pinned 90-min item Mon 19:00.",
+  "now": [
+   0,
+   "07:00"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "calc",
+    "title": "Calculus problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "hist",
+    "title": "History essay",
+    "kind": "flexible",
+    "duration_min": 180,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "chem",
+    "title": "Chemistry lab write-up",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "eng",
+    "title": "English reading",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "bio",
+    "title": "Study for Bio quiz",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "phys",
+    "title": "Physics problems",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "pin",
+    "title": "Group project call (Do it at Mon 19:00)",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0
+    ],
+    "start": "19:00",
+    "pinned": true,
+    "priority": 2
+   }
+  ]
+ },
+ {
+  "name": "8. Can't all fit (Mon after school)",
+  "note": "Plan made Mon 15:15; ~21 h due by Wed 08:00.",
+  "now": [
+   0,
+   "15:15"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "o0",
+    "title": "History essay",
+    "kind": "flexible",
+    "duration_min": 180,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 15:15",
+    "course": "History"
+   },
+   {
+    "id": "o1",
+    "title": "Math problem set",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 15:15",
+    "course": "Math"
+   },
+   {
+    "id": "o2",
+    "title": "Chemistry lab report",
+    "kind": "flexible",
+    "duration_min": 180,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 15:15",
+    "course": "Chemistry"
+   },
+   {
+    "id": "o3",
+    "title": "English reading",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 15:15",
+    "course": "English"
+   },
+   {
+    "id": "o4",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 4,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 15:15",
+    "course": "Spanish"
+   },
+   {
+    "id": "o5",
+    "title": "Physics test prep",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 15:15",
+    "course": "Physics"
+   },
+   {
+    "id": "o6",
+    "title": "Biology notes",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 15:15",
+    "course": "Biology"
+   },
+   {
+    "id": "o7",
+    "title": "CS project",
+    "kind": "flexible",
+    "duration_min": 180,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 15:15",
+    "course": "CS"
+   },
+   {
+    "id": "o8",
+    "title": "Math test prep",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 15:15",
+    "course": "Math"
+   },
+   {
+    "id": "o9",
+    "title": "English essay outline",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 15:15",
+    "course": "English"
+   }
+  ]
+ },
+ {
+  "name": "9. Wednesday-afternoon replan",
+  "note": "Plan made Wed 16:00, 9 items due Thu-Sun.",
+  "now": [
+   2,
+   "16:00"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "h00",
+    "title": "Math essay draft",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Saturday 23:00",
+    "earliest": "Wednesday 16:00",
+    "course": "Math"
+   },
+   {
+    "id": "h01",
+    "title": "History problem set",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Sunday 21:00",
+    "earliest": "Wednesday 16:00",
+    "course": "History"
+   },
+   {
+    "id": "h02",
+    "title": "English study for quiz",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 16:00",
+    "course": "English"
+   },
+   {
+    "id": "h03",
+    "title": "Chemistry study for quiz",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 16:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h04",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Thursday 08:00",
+    "earliest": "Wednesday 16:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h05",
+    "title": "Physics project work",
+    "kind": "flexible",
+    "duration_min": 180,
+    "days": [
+     2,
+     3
+    ],
+    "priority": 4,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Wednesday 16:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h06",
+    "title": "Biology study for quiz",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 21:00",
+    "earliest": "Wednesday 16:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h07",
+    "title": "CS essay draft",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Saturday 21:00",
+    "earliest": "Wednesday 16:00",
+    "course": "CS"
+   },
+   {
+    "id": "h08",
+    "title": "Math essay draft",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Sunday 23:00",
+    "earliest": "Wednesday 16:00",
+    "course": "Math"
+   }
+  ]
+ },
+ {
+  "name": "10. Thursday night crunch, all equal priority",
+  "note": "Plan made Thu 17:30; 11.25 h all due Fri 08:00.",
+  "now": [
+   3,
+   "17:30"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "e0",
+    "title": "Math assignment 0",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Thursday 17:30",
+    "course": "Math"
+   },
+   {
+    "id": "e1",
+    "title": "History assignment 1",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Thursday 17:30",
+    "course": "History"
+   },
+   {
+    "id": "e2",
+    "title": "English assignment 2",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Thursday 17:30",
+    "course": "English"
+   },
+   {
+    "id": "e3",
+    "title": "Chemistry assignment 3",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Thursday 17:30",
+    "course": "Chemistry"
+   },
+   {
+    "id": "e4",
+    "title": "Spanish assignment 4",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Thursday 17:30",
+    "course": "Spanish"
+   },
+   {
+    "id": "e5",
+    "title": "Physics assignment 5",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Thursday 17:30",
+    "course": "Physics"
+   },
+   {
+    "id": "e6",
+    "title": "Biology assignment 6",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Thursday 17:30",
+    "course": "Biology"
+   },
+   {
+    "id": "e7",
+    "title": "CS assignment 7",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Thursday 17:30",
+    "course": "CS"
+   },
+   {
+    "id": "e8",
+    "title": "Math assignment 8",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Thursday 17:30",
+    "course": "Math"
+   }
+  ]
+ },
+ {
+  "name": "11. Heavy week, app defaults (no sleep/dinner blocks)",
+  "note": "25 items, only school/soccer/job entered.",
+  "now": [
+   0,
+   "07:00"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "h00",
+    "title": "Math essay draft",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h01",
+    "title": "History reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h02",
+    "title": "English worksheet",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h03",
+    "title": "Chemistry lab write-up",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h04",
+    "title": "Spanish lab write-up",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h05",
+    "title": "Physics reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h06",
+    "title": "Biology essay draft",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h07",
+    "title": "CS essay draft",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h08",
+    "title": "Math essay draft",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h09",
+    "title": "History project work",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 1,
+    "energy": "high",
+    "latest": "Saturday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h10",
+    "title": "English essay draft",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h11",
+    "title": "Chemistry project work",
+    "kind": "flexible",
+    "duration_min": 180,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h12",
+    "title": "Spanish essay draft",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h13",
+    "title": "Physics project work",
+    "kind": "flexible",
+    "duration_min": 180,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h14",
+    "title": "Biology problem set",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h15",
+    "title": "CS reading",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 1,
+    "energy": "low",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h16",
+    "title": "Math project work",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h17",
+    "title": "History essay draft",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 4,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h18",
+    "title": "English essay draft",
+    "kind": "flexible",
+    "duration_min": 180,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h19",
+    "title": "Chemistry reading",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h20",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h21",
+    "title": "Physics worksheet",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h22",
+    "title": "Biology project work",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h23",
+    "title": "CS worksheet",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h24",
+    "title": "Math worksheet",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   }
+  ]
+ },
+ {
+  "name": "12. Captured from app: 60-homework Friday (overloaded)",
+  "note": "Sammy's capture: Fri 10:45, 60 items / 56 h, most due Fri-Sun end of day.",
+  "now": [
+   4,
+   "10:45"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": null,
+    "latest": null,
+    "start": "08:00",
+    "course": null,
+    "category": "class"
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": null,
+    "latest": null,
+    "start": "16:00",
+    "course": null
+   },
+   {
+    "id": "club",
+    "title": "Club",
+    "kind": "locked",
+    "duration_min": 60,
+    "days": [
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": null,
+    "latest": null,
+    "start": "15:00",
+    "course": null
+   },
+   {
+    "id": "88208f9d-f89b-43b5-8a86-32aa2c98ad89",
+    "title": "HW 00",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw0"
+   },
+   {
+    "id": "c475eeb2-0336-468e-aa92-a592823ebd39",
+    "title": "HW 01",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw1"
+   },
+   {
+    "id": "283adb02-7a80-4ef4-b967-35f58813e54b",
+    "title": "HW 02",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw2"
+   },
+   {
+    "id": "ee6d1f42-25b8-4b12-a930-a89ae6cbb69b",
+    "title": "HW 03",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw3"
+   },
+   {
+    "id": "c3a72a60-d18e-4b7e-a3a3-eabdbeefe387",
+    "title": "HW 04",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw4"
+   },
+   {
+    "id": "e3baae74-fdb1-44be-a8a8-8055d97de57c",
+    "title": "HW 05",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw5"
+   },
+   {
+    "id": "9fdff2d8-1c7a-4ee6-b6be-2fd1c18c3a5d",
+    "title": "HW 06",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw6"
+   },
+   {
+    "id": "0c970036-3052-461f-b976-f32ccd85ceb9",
+    "title": "HW 07",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw7"
+   },
+   {
+    "id": "b81ce508-ca4e-4a35-ba2f-48021c75ed80",
+    "title": "HW 08",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw8"
+   },
+   {
+    "id": "aa0f3c12-6281-4ffb-ad0e-985bb7181c93",
+    "title": "HW 09",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw9"
+   },
+   {
+    "id": "09618e92-4bb7-4770-8efb-13c1a3ad3932",
+    "title": "HW 10",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw10"
+   },
+   {
+    "id": "9eca90c9-4b68-4847-9c1d-debd860b5732",
+    "title": "HW 11",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw11"
+   },
+   {
+    "id": "b925bbb7-5abb-4b15-8b57-b9007d2117c7",
+    "title": "HW 12",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw12"
+   },
+   {
+    "id": "11921b94-711b-47f3-b9fc-e77b3dc21249",
+    "title": "HW 13",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw13"
+   },
+   {
+    "id": "3c69c14f-e58c-464a-bd2e-a3d2e9e063d7",
+    "title": "HW 14",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw14"
+   },
+   {
+    "id": "a3bd7c8e-ede1-45c1-83b9-9dcff41a1d7b",
+    "title": "HW 15",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw15"
+   },
+   {
+    "id": "4fe990c0-947a-41c9-92c7-ab44051c1263",
+    "title": "HW 16",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw16"
+   },
+   {
+    "id": "e8d67355-f67a-4787-a7d5-7b2ecc0818b4",
+    "title": "HW 17",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw17"
+   },
+   {
+    "id": "d070df9b-9cf7-421d-a871-af07d574ec36",
+    "title": "HW 18",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw18"
+   },
+   {
+    "id": "b4f8c940-b59a-42c6-9f0d-3896820708d6",
+    "title": "HW 19",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw19"
+   },
+   {
+    "id": "fac80267-88b4-4ec1-9ff0-1a39e76e3124",
+    "title": "HW 20",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw20"
+   },
+   {
+    "id": "0ef727bf-4a6a-4fdc-813b-7b099c3dc01d",
+    "title": "HW 21",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw21"
+   },
+   {
+    "id": "82ff4f35-00d2-4826-9dba-36daac366d44",
+    "title": "HW 22",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw22"
+   },
+   {
+    "id": "735b54d2-0a67-4b58-baaf-3fefc87c9708",
+    "title": "HW 23",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw23"
+   },
+   {
+    "id": "f25c5c6e-f498-41cf-92d0-66a468895952",
+    "title": "HW 24",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw24"
+   },
+   {
+    "id": "157456b1-a205-4e28-afb5-e77ae862fc69",
+    "title": "HW 25",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw25"
+   },
+   {
+    "id": "9d3c7ff1-7a48-4252-bf82-99730cc0c793",
+    "title": "HW 26",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw26"
+   },
+   {
+    "id": "ec7e44a0-274f-4520-ae47-f2e1a950c7aa",
+    "title": "HW 27",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw27"
+   },
+   {
+    "id": "1af1d46f-2587-42af-94a4-83e693e2c196",
+    "title": "HW 28",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw28"
+   },
+   {
+    "id": "de8b68d2-f743-4350-815e-78a14fc7da3e",
+    "title": "HW 29",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw29"
+   },
+   {
+    "id": "3a6ff2f8-60f9-4938-9e80-7976895523b8",
+    "title": "HW 30",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw30"
+   },
+   {
+    "id": "8e80f18c-384d-4dae-a642-1b22645986ef",
+    "title": "HW 31",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw31"
+   },
+   {
+    "id": "9812a531-e29f-4dcf-8c4c-dd68a49ce0a8",
+    "title": "HW 32",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw32"
+   },
+   {
+    "id": "5cf41472-f242-4972-a8a9-f9b8fb42bc24",
+    "title": "HW 33",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw33"
+   },
+   {
+    "id": "8e79d762-5a03-4bc3-9f04-736d28cdc6d6",
+    "title": "HW 34",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw34"
+   },
+   {
+    "id": "8647da81-7e1e-4226-bb8c-46a164eda941",
+    "title": "HW 35",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw35"
+   },
+   {
+    "id": "7465f965-c0aa-4a32-a89c-d9a0e8be6954",
+    "title": "HW 36",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw36"
+   },
+   {
+    "id": "45c00d81-2e35-451f-8793-4da3b6fa3a20",
+    "title": "HW 37",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw37"
+   },
+   {
+    "id": "f285c9ab-22ee-4f61-b03f-c7fd116dcf20",
+    "title": "HW 38",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw38"
+   },
+   {
+    "id": "97a6c63c-8ab3-4a14-ba64-736bee8eed88",
+    "title": "HW 39",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw39"
+   },
+   {
+    "id": "597f8ba4-20df-4793-954b-fb387dfc4afc",
+    "title": "HW 40",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw40"
+   },
+   {
+    "id": "b6b67eb8-4ce0-4d92-aa5f-ca2919409823",
+    "title": "HW 41",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw41"
+   },
+   {
+    "id": "6e7ac7b8-43a0-4a04-a34d-adada7109ee3",
+    "title": "HW 42",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw42"
+   },
+   {
+    "id": "9206211f-05cc-4d59-9a6a-8d9f7ba676d9",
+    "title": "HW 43",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw43"
+   },
+   {
+    "id": "dbb254fe-48fa-47b3-95d5-93a9dafc25ce",
+    "title": "HW 44",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw44"
+   },
+   {
+    "id": "1c26d0d8-b9a9-4902-b131-22b1659ff949",
+    "title": "HW 45",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw45"
+   },
+   {
+    "id": "ec2606f1-b33e-41c0-8c15-c6e876cb81ba",
+    "title": "HW 46",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw46"
+   },
+   {
+    "id": "60fd8a37-a5f8-4df2-ae75-3f8088517d1e",
+    "title": "HW 47",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw47"
+   },
+   {
+    "id": "c3af6990-1b3e-4647-8cb0-d6411384051f",
+    "title": "HW 48",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw48"
+   },
+   {
+    "id": "383dc631-2bd6-4ee2-9e80-8efcfda1f620",
+    "title": "HW 49",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw49"
+   },
+   {
+    "id": "fd9d0009-5161-420a-91c9-e8f54d2a7b54",
+    "title": "HW 50",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw50"
+   },
+   {
+    "id": "263046e2-e558-448b-bb99-6d36589f5ee9",
+    "title": "HW 51",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw51"
+   },
+   {
+    "id": "d5098914-79ac-46e9-9d50-db26b8cac598",
+    "title": "HW 52",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw52"
+   },
+   {
+    "id": "63ee7722-56b6-459b-b731-0044b3265484",
+    "title": "HW 53",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw53"
+   },
+   {
+    "id": "06f47512-412a-4bf4-965f-6783fea9a13a",
+    "title": "HW 54",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw54"
+   },
+   {
+    "id": "eb37d632-887a-4a97-9324-1de3977c8af8",
+    "title": "HW 55",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw55"
+   },
+   {
+    "id": "ea9cd0dd-7ebb-4b58-bd27-2146c2777757",
+    "title": "HW 56",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw56"
+   },
+   {
+    "id": "87e812b4-01f6-4d36-bd0c-4174e864932f",
+    "title": "HW 57",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw57"
+   },
+   {
+    "id": "f0608af1-c1c4-4287-8cf9-bc7e5c6cfcdf",
+    "title": "HW 58",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw58"
+   },
+   {
+    "id": "f0ffe0b0-44cd-46d6-a1e5-9c6d837b568d",
+    "title": "HW 59",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw59"
+   }
+  ],
+  "deadlines": {
+   "06f47512-412a-4bf4-965f-6783fea9a13a": [
+    1,
+    1440
+   ],
+   "09618e92-4bb7-4770-8efb-13c1a3ad3932": [
+    5,
+    1440
+   ],
+   "0c970036-3052-461f-b976-f32ccd85ceb9": [
+    2,
+    1440
+   ],
+   "0ef727bf-4a6a-4fdc-813b-7b099c3dc01d": [
+    4,
+    1440
+   ],
+   "11921b94-711b-47f3-b9fc-e77b3dc21249": [
+    2,
+    1440
+   ],
+   "157456b1-a205-4e28-afb5-e77ae862fc69": [
+    2,
+    1440
+   ],
+   "1af1d46f-2587-42af-94a4-83e693e2c196": [
+    5,
+    1440
+   ],
+   "1c26d0d8-b9a9-4902-b131-22b1659ff949": [
+    4,
+    1440
+   ],
+   "263046e2-e558-448b-bb99-6d36589f5ee9": [
+    4,
+    1440
+   ],
+   "283adb02-7a80-4ef4-b967-35f58813e54b": [
+    3,
+    1440
+   ],
+   "383dc631-2bd6-4ee2-9e80-8efcfda1f620": [
+    2,
+    1440
+   ],
+   "3a6ff2f8-60f9-4938-9e80-7976895523b8": [
+    1,
+    1440
+   ],
+   "3c69c14f-e58c-464a-bd2e-a3d2e9e063d7": [
+    3,
+    1440
+   ],
+   "45c00d81-2e35-451f-8793-4da3b6fa3a20": [
+    2,
+    1440
+   ],
+   "4fe990c0-947a-41c9-92c7-ab44051c1263": [
+    5,
+    1440
+   ],
+   "597f8ba4-20df-4793-954b-fb387dfc4afc": [
+    5,
+    1440
+   ],
+   "5cf41472-f242-4972-a8a9-f9b8fb42bc24": [
+    4,
+    1440
+   ],
+   "60fd8a37-a5f8-4df2-ae75-3f8088517d1e": [
+    6,
+    1440
+   ],
+   "63ee7722-56b6-459b-b731-0044b3265484": [
+    6,
+    1440
+   ],
+   "6e7ac7b8-43a0-4a04-a34d-adada7109ee3": [
+    1,
+    1440
+   ],
+   "735b54d2-0a67-4b58-baaf-3fefc87c9708": [
+    6,
+    1440
+   ],
+   "7465f965-c0aa-4a32-a89c-d9a0e8be6954": [
+    1,
+    1440
+   ],
+   "82ff4f35-00d2-4826-9dba-36daac366d44": [
+    5,
+    1440
+   ],
+   "8647da81-7e1e-4226-bb8c-46a164eda941": [
+    6,
+    1440
+   ],
+   "87e812b4-01f6-4d36-bd0c-4174e864932f": [
+    4,
+    1440
+   ],
+   "88208f9d-f89b-43b5-8a86-32aa2c98ad89": [
+    1,
+    1440
+   ],
+   "8e79d762-5a03-4bc3-9f04-736d28cdc6d6": [
+    5,
+    1440
+   ],
+   "8e80f18c-384d-4dae-a642-1b22645986ef": [
+    2,
+    1440
+   ],
+   "9206211f-05cc-4d59-9a6a-8d9f7ba676d9": [
+    2,
+    1440
+   ],
+   "97a6c63c-8ab3-4a14-ba64-736bee8eed88": [
+    4,
+    1440
+   ],
+   "9812a531-e29f-4dcf-8c4c-dd68a49ce0a8": [
+    3,
+    1440
+   ],
+   "9d3c7ff1-7a48-4252-bf82-99730cc0c793": [
+    3,
+    1440
+   ],
+   "9eca90c9-4b68-4847-9c1d-debd860b5732": [
+    6,
+    1440
+   ],
+   "9fdff2d8-1c7a-4ee6-b6be-2fd1c18c3a5d": [
+    1,
+    1440
+   ],
+   "a3bd7c8e-ede1-45c1-83b9-9dcff41a1d7b": [
+    4,
+    1440
+   ],
+   "aa0f3c12-6281-4ffb-ad0e-985bb7181c93": [
+    4,
+    1440
+   ],
+   "b4f8c940-b59a-42c6-9f0d-3896820708d6": [
+    2,
+    1440
+   ],
+   "b6b67eb8-4ce0-4d92-aa5f-ca2919409823": [
+    6,
+    1440
+   ],
+   "b81ce508-ca4e-4a35-ba2f-48021c75ed80": [
+    3,
+    1440
+   ],
+   "b925bbb7-5abb-4b15-8b57-b9007d2117c7": [
+    1,
+    1440
+   ],
+   "c3a72a60-d18e-4b7e-a3a3-eabdbeefe387": [
+    5,
+    1440
+   ],
+   "c3af6990-1b3e-4647-8cb0-d6411384051f": [
+    1,
+    1440
+   ],
+   "c475eeb2-0336-468e-aa92-a592823ebd39": [
+    2,
+    1440
+   ],
+   "d070df9b-9cf7-421d-a871-af07d574ec36": [
+    1,
+    1440
+   ],
+   "d5098914-79ac-46e9-9d50-db26b8cac598": [
+    5,
+    1440
+   ],
+   "dbb254fe-48fa-47b3-95d5-93a9dafc25ce": [
+    3,
+    1440
+   ],
+   "de8b68d2-f743-4350-815e-78a14fc7da3e": [
+    6,
+    1440
+   ],
+   "e3baae74-fdb1-44be-a8a8-8055d97de57c": [
+    6,
+    1440
+   ],
+   "e8d67355-f67a-4787-a7d5-7b2ecc0818b4": [
+    6,
+    1440
+   ],
+   "ea9cd0dd-7ebb-4b58-bd27-2146c2777757": [
+    3,
+    1440
+   ],
+   "eb37d632-887a-4a97-9324-1de3977c8af8": [
+    2,
+    1440
+   ],
+   "ec2606f1-b33e-41c0-8c15-c6e876cb81ba": [
+    5,
+    1440
+   ],
+   "ec7e44a0-274f-4520-ae47-f2e1a950c7aa": [
+    4,
+    1440
+   ],
+   "ee6d1f42-25b8-4b12-a930-a89ae6cbb69b": [
+    4,
+    1440
+   ],
+   "f0608af1-c1c4-4287-8cf9-bc7e5c6cfcdf": [
+    5,
+    1440
+   ],
+   "f0ffe0b0-44cd-46d6-a1e5-9c6d837b568d": [
+    6,
+    1440
+   ],
+   "f25c5c6e-f498-41cf-92d0-66a468895952": [
+    1,
+    1440
+   ],
+   "f285c9ab-22ee-4f61-b03f-c7fd116dcf20": [
+    3,
+    1440
+   ],
+   "fac80267-88b4-4ec1-9ff0-1a39e76e3124": [
+    3,
+    1440
+   ],
+   "fd9d0009-5161-420a-91c9-e8f54d2a7b54": [
+    3,
+    1440
+   ]
+  },
+  "slack": {
+   "06f47512-412a-4bf4-965f-6783fea9a13a": [
+    1,
+    1440
+   ],
+   "09618e92-4bb7-4770-8efb-13c1a3ad3932": [
+    5,
+    1440
+   ],
+   "0c970036-3052-461f-b976-f32ccd85ceb9": [
+    2,
+    1440
+   ],
+   "0ef727bf-4a6a-4fdc-813b-7b099c3dc01d": [
+    4,
+    1440
+   ],
+   "11921b94-711b-47f3-b9fc-e77b3dc21249": [
+    2,
+    1440
+   ],
+   "157456b1-a205-4e28-afb5-e77ae862fc69": [
+    2,
+    1440
+   ],
+   "1af1d46f-2587-42af-94a4-83e693e2c196": [
+    5,
+    1440
+   ],
+   "1c26d0d8-b9a9-4902-b131-22b1659ff949": [
+    4,
+    1440
+   ],
+   "263046e2-e558-448b-bb99-6d36589f5ee9": [
+    4,
+    1440
+   ],
+   "283adb02-7a80-4ef4-b967-35f58813e54b": [
+    3,
+    1440
+   ],
+   "383dc631-2bd6-4ee2-9e80-8efcfda1f620": [
+    2,
+    1440
+   ],
+   "3a6ff2f8-60f9-4938-9e80-7976895523b8": [
+    1,
+    1440
+   ],
+   "3c69c14f-e58c-464a-bd2e-a3d2e9e063d7": [
+    3,
+    1440
+   ],
+   "45c00d81-2e35-451f-8793-4da3b6fa3a20": [
+    2,
+    1440
+   ],
+   "4fe990c0-947a-41c9-92c7-ab44051c1263": [
+    5,
+    1440
+   ],
+   "597f8ba4-20df-4793-954b-fb387dfc4afc": [
+    5,
+    1440
+   ],
+   "5cf41472-f242-4972-a8a9-f9b8fb42bc24": [
+    4,
+    1440
+   ],
+   "60fd8a37-a5f8-4df2-ae75-3f8088517d1e": [
+    6,
+    1440
+   ],
+   "63ee7722-56b6-459b-b731-0044b3265484": [
+    6,
+    1440
+   ],
+   "6e7ac7b8-43a0-4a04-a34d-adada7109ee3": [
+    1,
+    1440
+   ],
+   "735b54d2-0a67-4b58-baaf-3fefc87c9708": [
+    6,
+    1440
+   ],
+   "7465f965-c0aa-4a32-a89c-d9a0e8be6954": [
+    1,
+    1440
+   ],
+   "82ff4f35-00d2-4826-9dba-36daac366d44": [
+    5,
+    1440
+   ],
+   "8647da81-7e1e-4226-bb8c-46a164eda941": [
+    6,
+    1440
+   ],
+   "87e812b4-01f6-4d36-bd0c-4174e864932f": [
+    4,
+    1440
+   ],
+   "88208f9d-f89b-43b5-8a86-32aa2c98ad89": [
+    1,
+    1440
+   ],
+   "8e79d762-5a03-4bc3-9f04-736d28cdc6d6": [
+    5,
+    1440
+   ],
+   "8e80f18c-384d-4dae-a642-1b22645986ef": [
+    2,
+    1440
+   ],
+   "9206211f-05cc-4d59-9a6a-8d9f7ba676d9": [
+    2,
+    1440
+   ],
+   "97a6c63c-8ab3-4a14-ba64-736bee8eed88": [
+    4,
+    1440
+   ],
+   "9812a531-e29f-4dcf-8c4c-dd68a49ce0a8": [
+    3,
+    1440
+   ],
+   "9d3c7ff1-7a48-4252-bf82-99730cc0c793": [
+    3,
+    1440
+   ],
+   "9eca90c9-4b68-4847-9c1d-debd860b5732": [
+    6,
+    1440
+   ],
+   "9fdff2d8-1c7a-4ee6-b6be-2fd1c18c3a5d": [
+    1,
+    1440
+   ],
+   "a3bd7c8e-ede1-45c1-83b9-9dcff41a1d7b": [
+    4,
+    1440
+   ],
+   "aa0f3c12-6281-4ffb-ad0e-985bb7181c93": [
+    4,
+    1440
+   ],
+   "b4f8c940-b59a-42c6-9f0d-3896820708d6": [
+    2,
+    1440
+   ],
+   "b6b67eb8-4ce0-4d92-aa5f-ca2919409823": [
+    6,
+    1440
+   ],
+   "b81ce508-ca4e-4a35-ba2f-48021c75ed80": [
+    3,
+    1440
+   ],
+   "b925bbb7-5abb-4b15-8b57-b9007d2117c7": [
+    1,
+    1440
+   ],
+   "c3a72a60-d18e-4b7e-a3a3-eabdbeefe387": [
+    5,
+    1440
+   ],
+   "c3af6990-1b3e-4647-8cb0-d6411384051f": [
+    1,
+    1440
+   ],
+   "c475eeb2-0336-468e-aa92-a592823ebd39": [
+    2,
+    1440
+   ],
+   "d070df9b-9cf7-421d-a871-af07d574ec36": [
+    1,
+    1440
+   ],
+   "d5098914-79ac-46e9-9d50-db26b8cac598": [
+    5,
+    1440
+   ],
+   "dbb254fe-48fa-47b3-95d5-93a9dafc25ce": [
+    3,
+    1440
+   ],
+   "de8b68d2-f743-4350-815e-78a14fc7da3e": [
+    6,
+    1440
+   ],
+   "e3baae74-fdb1-44be-a8a8-8055d97de57c": [
+    6,
+    1440
+   ],
+   "e8d67355-f67a-4787-a7d5-7b2ecc0818b4": [
+    6,
+    1440
+   ],
+   "ea9cd0dd-7ebb-4b58-bd27-2146c2777757": [
+    3,
+    1440
+   ],
+   "eb37d632-887a-4a97-9324-1de3977c8af8": [
+    2,
+    1440
+   ],
+   "ec2606f1-b33e-41c0-8c15-c6e876cb81ba": [
+    5,
+    1440
+   ],
+   "ec7e44a0-274f-4520-ae47-f2e1a950c7aa": [
+    4,
+    1440
+   ],
+   "ee6d1f42-25b8-4b12-a930-a89ae6cbb69b": [
+    4,
+    1440
+   ],
+   "f0608af1-c1c4-4287-8cf9-bc7e5c6cfcdf": [
+    5,
+    1440
+   ],
+   "f0ffe0b0-44cd-46d6-a1e5-9c6d837b568d": [
+    6,
+    1440
+   ],
+   "f25c5c6e-f498-41cf-92d0-66a468895952": [
+    1,
+    1440
+   ],
+   "f285c9ab-22ee-4f61-b03f-c7fd116dcf20": [
+    3,
+    1440
+   ],
+   "fac80267-88b4-4ec1-9ff0-1a39e76e3124": [
+    3,
+    1440
+   ],
+   "fd9d0009-5161-420a-91c9-e8f54d2a7b54": [
+    3,
+    1440
+   ]
+  },
+  "extra_occ": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "work_windows": null
+ },
+ {
+  "name": "13. Captured from app: 60-homework Friday (lighter)",
+  "note": "Same capture trimmed to 30 h.",
+  "now": [
+   4,
+   "10:45"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": null,
+    "latest": null,
+    "start": "08:00",
+    "course": null,
+    "category": "class"
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": null,
+    "latest": null,
+    "start": "16:00",
+    "course": null
+   },
+   {
+    "id": "club",
+    "title": "Club",
+    "kind": "locked",
+    "duration_min": 60,
+    "days": [
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": null,
+    "latest": null,
+    "start": "15:00",
+    "course": null
+   },
+   {
+    "id": "88208f9d-f89b-43b5-8a86-32aa2c98ad89",
+    "title": "HW 00",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw0"
+   },
+   {
+    "id": "c475eeb2-0336-468e-aa92-a592823ebd39",
+    "title": "HW 01",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw1"
+   },
+   {
+    "id": "283adb02-7a80-4ef4-b967-35f58813e54b",
+    "title": "HW 02",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw2"
+   },
+   {
+    "id": "ee6d1f42-25b8-4b12-a930-a89ae6cbb69b",
+    "title": "HW 03",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw3"
+   },
+   {
+    "id": "c3a72a60-d18e-4b7e-a3a3-eabdbeefe387",
+    "title": "HW 04",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw4"
+   },
+   {
+    "id": "e3baae74-fdb1-44be-a8a8-8055d97de57c",
+    "title": "HW 05",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw5"
+   },
+   {
+    "id": "9fdff2d8-1c7a-4ee6-b6be-2fd1c18c3a5d",
+    "title": "HW 06",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw6"
+   },
+   {
+    "id": "0c970036-3052-461f-b976-f32ccd85ceb9",
+    "title": "HW 07",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw7"
+   },
+   {
+    "id": "b81ce508-ca4e-4a35-ba2f-48021c75ed80",
+    "title": "HW 08",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw8"
+   },
+   {
+    "id": "aa0f3c12-6281-4ffb-ad0e-985bb7181c93",
+    "title": "HW 09",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw9"
+   },
+   {
+    "id": "09618e92-4bb7-4770-8efb-13c1a3ad3932",
+    "title": "HW 10",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw10"
+   },
+   {
+    "id": "9eca90c9-4b68-4847-9c1d-debd860b5732",
+    "title": "HW 11",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw11"
+   },
+   {
+    "id": "b925bbb7-5abb-4b15-8b57-b9007d2117c7",
+    "title": "HW 12",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw12"
+   },
+   {
+    "id": "11921b94-711b-47f3-b9fc-e77b3dc21249",
+    "title": "HW 13",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw13"
+   },
+   {
+    "id": "3c69c14f-e58c-464a-bd2e-a3d2e9e063d7",
+    "title": "HW 14",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw14"
+   },
+   {
+    "id": "a3bd7c8e-ede1-45c1-83b9-9dcff41a1d7b",
+    "title": "HW 15",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw15"
+   },
+   {
+    "id": "4fe990c0-947a-41c9-92c7-ab44051c1263",
+    "title": "HW 16",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw16"
+   },
+   {
+    "id": "e8d67355-f67a-4787-a7d5-7b2ecc0818b4",
+    "title": "HW 17",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw17"
+   },
+   {
+    "id": "d070df9b-9cf7-421d-a871-af07d574ec36",
+    "title": "HW 18",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw18"
+   },
+   {
+    "id": "b4f8c940-b59a-42c6-9f0d-3896820708d6",
+    "title": "HW 19",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw19"
+   },
+   {
+    "id": "fac80267-88b4-4ec1-9ff0-1a39e76e3124",
+    "title": "HW 20",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw20"
+   },
+   {
+    "id": "0ef727bf-4a6a-4fdc-813b-7b099c3dc01d",
+    "title": "HW 21",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw21"
+   },
+   {
+    "id": "82ff4f35-00d2-4826-9dba-36daac366d44",
+    "title": "HW 22",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw22"
+   },
+   {
+    "id": "735b54d2-0a67-4b58-baaf-3fefc87c9708",
+    "title": "HW 23",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw23"
+   },
+   {
+    "id": "f25c5c6e-f498-41cf-92d0-66a468895952",
+    "title": "HW 24",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw24"
+   },
+   {
+    "id": "157456b1-a205-4e28-afb5-e77ae862fc69",
+    "title": "HW 25",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw25"
+   },
+   {
+    "id": "9d3c7ff1-7a48-4252-bf82-99730cc0c793",
+    "title": "HW 26",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw26"
+   },
+   {
+    "id": "ec7e44a0-274f-4520-ae47-f2e1a950c7aa",
+    "title": "HW 27",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw27"
+   },
+   {
+    "id": "1af1d46f-2587-42af-94a4-83e693e2c196",
+    "title": "HW 28",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw28"
+   },
+   {
+    "id": "de8b68d2-f743-4350-815e-78a14fc7da3e",
+    "title": "HW 29",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw29"
+   },
+   {
+    "id": "3a6ff2f8-60f9-4938-9e80-7976895523b8",
+    "title": "HW 30",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw30"
+   },
+   {
+    "id": "8e80f18c-384d-4dae-a642-1b22645986ef",
+    "title": "HW 31",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw31"
+   },
+   {
+    "id": "9812a531-e29f-4dcf-8c4c-dd68a49ce0a8",
+    "title": "HW 32",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw32"
+   },
+   {
+    "id": "5cf41472-f242-4972-a8a9-f9b8fb42bc24",
+    "title": "HW 33",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw33"
+   },
+   {
+    "id": "8e79d762-5a03-4bc3-9f04-736d28cdc6d6",
+    "title": "HW 34",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw34"
+   },
+   {
+    "id": "8647da81-7e1e-4226-bb8c-46a164eda941",
+    "title": "HW 35",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw35"
+   },
+   {
+    "id": "7465f965-c0aa-4a32-a89c-d9a0e8be6954",
+    "title": "HW 36",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw36"
+   },
+   {
+    "id": "45c00d81-2e35-451f-8793-4da3b6fa3a20",
+    "title": "HW 37",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw37"
+   },
+   {
+    "id": "f285c9ab-22ee-4f61-b03f-c7fd116dcf20",
+    "title": "HW 38",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw38"
+   },
+   {
+    "id": "97a6c63c-8ab3-4a14-ba64-736bee8eed88",
+    "title": "HW 39",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw39"
+   },
+   {
+    "id": "597f8ba4-20df-4793-954b-fb387dfc4afc",
+    "title": "HW 40",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw40"
+   },
+   {
+    "id": "b6b67eb8-4ce0-4d92-aa5f-ca2919409823",
+    "title": "HW 41",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw41"
+   },
+   {
+    "id": "6e7ac7b8-43a0-4a04-a34d-adada7109ee3",
+    "title": "HW 42",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw42"
+   },
+   {
+    "id": "9206211f-05cc-4d59-9a6a-8d9f7ba676d9",
+    "title": "HW 43",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw43"
+   },
+   {
+    "id": "dbb254fe-48fa-47b3-95d5-93a9dafc25ce",
+    "title": "HW 44",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw44"
+   },
+   {
+    "id": "1c26d0d8-b9a9-4902-b131-22b1659ff949",
+    "title": "HW 45",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw45"
+   },
+   {
+    "id": "ec2606f1-b33e-41c0-8c15-c6e876cb81ba",
+    "title": "HW 46",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw46"
+   },
+   {
+    "id": "60fd8a37-a5f8-4df2-ae75-3f8088517d1e",
+    "title": "HW 47",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw47"
+   },
+   {
+    "id": "c3af6990-1b3e-4647-8cb0-d6411384051f",
+    "title": "HW 48",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw48"
+   },
+   {
+    "id": "383dc631-2bd6-4ee2-9e80-8efcfda1f620",
+    "title": "HW 49",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw49"
+   },
+   {
+    "id": "fd9d0009-5161-420a-91c9-e8f54d2a7b54",
+    "title": "HW 50",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw50"
+   },
+   {
+    "id": "263046e2-e558-448b-bb99-6d36589f5ee9",
+    "title": "HW 51",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw51"
+   },
+   {
+    "id": "d5098914-79ac-46e9-9d50-db26b8cac598",
+    "title": "HW 52",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw52"
+   },
+   {
+    "id": "63ee7722-56b6-459b-b731-0044b3265484",
+    "title": "HW 53",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw53"
+   },
+   {
+    "id": "06f47512-412a-4bf4-965f-6783fea9a13a",
+    "title": "HW 54",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw54"
+   },
+   {
+    "id": "eb37d632-887a-4a97-9324-1de3977c8af8",
+    "title": "HW 55",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw55"
+   },
+   {
+    "id": "ea9cd0dd-7ebb-4b58-bd27-2146c2777757",
+    "title": "HW 56",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw56"
+   },
+   {
+    "id": "87e812b4-01f6-4d36-bd0c-4174e864932f",
+    "title": "HW 57",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw57"
+   },
+   {
+    "id": "f0608af1-c1c4-4287-8cf9-bc7e5c6cfcdf",
+    "title": "HW 58",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw58"
+   },
+   {
+    "id": "f0ffe0b0-44cd-46d6-a1e5-9c6d837b568d",
+    "title": "HW 59",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45",
+    "latest": null,
+    "start": null,
+    "course": null,
+    "assignment_id": "hw59"
+   }
+  ],
+  "deadlines": {
+   "06f47512-412a-4bf4-965f-6783fea9a13a": [
+    1,
+    1440
+   ],
+   "09618e92-4bb7-4770-8efb-13c1a3ad3932": [
+    5,
+    1440
+   ],
+   "0c970036-3052-461f-b976-f32ccd85ceb9": [
+    2,
+    1440
+   ],
+   "0ef727bf-4a6a-4fdc-813b-7b099c3dc01d": [
+    4,
+    1440
+   ],
+   "11921b94-711b-47f3-b9fc-e77b3dc21249": [
+    2,
+    1440
+   ],
+   "157456b1-a205-4e28-afb5-e77ae862fc69": [
+    2,
+    1440
+   ],
+   "1af1d46f-2587-42af-94a4-83e693e2c196": [
+    5,
+    1440
+   ],
+   "1c26d0d8-b9a9-4902-b131-22b1659ff949": [
+    4,
+    1440
+   ],
+   "263046e2-e558-448b-bb99-6d36589f5ee9": [
+    4,
+    1440
+   ],
+   "283adb02-7a80-4ef4-b967-35f58813e54b": [
+    3,
+    1440
+   ],
+   "383dc631-2bd6-4ee2-9e80-8efcfda1f620": [
+    2,
+    1440
+   ],
+   "3a6ff2f8-60f9-4938-9e80-7976895523b8": [
+    1,
+    1440
+   ],
+   "3c69c14f-e58c-464a-bd2e-a3d2e9e063d7": [
+    3,
+    1440
+   ],
+   "45c00d81-2e35-451f-8793-4da3b6fa3a20": [
+    2,
+    1440
+   ],
+   "4fe990c0-947a-41c9-92c7-ab44051c1263": [
+    5,
+    1440
+   ],
+   "597f8ba4-20df-4793-954b-fb387dfc4afc": [
+    5,
+    1440
+   ],
+   "5cf41472-f242-4972-a8a9-f9b8fb42bc24": [
+    4,
+    1440
+   ],
+   "60fd8a37-a5f8-4df2-ae75-3f8088517d1e": [
+    6,
+    1440
+   ],
+   "63ee7722-56b6-459b-b731-0044b3265484": [
+    6,
+    1440
+   ],
+   "6e7ac7b8-43a0-4a04-a34d-adada7109ee3": [
+    1,
+    1440
+   ],
+   "735b54d2-0a67-4b58-baaf-3fefc87c9708": [
+    6,
+    1440
+   ],
+   "7465f965-c0aa-4a32-a89c-d9a0e8be6954": [
+    1,
+    1440
+   ],
+   "82ff4f35-00d2-4826-9dba-36daac366d44": [
+    5,
+    1440
+   ],
+   "8647da81-7e1e-4226-bb8c-46a164eda941": [
+    6,
+    1440
+   ],
+   "87e812b4-01f6-4d36-bd0c-4174e864932f": [
+    4,
+    1440
+   ],
+   "88208f9d-f89b-43b5-8a86-32aa2c98ad89": [
+    1,
+    1440
+   ],
+   "8e79d762-5a03-4bc3-9f04-736d28cdc6d6": [
+    5,
+    1440
+   ],
+   "8e80f18c-384d-4dae-a642-1b22645986ef": [
+    2,
+    1440
+   ],
+   "9206211f-05cc-4d59-9a6a-8d9f7ba676d9": [
+    2,
+    1440
+   ],
+   "97a6c63c-8ab3-4a14-ba64-736bee8eed88": [
+    4,
+    1440
+   ],
+   "9812a531-e29f-4dcf-8c4c-dd68a49ce0a8": [
+    3,
+    1440
+   ],
+   "9d3c7ff1-7a48-4252-bf82-99730cc0c793": [
+    3,
+    1440
+   ],
+   "9eca90c9-4b68-4847-9c1d-debd860b5732": [
+    6,
+    1440
+   ],
+   "9fdff2d8-1c7a-4ee6-b6be-2fd1c18c3a5d": [
+    1,
+    1440
+   ],
+   "a3bd7c8e-ede1-45c1-83b9-9dcff41a1d7b": [
+    4,
+    1440
+   ],
+   "aa0f3c12-6281-4ffb-ad0e-985bb7181c93": [
+    4,
+    1440
+   ],
+   "b4f8c940-b59a-42c6-9f0d-3896820708d6": [
+    2,
+    1440
+   ],
+   "b6b67eb8-4ce0-4d92-aa5f-ca2919409823": [
+    6,
+    1440
+   ],
+   "b81ce508-ca4e-4a35-ba2f-48021c75ed80": [
+    3,
+    1440
+   ],
+   "b925bbb7-5abb-4b15-8b57-b9007d2117c7": [
+    1,
+    1440
+   ],
+   "c3a72a60-d18e-4b7e-a3a3-eabdbeefe387": [
+    5,
+    1440
+   ],
+   "c3af6990-1b3e-4647-8cb0-d6411384051f": [
+    1,
+    1440
+   ],
+   "c475eeb2-0336-468e-aa92-a592823ebd39": [
+    2,
+    1440
+   ],
+   "d070df9b-9cf7-421d-a871-af07d574ec36": [
+    1,
+    1440
+   ],
+   "d5098914-79ac-46e9-9d50-db26b8cac598": [
+    5,
+    1440
+   ],
+   "dbb254fe-48fa-47b3-95d5-93a9dafc25ce": [
+    3,
+    1440
+   ],
+   "de8b68d2-f743-4350-815e-78a14fc7da3e": [
+    6,
+    1440
+   ],
+   "e3baae74-fdb1-44be-a8a8-8055d97de57c": [
+    6,
+    1440
+   ],
+   "e8d67355-f67a-4787-a7d5-7b2ecc0818b4": [
+    6,
+    1440
+   ],
+   "ea9cd0dd-7ebb-4b58-bd27-2146c2777757": [
+    3,
+    1440
+   ],
+   "eb37d632-887a-4a97-9324-1de3977c8af8": [
+    2,
+    1440
+   ],
+   "ec2606f1-b33e-41c0-8c15-c6e876cb81ba": [
+    5,
+    1440
+   ],
+   "ec7e44a0-274f-4520-ae47-f2e1a950c7aa": [
+    4,
+    1440
+   ],
+   "ee6d1f42-25b8-4b12-a930-a89ae6cbb69b": [
+    4,
+    1440
+   ],
+   "f0608af1-c1c4-4287-8cf9-bc7e5c6cfcdf": [
+    5,
+    1440
+   ],
+   "f0ffe0b0-44cd-46d6-a1e5-9c6d837b568d": [
+    6,
+    1440
+   ],
+   "f25c5c6e-f498-41cf-92d0-66a468895952": [
+    1,
+    1440
+   ],
+   "f285c9ab-22ee-4f61-b03f-c7fd116dcf20": [
+    3,
+    1440
+   ],
+   "fac80267-88b4-4ec1-9ff0-1a39e76e3124": [
+    3,
+    1440
+   ],
+   "fd9d0009-5161-420a-91c9-e8f54d2a7b54": [
+    3,
+    1440
+   ]
+  },
+  "slack": {
+   "06f47512-412a-4bf4-965f-6783fea9a13a": [
+    1,
+    1440
+   ],
+   "09618e92-4bb7-4770-8efb-13c1a3ad3932": [
+    5,
+    1440
+   ],
+   "0c970036-3052-461f-b976-f32ccd85ceb9": [
+    2,
+    1440
+   ],
+   "0ef727bf-4a6a-4fdc-813b-7b099c3dc01d": [
+    4,
+    1440
+   ],
+   "11921b94-711b-47f3-b9fc-e77b3dc21249": [
+    2,
+    1440
+   ],
+   "157456b1-a205-4e28-afb5-e77ae862fc69": [
+    2,
+    1440
+   ],
+   "1af1d46f-2587-42af-94a4-83e693e2c196": [
+    5,
+    1440
+   ],
+   "1c26d0d8-b9a9-4902-b131-22b1659ff949": [
+    4,
+    1440
+   ],
+   "263046e2-e558-448b-bb99-6d36589f5ee9": [
+    4,
+    1440
+   ],
+   "283adb02-7a80-4ef4-b967-35f58813e54b": [
+    3,
+    1440
+   ],
+   "383dc631-2bd6-4ee2-9e80-8efcfda1f620": [
+    2,
+    1440
+   ],
+   "3a6ff2f8-60f9-4938-9e80-7976895523b8": [
+    1,
+    1440
+   ],
+   "3c69c14f-e58c-464a-bd2e-a3d2e9e063d7": [
+    3,
+    1440
+   ],
+   "45c00d81-2e35-451f-8793-4da3b6fa3a20": [
+    2,
+    1440
+   ],
+   "4fe990c0-947a-41c9-92c7-ab44051c1263": [
+    5,
+    1440
+   ],
+   "597f8ba4-20df-4793-954b-fb387dfc4afc": [
+    5,
+    1440
+   ],
+   "5cf41472-f242-4972-a8a9-f9b8fb42bc24": [
+    4,
+    1440
+   ],
+   "60fd8a37-a5f8-4df2-ae75-3f8088517d1e": [
+    6,
+    1440
+   ],
+   "63ee7722-56b6-459b-b731-0044b3265484": [
+    6,
+    1440
+   ],
+   "6e7ac7b8-43a0-4a04-a34d-adada7109ee3": [
+    1,
+    1440
+   ],
+   "735b54d2-0a67-4b58-baaf-3fefc87c9708": [
+    6,
+    1440
+   ],
+   "7465f965-c0aa-4a32-a89c-d9a0e8be6954": [
+    1,
+    1440
+   ],
+   "82ff4f35-00d2-4826-9dba-36daac366d44": [
+    5,
+    1440
+   ],
+   "8647da81-7e1e-4226-bb8c-46a164eda941": [
+    6,
+    1440
+   ],
+   "87e812b4-01f6-4d36-bd0c-4174e864932f": [
+    4,
+    1440
+   ],
+   "88208f9d-f89b-43b5-8a86-32aa2c98ad89": [
+    1,
+    1440
+   ],
+   "8e79d762-5a03-4bc3-9f04-736d28cdc6d6": [
+    5,
+    1440
+   ],
+   "8e80f18c-384d-4dae-a642-1b22645986ef": [
+    2,
+    1440
+   ],
+   "9206211f-05cc-4d59-9a6a-8d9f7ba676d9": [
+    2,
+    1440
+   ],
+   "97a6c63c-8ab3-4a14-ba64-736bee8eed88": [
+    4,
+    1440
+   ],
+   "9812a531-e29f-4dcf-8c4c-dd68a49ce0a8": [
+    3,
+    1440
+   ],
+   "9d3c7ff1-7a48-4252-bf82-99730cc0c793": [
+    3,
+    1440
+   ],
+   "9eca90c9-4b68-4847-9c1d-debd860b5732": [
+    6,
+    1440
+   ],
+   "9fdff2d8-1c7a-4ee6-b6be-2fd1c18c3a5d": [
+    1,
+    1440
+   ],
+   "a3bd7c8e-ede1-45c1-83b9-9dcff41a1d7b": [
+    4,
+    1440
+   ],
+   "aa0f3c12-6281-4ffb-ad0e-985bb7181c93": [
+    4,
+    1440
+   ],
+   "b4f8c940-b59a-42c6-9f0d-3896820708d6": [
+    2,
+    1440
+   ],
+   "b6b67eb8-4ce0-4d92-aa5f-ca2919409823": [
+    6,
+    1440
+   ],
+   "b81ce508-ca4e-4a35-ba2f-48021c75ed80": [
+    3,
+    1440
+   ],
+   "b925bbb7-5abb-4b15-8b57-b9007d2117c7": [
+    1,
+    1440
+   ],
+   "c3a72a60-d18e-4b7e-a3a3-eabdbeefe387": [
+    5,
+    1440
+   ],
+   "c3af6990-1b3e-4647-8cb0-d6411384051f": [
+    1,
+    1440
+   ],
+   "c475eeb2-0336-468e-aa92-a592823ebd39": [
+    2,
+    1440
+   ],
+   "d070df9b-9cf7-421d-a871-af07d574ec36": [
+    1,
+    1440
+   ],
+   "d5098914-79ac-46e9-9d50-db26b8cac598": [
+    5,
+    1440
+   ],
+   "dbb254fe-48fa-47b3-95d5-93a9dafc25ce": [
+    3,
+    1440
+   ],
+   "de8b68d2-f743-4350-815e-78a14fc7da3e": [
+    6,
+    1440
+   ],
+   "e3baae74-fdb1-44be-a8a8-8055d97de57c": [
+    6,
+    1440
+   ],
+   "e8d67355-f67a-4787-a7d5-7b2ecc0818b4": [
+    6,
+    1440
+   ],
+   "ea9cd0dd-7ebb-4b58-bd27-2146c2777757": [
+    3,
+    1440
+   ],
+   "eb37d632-887a-4a97-9324-1de3977c8af8": [
+    2,
+    1440
+   ],
+   "ec2606f1-b33e-41c0-8c15-c6e876cb81ba": [
+    5,
+    1440
+   ],
+   "ec7e44a0-274f-4520-ae47-f2e1a950c7aa": [
+    4,
+    1440
+   ],
+   "ee6d1f42-25b8-4b12-a930-a89ae6cbb69b": [
+    4,
+    1440
+   ],
+   "f0608af1-c1c4-4287-8cf9-bc7e5c6cfcdf": [
+    5,
+    1440
+   ],
+   "f0ffe0b0-44cd-46d6-a1e5-9c6d837b568d": [
+    6,
+    1440
+   ],
+   "f25c5c6e-f498-41cf-92d0-66a468895952": [
+    1,
+    1440
+   ],
+   "f285c9ab-22ee-4f61-b03f-c7fd116dcf20": [
+    3,
+    1440
+   ],
+   "fac80267-88b4-4ec1-9ff0-1a39e76e3124": [
+    3,
+    1440
+   ],
+   "fd9d0009-5161-420a-91c9-e8f54d2a7b54": [
+    3,
+    1440
+   ]
+  },
+  "extra_occ": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "work_windows": null
+ },
+ {
+  "name": "14. Exam week, overloaded (35 items)",
+  "note": "35 items / ~45 h from Monday morning; can't all fit.",
+  "now": [
+   0,
+   "07:00"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "h00",
+    "title": "Math worksheet",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h01",
+    "title": "History problem set",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h02",
+    "title": "English essay draft",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h03",
+    "title": "Chemistry problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h04",
+    "title": "Spanish reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h05",
+    "title": "Physics worksheet",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h06",
+    "title": "Biology reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h07",
+    "title": "CS lab write-up",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h08",
+    "title": "Math reading",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h09",
+    "title": "History problem set",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h10",
+    "title": "English lab write-up",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h11",
+    "title": "Chemistry problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 1,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h12",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h13",
+    "title": "Physics lab write-up",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h14",
+    "title": "Biology essay draft",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 2,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h15",
+    "title": "CS reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h16",
+    "title": "Math essay draft",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 1,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h17",
+    "title": "History essay draft",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h18",
+    "title": "English essay draft",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h19",
+    "title": "Chemistry worksheet",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h20",
+    "title": "Spanish essay draft",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h21",
+    "title": "Physics worksheet",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h22",
+    "title": "Biology problem set",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 4,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h23",
+    "title": "CS worksheet",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h24",
+    "title": "Math reading",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h25",
+    "title": "History problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h26",
+    "title": "English lab write-up",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h27",
+    "title": "Chemistry essay draft",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h28",
+    "title": "Spanish reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h29",
+    "title": "Physics problem set",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h30",
+    "title": "Biology reading",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h31",
+    "title": "CS worksheet",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h32",
+    "title": "Math essay draft",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h33",
+    "title": "History project work",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h34",
+    "title": "English study for quiz",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   }
+  ]
+ },
+ {
+  "name": "15. Wednesday overload (25 items, due Thu-Fri)",
+  "note": "Plan made Wed 15:15, 25 items due Thu/Fri; can't all fit.",
+  "now": [
+   2,
+   "15:15"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "sleep_am",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "00:00",
+    "duration_min": 420,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "sleep_pm",
+    "title": "Sleep",
+    "kind": "locked",
+    "start": "23:00",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "dinner",
+    "title": "Dinner",
+    "kind": "locked",
+    "start": "18:30",
+    "duration_min": 30,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "id": "h00",
+    "title": "Math reading",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Math"
+   },
+   {
+    "id": "h01",
+    "title": "History worksheet",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "History"
+   },
+   {
+    "id": "h02",
+    "title": "English reading",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "English"
+   },
+   {
+    "id": "h03",
+    "title": "Chemistry problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h04",
+    "title": "Spanish project work",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Spanish"
+   },
+   {
+    "id": "h05",
+    "title": "Physics reading",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Physics"
+   },
+   {
+    "id": "h06",
+    "title": "Biology lab write-up",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Biology"
+   },
+   {
+    "id": "h07",
+    "title": "CS essay draft",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 4,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "CS"
+   },
+   {
+    "id": "h08",
+    "title": "Math reading",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Math"
+   },
+   {
+    "id": "h09",
+    "title": "History problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "History"
+   },
+   {
+    "id": "h10",
+    "title": "English worksheet",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "English"
+   },
+   {
+    "id": "h11",
+    "title": "Chemistry essay draft",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h12",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Spanish"
+   },
+   {
+    "id": "h13",
+    "title": "Physics essay draft",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Physics"
+   },
+   {
+    "id": "h14",
+    "title": "Biology project work",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Biology"
+   },
+   {
+    "id": "h15",
+    "title": "CS essay draft",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "CS"
+   },
+   {
+    "id": "h16",
+    "title": "Math problem set",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Math"
+   },
+   {
+    "id": "h17",
+    "title": "History problem set",
+    "kind": "flexible",
+    "duration_min": 45,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "History"
+   },
+   {
+    "id": "h18",
+    "title": "English worksheet",
+    "kind": "flexible",
+    "duration_min": 30,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "English"
+   },
+   {
+    "id": "h19",
+    "title": "Chemistry reading",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h20",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Spanish"
+   },
+   {
+    "id": "h21",
+    "title": "Physics lab write-up",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Physics"
+   },
+   {
+    "id": "h22",
+    "title": "Biology project work",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Biology"
+   },
+   {
+    "id": "h23",
+    "title": "CS lab write-up",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "CS"
+   },
+   {
+    "id": "h24",
+    "title": "Math essay draft",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     2,
+     3,
+     4
+    ],
+    "priority": 4,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Wednesday 15:15",
+    "course": "Math"
+   }
+  ]
+ },
+ {
+  "name": "16. Overloaded week, app defaults (40 items)",
+  "note": "40 items / ~50 h, no sleep/dinner blocks; can't all fit.",
+  "now": [
+   0,
+   "07:00"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:00",
+    "duration_min": 435,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "job",
+    "title": "Saturday job",
+    "kind": "locked",
+    "start": "10:00",
+    "duration_min": 240,
+    "days": [
+     5
+    ]
+   },
+   {
+    "id": "h00",
+    "title": "Math problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h01",
+    "title": "History essay draft",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h02",
+    "title": "English reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h03",
+    "title": "Chemistry project work",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 4,
+    "energy": "medium",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h04",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 1,
+    "energy": "medium",
+    "latest": "Saturday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h05",
+    "title": "Physics project work",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h06",
+    "title": "Biology reading",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h07",
+    "title": "CS problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h08",
+    "title": "Math lab write-up",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h09",
+    "title": "History project work",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Saturday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h10",
+    "title": "English problem set",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h11",
+    "title": "Chemistry reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h12",
+    "title": "Spanish essay draft",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 4,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h13",
+    "title": "Physics study for quiz",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h14",
+    "title": "Biology essay draft",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 4,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h15",
+    "title": "CS essay draft",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h16",
+    "title": "Math lab write-up",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h17",
+    "title": "History reading",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h18",
+    "title": "English reading",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h19",
+    "title": "Chemistry study for quiz",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 4,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h20",
+    "title": "Spanish reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Sunday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h21",
+    "title": "Physics reading",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 4,
+    "energy": "high",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h22",
+    "title": "Biology study for quiz",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h23",
+    "title": "CS essay draft",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Sunday 23:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h24",
+    "title": "Math worksheet",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h25",
+    "title": "History lab write-up",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h26",
+    "title": "English essay draft",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h27",
+    "title": "Chemistry essay draft",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "medium",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h28",
+    "title": "Spanish essay draft",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Saturday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h29",
+    "title": "Physics study for quiz",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h30",
+    "title": "Biology study for quiz",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Tuesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h31",
+    "title": "CS worksheet",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   },
+   {
+    "id": "h32",
+    "title": "Math lab write-up",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 2,
+    "energy": "low",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Math"
+   },
+   {
+    "id": "h33",
+    "title": "History lab write-up",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Friday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "History"
+   },
+   {
+    "id": "h34",
+    "title": "English study for quiz",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 2,
+    "energy": "high",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "English"
+   },
+   {
+    "id": "h35",
+    "title": "Chemistry project work",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "Chemistry"
+   },
+   {
+    "id": "h36",
+    "title": "Spanish worksheet",
+    "kind": "flexible",
+    "duration_min": 120,
+    "days": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "priority": 3,
+    "energy": "low",
+    "latest": "Thursday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Spanish"
+   },
+   {
+    "id": "h37",
+    "title": "Physics worksheet",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Physics"
+   },
+   {
+    "id": "h38",
+    "title": "Biology study for quiz",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     0,
+     1,
+     2
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "latest": "Wednesday 08:00",
+    "earliest": "Monday 07:00",
+    "course": "Biology"
+   },
+   {
+    "id": "h39",
+    "title": "CS worksheet",
+    "kind": "flexible",
+    "duration_min": 90,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "high",
+    "latest": "Sunday 21:00",
+    "earliest": "Monday 07:00",
+    "course": "CS"
+   }
+  ]
+ },
+ {
+  "name": "17. First-time user: due next week (real run)",
+  "note": "Fri 9 Oct 10:45, school 08:30-15:15, soccer Tue/Thu; 3 items (3 h 15 min) due Wed 14 / Thu 15 / Fri 16 Oct. App offers the solver Friday only.",
+  "now": [
+   4,
+   "10:45"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:30",
+    "duration_min": 405,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "n1",
+    "title": "History reading (due Wed 14 Oct)",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45"
+   },
+   {
+    "id": "n2",
+    "title": "Math problem set (due Thu 15 Oct)",
+    "kind": "flexible",
+    "duration_min": 75,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45"
+   },
+   {
+    "id": "n3",
+    "title": "English essay draft (due Fri 16 Oct)",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45"
+   }
+  ],
+  "deadlines": {
+   "n1": null,
+   "n2": null,
+   "n3": null
+  },
+  "slack": {
+   "n1": [
+    9,
+    1440
+   ],
+   "n2": [
+    10,
+    1440
+   ],
+   "n3": [
+    11,
+    1440
+   ]
+  }
+ },
+ {
+  "name": "17b. Same, if the weekend were offered",
+  "note": "What-if: same three items allowed Fri-Sun.",
+  "now": [
+   4,
+   "10:45"
+  ],
+  "blocks": [
+   {
+    "id": "school",
+    "title": "School",
+    "kind": "locked",
+    "start": "08:30",
+    "duration_min": 405,
+    "days": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "id": "soccer",
+    "title": "Soccer",
+    "kind": "locked",
+    "start": "16:00",
+    "duration_min": 90,
+    "days": [
+     1,
+     3
+    ]
+   },
+   {
+    "id": "n1",
+    "title": "History reading (due Wed 14 Oct)",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45"
+   },
+   {
+    "id": "n2",
+    "title": "Math problem set (due Thu 15 Oct)",
+    "kind": "flexible",
+    "duration_min": 75,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45"
+   },
+   {
+    "id": "n3",
+    "title": "English essay draft (due Fri 16 Oct)",
+    "kind": "flexible",
+    "duration_min": 60,
+    "days": [
+     4,
+     5,
+     6
+    ],
+    "priority": 3,
+    "energy": "medium",
+    "earliest": "Friday 10:45"
+   }
+  ],
+  "deadlines": {
+   "n1": null,
+   "n2": null,
+   "n3": null
+  },
+  "slack": {
+   "n1": [
+    9,
+    1440
+   ],
+   "n2": [
+    10,
+    1440
+   ],
+   "n3": [
+    11,
+    1440
+   ]
+  }
+ }
+]

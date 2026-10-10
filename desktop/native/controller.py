@@ -84,6 +84,7 @@ from desktop.native.reuse import (
     copied_homework_block,
     copy_label,
     due_point,
+    fair_share,
     is_planned,
     late_from_start,
     late_id,
@@ -1834,6 +1835,16 @@ class NativeSession(QObject):
         payload, targets = solve_request(
             self.blocks, self.assignments, self.week_start, everything=everything, only=only, not_before=start
         )
+        # Work due after Sunday gets its fair share of this week; the rest waits for next week's Plan.
+        first_day = start[0] if start else 0
+        week, shares = fair_share(
+            self.blocks, self.assignments, self._committed_blocks, self.week_start, first_day, targets
+        )
+        if shares:
+            kept = {block["id"] for block in week}
+            payload, targets = solve_request(
+                week, self.assignments, self.week_start, only=targets & kept, not_before=start
+            )
         if not targets:
             self._say("All your homework already has a time.")
             # Homework left in an earlier week is not this plan's to move; the window offers it.
@@ -1848,11 +1859,12 @@ class NativeSession(QObject):
             original_blocks = self.blocks
             before = self._dump_blocks()
             self.blocks = apply_plan(
-                self.blocks, data, targets=targets, assignments=self.assignments, week_start=self.week_start
+                week, data, targets=targets, assignments=self.assignments, week_start=self.week_start
             )
             sources = {block["id"]: block for block in self.blocks}
             data = {
                 **data,
+                "shares": shares,
                 "placed": [
                     sources.get(item["id"], item)
                     if item.get("kind") == "locked" and item["id"] in sources

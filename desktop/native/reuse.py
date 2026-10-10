@@ -130,6 +130,27 @@ def solve_request(
     return json.loads(payload), set(json.loads(targets))
 
 
+def fair_share(
+    blocks: list[dict],
+    assignments: dict,
+    committed: list[dict],
+    week_start: str,
+    first_day: int,
+    targets: set[str],
+) -> tuple[list[dict], list[dict]]:
+    """Work due after this Sunday cut to its fair share of this week (item 1c, part C), and a note for
+    each homework cut: `{assignment_id, title, this_week_min, left_min}`."""
+    week, notes = flexweek_engine.reuse_fair_share(
+        json.dumps(blocks),
+        json.dumps(assignments),
+        json.dumps(committed),
+        week_start,
+        first_day,
+        sorted(targets),
+    )
+    return json.loads(week), json.loads(notes)
+
+
 def due_point(due: str | None, week_start: str) -> tuple[int, int] | None:
     """A deadline as (day index, minute) in this week: negative before it, None when it is later."""
     point = flexweek_engine.reuse_due_point(json.dumps(due), week_start)
