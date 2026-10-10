@@ -252,7 +252,8 @@ jobs:
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             patchelf binutils libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
-            libxcb-keysyms1 libxcb-render-util0 libxcb-util1 xvfb \
+            libxcb-keysyms1 libxcb-render-util0 libxcb-util1 \
+            libxkbcommon0 libxkbcommon-x11-0 xvfb \
             libegl1 libgl1 libopengl0 libglx0 libgles2 libgl1-mesa-dri
 
       - name: Create venv and install build + runtime deps

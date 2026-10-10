@@ -69,8 +69,6 @@ LINUX_SYSTEM_LIBS = frozenset(
         "libxcb-xkb.so.1",
         "libxcb-xinerama.so.0",
         "libxcb-xinput.so.0",
-        "libxkbcommon.so.0",
-        "libxkbcommon-x11.so.0",
         "libwayland-client.so.0",
         "libwayland-cursor.so.0",
         "libwayland-egl.so.1",

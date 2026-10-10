@@ -163,8 +163,8 @@ pip install -r requirements.txt -r requirements-desktop.txt
 Pinned in `requirements-desktop.txt`: PySide6 6.11.2 (`cp310-abi3` wheels,
 so the stable ABI covers Python 3.14), Nuitka 4.2.1 and patchelf 0.19.1. The
 machine also needs a C compiler (GCC), Python 3.14's development headers,
-`readelf` (binutils), `ldconfig`, and the six X11 helpers listed below
-installed, because the build copies them in.
+`readelf` (binutils), `ldconfig`, and the six X11 helpers and two xkbcommon
+libraries listed below installed, because the build copies them in.
 
 **Files**
 
@@ -180,7 +180,10 @@ installed, because the build copies them in.
   `libxcb-cursor.so.0`, `libxcb-icccm.so.4`, `libxcb-image.so.0`,
   `libxcb-keysyms.so.1`, `libxcb-render-util.so.0` and `libxcb-util.so.1` into
   the bundle with their licences (Qt's X11 plugin needs them, and Ubuntu and Mint
-  do not install them), then runs the check below.
+  do not install them), and `libxkbcommon.so.0` and `libxkbcommon-x11.so.0`
+  (Qt's X11 plugin needs both; the release workflow installs the Ubuntu 24.04
+  packages, 1.6.0-1build1 when this was written, and its licence is the upstream
+  LICENSE file of that release), then runs the check below.
 - `desktop/check_bundle.py` — fails the bundle when a binary needs a glibc newer
   than 2.38, or a library that is neither inside it nor in `LINUX_SYSTEM_LIBS`,
   the libraries a desktop Linux already has. Two plugins Qt skips when their
@@ -193,8 +196,7 @@ installed, because the build copies them in.
 **What the bundle takes from the system.** The README's "Linux libraries" table,
 for students, lists it. It was read on 2026-09-25 from a 0.14 bundle with
 `readelf -d` on every file: each `NEEDED` library the bundle does not carry. That
-is `libEGL.so.1` and `libGL.so.1`; `libxkbcommon.so.0` and
-`libxkbcommon-x11.so.0`; `libfontconfig.so.1` and `libfreetype.so.6`; `libX11`,
+is `libEGL.so.1` and `libGL.so.1`; `libfontconfig.so.1` and `libfreetype.so.6`; `libX11`,
 `libX11-xcb` and `libxcb` with its `glx`, `randr`, `render`, `shape`, `shm`,
 `sync`, `xfixes` and `xkb` parts; `libwayland-client`, `-cursor` and `-egl`;
 `libglib-2.0`, `libgthread-2.0` and `libdbus-1`; `libgssapi_krb5` and
@@ -363,10 +365,11 @@ bundle on purpose.
 
 The archive holds one `FlexWeek/` folder with the app, `README.txt`,
 `flexweek.png`, `flexweek.desktop`, `install-menu-entry.sh` and `LICENSE.txt`.
-`finish_linux_bundle.sh` copies `libxcb-cursor` and the five other X11 helpers
-into the bundle, drops unused Qt `.qm` files, and fails the build if anything
-needs a newer glibc than 2.38 or a library a desktop does not have (section 6). A tar.gz keeps the executable bit that
-a zip would lose. Attach the tarball and its `.sha256` to a GitHub Release
+`finish_linux_bundle.sh` copies `libxcb-cursor` and the five other X11 helpers,
+and the two xkbcommon libraries, into the bundle, drops unused Qt `.qm` files,
+and fails the build if anything needs a newer glibc than 2.38 or a library a
+desktop does not have (section 6). A tar.gz keeps the executable bit that a zip
+would lose. Attach the tarball and its `.sha256` to a GitHub Release
 using the body in `docs/github-release.md`. The README's "Download for Linux"
 link expects this exact filename.
 

@@ -32,12 +32,11 @@ Checksum files (`.sha256`) sit next to those downloads if you want to confirm th
 
 ### Linux libraries
 
-The Linux download carries Qt and Python inside it, including the X11 helpers many desktops leave out (`libxcb-cursor` and five others). It uses these libraries from your system, and a desktop install already has them:
+The Linux download carries Qt and Python inside it, including the X11 helpers many desktops leave out (`libxcb-cursor` and five others) and the keyboard libraries `libxkbcommon` and `libxkbcommon-x11`. It uses these libraries from your system, and a desktop install already has them:
 
 | For | Libraries |
 | --- | --- |
 | Graphics | `libEGL.so.1`, `libGL.so.1` |
-| Keyboard | `libxkbcommon.so.0`, and on X11 `libxkbcommon-x11.so.0` |
 | Text | `libfontconfig.so.1`, `libfreetype.so.6` |
 | X11 | `libX11.so.6`, `libX11-xcb.so.1`, and `libxcb.so.1` with its `randr`, `render`, `shape`, `shm`, `sync`, `xfixes` and `xkb` parts |
 | Wayland | `libwayland-client.so.0`, `libwayland-cursor.so.0`, `libwayland-egl.so.1` |
@@ -51,7 +50,7 @@ If FlexWeek does not start, this lists any that are missing:
 find FlexWeek -name '*.so*' -exec ldd {} + 2>/dev/null | grep 'not found' | sort -u
 ```
 
-On Debian or Ubuntu without a full desktop, such as a container or a minimal install, `sudo apt install libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3` adds the ones FlexWeek's own test machines lacked.
+On Debian or Ubuntu without a full desktop, such as a container or a minimal install, `sudo apt install libegl1 libgl1 libdbus-1-3` adds the ones FlexWeek's own test machines lacked.
 
 ## Screenshots
 
@@ -72,9 +71,9 @@ pip install ./engine/py     # builds the Rust engine; run it again after pulling
 python -m desktop.main
 ```
 
-On Linux, pip's PySide6 does not include the X11 helpers that the download carries, so a checkout also needs `libxcb-cursor.so.0`, `libxcb-icccm.so.4`, `libxcb-image.so.0`, `libxcb-keysyms.so.1`, `libxcb-render-util.so.0` and `libxcb-util.so.1`, besides the [Linux libraries](#linux-libraries) above. On Debian or Ubuntu: `sudo apt install libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-util1`.
+On Linux, pip's PySide6 does not include the X11 helpers and keyboard libraries that the download carries, so a checkout also needs `libxcb-cursor.so.0`, `libxcb-icccm.so.4`, `libxcb-image.so.0`, `libxcb-keysyms.so.1`, `libxcb-render-util.so.0`, `libxcb-util.so.1`, `libxkbcommon.so.0` and `libxkbcommon-x11.so.0`, besides the [Linux libraries](#linux-libraries) above. On Debian or Ubuntu: `sudo apt install libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-util1 libxkbcommon0 libxkbcommon-x11-0`.
 
-Building the Linux download (`./desktop/build_linux.sh`) also needs a C compiler (GCC), Python 3.14's development headers, `patchelf` (installed by `requirements-desktop.txt`) and `readelf` (binutils). The six X11 helpers must be installed, because the build copies them into the bundle. A release is built on Ubuntu 24.04, so nothing in it needs a glibc newer than 2.38; [DESKTOP.md](DESKTOP.md) has the details.
+Building the Linux download (`./desktop/build_linux.sh`) also needs a C compiler (GCC), Python 3.14's development headers, `patchelf` (installed by `requirements-desktop.txt`) and `readelf` (binutils). The six X11 helpers and the two xkbcommon libraries must be installed, because the build copies them into the bundle. A release is built on Ubuntu 24.04, so nothing in it needs a glibc newer than 2.38; [DESKTOP.md](DESKTOP.md) has the details.
 
 The backend starts inside the app on a loopback port; there is no separate
 server to run and no page to open in a browser. The first screen is Sign in,
