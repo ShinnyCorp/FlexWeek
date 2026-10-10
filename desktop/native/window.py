@@ -364,13 +364,12 @@ CREATE_HEADING = "Create your account"
 CREATE_NOTE = (
     "FlexWeek fits homework around school and sports. "
     "Your week is saved on this computer, under this account. "
-    "Export a backup file now and then, from Settings under This computer."
+    "Export a backup file now and then, in Settings."
 )
 RESET_HEADING = "Reset your password"
 RESET_NOTE = (
-    "Use one of the recovery codes you saved when you made your account. Lost your codes too? FlexWeek "
-    "cannot reset your password without one. If you have a backup file, create a new account and choose "
-    "Import backup file. Otherwise, create a new account and start fresh."
+    "Use one of the recovery codes you saved when you made your account. Lost them too? Create a new "
+    "account and import a backup file, or start fresh."
 )
 # What the sign-in card is for at the moment.
 SIGN_IN, CREATE, RESET = "sign in", "create", "reset"

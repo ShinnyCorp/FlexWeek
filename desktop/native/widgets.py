@@ -233,7 +233,7 @@ HOMEWORK_PROBLEMS = {
     "course": "Keep the course name under 40 characters.",
     "spotify_url": "Paste a Spotify share link from open.spotify.com.",
     "notes": "Keep notes under 4,000 characters.",
-    "priority": "Choose a priority from the list.",
+    "priority": "Choose a type from the list.",
     "energy": "Choose a time of day from the list.",
     "completed_at": "Set a valid time for finished homework.",
 }

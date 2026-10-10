@@ -309,8 +309,8 @@ def test_reset_password_says_what_to_do_without_codes(qapp: QApplication, signed
     qapp.processEvents()
     note = window.auth_note.text()
     assert note.startswith("Use one of the recovery codes you saved when you made your account.")
-    assert "Lost your codes too?" in note
-    assert "create a new account and choose Import backup file" in note
+    assert "Lost them too?" in note
+    assert "Create a new account and import a backup file" in note
     assert "start fresh" in note
 
 
