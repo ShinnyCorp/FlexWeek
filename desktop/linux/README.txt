@@ -47,8 +47,9 @@ What your computer needs
 - Working graphics (OpenGL or EGL). A remote or headless session without a
   display will not work.
 
-Normal desktops already have everything else. The X11 cursor helpers FlexWeek
-needs (libxcb-cursor and friends) are included in this folder.
+Normal desktops already have everything else. The X11 helpers and keyboard
+libraries FlexWeek needs (libxcb-cursor, libxkbcommon and friends) are included
+in this folder.
 
 @WEB_VERSION@
 
@@ -70,12 +71,13 @@ Open a terminal in this folder and type ./FlexWeek to see the error.
   @WEB_FALLBACK@
 - "error while loading shared libraries": a desktop library is missing. On
   Ubuntu, Mint or Debian install it with:
-      sudo apt install libxkbcommon-x11-0 libegl1 libgl1
+      sudo apt install libegl1 libgl1
   On Fedora:
-      sudo dnf install libxkbcommon-x11 mesa-libEGL mesa-libGL
+      sudo dnf install mesa-libEGL mesa-libGL
 
 
 License
 -------
 FlexWeek is free software under the GNU GPL version 3 (see LICENSE.txt).
-The files in licenses/ cover the X11 libraries included in this folder.
+The files in licenses/ cover the X11 and keyboard libraries included in this
+folder.

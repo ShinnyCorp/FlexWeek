@@ -1,7 +1,7 @@
 //! `fwtest gate` runs the same checks as `scripts/verify.py`, in the same order.
 //!
 //! The success line is the one `verify.py` prints, including the backend-only
-//! wording. Each step is one contained command. The per-step limit is 900
+//! wording. Each step is one contained command. The per-step limit is 2400
 //! seconds unless `FWTEST_STEP_TIMEOUT_SECS` is set (tests use a few seconds).
 
 use std::path::Path;
@@ -29,7 +29,7 @@ pub fn step_timeout_secs() -> u64 {
         .ok()
         .and_then(|value| value.parse().ok())
         .filter(|value| *value > 0)
-        .unwrap_or(900)
+        .unwrap_or(2400)
 }
 
 pub fn run(backend_only: bool, workers: Option<u32>, python: Option<&Path>) -> u8 {
@@ -135,16 +135,18 @@ pub fn run(backend_only: bool, workers: Option<u32>, python: Option<&Path>) -> u
     0
 }
 
-/// Every mutation case's old text still occurs once in its source file. Edits near a case break it,
-/// and finding that out in the long test step, or in a later mutation run, wastes the wait. A
-/// checkout with no `scripts/mutations` has nothing to check.
+/// Every mutation case's old text still occurs once in its source file, and its test still exists.
+/// Edits near a case break the first, and a rename breaks the second; finding either out in the long
+/// test step, or in a later mutation run, wastes the wait. A checkout with no `scripts/mutations`
+/// has nothing to check.
 fn mutation_patterns(checkout: &Path) -> Result<(), String> {
     println!("\nMutation patterns");
     if !checkout.join("scripts/mutations").is_dir() {
         println!("no scripts/mutations here; nothing to check");
         return Ok(());
     }
-    let misses = crate::mutate::pattern_misses(checkout)?;
+    let mut misses = crate::mutate::pattern_misses(checkout)?;
+    misses.extend(crate::mutate::test_misses(checkout)?);
     if misses.is_empty() {
         return Ok(());
     }

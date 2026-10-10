@@ -63,6 +63,21 @@ def test_linux_bundle_fails_on_a_newer_glibc_and_an_unbundled_xcb_helper() -> No
     ]
 
 
+def test_linux_bundle_fails_without_the_keyboard_libraries_qt_needs() -> None:
+    # The X11 platform plugin cannot load without these two, and desktops may not have them.
+    binaries = {
+        "libQt6XcbQpa.so.6": (
+            {"libxkbcommon.so.0", "libxkbcommon-x11.so.0", "libc.so.6"},
+            ((2, 34), "GLIBC_2.34"),
+        ),
+    }
+    missing = "which is neither bundled nor a desktop system library"
+    assert linux_problems(binaries, {"libQt6XcbQpa.so.6"}, (2, 38)) == [
+        f"libQt6XcbQpa.so.6 needs libxkbcommon-x11.so.0, {missing}",
+        f"libQt6XcbQpa.so.6 needs libxkbcommon.so.0, {missing}",
+    ]
+
+
 def test_vendoring_the_helper_and_optional_plugins_pass() -> None:
     binaries = {
         "libQt6XcbQpa.so.6": ({"libxcb-cursor.so.0", "libxcb.so.1"}, ((2, 34), "GLIBC_2.34")),

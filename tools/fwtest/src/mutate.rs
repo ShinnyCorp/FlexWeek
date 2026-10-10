@@ -200,6 +200,98 @@ pub fn pattern_misses(checkout: &Path) -> Result<Vec<String>, String> {
     Ok(misses)
 }
 
+/// Cases whose `test` names no test that exists. A renamed test would otherwise fail only in the
+/// mutate job, after the wait for the test run.
+pub fn test_misses(checkout: &Path) -> Result<Vec<String>, String> {
+    let mut misses = Vec::new();
+    for spec in spec_files(checkout, &[])? {
+        let text =
+            fs::read_to_string(&spec).map_err(|error| format!("{}: {error}", spec.display()))?;
+        let cases: Vec<Case> =
+            serde_json::from_str(&text).map_err(|error| format!("{}: {error}", spec.display()))?;
+        let stem = spec
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("spec");
+        for case in cases {
+            if let Some(reason) = missing_test(checkout, &case.test) {
+                misses.push(format!("{stem}: {} test {} {reason}", case.name, case.test));
+            }
+        }
+    }
+    Ok(misses)
+}
+
+/// Why the test named by a case cannot be found, or `None` when it exists.
+fn missing_test(checkout: &Path, test: &str) -> Option<String> {
+    match cargo_test(test) {
+        Err(error) => Some(error),
+        Ok(Some(cargo)) => {
+            let target = format!("tests/{}.rs", cargo.target);
+            let defined = integration_test_files(&checkout.join("engine"))
+                .into_iter()
+                .filter(|path| path.ends_with(&target))
+                .any(|path| {
+                    fs::read_to_string(path).is_ok_and(|body| defines_rust_fn(&body, &cargo.name))
+                });
+            (!defined).then(|| format!("is not a function in engine/**/{target}"))
+        }
+        Ok(None) => python_test_missing(checkout, test),
+    }
+}
+
+/// `path::function`, with a `[param]` id and a class part (`Class::function`) ignored.
+fn python_test_missing(checkout: &Path, test: &str) -> Option<String> {
+    let bare = test.split_once('[').map_or(test, |(head, _)| head);
+    let Some((file, rest)) = bare.split_once("::") else {
+        return Some("has no ::function part".to_string());
+    };
+    let function = rest.rsplit("::").next().unwrap_or(rest);
+    match fs::read_to_string(checkout.join(file)) {
+        Err(_) => Some(format!("names {file}, which does not exist")),
+        Ok(body) => (!defines_python_fn(&body, function))
+            .then(|| format!("has no function {function} in {file}")),
+    }
+}
+
+fn defines_python_fn(body: &str, name: &str) -> bool {
+    body.lines().any(|line| {
+        let line = line.trim_start();
+        let line = line.strip_prefix("async ").unwrap_or(line);
+        line.strip_prefix("def ")
+            .and_then(|rest| rest.strip_prefix(name))
+            .is_some_and(|rest| rest.starts_with('('))
+    })
+}
+
+fn defines_rust_fn(body: &str, name: &str) -> bool {
+    body.lines().any(|line| {
+        let line = line.trim_start().trim_start_matches("pub ");
+        line.strip_prefix("fn ")
+            .and_then(|rest| rest.strip_prefix(name))
+            .is_some_and(|rest| rest.starts_with('('))
+    })
+}
+
+/// Every `.rs` file under `dir`, except build output in `target` directories.
+fn integration_test_files(dir: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let Ok(entries) = fs::read_dir(dir) else {
+        return found;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if entry.file_name() != "target" {
+                found.extend(integration_test_files(&path));
+            }
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+            found.push(path);
+        }
+    }
+    found
+}
+
 fn finish(job: &Job<'_>, code: u8) -> u8 {
     if let Some(stop) = settle_or_stop(job) {
         return stop;
