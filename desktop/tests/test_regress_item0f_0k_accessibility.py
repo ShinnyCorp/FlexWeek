@@ -262,10 +262,6 @@ def test_0j_removing_activities_keeps_focus_in_the_list(qapp, made) -> None:
 
 # 0k ---------------------------------------------------------------------------------------------
 
-KNOWN_0K = "known failure (item 0k): the week is one painted widget named 'Hours' with no children or list"
-
-
-@pytest.mark.xfail(strict=True, reason=KNOWN_0K)
 def test_0k_a_week_list_names_each_block_with_its_day_and_times(qapp, window) -> None:
     session = window.session
     session.add_block({"id": "school", "title": "School", "kind": "locked", "category": "class",
@@ -279,12 +275,58 @@ def test_0k_a_week_list_names_each_block_with_its_day_and_times(qapp, window) ->
                 item = listing.item(i)
                 rows.append(f"{item.text()} {item.data(Qt.ItemDataRole.AccessibleTextRole) or ''}")
     school = [r for r in rows if "School" in r]
-    assert school and any("Mon" in r and "08:30" in r and "15:15" in r for r in school), rows[:10]
+    assert school and any("Monday" in r and "8:30 AM" in r and "3:15 PM" in r for r in school), rows[:10]
 
 
-@pytest.mark.xfail(strict=True, reason=KNOWN_0K)
 def test_0k_the_grid_is_named_week_view_hours(qapp, window) -> None:
     from desktop.native.hours.canvas import HoursCanvas
 
-    canvases = [c for c in window.findChildren(HoursCanvas) if c.isVisible()]
+    canvases = window.findChildren(HoursCanvas)
     assert canvases and all(c.accessibleName() == "Week view, hours" for c in canvases)
+
+
+def test_0k_the_week_list_precedes_the_grid_and_enter_opens_a_block(qapp, window, monkeypatch) -> None:
+    session = window.session
+    session.add_block({"id": "school", "title": "School", "kind": "locked", "category": "class",
+                       "start": "08:30", "duration_min": 405, "days": [0, 1, 2, 3, 4]})
+    settled(qapp, window)
+    listing = window.week_access_list
+    canvas = window.week_table.hours
+    assert listing.isVisible()
+    cursor = listing.nextInFocusChain()
+    seen: list[QWidget] = []
+    while cursor is not listing and cursor not in seen:
+        seen.append(cursor)
+        if cursor is canvas:
+            break
+        cursor = cursor.nextInFocusChain()
+    assert canvas in seen, "week grid is not after the list in Tab order"
+    row = next(
+        listing.item(index)
+        for index in range(listing.count())
+        if listing.item(index).data(Qt.ItemDataRole.UserRole) == ("school", 0)
+    )
+    opened: list[str] = []
+    monkeypatch.setattr(window, "_edit_block", opened.append)
+    listing.setCurrentItem(row)
+    listing.setFocus(Qt.FocusReason.OtherFocusReason)
+    session.add_block({"id": "club", "title": "Club", "kind": "locked", "category": "exercise",
+                       "start": "16:00", "duration_min": 60, "days": [0]})
+    settled(qapp, window)
+    assert QApplication.focusWidget() is listing
+    assert listing.currentItem().data(Qt.ItemDataRole.UserRole) == ("school", 0)
+    assert any("Club" in listing.item(index).text() for index in range(listing.count()))
+    press(listing, Qt.Key.Key_Return)
+    assert opened == ["school"]
+
+
+def test_0k_week_shortcut_and_mini_month_have_accessible_names(qapp, window) -> None:
+    from desktop.native.hours.rail import MonthCard
+
+    window.week_table.hours.setFocus(Qt.FocusReason.OtherFocusReason)
+    mods = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+    press(window.week_table.hours, Qt.Key.Key_L, mods)
+    assert QApplication.focusWidget() is window.week_access_list
+    month = window.findChild(MonthCard).dates
+    assert month.accessibleName().startswith("Month, ")
+    assert "week beginning" in month.accessibleDescription().lower()

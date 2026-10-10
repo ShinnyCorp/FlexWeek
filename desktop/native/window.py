@@ -19,9 +19,11 @@ from PySide6.QtGui import (
     QGuiApplication,
     QIcon,
     QKeyEvent,
+    QKeySequence,
     QPalette,
     QPixmap,
     QResizeEvent,
+    QShortcut,
 )
 from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import (
@@ -35,6 +37,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -79,7 +83,7 @@ from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import QUICK_TITLE, FocusScreen
 from desktop.native.fonts import load_fonts
-from desktop.native.hours.canvas import HoursCanvas
+from desktop.native.hours.canvas import Drawn, HoursCanvas
 from desktop.native.hours.classic import ClassicDay, ClassicWeek
 from desktop.native.hours.geometry import Span, drag_step, next_slot
 from desktop.native.hours.hand import Create, Hand, Move, MoveDate, Place, span_words
@@ -1425,6 +1429,15 @@ class NativeWindow(QMainWindow):
         column.addWidget(self.alert_strip)
         self.planner = QStackedWidget()
         self.planner.setObjectName("plannerStack")
+        self.week_access_list = QListWidget()
+        self.week_access_list.setObjectName("weekAccessList")
+        self.week_access_list.setAccessibleName("This week's blocks")
+        self.week_access_list.setAccessibleDescription("A list of each day and its blocks in time order.")
+        self.week_access_list.setMaximumHeight(132)
+        self.week_access_list.itemActivated.connect(self._week_access_activate)
+        self.week_access_list.installEventFilter(self)
+        self._week_list_shortcut = QShortcut(QKeySequence("Ctrl+Shift+L"), self)
+        self._week_list_shortcut.activated.connect(self._focus_week_access_list)
         # One pointer for every gesture on every surface: it follows a drag and reports one change.
         self.hand = Hand(self._hand_judge, self)
         self.hand.committed.connect(self._apply_change)
@@ -1467,6 +1480,7 @@ class NativeWindow(QMainWindow):
             widget.installEventFilter(self)
         # The calendar is the point of this page, so it takes whatever height the rest does not need,
         # down to the window's foot. Notices float over it rather than taking a row.
+        column.addWidget(self.week_access_list)
         column.addWidget(self.planner, 1)
         layout.addLayout(body, 1)
         self._stack.addWidget(page)
@@ -2149,6 +2163,7 @@ class NativeWindow(QMainWindow):
         self.next_nav.setToolTip(f"Next {period}")
         self.prev_nav.setAccessibleName(f"Previous {period}")
         self.next_nav.setAccessibleName(f"Next {period}")
+        self.week_access_list.setVisible(view == "week" and not self._day_mode)
         title_view = "myday" if self._day_mode else view
         watched = shown.watched_date() if self._day_mode and isinstance(shown, LayoutView) else None
         self.week_title.set_full_text(
@@ -2728,11 +2743,64 @@ class NativeWindow(QMainWindow):
             self.session.week_start, self.session.blocks, self.session.assignments, self.session.trace
         )
         today, minute = self._clock_in_week()
+        self._sync_week_access_list(week)
         self.week_table.set_week(week, today, minute)
         self.day_view.set_day(week, date.fromisoformat(self.session.selected_day).weekday(), today, minute)
         self.rail.set_week(week, today, minute, self.session.assignments)
         self.month_grid.set_unsaved(self.session.unsaved_weeks())
         self.month_grid.set_week(week)
+
+    def _sync_week_access_list(self, week) -> None:
+        selected = self.week_access_list.currentItem()
+        selected_key = selected.data(Qt.ItemDataRole.UserRole) if selected is not None else None
+        self.week_access_list.clear()
+        for day in range(7):
+            items = sorted(week.on_day(day), key=lambda item: (item.start, item.end, item.title))
+            if not items:
+                words = f"{DAY_FULL[day]}: nothing planned"
+                row = QListWidgetItem(words)
+                self.week_access_list.addItem(row)
+                continue
+            for occurrence in items:
+                drawn = Drawn(
+                    occurrence.block_id,
+                    occurrence.title,
+                    occurrence.category,
+                    occurrence.work,
+                    Span(day, occurrence.start, occurrence.end),
+                    0,
+                    1,
+                    done=occurrence.done,
+                    missed=occurrence.missed,
+                    pinned=occurrence.pinned,
+                )
+                detail = drawn.detail
+                if not occurrence.work:
+                    detail += " · Fixed time"
+                elif occurrence.due and occurrence.due < self.session.week_start and not occurrence.done:
+                    detail += " · Unfinished from last week"
+                words = f"{DAY_FULL[day]}: {occurrence.title}, {detail}"
+                row = QListWidgetItem(words)
+                row.setData(Qt.ItemDataRole.UserRole, (occurrence.block_id, day))
+                self.week_access_list.addItem(row)
+        self.week_access_list.setVisible(self.session.planner_view == "week" and not self._day_mode)
+        if selected_key is not None:
+            for index in range(self.week_access_list.count()):
+                row = self.week_access_list.item(index)
+                if row.data(Qt.ItemDataRole.UserRole) == selected_key:
+                    self.week_access_list.setCurrentRow(index)
+                    break
+
+    def _focus_week_access_list(self) -> None:
+        if self.week_access_list.isVisible():
+            self.week_access_list.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def _week_access_activate(self, row: QListWidgetItem) -> None:
+        target = row.data(Qt.ItemDataRole.UserRole)
+        if target is not None:
+            block_id, day = target
+            self.session.select_block(block_id, day)
+            self._edit_block(block_id)
 
     def _where(self) -> tuple:
         """What the planner is showing: a held block belongs to this, and to nothing else."""
@@ -4592,6 +4660,20 @@ class NativeWindow(QMainWindow):
         super().keyPressEvent(event)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self.week_access_list and event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            if key == Qt.Key.Key_Menu or (
+                key == Qt.Key.Key_F10 and event.modifiers() == Qt.KeyboardModifier.ShiftModifier
+            ):
+                row = self.week_access_list.currentItem()
+                target = row.data(Qt.ItemDataRole.UserRole) if row is not None else None
+                if target is not None:
+                    block_id, day = target
+                    point = self.week_access_list.mapToGlobal(
+                        self.week_access_list.visualItemRect(row).center()
+                    )
+                    self._block_menu(block_id, day, point)
+                return True
         if event.type() == QEvent.Type.Resize and watched in (self.week_table, self.day_view):
             self._center_empty_card()
         if event.type() in (QEvent.Type.Show, QEvent.Type.Hide) and watched in (
