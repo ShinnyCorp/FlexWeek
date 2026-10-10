@@ -146,7 +146,7 @@ def fair_share(
         json.dumps(committed),
         week_start,
         first_day,
-        sorted(targets),
+        list(targets),
     )
     return json.loads(week), json.loads(notes)
 
