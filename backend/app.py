@@ -1515,6 +1515,9 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 db, account["id"], f"Before restore — {stamp}", keep_ids={point_id}
             )
             replaced = replace_account(db, account["id"], stored)
+            # A point made before 0.19.0 has no standing week, so the current one stays.
+            if "standing" in stored:
+                db.replace_standing(account["id"], json.dumps(stored["standing"]))
             result = {"id": point_id, "recovery_id": recovery["id"], **replaced}
             remember_operation(db, account["id"], payload.operation_id, digest_value, result)
         return result

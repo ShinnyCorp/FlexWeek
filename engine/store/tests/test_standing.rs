@@ -5,8 +5,9 @@ mod common;
 
 use common::scratch;
 use flexweek_store::{
-    delete_account, initialize, insert_preferences, open_connection, replace_standing,
-    set_standing, standing_blocks, standing_rows, week_with_standing,
+    create_restore_point, delete_account, initialize, insert_preferences, open_connection,
+    replace_standing, restore_point_body, set_standing, standing_blocks, standing_rows,
+    week_with_standing,
 };
 use rusqlite::{Connection, params};
 use serde_json::{Value, json};
@@ -277,4 +278,26 @@ fn rows_carry_over_to_another_account_and_go_with_the_account() {
 
     delete_account(&conn, user_id).unwrap();
     assert_eq!(standing_rows(&conn, user_id).unwrap(), "[]");
+}
+
+#[test]
+fn a_restore_point_holds_the_standing_rows_it_was_made_with() {
+    let (conn, user_id) = fresh_account("standing-restore-point");
+    set_standing(
+        &conn,
+        user_id,
+        SETUP_WEEK,
+        &text(&json!([school(), soccer()])),
+    )
+    .unwrap();
+    set_standing(&conn, user_id, WEEK_AFTER, &text(&json!([school()]))).unwrap();
+    let rows: Value = serde_json::from_str(&standing_rows(&conn, user_id).unwrap()).unwrap();
+    create_restore_point(&conn, user_id, "abc", "Before", "2026-10-10T09:00", &[], 10).unwrap();
+    set_standing(&conn, user_id, NEXT_WEEK, &text(&json!([gym()]))).unwrap();
+    let (_, body) = restore_point_body(&conn, user_id, "rp-abc")
+        .unwrap()
+        .unwrap();
+    let body: Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(body["standing"], rows);
+    assert_eq!(rows.as_array().map(Vec::len), Some(3));
 }

@@ -4,6 +4,7 @@ were; an export carries it; an account from 0.18 gets one built from its weeks."
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
@@ -191,3 +192,64 @@ def test_an_account_from_0_18_gets_its_standing_week_from_the_week_setup_ran_in(
         assert [b["id"] for b in week(client, "2026-11-16")["blocks"]] == ["school", "activity-1"]
         assert [b["id"] for b in week(client, WEEK_BEFORE)["blocks"]] == ["gym"]
         assert week(client, SETUP_WEEK)["revision"] == 1
+
+
+def restore_point(client: TestClient, label: str) -> str:
+    made = client.post("/api/restore-points", json={"label": label, "operation_id": "point-" + label}, headers=WRITE)
+    assert made.status_code == 200, made.text
+    return made.json()["id"]
+
+
+def restore(client: TestClient, point_id: str) -> dict:
+    preview = client.get(f"/api/restore-points/{point_id}/preview")
+    assert preview.status_code == 200, preview.text
+    done = client.post(
+        f"/api/restore-points/{point_id}/restore",
+        json={"state_token": preview.json()["state_token"], "operation_id": "restore-" + point_id},
+        headers=WRITE,
+    )
+    assert done.status_code == 200, done.text
+    return done.json()
+
+
+def standing_of(client: TestClient) -> list[dict]:
+    exported = client.post("/api/account-export", json={"password": PASSWORD}, headers=WRITE)
+    assert exported.status_code == 200, exported.text
+    return exported.json()["standing"]
+
+
+NEW_HOURS = {**SCHOOL, "start": "09:00", "duration_min": 360}
+
+
+def test_a_restore_point_brings_back_the_standing_week_it_was_made_with(alice: TestClient) -> None:
+    stand(alice, SETUP_WEEK, [SCHOOL, SOCCER])
+    before = standing_of(alice)
+    point = restore_point(alice, "Before new hours")
+    stand(alice, NEXT_WEEK, [NEW_HOURS])
+    assert set(times(week(alice, WEEK_AFTER)["blocks"])) == {"school"}
+    changed = standing_of(alice)
+    recovery = restore(alice, point)["recovery_id"]
+    assert standing_of(alice) == before
+    assert times(week(alice, WEEK_AFTER)["blocks"]) == times([SCHOOL, SOCCER])
+    # The point the restore made first holds the standing week the restore replaced.
+    restore(alice, recovery)
+    assert standing_of(alice) == changed
+    assert times(week(alice, WEEK_AFTER)["blocks"]) == times([NEW_HOURS])
+
+
+def test_a_restore_point_from_before_the_standing_week_leaves_the_current_one(
+    database: Path, alice: TestClient
+) -> None:
+    stand(alice, SETUP_WEEK, [SCHOOL, SOCCER])
+    point = restore_point(alice, "Made by 0.18")
+    # As 0.18.5 wrote a point: weeks and assignments, no standing rows.
+    with sqlite3.connect(database) as db:
+        [(body,)] = db.execute("SELECT body FROM restore_points WHERE id = ?", (point,)).fetchall()
+        snapshot = json.loads(body)
+        snapshot.pop("standing", None)
+        db.execute("UPDATE restore_points SET body = ? WHERE id = ?", (json.dumps(snapshot), point))
+    stand(alice, NEXT_WEEK, [NEW_HOURS])
+    changed = standing_of(alice)
+    restore(alice, point)
+    assert standing_of(alice) == changed
+    assert times(week(alice, WEEK_AFTER)["blocks"]) == times([NEW_HOURS])
