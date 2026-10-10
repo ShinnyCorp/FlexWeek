@@ -5,7 +5,7 @@ All notable changes to FlexWeek are documented here. Format follows
 
 ## [Unreleased]
 
-## [0.19.0] - 2026-10-11
+## [0.19.0] - 2026-10-10
 
 ### Added
 - Before the week grid there is a list of this week's blocks for screen readers and keyboard users. It stays folded until the keyboard reaches it (Tab, or Ctrl+Shift+L), so it takes no room on the page.

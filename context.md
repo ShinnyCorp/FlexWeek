@@ -1,7 +1,7 @@
 # context.md — FlexWeek
 
 ## Current State
-- 2026-10-11: v0.19.0 on `release/0.19.0` (worktree `~/.worktrees/flexweek-0190`, `.venv` is
+- 2026-10-10: v0.19.0 released from `release/0.19.0` (worktree `~/.worktrees/flexweek-0190`, `.venv` is
   `venv-0190`): the QA handoff's remaining Fix first items and the Codex audit of 0.18.5. School and
   Setup's activities are a standing week in the store (`standing_blocks`, one row per Setup id and
   the week it stands from; `/api/changes` takes `standing`; restore points and exports carry it);
@@ -141,10 +141,10 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-11, `release/0.19.0`: all five lanes and the audit fixes merged; version, CHANGELOG,
+- 2026-10-10, `release/0.19.0`: all five lanes and the audit fixes merged; version, CHANGELOG,
   `docs/release-notes-v0.19.0.md`, roadmap and spec.md (standing week, unfinished from earlier weeks,
   fair share, past times, the toast, Text size, the week list) written under Jonathan's overnight
-  grant. Release via PR to main on Jonathan's word, then `gh release create v0.19.0 --latest`.
+  grant. Released through a PR to main on Jonathan's word. Minor fixes below go into 0.19.1.
 - Next: 1.0.0 with the Android companion (Rust core via UniFFI, Kotlin and Compose) and iroh device
   sync with background sync on the phone (about Oct 22); plan in
   `~/.flexweek-ui-harness/scratch/PLAN-0185-to-100.md`.
@@ -152,7 +152,7 @@ values make a retried write return the first result.
   and day-small-large fail at 1150x768): the hidden sign-in page sets every window's least height,
   and 0.19.0's taller Reset card pushed it past 768. A fix that lets hidden pages stop sizing the
   window is saved in `~/.flexweek-ui-harness/scratch/0.19.0/hidden-pages-dont-size-window.patch`; it
-  lets windows shrink to 434-550 px, never laid out before, so it waits for his call.
+  lets windows shrink to 434-550 px, never laid out before, so it waits for his call (0.19.1).
 - Open for Jonathan: "12:00 AM" for the end of the day on the 12-hour clock (or "midnight"); the
   shortened sign-in reset note; a series-wide typed start in the past is still allowed (single days
   are refused); the dated day chips now stack the date under the day.
