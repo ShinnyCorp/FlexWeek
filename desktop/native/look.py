@@ -1404,6 +1404,9 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         if knobs["depth"] == "soft"
         else ""
     )
+    invalid_field = (
+        f'QWidget#authCard QLineEdit[invalid="true"] {{ border: 2px solid {palette["error"]}; }}'
+    )
     links = "QPushButton#authSwitch, QPushButton#forgotPassword"
     # Still the accent, a step toward the text colour: it stays a link instead of going near-black.
     deeper = mix(palette["accent"], palette["text"], 0.7)
@@ -1427,6 +1430,7 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         # The sign-in fields' edge reads at 3 to 1 on the field and the card (#74): the look's own where
         # it does, else the text colour thinned only as far as that takes.
         f"{field_rules}"
+        f"{invalid_field}"
         f"QToolButton#passwordReveal {{ background: transparent; border: none; padding: 0; "
         f"border-radius: {radius}px; }}"
         f"QToolButton#passwordReveal:hover {{ background: {palette['hairline']}; }}"

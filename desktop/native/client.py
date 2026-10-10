@@ -26,10 +26,10 @@ SESSION_COOKIE = b"flexweek_session"
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 PASSWORD_LENGTH_HINT = "Password: use 12–128 characters."
 USERNAME_HINT = "Username: 3–32 letters, numbers or underscores."
-USERNAME_ERROR = "That username is not 3–32 letters, numbers or underscores."
+USERNAME_ERROR = "Use 3 to 32 letters, numbers or underscores, with no spaces."
 # Sign-in and sign-up say which thing is wrong wherever FlexWeek can tell. The server answers a wrong
 # password and an unknown username alike on purpose; the sign-in card's link says why.
-SIGN_IN_WRONG = "Wrong username or password."
+SIGN_IN_WRONG = "Wrong username or password. Try again, or choose Forgot password."
 SIGN_IN_WHY_LINK = "Why doesn't it say which?"
 SIGN_IN_WHY = "FlexWeek doesn't say which, so no one can find out who has an account."
 SIGN_IN_NO_USERNAME = "Type your username."
@@ -37,11 +37,12 @@ SIGN_IN_NO_PASSWORD = "Type your password."
 SIGN_IN_BAD_USERNAME = (
     "No FlexWeek username looks like that. Usernames are 3–32 letters, numbers or underscores."
 )
-SIGN_IN_SHORT_PASSWORD = "That password is too short to be right. FlexWeek passwords have 12–128 characters."
-SIGN_UP_NO_USERNAME = "Choose a username: 3–32 letters, numbers or underscores."
-SIGN_UP_NO_PASSWORD = "Choose a password. It needs 12–128 characters."
-SIGN_UP_SHORT_PASSWORD = "That password is too short. It needs at least 12 characters."
-USERNAME_TAKEN = "That username is taken. Choose another one."
+SIGN_IN_SHORT_PASSWORD = "That isn't your password. FlexWeek passwords have at least 12 characters."
+SIGN_UP_NO_USERNAME = "Choose a username."
+SIGN_UP_NO_PASSWORD = "Choose a password with at least 12 characters."
+SIGN_UP_SHORT_PASSWORD = "Add {n} more characters. Passwords need at least 12."
+SIGN_UP_LONG_PASSWORD = "Use 128 characters or fewer."
+USERNAME_TAKEN = "That username is taken. Try another."
 logger = logging.getLogger(__name__)
 
 
@@ -121,7 +122,7 @@ def _error(status: int, detail: object = None) -> ApiError:
     if status == 409 and detail == "Username unavailable":
         return ApiError(status, USERNAME_TAKEN)
     if status == 401 and detail == "Incorrect username or recovery code":
-        return ApiError(status, "Incorrect username or recovery code.")
+        return ApiError(status, "Wrong username or recovery code. Each code works once; try another one.")
     if status == 422:
         named = _password_error(detail) or _username_error(detail)
         if named:
@@ -164,8 +165,10 @@ def sign_up_problem(name: str, password: str) -> str:
         return USERNAME_ERROR
     if not password:
         return SIGN_UP_NO_PASSWORD
+    if len(password) > 128:
+        return SIGN_UP_LONG_PASSWORD
     if len(password) < 12:
-        return SIGN_UP_SHORT_PASSWORD
+        return SIGN_UP_SHORT_PASSWORD.format(n=12 - len(password))
     return ""
 
 

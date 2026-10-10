@@ -64,6 +64,7 @@ from desktop.native.client import (
     SIGN_IN_WHY,
     SIGN_IN_WHY_LINK,
     SIGN_IN_WRONG,
+    USERNAME_ERROR,
     USERNAME_HINT,
     sign_in_problem,
     sign_up_problem,
@@ -73,6 +74,7 @@ from desktop.native.controller import ROUTINE_STATUS, NativeSession
 from desktop.native.custom_look import sanitize_saved
 from desktop.native.elevation import lift
 from desktop.native.feel import Context, apply_feel, context_for, current, extra_stylesheet, set_current
+from desktop.native.fields import ProblemLine, announce
 from desktop.native.files import EXPORT_FORMAT, parse_import_payload
 from desktop.native.focus import focus_now, phase_duration_ms
 from desktop.native.focus_screen import QUICK_TITLE, FocusScreen
@@ -498,6 +500,7 @@ class NativeWindow(QMainWindow):
         self._views: dict[str, LayoutView] = {}
         self._entry_mode = SIGN_IN
         self._auth_mode_shown: str | None = None
+        self._last_auth_announcement: tuple[QLineEdit, str] | None = None
         self._auth_holder: QWidget | None = None
         self._auth_card: QFrame | None = None
         self._updates = sanitize_updates(None)
@@ -658,6 +661,104 @@ class NativeWindow(QMainWindow):
         self.auth_status.clear()
         self.auth_status.setVisible(False)
         self.auth_error.setVisible(False)
+        self._clear_auth_problems()
+
+    def _auth_problem_field(self, message: str) -> QLineEdit | None:
+        words = message.lower()
+        if message == USERNAME_ERROR:
+            return self.username
+        if message.startswith("Wrong username or password"):
+            return self.password
+        if "recovery code" in words or "each code" in words or "too many tries" in words:
+            return self.recovery_code
+        if "username" in words:
+            return self.username
+        if "password" in words:
+            return self.new_recovery_password if self._entry_mode == RESET else self.password
+        return None
+
+    def _clear_auth_problems(self) -> None:
+        for field, line in (
+            (self.username, self.username_problem),
+            (self.password, self.password_problem),
+            (self.recovery_code, self.recovery_code_problem),
+            (self.new_recovery_password, self.recovery_password_problem),
+        ):
+            field.setAccessibleDescription("")
+            field.setProperty("invalid", False)
+            field.style().unpolish(field)
+            field.style().polish(field)
+            line.hide()
+
+    def _show_auth_problem(self, field: QLineEdit, message: str, *, focus: bool) -> None:
+        line = {
+            self.username: self.username_problem,
+            self.password: self.password_problem,
+            self.recovery_code: self.recovery_code_problem,
+            self.new_recovery_password: self.recovery_password_problem,
+        }[field]
+        field.setAccessibleDescription(message)
+        field.setProperty("invalid", True)
+        field.style().unpolish(field)
+        field.style().polish(field)
+        line.say(message)
+        if focus:
+            field.setFocus(Qt.FocusReason.OtherFocusReason)
+            field.selectAll()
+            announce(field, f"Error: {message}", assertive=True)
+            self._last_auth_announcement = (field, message)
+
+    def _announce_auth_problem(self, field: QLineEdit) -> None:
+        if field.accessibleDescription() and self._last_auth_announcement != (
+            field,
+            field.accessibleDescription(),
+        ):
+            announce(field, f"Error: {field.accessibleDescription()}", assertive=True)
+            self._last_auth_announcement = (field, field.accessibleDescription())
+
+    def _refresh_auth_problems(
+        self, *_args: object, focus: bool = False, mode: str | None = None
+    ) -> None:
+        if (
+            mode is None
+            and not focus
+            and not any(
+                line.isVisible()
+                for line in (
+                    self.username_problem,
+                    self.password_problem,
+                    self.recovery_code_problem,
+                    self.recovery_password_problem,
+                )
+            )
+        ):
+            return
+        mode = mode or self._entry_mode
+        visible_fields = {
+            field
+            for field, line in (
+                (self.username, self.username_problem),
+                (self.password, self.password_problem),
+                (self.recovery_code, self.recovery_code_problem),
+                (self.new_recovery_password, self.recovery_password_problem),
+            )
+            if line.isVisible()
+        }
+        if mode == CREATE:
+            problem = sign_up_problem(self.username.text().strip(), self.password.text())
+        elif mode == SIGN_IN:
+            problem = sign_in_problem(self.username.text().strip(), self.password.text())
+        elif mode == RESET:
+            problem = self._recovery_problem()
+        else:
+            problem = ""
+        self._clear_auth_problems()
+        field = self._auth_problem_field(problem) if problem else None
+        if field is not None:
+            move_focus = focus or (
+                self.sender() in visible_fields and field is not self.sender()
+            )
+            self._show_auth_problem(field, problem, focus=move_focus)
 
     def _explain_wrong_sign_in(self) -> None:
         sheet = ConfirmSheet(
@@ -844,6 +945,8 @@ class NativeWindow(QMainWindow):
         username_box = QVBoxLayout()
         username_box.setSpacing(SPACING[0])
         username_box.addWidget(self.username)
+        self.username_problem = ProblemLine(self.username)
+        self.username_problem.setObjectName("usernameProblem")
         self.username_hint = QLabel(USERNAME_HINT)
         self.username_hint.setObjectName("usernameHint")
         self.username_hint.setWordWrap(True)
@@ -858,6 +961,8 @@ class NativeWindow(QMainWindow):
         password_box = QVBoxLayout()
         password_box.setSpacing(SPACING[0])
         password_box.addWidget(self.password)
+        self.password_problem = ProblemLine(self.password)
+        self.password_problem.setObjectName("passwordProblem")
         # A wrong sign-in is said here, right under the box it is about, so it is read with the box.
         self.auth_error = QWidget()
         self.auth_error.setObjectName("authError")
@@ -891,11 +996,16 @@ class NativeWindow(QMainWindow):
         self.recovery_code.setObjectName("recoveryCode")
         self.recovery_code.setPlaceholderText("Recovery code")
         self.recovery_code.setAccessibleName("Recovery code")
+        self.recovery_code_problem = ProblemLine(self.recovery_code)
+        self.recovery_code_problem.setObjectName("recoveryCodeProblem")
         layout.addWidget(self.recovery_code)
         self.new_recovery_password = PasswordField()
         self.new_recovery_password.setObjectName("recoverPassword")
+        self.new_recovery_password.setMaxLength(128)
         self.new_recovery_password.setPlaceholderText("New password")
         self.new_recovery_password.setAccessibleName("New password")
+        self.recovery_password_problem = ProblemLine(self.new_recovery_password)
+        self.recovery_password_problem.setObjectName("recoveryPasswordProblem")
         layout.addWidget(self.new_recovery_password)
         # On by default: most students plan on their own laptop, and signing in was the first thing
         # FlexWeek asked at every launch. Log out forgets it, for a shared computer.
@@ -929,6 +1039,16 @@ class NativeWindow(QMainWindow):
         # Nothing said, nothing drawn: an empty line left a band of card under the last link.
         self.auth_status.setVisible(False)
         layout.addWidget(self.auth_status)
+        self.username.textEdited.connect(self._refresh_auth_problems)
+        self.password.textEdited.connect(self._refresh_auth_problems)
+        self.username.editingFinished.connect(lambda: self._announce_auth_problem(self.username))
+        self.password.editingFinished.connect(lambda: self._announce_auth_problem(self.password))
+        self.recovery_code.textEdited.connect(self._refresh_auth_problems)
+        self.new_recovery_password.textEdited.connect(self._refresh_auth_problems)
+        self.recovery_code.editingFinished.connect(lambda: self._announce_auth_problem(self.recovery_code))
+        self.new_recovery_password.editingFinished.connect(
+            lambda: self._announce_auth_problem(self.new_recovery_password)
+        )
 
     def _build_recovery(self) -> None:
         layout = self._entry_card("recoveryPage")
@@ -2132,11 +2252,17 @@ class NativeWindow(QMainWindow):
     def _on_status(self, message: str) -> None:
         """What the session says goes in the toast, on the week's page, unless it is still going
         ("Saving…") or routine ("Saved."). The student's own request is answered either way."""
-        wrong = message == SIGN_IN_WRONG
-        self.auth_status.setText("" if wrong else message)
-        self.auth_status.setVisible(bool(message) and not wrong)
-        self.auth_error.setVisible(wrong)
+        auth_page = self._stack.currentWidget() is self._stack.findChild(QWidget, "authPage")
+        field = self._auth_problem_field(message) if auth_page and message else None
+        if field is not None:
+            self._clear_auth_problems()
+            self._show_auth_problem(field, message, focus=True)
+        self.auth_status.setText("" if field is not None else message)
+        self.auth_status.setVisible(bool(message) and field is None)
+        self.auth_error.setVisible(False)
         if not message:
+            if auth_page:
+                self._clear_auth_problems()
             # The session took back what it said, as Cancel on Running late's preview does.
             if not self.toast.button.isVisible():
                 self.toast.hide()
@@ -2259,20 +2385,18 @@ class NativeWindow(QMainWindow):
         self.recovery_continue.setEnabled(checked and not self.session.busy)
 
     def _create_account(self) -> None:
-        name, password = self.username.text().strip(), self.password.text()
-        problem = sign_up_problem(name, password)
-        if problem:
-            self.session._say(problem)
+        self._refresh_auth_problems(focus=True, mode=CREATE)
+        if sign_up_problem(self.username.text().strip(), self.password.text()):
             return
+        name, password = self.username.text().strip(), self.password.text()
         self.session.keep_signed_in = self.keep_signed_in.isChecked()
         self.session.register(name, password)
 
     def _sign_in(self) -> None:
-        name, password = self.username.text().strip(), self.password.text()
-        problem = sign_in_problem(name, password)
-        if problem:
-            self.session._say(problem)
+        self._refresh_auth_problems(focus=True, mode=SIGN_IN)
+        if sign_in_problem(self.username.text().strip(), self.password.text()):
             return
+        name, password = self.username.text().strip(), self.password.text()
         self.session.keep_signed_in = self.keep_signed_in.isChecked()
         self.session.login(name, password)
 
@@ -3407,12 +3531,28 @@ class NativeWindow(QMainWindow):
             widget.setVisible(shown)
 
     def _recover_account(self) -> None:
+        self._refresh_auth_problems(focus=True, mode=RESET)
+        if self._recovery_problem():
+            return
         self.session.keep_signed_in = self.keep_signed_in.isChecked()
         self.session.recover(
             self.username.text().strip(),
             self.recovery_code.text().strip(),
             self.new_recovery_password.text(),
         )
+
+    def _recovery_problem(self) -> str:
+        password = self.new_recovery_password.text()
+        if not self.username.text().strip():
+            return "Type your username."
+        if not self.recovery_code.text().strip():
+            return "Enter a recovery code."
+        if not password:
+            return "Choose a password with at least 12 characters."
+        if len(password) < 12:
+            remaining = 12 - len(password)
+            return f"Add {remaining} more characters. Passwords need at least 12."
+        return ""
 
     def _start_focus(self, block_id: str, day: object) -> None:
         if self.session.start_focus(block_id or None, day if isinstance(day, int) else None):

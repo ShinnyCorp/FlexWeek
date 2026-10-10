@@ -1,10 +1,9 @@
 """Regression for fix-specs.md items 0f-0k (Accessibility Tester items 2-7), each with the spec's guard.
 
-0f field names (buddy labels), 0g Create-account errors on the field and announced, 0h Tab leaves Notes,
+0f field names (buddy labels), 0g account errors on the field and announced, 0h Tab leaves Notes,
 0i Setup's Tab order follows the screen, 0j focus after removing an activity, 0k a readable week list.
-Keys go through the window system's path (QTest on the window's QWindow). Accessibility events are not
-recorded here (0g's "one alert was sent" needs QAccessible.installUpdateHandler, which PySide does not
-expose), so 0g checks focus, description and placement only. Known failures are xfail(strict=True).
+Keys go through the window system's path (QTest on the window's QWindow). Known failures are
+xfail(strict=True).
 """
 
 # ruff: noqa: F811  (pytest fixtures imported by name)
@@ -130,14 +129,12 @@ def test_0f_every_field_has_a_name_that_is_not_its_value_and_combos_have_a_buddy
 
 # 0g ---------------------------------------------------------------------------------------------
 
-KNOWN_0G = "known failure (item 0g): the error goes to the bottom status line; focus stays on the button"
-
-
-@pytest.mark.xfail(strict=True, reason=KNOWN_0G)
 def test_0g_a_bad_username_moves_focus_to_username_with_the_message_under_it(qapp, signed_out) -> None:
     w = signed_out
     w.resize(1280, 860)
     _up(qapp, w)
+    w.findChild(QPushButton, "authSwitch").click()
+    qapp.processEvents()
     w.username.setText("jo")
     w.password.setText("short")
     create = w.findChild(QPushButton, "createAccount")
@@ -147,26 +144,52 @@ def test_0g_a_bad_username_moves_focus_to_username_with_the_message_under_it(qap
         qapp.processEvents()
     assert QApplication.focusWidget() is w.username, f"focus on {QApplication.focusWidget()}"
     said = w.username.accessibleDescription()
-    assert said and "username" in said.lower()
+    assert said.startswith("Use 3 to 32")
     shown = [lab for lab in w.findChildren(QLabel) if lab.isVisible() and lab.text() == said]
     assert shown, "the description is not the message on screen"
     below = w.username.mapTo(w, w.username.rect().bottomLeft()).y()
-    top = shown[0].mapTo(w, shown[0].rect().topLeft()).y()
+    top = w.username_problem.mapTo(w, w.username_problem.rect().topLeft()).y()
     assert 0 <= top - below <= 24, f"message {top - below}px under Username"
 
 
-@pytest.mark.xfail(strict=True, reason=KNOWN_0G)
 def test_0g_after_fixing_the_username_focus_goes_to_password(qapp, signed_out) -> None:
     w = signed_out
     _up(qapp, w)
-    w.username.setText("good_name")
+    w.findChild(QPushButton, "authSwitch").click()
+    qapp.processEvents()
+    w.username.setText("jo")
     w.password.setText("short")
     create = w.findChild(QPushButton, "createAccount")
     create.setFocus()
     press(create, Qt.Key.Key_Space)
     qapp.processEvents()
+    assert QApplication.focusWidget() is w.username
+    w.username.setFocus()
+    w.username.selectAll()
+    QTest.keyClicks(w.username, "good_name")
+    qapp.processEvents()
     assert QApplication.focusWidget() is w.password or w.password.isAncestorOf(QApplication.focusWidget())
     assert "password" in w.password.accessibleDescription().lower()
+
+
+def test_0g_reset_password_validation_is_announced_under_the_password(qapp, signed_out, monkeypatch) -> None:
+    w = signed_out
+    _up(qapp, w)
+    announced = []
+    monkeypatch.setattr(
+        "desktop.native.window.announce",
+        lambda field, words, assertive=False: announced.append((field, words, assertive)),
+    )
+    w.findChild(QPushButton, "forgotPassword").click()
+    w.username.setText("student_1")
+    w.recovery_code.setText("one-time-code")
+    w._recover_account()
+    assert QApplication.focusWidget() is w.new_recovery_password
+    assert w.new_recovery_password.accessibleDescription() == "Choose a password with at least 12 characters."
+    assert w.recovery_password_problem.isVisibleTo(w)
+    assert announced == [
+        (w.new_recovery_password, "Error: Choose a password with at least 12 characters.", True)
+    ]
 
 
 # 0h ---------------------------------------------------------------------------------------------
