@@ -148,6 +148,11 @@ values make a retried write return the first result.
 - Next: 1.0.0 with the Android companion (Rust core via UniFFI, Kotlin and Compose) and iroh device
   sync with background sync on the phone (about Oct 22); plan in
   `~/.flexweek-ui-harness/scratch/PLAN-0185-to-100.md`.
+- Open for Jonathan: at Large text Retro's window cannot get below 782 px tall (rig week-small-large
+  and day-small-large fail at 1150x768): the hidden sign-in page sets every window's least height,
+  and 0.19.0's taller Reset card pushed it past 768. A fix that lets hidden pages stop sizing the
+  window is saved in `~/.flexweek-ui-harness/scratch/0.19.0/hidden-pages-dont-size-window.patch`; it
+  lets windows shrink to 434-550 px, never laid out before, so it waits for his call.
 - Open for Jonathan: "12:00 AM" for the end of the day on the 12-hour clock (or "midnight"); the
   shortened sign-in reset note; a series-wide typed start in the past is still allowed (single days
   are refused); the dated day chips now stack the date under the day.
