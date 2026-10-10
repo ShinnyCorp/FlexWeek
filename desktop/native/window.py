@@ -55,6 +55,7 @@ from desktop.native.calendar import (
     FLEX_CATEGORIES,
     date_for_day,
     is_series,
+    is_setup_block,
     monday_of,
     span_clash,
     sunday_due,
@@ -2533,11 +2534,36 @@ class NativeWindow(QMainWindow):
             self._sheet(lambda: HomeworkDialog(self, today=self._today(), category=category, due=due))
         )
 
-    def _delete_block(self, block: dict, scope: str, day: int | None) -> None:
-        self.session.delete_block(block["id"], scope=scope, day=day)
+    def _delete_block(
+        self, block: dict, scope: str, day: int | None, every_week: bool | None = None
+    ) -> None:
+        title = block.get("title") or "the event"
+        whole = scope != "occurrence" or len(block.get("days") or []) <= 1
+        if every_week is None and whole and is_setup_block(block):
+            # School and Setup's activities are in every week, so taking one out asks which.
+            sheet = ConfirmSheet(
+                self,
+                "Remove " + title,
+                f"Remove {title} from this week only, or from this week and every week after it?",
+                (
+                    ("stay", "Cancel", "outlined"),
+                    ("week", "Just this week", ""),
+                    ("every", "Every week", "danger"),
+                ),
+                default="stay",
+            )
+            sheet.exec()
+            if sheet.answer not in ("week", "every"):
+                return
+            every_week = sheet.answer == "every"
+        self.session.delete_block(block["id"], scope=scope, day=day, every_week=bool(every_week))
         self.session.save()
+        if every_week:
+            # Undo takes back this week only, so the toast offers none.
+            self._set_notice(f"Removed {title} from this week and every week after it.", "", None)
+            return
         # The question before deleting promised an undo; this is where it is.
-        self._set_notice(f"Deleted {block.get('title') or 'the event'}.", "Undo", self._undo_from_notice)
+        self._set_notice(f"Deleted {title}.", "Undo", self._undo_from_notice)
 
     def _school_hours(self) -> None:
         """School's days and times, asked as setup asks them: the student's School if they have one,
@@ -2553,9 +2579,10 @@ class NativeWindow(QMainWindow):
         made = dialog.block()
         if made is not None:
             self.session.add_block(made)
+            self.session.stand_open_week()
             self.session.save()
         elif school is not None:
-            self._delete_block(school, "series", None)
+            self._delete_block(school, "series", None, every_week=True)
 
     def _add_now(self) -> None:
         """Add adds homework, or the type picked in its menu for a drag, which the button then names."""
@@ -3054,6 +3081,10 @@ class NativeWindow(QMainWindow):
     def _delete_from_block_menu(self, block: dict, assignment: dict | None, on: int | None) -> None:
         if assignment is None:
             one_day = is_series(block) and on is not None
+            if is_setup_block(block) and not (one_day and len(block.get("days") or []) > 1):
+                # _delete_block asks this week or every week.
+                self._delete_block(block, "occurrence" if one_day else "series", on)
+                return
             name = (block.get("title") or "this event") + (f" on {DAY_FULL[on]}" if one_day else "")
             if confirm(self, "Delete event", f"Delete {name}? You can undo this.", "Delete"):
                 self._delete_block(block, "occurrence" if one_day else "series", on)

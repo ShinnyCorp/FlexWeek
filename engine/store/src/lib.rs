@@ -9,6 +9,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use scrypt::{Params, scrypt};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use standing::STANDING_TABLE;
 
 const PREFERENCES_TABLE: &str = r#"
     CREATE TABLE IF NOT EXISTS preferences (
@@ -147,6 +148,7 @@ mod ledger;
 mod prefs;
 mod routines;
 mod rules;
+mod standing;
 mod weeks;
 
 pub use accounts::{
@@ -175,6 +177,10 @@ pub use rules::{
     Adopted, AssignmentRow, Relay, SolveAvailability, adopt_legacy_deadlines, assignment_view,
     create_restore_point, own_assignment_rows, payload_digest, preferences_fields, rewrite_blocks,
     rewrite_stored_blocks, solve_availability,
+};
+pub use standing::{
+    adopt_standing, replace_standing, set_standing, standing_blocks, standing_rows,
+    week_with_standing,
 };
 pub use weeks::{WeekSave, list_account_weeks, read_week, save_week, week_blocks, week_starts};
 
@@ -442,6 +448,7 @@ pub fn upgrade_preferences(db: &Connection) -> StoreResult<()> {
         [],
     )?;
     keep_24_hour_clock(db)?;
+    adopt_standing_weeks(db)?;
     db.execute_batch("COMMIT")?;
     Ok(())
 }
@@ -475,6 +482,25 @@ fn keep_24_hour_clock(db: &Connection) -> StoreResult<()> {
     }
     db.execute(
         "UPDATE preferences SET prefs_version = 2 WHERE prefs_version < 2",
+        [],
+    )?;
+    Ok(())
+}
+
+/// Version 3 (0.19.0): School and activities from Setup stand in every week. Until then they were
+/// only in the week Setup ran in, so each older account's standing week is built once from what its
+/// saved weeks hold.
+fn adopt_standing_weeks(db: &Connection) -> StoreResult<()> {
+    db.execute_batch(STANDING_TABLE)?;
+    let users = db
+        .prepare("SELECT user_id FROM preferences WHERE prefs_version < 3")?
+        .query_map([], |row| row.get::<_, i64>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    for user_id in users {
+        adopt_standing(db, user_id)?;
+    }
+    db.execute(
+        "UPDATE preferences SET prefs_version = 3 WHERE prefs_version < 3",
         [],
     )?;
     Ok(())
@@ -582,6 +608,7 @@ pub fn initialize(path: &Path, current_week_start: &str) -> StoreResult<()> {
             {OPERATIONS_TABLE};
             {PREFERENCES_TABLE};
             {RECOVERY_CODES_TABLE};
+            {STANDING_TABLE};
             CREATE TABLE IF NOT EXISTS auth_attempts (
                 key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires INTEGER NOT NULL
             );
@@ -721,6 +748,7 @@ mod tests {
         )
         .unwrap();
         db.execute_batch(PREFERENCES_TABLE).unwrap();
+        db.execute_batch(WEEKS_TABLE).unwrap();
         for (user, version, comfort) in [
             (1, 1, "{}"),
             (2, 1, r#"{"clock_24h":false,"end_chime":true}"#),
