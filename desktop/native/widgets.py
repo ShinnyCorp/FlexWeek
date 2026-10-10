@@ -27,11 +27,13 @@ from PySide6.QtCore import (
     Qt,
     QTime,
     QTimer,
+    QVariantAnimation,
     Signal,
 )
 from PySide6.QtGui import (
     QAction,
     QColor,
+    QCursor,
     QFontMetrics,
     QHideEvent,
     QIcon,
@@ -59,6 +61,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -109,6 +112,7 @@ from desktop.native.calendar import (
     is_series,
     local_stamp,
     monday_of,
+    past_problem,
     span_clash,
     span_problem,
 )
@@ -672,6 +676,12 @@ def fit_scroll_dialog(dialog: QDialog, *, min_height: int = DIALOG_USABLE_HEIGHT
 
 
 TOAST_MS = 6000
+# A toast with a button stays long enough to reach. Twice the plain 6s is 12s, past the 10s floor.
+ACTION_TOAST_MS = TOAST_MS * 2
+# Leaving the toast starts its clock again with at least this long still to go.
+TOAST_RESUME_MS = 4000
+# The card fades this long when the same notice is kept. Off skips it; Reduce still fades.
+TOAST_FLASH_MS = 150
 TOAST_MARGIN = 24
 TOAST_MIN_WIDTH = 280
 TOAST_MAX_WIDTH = 420
@@ -927,6 +937,32 @@ class EndsLayout(QLayout):
         return top + self._gap + below + margins.top() + margins.bottom()
 
 
+class ToastProgress(QWidget):
+    """A thin line along the bottom of a toast, as long as the time the toast has left."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setObjectName("toastProgress")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setFixedHeight(2)
+        self._colour = QColor("#a1bbe4")
+        self._colour.setAlphaF(0.6)
+
+    def set_colour(self, hex_colour: str) -> None:
+        colour = QColor(hex_colour)
+        colour.setAlphaF(0.6)
+        self._colour = colour
+        self.update()
+
+    def colour(self) -> QColor:
+        return QColor(self._colour)
+
+    def paintEvent(self, _event: object) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self._colour)
+        painter.end()
+
+
 class Toast(QWidget):
     """One notice at a time, bottom right of the page it was said on, with at most one button.
 
@@ -970,6 +1006,22 @@ class Toast(QWidget):
         self._timer.setSingleShot(True)
         self._timer.setInterval(TOAST_MS)
         self._timer.timeout.connect(self._go)
+        # How long this notice was given, and how much was left when the pointer or keyboard held it.
+        self._limit = TOAST_MS
+        self._held_ms = TOAST_MS
+        self._paused = False
+        self._pointer = False
+        self._keys = False
+        self._progress = ToastProgress(self.card)
+        self._progress.hide()
+        self._tick = QTimer(self)
+        self._tick.setInterval(50)
+        self._tick.timeout.connect(self.sync_progress)
+        # The card lets the pointer through, so the window's events say whether it is over the card.
+        self.button.installEventFilter(self)
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
         # The window's Animations level. A notice rises into place and fades when it goes.
         self.motion = "normal"
         self.hide()
@@ -1019,7 +1071,15 @@ class Toast(QWidget):
             appear(self, self.motion, rise=True)
             appear(self.button, self.motion, rise=True)
         # One with something to press stays long enough to reach for it.
-        self._timer.start(TOAST_MS * 2 if button else TOAST_MS)
+        self._limit = ACTION_TOAST_MS if button else TOAST_MS
+        self._paused = False
+        self._keys = self.button.hasFocus()
+        self._pointer = False
+        self._timer.start(self._limit)
+        self._progress.set_colour(self._action_colour)
+        self.sync_progress()
+        self._pointer = self._cursor_over()
+        self._sync_pause()
 
     def _dress_button(self) -> None:
         # Undo is the one button with a picture: the arrow back, in the button's own colour.
@@ -1060,13 +1120,17 @@ class Toast(QWidget):
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._place_button()
+        self.sync_progress()
 
     def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802
         super().hideEvent(event)
         # Not when the window is: this notice comes back with it.
         if self.isHidden():
             self._timer.stop()
+            self._tick.stop()
+            self._paused = False
             self.button.hide()
+            self._progress.hide()
 
     def _place_button(self) -> None:
         inside = self.card.contentsRect().translated(self.card.pos())
@@ -1077,6 +1141,128 @@ class Toast(QWidget):
             size.width(),
             size.height(),
         )
+
+    def bump(self) -> None:
+        """The same notice again: its time starts over, and the card fades once when animations are on."""
+        # The rise from when it first appeared is still on this widget. Replacing it mid-fade deletes
+        # the effect the clock is still painting.
+        settle(self)
+        self._limit = ACTION_TOAST_MS if self.button.text() else TOAST_MS
+        self._paused = False
+        self._keys = self.button.hasFocus()
+        self._pointer = self._cursor_over()
+        if self._pointer or self._keys:
+            self._held_ms = self._limit
+            self._paused = True
+            self._timer.stop()
+            self._tick.stop()
+        else:
+            self._timer.start(self._limit)
+            self.sync_progress()
+        self._flash()
+
+    def sync_progress(self) -> None:
+        """The line matches the time left. It is hidden when animations are off or reduced, and it
+        stays put while the toast is paused."""
+        show = self.isVisible() and self.motion not in ("off", "reduce") and self._limit > 0
+        self._progress.setVisible(show)
+        if not show:
+            self._tick.stop()
+            return
+        width = self.card.width()
+        span = round(width * self._fraction())
+        self._progress.setGeometry(0, max(0, self.card.height() - 2), max(span, 0), 2)
+        self._progress.raise_()
+        if self._paused:
+            self._tick.stop()
+        elif not self._tick.isActive():
+            self._tick.start()
+
+    def _fraction(self) -> float:
+        if self._limit <= 0:
+            return 0.0
+        return max(0.0, min(1.0, self._left_ms() / self._limit))
+
+    def _left_ms(self) -> int:
+        if self._paused:
+            return self._held_ms
+        left = self._timer.remainingTime()
+        return left if left >= 0 else 0
+
+    def _sync_pause(self) -> None:
+        hold = self.isVisible() and (self._pointer or self._keys)
+        if hold and not self._paused:
+            left = self._timer.remainingTime()
+            self._held_ms = left if left >= 0 else self._limit
+            self._timer.stop()
+            self._tick.stop()
+            self._paused = True
+            return
+        if not hold and self._paused:
+            self._paused = False
+            self._timer.start(max(self._held_ms, TOAST_RESUME_MS))
+            self.sync_progress()
+
+    def _cursor_over(self) -> bool:
+        if not self.isVisible():
+            return False
+        return self._over_point(QCursor.pos())
+
+    def _over_point(self, pos: QPoint) -> bool:
+        on_card = self.card.rect().contains(self.card.mapFromGlobal(pos))
+        on_button = self.button.isVisible() and self.button.rect().contains(self.button.mapFromGlobal(pos))
+        return on_card or on_button
+
+    def _global_point(self, event: QEvent) -> QPoint | None:
+        point = getattr(event, "globalPosition", None)
+        if not callable(point):
+            return None
+        return point().toPoint()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        kind = event.type()
+        if watched is self.button and kind == QEvent.Type.FocusIn:
+            self._keys = True
+            self._sync_pause()
+        elif watched is self.button and kind == QEvent.Type.FocusOut:
+            self._keys = False
+            self._sync_pause()
+        elif watched is self.button and kind == QEvent.Type.Enter:
+            self._pointer = True
+            self._sync_pause()
+        elif watched is self.button and kind == QEvent.Type.Leave:
+            point = self._global_point(event)
+            self._pointer = self._over_point(point) if point is not None else False
+            self._sync_pause()
+        elif self.isVisible() and kind in (QEvent.Type.MouseMove, QEvent.Type.HoverMove):
+            point = self._global_point(event)
+            if point is not None:
+                over = self._over_point(point)
+                if over != self._pointer:
+                    self._pointer = over
+                    self._sync_pause()
+        return False
+
+    def _flash(self) -> None:
+        ms = duration(TOAST_FLASH_MS, self.motion)
+        if ms <= 0:
+            return
+        effect = QGraphicsOpacityEffect(self)
+        effect.setOpacity(1.0)
+        self.setGraphicsEffect(effect)
+        anim = QVariantAnimation(self)
+        anim.setDuration(ms)
+        anim.setStartValue(1.0)
+        anim.setKeyValueAt(0.4, 0.55)
+        anim.setEndValue(1.0)
+        anim.valueChanged.connect(effect.setOpacity)
+
+        def done() -> None:
+            if self.graphicsEffect() is effect:
+                self.setGraphicsEffect(None)
+
+        anim.finished.connect(done)
+        anim.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _pressed(self) -> None:
         callback = self._callback
@@ -2897,6 +3083,31 @@ class BlockDialog(Dialog):
     def _span_problem(self) -> str:
         return end_after_start_words(clock_text(self.start.minutes())) if self._span() <= 0 else ""
 
+    def _moved_into_the_past(self) -> str:
+        """A start or a day the student just chose that is already over. A series keeps a start it
+        already had, so School can still be edited after Monday, and notes on a past visit still save."""
+        session = getattr(self.parent(), "session", None)
+        week = getattr(session, "week_start", None)
+        if session is None or not isinstance(week, str):
+            return ""
+        chosen = [index for index, check in enumerate(self.days) if check.isChecked()]
+        original_days = set(self._original.get("days") or [])
+        original_start = self._original.get("start") or ""
+        new_start = self.start.time().toString("HH:mm")
+        now = datetime.fromtimestamp(session.now_ms() / 1000)
+        now_iso = now.date().isoformat()
+        now_min = now.hour * 60 + now.minute
+        single = len(chosen) == 1
+        for day in chosen:
+            added = day not in original_days
+            start_moved = single and day in original_days and new_start != original_start
+            if not added and not start_moved:
+                continue
+            past = past_problem(week, day, self.start.minutes(), now_iso, now_min)
+            if past:
+                return past
+        return ""
+
     def _end_settled(self, by_hand: bool) -> None:
         self._end_by_hand = self._end_by_hand or by_hand
         self._show_length()
@@ -2973,6 +3184,14 @@ class BlockDialog(Dialog):
             return
         if self._span_problem():
             self.end.setFocus()
+            return
+        past = self._moved_into_the_past()
+        if past:
+            self.duration_line.setText(past)
+            self.duration_line.setProperty("problem", True)
+            self.duration_line.style().unpolish(self.duration_line)
+            self.duration_line.style().polish(self.duration_line)
+            self.start.setFocus()
             return
         candidate = deepcopy(self._original)
         chosen_days = [index for index, check in enumerate(self.days) if check.isChecked()]
@@ -3276,6 +3495,12 @@ class HomeworkDialog(Dialog):
         )
         self._today = today
         self._clock = now
+        # The time the sheet opened on, from the window's clock when none was given, so a test that
+        # holds that clock is what "now" means here. The sheet does not ask the clock again.
+        if self._clock is None and parent is not None:
+            session = getattr(parent, "session", None)
+            if session is not None and callable(getattr(session, "now_ms", None)):
+                self._clock = datetime.fromtimestamp(session.now_ms() / 1000)
         self._result: dict | None = None
         self._spread = False
         # "choose" to pick a time for a session that needs one, "unpin" to let FlexWeek move it again.
@@ -3344,6 +3569,8 @@ class HomeworkDialog(Dialog):
         self.completed.setObjectName("homeworkCompleted")
         self.completed.setChecked(bool(self._original.get("completed")))
         form.addRow("", self.completed)
+        self._dress_when_days()
+        self.completed.toggled.connect(self._dress_when_days)
         # Placing by hand, for the keyboard and for designs with no time grid to drag onto.
         self._session_buttons: list[QPushButton] = []
         session_row = QHBoxLayout()
@@ -3576,10 +3803,13 @@ class HomeworkDialog(Dialog):
         form.addRow("", fixed)
         self.when_note = sheet_note("")
         form.addRow("", self.when_note)
+        self.when_from = sheet_note("")
+        self.when_from.setObjectName("homeworkWhenFrom")
+        form.addRow("", self.when_from)
         self._fixed_row = fixed
         self.when.setCurrentIndex(1 if self._placed else 0)
         if len(sessions) > 1:
-            for part in (self.when, fixed, self.when_note):
+            for part in (self.when, fixed, self.when_note, self.when_from):
                 form.setRowVisible(part, False)
             self._spread_out = True
         else:
@@ -3627,6 +3857,10 @@ class HomeworkDialog(Dialog):
         self.when_note.setText(
             f"Stays on {DAYS[fixed['day']]} at {fixed['start']} when you plan again." if fixed else ""
         )
+        hint = self._from_now_hint(fixed)
+        self.when_from.setText(hint)
+        if not self._spread_out:
+            self._form.setRowVisible(self.when_from, bool(hint))
 
     def _when_changed(self) -> bool:
         """Whether the student changed what the dialog opened with. A choice they left alone is not
@@ -3638,6 +3872,36 @@ class HomeworkDialog(Dialog):
             return self._placed is not None
         return self._placed is None or (fixed["day"], fixed["start"]) != tuple(self._placed)
 
+    def _dress_when_days(self, *_args: object) -> None:
+        """Each pill names its date. Days already over are greyed, unless this homework is finished:
+        finished work can still be put on the day it was done."""
+        session = getattr(self.parent(), "session", None)
+        week = getattr(session, "week_start", None)
+        if not isinstance(week, str):
+            return
+        self.when_day.set_day_labels(dated_day_labels(week))
+        before = None
+        if not self.completed.isChecked():
+            before = days_already_past(week, self._now().date().isoformat())
+        self.when_day.apply_past(before, _past_words())
+
+    def _from_now_hint(self, fixed: dict | None) -> str:
+        """"Today from 3:15 PM onward." when today is the day picked, and nothing on a later day."""
+        if fixed is None:
+            return ""
+        session = getattr(self.parent(), "session", None)
+        week = getattr(session, "week_start", None)
+        now = self._now()
+        if not isinstance(week, str) or monday_of(now.date().isoformat()) != week:
+            return ""
+        if fixed["day"] != now.weekday():
+            return ""
+        minute = now.hour * 60 + now.minute
+        ahead, slot = next_slot(minute, first=6 * 60, last=DAY_END_MIN - SLOT_MIN)
+        if ahead:
+            return ""
+        return f"Today from {clock_text(slot)} onward."
+
     def _fixed_problem(self, fixed: dict, due: str) -> str:
         """Why that day and time cannot be kept, in the words a drop on the calendar uses."""
         session = getattr(self.parent(), "session", None)
@@ -3645,6 +3909,11 @@ class HomeworkDialog(Dialog):
         if week is None:
             return ""
         start = hhmm_to_minutes(fixed["start"])
+        if not self.completed.isChecked():
+            now = self._now()
+            past = past_problem(week, fixed["day"], start, now.date().isoformat(), now.hour * 60 + now.minute)
+            if past:
+                return past
         sessions = self._open_sessions()
         length = int(sessions[0]["duration_min"]) if sessions else self.estimate.value()
         problem = span_problem([], "", fixed["day"], start, start + length, due_point(due, week))
@@ -4370,6 +4639,31 @@ class PlanReview(QFrame):
         self.show()
 
 
+NO_TIME_LEFT = "No time left this week. Choose a day in next week."
+
+
+def dated_day_labels(week_start: str) -> list[str]:
+    """"Thu 8": the short day and the date, for a pill on this week."""
+    start = date.fromisoformat(week_start)
+    return [f"{DAYS[index]} {(start + timedelta(days=index)).day}" for index in range(7)]
+
+
+def days_already_past(week_start: str, now_iso: str) -> int | None:
+    """How many day pills of this week are already over: none in a later week, all seven in an earlier one."""
+    this = monday_of(now_iso)
+    if week_start > this:
+        return None
+    if week_start < this:
+        return 7
+    return date.fromisoformat(now_iso).weekday()
+
+
+def _past_words() -> str:
+    from desktop.native.controller import PAST_DROP
+
+    return PAST_DROP
+
+
 def _when(day: object, start: object) -> str:
     if not isinstance(day, int) or not start:
         return "no time"
@@ -4390,10 +4684,21 @@ class ChooseTimeDialog(Dialog):
         due: tuple[int, int] | None,
         today: int | None = None,
         minute: int | None = None,
+        now: tuple[str, int] | None = None,
     ) -> None:
         super().__init__(parent, sheet=True)
         self.setObjectName("chooseTimeDialog")
         self._block, self._blocks, self._due = block, blocks, due
+        self._week = week_start
+        self._now_parts = now
+        if self._now_parts is None and parent is not None:
+            session = getattr(parent, "session", None)
+            if session is not None and callable(getattr(session, "now_ms", None)):
+                from desktop.native.remind import clock_parts
+
+                clock = clock_parts(session.now_ms())
+                self._now_parts = (clock["iso"], int(clock["minute"]))
+        self._no_time_left = False
         self._duration = int(block.get("duration_min") or SLOT_MIN)
         layout = self.card_body("Choose a time")
         layout.addWidget(sheet_note(f"For {block.get('title') or 'homework'}."))
@@ -4409,14 +4714,25 @@ class ChooseTimeDialog(Dialog):
         latest = DAY_END_MIN - self._duration
         self.start.setMaximumTime(QTime(latest // 60, latest % 60))
         if today in days and minute is not None:
-            # The next quarter hour today, or with none left, the first one tomorrow when homework can go
-            # there and the last one today when it cannot: 16:00 had often passed already.
+            # The next quarter hour today, or the first one on the next day homework can go. With none
+            # left this week the dialog says so: the last slot today had often already passed.
             ahead, slot = next_slot(minute, first=6 * 60, last=latest)
             if ahead and today + ahead in days:
                 self.day.set_days([today + ahead])
             elif ahead:
-                slot = latest
-            self.start.setTime(QTime(slot // 60, slot % 60))
+                later = next((day for day in range(today + 1, 7) if day in days), None)
+                if later is None:
+                    self._no_time_left = True
+                else:
+                    self.day.set_days([later])
+                    slot = 6 * 60
+            if not self._no_time_left:
+                self.start.setTime(QTime(slot // 60, slot % 60))
+        if self._now_parts is not None:
+            self.day.set_day_labels(dated_day_labels(week_start))
+            self.day.apply_past(
+                days_already_past(week_start, self._now_parts[0]), _past_words(), allowed=set(days)
+            )
         form.addRow("Start", self.start)
         self.length = LengthBox("chooseTimeLength", self._duration)
         self.stepper = Stepper(self.length, QUICK_LENGTHS)
@@ -4476,7 +4792,15 @@ class ChooseTimeDialog(Dialog):
     def _check(self, *_args: object) -> None:
         day, start = self.choice()
         end = start + self._duration
-        problem = span_problem(self._blocks, self._block["id"], day, start, end, self._due)
+        if self._no_time_left:
+            problem: str | None = NO_TIME_LEFT
+        else:
+            problem = None
+            if self._now_parts is not None:
+                now_iso, now_min = self._now_parts
+                problem = past_problem(self._week, day, start, now_iso, now_min)
+            if problem is None:
+                problem = span_problem(self._blocks, self._block["id"], day, start, end, self._due)
         self.problem.setText((problem or "").replace(", so it stayed where it was", ""))
         self.problem.setVisible(problem is not None)
         clash = span_clash(self._blocks, self._block["id"], day, start, end) if problem is None else None

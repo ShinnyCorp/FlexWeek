@@ -678,6 +678,16 @@ class DialFace(QWidget):
 
     # For the rig and the tests, in global coordinates
 
+    def take_focus(self, ring: bool, placed: tuple | None = None) -> None:
+        """The keyboard lands on the ring. The other designs land on their hours; Dial has none."""
+        del ring
+        if not self.takes_blocks:
+            return
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocus(Qt.FocusReason.OtherFocusReason)
+        if placed is not None and self.hand is not None and placed[1] == self.day:
+            self.hand.select(placed[0], placed[1])
+
     def track_for(self, day: int, minute: int | None = None) -> DialTrack | None:
         track = self.track
         if not self.takes_blocks or day != self.day:

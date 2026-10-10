@@ -118,6 +118,25 @@ class DayPicker(QWidget):
         for index, button in enumerate(self.buttons):
             button.setChecked(index in days)
 
+    def set_day_labels(self, labels: list[str]) -> None:
+        """What each pill says. The accessible name stays the full day."""
+        for button, label in zip(self.buttons, labels, strict=True):
+            button.setText(label)
+
+    def apply_past(self, before: int | None, tip: str, allowed: set[int] | None = None) -> None:
+        """Days before `before` are greyed, with `tip`. `allowed` is which other days stay on; None
+        leaves every day that is not past on. A disabled pill still shows its tip."""
+        self.setAttribute(Qt.WidgetAttribute.WA_AlwaysShowToolTips, True)
+        for index, button in enumerate(self.buttons):
+            past = before is not None and index < before
+            if past:
+                button.setEnabled(False)
+                button.setToolTip(tip)
+            else:
+                button.setEnabled(True if allowed is None else index in allowed)
+                if button.toolTip() == tip:
+                    button.setToolTip("")
+
     def _toggled(self, checked: bool) -> None:
         if self._exclusive:
             sender = self.sender()
