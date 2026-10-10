@@ -101,20 +101,25 @@ def test_the_wordmark_and_the_card_top_do_not_move_between_the_three_pages(signe
     assert seen["sign in"][2] < seen["create"][2], seen
 
 
-def test_the_pinned_position_is_the_one_the_create_card_needs(signed_out) -> None:
-    """Centred as the tallest page makes it: as much room above the wordmark as under the Create card."""
+def test_the_pinned_position_is_the_one_the_tallest_page_needs(signed_out) -> None:
+    """Centred as the tallest page makes it: as much room above the wordmark as under whichever of the
+    Create and Reset cards is taller, and under the other one at least that much."""
     window = signed_out
     window.resize(1366, 768)
-    go(window, "create")
     stage = window._stack.currentWidget()
     brand = stage.findChild(QLabel, "authBrand")
-    above = brand.mapTo(stage, QPoint(0, 0)).y()
-    held = card_of(window)
-    # The holder keeps 44 px under the card for its shadow; the group is centred with that room in it.
-    below = stage.height() - (held.mapTo(stage, QPoint(0, 0)).y() + held.height() + 44)
-    assert abs(above - below) <= 2, (above, below)
+    above, below = [], []
+    for mode in ("create", "reset"):
+        go(window, mode)
+        held = card_of(window)
+        above.append(brand.mapTo(stage, QPoint(0, 0)).y())
+        # The holder keeps 44 px under the card for its shadow; the group is centred with that room in it.
+        below.append(stage.height() - (held.mapTo(stage, QPoint(0, 0)).y() + held.height() + 44))
+    assert above[0] == above[1], above
+    assert abs(above[0] - min(below)) <= 2, (above, below)
+    assert max(below) >= above[0], (above, below)
     go(window, "sign in")
-    assert brand.mapTo(stage, QPoint(0, 0)).y() == above
+    assert brand.mapTo(stage, QPoint(0, 0)).y() == above[0]
 
 
 # Hints.

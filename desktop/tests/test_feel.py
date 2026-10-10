@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QLabel,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSlider,
     QWidget,
@@ -623,15 +624,15 @@ def test_retro_bevel_pane_is_idle_when_nothing_moves(qapp: QApplication) -> None
     assert bevel_kind(done) == "raised"
     segments = [
         child
-        for child in page.findChildren(QPushButton)
+        for child in page.findChildren(QRadioButton)
         if child.property("segment")
     ]
-    if segments:
-        target = next((item for item in segments if not item.isChecked()), segments[0])
-        target.click()
-        qapp.processEvents()
-        if target.isChecked():
-            assert bevel_kind(target) == "raised"
+    assert segments, "settings has segmented choices, and each segment is a radio button"
+    target = next((item for item in segments if not item.isChecked()), segments[0])
+    target.click()
+    qapp.processEvents()
+    if target.isChecked():
+        assert bevel_kind(target) == "raised"
     area = page.findChild(QScrollArea, "settingsScroll")
     assert area is not None
     area.verticalScrollBar().setValue(min(area.verticalScrollBar().maximum(), 80))

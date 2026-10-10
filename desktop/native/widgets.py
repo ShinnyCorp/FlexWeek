@@ -74,6 +74,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProxyStyle,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QScrollBar,
     QSizePolicy,
@@ -135,6 +136,7 @@ from desktop.native.look import (
     FOCUS_RING_PX,
     RING_BUTTONS,
     resolved_palette,
+    switch_track_edge,
 )
 from desktop.native.menus import Menu
 from desktop.native.motion import (
@@ -1475,7 +1477,7 @@ def control_art(palette: dict) -> dict[str, str]:
         "down": _art_file("down", palette["muted"]),
         "up": _art_file("up", palette["muted"]),
         "switch_on": _switch_file(True, palette["accent"], palette["accent_ink"]),
-        "switch_off": _switch_file(False, palette["hairline_strong"], "#ffffff"),
+        "switch_off": _switch_file(False, switch_track_edge(palette), "#ffffff"),
         "switch_on_off": _switch_file(True, palette["hairline_strong"], palette["hairline"]),
         "switch_off_off": _switch_file(False, palette["hairline"], palette["hairline_strong"]),
     }
@@ -1906,7 +1908,7 @@ class Segmented(Choices):
         self._line = QHBoxLayout(self)
         self._line.setContentsMargins(2, 2, 2, 2)
         self._line.setSpacing(2)
-        self._buttons: list[QPushButton] = []
+        self._buttons: list[QRadioButton] = []
         # Ids, not a lambda per button: a lambda naming the control kept it from being freed.
         self._group = QButtonGroup(self)
         self._group.setExclusive(False)
@@ -1917,14 +1919,15 @@ class Segmented(Choices):
 
     def addItem(self, text: str, data: object = None) -> None:  # noqa: N802
         index = self._remember(text, data)
-        button = QPushButton(text)
+        button = QRadioButton(text)
         button.setObjectName(f"{self.objectName()}-{data}" if self.objectName() else "")
         button.setProperty("segment", True)
-        # A choice shown, never what Enter presses in a dialog.
-        button.setAutoDefault(False)
         button.setCheckable(True)
         button.setAccessibleName(text)
+        button.setAccessibleDescription(f"{index + 1} of {len(self._texts)}")
         button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFocusPolicy(Qt.FocusPolicy.ClickFocus | Qt.FocusPolicy.TabFocus)
+        button.installEventFilter(self)
         self._group.addButton(button, index)
         self._line.addWidget(button)
         self._buttons.append(button)
@@ -1933,7 +1936,7 @@ class Segmented(Choices):
         if self._index < 0:
             self.setCurrentIndex(index)
 
-    def buttons(self) -> list[QPushButton]:
+    def buttons(self) -> list[QRadioButton]:
         return list(self._buttons)
 
     def _follow(self, on: bool) -> None:
@@ -1944,6 +1947,43 @@ class Segmented(Choices):
     def _show(self, index: int) -> None:
         for at, button in enumerate(self._buttons):
             button.setChecked(at == index)
+            button.setFocusPolicy(
+                Qt.FocusPolicy.ClickFocus
+                | (Qt.FocusPolicy.TabFocus if at == index else Qt.FocusPolicy.NoFocus)
+            )
+            button.setAccessibleDescription(f"{at + 1} of {len(self._buttons)}")
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched not in self._buttons:
+            return super().eventFilter(watched, event)
+        if event.type() == QEvent.Type.FocusIn:
+            self.setProperty("keyfocus", True)
+            self.style().unpolish(self)
+            self.style().polish(self)
+        elif event.type() == QEvent.Type.FocusOut and QApplication.focusWidget() not in self._buttons:
+            self.setProperty("keyfocus", False)
+            self.style().unpolish(self)
+            self.style().polish(self)
+        elif event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            current = self._buttons.index(watched)
+            if key in (Qt.Key.Key_Left, Qt.Key.Key_Up):
+                target = (current - 1) % len(self._buttons)
+            elif key in (Qt.Key.Key_Right, Qt.Key.Key_Down):
+                target = (current + 1) % len(self._buttons)
+            elif key == Qt.Key.Key_Home:
+                target = 0
+            elif key == Qt.Key.Key_End:
+                target = len(self._buttons) - 1
+            elif key in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.setCurrentIndex(current)
+                return True
+            else:
+                return super().eventFilter(watched, event)
+            self.setCurrentIndex(target)
+            self._buttons[target].setFocus(Qt.FocusReason.OtherFocusReason)
+            return True
+        return super().eventFilter(watched, event)
 
 
 class SwatchButton(QAbstractButton):
@@ -4657,9 +4697,10 @@ NO_TIME_LEFT = "No time left this week. Choose a day in next week."
 
 
 def dated_day_labels(week_start: str) -> list[str]:
-    """"Thu 8": the short day and the date, for a pill on this week."""
+    """"Thu" over "8": the short day and the date, for a pill on this week. On one line the seven
+    pills did not fit Choose a time's sheet and their words were cut."""
     start = date.fromisoformat(week_start)
-    return [f"{DAYS[index]} {(start + timedelta(days=index)).day}" for index in range(7)]
+    return [f"{DAYS[index]}\n{(start + timedelta(days=index)).day}" for index in range(7)]
 
 
 def days_already_past(week_start: str, now_iso: str) -> int | None:

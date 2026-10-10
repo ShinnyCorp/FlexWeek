@@ -77,7 +77,9 @@ def words_room(button: QPushButton) -> tuple[int, int]:
     option = QStyleOptionButton()
     button.initStyleOption(option)
     contents = button.style().subElementRect(QStyle.SubElement.SE_PushButtonContents, option, button)
-    need = button.fontMetrics().horizontalAdvance(button.text().replace("&", ""))
+    # Qt draws each line of a button's words on its own, so the widest line is what must fit.
+    lines = button.text().replace("&", "").split("\n")
+    need = max(button.fontMetrics().horizontalAdvance(line) for line in lines)
     if not button.icon().isNull():
         need += button.iconSize().width() + 4
     return contents.width(), need

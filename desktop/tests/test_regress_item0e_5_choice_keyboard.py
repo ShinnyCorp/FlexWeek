@@ -6,8 +6,7 @@ guard: for every Segmented in Settings and Add homework, Tab in lands on the cho
 the value, End picks the last, and no mouse event is used.
 5: Text size is hidden behind "Show shape, spacing and type" on a fresh account.
 
-Keys go through the window system's path (QTest on the window's QWindow). Known failures are
-xfail(strict=True).
+Keys go through the window system's path (QTest on the window's QWindow).
 """
 
 # ruff: noqa: F811  (pytest fixtures imported by name)
@@ -18,6 +17,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QAccessible
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
@@ -25,9 +25,6 @@ from desktop.native.settings import KNOB_LABELS, SECTIONS
 from desktop.native.widgets import HomeworkDialog, Segmented
 from desktop.tests.window_support import free, qapp, server, signed_out, window  # noqa: F401
 
-KNOWN_0E = (
-    "known failure (item 0e): only the first segment is a Tab stop and Left/Right/Home/End do nothing"
-)
 # (section of Settings, or "homework" for the Add homework sheet; objectName), found on 0.18.4.
 CONTROLS = [
     (0, "prefThemeMain"), (0, "lookSurface"), (0, "lookCorners"), (0, "lookDepth"), (0, "lookFont"),
@@ -79,7 +76,6 @@ def tab_into(segmented: Segmented) -> QWidget | None:
 
 
 @pytest.mark.parametrize(("where", "name"), CONTROLS, ids=[name for _w, name in CONTROLS])
-@pytest.mark.xfail(strict=True, reason=KNOWN_0E)
 def test_a_choice_control_works_from_the_keyboard(qapp, window, where, name) -> None:
     made: list = []
     try:
@@ -96,6 +92,24 @@ def test_a_choice_control_works_from_the_keyboard(qapp, window, where, name) -> 
         press(box, Qt.Key.Key_Home)
         assert box.currentIndex() == 0, "Home did not pick the first"
         assert QApplication.focusWidget() is box.buttons()[0], "focus did not follow the chosen segment"
+    finally:
+        for widget in made:
+            widget.hide()
+            free(widget)
+
+
+def test_0e_segments_are_accessible_radio_buttons_with_position(qapp, window) -> None:
+    made: list = []
+    try:
+        box = control(qapp, window, 0, "lookSurface", made)
+        chosen = box.currentIndex()
+        for index, button in enumerate(box.buttons()):
+            interface = QAccessible.queryAccessibleInterface(button)
+            assert interface is not None
+            assert interface.role() == QAccessible.Role.RadioButton
+            assert bool(interface.state().checked) is (index == chosen)
+            assert interface.text(QAccessible.Text.Name) == box.itemText(index)
+            assert interface.text(QAccessible.Text.Description) == f"{index + 1} of {box.count()}"
     finally:
         for widget in made:
             widget.hide()

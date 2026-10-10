@@ -1123,8 +1123,10 @@ def control_rules(palette: dict, radius: int, text: float | str, art: dict[str, 
         f"QProgressBar {{ background: {palette['hairline']}; border: none; border-radius: 4px; "
         f"max-height: 8px; text-align: center; color: transparent; }}"
         f"QProgressBar::chunk {{ background: {palette['accent']}; border-radius: 4px; }}"
+        f'QFrame[segmented="true"][keyfocus="true"] {{ border: 2px solid {readable_focus_edge(palette)}; '
+        "padding: 2px; }"
         f"QLineEdit:focus, QComboBox:focus, QAbstractSpinBox:focus, QPlainTextEdit:focus {{ "
-        f"border: 1px solid {palette['accent']}; }}"
+        f"border: 2px solid {readable_focus_edge(palette)}; }}"
         # The line under a time box whose text says no time.
         f"QFrame#clockError {{ background: {palette['panel']}; border: 1px solid {palette['error']}; "
         f"border-radius: {radius}px; }}"
@@ -1150,7 +1152,7 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
     edges = _depth_rules(depth, palette)
     card_radius = max(radius, 10)
     track = mix(palette["text"], palette["panel"], 0.07)
-    chosen_edge = "none" if depth == "none" else f"1px solid {palette['hairline_strong']}"
+    chosen_edge = f"1px solid {readable_edge(palette)}"
     # The chosen section is marked by a bar in the accent; its row takes only a little of the text.
     selected = mix(palette["text"], palette["panel"], 0.06)
     # Nothing runs under the footer: a hairline above it ends the page, but on a look with no
@@ -1192,22 +1194,26 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f"color: {palette['muted']}; }}"
         f'QFrame[segmented="true"] {{ background: {track}; border: none; '
         f"border-radius: {max(radius, 6) + 2}px; padding: 0; }}"
-        f'QPushButton[segment="true"] {{ background: transparent; color: {palette["muted"]}; border: none; '
+        f'QRadioButton[segment="true"] {{ background: transparent; color: {palette["muted"]}; border: none; '
         # One weight whether chosen or not: a bolder chosen segment was wider than the room it was given.
         f"border-radius: {max(radius, 6)}px; padding: {max(pad - 2, 3)}px {pad + 8}px; "
-        f"font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
-        f'QPushButton[segment="true"]:hover {{ color: {palette["text"]}; }}'
-        f'QPushButton[segment="true"]:checked {{ background: {palette["field"]}; color: {palette["text"]}; '
+        f"font-weight: {WEIGHT_STRONG}; min-height: 0; spacing: 0; }}"
+        # The radio dot is for screen readers only: no room for it in any state, as the push button had none.
+        'QRadioButton[segment="true"]::indicator, QRadioButton[segment="true"]::indicator:checked, '
+        'QRadioButton[segment="true"]::indicator:hover, QRadioButton[segment="true"]::indicator:disabled '
+        "{ width: 0; height: 0; border: none; margin: 0; padding: 0; background: transparent; }"
+        f'QRadioButton[segment="true"]:hover {{ color: {palette["text"]}; }}'
+        f'QRadioButton[segment="true"]:checked {{ background: {palette["field"]}; color: {palette["text"]}; '
         f"border: {chosen_edge}; }}"
         # The look's own segments say which is worn by a ring in the accent, as its cards do.
-        f'QFrame#prefThemeMain QPushButton[segment="true"] {{ border: 2px solid transparent; '
+        f'QFrame#prefThemeMain QRadioButton[segment="true"] {{ border: 2px solid transparent; '
         f"padding: {max(pad - 3, 2)}px {pad + 7}px; }}"
-        'QFrame#prefThemeMain QPushButton[segment="true"]:checked '
+        'QFrame#prefThemeMain QRadioButton[segment="true"]:checked '
         f"{{ border: 2px solid {palette['accent']}; }}"
-        'QPushButton[segment="true"]:disabled { background: transparent; '
+        'QRadioButton[segment="true"]:disabled { background: transparent; '
         f'color: {palette["hairline_strong"]}; }}'
         # Still raised, so a choice that cannot be changed here says which it is.
-        f'QPushButton[segment="true"]:checked:disabled {{ background: {palette["field"]}; '
+        f'QRadioButton[segment="true"]:checked:disabled {{ background: {palette["field"]}; '
         f'color: {palette["muted"]}; border: {chosen_edge}; }}'
     )
 
@@ -1405,9 +1411,12 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
     # Only a look that draws soft hairlines: a flat look draws none, and a bold one its own heavy ones.
     field_rules = (
         f"QWidget#authCard QLineEdit {{ border: 1px solid {readable_edge(palette)}; }}"
-        f"QWidget#authCard QLineEdit:focus {{ border: 1px solid {palette['accent']}; }}"
+        f"QWidget#authCard QLineEdit:focus {{ border: 2px solid {readable_focus_edge(palette)}; }}"
         if knobs["depth"] == "soft"
         else ""
+    )
+    invalid_field = (
+        f'QWidget#authCard QLineEdit[invalid="true"] {{ border: 2px solid {palette["error"]}; }}'
     )
     links = "QPushButton#authSwitch, QPushButton#forgotPassword"
     # Still the accent, a step toward the text colour: it stays a link instead of going near-black.
@@ -1432,6 +1441,7 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         # The sign-in fields' edge reads at 3 to 1 on the field and the card (#74): the look's own where
         # it does, else the text colour thinned only as far as that takes.
         f"{field_rules}"
+        f"{invalid_field}"
         f"QToolButton#passwordReveal {{ background: transparent; border: none; padding: 0; "
         f"border-radius: {radius}px; }}"
         f"QToolButton#passwordReveal:hover {{ background: {palette['hairline']}; }}"
@@ -1492,6 +1502,21 @@ def readable_edge(palette: dict) -> str:
         if min(contrast(edge, ground) for ground in grounds) >= AA_GRAPHIC:
             return edge
     return palette["text"]
+
+
+def readable_focus_edge(palette: dict) -> str:
+    """An accent edge that reads on the field and card, and stands out from the resting edge."""
+    grounds = (palette["field"], palette["panel"])
+    resting = readable_edge(palette)
+    target = max(AA_GRAPHIC, *(contrast(resting, ground) + 0.2 for ground in grounds))
+    return fit_lightness(palette["accent"], grounds, target)
+
+
+def switch_track_edge(palette: dict) -> str:
+    """The off switch track is a control edge against the card behind it."""
+    return fit_lightness(
+        palette["text"], (palette["field"], palette["panel"], palette["window"]), AA_GRAPHIC + 0.1
+    )
 
 
 def outline_edge(palette: dict) -> str:
@@ -1754,6 +1779,7 @@ def pack_stylesheet(
     item_h = 36 if knobs["text"] == "large" else 22
     button_min = f" min-height: {item_h}px;" if knobs["text"] == "large" else ""
     field_min = FIELD_MIN_PX[knobs["text"]]
+    field_edge = readable_edge(palette)
     # A flat look has no edges, so a plain button is told from its words by a faint fill instead.
     if knobs["depth"] == "none":
         quiet_edge = f"background: {palette['hairline']}; border: none;"
@@ -1776,7 +1802,7 @@ def pack_stylesheet(
         f"{fit_lightness(palette['muted'], (palette['field'], palette['panel']), AA_TEXT)}; }}"
         f"QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {{ background: {palette['field']}; "
         f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; "
-        f"min-height: {field_min}px; {edges} }}"
+        f"min-height: {field_min}px; border: 1px solid {field_edge}; }}"
         # A typed time and a stepped number have no arrows inside, so no room kept for them.
         f'QAbstractSpinBox[typed="true"], QAbstractSpinBox[stepped="true"] {{ padding-right: {pad}px; }}'
         # A typed time that says no time: a 2 px outline in the error colour, over the focus outline, with
@@ -1784,7 +1810,10 @@ def pack_stylesheet(
         f'QAbstractSpinBox[invalid="true"], QAbstractSpinBox[invalid="true"]:focus {{ '
         f"border: 2px solid {palette['error']}; padding: {max(pad - 1, 0)}px; }}"
         f"QPlainTextEdit {{ background: {palette['field']}; color: {palette['text']}; "
-        f"padding: {pad}px; border-radius: {radius}px; {edges} }}"
+        f"padding: {pad}px; border-radius: {radius}px; border: 1px solid {field_edge}; }}"
+        # The focused edge is 2 px on a 1 px resting one, so a pixel less padding keeps the box's size.
+        f"QLineEdit:focus, QComboBox:focus, QAbstractSpinBox:focus, QPlainTextEdit:focus "
+        f"{{ padding: {max(pad - 1, 0)}px; }}"
         f"QTableWidget {{ gridline-color: {palette['hairline']}; "
         f"selection-background-color: {palette['accent']}; selection-color: {palette['accent_ink']}; }}"
         # Headers and the view stack are QFrames too. Left to the panel rule, each header is padded and
@@ -2040,8 +2069,8 @@ def _contrast_rules(palette: dict) -> str:
     return (
         f'QFrame[segmented="true"] {{ background: {palette["window"]}; '
         f"border: 1px solid {palette['text']}; }}"
-        f'QPushButton[segment="true"] {{ color: {palette["text"]}; border: none; }}'
-        f'QPushButton[segment="true"]:checked {{ background: {palette["accent"]}; '
+        f'QRadioButton[segment="true"] {{ color: {palette["text"]}; border: none; }}'
+        f'QRadioButton[segment="true"]:checked {{ background: {palette["accent"]}; '
         f"color: {palette['accent_ink']}; border: none; }}"
     )
 

@@ -249,7 +249,8 @@ def test_choosing_terminal_in_settings_applies_every_one_of_its_knobs(qapp: QApp
     choose(dialog, look_menu_token("preset", "terminal"))
     assert shown(dialog) == preset_knobs("terminal")
     chosen = dialog.look_choice()
-    assert chosen == {"preset": "terminal", "knobs": {}}
+    # Only the text size is saved beside the preset: it is the student's own, whatever the look.
+    assert chosen == {"preset": "terminal", "knobs": {"text": "normal"}}
     assert effective_look(chosen) == preset_knobs("terminal")
 
 
@@ -259,15 +260,21 @@ def test_a_knob_moved_by_hand_stays_when_the_look_changes(qapp: QApplication) ->
     choose(dialog, look_menu_token("preset", "terminal"))
     assert shown(dialog)["corners"] == "rounded"
     assert shown(dialog)["font"] == "mono"
-    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "rounded"}}
+    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "rounded", "text": "normal"}}
     move(dialog, "depth", "bold")
-    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "rounded", "depth": "bold"}}
+    assert dialog.look_choice() == {
+        "preset": "terminal",
+        "knobs": {"corners": "rounded", "depth": "bold", "text": "normal"},
+    }
     assert effective_look(dialog.look_choice())["font"] == "mono"
     choose(dialog, look_menu_token("pack", "system"))
     assert shown(dialog)["corners"] == "rounded"
     assert shown(dialog)["depth"] == "bold"
     assert shown(dialog)["font"] == "sans"
-    assert dialog.look_choice() == {"preset": "default", "knobs": {"corners": "rounded", "depth": "bold"}}
+    assert dialog.look_choice() == {
+        "preset": "default",
+        "knobs": {"corners": "rounded", "depth": "bold", "text": "normal"},
+    }
 
 
 def test_opening_settings_shows_the_look_on_screen_and_changes_nothing(qapp: QApplication) -> None:
@@ -316,15 +323,22 @@ def test_a_look_of_your_own_shows_what_it_sets_and_leaves_changes_to_customise(q
     assert dialog.accent_note.isVisibleTo(dialog)
     assert dialog.accent_note.text() == OWN_LOOK_ACCENT_NOTE.format(name="Night study")
     assert dialog.updates()["accent"] == "gold", "the account's accent stays for the other looks"
-    assert dialog.look_choice() == {"preset": "terminal", "knobs": {"corners": "rounded"}, "custom": night}
+    assert dialog.look_choice() == {
+        "preset": "terminal",
+        "knobs": {"corners": "rounded", "text": "normal"},
+        "custom": night,
+    }
     choose(dialog, look_menu_token("preset", "paper"))
-    assert dialog.look_choice() == {"preset": "paper", "knobs": {"corners": "rounded"}}
+    assert dialog.look_choice() == {"preset": "paper", "knobs": {"corners": "rounded", "text": "normal"}}
     assert shown(dialog) == {**preset_knobs("paper"), "corners": "rounded"}
     assert all(box.isEnabled() for box in dialog.knobs.values())
     assert dialog.accent.currentData() == "gold" and dialog.accent.isEnabled()
     assert not dialog.own_look_note.isVisibleTo(dialog) and not dialog.accent_note.isVisibleTo(dialog)
     move(dialog, "depth", "bold")
-    assert dialog.look_choice() == {"preset": "paper", "knobs": {"corners": "rounded", "depth": "bold"}}
+    assert dialog.look_choice() == {
+        "preset": "paper",
+        "knobs": {"corners": "rounded", "depth": "bold", "text": "normal"},
+    }
 
 
 def wait_until(qapp: QApplication, predicate, timeout: float = 8.0) -> None:

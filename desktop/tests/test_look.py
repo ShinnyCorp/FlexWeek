@@ -28,10 +28,12 @@ from desktop.native.look import (
     LOOK_KNOBS,
     LOOK_PRESETS,
     PACKS,
+    auth_rules,
     block_paint,
     block_time_colour,
     category_paint,
     contrast,
+    control_rules,
     effective_look,
     look_measures,
     look_menu_items,
@@ -43,10 +45,14 @@ from desktop.native.look import (
     pack_stylesheet,
     parse_look_menu_token,
     preset_knobs,
+    readable_edge,
+    readable_focus_edge,
     readable_ink,
     resolved_pack_theme,
     resolved_palette,
     sanitize_look,
+    settings_rules,
+    switch_track_edge,
 )
 from desktop.native.tokens import SINK, TEXT_SCALE, mix_oklab, oklab, oklch_of
 
@@ -56,6 +62,43 @@ EVERY_LOOK = list(product(PACKS, (False, True), LOOK_PRESETS, ACCENTS, LOOK_KNOB
 
 def look_of(preset: str, **knobs: str) -> dict:
     return {"preset": preset, "knobs": knobs}
+
+
+@pytest.mark.parametrize("preset", LOOK_PRESETS)
+@pytest.mark.parametrize("system_dark", [False, True], ids=["light", "dark"])
+def test_control_edges_have_three_to_one_contrast(preset: str, system_dark: bool) -> None:
+    palette = resolved_palette("slate", system_dark, look_of(preset))
+    grounds = (palette["field"], palette["panel"])
+    border = readable_edge(palette)
+    focus = readable_focus_edge(palette)
+    switch_edge = switch_track_edge(palette)
+    assert min(contrast(border, ground) for ground in grounds) >= 3
+    assert min(contrast(focus, ground) for ground in grounds) >= 3
+    auth = auth_rules(
+        palette,
+        {**LOOK_DEFAULTS, "depth": "soft"},
+        6,
+        10,
+    )
+    assert f"QWidget#authCard QLineEdit:focus {{ border: 2px solid {focus}; }}" in auth
+    if preset != "high-contrast":
+        assert min(contrast(focus, ground) for ground in grounds) > min(
+            contrast(border, ground) for ground in grounds
+        )
+    assert f"border: 1px solid {border}" in pack_stylesheet("slate", system_dark, look_of(preset))
+    assert f"border: 1px solid {border}" in settings_rules(palette, 6, "normal", 8, "soft")
+    switch_art = {
+        "tick": "tick",
+        "down": "down",
+        "up": "up",
+        "switch_off": "off",
+        "switch_on": "on",
+        "switch_off_off": "off-disabled",
+        "switch_on_off": "on-disabled",
+    }
+    assert f"border: 2px solid {focus}" in control_rules(palette, 6, "normal", switch_art)
+    switch_grounds = (palette["field"], palette["panel"], palette["window"])
+    assert min(contrast(switch_edge, ground) for ground in switch_grounds) >= 3
 
 
 def test_look_measures_memoises_sanitize_look_per_look(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -464,7 +507,8 @@ def test_depth_is_drawn_with_edges_because_qt_has_no_shadows() -> None:
     flat_rest = "}".join(
         rule for rule in flat.split("}") if 'outline="true"' not in rule and 'outlined="true"' not in rule
     )
-    assert "border: none;" in flat and "1px solid" not in flat_rest
+    assert 'QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit' in flat_rest
+    assert "border: 1px solid" in flat_rest
     assert "border-bottom: 4px solid" in hard and "border-right: 4px solid" in hard
 
 

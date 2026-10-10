@@ -1131,7 +1131,7 @@ def test_the_drag_step_is_chosen_in_settings_kept_by_the_account_and_given_to_th
 
     for choice in (15, 5):
         page = open_settings(window)
-        page.findChild(QPushButton, f"prefDragStep-{choice}").click()
+        page.findChild(QRadioButton, f"prefDragStep-{choice}").click()
         assert window.hand.step == choice, "applied while Settings is open"
         page.close_page()
         wait_until(qapp, lambda: not window.session.busy)

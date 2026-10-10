@@ -357,7 +357,7 @@ def editor_rules(palette: dict, radius: int) -> str:
         'QPushButton[small="true"] { padding: 2px 4px; min-height: 0; }'
         'QPushButton[iconOnly="true"] { padding: 0; min-height: 0; }'
         # The column's segments share its width, as the mock-up's do, so four fit in 360 pixels.
-        f'QScrollArea#lookEditorColumn QPushButton[segment="true"] {{ padding: 4px {SPACING[1]}px; }}'
+        f'QScrollArea#lookEditorColumn QRadioButton[segment="true"] {{ padding: 4px {SPACING[1]}px; }}'
         # Settings draws a quiet button that cannot be pressed with an edge; here it is its words at 40 %.
         'QWidget#lookEditor QPushButton[quiet="true"]:disabled { background: transparent; '
         f"border: 2px solid transparent; color: {mix(text, palette['window'], 0.4)}; }}"

@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QLayout,
     QLineEdit,
     QPushButton,
+    QRadioButton,
     QSizePolicy,
     QWidget,
 )
@@ -279,7 +280,7 @@ def edge_rules(tokens: dict[str, str], palette: dict, shape: Shape) -> str:
             f"{cards} {{ {raised} }}"
             f"{FIELDS} {{ {sunken} }}"
             f'QFrame[segmented="true"] {{ {sunken} }}'
-            f'QPushButton[segment="true"]:checked {{ {raised} }}'
+            f'QRadioButton[segment="true"]:checked {{ {raised} }}'
             f"{buttons} {{ {raised} }}"
             f"QPushButton#sheetClose {{ border: none; }}"
         )
@@ -785,10 +786,12 @@ def _ensure_frame(root: QWidget, tokens: dict[str, str], scale: float, on: bool)
 def bevel_kind(widget: QWidget) -> str | None:
     """Which of retro.BEVELS a widget takes: cards and buttons raised, fields and tracks sunken."""
     name = widget.objectName()
-    if isinstance(widget, QPushButton):
+    # A segment is a radio button, so the screen reader hears a radio group; it has no flat state.
+    segment = isinstance(widget, QRadioButton) and widget.property("segment")
+    if segment or isinstance(widget, QPushButton):
         if (
             name in BEVEL_SKIP
-            or widget.isFlat()
+            or (isinstance(widget, QPushButton) and widget.isFlat())
             or widget.property("quiet")
             or (widget.property("segment") and not widget.isChecked())
         ):

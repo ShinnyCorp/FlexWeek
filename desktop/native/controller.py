@@ -35,7 +35,7 @@ from desktop.native.calendar import (
     shifted_month,
     span_problem,
 )
-from desktop.native.client import ApiError, NativeClient, auth_error
+from desktop.native.client import SIGN_IN_AGAIN, ApiError, NativeClient, auth_error
 from desktop.native.files import (
     export_day_payload,
     export_week_payload,
@@ -654,7 +654,7 @@ class NativeSession(QObject):
         self._clear_local()
         self.account_changed.emit(None)
         self.week_changed.emit()
-        self._say("Please sign in again, or check your username and password.")
+        self._say(SIGN_IN_AGAIN)
 
     def register(self, username: str, password: str) -> None:
         ticket = self._begin()

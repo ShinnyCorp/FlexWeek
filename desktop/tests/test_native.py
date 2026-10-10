@@ -192,7 +192,8 @@ def test_a_short_username_is_named_before_the_request(qapp: QApplication, server
     window.password.setText(PASSWORD)
     window.findChild(QPushButton, "createAccount").click()
     assert window.session.account is None
-    assert window.session.message == USERNAME_ERROR
+    assert window.username_problem.text.text() == USERNAME_ERROR
+    assert not window.username_problem.isHidden()
 
 
 def test_saved_fixed_time_survives_sign_out_and_sign_in(qapp: QApplication, server: LocalServer) -> None:
