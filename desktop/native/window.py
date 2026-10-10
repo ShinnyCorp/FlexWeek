@@ -3814,13 +3814,24 @@ class NativeWindow(QMainWindow):
         page.setup_requested.connect(self._run_setup_again)
         page.closed.connect(self._close_settings)
         stored = page.updates()
+        sending: dict | None = None
         login = bool(stored["start_at_login"])
 
         def save() -> None:
-            nonlocal stored
+            nonlocal sending
             wanted = page.updates()
-            if wanted != stored and self.session.save_preferences(wanted):
-                stored = wanted
+            if wanted != stored and wanted != sending:
+                sending = wanted
+                if not self.session.save_preferences(wanted, lambda kept: remember(wanted, kept)):
+                    sending = None
+
+        def remember(saved: dict, kept: bool) -> None:
+            # Only the server's answer makes a value stored: a request that failed leaves the page
+            # still holding a change to send again when Settings close.
+            nonlocal stored, sending
+            sending = None
+            if kept:
+                stored = saved
 
         def apply() -> None:
             nonlocal login

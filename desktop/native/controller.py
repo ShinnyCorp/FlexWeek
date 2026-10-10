@@ -3170,7 +3170,8 @@ class NativeSession(QObject):
         except ValueError:
             return ""
 
-    def save_preferences(self, updates: dict) -> bool:
+    def save_preferences(self, updates: dict, then: Callable[[bool], None] | None = None) -> bool:
+        """Send the changes. `then` is told whether the server kept them, once it has answered."""
         if self.account is None or self.preferences is None:
             return False
         body = dict(self.preferences)
@@ -3186,8 +3187,16 @@ class NativeSession(QObject):
             self.preferences = data
             self._say("Saved preferences.")
             self.week_changed.emit()
+            if then is not None:
+                then(True)
 
-        self.client.request("PUT", "/api/preferences", body, ok, lambda error: self._fail(ticket, error))
+        def failed(error: ApiError) -> None:
+            current = self._alive(ticket)
+            self._fail(ticket, error)
+            if current and then is not None:
+                then(False)
+
+        self.client.request("PUT", "/api/preferences", body, ok, failed)
         return True
 
     def preview_timer_split(self, duration_min: int) -> None:
