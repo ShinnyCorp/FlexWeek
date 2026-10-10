@@ -159,7 +159,7 @@ NOT_OPENED = "That file could not be opened."
 EXPORTED = "Exported {name}."
 IMPORTED = "Imported {name}."
 COPIED = "Saved a copy as {name}."
-WRITE_FAILED = "Could not write that file."
+WRITE_FAILED = "Couldn't save there. Choose another folder, like Documents."
 
 ACCENT_LABELS = {"default": "Blue"}
 FACES = (("Sans", "sans"), ("Serif", "serif"), ("Mono", "mono"))

@@ -37,7 +37,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QRadioButton,
@@ -221,6 +220,12 @@ HELP_SCREENS = (
     ("Week", "Monday to Sunday: drag a block to move it, or drag across empty time to add one."),
     ("Month", "Each date's blocks and the homework due that day; click a date to open it in Day."),
     ("My day", "What is on now and what comes next, to follow once your plan is made."),
+)
+HELP_PLANNING = (
+    "Add homework with its due date and length. Press Plan my homework and FlexWeek finds free time for "
+    "it in your study hours, around your fixed times, before it is due. Homework that already has a time "
+    "keeps it. Replan all starts fresh but keeps homework you placed yourself. Anything that does not "
+    "fit stays under Not placed yet, and Details says why. From the keyboard, press Ctrl+K and type Plan."
 )
 # Each key in brackets is drawn as a keycap; the words between are drawn plain.
 HELP_KEYS = (
@@ -1792,8 +1797,8 @@ class AccountDialog(Dialog):
         sheet_section(column, "Your data", ACCOUNT_DATA_NOTE)
         files = FlowLayout()
         for words, name, action in (
-            ("Export account", "exportAccount", "export"),
-            ("Import account", "importAccount", "import"),
+            ("Export backup file", "exportAccount", "export"),
+            ("Import backup file", "importAccount", "import"),
             ("Export week", "exportWeek", "week"),
             ("Export day", "exportDay", "day"),
             ("Import week or day file", "importFile", "import-week"),
@@ -1894,21 +1899,44 @@ class AlarmRingDialog(QDialog):
         self.playing.show()
 
 
+def transfer_summary(preview: dict) -> str:
+    """What importing a backup file will do, in sentences: how many weeks, homework and routines it adds,
+    replaces or removes, and whether the settings change."""
+    changes = preview.get("changes") or {}
+    said = []
+    for key, one, many, changed in (
+        ("weeks", "week", "weeks", "replaced"),
+        ("assignments", "homework", "homework", "changed"),
+        ("routines", "routine", "routines", "changed"),
+    ):
+        part = changes.get(key) or {}
+        for kind, word in (("added", "added"), ("changed", changed), ("removed", "removed")):
+            count = len(part.get(kind) or [])
+            if count:
+                said.append(f"{count} {one if count == 1 else many} {word}")
+    lines = [", ".join(said) + "."] if said else []
+    if changes.get("preferences_changed"):
+        lines.append("Your settings will be replaced.")
+    if not lines:
+        lines.append("Nothing in it is different from your account.")
+    return " ".join(lines)
+
+
 class TransferPreviewDialog(QDialog):
     def __init__(self, parent: QWidget | None, preview: dict) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Account transfer")
+        self.setWindowTitle("Import backup file?")
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("From " + str(preview.get("source_username") or "another account")))
-        changes = preview.get("changes") or {}
-        detail = QPlainTextEdit()
-        detail.setReadOnly(True)
-        detail.setTabChangesFocus(True)
-        detail.setPlainText(str(changes))
-        layout.addWidget(detail)
+        source = str(preview.get("source_username") or "another account")
+        for words, name in (
+            (f"From {source}'s backup: {transfer_summary(preview)}", "transferSummary"),
+            ("FlexWeek saves a restore point first, so you can go back.", "transferRestoreNote"),
+        ):
+            layout.addWidget(_line(words, name))
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Import")
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setProperty("quiet", True)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -2104,6 +2132,9 @@ class HelpDialog(Dialog):
         column = QVBoxLayout(body)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SECTION_GAP // 2)
+        column.addWidget(_heading("How planning works"))
+        column.addWidget(_line(HELP_PLANNING, "helpPlanning"))
+        column.addSpacing(SECTION_GAP // 2)
         column.addWidget(_heading("The screens"))
         screens = QGridLayout()
         screens.setSpacing(SECTION_GAP // 2)

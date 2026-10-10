@@ -857,8 +857,9 @@ class NativeSession(QObject):
 
     def add_block(self, block: dict, *, scope: str = "series", day: int | None = None) -> None:
         validated = TimeBlock.model_validate(block).model_dump(mode="json")
+        verb = "editing " if any(item["id"] == validated["id"] for item in self.blocks) else "adding "
         self.blocks = apply_block_edit(self.blocks, validated, scope=scope, day=day)
-        self._touch("editing " + validated["title"], keep={validated["id"]})
+        self._touch(verb + validated["title"], keep={validated["id"]})
 
     def add_homework(
         self, assignment: dict, *, days: list[int] | None = None, spread: bool = False
@@ -919,7 +920,7 @@ class NativeSession(QObject):
                 self._fix_session(session, assignment["fixed_at"])
             blocks.append(TimeBlock.model_validate(session).model_dump(mode="json"))
         finished = bool(body.get("completed"))
-        label = "editing " + body["title"]
+        label = ("editing " if known is not None else "adding ") + body["title"]
         if known is not None and finished != bool(known.get("completed")):
             label = ("finishing " if finished else "reopening ") + body["title"]
             for session in blocks:
@@ -1787,9 +1788,13 @@ class NativeSession(QObject):
         placed before now.
         """
         if self.planning:
+            self._say("Planning… one moment.")
             return
-        if self.pending_save is not None or self.conflict:
-            self._say("Wait a moment: your last change is still saving. Then plan again.")
+        if self.conflict:
+            self._say("This week changed in another window. Reload it from More, then plan again.")
+            return
+        if self.pending_save is not None:
+            self._say("Saving your last change… Plan will work in a moment.")
             return
         start = plan_start(self.week_start, datetime.fromtimestamp(self.now_ms() / 1000))
         if start is not None and start[0] > 6:
@@ -3500,9 +3505,9 @@ class NativeSession(QObject):
         target = parsed.get("week_start") or self.week_start
         if target != self.week_start:
             self._say(
-                "This file is for "
+                "Nothing imported: this file is for "
                 + week_label(target, self.today_iso())
-                + ". Open that week and import without changing other weeks?"
+                + ". Go to that week, then import again."
             )
             return False
         plan = plan_imported_homework(
@@ -3515,9 +3520,9 @@ class NativeSession(QObject):
             mode = "replace"
         if mode == "replace" and self.blocks and replace is not True:
             self._say(
-                "Replace blocks in "
+                "Nothing imported: it would replace everything in "
                 + week_label(self.week_start, self.today_iso())
-                + " with the import? Other weeks stay untouched."
+                + ". Import again and choose Replace week."
             )
             return False
         try:
