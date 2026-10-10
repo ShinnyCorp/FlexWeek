@@ -68,7 +68,11 @@ HERE="$(dirname "$(readlink -f "$0")")"
 export PATH="$PATH:/usr/sbin:/sbin"
 have_library() {
   # The cache listing is read whole; stopping early would end the pipe with SIGPIPE.
-  case "$(ldconfig -p 2>/dev/null)" in
+  local cache
+  # Without a cache to read (no ldconfig, or a system that keeps libraries elsewhere) the check
+  # cannot tell, so the app starts and the loader speaks for itself.
+  cache="$(ldconfig -p 2>/dev/null)" && [[ -n "$cache" ]] || return 0
+  case "$cache" in
     *[[:space:]]"$1 ("*) return 0 ;;
   esac
   local dir
@@ -79,7 +83,8 @@ have_library() {
 }
 
 if ! have_library libEGL.so.1; then
-  echo 'FlexWeek cannot start: the system library libEGL.so.1 is not installed. See the "Linux libraries" section of the README for what to install.' >&2
+  echo 'FlexWeek cannot start: the system library libEGL.so.1 is not installed.' >&2
+  echo 'Install it with "sudo apt install libegl1" (Ubuntu, Mint, Debian) or "sudo dnf install libglvnd-egl" (Fedora), then open FlexWeek again.' >&2
   exit 1
 fi
 

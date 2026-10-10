@@ -110,12 +110,17 @@ def _run_apprun(appdir: Path, ldconfig_output: str, library_path: str) -> subpro
     return subprocess.run([str(appdir / "AppRun")], env=env, capture_output=True, text=True)
 
 
+# A system cache that lists libraries, but not libEGL.
+WITHOUT_EGL = "\tlibc.so.6 (libc6,x86-64) => /lib64/libc.so.6\n"
+
+
 def test_apprun_stops_with_one_message_when_libegl_is_missing(tmp_path: Path) -> None:
     appdir = _build_appdir(tmp_path)
-    result = _run_apprun(appdir, ldconfig_output="", library_path="")
+    result = _run_apprun(appdir, ldconfig_output=WITHOUT_EGL, library_path="")
     assert result.returncode != 0
     assert "libEGL.so.1" in result.stderr
-    assert "Linux libraries" in result.stderr
+    assert "sudo apt install libegl1" in result.stderr
+    assert "sudo dnf install libglvnd-egl" in result.stderr
     assert "Traceback" not in result.stderr
     assert not (appdir / "usr/lib/FlexWeek/ran").exists()
 
@@ -132,6 +137,14 @@ def test_apprun_accepts_libegl_found_on_library_path(tmp_path: Path) -> None:
     libs = tmp_path / "libs"
     libs.mkdir()
     (libs / "libEGL.so.1").write_text("", encoding="utf-8")
-    result = _run_apprun(appdir, ldconfig_output="", library_path=str(libs))
+    result = _run_apprun(appdir, ldconfig_output=WITHOUT_EGL, library_path=str(libs))
+    assert result.returncode == 0, result.stderr
+    assert (appdir / "usr/lib/FlexWeek/ran").exists()
+
+
+def test_apprun_starts_when_there_is_no_library_cache_to_read(tmp_path: Path) -> None:
+    # Some systems have no ldconfig cache; the check cannot tell there, so it must not refuse.
+    appdir = _build_appdir(tmp_path)
+    result = _run_apprun(appdir, ldconfig_output="", library_path="")
     assert result.returncode == 0, result.stderr
     assert (appdir / "usr/lib/FlexWeek/ran").exists()
