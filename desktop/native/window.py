@@ -65,6 +65,7 @@ from desktop.native.calendar import (
 )
 from desktop.native.client import (
     PASSWORD_LENGTH_HINT,
+    SIGN_IN_AGAIN,
     SIGN_IN_WHY,
     SIGN_IN_WHY_LINK,
     SIGN_IN_WRONG,
@@ -672,6 +673,8 @@ class NativeWindow(QMainWindow):
 
     def _auth_problem_field(self, message: str) -> QLineEdit | None:
         words = message.lower()
+        if message == SIGN_IN_AGAIN:
+            return None
         if message == USERNAME_ERROR:
             return self.username
         if message.startswith("Wrong username or password"):

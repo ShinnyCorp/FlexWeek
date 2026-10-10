@@ -43,6 +43,8 @@ SIGN_UP_NO_PASSWORD = "Choose a password with at least 12 characters."
 SIGN_UP_SHORT_PASSWORD = "Add {n} more characters. Passwords need at least 12."
 SIGN_UP_LONG_PASSWORD = "Use 128 characters or fewer."
 USERNAME_TAKEN = "That username is taken. Try another."
+# Said when a session ends; about no one field, though its words name two.
+SIGN_IN_AGAIN = "Please sign in again, or check your username and password."
 logger = logging.getLogger(__name__)
 
 
@@ -129,7 +131,7 @@ def _error(status: int, detail: object = None) -> ApiError:
             return ApiError(status, named)
     messages = {
         0: "Could not reach FlexWeek. Your changes may not have been saved. Try again.",
-        401: "Please sign in again, or check your username and password.",
+        401: SIGN_IN_AGAIN,
         403: "This request was refused. Restart FlexWeek and try again.",
         404: "This item is no longer available. Reload and try again.",
         409: "The saved data changed or that name is already in use. Reload and try again.",
