@@ -872,6 +872,10 @@ def child_main(args: argparse.Namespace) -> int:
 
     def day_dwell(r: Rig) -> Step:
         """Resting a held block at the start of the hours scrolls them back, and it lands earlier."""
+        # Early on Thursday: the rig's clock is Thursday 15:40, and since 0.19.0 a start before now is
+        # refused, so a block let go at the scrolled-back start of the day would not land.
+        dawn = datetime.fromisoformat(session.week_start) + timedelta(days=3)
+        session.now_ms = lambda: int(dawn.timestamp() * 1000)
         yield from day_tab(r)
         scroll = r.zoom()
         scroll.scroll_to(17 * 60, above=90)
