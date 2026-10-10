@@ -3620,7 +3620,8 @@ class NativeSession(QObject):
             )
             return False
         for item in plan["create"]:
-            self.assignments[item["id"]] = item
+            # New to this account, so not yet saved: revision 0, as Add gives new homework.
+            self.assignments[item["id"]] = {**item, "revision": 0}
             self.dirty_assignments.add(item["id"])
         self.blocks = merged
         self._touch("the import")

@@ -343,36 +343,56 @@ pub fn plan_imported_homework(
     week_start: &Value,
     assignments: &Value,
 ) -> EngineResult<Value> {
+    // The same homework is the same title and due date; anything else under that id is other work.
+    let same = |held: Option<&Value>, item: &Value| -> EngineResult<bool> {
+        let Some(held) = held.filter(|held| truthy(Some(held))) else {
+            return Ok(false);
+        };
+        Ok(eq(
+            get(held, "title")?.unwrap_or(&Value::Null),
+            get(item, "title")?.unwrap_or(&Value::Null),
+        ) && eq(
+            get(held, "due")?.unwrap_or(&Value::Null),
+            get(item, "due")?.unwrap_or(&Value::Null),
+        ))
+    };
     let mut id_for = PyDict::new();
-    let mut create = Vec::new();
+    let mut create: Vec<Value> = Vec::new();
     for item in iterate(homework)? {
         // `assignments.get(item["id"])` finds `get` before it reads the id.
         dict_get(assignments, &Value::Null)?;
         let item_id = subscript(&item, "id")?.clone();
-        let own = dict_get(assignments, &item_id)?;
-        if let Some(own) = own
-            && truthy(Some(own))
-            && eq(
-                get(own, "title")?.unwrap_or(&Value::Null),
-                get(&item, "title")?.unwrap_or(&Value::Null),
-            )
-            && eq(
-                get(own, "due")?.unwrap_or(&Value::Null),
-                get(&item, "due")?.unwrap_or(&Value::Null),
-            )
-        {
+        if same(dict_get(assignments, &item_id)?, &item)? {
             id_for.set(item_id.clone(), item_id)?;
             continue;
         }
-        let new_id = json!(migrated_assignment_id(week_start, &item_id));
-        if !contains(assignments, &new_id)? {
-            let mut created = item.clone();
-            let Value::Object(fields) = &mut created else {
-                return Err(attribute_error(&item, "get"));
+        // The id this import derives may already hold homework an earlier import made from a
+        // different version of this item: reuse it only for the same homework, otherwise try the
+        // next derived id, so changed homework never takes over the old one's sessions and an
+        // import of the same file again still finds the homework it made the first time.
+        let mut attempt = 1;
+        let new_id = loop {
+            let source = if attempt == 1 {
+                item_id.clone()
+            } else {
+                json!(format!("{}#{attempt}", py_str(&item_id)))
             };
-            fields.insert("id".into(), new_id.clone());
-            create.push(created);
-        }
+            let candidate = json!(migrated_assignment_id(week_start, &source));
+            let made_now = create.iter().any(|made| eq(&made["id"], &candidate));
+            if !made_now && !contains(assignments, &candidate)? {
+                let mut created = item.clone();
+                let Value::Object(fields) = &mut created else {
+                    return Err(attribute_error(&item, "get"));
+                };
+                fields.insert("id".into(), candidate.clone());
+                create.push(created);
+                break candidate;
+            }
+            if !made_now && same(dict_get(assignments, &candidate)?, &item)? {
+                break candidate;
+            }
+            attempt += 1;
+        };
         id_for.set(item_id, new_id)?;
     }
     let mut remapped = Vec::new();
