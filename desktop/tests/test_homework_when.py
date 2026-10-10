@@ -94,7 +94,7 @@ def test_do_it_at_shows_one_day_and_a_time_and_says_where_it_stays(qapp: QApplic
     assert dialog.when_day.isVisible() and dialog.when_time.isVisible()
     dialog.when_day.set_days([3])
     dialog.when_time.setTime(QTime(17, 0))
-    assert dialog.when_note.text() == "Stays on Thu at 17:00 when you plan again."
+    assert dialog.when_note.text() == "Pinned to Thu at 17:00. Plan won't move it."
     free(dialog)
     free(parent)
 
@@ -167,7 +167,7 @@ def test_homework_with_a_pinned_time_opens_on_do_it_at_with_that_day_and_time(
     assert dialog.when.currentData() == "fixed"
     assert chosen_day(dialog) == [3]
     assert dialog.when_time.time() == QTime(17, 0)
-    assert dialog.when_note.text() == "Stays on Thu at 17:00 when you plan again."
+    assert dialog.when_note.text() == "Pinned to Thu at 17:00. Plan won't move it."
     free(dialog)
     free(parent)
 

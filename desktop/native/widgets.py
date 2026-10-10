@@ -227,6 +227,7 @@ DIALOG_MAX_HEIGHT = 700
 # No-break space before the last word, so a narrow sheet never leaves "45." alone on a line.
 SLOT_HINT = "Use a multiple of 15 minutes, such as 15, 30, or\u00a045."
 DUE_BY_HINT = "FlexWeek plans it before this time."
+TYPE_HINT = "Tests are planned first, then quizzes, then everyday homework, then reading."
 DUE_PASSED = "That time has already passed."
 ESTIMATE_ERROR = "That time is not a multiple of 15 minutes."
 ESTIMATE_SHORT = "Give it at least 15 minutes."
@@ -236,7 +237,7 @@ HOMEWORK_PROBLEMS = {
     "course": "Keep the course name under 40 characters.",
     "spotify_url": "Paste a Spotify share link from open.spotify.com.",
     "notes": "Keep notes under 4,000 characters.",
-    "priority": "Choose a priority from the list.",
+    "priority": "Choose a type from the list.",
     "energy": "Choose a time of day from the list.",
     "completed_at": "Set a valid time for finished homework.",
 }
@@ -3576,7 +3577,7 @@ class HomeworkDialog(Dialog):
         session_row = QHBoxLayout()
         for shown, text, name, kind in (
             (waiting, "Choose a time…", "homeworkChooseTime", "choose"),
-            (pinned, "Let FlexWeek move it", "homeworkUnpin", "unpin"),
+            (pinned, "Unpin", "homeworkUnpin", "unpin"),
         ):
             if not shown:
                 continue
@@ -3608,10 +3609,11 @@ class HomeworkDialog(Dialog):
         extra.addRow("Course", self.course)
         self.priority = QComboBox()
         self.priority.setObjectName("homeworkPriority")
-        for value, label in enumerate(("Test", "Quiz", "Homework", "Reading"), 1):
+        for value, label in enumerate(("Test prep", "Quiz prep", "Everyday homework", "Reading"), 1):
             self.priority.addItem(label, value)
         self.priority.setCurrentIndex(self.priority.findData(self._original.get("priority", 3)))
-        extra.addRow("Priority", self.priority)
+        extra.addRow("Type", self.priority)
+        extra.addRow("", sheet_note(TYPE_HINT))
         self.energy = QComboBox()
         self.energy.setObjectName("homeworkEnergy")
         for value, label in (("high", "Morning"), ("medium", "Afternoon"), ("low", "Evening")):
@@ -3855,7 +3857,9 @@ class HomeworkDialog(Dialog):
             self._form.setRowVisible(self.when_note, fixed is not None)
         self.when_problem.setVisible(False)
         self.when_note.setText(
-            f"Stays on {DAYS[fixed['day']]} at {fixed['start']} when you plan again." if fixed else ""
+            f"Pinned to {DAYS[fixed['day']]} at {hhmm_text(fixed['start'])}. Plan won't move it."
+            if fixed
+            else ""
         )
         hint = self._from_now_hint(fixed)
         self.when_from.setText(hint)

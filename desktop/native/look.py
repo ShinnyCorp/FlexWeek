@@ -737,6 +737,14 @@ def look_overrides(preset: object, shown: dict) -> dict:
     return {knob: value for knob, value in shown.items() if knob in bundle and value != bundle[knob]}
 
 
+def keep_text(look: dict) -> dict:
+    """The look with its text size written out as the student's own, so a preset that sets one (High
+    contrast: Large) cannot take it along when the look changes. A custom look sets its own."""
+    if "custom" in look or "text" in look["knobs"]:
+        return look
+    return sanitize_look({**look, "knobs": {**look["knobs"], "text": effective_look(look)["text"]}})
+
+
 def known_accent(name: object) -> str:
     return name if name in ACCENTS else "default"
 

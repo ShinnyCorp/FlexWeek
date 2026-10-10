@@ -1604,6 +1604,9 @@ def test_an_update_check_that_fails_says_so_only_when_asked(qapp: QApplication, 
     so "Checking for updates…" stayed on screen as if the check were still going."""
     from desktop.native.updater import CHECK_FAILED
 
+    # The window's own check on opening is a real request; its answer, landing after _update_asked is
+    # set below, would put "is the latest version" over the toast this test reads.
+    wait_until(qapp, lambda: not window._updater.busy, timeout=30.0)
     window._update_asked = False
     window._updater.unreachable.emit(CHECK_FAILED)
     qapp.processEvents()

@@ -329,7 +329,15 @@ GREYED_TIPS = {
     "pasteBlock": "Copy a block or a day first.",
     "runningLate": "Open this week to use Running late.",
 }
-WAIT_TIP = "Wait a moment: FlexWeek is still saving or planning."
+# Said without the system's own words, which a student cannot act on.
+READ_FAILED = "Couldn't open that file. Choose a FlexWeek backup file (it ends in .json)."
+WRITE_FAILED = "Couldn't save there. Choose another folder, like Documents."
+REPLACE_WEEK_QUESTION = (
+    "Replace everything in {week} with this file? Other weeks aren't changed. You can undo this."
+)
+WAIT_TIP = "Saving your last change… this will work in a moment."
+PLANNING_TIP = "Planning… one moment."
+CONFLICT_TIP = "This week changed in another window. Reload it from More first."
 SIGN_OUT_QUESTION = "Your week is saved on {where}, under this account. Sign in again to see it."
 RECOVERY_KEEP = "Keep this file somewhere private. Anyone who has it can reset your password."
 RECOVERY_CHOOSE = "Choose where to save"
@@ -356,10 +364,14 @@ ERROR_ICON_PX = 16
 CREATE_HEADING = "Create your account"
 CREATE_NOTE = (
     "FlexWeek fits homework around school and sports. "
-    "Your week is saved on this computer, under this account."
+    "Your week is saved on this computer, under this account. "
+    "Export a backup file now and then, in Settings."
 )
 RESET_HEADING = "Reset your password"
-RESET_NOTE = "Use one of the recovery codes you saved when you made your account."
+RESET_NOTE = (
+    "Use one of the recovery codes you saved when you made your account. Lost them too? Create a new "
+    "account and import a backup file, or start fresh."
+)
 # What the sign-in card is for at the moment.
 SIGN_IN, CREATE, RESET = "sign in", "create", "reset"
 # Long enough for the student to read that the update installed before the window goes.
@@ -719,22 +731,31 @@ class NativeWindow(QMainWindow):
         self.recover_button.setDefault(mode == RESET)
 
     def _pin_auth_height(self) -> None:
-        """Hold the sign-in page's wordmark and card top where the tallest page, Create, puts them, so
-        nothing jumps between pages (#74): the card sits at the top of a holder that is always as tall
-        as the Create card, and the pages that are shorter simply end sooner."""
+        """Hold the sign-in page's wordmark and card top where the tallest page, Create or Reset, puts
+        them, so nothing jumps between pages (#74): the card sits at the top of a holder that is always as
+        tall as that card, and the pages that are shorter simply end sooner."""
         holder, card = self._auth_holder, self._auth_card
         if holder is None or card is None:
             return
         shown = self._auth_mode_shown or SIGN_IN
-        self._lay_mode(CREATE)
-        card.layout().activate()
-        # What the layout will ask of the holder, which a wrapped label's minimum makes taller than the
-        # card is drawn.
-        tallest = max(
-            card.sizeHint().height(), card.minimumSizeHint().height(), card.heightForWidth(card.width())
-        )
+        # Laying out another page hides the widget that has focus, and Qt does not give it back.
+        focused = self.focusWidget()
+        tallest = 0
+        for mode in (CREATE, RESET):
+            self._lay_mode(mode)
+            card.layout().activate()
+            # What the layout will ask of the holder, which a wrapped label's minimum makes taller than
+            # the card is drawn.
+            tallest = max(
+                tallest,
+                card.sizeHint().height(),
+                card.minimumSizeHint().height(),
+                card.heightForWidth(card.width()),
+            )
         self._lay_mode(shown)
         card.layout().activate()
+        if focused is not None:
+            focused.setFocus(Qt.FocusReason.OtherFocusReason)
         holder.setMinimumHeight(tallest + AUTH_SHADOW_ABOVE + AUTH_SHADOW_BELOW)
 
     def listen_for_instances(self, name: str) -> bool:
@@ -2223,6 +2244,10 @@ class NativeWindow(QMainWindow):
         if enabled:
             return MORE_TIPS.get(name, "")
         session = self.session
+        if session.conflict:
+            return CONFLICT_TIP
+        if session.planning:
+            return PLANNING_TIP
         if session.busy or session.dirty or session.pending_save is not None:
             return WAIT_TIP
         if name == "pasteBlock" and session.clipboard is not None:
@@ -4076,16 +4101,16 @@ class NativeWindow(QMainWindow):
         elif dialog.action == "export":
             self.session.export_account(password, self._write_account_file)
         elif dialog.action == "import":
-            path, _ = QFileDialog.getOpenFileName(self, "Import account", "", "JSON (*.json)")
+            path, _ = QFileDialog.getOpenFileName(self, "Import backup file", "", "JSON (*.json)")
             if not path:
                 return
             try:
                 snapshot = json.loads(Path(path).read_text())
-            except (OSError, UnicodeDecodeError, ValueError) as error:
-                self.session._say("Could not read that file. " + str(error))
+            except (OSError, UnicodeDecodeError, ValueError):
+                self.session._say(READ_FAILED)
                 return
             if not isinstance(snapshot, dict):
-                self.session._say("Choose a FlexWeek account transfer file.")
+                self.session._say(READ_FAILED)
                 return
             self.session.preview_account_import(snapshot, self._confirm_transfer)
         elif dialog.action == "week":
@@ -4103,22 +4128,18 @@ class NativeWindow(QMainWindow):
                 return
             try:
                 raw = Path(path).read_text()
-            except (OSError, UnicodeDecodeError) as error:
-                self.session._say("Could not read that file. " + str(error))
+            except (OSError, UnicodeDecodeError):
+                self.session._say(READ_FAILED)
                 return
             parsed = parse_import_payload(raw)
             if parsed.get("error"):
                 self.session._say(parsed["error"])
                 return
             if parsed.get("format") == EXPORT_FORMAT and self.session.blocks:
-                answer = QMessageBox.question(
-                    self,
-                    "Replace week",
-                    "Replace blocks in "
-                    + week_label(self.session.week_start, self._today())
-                    + " with the import? Other weeks stay untouched.",
+                question = REPLACE_WEEK_QUESTION.format(
+                    week=week_label(self.session.week_start, self._today())
                 )
-                if answer != QMessageBox.StandardButton.Yes:
+                if not confirm(self, "Replace week", question, "Replace week"):
                     return
                 self.session.import_week_file(raw, replace=True)
             else:
@@ -4144,8 +4165,8 @@ class NativeWindow(QMainWindow):
             return
         try:
             Path(path).write_text(json.dumps(payload, indent=2) + "\n")
-        except OSError as error:
-            self.session._say("Could not write that file. " + str(error))
+        except OSError:
+            self.session._say(WRITE_FAILED)
 
     def _look_path(self) -> Path:
         root = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation))

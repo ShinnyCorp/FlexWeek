@@ -640,7 +640,7 @@ def test_plan_waits_for_a_failed_save_before_offering_undo(
     window.findChild(QPushButton, "solveButton").click()
     qapp.processEvents()
     assert stored_blocks(window) == before
-    assert session.message == "Wait a moment: your last change is still saving. Then plan again."
+    assert session.message == "Saving your last change… Plan will work in a moment."
     assert not window.toast.button.isVisible()
 
 

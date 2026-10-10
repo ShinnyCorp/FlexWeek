@@ -24,7 +24,7 @@ fn iso_date(day: NaiveDate) -> String {
 pub const REASON_COPY: &[(&str, &str)] = &[
     (
         "LOCKED_OVERLAP",
-        "Your fixed plans and finished work leave no gap long enough for it before it is due.",
+        "Your fixed times and finished work leave no gap long enough for it before it's due. Shorten it, split it, or change the due date.",
     ),
     (
         "DEADLINE_MISS",
@@ -33,11 +33,11 @@ pub const REASON_COPY: &[(&str, &str)] = &[
     ("DEADLINE_PASSED", "That time has already passed."),
     (
         "NO_SLOT_LEFT",
-        "Your plans and other homework already fill every gap long enough for it.",
+        "Your other homework is using every free gap before it's due. Move or shorten one, or choose a time yourself.",
     ),
     (
         "PRIORITY_PREEMPT",
-        "Work with a higher priority used the free time before it is due.",
+        "Homework planned ahead of it (tests, then quizzes, then everyday homework, then reading) used the free time before it's due.",
     ),
     (
         "ENERGY_MISMATCH",
@@ -1827,7 +1827,7 @@ mod tests {
         );
         assert_eq!(
             sentence("NO_SLOT_LEFT").unwrap(),
-            "Your plans and other homework already fill every gap long enough for it."
+            "Your other homework is using every free gap before it's due. Move or shorten one, or choose a time yourself."
         );
     }
 
