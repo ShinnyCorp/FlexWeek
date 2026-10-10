@@ -197,11 +197,13 @@ def test_the_bar_is_fitted_as_large_text_arrives_not_later(
     qapp: QApplication, window: NativeWindow, week_start: str,
 ) -> None:
     """Large text reached Plan and More after the bar was fitted; a stale group width must not leave
-    the bar on two rows until something else refits it (short title weeks were the tell)."""
+    the bar on two rows until something else refits it (short title weeks were the tell). Since 0.18.5's
+    roomy bar buttons, Large text needs about 1190 for one row, so the window is just wider than that: wide
+    enough that a fitted bar is one row, narrow enough that a stale one is two."""
     session = window.session
     session.load_week(week_start)
     settled(qapp, window)
-    window.resize(1150, 768)
+    window.resize(1195, 768)
     for _ in range(4):
         qapp.processEvents()
     text_size(window, "large")

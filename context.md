@@ -1,6 +1,17 @@
 # context.md — FlexWeek
 
 ## Current State
+- 2026-10-10: v0.18.5 on `release/0.18.5` (worktree `~/.worktrees/flexweek-0185`, `.venv` is
+  `venv-0185-engine`): roadmap's Consistency and polish. New accounts start on a 12-hour clock
+  (`clock_24h`, Rust migration `keep_24_hour_clock` stamps older accounts 24-hour; the desktop
+  conftest sets 24-hour per test unless a test chooses); one short and one long date format from
+  `engine/engine/src/desk/datetext.rs`; time boxes keep what was typed and show a problem card
+  (`fields.ClockField`, `ProblemLine`); buttons re-measure after a look change (`widgets.fit_buttons`);
+  a click moves the week's keyboard spot and a closed sheet leaves it on the week (Jonathan,
+  2026-10-10, over the QA handoff's "back to the button"). Tests fail on any error inside a Qt slot
+  (`no_error_is_lost_inside_a_qt_slot`; pass `QTimer.singleShot(0, receiver, fn)`, never a bare
+  bound method); `fwtest gate` checks mutation patterns first. Built by Haiku 5.5 and Sonnet 5.5
+  lanes, reviewed by Claude.
 - 2026-10-09: v0.18.4 on `release/0.18.4` (worktree `~/.worktrees/flexweek-0184`, `.venv` is
   `venv-0183-engine`): J14 to J17. Motion moves still pictures on `motion.Clock`, which follows the
   screen's refresh rate; Settings' design previews wait on `motion.busy()`; a sheet's dim starts at
@@ -20,10 +31,6 @@
   `desktop/tests/` as `test_zz_*.py`, run through fwtest with `-s`; `PROBE_DRAIN=1` waits for
   Settings' design previews, which otherwise land in the timed window; `PROBE_NOPROF=1` for real
   times). On-screen frames: `scratch/0.18.4/j15/clay_frames.py`.
-- 2026-10-03. v0.18.1 is the latest release (PR 40, 907fa4b): the 20 Fix-first findings of the
-  0.17.2 audit, Jonathan's J1-J6 and the engine leftovers. 0.18.2 is planned in full in roadmap.md
-  (batch A for Grok, batch B after mockup round 2), as is 0.18.3; the decisions 0.18.1 left open are
-  in roadmap.md under "Open after 0.18.1".
 - Rust (`engine/`, contract `docs/engine/contract.md`, wrappers `docs/engine/adapters.md`): the
   planner and solver, slots, weeks, day, month, explain, restore, recovery codes, the store's SQL
   helpers and database connection, and the desktop's Qt-free logic (`desk`: calendar, custom looks
@@ -135,13 +142,13 @@ values make a retried write return the first result.
 - The release workflow stops a Windows installer or smoke test that hangs after ten minutes.
 
 ## Session Handoff
-- 2026-10-09, `release/0.18.4`: version 0.18.4, docs, roadmap (J14-J17 shipped, J18 noted, the
-  polish phase renamed 0.18.5) and spec.md (motion paragraph, Clay row) written; release via PR to
-  main, then `gh release create v0.18.4 --latest` with the notes file. After the release, Branches
-  and Storage: list 0.18.2-era files (release worktree `flexweek-0182-release`, `venv-0182-engine`,
-  `release/0.18.2`, the four `grok/0182-*` branches, which Jonathan removes from Windows) with sizes
-  for Jonathan's approval.
-- Open for Jonathan: #41 and "Open after 0.18.1"; Retro teal's title bar end darkened to 4.5:1;
-  Retro's decorative caption buttons on Setup and sign-in do nothing; the Quick focus hop by eye;
-  the J16 slide's pinned-left content while a card shrinks, and J17's month slide, on his screens.
-  Phase 8 (due 2026-10-25) is with Cursor and his partner.
+- 2026-10-10, `release/0.18.5`: lanes 1-9, the engineering lane and the 12-hour sweep merged; 16
+  mutation cases repointed; version, CHANGELOG, `docs/release-notes-v0.18.5.md`, roadmap and spec.md
+  (look editor Start from, dates, the gate's pattern check) written. Release via PR to main on
+  Jonathan's word, `@coderabbitai review`, then `gh release create v0.18.5 --latest`. Afterwards,
+  Branches and Storage: the 0.18.3 release worktree and branch, `lane/0185-eng` and its worktree.
+- Next: 0.19.0 (the QA handoff's Fix first items, about Oct 14-15), then 1.0.0 with the Android
+  companion (Rust core via UniFFI, Kotlin and Compose) and iroh device sync (about Oct 22).
+- Open for Jonathan: the time box's problem card can cover what is under the box until 0g puts the
+  line in the form; Clay and the Day dial were not checked for the keyboard-spot change; Bento's
+  weekend dates, Retro's cut names and the Add menu's swatches against icons.
