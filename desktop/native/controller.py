@@ -43,7 +43,6 @@ from desktop.native.files import (
     plan_imported_homework,
 )
 from desktop.native.focus import (
-    DEFAULT_TIMERS,
     FOCUS_PHASE_LABEL,
     begin_state,
     break_phase,
@@ -54,10 +53,11 @@ from desktop.native.focus import (
     now_next_line,
     pause_state,
     persist_payload,
-    phase_duration_ms,
+    phase_total_ms,
     remaining_ms,
     restore_state,
     set_phase,
+    work_minutes,
 )
 from desktop.native.history import capture_step, join_step, mark_stale, push_step
 from desktop.native.kept import KeptSession
@@ -2837,7 +2837,7 @@ class NativeSession(QObject):
         state = self.focus
         if state is None or state.get("phase") != "work" or state.get("weekStart") != self.week_start:
             return 0
-        spent = phase_duration_ms("work", self.preferences) - remaining_ms(state, self.now_ms())
+        spent = phase_total_ms(state, self.preferences) - remaining_ms(state, self.now_ms())
         return max(0, spent) // 60_000
 
     def tick_focus(self) -> None:
@@ -2909,7 +2909,7 @@ class NativeSession(QObject):
         state = self.focus
         if state is None or not state.get("blockId"):
             return
-        work_min = int((self.preferences or DEFAULT_TIMERS).get("timer_work_min") or 30)
+        work_min = work_minutes(state, self.preferences)
         if state.get("assignmentId"):
             assignment = self.assignments.get(state["assignmentId"])
             updated = credit_target(state, assignment, None, work_min)

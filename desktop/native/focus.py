@@ -32,6 +32,22 @@ def phase_duration_ms(phase: str, prefs: dict | None) -> int:
     return int(flexweek_engine.focus_phase_ms(json.dumps(phase), json.dumps(prefs)))
 
 
+def work_minutes(state: dict | None, prefs: dict | None) -> int:
+    """The length of the work phase running, which is the length it began with. A timer length
+    changed in Settings applies to the next phase, so it must not change this one's credit."""
+    kept = None if state is None else state.get("workMin")
+    if isinstance(kept, int) and not isinstance(kept, bool) and kept > 0:
+        return kept
+    return phase_duration_ms("work", prefs) // 60_000
+
+
+def phase_total_ms(state: dict, prefs: dict | None) -> int:
+    """How long the phase `state` is in was set to run, for the ring and the minutes spent."""
+    if state.get("phase") == "work":
+        return work_minutes(state, prefs) * 60_000
+    return phase_duration_ms(str(state.get("phase")), prefs)
+
+
 def format_countdown(milliseconds: int) -> str:
     return str(flexweek_engine.focus_countdown(milliseconds))
 
@@ -52,16 +68,28 @@ def more_time_choices(estimate_min: int) -> list[int]:
 
 def persist_payload(state: dict | None) -> dict | None:
     raw = flexweek_engine.focus_persist(json.dumps(state))
-    return None if raw is None else json.loads(raw)
+    if raw is None:
+        return None
+    payload = json.loads(raw)
+    if state is not None and state.get("workMin") is not None:
+        payload["workMin"] = state["workMin"]
+    return payload
 
 
 def restore_state(saved: dict | None, *, assignments: dict, blocks: list[dict], now_ms: int) -> dict | None:
     raw = flexweek_engine.focus_restore(plain(saved), json.dumps(assignments), json.dumps(blocks), now_ms)
-    return None if raw is None else json.loads(raw)
+    if raw is None:
+        return None
+    state = json.loads(raw)
+    if isinstance(saved, dict) and saved.get("workMin") is not None:
+        state["workMin"] = saved["workMin"]
+    return state
 
 
 def begin_state(target: dict, prefs: dict | None, now_ms: int) -> dict:
-    return json.loads(flexweek_engine.focus_begin(json.dumps(target), json.dumps(prefs), now_ms))
+    state = json.loads(flexweek_engine.focus_begin(json.dumps(target), json.dumps(prefs), now_ms))
+    state["workMin"] = phase_duration_ms("work", prefs) // 60_000
+    return state
 
 
 def pause_state(state: dict, now_ms: int) -> dict:
@@ -69,9 +97,12 @@ def pause_state(state: dict, now_ms: int) -> dict:
 
 
 def set_phase(state: dict, phase: str, prefs: dict | None, now_ms: int) -> dict:
-    return json.loads(
+    moved = json.loads(
         flexweek_engine.focus_set_phase(json.dumps(state), json.dumps(phase), json.dumps(prefs), now_ms)
     )
+    if phase == "work":
+        moved["workMin"] = phase_duration_ms("work", prefs) // 60_000
+    return moved
 
 
 def break_phase(cycles: int, prefs: dict | None) -> str:

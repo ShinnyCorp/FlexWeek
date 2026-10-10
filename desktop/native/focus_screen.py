@@ -12,7 +12,7 @@ from PySide6.QtGui import QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from desktop.native import icons
-from desktop.native.focus import format_countdown, phase_duration_ms, remaining_ms
+from desktop.native.focus import format_countdown, phase_duration_ms, phase_total_ms, remaining_ms
 from desktop.native.ring import CountdownRing, ring_colours
 
 PHASE_WORDS = {"work": "Focus", "break": "Break", "long_break": "Long break", "ended": "Session finished"}
@@ -123,7 +123,7 @@ class FocusScreen(QWidget):
             left = remaining_ms(state, session.now_ms())
             self.ring.set_number(format_countdown(left))
             self._task_words = state.get("title") or QUICK_TITLE
-            whole = phase_duration_ms(phase, prefs) if running else 1
+            whole = phase_total_ms(state, prefs) if running else 1
             self.ring.set_left(min(left, whole) / whole if running else 0.0)
         self._show_task()
         self._level_buttons()
