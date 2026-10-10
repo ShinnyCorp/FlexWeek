@@ -101,4 +101,3 @@ def test_clicking_school_then_closing_its_sheet_moves_right_from_school(qapp, wi
     key(window, Qt.Key.Key_Down if across else Qt.Key.Key_Right)
     assert hours.focus_slot()[0] == MONDAY + 1
     assert hours.focus_block() == ("school", MONDAY + 1)
-
