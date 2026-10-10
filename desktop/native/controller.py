@@ -3325,6 +3325,8 @@ class NativeSession(QObject):
         self._say("Saving restore point…")
 
         def ok(data: dict) -> None:
+            # The point exists now. The same name asked for again is a new backup, not a retry.
+            self._attempts.pop(key, None)
             if not self._idle(ticket):
                 return
             point = data.get("restore_point") or data
