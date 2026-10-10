@@ -1399,7 +1399,7 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
     # Only a look that draws soft hairlines: a flat look draws none, and a bold one its own heavy ones.
     field_rules = (
         f"QWidget#authCard QLineEdit {{ border: 1px solid {readable_edge(palette)}; }}"
-        f"QWidget#authCard QLineEdit:focus {{ border: 1px solid {palette['accent']}; }}"
+        f"QWidget#authCard QLineEdit:focus {{ border: 2px solid {readable_focus_edge(palette)}; }}"
         if knobs["depth"] == "soft"
         else ""
     )

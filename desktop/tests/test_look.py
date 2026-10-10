@@ -28,6 +28,7 @@ from desktop.native.look import (
     LOOK_KNOBS,
     LOOK_PRESETS,
     PACKS,
+    auth_rules,
     block_paint,
     block_time_colour,
     category_paint,
@@ -73,6 +74,13 @@ def test_control_edges_have_three_to_one_contrast(preset: str, system_dark: bool
     switch_edge = switch_track_edge(palette)
     assert min(contrast(border, ground) for ground in grounds) >= 3
     assert min(contrast(focus, ground) for ground in grounds) >= 3
+    auth = auth_rules(
+        palette,
+        {**LOOK_DEFAULTS, "depth": "soft"},
+        6,
+        10,
+    )
+    assert f"QWidget#authCard QLineEdit:focus {{ border: 2px solid {focus}; }}" in auth
     if preset != "high-contrast":
         assert min(contrast(focus, ground) for ground in grounds) > min(
             contrast(border, ground) for ground in grounds
