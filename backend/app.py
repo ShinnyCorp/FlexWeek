@@ -995,6 +995,12 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 raise HTTPException(401, "Incorrect username or password")
             user_id = found[0]
             with connect(path) as db:
+                # scrypt ran outside the lock; a recovery or password change may have rotated the
+                # hash and signed every session out meanwhile, so the session is only opened if the
+                # hash just checked is still the account's, in the same write transaction.
+                db.begin_immediate()
+                if db.password_hash_of(user_id) != encoded:
+                    raise HTTPException(401, "Incorrect username or password")
                 token = create_session(db, user_id)
         with connect(path) as db:
             db.delete_session(digest(request.cookies.get(COOKIE, "")))
