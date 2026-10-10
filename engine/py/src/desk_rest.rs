@@ -282,6 +282,21 @@ fn calendar_span_problem(
 }
 
 #[pyfunction]
+fn calendar_past_problem(
+    week_start: &str,
+    day: i64,
+    start_min: i64,
+    now_iso: &str,
+    now_min: i64,
+) -> PyResult<Option<String>> {
+    guard(|| {
+        let found = grid::past_problem(week_start, day, start_min, now_iso, now_min)
+            .map_err(crate::raise)?;
+        Ok(found.map(str::to_string))
+    })
+}
+
+#[pyfunction]
 fn calendar_span_clash(
     blocks: &str,
     block_id: &str,
@@ -1259,6 +1274,7 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         calendar_next_action,
         calendar_setup_block,
         calendar_span_problem,
+        calendar_past_problem,
         calendar_span_clash,
         calendar_category_icon,
         focus_phase_ms,

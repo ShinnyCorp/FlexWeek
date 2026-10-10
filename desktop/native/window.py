@@ -2950,7 +2950,15 @@ class NativeWindow(QMainWindow):
         clock = clock_parts(self.session.now_ms())
         today = clock["day"] if monday_of(clock["iso"]) == self.session.week_start else None
         dialog = ChooseTimeDialog(
-            self, block, self.session.week_start, days, self.session.blocks, due, today, clock["minute"]
+            self,
+            block,
+            self.session.week_start,
+            days,
+            self.session.blocks,
+            due,
+            today,
+            clock["minute"],
+            now=(clock["iso"], int(clock["minute"])),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return

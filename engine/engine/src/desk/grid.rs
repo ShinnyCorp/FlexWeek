@@ -783,6 +783,30 @@ pub fn span_problem(
     Ok(None)
 }
 
+/// A start before now (local date and minute) cannot be chosen. `now_iso` is that local date.
+/// A bad date is not a past time: the caller already has its own check for a date it cannot read.
+pub fn past_problem(
+    week_start: &str,
+    day: i64,
+    start_min: i64,
+    now_iso: &str,
+    now_min: i64,
+) -> EngineResult<Option<&'static str>> {
+    let Ok(monday) = from_iso(week_start) else {
+        return Ok(None);
+    };
+    let Ok(now) = from_iso(now_iso) else {
+        return Ok(None);
+    };
+    let Ok(target) = crate::stored::add_days(monday, day) else {
+        return Ok(None);
+    };
+    if target < now || (target == now && start_min < now_min) {
+        return Ok(Some("That's in the past."));
+    }
+    Ok(None)
+}
+
 pub fn span_clash(
     blocks: &Value,
     block_id: &Value,
@@ -868,6 +892,47 @@ mod tests {
         ] {
             assert_eq!(due_day_of(&none, "not a date").unwrap(), None);
         }
+    }
+
+    #[test]
+    fn a_start_before_now_is_in_the_past_and_a_later_week_is_not() {
+        let week = "2026-10-05";
+        let thursday = "2026-10-08";
+        let at = 15 * 60 + 10;
+        assert_eq!(
+            past_problem(week, 1, 16 * 60, thursday, at).unwrap(),
+            Some("That's in the past."),
+            "Tuesday of this week"
+        );
+        assert_eq!(
+            past_problem(week, 3, 15 * 60, thursday, at).unwrap(),
+            Some("That's in the past."),
+            "earlier today"
+        );
+        assert_eq!(
+            past_problem(week, 3, at, thursday, at).unwrap(),
+            None,
+            "this minute is not past"
+        );
+        assert_eq!(
+            past_problem(week, 3, 15 * 60 + 15, thursday, at).unwrap(),
+            None,
+            "later today"
+        );
+        assert_eq!(
+            past_problem("2026-09-28", 4, 18 * 60, thursday, at).unwrap(),
+            Some("That's in the past."),
+            "last week"
+        );
+        assert_eq!(
+            past_problem("2026-10-12", 0, 8 * 60, thursday, at).unwrap(),
+            None,
+            "next week"
+        );
+        assert_eq!(
+            past_problem("not a date", 0, 0, thursday, at).unwrap(),
+            None
+        );
     }
 
     #[test]

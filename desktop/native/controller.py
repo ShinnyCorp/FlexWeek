@@ -30,6 +30,7 @@ from desktop.native.calendar import (
     monday_of,
     month_anchor_date,
     month_for_view,
+    past_problem,
     relocate_block,
     shifted_month,
     span_problem,
@@ -1024,15 +1025,10 @@ class NativeSession(QObject):
     def span_drop_problem(
         self, block_id: str, day: int, start: int, end: int, from_day: int = -1
     ) -> str | None:
-        """Why a block cannot land here, including a drop onto a different day already past."""
-        try:
-            target = date.fromisoformat(self.week_start) + timedelta(days=day)
-        except ValueError:
-            target = None
-        now = datetime.fromtimestamp(self.now_ms() / 1000)
-        if target is not None and target < now.date() and day != from_day:
-            return PAST_DROP
+        """Why a block cannot land here, including a start that is already past."""
         block = next((item for item in self.blocks if item["id"] == block_id), None)
+        if block is not None and self._starts_in_the_past(block, day, start, from_day):
+            return PAST_DROP
         if block is None:
             return None
         due = due_point(
@@ -1040,6 +1036,30 @@ class NativeSession(QObject):
             self.week_start,
         )
         return span_problem(self.blocks, block_id, day, start, end, due)
+
+    def _starts_in_the_past(self, block: dict, day: int, start: int, from_day: int) -> bool:
+        """A new homework start before now, or a drop onto a different day already past. Finished
+        homework may sit in the past, and a drag that leaves the start where it was (the end moved)
+        is never refused for that. A fixed time that already sits on a day before today may still
+        change its start there: one day of School, after that day."""
+        if block.get("completed"):
+            return False
+        if from_day == day and block.get("start"):
+            try:
+                if hhmm_to_minutes(block["start"]) == start:
+                    return False
+            except ValueError:
+                pass
+        clock = clock_parts(self.now_ms())
+        if past_problem(self.week_start, day, start, clock["iso"], int(clock["minute"])) is None:
+            return False
+        if block.get("kind") == "locked" and from_day == day:
+            try:
+                on = date.fromisoformat(self.week_start) + timedelta(days=day)
+            except ValueError:
+                return True
+            return on >= date.fromisoformat(clock["iso"])
+        return True
 
     def _fixed_copy_rows(self, source: dict | None) -> list[dict] | None:
         if not source:
@@ -1141,6 +1161,11 @@ class NativeSession(QObject):
             start_min = hhmm_to_minutes(clock)
         except ValueError:
             return "That is outside the hours FlexWeek plans in, so it stayed where it was."
+        if block is None or not block.get("completed"):
+            clock_now = clock_parts(self.now_ms())
+            past = past_problem(to_week, to_day, start_min, clock_now["iso"], int(clock_now["minute"]))
+            if past:
+                return past
         assignment = self.assignments.get(homework_id) or self.assignments.get(block_id)
         due = due_point((assignment or {}).get("due"), to_week)
         return span_problem([], block_id, to_day, start_min, start_min + int(length), due)
