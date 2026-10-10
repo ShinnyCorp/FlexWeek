@@ -28,6 +28,7 @@ from desktop.native.calendar import sunday_due
 from desktop.native.fonts import load_fonts
 from desktop.native.kept import KeptSession
 from desktop.native.setup import DONE as SETUP_DONE
+from desktop.native.updater import collect_stale_downloads
 from desktop.native.window import NativeWindow
 from desktop.origin import configured_origin
 from desktop.server import LocalServer
@@ -234,6 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("FlexWeek")
     app.setDesktopFileName(DESKTOP_FILE_NAME)
     load_fonts()
+    collect_stale_downloads()
 
     try:
         origin = configured_origin()

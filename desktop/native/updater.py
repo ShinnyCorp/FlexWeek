@@ -19,6 +19,7 @@ import stat
 import sys
 import tarfile
 import tempfile
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QUrl, Signal
@@ -36,6 +37,10 @@ from desktop.native.update import (
 )
 
 USER_AGENT = b"FlexWeek-Updater"
+DOWNLOAD_FOLDER_PREFIX = "flexweek-update-"
+# On Windows the installer keeps running from its download after FlexWeek quits, so a download is only
+# collected at the next launch once it is this old.
+STALE_DOWNLOAD_S = 3600
 DOWNLOAD_LIMIT = 400 * 1024 * 1024
 # A check that hears nothing gives up rather than showing "Checking for updates…" for good. A download
 # is only stopped when no data arrives for this long, so a slow connection still finishes.
@@ -167,7 +172,7 @@ class Updater(QObject):
             # Wrong bytes: a truncated download, a proxy, or something worse. Keep what works.
             self._give_up("The download did not match its checksum, so it was discarded.")
             return
-        folder = Path(tempfile.mkdtemp(prefix="flexweek-update-"))
+        folder = Path(tempfile.mkdtemp(prefix=DOWNLOAD_FOLDER_PREFIX))
         target = folder / update["asset"]
         try:
             target.write_bytes(data)
@@ -189,6 +194,29 @@ def writable(path: Path) -> bool:
     return os.access(path, os.W_OK)
 
 
+def _own_download_folder(downloaded: Path) -> Path | None:
+    """The folder the updater made for this download, or None for a file it did not put there."""
+    folder = downloaded.parent
+    ours = folder.name.startswith(DOWNLOAD_FOLDER_PREFIX) and folder.parent == Path(tempfile.gettempdir())
+    return folder if ours and not folder.is_symlink() else None
+
+
+def collect_stale_downloads() -> None:
+    """Remove downloads an earlier run left behind, at launch, when none of this run's is under way."""
+    root = Path(tempfile.gettempdir())
+    cutoff = time.time() - STALE_DOWNLOAD_S
+    try:
+        found = [item for item in root.iterdir() if item.name.startswith(DOWNLOAD_FOLDER_PREFIX)]
+    except OSError:
+        return
+    for folder in found:
+        try:
+            if folder.is_dir() and not folder.is_symlink() and folder.stat().st_mtime < cutoff:
+                shutil.rmtree(folder, ignore_errors=True)
+        except OSError:
+            continue
+
+
 def apply_update(downloaded: str, kind: str | None = None) -> str | None:
     """Put the downloaded release in place. Returns None on success, or why it could not.
 
@@ -198,17 +226,23 @@ def apply_update(downloaded: str, kind: str | None = None) -> str | None:
     how = install_kind() if kind is None else kind
     source = Path(downloaded)
     if how == "windows":
+        # The installer is still running from its download, which is collected at the next launch.
         from PySide6.QtCore import QProcess
 
         # Inno Setup upgrades an existing install in place; /SILENT keeps it to a progress window.
         started = QProcess.startDetached(str(source), ["/SILENT", "/NOCANCEL"])
         return None if started else "The installer would not start."
-    if how == "appimage":
-        current = os.environ.get("APPIMAGE")
-        if not current:
-            return "This copy does not know where its AppImage is."
-        return _swap_file(source, Path(current))
-    return _swap_tree(source)
+    try:
+        if how == "appimage":
+            current = os.environ.get("APPIMAGE")
+            if not current:
+                return "This copy does not know where its AppImage is."
+            return _swap_file(source, Path(current))
+        return _swap_tree(source)
+    finally:
+        folder = _own_download_folder(source)
+        if folder is not None:
+            shutil.rmtree(folder, ignore_errors=True)
 
 
 def _swap_file(source: Path, target: Path) -> str | None:
