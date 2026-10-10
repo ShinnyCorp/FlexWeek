@@ -1115,6 +1115,8 @@ def control_rules(palette: dict, radius: int, text: float | str, art: dict[str, 
         f"QProgressBar {{ background: {palette['hairline']}; border: none; border-radius: 4px; "
         f"max-height: 8px; text-align: center; color: transparent; }}"
         f"QProgressBar::chunk {{ background: {palette['accent']}; border-radius: 4px; }}"
+        f'QFrame[segmented="true"][keyfocus="true"] {{ border: 2px solid {readable_focus_edge(palette)}; '
+        "padding: 2px; }"
         f"QLineEdit:focus, QComboBox:focus, QAbstractSpinBox:focus, QPlainTextEdit:focus {{ "
         f"border: 2px solid {readable_focus_edge(palette)}; }}"
         # The line under a time box whose text says no time.

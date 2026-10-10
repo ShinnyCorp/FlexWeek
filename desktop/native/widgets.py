@@ -1738,7 +1738,10 @@ class Segmented(Choices):
         button.setAutoDefault(False)
         button.setCheckable(True)
         button.setAccessibleName(text)
+        button.setAccessibleDescription(f"{index + 1} of {len(self._texts)}")
         button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFocusPolicy(Qt.FocusPolicy.ClickFocus | Qt.FocusPolicy.TabFocus)
+        button.installEventFilter(self)
         self._group.addButton(button, index)
         self._line.addWidget(button)
         self._buttons.append(button)
@@ -1758,6 +1761,43 @@ class Segmented(Choices):
     def _show(self, index: int) -> None:
         for at, button in enumerate(self._buttons):
             button.setChecked(at == index)
+            button.setFocusPolicy(
+                Qt.FocusPolicy.ClickFocus
+                | (Qt.FocusPolicy.TabFocus if at == index else Qt.FocusPolicy.NoFocus)
+            )
+            button.setAccessibleDescription(f"{at + 1} of {len(self._buttons)}")
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched not in self._buttons:
+            return super().eventFilter(watched, event)
+        if event.type() == QEvent.Type.FocusIn:
+            self.setProperty("keyfocus", True)
+            self.style().unpolish(self)
+            self.style().polish(self)
+        elif event.type() == QEvent.Type.FocusOut and QApplication.focusWidget() not in self._buttons:
+            self.setProperty("keyfocus", False)
+            self.style().unpolish(self)
+            self.style().polish(self)
+        elif event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            current = self._buttons.index(watched)
+            if key in (Qt.Key.Key_Left, Qt.Key.Key_Up):
+                target = (current - 1) % len(self._buttons)
+            elif key in (Qt.Key.Key_Right, Qt.Key.Key_Down):
+                target = (current + 1) % len(self._buttons)
+            elif key == Qt.Key.Key_Home:
+                target = 0
+            elif key == Qt.Key.Key_End:
+                target = len(self._buttons) - 1
+            elif key in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.setCurrentIndex(current)
+                return True
+            else:
+                return super().eventFilter(watched, event)
+            self.setCurrentIndex(target)
+            self._buttons[target].setFocus(Qt.FocusReason.OtherFocusReason)
+            return True
+        return super().eventFilter(watched, event)
 
 
 class SwatchButton(QAbstractButton):

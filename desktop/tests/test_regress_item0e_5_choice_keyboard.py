@@ -79,7 +79,6 @@ def tab_into(segmented: Segmented) -> QWidget | None:
 
 
 @pytest.mark.parametrize(("where", "name"), CONTROLS, ids=[name for _w, name in CONTROLS])
-@pytest.mark.xfail(strict=True, reason=KNOWN_0E)
 def test_a_choice_control_works_from_the_keyboard(qapp, window, where, name) -> None:
     made: list = []
     try:
