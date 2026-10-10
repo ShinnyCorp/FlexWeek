@@ -266,6 +266,8 @@ class NativeSession(QObject):
         self.now_ms = lambda: int(time.time() * 1000)
         self._focus_busy = False
         self._pending_focus: dict | None = None
+        # Finished focus sessions, with their length, not yet added to their homework.
+        self._credits_waiting: list[tuple[dict, int]] = []
         self._record_history = True
         self.fired_reminders: set[str] = set()
         self.fired_alarms: set[str] = set()
@@ -315,7 +317,14 @@ class NativeSession(QObject):
             return False
         self.busy = False
         self.busy_changed.emit(False)
+        if self._credits_waiting:
+            # After the reply that made this call has been put in place.
+            QTimer.singleShot(0, self, self._credit_when_free)
         return True
+
+    def _credit_when_free(self) -> None:
+        if self._credits_waiting and not self.busy:
+            self._credit_waiting_sessions()
 
     def _fail(self, ticket: int, error: ApiError) -> None:
         planning = self.planning
@@ -328,6 +337,7 @@ class NativeSession(QObject):
     def _clear_local(self) -> None:
         if self.account is not None:
             self.focus_store.pop(self.account["id"], None)
+        self._credits_waiting.clear()
         self.account = None
         self.week_start = current_week_start()
         self.blocks = []
@@ -2841,6 +2851,8 @@ class NativeSession(QObject):
         return max(0, spent) // 60_000
 
     def tick_focus(self) -> None:
+        if self._credits_waiting and not self.busy:
+            self._credit_waiting_sessions()
         if self.focus is None or not self.focus.get("running"):
             return
         if int(self.focus.get("endsAt") or 0) <= self.now_ms():
@@ -2909,7 +2921,20 @@ class NativeSession(QObject):
         state = self.focus
         if state is None or not state.get("blockId"):
             return
-        work_min = work_minutes(state, self.preferences)
+        credit = (dict(state), work_minutes(state, self.preferences))
+        if self.busy:
+            # A save is under way and its reply replaces the homework, which would wipe the minutes
+            # added now. They are added once it is done.
+            self._credits_waiting.append(credit)
+            return
+        self._credit_session(*credit)
+
+    def _credit_waiting_sessions(self) -> None:
+        waiting, self._credits_waiting = self._credits_waiting, []
+        for credit in waiting:
+            self._credit_session(*credit)
+
+    def _credit_session(self, state: dict, work_min: int) -> None:
         if state.get("assignmentId"):
             assignment = self.assignments.get(state["assignmentId"])
             updated = credit_target(state, assignment, None, work_min)
