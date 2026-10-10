@@ -71,6 +71,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProxyStyle,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QScrollBar,
     QSizePolicy,
@@ -1720,7 +1721,7 @@ class Segmented(Choices):
         self._line = QHBoxLayout(self)
         self._line.setContentsMargins(2, 2, 2, 2)
         self._line.setSpacing(2)
-        self._buttons: list[QPushButton] = []
+        self._buttons: list[QRadioButton] = []
         # Ids, not a lambda per button: a lambda naming the control kept it from being freed.
         self._group = QButtonGroup(self)
         self._group.setExclusive(False)
@@ -1731,11 +1732,9 @@ class Segmented(Choices):
 
     def addItem(self, text: str, data: object = None) -> None:  # noqa: N802
         index = self._remember(text, data)
-        button = QPushButton(text)
+        button = QRadioButton(text)
         button.setObjectName(f"{self.objectName()}-{data}" if self.objectName() else "")
         button.setProperty("segment", True)
-        # A choice shown, never what Enter presses in a dialog.
-        button.setAutoDefault(False)
         button.setCheckable(True)
         button.setAccessibleName(text)
         button.setAccessibleDescription(f"{index + 1} of {len(self._texts)}")
@@ -1750,7 +1749,7 @@ class Segmented(Choices):
         if self._index < 0:
             self.setCurrentIndex(index)
 
-    def buttons(self) -> list[QPushButton]:
+    def buttons(self) -> list[QRadioButton]:
         return list(self._buttons)
 
     def _follow(self, on: bool) -> None:

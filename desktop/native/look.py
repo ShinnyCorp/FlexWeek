@@ -1186,22 +1186,23 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f"color: {palette['muted']}; }}"
         f'QFrame[segmented="true"] {{ background: {track}; border: none; '
         f"border-radius: {max(radius, 6) + 2}px; padding: 0; }}"
-        f'QPushButton[segment="true"] {{ background: transparent; color: {palette["muted"]}; border: none; '
+        f'QRadioButton[segment="true"] {{ background: transparent; color: {palette["muted"]}; border: none; '
         # One weight whether chosen or not: a bolder chosen segment was wider than the room it was given.
         f"border-radius: {max(radius, 6)}px; padding: {max(pad - 2, 3)}px {pad + 8}px; "
         f"font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
-        f'QPushButton[segment="true"]:hover {{ color: {palette["text"]}; }}'
-        f'QPushButton[segment="true"]:checked {{ background: {palette["field"]}; color: {palette["text"]}; '
+        'QRadioButton[segment="true"]::indicator { width: 0; height: 0; }'
+        f'QRadioButton[segment="true"]:hover {{ color: {palette["text"]}; }}'
+        f'QRadioButton[segment="true"]:checked {{ background: {palette["field"]}; color: {palette["text"]}; '
         f"border: {chosen_edge}; }}"
         # The look's own segments say which is worn by a ring in the accent, as its cards do.
-        f'QFrame#prefThemeMain QPushButton[segment="true"] {{ border: 2px solid transparent; '
+        f'QFrame#prefThemeMain QRadioButton[segment="true"] {{ border: 2px solid transparent; '
         f"padding: {max(pad - 3, 2)}px {pad + 7}px; }}"
-        'QFrame#prefThemeMain QPushButton[segment="true"]:checked '
+        'QFrame#prefThemeMain QRadioButton[segment="true"]:checked '
         f"{{ border: 2px solid {palette['accent']}; }}"
-        'QPushButton[segment="true"]:disabled { background: transparent; '
+        'QRadioButton[segment="true"]:disabled { background: transparent; '
         f'color: {palette["hairline_strong"]}; }}'
         # Still raised, so a choice that cannot be changed here says which it is.
-        f'QPushButton[segment="true"]:checked:disabled {{ background: {palette["field"]}; '
+        f'QRadioButton[segment="true"]:checked:disabled {{ background: {palette["field"]}; '
         f'color: {palette["muted"]}; border: {chosen_edge}; }}'
     )
 
@@ -2050,8 +2051,8 @@ def _contrast_rules(palette: dict) -> str:
     return (
         f'QFrame[segmented="true"] {{ background: {palette["window"]}; '
         f"border: 1px solid {palette['text']}; }}"
-        f'QPushButton[segment="true"] {{ color: {palette["text"]}; border: none; }}'
-        f'QPushButton[segment="true"]:checked {{ background: {palette["accent"]}; '
+        f'QRadioButton[segment="true"] {{ color: {palette["text"]}; border: none; }}'
+        f'QRadioButton[segment="true"]:checked {{ background: {palette["accent"]}; '
         f"color: {palette['accent_ink']}; border: none; }}"
     )
 

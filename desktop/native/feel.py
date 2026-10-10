@@ -279,7 +279,7 @@ def edge_rules(tokens: dict[str, str], palette: dict, shape: Shape) -> str:
             f"{cards} {{ {raised} }}"
             f"{FIELDS} {{ {sunken} }}"
             f'QFrame[segmented="true"] {{ {sunken} }}'
-            f'QPushButton[segment="true"]:checked {{ {raised} }}'
+            f'QRadioButton[segment="true"]:checked {{ {raised} }}'
             f"{buttons} {{ {raised} }}"
             f"QPushButton#sheetClose {{ border: none; }}"
         )
