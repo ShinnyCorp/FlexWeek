@@ -232,8 +232,9 @@ def test_creating_an_account_shows_password_length_before_submit(qapp: QApplicat
         window.findChild(QPushButton, "createAccount").click()
         qapp.processEvents()
         assert window.session.account is None
-        assert "12" in window.auth_status.text()
-        assert "password" in window.auth_status.text().lower()
+        assert window.password_problem.isVisible()
+        assert "12" in window.password_problem.text.text()
+        assert "password" in window.password_problem.text.text().lower()
     finally:
         with contextlib.suppress(RuntimeError):
             window.session.client.reset()
