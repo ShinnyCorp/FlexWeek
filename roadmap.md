@@ -13,7 +13,10 @@ this file's git history, in `CHANGELOG.md`, and in `docs/cac-build-plan.md`.
   Month; J14 to J17) is released as latest. v0.18.3 (2026-10-08), v0.18.2
   (2026-10-04) and v0.18.1 (2026-10-03) came before it. v0.18.0 brought the
   Rust engine.
-- Next patch: 0.18.5, Consistency and polish (below).
+- v0.18.5 (Consistency and polish, below) is the release being prepared on
+  `release/0.18.5`. Next: 0.19.0 (the QA handoff's Fix first items, about
+  Oct 14-15), then 1.0.0 with the Android companion and device sync (about
+  Oct 22).
 - Decisions left open by 0.18.1 are listed under "Open after 0.18.1".
 - 16 days to the contest submission (Phase 8).
 
@@ -583,6 +586,32 @@ Mockup round 3 before the Designs, Buttons and Sign-in lanes: the Day dial and
 One thing (#25), the icons (#26), Paper's edges (#60), the sign-in pages
 (#74), the focus ring (#92), outlined secondary actions (#90).
 
+Decided by Jonathan, 2026-10-09 (checked against v0.18.4 first; #31, #22's
+Notepad, #95's wording and parts of #74, #90 and #101 were already done):
+- The whole phase now, not split around the contest. Built by Haiku 5.5 and
+  Sonnet 5.5 subagents, reviewed by Claude.
+- #41: the planner keeps placing earliest first. The plan panel says when a
+  day is overfull instead.
+- The hours end with their end label in every design, Today's app too. Setup
+  asks for a 12-hour or 24-hour clock; 12-hour is the default for new
+  accounts, and accounts that never chose keep 24-hour.
+- #21: Clay's side cards keep their 27 px scale; a sliver writes its name or
+  time beside it.
+- #25: the Day dial keeps noon at the top, with its arcs and wedge labelled.
+- #90: the Plan button keeps its tinted style, written into spec.md.
+- Maybe on purpose: leave #23, #56, #61, #69; do #27 (24 px zoom hit areas),
+  #28 (Month rows shrink when the plan panel is open), #29 (slide, not jump),
+  #30 (a lighter red in Dark), #86 (narrow empty weekends where cut), #102
+  (one short and one long date format); close #31.
+- #101 (Claude's call, Jonathan may override): "placed" names one homework's
+  status ("Not placed yet", "Placed Tue 16:00") and "planned" a time total
+  ("2 h 30 min planned"), as 0.18.2 already made "Planned" the total in every
+  design; no sweep of either word.
+- Mockup round 3 is approved (`docs/mockups/round3-0185/`, its README lists
+  each choice): "Sign in" as the one heading, words on the dial's arcs with a
+  key, Lucide `calendar-sync` for Replan, the warm edge on every card in Paper
+  and Ink.
+
 - **Designs.** #21 Clay: Soccer's visible sliver is a bare bar and Friday's
   side card an outlined bar with no name; the side cards use a smaller hour
   scale (27 against 38 px per hour), so rows do not line up. Done when every
@@ -673,7 +702,8 @@ One thing (#25), the icons (#26), Paper's edges (#60), the sign-in pages
 - Complete when: the lanes above are closed on the shipped build, every
   "maybe on purpose" item has a recorded decision, gate, rig and CI green,
   v0.18.5 published as latest.
-- Status: [ ] not started.
+- Status: [x] built 2026-10-10 (lanes 1-9, the engineering lane and the
+  12-hour test sweep); done once v0.18.5 is published as latest.
 
 ### Closed, no work ("Deliberate, leave it")
 #47 a toast replaces the plan bar; #62 five accent swatches; #63 now line and

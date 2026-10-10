@@ -261,3 +261,59 @@ fn gate_from_a_subdirectory_still_runs_at_the_checkout() {
     );
     let _ = fs::remove_dir_all(home);
 }
+
+fn add_mutation_spec(repo: &Path, old: &str) {
+    let dir = repo.join("scripts/mutations");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("greeting.json"),
+        format!(
+            r#"[{{"name": "greeting is cut", "file": "README", "old": "{old}", "new": "bye", "test": "t"}}]"#
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_mutation_case_that_no_longer_matches_fails_the_gate_before_the_tests() {
+    let home = scratch();
+    let (repo, python) = fake_checkout(&home);
+    add_mutation_spec(&repo, "goodbye");
+    let output = fwtest(&home, &repo, &python)
+        .args(["gate", "--backend-only", "--workers", "2"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("greeting: greeting is cut pattern found 0 times in README"),
+        "{stderr}"
+    );
+    assert!(!stdout.contains("VERIFIED:"));
+    let log = fs::read_to_string(home.join("calls.log")).unwrap();
+    assert!(
+        !log.lines().any(|line| line.contains("pytest")),
+        "the tests ran after a stale pattern:\n{log}"
+    );
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn mutation_cases_that_match_once_let_the_gate_go_on() {
+    let home = scratch();
+    let (repo, python) = fake_checkout(&home);
+    add_mutation_spec(&repo, "hello");
+    let output = fwtest(&home, &repo, &python)
+        .args(["gate", "--backend-only", "--workers", "2"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(stdout.contains("Mutation patterns"), "{stdout}");
+    let _ = fs::remove_dir_all(home);
+}

@@ -63,7 +63,15 @@ from PySide6.QtWidgets import (
 
 from backend.models import due_is_timed, due_sort_key
 from desktop.native import icons
-from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS, category_title
+from desktop.native.calendar import (
+    CATEGORIES,
+    DAY_FULL,
+    DAYS,
+    category_title,
+    day_long,
+    day_short,
+    week_range,
+)
 from desktop.native.fonts import at_scale, load_fonts, time_font, weighted
 from desktop.native.hours.canvas import (
     EDGE_WIDTH,
@@ -75,7 +83,7 @@ from desktop.native.hours.canvas import (
     fit_lines,
 )
 from desktop.native.hours.chips import TrayChip
-from desktop.native.hours.classic import open_hours
+from desktop.native.hours.classic import EMPTY_MIN_NARROW_PX, column_widths, empty_days, open_hours
 from desktop.native.hours.geometry import FIRST, LAST, Axis, LinearTrack
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import HoursScroll, Scale
@@ -96,7 +104,6 @@ from desktop.native.layouts.base import (
 from desktop.native.layouts.colourways import RETRO
 from desktop.native.look import AA_TEXT, category_paint, look_measures, type_sizes
 from desktop.native.motion import Clock, app_level, appear, between, duration, moves
-from desktop.native.reuse import MONTHS, planner_title
 from desktop.native.tokens import (
     WEIGHT_REGULAR,
     WEIGHT_STRONG,
@@ -344,14 +351,6 @@ def _height(px: int) -> int:
     return round((LAST - FIRST) / 60 * px) + 2 * PAD
 
 
-def _columns(area: QRectF) -> list[LinearTrack]:
-    width = area.width() / 7
-    return [
-        LinearTrack(day, QRectF(area.left() + day * width, area.top() + PAD, width, area.height() - 2 * PAD))
-        for day in range(7)
-    ]
-
-
 def arrange(size: QSize, next_tall: int, scale: float) -> tuple[dict[str, QRect], bool]:
     """Where each window sits on a desktop of `size`, as the mock-up lays them out at 1280: Week.exe
     right of the icons, as tall as the desktop, and Notepad over the dialog on the right; and whether
@@ -396,7 +395,7 @@ def due_heading(due: str | None, week: WeekModel, today: int | None) -> str:
     if not due:
         return "No due date."
     day = date.fromisoformat(due[:10])
-    words = f"Due {DAY_FULL[day.weekday()]} {day.day} {MONTHS[day.month - 1]}"
+    words = f"Due {day_long(day)}"
     if due_is_timed(due):
         words += f" at {hhmm_text(due[11:16])}"
     if today is not None:
@@ -644,8 +643,22 @@ class RetroCanvas(HoursCanvas):
     """The week's names sit over the hours in Windows 98 buttons, while the rig can find them."""
 
     def __init__(self, hand: Hand, painter: RetroPainter, *, week: bool) -> None:
-        super().__init__(hand, painter, _columns if week else None, gutter=GUTTER)
+        super().__init__(hand, painter, self._columns if week else None, gutter=GUTTER)
         self.day_buttons: dict[int, QWidget] = {}
+        # The days with nothing on them take less of the week's width, and their buttons follow.
+        self.empty: frozenset[int] = frozenset()
+        self.names_row: QHBoxLayout | None = None
+
+    def _columns(self, area: QRectF) -> list[LinearTrack]:
+        widths = column_widths(area.width(), self.empty, floor=EMPTY_MIN_NARROW_PX)
+        left, tracks = area.left(), []
+        for day, width in enumerate(widths):
+            tracks.append(LinearTrack(day, QRectF(left, area.top() + PAD, width, area.height() - 2 * PAD)))
+            left += width
+        if self.names_row is not None:
+            for day, width in enumerate(widths):
+                self.names_row.setStretch(day, max(1, round(width * 10)))
+        return tracks
 
     def day_name(self, day: int) -> QPoint:
         pick = self.day_buttons.get(day)
@@ -1106,7 +1119,7 @@ class Mirror(QObject):
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize:
-            QTimer.singleShot(0, self.sync)
+            QTimer.singleShot(0, self, self.sync)
         return False
 
 
@@ -1143,7 +1156,7 @@ class Grid(Field):
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
-        QTimer.singleShot(0, self.fit_cap)
+        QTimer.singleShot(0, self, self.fit_cap)
 
 
 class NoteLines:
@@ -1650,7 +1663,7 @@ class RetroView(LayoutView):
         self._taskbar(scene)
         self._mark_front()
         self._arrange()
-        QTimer.singleShot(0, self._arrange)
+        QTimer.singleShot(0, self, self._arrange)
 
     def _sheet(self, scene: Scene) -> str:
         colours, sizes = self._scheme, type_sizes(scene.scale)
@@ -1726,8 +1739,8 @@ class RetroView(LayoutView):
         week = scene.week
         if day is not None:
             shown = week.date_of(day)
-            return f"Week.exe - {DAY_FULL[day]} {shown.day} {MONTHS[shown.month - 1]}"
-        return f"Week.exe - {planner_title(week, 'week')}"
+            return f"Week.exe - {day_long(shown)}"
+        return f"Week.exe - {week_range(week.week_start)}"
 
     def _menu(self, key: str) -> QHBoxLayout:
         """A window's menu bar, as drawn. Its menus are pictures: FlexWeek's own are in More and Start."""
@@ -1799,8 +1812,8 @@ class RetroView(LayoutView):
         if scene.today is None or day not in (None, scene.today):
             return ()
         if day is None:
-            number, now = scene.week.date_of(scene.today).day, clock_label(scene.minute)
-            return (f"{DAY_FULL[scene.today]} {number}, {now}", f"{DAYS[scene.today]} {number}, {now}", now)
+            shown, now = scene.week.date_of(scene.today), clock_label(scene.minute)
+            return (f"{day_long(shown)}, {now}", f"{day_short(shown)}, {now}", now)
         ahead = sum(item.start > scene.minute for item in scene.week.on_day(day))
         return (f"{ahead} still to come", f"{ahead} to come")
 
@@ -1839,6 +1852,7 @@ class RetroView(LayoutView):
                     )
                     canvas.day_buttons[target] = head
                     row.addWidget(head, 1)
+                canvas.names_row = row
             else:
                 row.addWidget(DayHead("retroDayHead", self._scheme, None), 1)
             scroll.set_header(names)
@@ -1856,6 +1870,11 @@ class RetroView(LayoutView):
             items = scene.week.occurrences
             for target, head in canvas.day_buttons.items():
                 head.show_day(target, scene.week.date_of(target).day, target == scene.today)
+            empty = empty_days(scene.week)
+            if empty != canvas.empty:
+                # Laid out for the new widths before the blocks arrive, so none slides for a change of width.
+                canvas.empty = empty
+                canvas.relayout()
         canvas.set_week(items, scene.today, scene.minute)
         open_hours(
             scroll,
@@ -1918,7 +1937,8 @@ class RetroView(LayoutView):
         box.addSpacing(8)
         box.addWidget(Rule(colours))
         box.addSpacing(12)
-        dated = label(f"{shown.day} {MONTHS[shown.month - 1]}", "retroWebDate")
+        # The weekday is the heading above; this is the rest of the long date.
+        dated = label(day_long(shown).partition(" ")[2], "retroWebDate")
         dated.setProperty("role", "strong")
         box.addWidget(dated)
         ahead = sum(item.start > scene.minute for item in items) if today else None
@@ -2134,4 +2154,4 @@ class RetroView(LayoutView):
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
-        QTimer.singleShot(0, self._arrange)
+        QTimer.singleShot(0, self, self._arrange)

@@ -42,7 +42,7 @@ pub fn session_days(week_start: &str, due: &Value) -> EngineResult<Vec<i64>> {
         return Ok(vec![0]);
     }
     if due_day > last {
-        return Ok(vec![0, 1, 2, 3, 4]);
+        return Ok((0..=6).collect());
     }
     Ok((0..=i64::from(due_day.weekday().num_days_from_monday())).collect())
 }

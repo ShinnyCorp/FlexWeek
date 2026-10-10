@@ -57,7 +57,7 @@ from desktop.native import autostart
 from desktop.native.calendar import DAY_FULL
 from desktop.native.controller import ROUTINE_STATUS
 from desktop.native.custom_look import UNNAMED, sanitize_saved, wear
-from desktop.native.fields import ClockField, DayPicker, Stepper
+from desktop.native.fields import ClockField, DayPicker, Stepper, held_on_problem
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
 from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import drag_step
@@ -112,6 +112,7 @@ from desktop.native.widgets import (
     bare,
     even_fields,
     even_labels,
+    fit_buttons,
     overlay_scroll_bars,
     sheet_button,
     sheet_footer,
@@ -132,8 +133,9 @@ SECTION_GAP_BELOW = 24
 # One width for every control in a column of Focus or Alerts, and for the three buttons of This
 # computer, so a column reads as one edge (#68). A wider control, at Large text, widens the rest.
 CONTROL_WIDTH = 260
-BUTTON_WIDTH = 190
-SECTIONS = ("Appearance & layout", "Planning", "Focus", "Alerts", "This computer")
+# Room for the longest of the three at their roomy padding (193 px at Normal); at Large they grow it.
+BUTTON_WIDTH = 200
+SECTIONS = ("Look", "Planning", "Focus", "Alerts", "This computer")
 # Each section's icon in the list, Lucide's names (decision 24 of 0.17). None on the rows themselves.
 SECTION_ICONS = ("palette", "calendar", "timer", "bell", "laptop")
 # The three looks most people choose between; every other look is under More looks.
@@ -146,11 +148,10 @@ ACCENT_LABELS = {"default": "Blue"}
 OWN_ACCENT_NOTE = "High contrast keeps its own yellow, whatever accent is picked."
 # A look of the student's own sets the accent and every knob (look.py's resolved_palette and
 # effective_look), so while one is worn they show its values and say where they change instead.
-OWN_LOOK_ACCENT_NOTE = "{name} sets the accent. To change it, open Edit your own look…"
-OWN_LOOK_KNOBS_NOTE = "{name} sets these. To change them, open Edit your own look… in Colours."
-CUSTOMISE = "Customise"
-# The button on the Colours card; the command bar and menus keep the shorter name.
-EDIT_OWN_LOOK = "Edit your own look…"
+OWN_LOOK_ACCENT_NOTE = "{name} sets the accent. To change it, open Edit look…"
+OWN_LOOK_KNOBS_NOTE = "{name} sets these. To change them, open Edit look… in Colours."
+# The button on the Colours card and the command bar's entry for the same editor.
+EDIT_OWN_LOOK = "Edit look…"
 CUSTOMISE_TIP = "Change any look, colours, corners and fonts included, and save it as your own."
 # A saved look's choice under More looks, after the ten, by its name.
 SAVED_LOOK = "saved:"
@@ -539,6 +540,7 @@ class FocusPanel(QWidget):
         self.phase.setObjectName("focusPhase")
         self.time = QLabel()
         self.time.setObjectName("focusTime")
+        self.time.setFont(time_font(self.time.font()))
         for widget in (self.task, self.phase, self.time):
             status.addWidget(widget)
         status.addStretch(1)
@@ -721,7 +723,9 @@ class SettingsPage(QWidget):
             labelled = tuple((KNOB_VALUE_LABELS[value], value) for value in values)
             box = Segmented(labelled, "look" + knob.title())
             self.knobs[knob] = box
-            fine_form.addRow(KNOB_LABELS.get(knob, knob.title()), box)
+            # Text size is not a fine-tune: it has its own card above Colours, always on screen.
+            if knob != "text":
+                fine_form.addRow(KNOB_LABELS.get(knob, knob.title()), box)
         self.own_look_note = _note("", "settingsCardNote")
         fine_form.addRow(self.own_look_note)
         self.fine_tune = Switch(FINE_TUNE_LOOK)
@@ -801,7 +805,7 @@ class SettingsPage(QWidget):
             max(0, self.preferred_view.findData(preferences.get("preferred_view")))
         )
         self.clock = Segmented((("24-hour", True), ("12-hour", False)), "prefClock")
-        self.clock.setCurrentIndex(0 if preferences.get("clock_24h", True) is not False else 1)
+        self.clock.setCurrentIndex(0 if preferences.get("clock_24h", False) is True else 1)
         self.spotify = QLineEdit(preferences.get("default_spotify_url") or "")
         self.spotify.setObjectName("prefSpotify")
         self.spotify.setPlaceholderText("Paste a Spotify link")
@@ -831,6 +835,8 @@ class SettingsPage(QWidget):
             for slot, role, title, blurb in SLOTS
         ]
         main_section, day_section = self.layout_sections
+        text_card, text_form = _card("Text")
+        text_form.addRow(KNOB_LABELS["text"], self.knobs["text"])
         self.colours_card, appear = _card("Colours")
         appear.addRow("Look", self.look)
         appear.addRow(OWN_LOOK, self.customise)
@@ -845,10 +851,10 @@ class SettingsPage(QWidget):
         self.changed.connect(self._fit_look_cards)
         everywhere_card, everywhere = _card("Every screen")
         everywhere.addRow("Animations", self.motion)
-        # Colours first: it is what most students change, and below every design card it was not found
-        # (Grok Bot's 0.17.0 audit, X1 and A11).
+        # Text size, then Colours: it is what most students change, and below every design card it was
+        # not found (Grok Bot's 0.17.0 audit, X1 and A11).
         appearance = _section_page(
-            "Appearance & layout", (self.colours_card, main_section, day_section, everywhere_card)
+            "Look", (text_card, self.colours_card, main_section, day_section, everywhere_card)
         )
         planning_card, planning_form = _card("How homework gets a time")
         self.planning_style = QButtonGroup(planning_card)
@@ -867,7 +873,7 @@ class SettingsPage(QWidget):
             hint.setContentsMargins(26, 0, 0, 4)
             planning_form.addRow(hint)
         where_card, where_form = _card(
-            "Study times", "Preferred study times, including ones kept for one subject, are in Availability."
+            "Study hours", "Preferred study hours, including ones kept for one subject, are in Availability."
         )
         open_availability = _page_button("Availability…", "prefsAvailability")
         open_availability.clicked.connect(self.availability_requested.emit)
@@ -1210,6 +1216,8 @@ class SettingsPage(QWidget):
     def _even_controls(self) -> None:
         """Every control in Focus's column one width, the preset as wide as the steppers (T20 of the
         0.17.0 audit), and so for Alerts' and the three buttons of This computer."""
+        # The widths below come from the buttons' sizes, which must be today's.
+        fit_buttons(self, roomy=True)
         columns = (
             [self.preset_timer, *self.focus_steppers],
             [
@@ -1230,9 +1238,12 @@ class SettingsPage(QWidget):
                     control.box.setFixedWidth(width - self._stepper_chrome(control))
                 else:
                     control.setFixedWidth(width)
+        # A least width, never a fixed one: a button with words must be free to grow with them.
+        for button in self.computer_buttons:
+            button.setMinimumWidth(0)
         width = max(BUTTON_WIDTH, *(button.sizeHint().width() for button in self.computer_buttons))
         for button in self.computer_buttons:
-            button.setFixedWidth(width)
+            button.setMinimumWidth(width)
 
     @staticmethod
     def _stepper_chrome(stepper: Stepper) -> int:
@@ -1396,7 +1407,7 @@ class SettingsPage(QWidget):
             self.alarm_list.setCurrentRow(0)
 
     def _add_alarm(self) -> None:
-        if len(self._alarms) >= 20:
+        if len(self._alarms) >= 20 or held_on_problem(self.alarm_time):
             return
         days = [index for index, box in enumerate(self.alarm_days) if box.isChecked()]
         if not days:
@@ -1475,6 +1486,9 @@ class SettingsPage(QWidget):
 
     def _choose_motion(self, _index: int) -> None:
         self._motion_chosen = self.motion.currentData()
+        # The window hands the level over when Settings opens; a choice made on this page counts now,
+        # so Off does not still slide the next section in.
+        self.motion_level = self._motion_chosen
 
     def _choose_accent(self, _index: int) -> None:
         self._accent_chosen = self.accent.currentData()
@@ -1622,7 +1636,7 @@ class RestoreDialog(QDialog):
         self.label.setPlaceholderText("Restore point name")
         layout.addWidget(self.label)
         create = QPushButton("Save restore point")
-        create.setProperty("quiet", True)
+        create.setProperty("outlined", True)
         create.setObjectName("restoreCreate")
         create.clicked.connect(self._create)
         layout.addWidget(create)
@@ -1650,7 +1664,7 @@ class RestoreDialog(QDialog):
         actions = QHBoxLayout()
         preview_btn = QPushButton("Preview")
         preview_btn.setObjectName("restorePreview")
-        preview_btn.setProperty("quiet", True)
+        preview_btn.setProperty("outlined", True)
         preview_btn.clicked.connect(self._preview)
         restore_btn = QPushButton("Restore")
         restore_btn.setObjectName("restoreApply")
@@ -1807,7 +1821,8 @@ class AlarmRingDialog(QDialog):
         title.setWordWrap(True)
         layout.addWidget(title)
         ringing = "Starting now" if alarm.get("block") else "Alarm is ringing"
-        detail = QLabel(f"{alarm.get('time') or ''} · {ringing}")
+        when = str(alarm.get("time") or "")
+        detail = QLabel(f"{hhmm_text(when) if when else ''} · {ringing}")
         detail.setObjectName("alarmDetail")
         layout.addWidget(detail)
         layout.addSpacing(ALARM_GAP)
@@ -1861,6 +1876,7 @@ class TransferPreviewDialog(QDialog):
         changes = preview.get("changes") or {}
         detail = QPlainTextEdit()
         detail.setReadOnly(True)
+        detail.setTabChangesFocus(True)
         detail.setPlainText(str(changes))
         layout.addWidget(detail)
         buttons = QDialogButtonBox(

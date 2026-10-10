@@ -9,7 +9,6 @@ never a threshold invented by a view.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -17,7 +16,8 @@ from weakref import WeakKeyDictionary
 
 import flexweek_engine  # type: ignore[import-untyped]
 
-from desktop.native.wire import plain, restore
+from desktop.native.calendar import iso_of
+from desktop.native.wire import plain, restore, restored
 
 SLACK_WORDS = {"danger": "Cutting it close", "tight": "Tight", "ok": "Plenty of time"}
 NOT_PLANNED = "Not planned yet."
@@ -48,6 +48,11 @@ def set_clock_24h(on: bool) -> bool:
 def clock_text(minute: int) -> str:
     """16:00, or 4:00 PM on the 12-hour clock. The end of the day, 24:00, is 12:00 AM."""
     return str(flexweek_engine.week_clock_text(minute))
+
+
+def end_after_start_words(start: str) -> str:
+    """The line when an End is not after its Start; `start` is written as the clock writes it."""
+    return f"End needs to be later than Start ({start})."
 
 
 def hhmm_text(hhmm: str) -> str:
@@ -82,9 +87,9 @@ def planned_line(planned_min: int, done_min: int) -> str:
     return str(flexweek_engine.week_planned_line(planned_min, done_min))
 
 
-def due_label(due: str | None, week_start: str) -> str:
+def due_label(due: str | None, today: date | str | None = None) -> str:
     """A deadline as a student says it: Sun 27 Sep, or Sun 27 Sep, 09:00 when a time is set."""
-    return str(flexweek_engine.week_due_label(plain(due)))
+    return str(flexweek_engine.week_due_label(plain(due), iso_of(today)))
 
 
 def moved_words(block: dict, from_day: int, day: int, start: int, end: int) -> str:
@@ -97,9 +102,9 @@ def added_words(block: dict) -> str:
     return str(restore(flexweek_engine.week_added_words(plain(block))))
 
 
-def dated_words(title: str, iso: str) -> str:
+def dated_words(title: str, iso: str, today: date | str | None = None) -> str:
     """What carrying a block to another date on Month did, such as "Moved History essay to Fri 25 Sep"."""
-    return str(restore(flexweek_engine.week_dated_words(plain(title), plain(iso))))
+    return str(restore(flexweek_engine.week_dated_words(plain(title), plain(iso), iso_of(today))))
 
 
 @dataclass(frozen=True)
@@ -266,7 +271,7 @@ def build_week(
     cached = _BUILD_WEEK_CACHE.get(key)
     if cached is not None:
         return cached
-    raw = restore(json.loads(flexweek_engine.week_build(key[0], key[1], key[2], key[3])))
+    raw = restored(flexweek_engine.week_build(key[0], key[1], key[2], key[3]))
     model = WeekModel(
         raw["week_start"],
         tuple(Occurrence(**item) for item in raw["occurrences"]),

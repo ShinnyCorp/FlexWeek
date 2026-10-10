@@ -245,7 +245,7 @@ def test_the_words_held_over_a_refused_date_say_no_in_red(qapp: QApplication) ->
 
     stage.carry(stage.canvas.chip_point("essay-1", "2026-09-24"), stage.canvas.cell_point("2026-09-28"), look)
     stage.carry(stage.canvas.chip_point("essay-1", "2026-09-24"), stage.canvas.cell_point("2026-09-25"), look)
-    assert seen == [(words, True), ("19:00 History essay → Fri 25", False)]
+    assert seen == [(words, True), ("19:00 History essay → Fri 25 Sep", False)]
 
 
 def painted_colours(qapp: QApplication, draw, palette: dict | None = None) -> set[str]:
@@ -309,6 +309,49 @@ def test_a_block_on_month_is_its_category_as_the_week_fills_it(qapp: QApplicatio
                 qapp, lambda month, painter, chip=chip: month.chip(painter, box, chip, False, False), palette
             )
             assert category_paint(category, palette)[0] in seen, (pack, category)
+
+
+def test_a_done_or_held_chip_keeps_its_words_at_full_strength_and_only_its_fill_is_lighter(
+    qapp: QApplication,
+) -> None:
+    """#93: dimming the words of a done chip to 47 % made them hard to read. The fill carries "done"."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QColor, QFont, QImage, QPainter
+
+    from desktop.native.hours.month import MonthChip, MonthPainter
+    from desktop.native.look import category_paint, resolved_palette
+
+    palette = resolved_palette("light-frost", False, None)
+    chip = MonthChip("block:class", "School", "class", block_id="class", start=8 * 60)
+    box = QRectF(0, 0, 240, 40)
+    ground = QColor("#123456")
+
+    def draw(faded: bool, held: bool, done: bool) -> QImage:
+        image = QImage(240, 40, QImage.Format.Format_ARGB32)
+        image.fill(ground)
+        painter = QPainter(image)
+        painter.setFont(QFont("Inter", 12))
+        shown = MonthChip("block:class", "School", "class", block_id="class", start=8 * 60, done=done)
+        MonthPainter(palette).chip(painter, box, shown, faded, held)
+        painter.end()
+        return image
+
+    def seen(image: QImage) -> set[str]:
+        return {image.pixelColor(x, y).name() for x in range(image.width()) for y in range(image.height())}
+
+    fill = QColor(category_paint(chip.category, palette)[0])
+    half = 127 / 255
+    # The fill at half strength over the ground, worked out from the requirement, per channel.
+    rgb = fill.getRgb()[:3], ground.getRgb()[:3]
+    lighter = [round(c * half + g * (1 - half)) for c, g in zip(*rgb, strict=True)]
+    for faded, held, done in ((True, False, False), (False, True, False), (False, False, True)):
+        image = draw(faded, held, done)
+        assert palette["text"] in seen(image), "the words keep the text colour at full strength"
+        corner = image.pixelColor(3, 20).getRgb()[:3]
+        close = all(abs(a - b) <= 2 for a, b in zip(corner, lighter, strict=True))
+        assert close, (faded, held, done, corner, lighter)
+    plain = draw(False, False, False).pixelColor(3, 20).getRgb()[:3]
+    assert plain == fill.getRgb()[:3], "a chip not done keeps its full fill"
 
 
 def test_a_date_outside_the_month_is_told_by_its_dimmed_number_not_a_tint(qapp: QApplication) -> None:
@@ -439,4 +482,115 @@ def test_a_weeks_row_is_as_tall_as_its_busiest_date_and_this_week_is_banded(qapp
     assert ground(16) != palette["panel"] and ground(16) == ground(20)
     assert abs(QColor(ground(16)).lightness() - QColor(band).lightness()) <= 2
     assert ground(0) == palette["panel"], "only this week is banded"
+    grid.close()
+
+
+def test_a_month_on_its_way_keeps_the_last_one_drawn_under_loading_month(qapp: QApplication) -> None:
+    """0.18.5 #96: Week to Month flashed an empty grid while the new month was fetched. The grid the
+    student last had stays, with "Loading month…", until the new one arrives."""
+    grid = MonthGrid()
+    grid.set_week(build_week(MONDAY, [ESSAY], {}, None))
+    grid.set_month(september(), False, "2026-09-16", "ana")
+    kept = [cell.iso for cell in grid.canvas.cells]
+    assert kept and "2026-09-16" in kept
+    grid.set_month(None, False, "2026-09-16", "ana")
+    assert [cell.iso for cell in grid.canvas.cells] == kept, "the old grid is still drawn"
+    assert grid.warning.text() == "Loading month…" and not grid.warning.isHidden()
+    # A change to the open week while it waits redraws the kept grid, not an empty one.
+    grid.set_unsaved({})
+    assert [cell.iso for cell in grid.canvas.cells] == kept
+    november = build_month("2026-11", [], [])
+    grid.set_month(november, False, "2026-09-16", "ana")
+    assert grid.canvas.cells and grid.canvas.cells[10].iso in {day["date"] for day in november["days"]}
+    assert [cell.iso for cell in grid.canvas.cells] != kept, "the new month replaces it"
+    assert grid.warning.text() == "" and grid.warning.isHidden()
+
+
+def test_a_month_never_shows_another_students_grid_while_it_loads(qapp: QApplication) -> None:
+    """The kept grid is the same student's: after another one signs in, loading shows nothing."""
+    grid = MonthGrid()
+    grid.set_week(build_week(MONDAY, [ESSAY], {}, None))
+    grid.set_month(september(), False, "2026-09-16", "ana")
+    assert grid.canvas.cells
+    grid.set_month(None, False, "2026-09-16", "ben")
+    assert grid.canvas.cells == []
+    assert grid.warning.text() == "Loading month…"
+    grid.set_month(september(), False, "2026-09-16", "ana")
+    grid.set_month(None, False, "2026-09-16", None)
+    assert grid.canvas.cells == [], "with nobody named there is nothing to be sure of"
+
+
+def busy_september() -> dict:
+    """September with a quiet week, a date with one chip and a date with five."""
+    snapshot = build_month("2026-09", [], [])
+    for day in snapshot["days"]:
+        if day["date"] == "2026-09-16":
+            day["blocks"] = [
+                {"id": f"b{hour}", "title": f"Club {hour}", "start": f"{hour:02d}:00", "duration_min": 60}
+                for hour in range(8, 13)
+            ]
+        if day["date"] == "2026-09-09":
+            day["blocks"] = [{"id": "solo", "title": "Piano", "start": "17:00", "duration_min": 60}]
+    return snapshot
+
+
+def tight_grid(qapp: QApplication, height: int, tight: bool) -> MonthGrid:
+    grid = MonthGrid()
+    grid.resize(1024, height)
+    grid.set_tight(tight)
+    snapshot = busy_september()
+    grid.set_month(snapshot, False, "2026-09-16")
+    grid.show()
+    qapp.processEvents()
+    return grid
+
+
+def test_with_panels_open_every_week_fits_the_view_and_a_date_still_shows_a_chip(qapp: QApplication) -> None:
+    """#28: at 1024 x 640 the plan and Unfinished panels left Month about 300 px, so its last row was half
+    cut and a scroll bar came. Tight, the five rows share the view; each keeps its number and a chip."""
+    grid = tight_grid(qapp, 360, True)
+    canvas, view = grid.canvas, grid.scroll.viewport().height()
+    assert canvas.rows() == 5
+    assert grid.scroll.verticalScrollBar().maximum() == 0, "no scroll bar"
+    last = canvas.cell_rect(7 * 4)
+    assert last.bottom() <= view, f"the last row ends at {last.bottom():.0f} in a view of {view}"
+    for row in range(5):
+        assert canvas.cell_rect(row * 7).height() >= canvas.tight_row(), row
+    shown, more = canvas.chip_boxes(canvas.index_of("2026-09-09"))
+    assert [chip.words for chip, _box in shown] == ["17:00 Piano"] and more == 0
+    shown, more = canvas.chip_boxes(canvas.index_of("2026-09-16"))
+    assert len(shown) == 1 and more == 4, "a busy date shows one chip and counts the rest"
+    cell = canvas.cell_rect(canvas.index_of("2026-09-16"))
+    count = canvas.more_box(canvas.index_of("2026-09-16"), len(shown))
+    assert cell.contains(shown[0][1]) and cell.contains(count)
+    assert not count.intersects(shown[0][1]), "the count does not cover the chip"
+    grid.close()
+
+
+def test_a_row_with_one_line_keeps_its_chip_and_writes_the_count_by_the_number(qapp: QApplication) -> None:
+    grid = tight_grid(qapp, 360, True)
+    canvas = grid.canvas
+    overhead = grid.height() - grid.scroll.viewport().height()
+    grid.resize(1024, 5 * canvas.tight_row() + overhead + 2)
+    qapp.processEvents()
+    index = canvas.index_of("2026-09-16")
+    shown, more = canvas.chip_boxes(index)
+    assert len(shown) == 1 and more == 4
+    count = canvas.more_box(index, 1)
+    assert count.bottom() <= shown[0][1].top() and canvas.cell_rect(index).contains(count)
+    grid.close()
+
+
+def test_without_panels_the_month_still_scrolls_rather_than_squeezing(qapp: QApplication) -> None:
+    """Decision 17 of 0.17 stands when nothing is open: the same view that fits when tight scrolls."""
+    grid = tight_grid(qapp, 360, False)
+    assert grid.scroll.verticalScrollBar().maximum() > 0
+    assert grid.canvas.cell_rect(0).height() >= grid.canvas.least_row()
+    grid.close()
+
+
+def test_a_view_too_short_for_the_tight_rows_scrolls_as_before(qapp: QApplication) -> None:
+    grid = tight_grid(qapp, 180, True)
+    assert grid.scroll.verticalScrollBar().maximum() > 0
+    assert grid.canvas.cell_rect(0).height() >= grid.canvas.tight_row()
     grid.close()

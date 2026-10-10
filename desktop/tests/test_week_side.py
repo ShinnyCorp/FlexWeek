@@ -60,6 +60,14 @@ def seeded(qapp: QApplication, window: NativeWindow) -> None:  # noqa: F811
         qapp.processEvents()
 
 
+def use_clock(qapp: QApplication, window: NativeWindow, twenty_four: bool) -> None:  # noqa: F811
+    """Chooses the clock the way Settings does, so every surface redraws its times."""
+    window.session.preferences = {**(window.session.preferences or {}), "clock_24h": twenty_four}
+    window._sync_chrome()
+    for _ in range(5):
+        qapp.processEvents()
+
+
 def chips(window: NativeWindow) -> list[QPushButton]:  # noqa: F811
     found = window.rail.findChildren(QPushButton)
     return [chip for chip in found if chip.property("tray") and chip.isVisible()]
@@ -81,12 +89,16 @@ def test_the_rail_holds_next_not_placed_yet_and_the_focus_list_left_of_the_week(
     card = rail.next
     assert card.isVisible()
     assert (card.label.text(), card.title.text(), card.when.text(), card.then.text()) == (
-        "Next", "Soccer practice", "16:00 · in 20 min", "Then Dinner at 18:30"
+        "Next", "Soccer practice", "4:00 PM · in 20 min", "Then Dinner at 6:30 PM"
     )
     # In time order with the time at the right, today's said as Today.
-    assert rail.task_rows() == [("Chem lab report", "Mon 20:00"), ("History essay", "Today 19:00")]
+    assert rail.task_rows() == [("Chem lab report", "Mon 8:00 PM"), ("History essay", "Today 7:00 PM")]
     assert [chip.accessibleName() for chip in chips(window)] == ["Math worksheet · 1 h"]
     assert rail.waiting_count.text() == "1"
+    use_clock(qapp, window, True)
+    assert (card.when.text(), card.then.text()) == ("16:00 · in 20 min", "Then Dinner at 18:30")
+    assert rail.task_rows() == [("Chem lab report", "Mon 20:00"), ("History essay", "Today 19:00")]
+    use_clock(qapp, window, False)
     assert not window.focus_panel.isVisible()
     bar_bottom = window.solve_button.mapTo(window, QPoint(0, window.solve_button.height())).y()
     assert window.planner.mapTo(window, QPoint(0, 0)).y() - bar_bottom < 32
@@ -235,7 +247,10 @@ def test_a_narrow_window_folds_the_rail_into_one_line_and_blocks_keep_their_time
     assert line_foot < hours.mapTo(window, hours.rect().topLeft()).y(), "the line sits above the hours"
     assert rail.height() < 80, "one slim line"
     # #82: what waits is a chip with the book and a chevron after the line, not words in it.
+    assert rail.line.text() == "Next: Soccer practice, 4:00 PM · in 20 min"
+    use_clock(qapp, window, True)
     assert rail.line.text() == "Next: Soccer practice, 16:00 · in 20 min"
+    use_clock(qapp, window, False)
     assert not rail.tasks.isVisible() and not rail.month.isVisible()
     waiting = rail.waiting_chip
     assert waiting.isVisible()
@@ -310,15 +325,19 @@ def test_the_focus_list_has_no_row_limit_of_its_own(
     assert tasks.height() >= 9 * tasks.sizeHintForRow(0)
 
 
+@pytest.mark.parametrize("twenty_four", [True, False])
 def test_rail_chips_and_focus_rows_wrap_long_names_on_two_lines_at_large_text(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
+    twenty_four: bool,
 ) -> None:
-    """#84: "Math worksheet, chapter 4" and "History / essay" stay whole on two lines, not "Math worksh…"."""
+    """#84: "Math worksheet, chapter 4" and "History / essay" stay whole on two lines, not "Math worksh…".
+    On the 12-hour clock the time ("Today 7:00 PM") is wider and left too little room for "worksheet,"."""
     from desktop.native.hours.rail import rail_title_lines
     from desktop.native.look import sanitize_look
 
     seeded(qapp, window)
+    use_clock(qapp, window, twenty_four)
     session = window.session
     due = sunday_due(session.week_start)
     for key, title in (
@@ -363,5 +382,31 @@ def test_rail_chips_and_focus_rows_wrap_long_names_on_two_lines_at_large_text(
         rows = {tasks.item(row).text(): tasks.visualItemRect(tasks.item(row)) for row in range(tasks.count())}
         for title in ("Math worksheet, chapter 4", "History / essay"):
             assert rows[title].height() >= 2 * line, (width, title, rows[title].height(), line)
+        shown = {tasks.item(row).text(): tasks.item(row) for row in range(tasks.count())}
+        assert shown["Math worksheet, chapter 4"].data(Qt.ItemDataRole.ToolTipRole) == (
+            "Today 19:00" if twenty_four else "Today 7:00 PM"
+        )
+        # Whole, not "Math wor…": the lines the row draws spell the name.
+        for title in ("Math worksheet, chapter 4", "History / essay"):
+            drawn, _below, _timing = tasks.itemDelegate().row_lines(
+                tasks.indexFromItem(shown[title]), tasks.viewport().width()
+            )
+            assert len(drawn) <= 2 and " ".join(drawn) == title, (width, title, drawn)
         lowest = max(rect.bottom() for rect in rows.values())
         assert lowest < tasks.viewport().height(), (width, lowest, tasks.viewport().height())
+
+
+@pytest.mark.parametrize(
+    ("twenty_four", "words"), [(True, "18:45 · Starting now"), (False, "6:45 PM · Starting now")]
+)
+def test_the_ringing_alarm_says_its_time_on_the_clock_the_student_chose(
+    qapp: QApplication,  # noqa: F811
+    window: NativeWindow,  # noqa: F811
+    twenty_four: bool,
+    words: str,
+) -> None:
+    from desktop.native.settings import AlarmRingDialog
+
+    use_clock(qapp, window, twenty_four)
+    dialog = AlarmRingDialog(window, {"name": "Guitar practice", "time": "18:45", "block": "guitar"}, "")
+    assert dialog.findChild(QLabel, "alarmDetail").text() == words

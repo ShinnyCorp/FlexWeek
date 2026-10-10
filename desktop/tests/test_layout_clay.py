@@ -670,7 +670,7 @@ def test_a_block_carried_to_another_day_on_day_takes_the_window_there_when_it_is
 def test_the_dish_holds_what_is_not_placed_yet_with_when_it_is_due(qapp: QApplication) -> None:
     view = shown(qapp)
     assert view.findChild(QLabel, "clayTrayLabel").text() == "Not placed yet"
-    assert view.findChild(QLabel, "clayDue").text() == "Due Sun 20"
+    assert view.findChild(QLabel, "clayDue").text() == "Due Sun 20 Sep"
     assert view.findChild(QLabel, "clayHint").text() == "Drag a chip onto a day."
     chips = view.findChildren(ClayChip)
     assert [chip.block_id for chip in chips] == ["poster-1"]
@@ -748,7 +748,7 @@ def test_a_short_block_on_a_side_card_keeps_its_name_where_a_shortened_one_fits(
         def written(width: float) -> list[str]:
             Wrote.words = []
             paint = Wrote(image)
-            painter.block(paint, QRectF(10, 10, width, 10), drawn, page)
+            painter.block(paint, QRectF(10, 10, width, 18), drawn, page)
             paint.end()
             return Wrote.words
 
@@ -786,7 +786,7 @@ def test_the_icon_gives_way_on_a_card_where_it_would_cost_the_name(
         Wrote.words = []
         drew.clear()
         paint = Wrote(image)
-        painter.block(paint, QRectF(10, 10, width, 10), drawn, page)
+        painter.block(paint, QRectF(10, 10, width, 18), drawn, page)
         paint.end()
         return Wrote.words, list(drew)
 
@@ -796,6 +796,54 @@ def test_the_icon_gives_way_on_a_card_where_it_would_cost_the_name(
     # Room for its time as well: the icon comes after the name and the time.
     words, pictures = written(name + 110)
     assert words[0] == "Piano lesson" and pictures == ["sparkles"]
+
+
+def test_a_quarter_hour_on_a_side_card_is_named_beside_its_bar_clear_of_its_neighbours(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A quarter hour is under 7 pixels tall on a card at 70 %: too short for a line inside it. It is
+    still named, by its name or else its start time, and two of them one after the other do not write
+    over each other nor over a block tall enough for its own words."""
+    monkeypatch.setattr(canvas_module, "QPainter", Wrote)
+    quarters = [
+        block("call", "locked", [2], "15:00", 15, title="Call", category="extra"),
+        block("tidy", "locked", [2], "15:15", 15, title="Tidy", category="extra"),
+        block("stretch", "locked", [2], "16:30", 15, title="Stretch", category="extra"),
+    ]
+    view = shown(qapp, blocks=[*BLOCKS, *quarters])
+    side = view.findChild(HoursCanvas, "clayPeek2")
+
+    def local(name: str) -> QRectF:
+        found = side.block_rect(name, 2)
+        assert found is not None
+        return QRectF(QRect(side.mapFromGlobal(found.topLeft()), found.size()))
+
+    bars = {name: local(name) for name in ("call", "tidy", "stretch")}
+    assert all(bar.height() < 8 for bar in bars.values()), bars
+    Wrote.words, Wrote.boxes = [], []
+    side.repaint()
+    named: dict[str, QRectF] = {}
+    ways = (("call", "Call", "15:00"), ("tidy", "Tidy", "15:15"), ("stretch", "Stretch", "16:30"))
+    for name, title, start in ways:
+        # The hour labels in the gutter are also times: only words written over the block's own rows count.
+        found = [
+            box
+            for words, box in Wrote.boxes
+            if words in (title, start)
+            and box.left() >= bars[name].left() - 1
+            and abs(box.center().y() - bars[name].center().y()) < 14
+        ]
+        assert found, f"{title} is neither named nor given its start time: {Wrote.boxes}"
+        named[name] = found[0]
+    labels = list(named.values())
+    for at, label in enumerate(labels):
+        assert QRectF(side.rect()).contains(label), (at, label)
+        for other in labels[at + 1:]:
+            assert not label.intersects(other), "two labels write over each other"
+    tall = [local("school"), local("dinner")]
+    assert all(bar.height() >= 8 for bar in tall)
+    for label in labels:
+        assert not any(label.intersects(bar) for bar in tall), "a label is written over a tall block"
 
 
 def test_a_half_hour_on_a_card_says_its_start_time_rather_than_its_icon(
@@ -824,14 +872,15 @@ def test_a_half_hour_on_a_card_says_its_start_time_rather_than_its_icon(
         Wrote.words = []
         drew.clear()
         paint = Wrote(image)
-        painter.block(paint, QRectF(10, 10, width, 10), drawn, page)
+        painter.block(paint, QRectF(10, 10, width, 18), drawn, page)
         paint.end()
         return Wrote.words, list(drew)
 
     title, small = painter.fonts(qapp.font())
     both = QFontMetricsF(title).horizontalAdvance("Dinner") + 6
     both += QFontMetricsF(small).horizontalAdvance("18:30")
-    icon = round(QFontMetricsF(title).ascent()) + 4
+    # The 16 px icon and the 4 px before the name; a block shorter than the icon keeps the words.
+    icon = 16 + 4
     # The 14 and 8 pixels a side card keeps clear at a block's ends.
     assert written(both + 23) == (["Dinner", "18:30"], [])
     assert written(both + 23 + icon) == (["Dinner", "18:30"], ["clock"])

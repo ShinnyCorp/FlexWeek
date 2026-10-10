@@ -17,6 +17,8 @@ from uuid import uuid4
 
 from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTime, QTimer, Signal
 from PySide6.QtGui import (
+    QAccessible,
+    QAccessibleAnnouncementEvent,
     QColor,
     QFocusEvent,
     QFont,
@@ -103,7 +105,7 @@ from desktop.native.settings import (
 from desktop.native.sound import Bell
 from desktop.native.tokens import WEIGHT_STRONG
 from desktop.native.tones import FALLBACK, RECIPES
-from desktop.native.weekmodel import clock_text, hhmm_text
+from desktop.native.weekmodel import clock_text, hhmm_text, set_clock_24h, time_format
 from desktop.native.widgets import (
     CARD_WIDTH_PAD,
     DAYS,
@@ -154,6 +156,8 @@ NOTES = {
 NEXT_LABEL, FINISH_LABEL = "Next", "Open my week"
 SKIP_STEP_LABEL, SKIP_ALL_LABEL = "Skip this step", "Skip setup"
 OWN_LOOK_LABEL = "Choose my own look instead"
+# 12-hour first and pre-selected: it is the clock a new account starts with.
+CLOCK_CHOICES = ((False, "12-hour clock (4:00 PM)"), (True, "24-hour clock (16:00)"))
 MAX_ACTIVITIES = 8
 MAX_FIRST_HOMEWORK = 3
 # A tap adds one of these rather than making the student type hours for the usual answers.
@@ -342,6 +346,49 @@ def step_badge(number: int, state: str, palette: dict, family: str, ratio: float
 def _repolish(widget: QWidget) -> None:
     widget.style().unpolish(widget)
     widget.style().polish(widget)
+
+
+def _focus_stops(widget: QWidget) -> list[QWidget]:
+    """The controls Tab reaches inside `widget`, in the order they were made. A spin box's own line
+    edit is left out: the spin box is the stop."""
+    return [
+        child
+        for child in widget.findChildren(QWidget)
+        if child.focusPolicy() & Qt.FocusPolicy.TabFocus
+        and not (
+            isinstance(child, QLineEdit) and isinstance(child.parentWidget(), (QAbstractSpinBox, QComboBox))
+        )
+    ]
+
+
+def _stop_before(widget: QWidget) -> QWidget:
+    """The nearest control Tab reaches before `widget` in the chain. Qt ignores a label given to
+    setTabOrder as the first widget, so the anchor has to be a control."""
+    before = widget.previousInFocusChain()
+    while before is not widget and not before.focusPolicy() & Qt.FocusPolicy.TabFocus:
+        before = before.previousInFocusChain()
+    return before
+
+
+def _tab_after(after: QWidget, stops: list[QWidget]) -> QWidget:
+    """Put `stops` straight after `after` in the Tab order, in the order given. Returns the last one."""
+    for stop in stops:
+        QWidget.setTabOrder(after, stop)
+        after = stop
+    return after
+
+
+def _leave_row_focus(row: QWidget, rows: list, fallback: QWidget) -> None:
+    """Before a row is removed, move focus to its name field's neighbour: the same field in the row
+    after it, else the row before, else the add button. Otherwise Qt moves focus to the next widget
+    in the chain, which can be the rail."""
+    index = rows.index(row)
+    if index + 1 < len(rows):
+        rows[index + 1].name.setFocus(Qt.FocusReason.OtherFocusReason)
+    elif index > 0:
+        rows[index - 1].name.setFocus(Qt.FocusReason.OtherFocusReason)
+    else:
+        fallback.setFocus(Qt.FocusReason.OtherFocusReason)
 
 
 def _quiet(text: str, name: str = "setupQuiet") -> QPushButton:
@@ -946,6 +993,8 @@ class ActivityRow(QFrame):
         bottom.addWidget(Level(self.days, self.times.start))
         bottom.addWidget(self.times)
         box.addLayout(bottom)
+        # Tab order follows the screen: name, sport or activity, remove, then the days and times.
+        self.stops = [self.name, self.category, remove, *_focus_stops(self.days), *_focus_stops(self.times)]
 
     def _keep_category(self, _index: int = 0) -> None:
         self._category_touched = True
@@ -996,16 +1045,31 @@ class HomeworkRow(QFrame):
         remove = _outlined("Remove")
         remove.setAccessibleName("Remove this homework")
         remove.clicked.connect(lambda: self.removed.emit(self))
-        grid.addWidget(_label("Name", "setupFieldLabel", wrap=False), 0, 0)
+        name_label = _label("Name", "setupFieldLabel", wrap=False)
+        name_label.setBuddy(self.name)
+        grid.addWidget(name_label, 0, 0)
         grid.addWidget(self.name, 0, 1, 1, 3)
         grid.addWidget(remove, 0, 4)
         # On the line of the box, not the middle of the box and the lengths under it.
-        takes = Level(_label("Takes", "setupFieldLabel", wrap=False), self.minutes)
+        takes_label = _label("Takes", "setupFieldLabel", wrap=False)
+        takes_label.setBuddy(self.minutes)
+        takes = Level(takes_label, self.minutes)
         grid.addWidget(takes, 1, 0, Qt.AlignmentFlag.AlignTop)
-        grid.addWidget(Stepper(self.minutes, QUICK_LENGTHS), 1, 1)
-        grid.addWidget(_label("Due", "setupFieldLabel", wrap=False), 1, 2)
+        stepper = Stepper(self.minutes, QUICK_LENGTHS)
+        grid.addWidget(stepper, 1, 1)
+        due_label = _label("Due", "setupFieldLabel", wrap=False)
+        due_label.setBuddy(self.due)
+        grid.addWidget(due_label, 1, 2)
         grid.addWidget(self.due, 1, 3, 1, 2)
         grid.setColumnStretch(3, 1)
+        # Tab order follows the screen: name, remove, then the length, the due date.
+        self.stops = [
+            self.name,
+            remove,
+            *_focus_stops(takes),
+            *_focus_stops(stepper),
+            *_focus_stops(self.due),
+        ]
 
 
 class SetupPage(QWidget):
@@ -1272,7 +1336,24 @@ class SetupPage(QWidget):
         box = QVBoxLayout(content)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(8)
-        box.addWidget(_label("School", "setupSection"))
+        box.addWidget(_label("Clock", "setupSection"))
+        self.clock_choice = QButtonGroup(content)
+        self.clock_buttons: dict[bool, QRadioButton] = {}
+        clock = QFrame()
+        clock.setObjectName("setupGroup")
+        clock_line = QHBoxLayout(clock)
+        clock_line.setContentsMargins(12, 10, 12, 10)
+        clock_line.setSpacing(24)
+        for twenty_four, text in CLOCK_CHOICES:
+            button = QRadioButton(text)
+            button.setObjectName(f"setupClock-{24 if twenty_four else 12}")
+            self.clock_choice.addButton(button)
+            self.clock_buttons[twenty_four] = button
+            clock_line.addWidget(button)
+        clock_line.addStretch(1)
+        box.addWidget(clock)
+        self.clock_choice.buttonToggled.connect(lambda _button, _on: self._follow_clock())
+        self._section(box, "School")
         self.school_days = DayPicker([0, 1, 2, 3, 4], "setupDay")
         self.school_times = TimeRange("08:00", "14:30", "School")
         school = QFrame()
@@ -1294,6 +1375,8 @@ class SetupPage(QWidget):
         self.add_activity = _quiet("+ Add a sport, club or job", "setupAddActivity")
         self.add_activity.clicked.connect(lambda: self._add_activity(focus=True))
         box.addWidget(self.add_activity, 0, Qt.AlignmentFlag.AlignLeft)
+        # The control Tab reaches just before the add button: the last School control.
+        self._activity_anchor = _stop_before(self.add_activity)
         self._section(box, "Bedtime")
         self.cutoff = QComboBox()
         self.cutoff.setObjectName("setupCutoff")
@@ -1304,7 +1387,9 @@ class SetupPage(QWidget):
         bedtime_line = QHBoxLayout(bedtime)
         bedtime_line.setContentsMargins(12, 10, 12, 10)
         bedtime_line.setSpacing(8)
-        bedtime_line.addWidget(_label("No homework after", "setupFieldLabel", wrap=False))
+        cutoff_label = _label("No homework after", "setupFieldLabel", wrap=False)
+        cutoff_label.setBuddy(self.cutoff)
+        bedtime_line.addWidget(cutoff_label)
         bedtime_line.addWidget(self.cutoff)
         bedtime_line.addStretch(1)
         box.addWidget(bedtime)
@@ -1427,6 +1512,7 @@ class SetupPage(QWidget):
         self.add_homework = _quiet("+ Add another", "setupAddHomework")
         self.add_homework.clicked.connect(lambda: self._add_homework_row(focus=True))
         box.addWidget(self.add_homework, 0, Qt.AlignmentFlag.AlignLeft)
+        self._homework_anchor = _stop_before(self.add_homework)
         return content
 
     def _build_done(self) -> QWidget:
@@ -1518,8 +1604,23 @@ class SetupPage(QWidget):
         if self._pending_pictures:
             self._warm.start()
 
+    def _clock_chosen(self) -> bool:
+        return self.clock_buttons[True].isChecked()
+
+    def _show_clock(self, twenty_four: bool) -> None:
+        """Choose the clock and write every time box on the pages in it."""
+        self.clock_buttons[twenty_four].setChecked(True)
+        self._follow_clock()
+
+    def _follow_clock(self) -> None:
+        set_clock_24h(self._clock_chosen())
+        for field_box in self.findChildren(ClockField):
+            field_box.setDisplayFormat(time_format())
+        fill_cutoff(self.cutoff, self.cutoff.currentData())
+
     def _fill_week(self) -> None:
         blocks = self._state.blocks
+        self._show_clock(self._state.preferences.get("clock_24h") is True)
         school = next((block for block in blocks if block.get("id") == SETUP_SCHOOL_ID), None)
         if school is not None and school.get("start"):
             self.school_days.set_days(list(school.get("days") or []))
@@ -1625,6 +1726,9 @@ class SetupPage(QWidget):
         elif step in LOOK_STEPS and destination not in LOOK_STEPS:
             # A look tried and then skipped is not kept, so the app goes back to the one it had.
             self._restore_entered()
+        elif step == WEEK:
+            # A clock tried and then skipped is not kept either.
+            self._show_clock(self._state.preferences.get("clock_24h") is True)
         self.error.clear()
         if answer is not None:
             self._absorb(step, answer)
@@ -1862,18 +1966,32 @@ class SetupPage(QWidget):
         self.activity_box.addWidget(row)
         self.activities.append(row)
         self.add_activity.setEnabled(len(self.activities) < MAX_ACTIVITIES)
+        self._chain_activities()
         if focus:
             row.name.setFocus(Qt.FocusReason.OtherFocusReason)
             appear(row, self.motion, rise=False)
 
+    def _chain_activities(self) -> None:
+        """Tab goes down the activity rows as they sit, then to the add button, then on to Bedtime.
+        Run after every row is added or removed."""
+        last = self._activity_anchor
+        for row in self.activities:
+            last = _tab_after(last, row.stops)
+        _tab_after(last, [self.add_activity])
+
     def _remove_activity(self, row: object) -> None:
         if not isinstance(row, ActivityRow) or row not in self.activities:
             return
+        _leave_row_focus(row, self.activities, self.add_activity)
         self.activities.remove(row)
         self.activity_box.removeWidget(row)
         row.setParent(None)
         row.deleteLater()
         self.add_activity.setEnabled(True)
+        self._chain_activities()
+        announce = QAccessibleAnnouncementEvent(self, "Activity removed")
+        announce.setPoliteness(QAccessible.AnnouncementPoliteness.Polite)
+        QAccessible.updateAccessibility(announce)
 
     def week_blocks(self) -> list[dict]:
         blocks: list[dict] = []
@@ -1955,20 +2073,30 @@ class SetupPage(QWidget):
         self.homework_box.addWidget(row)
         self.homework_rows.append(row)
         self.add_homework.setEnabled(len(self.homework_rows) < MAX_FIRST_HOMEWORK)
+        self._chain_homework()
         if focus:
             row.name.setFocus(Qt.FocusReason.OtherFocusReason)
             appear(row, self.motion)
 
+    def _chain_homework(self) -> None:
+        """Tab goes down the first homework rows as they sit, then to the add button."""
+        last = self._homework_anchor
+        for row in self.homework_rows:
+            last = _tab_after(last, row.stops)
+        _tab_after(last, [self.add_homework])
+
     def _remove_homework_row(self, row: object) -> None:
         if not isinstance(row, HomeworkRow) or row not in self.homework_rows:
             return
+        if len(self.homework_rows) == 1:
+            self._add_homework_row()
+        _leave_row_focus(row, self.homework_rows, self.add_homework)
         self.homework_rows.remove(row)
         self.homework_box.removeWidget(row)
         row.setParent(None)
         row.deleteLater()
         self.add_homework.setEnabled(True)
-        if not self.homework_rows:
-            self._add_homework_row()
+        self._chain_homework()
 
     def first_homework(self) -> list[dict]:
         made = []
@@ -2017,7 +2145,11 @@ class SetupPage(QWidget):
         if step in LOOK_STEPS:
             return {"pack": self._pack, "look": deepcopy(self._look), "layout": deepcopy(self._layout)}
         if step == WEEK:
-            return {"blocks": self.week_blocks(), "day_cutoff": self.cutoff.currentData()}
+            return {
+                "blocks": self.week_blocks(),
+                "day_cutoff": self.cutoff.currentData(),
+                "clock_24h": self._clock_chosen(),
+            }
         if step == HOMEWORK:
             checked = next(
                 (value for value, button in self.planning_buttons.items() if button.isChecked()), "suggest"
@@ -2055,6 +2187,7 @@ class SetupPage(QWidget):
             kept = [block for block in self._state.blocks if not is_setup_block(block)]
             self._state.blocks = kept + deepcopy(answer["blocks"])
             self._state.preferences["day_cutoff"] = answer["day_cutoff"]
+            self._state.preferences["clock_24h"] = answer["clock_24h"]
         elif step in (HOMEWORK, REMINDERS):
             self._state.preferences.update(deepcopy(answer))
         elif step == FIRST:

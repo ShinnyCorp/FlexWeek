@@ -556,6 +556,22 @@ def test_notepads_columns_and_their_fallbacks() -> None:
     assert shorten("Supercalifragilistic", 8) == "Superca…"
 
 
+def test_a_notepad_title_that_is_cut_still_shows_its_start() -> None:
+    """#22: "History…" with no time was the complaint. A title cut to fit the page keeps its length and
+    the day and time it is placed (its start) on the line under it, or "not placed yet" for homework
+    that has none."""
+    placed = Deadline("History essay on the causes of the war", "2 h", "Mon 20:00", "history-1")
+    waiting = Deadline("Mathematics worksheet on fractions and ratios", "45 min", NOT_PLACED, "math-1")
+    chars = 30
+    widths = note_widths([placed, waiting], chars)
+    for line, start in ((placed, "Mon 20:00"), (waiting, NOT_PLACED)):
+        said = note_lines(line, widths, chars)
+        assert len(said) == 2, said
+        assert said[0].endswith("…") and len(said[0]) <= chars, said
+        assert said[1].endswith(start) and len(said[1]) <= chars, said
+        assert line.length in said[1], said
+
+
 def test_a_deadline_says_when_it_is_from_today() -> None:
     week = build_week(WEEK, BLOCKS, HOMEWORK, TRACE)
     assert due_heading("2026-09-17T23:59", week, 3) == "Due Thursday 17 September, today."
@@ -669,7 +685,7 @@ def test_status_bar_tracks_the_hands_time_and_verdict(
 def test_the_status_bar_says_less_rather_than_cutting_its_words(qapp: QApplication) -> None:
     wide = shown(qapp)
     assert [text(wide, name) for name in ("retroStatusNow", "retroStatusWaiting")] == [
-        "Thursday 17, 13:40",
+        "Thursday 17 September, 13:40",
         f"1 homework {NOT_PLACED}",
     ]
     narrow = shown(qapp, 800, 700)

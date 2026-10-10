@@ -3,6 +3,7 @@
 use chrono::{Datelike, Duration, NaiveDate};
 use serde_json::{Value, json};
 
+use crate::desk::datetext::{day_long, day_short, month_title, week_range};
 use crate::desk::pydate::from_iso;
 use crate::desk::pyval::subscript;
 use crate::error::EngineResult;
@@ -19,8 +20,11 @@ pub fn restore_point_label(text: &str) -> String {
     format!("{}…", chars.iter().take(79).collect::<String>())
 }
 
-pub fn week_label(week_start: &str) -> String {
-    format!("Week of {week_start}")
+pub fn week_label(week_start: &str, today: NaiveDate) -> EngineResult<String> {
+    Ok(format!(
+        "Week of {}",
+        week_range(from_iso(week_start)?, today)?
+    ))
 }
 
 pub fn intervals_overlap(start_a: i64, end_a: i64, start_b: i64, end_b: i64) -> bool {
@@ -69,33 +73,8 @@ pub fn late_id(operation_id: &str) -> String {
     )
 }
 
-const DAYS_LONG: [&str; 7] = [
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-];
-
-const MONTHS: [&str; 12] = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-];
-
 /// Where you are, in words. The session's own `selected_day` and `selected_month` come in as
-/// they were read; `today` gives the caller's local date and is asked only for My Day.
+/// they were read; `today` gives the caller's local date, which the year rule needs.
 pub fn planner_title(
     week_start: &str,
     session_day: Option<&str>,
@@ -105,13 +84,6 @@ pub fn planner_title(
     selected_day: Option<&str>,
     today: &mut dyn FnMut() -> EngineResult<String>,
 ) -> EngineResult<String> {
-    let name = |names: &[&str], index: usize, short: bool| -> String {
-        if short {
-            names[index].chars().take(3).collect()
-        } else {
-            names[index].to_string()
-        }
-    };
     fn given(value: Option<&str>) -> Option<&str> {
         value.filter(|text| !text.is_empty())
     }
@@ -128,45 +100,24 @@ pub fn planner_title(
             from_iso(anchor_iso)
         }
         .unwrap_or(chosen);
-        return Ok(format!(
-            "{} {}",
-            name(&MONTHS, anchor.month0() as usize, short),
-            anchor.year()
-        ));
+        return Ok(month_title(anchor, short));
     }
-    let mut chosen = chosen;
+    let today = from_iso(&today()?)?;
     if view == "myday" && selected_day.is_none() {
-        chosen = from_iso(&today()?)?;
+        return Ok(day_text(today, today, short));
     }
     if view == "day" || view == "myday" {
-        return Ok(format!(
-            "{} {} {}",
-            name(
-                &DAYS_LONG,
-                chosen.weekday().num_days_from_monday() as usize,
-                short
-            ),
-            chosen.day(),
-            name(&MONTHS, chosen.month0() as usize, short)
-        ));
+        return Ok(day_text(chosen, today, short));
     }
-    let end = crate::stored::add_days(start, 6)?;
-    Ok(if start.month() == end.month() {
-        format!(
-            "{} – {} {}",
-            start.day(),
-            end.day(),
-            name(&MONTHS, start.month0() as usize, true)
-        )
+    week_range(start, today)
+}
+
+fn day_text(day: NaiveDate, today: NaiveDate, short: bool) -> String {
+    if short {
+        day_short(day, today)
     } else {
-        format!(
-            "{} {} – {} {}",
-            start.day(),
-            name(&MONTHS, start.month0() as usize, true),
-            end.day(),
-            name(&MONTHS, end.month0() as usize, true)
-        )
-    })
+        day_long(day, today)
+    }
 }
 
 /// `copied_fixed_block` with the days and the id as the caller holds them.

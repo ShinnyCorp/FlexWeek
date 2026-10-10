@@ -88,7 +88,8 @@ def test_each_page_and_its_buttons_are_centred_up_to_880_pixels(
         assert column.width() == SETUP_COLUMN, step
         left = column.mapTo(page, QPoint(0, 0)).x()
         right = page.viewport().width() - (left + column.width())
-        assert abs(left - right) <= 2, (step, left, right)
+        # A page that scrolls is centred over its scroll bar too, so the visible side is a bar narrower.
+        assert abs(left - right) <= page.width() - page.viewport().width() + 2, (step, left, right)
         # Next ends where the page above it ends, not at the window's edge; a page that scrolls is
         # centred beside its scroll bar, half a bar's width off.
         next_right = setup.next.mapTo(setup, QPoint(setup.next.width(), 0)).x()

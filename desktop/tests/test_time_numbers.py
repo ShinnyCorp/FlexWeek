@@ -69,6 +69,7 @@ def test_narrow_week_blocks_still_include_their_times(
     from desktop.native.hours import canvas
     from desktop.native.weekmodel import clock_label
 
+    window.session.preferences = {**(window.session.preferences or {}), "clock_24h": True}
     window._layout = sanitize_layout({"main": "classic"})
     window._look = sanitize_look({"preset": "default"})
     window._apply_appearance()

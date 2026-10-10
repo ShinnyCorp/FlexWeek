@@ -1226,7 +1226,8 @@ def child_main(args: argparse.Namespace) -> int:
         yield from r.tab("month")
         month = r.surface("month")
         words = month.chip_words(ids["essay"], thursday_iso)
-        expect(words == "19:00 History essay", f"the chip reads {words!r}")
+        # The rig's account is new, so it is on the 12-hour clock new accounts start on (0.18.5).
+        expect(words == "7:00 PM History essay", f"the chip reads {words!r}")
 
     def month_open_day(r: Rig) -> Step:
         yield from r.tab("month")

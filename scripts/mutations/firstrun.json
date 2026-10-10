@@ -65,7 +65,7 @@
   {
     "name": "the sign-in card as narrow at Large text as at Normal",
     "file": "desktop/native/window.py",
-    "old": "            card.setFixedWidth(round(AUTH_CARD_WIDTH * text_scale(self._look)))\n",
+    "old": "            card.setFixedWidth(round(AUTH_CARD_WIDTH * text_scale(look)))\n",
     "new": "            card.setFixedWidth(AUTH_CARD_WIDTH)\n",
     "test": "desktop/tests/test_sign_in_card.py::test_every_line_on_the_card_is_whole_at_large_text"
   },
@@ -177,8 +177,8 @@
   {
     "name": "Setup's example in the field's own grey",
     "file": "desktop/native/look.py",
-    "old": "placeholder-text-color: {palette['muted']}; }}",
-    "new": "placeholder-text-color: {palette['text']}; }}",
+    "old": "f\"{fit_lightness(palette['muted'], (palette['field'], palette['panel']), AA_TEXT)}; }}\"",
+    "new": "f\"{palette['text']}; }}\"",
     "test": "desktop/tests/test_setup_audit.py::test_the_example_homework_reads_as_an_example_and_adds_nothing"
   },
   {
@@ -191,8 +191,8 @@
   {
     "name": "The sign-in greeting says the name again",
     "file": "desktop/native/window.py",
-    "old": "FIRST_GREETING = \"Welcome\"\n",
-    "new": "FIRST_GREETING = \"Welcome to FlexWeek\"\n",
+    "old": "SIGN_IN_HEADING = \"Sign in\"\n",
+    "new": "SIGN_IN_HEADING = \"Welcome to FlexWeek\"\n",
     "test": "desktop/tests/test_sign_in_card.py::test_the_name_is_said_once_not_again_in_the_heading"
   },
   {

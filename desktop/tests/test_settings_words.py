@@ -121,22 +121,22 @@ def test_every_field_in_a_forms_column_starts_at_the_same_left_edge(
     dialog.close_page()
 
 
-def test_this_build_says_0_18_4_and_is_not_offered_0_18_3(
+def test_this_build_says_0_18_5_and_is_not_offered_0_18_4(
     qapp: QApplication,  # noqa: F811
     window: NativeWindow,  # noqa: F811
 ) -> None:
-    assert VERSION == "0.18.4"
+    assert VERSION == "0.18.5"
     release = {
-        "tag_name": "v0.18.3",
+        "tag_name": "v0.18.4",
         "assets": [
             {"name": name, "browser_download_url": f"https://example.invalid/{name}"}
             for name in (WINDOWS_SETUP, WINDOWS_SETUP + ".sha256")
         ],
     }
     assert available(release, "windows") is None
-    assert available({**release, "tag_name": "v0.18.5"}, "windows")["version"] == "0.18.5"
+    assert available({**release, "tag_name": "v0.18.6"}, "windows")["version"] == "0.18.6"
     dialog = prefs(window)
-    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.18.4"
+    assert dialog.findChild(QLabel, "prefsVersion").text() == "FlexWeek 0.18.5"
     dialog.close_page()
 
 
@@ -153,7 +153,8 @@ def test_appearance_opens_on_colours_then_the_designs_and_ends_with_animations(
         (label for label in appearance.findChildren(QLabel) if label.isVisibleTo(dialog) and label.text()),
         key=lambda label: top(label, appearance),
     )
-    assert [label.text() for label in shown[:3]] == ["Appearance & layout", "Colours", "Look"]
+    # Text size is its own card above Colours (0.18.5, item 5), so it leads the page.
+    assert [label.text() for label in shown[:5]] == ["Look", "Text", "Text size", "Colours", "Look"]
     assert not any("has its own colours" in label.text() for label in shown)
     notes = [label.text() for label in appearance.findChildren(QLabel, "settingsCardNote")]
     design_line = (
@@ -305,7 +306,9 @@ def test_every_heading_on_appearance_stands_out_from_the_rows_under_it(
         ),
         key=lambda label: top(label, appearance),
     )
-    assert [label.text() for label in headings] == ["Colours", "Main view", "Day screen", "Every screen"]
+    assert [label.text() for label in headings] == [
+        "Text", "Colours", "Main view", "Day screen", "Every screen",
+    ]
     plain = appearance.findChild(QLabel, "settingsCardNote")
     for heading in headings:
         assert heading.font().bold() and not plain.font().bold(), heading.text()

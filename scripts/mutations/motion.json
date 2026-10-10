@@ -140,10 +140,10 @@
     "test": "desktop/tests/test_layout_retro.py::test_a_window_opens_with_windows_98s_zoom_rectangle_within_the_levels"
   },
   {
-    "name": "the title changes a frame before the page again",
+    "name": "the title fades with the page again",
     "file": "desktop/native/window.py",
-    "old": "            fade_through(title_picture, [self.week_title], self._motion)\n",
-    "new": "            title_picture.deleteLater()\n",
+    "old": "        self.week_title.set_full_text(\n            planner_title(self.session, title_view, selected_day=watched),\n",
+    "new": "        from PySide6.QtWidgets import QGraphicsOpacityEffect\n\n        self.week_title.setGraphicsEffect(QGraphicsOpacityEffect(self.week_title))\n        self.week_title.set_full_text(\n            planner_title(self.session, title_view, selected_day=watched),\n",
     "test": "desktop/tests/test_layouts_window.py::test_a_new_view_is_live_at_once_while_the_old_one_fades"
   },
   {

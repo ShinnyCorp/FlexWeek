@@ -300,7 +300,7 @@ def test_grey_text_is_written_on_the_blocks_and_their_colours_are_one_line_with_
     window.session.save()
     wait_until(qapp, lambda: not window.session.busy and not window.session.dirty)
     page, editor = open_editor(qapp, window)
-    editor._start_from(editor.start_from.findData("base:light"))
+    editor._start_from("base:light")
     pump(qapp)
     type_colour(qapp, editor, "text", "#999999")
     said = [label.text() for label in shown(editor, QLabel, "lookWarnText")]
@@ -342,7 +342,7 @@ def test_the_editors_words_take_the_type_scale_of_the_look_it_starts_from(
     page, editor = open_editor(qapp, window)
     looks = (("light", 1.0, "sans"), ("high-contrast", 1.2, "sans"), ("paper", 1.0, "serif"))
     for base, scale, face in looks:
-        editor._start_from(editor.start_from.findData(f"base:{base}"))
+        editor._start_from(f"base:{base}")
         pump(qapp)
         for kind, name, role, weight in (
             (QLabel, "lookEditorTitle", "heading", WEIGHT_STRONG),
@@ -429,9 +429,7 @@ def test_every_group_open_fits_the_column(
     than the 360-pixel column, which cut them at its edge; at High contrast's large text the column
     widens instead."""
     page, editor = open_editor(qapp, window)
-    at = editor.start_from.findData(f"base:{base}")
-    editor.start_from.setCurrentIndex(at)
-    editor.start_from.activated.emit(at)
+    editor._start_from(f"base:{base}")
     pump(qapp)
     for card in editor.groups.values():
         card.toggle.setChecked(True)
@@ -454,9 +452,7 @@ def test_start_from_another_look_dresses_the_editor_in_it_and_the_motion_levels_
     window: NativeWindow,  # noqa: F811
 ) -> None:
     page, editor = open_editor(qapp, window)
-    at = editor.start_from.findData("base:dark")
-    editor.start_from.setCurrentIndex(at)
-    editor.start_from.activated.emit(at)
+    editor._start_from("base:dark")
     pump(qapp)
     dark = resolved_palette("dark-frost", True, {"custom": {"base": "dark"}})
     head = editor.findChild(QWidget, "lookEditorHead")

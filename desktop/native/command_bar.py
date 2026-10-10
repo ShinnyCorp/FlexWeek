@@ -89,7 +89,7 @@ def match_rank(query: str, words: str, tip: str = "") -> int | None:
 
     The whole name starting with it, then a word starting with it, then anywhere in it, then the
     first letters of its words, so "pmh" finds Plan my homework. The tip is checked too, so "look"
-    still finds Customise… from its description.
+    still finds Edit look… from its description.
     """
     wanted = " ".join(query.casefold().split())
     if not wanted:

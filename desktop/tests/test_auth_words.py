@@ -1,8 +1,8 @@
-"""The sign-in card's greeting and the recovery codes page (0.16 review rows R23 and R24).
+"""The sign-in card's heading and the recovery codes page (0.16 review rows R23 and R24).
 
 "Welcome back." greeted a student who had never been there. The recovery codes were a plain label of
-eight lines, kept only by selecting them with the mouse. Since 0.17 the greeting is the card's one
-heading (decision 25), where it sat as a second heading under "Sign in".
+eight lines, kept only by selecting them with the mouse. Since 0.17 the heading is the card's one
+heading (decision 25), and since 0.18.5 (#74) it is "Sign in" on a first launch and on a return alike.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
@@ -31,8 +31,7 @@ from desktop.tests.window_support import (  # noqa: F401
     wait_until,
 )
 
-FIRST = "Welcome"
-AGAIN = "Welcome back"
+FIRST = AGAIN = "Sign in"
 
 
 def page(window: NativeWindow) -> str:
@@ -75,7 +74,7 @@ def greeting(window: NativeWindow) -> str:
     return window.auth_heading.text()
 
 
-def test_a_first_launch_says_welcome_and_a_return_says_welcome_back(
+def test_a_first_launch_and_a_return_both_say_sign_in(
     qapp: QApplication,  # noqa: F811
     server: LocalServer,  # noqa: F811
     kept: KeptSession,
@@ -140,6 +139,20 @@ def test_the_codes_are_in_jetbrains_mono_with_every_character_of_one_width(recov
     assert evenly_spaced(font), "letters and figures have one width"
     metrics = QFontMetrics(font)
     assert metrics.horizontalAdvance("1111") == metrics.horizontalAdvance("0000"), "figures of one width"
+
+
+def test_the_recovery_note_is_left_aligned_like_the_codes(
+    qapp: QApplication,  # noqa: F811
+    recovering: NativeWindow,
+) -> None:
+    """#77: the note over the codes was centred over four lines while the codes sat left."""
+    pages = recovering._stack.findChildren(QWidget)
+    card = next(page for page in pages if page.objectName() == "recoveryPage")
+    note = card.findChild(QLabel, "authNote")
+    assert note is not None
+    assert not note.alignment() & Qt.AlignmentFlag.AlignHCenter, "the note is not centred"
+    codes = recovering.recovery_list
+    assert note.alignment() == codes.alignment(), "the note and the codes share one alignment"
 
 
 def test_copy_puts_every_code_on_the_clipboard_and_says_so_for_a_moment(

@@ -57,7 +57,15 @@ from desktop.native.hours.canvas import (
     word_elide,
 )
 from desktop.native.hours.chips import TrayChip
-from desktop.native.hours.classic import ClassicPainter, Share, day_shares, open_hours
+from desktop.native.hours.classic import (
+    EMPTY_MIN_NARROW_PX,
+    ClassicPainter,
+    Share,
+    column_widths,
+    day_shares,
+    empty_days,
+    open_hours,
+)
 from desktop.native.hours.geometry import FIRST, LAST, Axis, LinearTrack
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import OPENS, HoursScroll, Scale
@@ -1204,16 +1212,22 @@ class BentoCanvas(HoursCanvas):
         super().__init__(hand, painter, self._seven if week else self._one, gutter=gutter)
         self.day = 0
         self.day_buttons: dict[int, QPushButton] = {}
+        # The days with nothing on them take less of the week's width, and their buttons follow.
+        self.empty: frozenset[int] = frozenset()
+        self.names_row: QHBoxLayout | None = None
 
-    @staticmethod
-    def _seven(area: QRectF) -> list[LinearTrack]:
-        wide = area.width() / 7
-        return [
-            LinearTrack(
-                day, QRectF(area.left() + day * wide + 2, area.top() + PAD, wide - 4, area.height() - 2 * PAD)
+    def _seven(self, area: QRectF) -> list[LinearTrack]:
+        widths = column_widths(area.width(), self.empty, floor=EMPTY_MIN_NARROW_PX)
+        left, tracks = area.left(), []
+        for day, wide in enumerate(widths):
+            tracks.append(
+                LinearTrack(day, QRectF(left + 2, area.top() + PAD, wide - 4, area.height() - 2 * PAD))
             )
-            for day in range(7)
-        ]
+            left += wide
+        if self.names_row is not None:
+            for day, wide in enumerate(widths):
+                self.names_row.setStretch(day, max(1, round(wide * 10)))
+        return tracks
 
     def _one(self, area: QRectF) -> list[LinearTrack]:
         return [LinearTrack(self.day, area.adjusted(0, PAD, -4, -PAD))]
@@ -1533,6 +1547,11 @@ class BentoView(LayoutView):
         week = key == "week"
         canvas.set_painter(BentoPainter(scene.tokens, wide=not week))
         if week:
+            empty = empty_days(scene.week)
+            if empty != canvas.empty:
+                # Laid out for the new widths before the blocks arrive, so none slides for a change of width.
+                canvas.empty = empty
+                canvas.relayout()
             canvas.set_week(scene.week.occurrences, scene.today, scene.minute)
             ink = card_ink(scene.tokens)
             for target, head in canvas.day_buttons.items():
@@ -1580,6 +1599,7 @@ class BentoView(LayoutView):
                 head.clicked.connect(lambda _=False, chosen=target: self._open_day(chosen))
                 row.addWidget(head, 1)
                 canvas.day_buttons[target] = head
+            canvas.names_row = row
             scroll.set_header(header)
         self._scrolls[key] = scroll
         return scroll

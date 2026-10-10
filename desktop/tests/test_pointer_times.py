@@ -44,25 +44,35 @@ def opened_editors(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
 
 
 @STEPS
+@pytest.mark.parametrize("twenty_four", [True, False])
 @pytest.mark.parametrize(
-    ("pointer", "slot"),
+    ("pointer", "slot", "twelve"),
     [
-        ("17:05", "17:00"),
-        ("17:20", "17:15"),
-        ("17:25", "17:30"),
-        ("16:57", "17:00"),
-        ("17:40", "17:45"),
+        ("17:05", "17:00", "5:00 PM"),
+        ("17:20", "17:15", "5:15 PM"),
+        ("17:25", "17:30", "5:30 PM"),
+        ("16:57", "17:00", "5:00 PM"),
+        ("17:40", "17:45", "5:45 PM"),
     ],
 )
 def test_a_right_click_on_free_time_names_the_nearest_quarter_hour(
-    qapp: QApplication, window: NativeWindow, menus: dict, step: int, pointer: str, slot: str
+    qapp: QApplication,
+    window: NativeWindow,
+    menus: dict,
+    step: int,
+    pointer: str,
+    slot: str,
+    twelve: str,
+    twenty_four: bool,
 ) -> None:
+    window.session.preferences = {**(window.session.preferences or {}), "clock_24h": twenty_four}
+    window._sync_chrome()
     window.hand.step = step
     hours = window.week_table.hours
     hours.reveal(SATURDAY, minute("16:00"), minute("18:30"))
     qapp.processEvents()
     right_click(hours, hours.point_for(SATURDAY, minute(pointer)))
-    assert menus["shown"][-1][0] == f"Add fixed time at {slot}"
+    assert menus["shown"][-1][0] == f"Add fixed time at {slot if twenty_four else twelve}"
 
 
 @STEPS

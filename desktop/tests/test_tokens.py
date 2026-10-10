@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from desktop.native.calendar import CATEGORIES
+from desktop.native.hours.rail import Colours
 from desktop.native.layouts.registry import MATCH, tokens_for
 from desktop.native.look import (
     ACCENTS,
@@ -37,6 +38,7 @@ from desktop.native.tokens import (
     linear_rgb,
     oklab,
     oklab_from_linear,
+    oklch_of,
     type_pt,
 )
 
@@ -98,6 +100,30 @@ def test_the_category_colours_are_the_family_worked_out_from_their_hues() -> Non
         )
         held = {"light": (info["color"], info["mark"]), "dark": info["dark"], "contrast": info["contrast"]}
         assert held == worked, key
+
+
+@pytest.mark.parametrize("name", ["Dark", "Nocturne", "Ink", "Terminal"])
+def test_the_rails_homework_red_reaches_3_to_1_on_the_dark_surfaces_it_sits_on(name: str) -> None:
+    """#30: the red due dots under the mini month, and the rail's other homework marks, were 2.6 to 1
+    on Dark's cards. The rail draws a lighter red in the dark looks, 3 to 1 on the page and cards, and
+    the same hue. The category's own mark stays as it was: a lighter one is too near sports' green
+    for a deuteranope (test below)."""
+    palette = palette_for(name)
+    rail = Colours.of(palette).homework
+    low = {
+        ground: round(contrast(rail, palette[ground]), 2)
+        for ground in ("window", "panel", "field")
+        if contrast(rail, palette[ground]) < 3.0
+    }
+    assert low == {}, (name, rail, low)
+    mark = category_paint("assignments", palette)[1]
+    assert abs(oklch_of(rail)[2] - oklch_of(mark)[2]) < 3, (rail, mark)
+
+
+@pytest.mark.parametrize("name", ["Light", "Slate", "High contrast"])
+def test_the_rails_homework_red_is_the_categorys_own_in_the_light_looks(name: str) -> None:
+    palette = palette_for(name)
+    assert Colours.of(palette).homework == category_paint("assignments", palette)[1]
 
 
 @pytest.mark.parametrize("name", LOOKS)

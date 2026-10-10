@@ -2,7 +2,7 @@
 
 use ::flexweek_engine::desk::tokens::TextScale;
 use ::flexweek_engine::desk::weekview::{self, Week};
-use ::flexweek_engine::desk::{history, pomodoro, remind, tokens, update, weekmodel};
+use ::flexweek_engine::desk::{datetext, history, pomodoro, remind, tokens, update, weekmodel};
 use std::cell::RefCell;
 
 use ::flexweek_engine::{EngineError, EngineResult, ErrorKind};
@@ -205,9 +205,9 @@ fn week_planned_line(planned_min: i64, done_min: i64) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn week_due_label(due: &str) -> PyResult<String> {
-    let due = parse(due)?;
-    guard(|| weekmodel::due_label(&due).map_err(raise))
+fn week_due_label(due: &str, today: &str) -> PyResult<String> {
+    let (due, today) = (parse(due)?, datetext::day_of(today).map_err(raise)?);
+    guard(|| weekmodel::due_label(&due, today).map_err(raise))
 }
 
 #[pyfunction]
@@ -229,9 +229,45 @@ fn week_added_words(block: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn week_dated_words(title: &str, iso: &str) -> PyResult<String> {
+fn week_dated_words(title: &str, iso: &str, today: &str) -> PyResult<String> {
     let (title, iso) = (parse(title)?, parse(iso)?);
-    guard(|| weekmodel::dated_words(&title, &iso).map_err(raise))
+    let today = datetext::day_of(today).map_err(raise)?;
+    guard(|| weekmodel::dated_words(&title, &iso, today).map_err(raise))
+}
+
+/// The app's one short and one long way to write a date; `today` decides whether the year shows.
+#[pyfunction]
+fn date_day_short(date: &str, today: &str) -> PyResult<String> {
+    let (date, today) = (datetext::day_of(date), datetext::day_of(today));
+    guard(|| {
+        Ok(datetext::day_short(
+            date.map_err(raise)?,
+            today.map_err(raise)?,
+        ))
+    })
+}
+
+#[pyfunction]
+fn date_day_long(date: &str, today: &str) -> PyResult<String> {
+    let (date, today) = (datetext::day_of(date), datetext::day_of(today));
+    guard(|| {
+        Ok(datetext::day_long(
+            date.map_err(raise)?,
+            today.map_err(raise)?,
+        ))
+    })
+}
+
+#[pyfunction]
+fn date_week_range(start: &str, today: &str) -> PyResult<String> {
+    let (start, today) = (datetext::day_of(start), datetext::day_of(today));
+    guard(|| datetext::week_range(start.map_err(raise)?, today.map_err(raise)?).map_err(raise))
+}
+
+#[pyfunction]
+fn date_month_title(date: &str, short: bool) -> PyResult<String> {
+    let date = datetext::day_of(date);
+    guard(|| Ok(datetext::month_title(date.map_err(raise)?, short)))
 }
 
 #[pyfunction]
@@ -847,6 +883,10 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         week_moved_words,
         week_added_words,
         week_dated_words,
+        date_day_short,
+        date_day_long,
+        date_week_range,
+        date_month_title,
         week_build,
         week_slack_words,
         week_occurrence_minutes,

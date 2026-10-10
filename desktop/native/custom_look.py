@@ -20,7 +20,7 @@ from desktop.native.look import (
     category_paint,
     resolved_palette,
 )
-from desktop.native.wire import plain, restore
+from desktop.native.wire import plain, restore, restored
 
 # Shown when a student has not named the look yet.
 UNNAMED = "My look"
@@ -153,7 +153,7 @@ def import_look(text: str | bytes) -> Imported:
             raw = None
     look, problems = flexweek_engine.look_import(size, raw)
     return Imported(
-        None if look is None else restore(json.loads(look)),
+        None if look is None else restored(look),
         tuple(restore(problem) for problem in problems),
     )
 
@@ -169,6 +169,7 @@ class Problem:
     ratio: float
     field: tuple[str, ...]
     fixed: str
+    plural: bool = False
 
 
 def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
@@ -191,6 +192,7 @@ def readability(custom: dict, system_dark: bool = False) -> list[Problem]:
             item["ratio"],
             tuple(item["field"]),
             item["fixed"],
+            bool(item.get("plural", False)),
         )
         for item in found
     ]

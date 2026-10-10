@@ -169,6 +169,11 @@ The eleven desktop wrapper modules, plus `look.py`'s four engine helpers and `ve
 |---|---|---|---|
 | calendar | category_title | ADAPTER | encodes, makes one engine call, decodes |
 | calendar | is_series | ADAPTER | encodes, makes one engine call, decodes |
+| calendar | iso_of | STAYS | Reads the machine's date when the caller passes none; the engine never reads a clock. |
+| calendar | day_short | ADAPTER | encodes, makes one engine call, decodes |
+| calendar | day_long | ADAPTER | encodes, makes one engine call, decodes |
+| calendar | week_range | ADAPTER | encodes, makes one engine call, decodes |
+| calendar | month_title | ADAPTER | encodes, makes one engine call, decodes |
 | calendar | monday_of | ADAPTER | encodes, makes one engine call, decodes |
 | calendar | date_for_day | ADAPTER | encodes, makes one engine call, decodes |
 | calendar | sunday_due | ADAPTER | encodes, makes one engine call, decodes |

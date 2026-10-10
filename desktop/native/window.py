@@ -111,6 +111,7 @@ from desktop.native.motion import (
     hold_picture,
     motion_level,
     moves,
+    raise_pictures,
     retake_slide,
     settle,
     slide_down,
@@ -131,7 +132,7 @@ from desktop.native.reuse import (
     week_label,
 )
 from desktop.native.settings import (
-    CUSTOMISE,
+    EDIT_OWN_LOOK,
     SECTIONS,
     AboutDialog,
     AccountDialog,
@@ -162,7 +163,6 @@ from desktop.native.weekmodel import (
 )
 from desktop.native.widgets import (
     REPLAN_TIP,
-    REVEAL_ICON_PX,
     AddMenu,
     AlertStrip,
     AvailabilityDialog,
@@ -191,6 +191,7 @@ from desktop.native.widgets import (
     control_art,
     dim_window,
     drop_waiting_dim,
+    fit_buttons,
     keyboard_focus_rings,
     overdue_unfinished,
     steady_wheel,
@@ -273,7 +274,7 @@ MORE_ICONS = {
     "routinesButton": "repeat",
     "quickFocusAction": "timer",
     "openSpotify": "circle-play",
-    "replanAll": "sparkles",
+    "replanAll": "calendar-sync",
     "undoButton": "undo-2",
     "redoButton": "redo-2",
     "copyBlock": "copy",
@@ -342,9 +343,15 @@ BAR_ICON_PX = 20
 # Between the week's date and the view switcher beside it: at 6 px they ran together at Large text (#84).
 TITLE_SWITCHER_GAP = 16
 AUTH_CARD_WIDTH = 420
-# One heading on the sign-in card: a greeting there, and what the page is for when making an account.
-FIRST_GREETING = "Welcome"
-AGAIN_GREETING = "Welcome back"
+# The room a card's large shadow needs above and below it, which its holder keeps (a widget clips what
+# it holds, shadow included).
+AUTH_SHADOW_ABOVE = SHADOW_LARGE.blur - SHADOW_LARGE.y
+AUTH_SHADOW_BELOW = SHADOW_LARGE.blur + SHADOW_LARGE.y
+# One heading on the sign-in card, the same on a first launch and on a return, and what the page is for
+# when making an account.
+SIGN_IN_HEADING = "Sign in"
+# The error mark beside a wrong sign-in, in pixels.
+ERROR_ICON_PX = 16
 CREATE_HEADING = "Create your account"
 CREATE_NOTE = (
     "FlexWeek fits homework around school and sports. "
@@ -491,6 +498,8 @@ class NativeWindow(QMainWindow):
         self._views: dict[str, LayoutView] = {}
         self._entry_mode = SIGN_IN
         self._auth_mode_shown: str | None = None
+        self._auth_holder: QWidget | None = None
+        self._auth_card: QFrame | None = None
         self._updates = sanitize_updates(None)
         self._zoom: dict[str, int] = {}
         # The student's own looks, kept by name (custom_look.py); Settings will list them.
@@ -672,10 +681,14 @@ class NativeWindow(QMainWindow):
         if showing and self._auth_mode_shown not in (None, mode):
             self._clear_auth_status()
         self._auth_mode_shown = mode
-        kept = self.session.kept
-        back = kept is not None and kept.signed_in_before()
-        greeting = AGAIN_GREETING if back else FIRST_GREETING
-        self.auth_heading.setText({SIGN_IN: greeting, CREATE: CREATE_HEADING, RESET: RESET_HEADING}[mode])
+        self._lay_mode(mode)
+        self._pin_auth_height()
+
+    def _lay_mode(self, mode: str) -> None:
+        """What the card shows for `mode`, with nothing cleared and no height pinned, so the height of
+        the tallest page can be measured by laying it out and going back."""
+        headings = {SIGN_IN: SIGN_IN_HEADING, CREATE: CREATE_HEADING, RESET: RESET_HEADING}
+        self.auth_heading.setText(headings[mode])
         note = {SIGN_IN: "", CREATE: CREATE_NOTE, RESET: RESET_NOTE}[mode]
         self.auth_note.setText(note)
         self.auth_note.setVisible(bool(note))
@@ -695,6 +708,25 @@ class NativeWindow(QMainWindow):
         self.sign_in_button.setDefault(mode == SIGN_IN)
         self.create_button.setDefault(mode == CREATE)
         self.recover_button.setDefault(mode == RESET)
+
+    def _pin_auth_height(self) -> None:
+        """Hold the sign-in page's wordmark and card top where the tallest page, Create, puts them, so
+        nothing jumps between pages (#74): the card sits at the top of a holder that is always as tall
+        as the Create card, and the pages that are shorter simply end sooner."""
+        holder, card = self._auth_holder, self._auth_card
+        if holder is None or card is None:
+            return
+        shown = self._auth_mode_shown or SIGN_IN
+        self._lay_mode(CREATE)
+        card.layout().activate()
+        # What the layout will ask of the holder, which a wrapped label's minimum makes taller than the
+        # card is drawn.
+        tallest = max(
+            card.sizeHint().height(), card.minimumSizeHint().height(), card.heightForWidth(card.width())
+        )
+        self._lay_mode(shown)
+        card.layout().activate()
+        holder.setMinimumHeight(tallest + AUTH_SHADOW_ABOVE + AUTH_SHADOW_BELOW)
 
     def listen_for_instances(self, name: str) -> bool:
         server = QLocalServer(self)
@@ -738,34 +770,47 @@ class NativeWindow(QMainWindow):
                     switch_page(self._stack, page, self._motion)
                 return
 
-    def _entry_card(self, name: str) -> QVBoxLayout:
+    def _entry_card(self, name: str, pinned: bool = False) -> QVBoxLayout:
         """A page for signing in or for the recovery codes: the wordmark on the page, and under it the
         page's card in the middle of the window. The layout inside the card is returned to fill.
 
         The first screen anyone sees. Left to a plain page layout it stretched every field and button
         the full width of the window, so it read as an unstyled form with a lot of nothing under it.
+        A `pinned` page keeps its card at the top of a holder of one height (`_pin_auth_height`).
         """
         page = QWidget()
         page.setObjectName(name)
         outer = QVBoxLayout(page)
         outer.addStretch(1)
         outer.addLayout(brand_row())
-        outer.addSpacing(SPACING[4])
+        # A pinned card's holder starts above the card by the shadow's reach, so the shadow is not cut.
+        outer.addSpacing(SPACING[4] - (AUTH_SHADOW_ABOVE if pinned else 0))
         middle = QHBoxLayout()
         middle.addStretch(1)
         card = QFrame()
         card.setObjectName("authCard")
         card.setFixedWidth(AUTH_CARD_WIDTH)
-        middle.addWidget(card)
+        if pinned:
+            middle.addWidget(card, 0, Qt.AlignmentFlag.AlignTop)
+        else:
+            middle.addWidget(card)
         middle.addStretch(1)
-        outer.addLayout(middle)
+        if pinned:
+            holder = QWidget()
+            holder.setObjectName("authHolder")
+            holder.setLayout(middle)
+            middle.setContentsMargins(0, AUTH_SHADOW_ABOVE, 0, AUTH_SHADOW_BELOW)
+            outer.addWidget(holder)
+            self._auth_holder, self._auth_card = holder, card
+        else:
+            outer.addLayout(middle)
         outer.addStretch(1)
         self._entry_cards.append(card)
         self._stack.addWidget(page)
         layout = QVBoxLayout(card)
         # A frame, so the card's padding is the look's, as every card's is.
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(SPACING[2])
+        layout.setSpacing(SPACING[3])
         return layout
 
     def _link(self, words: str, name: str, layout: QVBoxLayout) -> QPushButton:
@@ -778,7 +823,7 @@ class NativeWindow(QMainWindow):
         return link
 
     def _build_auth(self) -> None:
-        layout = self._entry_card("authPage")
+        layout = self._entry_card("authPage", pinned=True)
         self.auth_heading = QLabel()
         self.auth_heading.setObjectName("authHeading")
         self.auth_heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -790,23 +835,29 @@ class NativeWindow(QMainWindow):
         self.auth_note.setWordWrap(True)
         layout.addWidget(self.auth_note)
         layout.addSpacing(SPACING[0])
+        # A hint belongs to its own field: 4 px under it, then the card's 16 before the next (#74).
         self.username = QLineEdit()
         self.username.setObjectName("username")
         self.username.setMaxLength(32)
         self.username.setPlaceholderText("Username")
         self.username.setAccessibleName("Username")
-        layout.addWidget(self.username)
+        username_box = QVBoxLayout()
+        username_box.setSpacing(SPACING[0])
+        username_box.addWidget(self.username)
         self.username_hint = QLabel(USERNAME_HINT)
         self.username_hint.setObjectName("usernameHint")
         self.username_hint.setWordWrap(True)
-        layout.addWidget(self.username_hint)
+        username_box.addWidget(self.username_hint)
+        layout.addLayout(username_box)
         self.password = PasswordField()
         self.password.setObjectName("password")
         self.password.setMaxLength(128)
         self.password.setPlaceholderText("Password")
         self.password.setAccessibleName("Password")
         self.password_reveal = self.password.reveal
-        layout.addWidget(self.password)
+        password_box = QVBoxLayout()
+        password_box.setSpacing(SPACING[0])
+        password_box.addWidget(self.password)
         # A wrong sign-in is said here, right under the box it is about, so it is read with the box.
         self.auth_error = QWidget()
         self.auth_error.setObjectName("authError")
@@ -830,11 +881,12 @@ class NativeWindow(QMainWindow):
         self.auth_why.clicked.connect(self._explain_wrong_sign_in)
         error_box.addWidget(self.auth_why, 0, Qt.AlignmentFlag.AlignLeft)
         self.auth_error.setVisible(False)
-        layout.addWidget(self.auth_error)
+        password_box.addWidget(self.auth_error)
         self.password_hint = QLabel(PASSWORD_LENGTH_HINT)
         self.password_hint.setObjectName("passwordHint")
         self.password_hint.setWordWrap(True)
-        layout.addWidget(self.password_hint)
+        password_box.addWidget(self.password_hint)
+        layout.addLayout(password_box)
         self.recovery_code = QLineEdit()
         self.recovery_code.setObjectName("recoveryCode")
         self.recovery_code.setPlaceholderText("Recovery code")
@@ -891,7 +943,6 @@ class NativeWindow(QMainWindow):
         )
         note.setWordWrap(True)
         note.setObjectName("authNote")
-        note.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(note)
         self.recovery_list = QLabel()
         self.recovery_list.setObjectName("recoveryList")
@@ -1302,8 +1353,11 @@ class NativeWindow(QMainWindow):
         self._week_page = page
         self.plan_review.setParent(page)
         self.plan_review.hide()
+        # Month's rows shrink to fit while either panel is open (#28).
+        for panel in (self.plan_review, self.unfinished_panel):
+            panel.installEventFilter(self)
         self.toast = Toast(self, self.planner)
-        self._toast_where: tuple | None = None
+        self._toast_week: str | None = None
 
     def _planner_widget(self, view: str) -> QWidget:
         """The chosen main view stands in for the week grid, and for Day and Month too.
@@ -1406,10 +1460,21 @@ class NativeWindow(QMainWindow):
         self._set_notice(f"Finished {title}.", "Undo", self._undo_from_notice)
 
     def _look_inputs(self) -> tuple[str, bool, str]:
+        system_dark = QGuiApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
+        if self.session.account is None:
+            # Nobody is signed in: the device's own look, not the last account's (#74).
+            return "system", system_dark, "default"
         pack = (self.session.preferences or {}).get("theme_pack") or "system"
         accent = (self.session.preferences or {}).get("accent") or "default"
-        system_dark = QGuiApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
         return pack, system_dark, accent
+
+    def _worn_look(self) -> dict:
+        """The look on screen: the device's own while nobody is signed in, else the one kept here."""
+        return self._look if self.session.account is not None else sanitize_look(None)
+
+    def _account_id(self) -> str | None:
+        account = self.session.account
+        return str(account["id"]) if account else None
 
     def _scene_for(self, layout_id: str) -> Scene:
         clock = clock_parts(self.session.now_ms())
@@ -1439,6 +1504,7 @@ class NativeWindow(QMainWindow):
             unsaved_weeks=session.unsaved_weeks(),
             focus=focus_now(session.focus),
             today_iso=clock["iso"],
+            account=self._account_id(),
         )
 
     def _refresh_layout(self) -> None:
@@ -1503,7 +1569,7 @@ class NativeWindow(QMainWindow):
     def _set_clock(self) -> bool:
         """Whether the clock changed. Only a change redraws the week, so this is safe to call from
         the redraw itself."""
-        changed = set_clock_24h((self.session.preferences or {}).get("clock_24h", True) is not False)
+        changed = set_clock_24h((self.session.preferences or {}).get("clock_24h", False) is True)
         if changed:
             # Every design's hours, shown or not: a redraw that finds no new blocks does not tell
             # them their labels got wider or narrower.
@@ -1651,8 +1717,10 @@ class NativeWindow(QMainWindow):
             self.password.clear()
             # Left shown on a shared computer, the next student's password would be shown too.
             self.password_reveal.setChecked(False)
+            self._apply_appearance()
             self._show_page("authPage")
             return
+        self._apply_appearance()
         if self._settings is not None and self._settings.account_id != account["id"]:
             self._discard_settings_page()
         self.account_name.setText(account["username"])
@@ -1773,6 +1841,7 @@ class NativeWindow(QMainWindow):
                 "reminder_lead_min",
                 "alarm_tone",
                 "default_spotify_url",
+                "clock_24h",
             ):
                 if key in answer:
                     updates[key] = answer[key]
@@ -1900,9 +1969,10 @@ class NativeWindow(QMainWindow):
             self.hand.cancel()
         if not self.hand.busy:
             self._shown = self._where()
-        if self._where() != self._toast_where:
-            # Another view, week, day or design: what the toast said was about where the student was.
-            self._toast_where = self._where()
+        if self.session.week_start != self._toast_week:
+            # Another week: Undo applies to the week where the change was saved, so a toast still
+            # offering it would offer nothing. Another view, day or design keeps it.
+            self._toast_week = self.session.week_start
             self.toast.hide()
         if self.unfinished_panel.isVisible():
             # A row deleted, planned or finished leaves the list, and an Undo brings it back.
@@ -1927,6 +1997,7 @@ class NativeWindow(QMainWindow):
         self.month_grid.set_month(
             self.session.month_data, self.session.dirty,
             datetime.fromtimestamp(self.session.now_ms() / 1000).date().isoformat(),
+            self._account_id(),
         )
         opened = (self.session.planner_view, self.session.selected_month, self.session.month_data is not None)
         if opened[0] == "month" and opened[2] and opened != self._month_revealed:
@@ -2051,7 +2122,7 @@ class NativeWindow(QMainWindow):
         # A month that arrives while it is still sliding in: its picture is taken again once the
         # month has scrolled to its first row, which is a turn of the event loop after this.
         if sliding_in(self.planner):
-            QTimer.singleShot(0, self._retake_slide)
+            QTimer.singleShot(0, self, self._retake_slide)
         self._finish_turn(turn)
 
     def _retake_slide(self) -> None:
@@ -2228,11 +2299,12 @@ class NativeWindow(QMainWindow):
             for piece in self._turn_pieces()
         }
 
-    def _begin_turn(self) -> tuple[QLabel, dict, int, QLabel | None, str, str] | None:
+    def _begin_turn(self) -> tuple[QLabel, dict, int, str] | None:
         """Before another view, My day or another design is shown: a picture of everything under the
         top bar, where each part of it was, and which way the segments go, so the new page, with its
         chrome and colours, fades through in one frame once it is built (decisions 28 and 29). In
-        Retro, Month is not faded to but slid in over the dimmed desk, as Settings is (J17)."""
+        Retro, Month is not faded to but slid in over the dimmed desk, as Settings is (J17). The title
+        is in the top bar, outside the picture, and changes at once."""
         was, now = self._planner_shown, self._planner_now()
         self._planner_shown = now
         page = self._week_page
@@ -2244,9 +2316,6 @@ class NativeWindow(QMainWindow):
         picture = hold_picture(page, self._motion, QRect(0, top, page.width(), page.height() - top))
         if picture is None:
             return None
-        # The title is in the top bar, outside the picture: it changes with the page, not a frame early.
-        title = self.week_title
-        title_picture = hold_picture(title.parentWidget(), self._motion, title.geometry(), beside=True)
         direction = 0
         # Day, Week and Month slide toward the segment chosen; My day and a new design only fade.
         if not was[0] and not now[0] and was[2:] == now[2:] and {was[1], now[1]} <= set(VIEW_ORDER):
@@ -2255,24 +2324,25 @@ class NativeWindow(QMainWindow):
         over = ""
         if direction and now[2] == "retro" and "month" in (was[1], now[1]) and moves(self._motion):
             over = "back" if was[1] == "month" else "in"
-        return picture, self._places(), direction, title_picture, title.full_text(), over
+        return picture, self._places(), direction, over
 
-    def _finish_turn(self, turn: tuple[QLabel, dict, int, QLabel | None, str, str] | None) -> None:
-        """The new page is built and dressed: what changed fades through to it, the title with it. The
-        parts that stayed where they were are left out of the picture, so they neither blink nor
-        drift."""
+    def _finish_turn(self, turn: tuple[QLabel, dict, int, str] | None) -> None:
+        """The new page is built and dressed: what changed fades through to it. The parts that stayed
+        where they were are left out of the picture, so they neither blink nor drift. When the rail
+        comes or goes the whole page moves sideways, so it slides as Settings does rather than jump
+        (#29), which also keeps a panel from being drawn at both of its places."""
         if turn is None:
             return
-        picture, before, direction, title_picture, title_was, over = turn
-        if title_picture is not None and self.week_title.full_text() != title_was:
-            fade_through(title_picture, [self.week_title], self._motion)
-        elif title_picture is not None:
-            title_picture.deleteLater()
+        picture, before, direction, over = turn
         self._week_page.layout().activate()
+        # A piece that changed parent (the timer from the rail to the column) came up over the picture.
+        raise_pictures(self._week_page)
+        after = self._places()
+        if not over and moves(self._motion) and (before[self.rail] is None) != (after[self.rail] is None):
+            over = "in" if after[self.rail] is None else "back"
         if over:
             slide_view(self._week_page, picture, self.planner, self._motion, back=over == "back")
             return
-        after = self._places()
         changed = [piece for piece in self._turn_pieces() if before[piece] != after[piece]]
         area = before[self.planner] or QRect()
         for piece in changed:
@@ -2337,11 +2407,15 @@ class NativeWindow(QMainWindow):
     def _run_sheet(self, dialog: QDialog) -> bool:
         """Open a sheet and wait for it. Once it is closed the keyboard is back on the week, not on the
         button that opened it."""
+        # What the student pressed in the sheet says nothing about the week: the ring comes back only if
+        # the keyboard, not the pointer, took them to the sheet.
+        keyboard = self._last_input.keyboard
         try:
             accepted = dialog.exec() == QDialog.DialogCode.Accepted
         finally:
             # A dim made for this sheet that it never took, because it could not open.
             drop_waiting_dim(self)
+        self._last_input.keyboard = keyboard
         self._focus_week()
         return accepted
 
@@ -2377,6 +2451,21 @@ class NativeWindow(QMainWindow):
                 self.session.recover_missed(holder["id"], day)
                 return
         self.session.save()
+        self._keyboard_to_new_block(before)
+
+    def _keyboard_to_new_block(self, before: set[str]) -> None:
+        """A block the sheet made is where the keyboard goes on the week, on the day the spot was on if the
+        block is there."""
+        made = next(
+            (item for item in self.session.blocks if item["id"] not in before and item.get("days")), None
+        )
+        surfaces = self._week_surfaces()
+        if made is None or not surfaces or not made.get("start"):
+            return
+        spot = surfaces[0].focus_slot()
+        day = spot[0] if spot is not None and spot[0] in made["days"] else made["days"][0]
+        placed = (made["id"], day, hhmm_to_minutes(made["start"]))
+        self._focus_week(placed)
 
     def _commit_homework(self, dialog: HomeworkDialog, days: list[int] | None = None) -> None:
         if not self._run_sheet(dialog):
@@ -2658,7 +2747,8 @@ class NativeWindow(QMainWindow):
             self.session._say("Not moved: your last change has not saved yet. Try again once it has.")
             return
         if self.session.move_to_date(change.block_id, change.from_iso, change.to_iso):
-            self._say_when_saved(dated_words(self._title_of(change.block_id, change.from_iso), change.to_iso))
+            title = self._title_of(change.block_id, change.from_iso)
+            self._say_when_saved(dated_words(title, change.to_iso, self._today()))
 
     def _title_of(self, block_id: str, iso: str) -> str:
         """A block's title, from this week or, for a chip from another week, from what Month shows."""
@@ -2674,7 +2764,7 @@ class NativeWindow(QMainWindow):
         for view in self._views.values():
             view.hold(holding)
         if not holding:
-            QTimer.singleShot(0, self._refresh_after_hold)
+            QTimer.singleShot(0, self, self._refresh_after_hold)
 
     def _refresh_after_hold(self) -> None:
         if self.session.account is not None and not self.hand.busy:
@@ -3417,8 +3507,8 @@ class NativeWindow(QMainWindow):
                 "clock",
             ),
             # Settings' pages by what they hold: "look" found nothing (Grok Bot's 0.17.0 audit, X1).
-            Command("settings:0", "Look and colours", "Look, accent and design", "Settings", "palette"),
-            Command("customise", f"{CUSTOMISE}…", "Make a look of your own", "Settings", "swatch-book"),
+            Command("settings:0", "Look", "Look, accent and design", "Settings", "palette"),
+            Command("customise", EDIT_OWN_LOOK, "Make a look of your own", "Settings", "swatch-book"),
             Command("settings:1", "Planning settings", "How homework gets a time", "Settings", "calendar"),
             Command("settings:2", "Focus settings", "The focus timer's lengths", "Settings", "timer"),
             Command("settings:3", "Alerts", "Reminders, alarms and sounds", "Settings", "bell"),
@@ -3634,17 +3724,19 @@ class NativeWindow(QMainWindow):
     def _layout_plan_review(self) -> None:
         """The plan bar floats over the planner, under the panels above it, without pushing them."""
         host = self._week_page
-        anchor = self._column
-        top_left = anchor.mapTo(host, QPoint(0, 0))
-        top = top_left.y()
+        # The column is a layout, so its rectangle is already in the page's coordinates.
+        anchor = self._column.geometry()
+        top = anchor.top()
         for piece in (self.focus_panel, self.unfinished_panel):
             if piece.isVisibleTo(host):
                 top = max(top, piece.mapTo(host, QPoint(0, piece.height())).y())
         width = anchor.width()
         self.plan_review.setFixedWidth(width)
         height = self.plan_review.sizeHint().height()
-        self.plan_review.setGeometry(top_left.x(), top, width, height)
+        self.plan_review.setGeometry(anchor.left(), top, width, height)
         self.plan_review.raise_()
+        # Raised over everything, it would be drawn over a picture sliding or fading across the page.
+        raise_pictures(host)
 
     def _maybe_prepare_settings(self) -> None:
         if (
@@ -3954,7 +4046,7 @@ class NativeWindow(QMainWindow):
                     self,
                     "Replace week",
                     "Replace blocks in "
-                    + week_label(self.session.week_start)
+                    + week_label(self.session.week_start, self._today())
                     + " with the import? Other weeks stay untouched.",
                 )
                 if answer != QMessageBox.StandardButton.Yes:
@@ -4043,21 +4135,22 @@ class NativeWindow(QMainWindow):
         (decision 3 of 0.17). When the design dressed the chrome, three accents were on screen before
         a student had placed any homework."""
         pack, system_dark, accent = self._look_inputs()
+        look = self._worn_look()
         # Blocks and month cells are painted per item, which a stylesheet cannot reach.
-        palette = resolved_palette(pack, system_dark, self._look, accent)
+        palette = resolved_palette(pack, system_dark, look, accent)
         art = control_art(palette)
-        sheet = pack_stylesheet(pack, system_dark, self._look, accent, palette, art)
-        ctx = context_for(self._layout, self._look, palette, sheet)
+        sheet = pack_stylesheet(pack, system_dark, look, accent, palette, art)
+        ctx = context_for(self._layout, look, palette, sheet)
         heroes = ("settingsTitle", "sheetTitle", "setupTitle", "authBrand")
-        extra = extra_stylesheet(sheet, ctx.feel, palette, ctx.tokens, self._look, heroes)
+        extra = extra_stylesheet(sheet, ctx.feel, palette, ctx.tokens, look, heroes)
         page = self._page_palette(palette)
         page_sheet = ""
         if page is not None:
-            page_sheet = pack_stylesheet(pack, system_dark, self._look, accent, page, control_art(page))
+            page_sheet = pack_stylesheet(pack, system_dark, look, accent, page, control_art(page))
         chips = bool((self.session.preferences or {}).get("accent_chips"))
         chosen_motion = (self.session.preferences or {}).get("motion")
-        self._motion = motion_level(chosen_motion, look_motion(self._look))
-        dressed = (sheet, repr(self._look), repr(palette), chips, self._motion, ctx.feel.key)
+        self._motion = motion_level(chosen_motion, look_motion(look))
+        dressed = (sheet, repr(look), repr(palette), chips, self._motion, ctx.feel.key)
         # Every change to the week comes through here. Restyling the whole window each time, when the
         # look had not changed, cost about 26 ms a change and repainted everything on screen.
         set_current(ctx)
@@ -4069,14 +4162,15 @@ class NativeWindow(QMainWindow):
             self.toast.motion = self._motion
             self.command_bar.motion = self._motion
             self._dress_overlays(palette)
-            self.week_table.set_look(self._look, palette)
-            self.day_view.set_look(self._look, palette)
-            self.rail.set_look(self._look, palette)
+            self.week_table.set_look(look, palette)
+            self.day_view.set_look(look, palette)
+            self.rail.set_look(look, palette)
             self.month_grid.set_palette(palette)
             self.add_menu.set_palette(palette, chips)
-            self._dress_entry(palette)
+            self._dress_entry(palette, look)
             self.setup_page.set_palette(palette)
             self._dress_feel(ctx, sheet, extra)
+            fit_buttons(self)
         if page_sheet != self._page_sheet:
             # The planner holds the design's page and nothing of the chrome.
             self._page_sheet = page_sheet
@@ -4102,21 +4196,22 @@ class NativeWindow(QMainWindow):
             root.setStyleSheet(sheet + extra if extra else "")
             apply_feel(root, ctx)
 
-    def _dress_entry(self, palette: dict) -> None:
+    def _dress_entry(self, palette: dict, look: dict) -> None:
         """The eye in the muted text colour, and the sign-in and recovery cards lifted off the page
         with the large shadow, unless the look's shadows are flat or drawn as hard edges."""
         for field in (self.password, self.new_recovery_password):
             field.set_colour(palette["muted"])
-        self.auth_error_icon.setPixmap(icons.pixmap("triangle-alert", palette["error"], REVEAL_ICON_PX))
-        knobs = effective_look(self._look)
+        self.auth_error_icon.setPixmap(icons.pixmap("triangle-alert", palette["error"], ERROR_ICON_PX))
+        knobs = effective_look(look)
         soft = knobs["depth"] == "soft"
         for card in self._entry_cards:
             # As wide as its words: a card sized for Normal text cut Large text's lines short.
-            card.setFixedWidth(round(AUTH_CARD_WIDTH * text_scale(self._look)))
+            card.setFixedWidth(round(AUTH_CARD_WIDTH * text_scale(look)))
             if soft:
                 lift(card, SHADOW_LARGE, palette["axis"] == "dark")
             else:
                 card.setGraphicsEffect(None)
+        self._pin_auth_height()
 
     def _dress_overlays(self, palette: dict) -> None:
         """What a style sheet cannot reach in the focus screen, the toast, Ctrl+K and the menus: the
@@ -4359,6 +4454,13 @@ class NativeWindow(QMainWindow):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
         if event.type() == QEvent.Type.Resize and watched in (self.week_table, self.day_view):
             self._center_empty_card()
+        if event.type() in (QEvent.Type.Show, QEvent.Type.Hide) and watched in (
+            self.plan_review,
+            self.unfinished_panel,
+        ):
+            self.month_grid.set_tight(
+                any(panel.isVisibleTo(self._week_page) for panel in (self.plan_review, self.unfinished_panel))
+            )
         if event.type() != QEvent.Type.KeyPress:
             return super().eventFilter(watched, event)
         if isinstance(watched, EDITABLE):

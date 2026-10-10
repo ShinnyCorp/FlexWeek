@@ -2,6 +2,7 @@ pub mod calendar;
 pub mod clipboard;
 mod cmath;
 pub mod custom_look;
+pub mod datetext;
 pub mod files;
 pub mod focus;
 pub mod grid;

@@ -172,7 +172,7 @@ def test_the_day_screen_reads_the_real_week_at_the_real_minute(
     click(window, "viewMyDay")
     view = window.planner.currentWidget()
     said = tuple(view.findChild(QLabel, name).text() for name in ("oneLabel", "oneTitle", "oneLine"))
-    assert said == ("Now", "History essay", "18:45–19:45")
+    assert said == ("Now", "History essay", "6:45–7:45 PM")
 
 
 def test_homework_finished_finishes_it_the_way_the_product_does(
@@ -2257,29 +2257,29 @@ def test_a_new_view_is_live_at_once_while_the_old_one_fades(qapp: QApplication, 
     at_level(window, "normal")
     title = window.week_title
     week_title = title.full_text()
-    click(window, "viewMonth")
-    month = window._planner_widget("month")
-    assert window.planner.currentWidget() is month
+    click(window, "viewDay")
+    day = window._planner_widget("day")
+    assert window.planner.currentWidget() is day
     assert title.full_text() != week_title
-    over_title = [picture for picture in _fades(window) if picture.geometry().topLeft() == title.pos()]
-    assert len(_fades(window)) == 2 and len(over_title) == 1, "the page and, over the new title, the old one"
-    assert title.graphicsEffect() is not None, "the new title comes in through a fade of its own"
-    assert title.graphicsEffect().opacity == 0, "and the new title comes in with the page, not a frame early"
-    effect = month.graphicsEffect()
-    assert effect.opacity == 0, "Month starts under the week, which is still there"
-    assert effect.offset.x() > 0, "and comes in from the right, where its segment is"
+    assert len(_fades(window)) == 1, "the old page only: the title has no picture of its own"
+    assert title.graphicsEffect() is None, "the new title is not faded: both were seen overlapping"
+    effect = day.graphicsEffect()
+    assert effect.opacity == 0, "Day starts under the week, which is still there"
+    assert effect.offset.x() < 0, "and comes in from the left, where its segment is"
     faded_in()
     assert title.graphicsEffect() is None
-    assert _fades(window) == [] and month.graphicsEffect() is None
-    click(window, "viewDay")
-    assert window.planner.currentWidget().graphicsEffect().offset.x() < 0, "Day comes in from the left"
+    assert _fades(window) == [] and day.graphicsEffect() is None
+    click(window, "viewWeek")
+    assert window.planner.currentWidget().graphicsEffect().offset.x() > 0, "Week comes in from the right"
+    faded_in()
 
 
 def test_my_day_changes_its_chrome_and_its_page_in_the_same_frame(
     qapp: QApplication, window: NativeWindow
 ) -> None:
     """Decision 29 of 0.17: the planning chrome and the rail went at once while the old week still
-    faded, so for a moment neither page was on screen as it is."""
+    faded, so for a moment neither page was on screen as it is. With the rail going, the week stays
+    under the picture of itself while My day slides in over it (0.18.5 #29)."""
     at_level(window, "normal")
     page = window._week_page
     top = window._top_bar.geometry().bottom() + 1
@@ -2289,7 +2289,7 @@ def test_my_day_changes_its_chrome_and_its_page_in_the_same_frame(
     click(window, "viewMyDay")
     assert not window.rail.isVisible() and not window.plan_chrome.isVisible()
     assert page.grab(under_bar).toImage() == before, "the first frame is still the week, rail and all"
-    assert window.planner.currentWidget().graphicsEffect().opacity == 0
+    assert window.planner.currentWidget().graphicsEffect() is None, "My day does not fade, it slides over"
     faded_in()
     assert _fades(window) == []
     assert page.grab(under_bar).toImage() != before
@@ -2886,7 +2886,7 @@ def test_study_hours_can_be_kept_for_one_subject(qapp: QApplication) -> None:
     dialog._open_picker(kind="study", day=0)
     dialog.picker_end.setTime(QTime(15, 0))
     dialog.picker_add.click()
-    assert dialog.error.text() == "End must be after Start."
+    assert dialog.error.text() == "End needs to be later than Start (16:00)."
     assert len(dialog.work_windows()) == 1
     dialog.deleteLater()
 
@@ -3007,3 +3007,29 @@ def test_mission_counts_focus_minutes_while_a_session_runs(qapp: QApplication, w
     qapp.processEvents()
     assert plain(mission.findChild(QLabel, "missionFocusValue")) == "4 min"
     assert plain(mission.findChild(QLabel, "missionFocusLine")) == "Focus paused"
+
+
+def test_month_fits_a_1024_by_640_window_with_the_unfinished_card_open(
+    qapp: QApplication, window: NativeWindow
+) -> None:
+    """#28: with the panel above it open, Month's last row was half cut and a scroll bar showed."""
+    window.resize(1024, 640)
+    window.show()
+    click(window, "viewMonth")
+    settled(qapp, window)
+    wait_until(qapp, lambda: window.month_grid.canvas.rows() > 1)
+    window.unfinished_panel.set_items(
+        [{"id": "old", "title": "Old", "remaining_min": 60, "due": "2020-01-01T10:00"}]
+    )
+    wait_until(qapp, lambda: window.unfinished_panel.isVisible())
+    for _ in range(5):
+        qapp.processEvents()
+    grid = window.month_grid
+    canvas, view = grid.canvas, grid.scroll.viewport().height()
+    assert window.unfinished_panel.isVisible()
+    assert grid.scroll.verticalScrollBar().maximum() == 0, "no scroll bar"
+    last = canvas.cell_rect((canvas.rows() - 1) * 7)
+    assert last.bottom() <= view, f"the last row ends at {last.bottom():.0f} in a view of {view}"
+    window.unfinished_panel.hide()
+    wait_until(qapp, lambda: not window.unfinished_panel.isVisible())
+    assert canvas.cell_rect(0).height() >= canvas.least_row(), "closed, the rows are their full size again"

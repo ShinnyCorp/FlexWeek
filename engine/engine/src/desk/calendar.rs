@@ -157,7 +157,7 @@ pub static CATEGORIES: [(&str, CategoryInfo); 8] = [
     (
         "class",
         CategoryInfo {
-            icon: Some("house"),
+            icon: Some("school"),
             label: "School",
             hue: 250,
             color: "#cfe8ff",

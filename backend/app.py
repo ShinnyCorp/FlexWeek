@@ -481,8 +481,10 @@ class Preferences(BaseModel):
     )
     # Minutes a dragged, resized or drawn block moves by. Typed times are any minute either way.
     drag_step_min: Literal[5, 15] = Field(default=5, exclude_if=lambda value: value == 5)
-    # Times on screen as 16:00 or as 4:00 PM. Stored and sent as HH:MM either way.
-    clock_24h: bool = Field(default=True, exclude_if=lambda value: value is True)
+    # Times on screen as 16:00 or as 4:00 PM. Stored and sent as HH:MM either way. 12-hour for a
+    # new account; an account from before 0.18.5 that never chose is stamped 24-hour when the store
+    # opens.
+    clock_24h: bool = Field(default=False, exclude_if=lambda value: value is False)
     setup: SetupProgress | None = Field(default=None, exclude_if=lambda value: value is None)
 
     _spotify_url = field_validator("default_spotify_url")(valid_spotify_url)
@@ -604,6 +606,19 @@ class TransferSnapshot(BaseModel):
     routines: list[TransferRoutine] = Field(max_length=50)
 
     _exported_at = field_validator("exported_at")(valid_naive_stamp)
+
+    @model_validator(mode="before")
+    @classmethod
+    def clock_of_an_older_export(cls, data: object) -> object:
+        """Before 0.18.5 a 24-hour clock was left out of the file, and 12-hour is the new default.
+        The export writes the clock whichever it is, so a file without one is from before."""
+        if (
+            isinstance(data, dict)
+            and isinstance(data.get("preferences"), dict)
+            and "clock_24h" not in data["preferences"]
+        ):
+            data = {**data, "preferences": {**data["preferences"], "clock_24h": True}}
+        return data
 
     @field_validator("username")
     @classmethod
@@ -1277,7 +1292,11 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 "username": account["username"],
                 **capture_transfer(db, account["id"]),
             }
+        # A stored 12-hour clock is left off the wire, but the file says it, as the snapshot's
+        # validator reads a missing clock as an export from before 0.18.5.
+        payload["preferences"].setdefault("clock_24h", False)
         snapshot = TransferSnapshot.model_validate(payload).model_dump()
+        snapshot["preferences"].setdefault("clock_24h", False)
         if not transfer_fits(snapshot):
             raise HTTPException(413, TRANSFER_TOO_LARGE)
         return snapshot

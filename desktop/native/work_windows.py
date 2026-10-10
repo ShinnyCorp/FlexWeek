@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.native.fields import DayPicker
-from desktop.native.weekmodel import hhmm_text
+from desktop.native.weekmodel import end_after_start_words, hhmm_text
 
 START_TIMES = tuple(f"{minute // 60:02d}:{minute % 60:02d}" for minute in range(0, 1440, 15))
 END_TIMES = tuple(f"{minute // 60:02d}:{minute % 60:02d}" for minute in range(15, 1441, 15))
@@ -126,7 +126,7 @@ class _WorkWindowRow(QFrame):
     def problem(self) -> str | None:
         start = self.start.currentData()
         end = self.end.currentData()
-        problem = "End must be after Start." if end <= start else None
+        problem = end_after_start_words(self.start.currentText()) if end <= start else None
         self.end_error.setText(problem or "")
         self.end_error.setVisible(problem is not None)
         return problem

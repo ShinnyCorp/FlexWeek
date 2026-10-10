@@ -23,7 +23,12 @@ Checksum files (`.sha256`) sit next to those downloads if you want to confirm th
 
 **Chromebooks.** Not supported. FlexWeek is a Windows and Linux desktop app; there is no web version.
 
-Open FlexWeek. The first screen is Sign in; choose "New here? Create an account" under it, then follow setup a page at a time: a style, your week, how homework gets a time, reminders and the alarm sound, and your first homework. You can skip any page.
+## First run
+
+1. Open FlexWeek. The first screen is Sign in. Choose "New here? Create an account" under it and pick a username and a password. The account and your week are saved on this computer; nothing is sent anywhere.
+2. Save the recovery codes FlexWeek shows next. One of them resets your password if you forget it.
+3. Setup goes a page at a time: a style, your week (school and other fixed times), how homework gets a time, reminders and the alarm sound, and your first homework. You can skip any page and change all of it later in Settings (the gear).
+4. Press Plan my homework. FlexWeek places each homework around the fixed times and says, in plain words, anything it could not place or had to move. Drag a block to move it yourself; Undo puts it back.
 
 ### Linux libraries
 
@@ -184,9 +189,19 @@ ICU (`icuuc`/`icuin`) is part of Windows 10 1809+; the bundle check requires
 those imports to be satisfied without copying Microsoft's DLLs. The saved
 theme names `nocturne` and `slate` come from Daily Scheduler (the GPL-3.0
 `Local-Schedule-Assistant` project); the hybrid frost colors replaced its
-palette in September 2026. AI assistance was used in development,
-including Codex and GLM-5.3 Flash test contribution; the runtime uses no AI
-service.
+palette in September 2026.
+
+AI assistance was used throughout development. These models wrote, reviewed
+or checked code, tests and documents under j0nsh1n's direction, who decided
+what was built and checked what shipped:
+- Claude (Anthropic): Opus 5 and 5.5, Fable 5.1, Sonnet 5.5, Haiku 5.5.
+- Grok 4.6 and 4.7 (xAI) and Composer 2.5, through Cursor.
+- ChatGPT and Codex (OpenAI): GPT-6.1 Sol, GPT-6 Luna.
+- GLM-5.3 Flash (Z.ai), through OpenCode.
+- TypeSafe's Jev and Laya: small typed-decision models used for checks of
+  wording and documents.
+
+The app itself uses no AI service.
 
 The original Sep 6 contest brief (working title Reslot) is in
 [docs/cac-build-plan.md](docs/cac-build-plan.md). The living schedule is the
@@ -194,4 +209,7 @@ The original Sep 6 contest brief (working title Reslot) is in
 
 Submit by Sunday, October 25, 2026, 8:00 p.m. PDT.
 
-License: GPL-3.0. Contributor listing is pending completion before submission.
+License: GPL-3.0.
+
+Contributors: j0nsh1n (design, development and direction) and
+maruzenskymambo (ideas).

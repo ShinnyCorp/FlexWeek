@@ -37,15 +37,16 @@ def running_late_says(
     return said[0], asked
 
 
+@pytest.mark.parametrize("twenty_four", [True, False])
 @pytest.mark.parametrize(
-    ("now", "words", "from_start"),
+    ("now", "start_24", "start_12", "from_start"),
     [
-        ("22:56", "Starting from 23:00 today (Thursday).", (23, 0)),
-        ("22:46", "Starting from 23:00 today (Thursday).", (23, 0)),
-        ("22:45", "Starting from 22:45 today (Thursday).", (22, 45)),
-        ("22:45:30", "Starting from 22:45 today (Thursday).", (22, 45)),
-        ("22:01", "Starting from 22:15 today (Thursday).", (22, 15)),
-        ("23:50", "Starting from 23:45 today (Thursday).", (23, 45)),
+        ("22:56", "23:00", "11:00 PM", (23, 0)),
+        ("22:46", "23:00", "11:00 PM", (23, 0)),
+        ("22:45", "22:45", "10:45 PM", (22, 45)),
+        ("22:45:30", "22:45", "10:45 PM", (22, 45)),
+        ("22:01", "22:15", "10:15 PM", (22, 15)),
+        ("23:50", "23:45", "11:45 PM", (23, 45)),
     ],
 )
 def test_running_late_starts_from_the_next_quarter_hour(
@@ -53,10 +54,14 @@ def test_running_late_starts_from_the_next_quarter_hour(
     window: NativeWindow,
     monkeypatch: pytest.MonkeyPatch,
     now: str,
-    words: str,
+    start_24: str,
+    start_12: str,
     from_start: tuple[int, int],
+    twenty_four: bool,
 ) -> None:
+    window.session.preferences = {**(window.session.preferences or {}), "clock_24h": twenty_four}
+    window._sync_chrome()
     hold_clock(window, THURSDAY, now)
     said, asked = running_late_says(qapp, window, monkeypatch)
-    assert said == words
+    assert said == f"Starting from {start_24 if twenty_four else start_12} today (Thursday)."
     assert asked == [from_start], "the preview is asked for the start the words name"

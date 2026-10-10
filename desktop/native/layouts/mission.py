@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from backend.models import due_sort_key
 from desktop.native import icons
-from desktop.native.calendar import DAY_FULL, DAYS, category_icon
+from desktop.native.calendar import DAY_FULL, DAYS, category_icon, day_long, day_short
 from desktop.native.fonts import at_scale
 from desktop.native.hours.canvas import (
     BOOK,
@@ -51,6 +51,7 @@ from desktop.native.hours.canvas import (
     Drawn,
     HoursCanvas,
     block_layout,
+    book_px,
 )
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.geometry import Axis, LinearTrack, overlap_columns
@@ -401,7 +402,7 @@ class MissionPainter(BlockPainter):
         top = rect.top() + 8
         icon_paint = None
         if category_icon(drawn.category) is not None:
-            size = round(QFontMetricsF(self.fonts(painter.font())[0]).ascent())
+            size = book_px(QFontMetricsF(self.fonts(painter.font())[0]))
             fill, ink, _outline, edge = self.fills(drawn)
             colour = self._book_colour(drawn, ink, fill, edge) or ink
             at = QPointF(rect.center().x() - size / 2, top)
@@ -475,7 +476,7 @@ class MissionPainter(BlockPainter):
         """No words: the category keeps its icon at the top of the block."""
         if category_icon(drawn.category) is None:
             return []
-        size = round(QFontMetricsF(self.fonts(painter.font())[0]).ascent())
+        size = book_px(QFontMetricsF(self.fonts(painter.font())[0]))
         if rect.width() < size + 4:
             return []
         colour = self._book_colour(drawn, ink, fill or self.c("window"), edge)
@@ -1426,11 +1427,11 @@ class MissionView(LayoutView):
 
 
 def _due_day(due: str | None, short: bool = False) -> str:
-    """When homework is due, as the table says it: "Sunday 27", or "Sun 27" in a column."""
+    """When homework is due: "Sunday 27 September", or "Sun 27 Sep" in a column."""
     if not due:
         return ""
     day = date.fromisoformat(due[:10])
-    return f"{(DAYS if short else DAY_FULL)[day.weekday()]} {day.day}"
+    return day_short(day) if short else day_long(day)
 
 
 def _detach(layout: QLayout, widget: QWidget) -> bool:

@@ -9,7 +9,7 @@
  {
   "file": "desktop/native/widgets.py",
   "name": "the plan bar hides why something has no time",
-  "old": "        self.details.setChecked(bool(waiting))\n        self._show_details(bool(waiting))\n",
+  "old": "        self.details.setChecked(open_list)\n        self._show_details(open_list)\n",
   "new": "        self.details.setChecked(False)\n        self._show_details(False)\n",
   "test": "desktop/tests/test_plan_review.py::test_the_panel_shows_the_count_and_can_be_dismissed"
  },

@@ -8,8 +8,8 @@ use flexweek_engine::desk::clipboard;
 use flexweek_engine::desk::grid::{due_day_of, first_plannable_day as first_day};
 use flexweek_engine::desk::planning;
 use flexweek_engine::desk::reuse::{
-    MAX_WEEK_BLOCKS, copied_fixed_block, copied_homework_block, restore_point_label,
-    running_late_refusal,
+    MAX_WEEK_BLOCKS, copied_fixed_block, copied_homework_block, planner_title, restore_point_label,
+    running_late_refusal, week_label,
 };
 use flexweek_engine::time::SLOT_MIN;
 use serde_json::{Map, Value, json};
@@ -1001,4 +1001,53 @@ fn test_planning_an_old_week_still_asks_the_solver_for_unplaced_homework() {
     assert_eq!(held["school"]["start"], "08:00");
     assert_eq!(held["s-essay"]["kind"], "flexible");
     assert!(held["s-essay"].get("start").is_none());
+}
+
+fn title(week: &str, view: &str, short: bool, day: Option<&str>, today: &str) -> String {
+    planner_title(week, None, None, view, short, day, &mut || {
+        Ok(today.to_string())
+    })
+    .expect("title")
+}
+
+#[test]
+fn test_the_planner_title_follows_the_one_date_format() {
+    let week = "2026-09-28";
+    assert_eq!(
+        title(week, "week", false, None, "2026-10-09"),
+        "28 Sep – 4 Oct"
+    );
+    assert_eq!(
+        title(week, "day", false, Some("2026-10-01"), "2026-10-09"),
+        "Thursday 1 October"
+    );
+    assert_eq!(
+        title(week, "day", true, Some("2026-10-01"), "2026-10-09"),
+        "Thu 1 Oct"
+    );
+    assert_eq!(
+        title(week, "day", false, Some("2027-01-08"), "2026-10-09"),
+        "Friday 8 January 2027"
+    );
+    assert_eq!(
+        title(week, "myday", false, None, "2026-10-09"),
+        "Friday 9 October"
+    );
+    assert_eq!(
+        title(week, "month", false, Some("2026-10-01"), "2026-10-09"),
+        "October 2026"
+    );
+    assert_eq!(
+        title(week, "month", true, Some("2026-10-01"), "2026-10-09"),
+        "Oct 2026"
+    );
+}
+
+#[test]
+fn test_a_week_label_names_the_week_by_its_range_not_its_iso_date() {
+    let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a date");
+    assert_eq!(
+        week_label("2026-09-28", today).expect("label"),
+        "Week of 28 Sep – 4 Oct"
+    );
 }

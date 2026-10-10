@@ -62,7 +62,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from desktop.native import icons
-from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS, category_icon
+from desktop.native.calendar import CATEGORIES, DAY_FULL, DAYS, category_icon, day_short
 from desktop.native.fonts import at_scale, caption, time_font, weighted
 from desktop.native.hours.canvas import (
     BOOK,
@@ -71,6 +71,7 @@ from desktop.native.hours.canvas import (
     BlockPainter,
     Drawn,
     HoursCanvas,
+    book_px,
     name_kept,
     word_elide,
 )
@@ -160,6 +161,8 @@ DRAG_LEAST = 40
 DAY_FROM, DAY_TO = 8 * 60, 22 * 60
 # A block this short on the card in front says nothing; the mock-up's one line starts here.
 LINE_LEAST = 15
+# Clear kept between a block and the name written beside it, and from the lane's edges.
+SLIVER_PAD = 5
 TOP_LEFT = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
 
 
@@ -363,6 +366,9 @@ class ClayPainter(BlockPainter):
         # measured on: a block that reads there reads here at the same length.
         self.share = share
         self.dark = family(tokens) == "dark"
+        # Blocks too short or too narrow to hold their words, which the canvas has named by the end of
+        # a paint, once every block is down and nothing is drawn over a label.
+        self.owed: list[tuple[Drawn, QRectF, QRectF]] = []
 
     def background(self, painter: QPainter, rect: QRectF) -> None:
         """Nothing: the clay card under the hours is the row's."""
@@ -451,11 +457,11 @@ class ClayPainter(BlockPainter):
         width = rect.width() - left - right
         tall = rect.height() - top - 3
         homework = category_icon(drawn.category) is not None
-        book = round(tm.ascent())
+        book = book_px(tm)
         indent = book + 4 if homework else 0
-        too_short = rect.height() + BETWEEN < (LINE_LEAST * scale + BETWEEN) * self.share
         least = tm.horizontalAdvance(drawn.title.strip()[:3])
-        if too_short or width < least:
+        if self._too_short(rect, scale) or width < least:
+            self.owed.append((drawn, rect, visible))
             return []
         written = []
         paper = fill if fill is not None else self.c("window")
@@ -541,6 +547,58 @@ class ClayPainter(BlockPainter):
             written.append(QRectF(at_book.x(), at_book.y(), book, book))
         return written
 
+    def _too_short(self, rect: QRectF, scale: float) -> bool:
+        return rect.height() + BETWEEN < (LINE_LEAST * scale + BETWEEN) * self.share
+
+    def name_slivers(self, painter: QPainter, lanes: dict[int, tuple[QRectF, list[QRectF]]]) -> None:
+        """Name each block `words` left bare: its name, or where that does not fit its start time, on a
+        line of its own, beside the block where its row is free, else over the block at its start,
+        its end or the middle of it. A line that would cross another label, or a block tall enough for
+        its own words, is tried elsewhere; with no place left, the block's colour says it is there."""
+        owed, self.owed = self.owed, []
+        if not owed:
+            return
+        scale = self.scale(painter.font())
+        title, small = self.fonts(painter.font())
+        written: list[QRectF] = []
+        painter.setPen(self.c("text"))
+        for drawn, rect, visible in owed:
+            area, bars = lanes[drawn.span.day]
+            clear = [bar for bar in bars if bar != rect and not self._too_short(bar, scale)]
+            edge = area.intersected(visible)
+            lead = 18 if self.wide else 14
+            for words, font in ((drawn.title.strip(), title), (short_clock(drawn.span.start), small)):
+                metrics = QFontMetricsF(font)
+                room = edge.width() - 2 * SLIVER_PAD
+                text = word_elide(words, metrics, room)
+                if len(text.rstrip("…")) < 3 and text != words:
+                    continue
+                wide, tall = metrics.horizontalAdvance(text) + 2, metrics.height()
+                lefts = [
+                    rect.right() + SLIVER_PAD,
+                    rect.left() - SLIVER_PAD - wide,
+                    rect.left() + lead,
+                    rect.right() - lead - wide,
+                    rect.center().x() - wide / 2,
+                ]
+                tops = [rect.center().y() - tall / 2, rect.top(), rect.bottom() - tall]
+                spot = next(
+                    (
+                        box
+                        for top in tops
+                        for left in lefts
+                        if edge.contains(box := QRectF(left, top, wide, tall))
+                        and not any(box.intersects(other) for other in [*clear, *written])
+                    ),
+                    None,
+                )
+                if spot is None:
+                    continue
+                painter.setFont(font)
+                painter.drawText(spot, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
+                written.append(spot)
+                break
+
     @staticmethod
     def _title_lines(title: str, metrics: QFontMetricsF, width: float, indent: float, most: int) -> list[str]:
         """The title on one line, or on two where there is room, broken at a word; shortened with "…"
@@ -582,6 +640,17 @@ class ClayCanvas(HoursCanvas):
     def __init__(self, hand: Hand, painter: ClayPainter, lay_out, row: Row, *, gutter: float = 0) -> None:
         super().__init__(hand, painter, lay_out, gutter=gutter)
         self.row = row
+
+    def _paint_hours(self, painter: QPainter) -> None:
+        self.painter.owed = []
+        super()._paint_hours(painter)
+        if self.painter.owed:
+            lanes = {
+                track.day: (track.area, [rect for drawn, rect in self.drawn(track) if not drawn.held])
+                for track in self.tracks
+                if track.axis is Axis.DOWN
+            }
+            self.painter.name_slivers(painter, lanes)
 
     def day_name(self, day: int) -> QPoint:
         return self.row.name_point(day)
@@ -2099,5 +2168,5 @@ def _due_words(waiting: Iterable[Waiting]) -> str:
     if not dues:
         return ""
     soonest = date.fromisoformat(dues[0])
-    words = f"{DAYS[soonest.weekday()]} {soonest.day}"
+    words = day_short(soonest)
     return f"Due {words}" if len(dues) == 1 else f"First due {words}"

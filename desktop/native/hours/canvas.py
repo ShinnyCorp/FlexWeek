@@ -51,7 +51,7 @@ from desktop.native.hours.geometry import (
 )
 from desktop.native.hours.hand import Create, Gesture, Hand, Held, Verdict, span_words
 from desktop.native.look import (
-    AA_GRAPHIC,
+    AA_TEXT,
     block_paint,
     block_time_colour,
     category_paint,
@@ -83,6 +83,8 @@ NOW_CLEAR = 3
 # Homework: a block of it carries a book as well as its colour, for a student who cannot tell the colours.
 HOMEWORK_CATEGORIES = ("assignments", "homework")
 BOOK = "book-open"
+# A category icon's size on a block (#60); 11 px was a smudge beside the words.
+BOOK_PX = 16
 FREE_HINT = "+ drag to create, or click"
 # How much of the text colour washes today's column when a week is shown (decision 13 of 0.17).
 TODAY_WASH = 0.03
@@ -162,8 +164,6 @@ class BlockPainter:
     now_in_gutter = False
     # Whether a block narrower than NARROW_BLOCK keeps its words closer to its sides.
     trims_narrow = False
-    # Whether the hour at the end of the day is labelled "24:00". The rule is drawn either way.
-    end_label = True
 
     def __init__(self, colours: dict[str, str], look: dict | None = None, *, wide: bool = False) -> None:
         self.colours = colours
@@ -246,8 +246,6 @@ class BlockPainter:
         tall = metrics.height() + 2
         shown: list[tuple[QRectF, str, Qt.AlignmentFlag, bool]] = []
         for minute in range(((track.first + every - 1) // every) * every, track.last + 1, every):
-            if minute == track.last and not self.end_label:
-                continue
             at = track.offset(minute)
             words = clock_label(minute)
             moved = False
@@ -415,14 +413,14 @@ class BlockPainter:
                              icon_name=category_icon(drawn.category) or BOOK)
 
     def _book_colour(self, drawn: Drawn, ink: QColor, paper: QColor, edge: QColor | None) -> QColor | None:
-        """A category icon is a graphic, not text: the category's mark, moved only as far as 3 to 1 on
-        the block takes, in every block style and never in the text ink."""
+        """A category icon is the category's mark, moved only as far as 4.5 to 1 on its own block takes
+        (#60), in every block style and never in the text ink."""
         if category_icon(drawn.category) is None:
             return None
         if edge is None:
             mark = category_paint(drawn.category, self.colours)[1] or self.colours["block_edge"]
             edge = QColor(mark)
-        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_GRAPHIC))
+        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_TEXT))
 
     def ghost(self, painter: QPainter, rect: QRectF, words: str, ok: bool) -> None:
         """Something about to be made: a tinted block where it would go, with its times."""
@@ -590,9 +588,14 @@ class Written:
 INLINE_GAP = 6
 
 
+def book_px(metrics: QFontMetricsF) -> int:
+    """A category icon's size at a font: 16 px, or the font's ascent where the text is bigger."""
+    return max(BOOK_PX, round(metrics.ascent()))
+
+
 def _book_room(metrics: QFontMetricsF) -> float:
     """The book's size at a font, and the room it takes before the title."""
-    return round(metrics.ascent()) + 3
+    return book_px(metrics) + 3
 
 
 def _wrap(text: str, metrics: QFontMetricsF, width: float, indent: float) -> tuple[list[str], bool]:
@@ -710,6 +713,8 @@ def _block_words(
     short for the usual margins, as a half-hour Dinner is on the week."""
     tight = tight if tight is not None else room
     tm, sm = QFontMetricsF(title_font), QFontMetricsF(small)
+    # The icon is taller than a line of words, so a block with no room for its full height keeps the words.
+    book = book and max(room.height(), tight.height()) >= book_px(tm)
     indent = _book_room(tm) if book else 0.0
     width, height = room.width(), room.height()
     tl, sl = tm.lineSpacing(), sm.lineSpacing()
@@ -943,13 +948,16 @@ def _paint_layout(
         wide = metrics.horizontalAdvance(line.text)
         left = line.box.right() - wide if line.right else line.box.left()
         written.append(QRectF(left, line.box.top(), wide, metrics.height()))
-        size = round(metrics.ascent())
-        top = line.box.top() + (metrics.height() - size) / 2
         if line.book and book is not None:
             left = line.box.left() - _book_room(metrics)
-            painter.drawPixmap(QPointF(left, top), icons.pixmap(icon_name, book.name(), size, ratio))
-            written.append(QRectF(left, top, size, size))
+            side = book_px(metrics)
+            # A line shorter than the icon lets it hang below, never above the block's top.
+            top = line.box.top() + max(metrics.height() - side, 0) / 2
+            painter.drawPixmap(QPointF(left, top), icons.pixmap(icon_name, book.name(), side, ratio))
+            written.append(QRectF(left, top, side, side))
         if line.pin and pin is not None:
+            size = round(metrics.ascent())
+            top = line.box.top() + (metrics.height() - size) / 2
             left = line.box.right() - metrics.horizontalAdvance(line.text) - _book_room(metrics)
             painter.drawPixmap(QPointF(left, top), icons.pixmap("pin", pin.name(), size, ratio))
             written.append(QRectF(left, top, size, size))
@@ -1372,11 +1380,17 @@ class HoursCanvas(QWidget):
             self.day_opened.emit(name)
             return
         self.setFocus(Qt.FocusReason.MouseFocusReason)
+        # The keyboard's spot goes where the pointer pressed, and the ring is for the keyboard only.
+        self._ring = False
         at = event.globalPosition().toPoint()
         hit = self._block_at(point)
         if hit is not None:
             drawn, rect, track = hit
             minute = track.minute_at(point)
+            self._cursor = (
+                drawn.span.day,
+                min(max(self._step_at(track, point), drawn.span.start), drawn.span.end - SLOT_MIN),
+            )
             upright = track.upright(point)
             kind = self._edge_kind(rect, upright, track)
             # How far the pointer is from the edge it moves, so nothing jumps on the first move.
@@ -1400,8 +1414,11 @@ class HoursCanvas(QWidget):
             return
         step = self.hand.step
         anchor = self._step_at(track, point)
+        self._cursor = (track.day, anchor)
         held = Held(Gesture.CREATE, "", step, None, track.day, Span(track.day, anchor, anchor + step))
-        self.hand.selection = None
+        # Told to the week too: a block outlined as chosen while the spot is on free time is two things
+        # looking focused.
+        self.hand.clear_selection()
         self.hand.press(self, held, at, tap=lambda: self._quick_create(track, anchor), home=(self, track))
 
     def _step_at(self, track: LinearTrack, point: QPointF) -> int:

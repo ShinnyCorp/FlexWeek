@@ -15,7 +15,8 @@ SESSION_SECONDS = flexweek_engine.SESSION_SECONDS
 # Each account's preferences row records the last of these one-time changes it has had, so a change
 # reaches every account once and a choice made after it is never undone by it.
 # 1: reminders on (0.15). Setup never asked, so they were off for everyone who had not turned them on.
-PREFS_VERSION = 1
+# 2: a 12-hour clock for new accounts (0.18.5). Every older account that never chose is stamped 24-hour.
+PREFS_VERSION = 2
 
 
 def digest(value: str) -> str:

@@ -52,12 +52,12 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from desktop.native import icons
-from desktop.native.calendar import DAYS
+from desktop.native.calendar import DAYS, month_title
 from desktop.native.fonts import at_scale, time_font, weighted
 from desktop.native.hours.chips import TrayChip
 from desktop.native.hours.hand import Hand
 from desktop.native.look import category_paint, mix, text_scale
-from desktop.native.tokens import RADIUS_CONTROL, SPACING, WEIGHT_STRONG
+from desktop.native.tokens import RADIUS_CONTROL, SPACING, WEIGHT_STRONG, fit_lightness
 from desktop.native.weekmodel import (
     HOMEWORK,
     Occurrence,
@@ -73,20 +73,6 @@ from desktop.native.widgets import FlowLayout, overlay_scroll_bars
 
 RAIL_PX = 280
 LETTERS = ("M", "T", "W", "T", "F", "S", "S")
-MONTHS = (
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-)
 HIDE_MONTH = "Hide the month"
 SHOW_MONTH = "Show the month"
 # 8 at the sides: the window's own 9-pixel margin puts the rail's words 17 from its edge, where the
@@ -164,6 +150,20 @@ def _scaled(base: QFont, role: str, look: dict | None, weight: QFont.Weight = QF
     return at_scale(base, role, text_scale(look), weight)
 
 
+# What a mark needs against the page and the cards under it, with a little over for rounding.
+MARK_FLOOR = 3.2
+
+
+def homework_red(palette: dict) -> str:
+    """Homework's mark for the rail's due dots, bars and book. In a dark look it is lightened, in the
+    same hue, until it reaches 3 to 1 on the page and the cards; the category's own mark is not, as a
+    lighter one sits too near sports' green for a deuteranope on the week's blocks."""
+    mark = category_paint(HOMEWORK, palette)[1] or palette["text"]
+    if palette.get("family") != "dark":
+        return mark
+    return fit_lightness(mark, tuple(palette[ground] for ground in ("window", "panel", "field")), MARK_FLOOR)
+
+
 @dataclass(frozen=True)
 class Colours:
     """What the rail paints with, from the look's palette."""
@@ -190,7 +190,7 @@ class Colours:
             accent=palette["accent"],
             accent_text=palette.get("accent_text", palette["accent"]),
             accent_ink=palette["accent_ink"],
-            homework=category_paint(HOMEWORK, palette)[1] or palette["text"],
+            homework=homework_red(palette),
             contrast=palette.get("family") == "contrast",
         )
 
@@ -339,7 +339,7 @@ class MonthCard(QWidget):
 
     def _say(self) -> None:
         month = self.dates.month
-        self.title.setText(f"{MONTHS[month.month - 1]} {month.year}")
+        self.title.setText(month_title(month))
         self.dates.updateGeometry()
         self.dates.update()
 
@@ -568,32 +568,41 @@ class FocusRows(QStyledItemDelegate):
         super().__init__(view)
         self.rail = rail
 
-    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex) -> QSize:
+    def row_lines(
+        self, index: QModelIndex | QPersistentModelIndex, row_width: float
+    ) -> tuple[list[str], bool, QFont]:
+        """The name's lines, whether the time sits on a line of its own under them, and the time's font.
+
+        The time is at the right, beside the name. A word of the name wider than what the time leaves
+        would be cut ("Math wor…" beside "Today 7:00 PM"), so then the name takes the whole row and the
+        time drops below it."""
         body, small = self.rail.fonts()
-        body_metrics = QFontMetricsF(body)
+        metrics = QFontMetricsF(body)
         when = str(index.data(Qt.ItemDataRole.ToolTipRole) or "")
-        today = bool(index.data(Qt.ItemDataRole.UserRole + 1))
-        timing = weighted(small, WEIGHT_STRONG) if today else small
-        width = max(
-            0.0,
-            option.rect.width()
-            - SPACING[1]
-            - 16
-            - BOOK_GAP
-            - SPACING[1]
-            - QFontMetricsF(timing).horizontalAdvance(when)
-            - TITLE_GAP
-            - SPACING[1],
-        )
-        lines = rail_title_lines(str(index.data()), body_metrics, width)
-        tall = body_metrics.lineSpacing() * len(lines) + 10
+        timing = weighted(small, WEIGHT_STRONG) if index.data(Qt.ItemDataRole.UserRole + 1) else QFont(small)
+        title = str(index.data())
+        lead = SPACING[1] + 16 + BOOK_GAP
+        time_room = QFontMetricsF(timing).horizontalAdvance(when) + TITLE_GAP
+        beside = rail_title_lines(title, metrics, row_width - lead - SPACING[1] - time_room)
+        whole = " ".join(title.split())
+        if " ".join(beside) == whole:
+            return beside, False, timing
+        full = rail_title_lines(title, metrics, row_width - lead - SPACING[1])
+        return (full, True, timing) if " ".join(full) == whole else (beside, False, timing)
+
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex) -> QSize:
+        body, _small = self.rail.fonts()
+        lines, below, timing = self.row_lines(index, option.rect.width())
+        tall = QFontMetricsF(body).lineSpacing() * len(lines) + 10
+        if below:
+            tall += QFontMetricsF(timing).lineSpacing()
         return QSize(option.rect.width(), round(max(30.0, tall)))
 
     def paint(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
     ) -> None:
         colours = self.rail.colours
-        body, small = self.rail.fonts()
+        body, _small = self.rail.fonts()
         box = QRectF(option.rect)
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -610,23 +619,25 @@ class FocusRows(QStyledItemDelegate):
         at += 16 + BOOK_GAP
         when = str(index.data(Qt.ItemDataRole.ToolTipRole) or "")
         today = bool(index.data(Qt.ItemDataRole.UserRole + 1))
-        timing = weighted(small, WEIGHT_STRONG) if today else QFont(small)
+        lines, below, timing = self.row_lines(index, box.width())
         width = QFontMetricsF(timing).horizontalAdvance(when)
         right = box.right() - SPACING[1]
+        line_height = QFontMetricsF(body).lineSpacing()
+        stacked = line_height * len(lines)
+        if below:
+            timing_height = QFontMetricsF(timing).lineSpacing()
+            top = box.top() + (box.height() - stacked - timing_height) / 2
+            timing_box = QRectF(right - width - 1, top + stacked, width + 1, timing_height)
+            room = max(0.0, right - at)
+        else:
+            top = box.top() + (box.height() - stacked) / 2
+            timing_box = QRectF(right - width - 1, box.top(), width + 1, box.height())
+            room = max(0.0, right - width - TITLE_GAP - at)
         painter.setFont(timing)
         painter.setPen(QColor(colours.text if today else colours.muted))
-        painter.drawText(
-            QRectF(right - width - 1, box.top(), width + 1, box.height()),
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-            when,
-        )
+        painter.drawText(timing_box, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, when)
         painter.setFont(body)
         painter.setPen(QColor(colours.text))
-        room = max(0.0, right - width - TITLE_GAP - at)
-        lines = rail_title_lines(str(index.data()), QFontMetricsF(body), room)
-        line_height = QFontMetricsF(body).lineSpacing()
-        block = line_height * len(lines)
-        top = box.top() + (box.height() - block) / 2
         for row, line in enumerate(lines):
             painter.drawText(
                 QRectF(at, top + row * line_height, room, line_height),

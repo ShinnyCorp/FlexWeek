@@ -500,6 +500,11 @@ def test_month_draws_a_week_left_unsaved_as_the_student_has_it(
         board = view.findChild(QWidget, "layoutMonthBoard")
         assert board is not None and board.isVisible()
         canvas = board.canvas
+    assert canvas.chip_words(essay["id"], thursday) == "8:15 PM History essay"
+    window.session.preferences = {**(window.session.preferences or {}), "clock_24h": True}
+    window._sync_chrome()
+    for _ in range(5):
+        qapp.processEvents()
     assert canvas.chip_words(essay["id"], thursday) == "20:15 History essay"
 
 

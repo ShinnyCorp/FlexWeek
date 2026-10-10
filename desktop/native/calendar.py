@@ -23,7 +23,7 @@ SERIES_DRAG_MESSAGE = (
 # sink the tone into their own card for a fill.
 CATEGORIES = {
     "class": {
-        "icon": "house",
+        "icon": "school",
         "label": "School",
         "hue": 250,
         "color": "#cfe8ff",
@@ -118,6 +118,32 @@ def category_title(category: str | None) -> str:
 
 def is_series(block: dict) -> bool:
     return bool(flexweek_engine.calendar_is_series(json.dumps(block)))
+
+
+def iso_of(day: date | str | None) -> str:
+    return date.today().isoformat() if day is None else day if isinstance(day, str) else day.isoformat()
+
+
+# The app's one short and one long way to write a date, made by the engine (datetext.rs). `today`
+# decides whether the year shows; leave it out for the machine's own date.
+def day_short(day: date | str, today: date | str | None = None) -> str:
+    """Thu 1 Oct, or Fri 8 Jan 2027 outside this year."""
+    return str(flexweek_engine.date_day_short(iso_of(day), iso_of(today)))
+
+
+def day_long(day: date | str, today: date | str | None = None) -> str:
+    """Thursday 1 October, or Friday 8 January 2027 outside this year."""
+    return str(flexweek_engine.date_day_long(iso_of(day), iso_of(today)))
+
+
+def week_range(start: date | str, today: date | str | None = None) -> str:
+    """The week from `start`: 28 Sep – 4 Oct, 28 Dec – 3 Jan 2027 across New Year."""
+    return str(flexweek_engine.date_week_range(iso_of(start), iso_of(today)))
+
+
+def month_title(day: date | str, short: bool = False) -> str:
+    """October 2026, or Oct 2026 where space is short."""
+    return str(flexweek_engine.date_month_title(iso_of(day), short))
 
 
 def monday_of(iso_day: str) -> str:

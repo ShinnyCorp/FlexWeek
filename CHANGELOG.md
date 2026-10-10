@@ -3,6 +3,54 @@
 All notable changes to FlexWeek are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [0.18.5] - 2026-10-10
+
+### Added
+- Setup's "Your week" page asks for a 12-hour or 24-hour clock. New accounts start on 12-hour; accounts made before this keep 24-hour.
+- The Day dial names its arcs: a block's name runs along its arc, free time still ahead reads "Free until 22:00", and free time already gone reads "Earlier today". A "Reading the ring" key sits above the list. Words too long for their arc are left off.
+- The plan list adds a line for each day whose homework adds up to more than 3 hours, such as "Thursday has 5 h 30 min of homework.", and opens by itself when it has one. The plan still places the earliest work first.
+
+### Changed
+- Dates are written one way across the app. Short is "Thu 1 Oct" and long is "Thursday 1 October"; the year shows only when it is not this year, as in "28 Dec – 3 Jan 2027". Week-grid column heads are unchanged.
+- The look editor's Start from is a grid of look pictures, with your own look last, instead of a drop-down. Arrow keys move between them, Enter chooses and Esc keeps the look you had.
+- The sign-in pages have one "Sign in" heading, a card in the same place on all three pages, hints under their fields, and a clearer password eye. With nobody signed in the window wears this computer's own look, and the card's shadow is no longer cut off.
+- Block icons are 16 px and read better on their blocks in the hours, Clay and Mission. School's block shows a school building, and "Replan all my homework" has its own calendar icon.
+- Every design's hours end with a label at the bottom: "24:00", or "12:00 AM" on the 12-hour clock. Today's app used to leave it off.
+- One thing's empty state has a quiet ring, "Free until 22:00" in the centre before 22:00, and a labelled day bar with hour marks and "Now" over the current time.
+- Moving between Week or Day and Month or My day slides the page sideways, as Retro's Month does. The title changes at once. Month's rows shrink to fit while the plan or Unfinished panel is open, so the last row is no longer cut off.
+- Month keeps the last month on screen while the next one loads. Motion "Off" stops every motion, including Settings' section changes, and "More" is slower: its standard ease takes 450 ms, against Normal's 180 ms.
+- The Undo message stays when you switch between Day, Week, Month, My day or a design. It goes when the week changes, when it times out, or when you use it.
+- Settings' Hide, Preview and Save restore point are outlined buttons. Close stays plain, and Restore stays the one filled button.
+- A keyboard-focused button in the top bar or a view switch gets a 2 px accent ring with a gap, in every look.
+- Placeholder text in fields, and the look editor's Changed chip, are darker or lighter so they read on their backgrounds. The look editor's warnings are reworded, and its Fix aims at the hardest check first.
+- Month's done and held chips keep their words at full strength; only the fill is lighter.
+- Homework's red dots and bar on the rail are lighter in the dark looks, so they read on dark cards.
+- After a zoom stops at the smallest or largest level, a line under the zoom buttons says so for 3 seconds. The zoom buttons have larger click areas.
+- Clay names a block too short or too narrow for its own words, beside it, over it or by its start time. Side cards keep their size.
+- Empty Saturdays and Sundays are narrower in Retro, Bento and Timeline, as they already were in Today's app, so weekday names are no longer cut.
+- Paper and Ink cards have a warm edge, and timer digits keep a steady width.
+- "Look" is the name of Settings' first section and of the command bar's entry, and the editor is "Edit look…". "Study times" is now "Study hours". Retro's description reads "a retro desktop window".
+- The README has a numbered first-run section, a contributors list (j0nsh1n and maruzenskymambo for ideas), and an AI disclosure that names every assistant that helped.
+
+### Fixed
+- The keyboard's place on the week follows the pointer. A click on the hours moves it to the slot or block pressed and hides the ring; closing the sheet that click opened leaves it there, so Shift+F10 asks about what was clicked, and a block saved from a sheet gets the keyboard. Only that block shows as chosen. In Today's app, Timeline, Mission, Bento and Retro.
+- Buttons no longer cut their words ("Accept late start" read "ccept late sta"). Every button in a sheet and in the top bar is at least its words plus 20 px at each side and 36 px tall (40 at Large text), and buttons measure again when the text size or the look changes while a sheet or Settings is open. Running late's answers go under Preview when the row has no room, and This computer's three buttons are no longer a fixed width. At Large text the top bar keeps one row in a
+  window about 1190 px wide or more, and goes to two rows below that.
+- The block editor's End follows Start only once Start is settled (Enter, Tab or leaving the box), not on each key, and never after End was typed in that sheet. It stops at 24:00 instead of wrapping to the morning, and says "End moved to 17:30" (screen readers hear it). The End-before-Start message now reads "End needs to be later than Start (16:00)." in every sheet that shows it.
+- Time boxes: the first click into one selects the whole time, as Tab does, and Ctrl+A selects the whole text. Enter keeps a typed time in every time zone; it moved by the computer's UTC offset before. A time that cannot be read stays in the box with a red outline, a warning icon and "Type a time like 17:30." (or "5:30 PM." on the 12-hour clock), which a screen reader says; it is no longer swapped for the old time. Save, Enter and Add do not
+  save while a box shows that line; the keyboard goes back to the box.
+- Tab leaves the Notes box in Add homework and the other multi-line boxes in sheets and Settings; Shift+Tab goes back. Tab no longer types a tab character into them.
+- Setup's Tab order follows the screen: a new activity or first-homework row is reached before Next, not after it. Removing an activity keeps focus in the list and says "Activity removed" to a screen reader.
+- Text size is always on screen: the first card of Settings > Look, above Colours. It is no longer hidden behind "Show shape, spacing and type".
+- Plan offers every day up to a due date after this Sunday, weekend included, not only Monday to Friday.
+- Screen readers name each field in the homework, event and Setup forms by its label, not by its current value or its hint.
+- The ringing alarm's dialog shows its time on the clock you chose. It always showed 24-hour before, even on a 12-hour clock.
+- A long homework name stays whole in the Focus list on the 12-hour clock; the time moves to its own line under it.
+- The bar that appears after Plan is placed under the top bar and slides down into view again; since
+  0.18.2 an error in its layout left it where it was first drawn.
+
 ## [0.18.4] - 2026-10-09
 
 ### Changed

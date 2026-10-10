@@ -261,7 +261,7 @@ pub fn preferences_fields(row: &Value) -> StoreResult<Value> {
         kept("planning_style", json!("suggest")),
     );
     fields.insert("drag_step_min".into(), kept("drag_step_min", json!(5)));
-    fields.insert("clock_24h".into(), switch("clock_24h", true));
+    fields.insert("clock_24h".into(), switch("clock_24h", false));
     fields.insert("setup".into(), kept("setup", Value::Null));
     Ok(Value::Object(fields))
 }
@@ -620,7 +620,7 @@ mod tests {
                 r#""start_at_login":false,"preferred_view":null,"sidebar_collapsed":false,"#,
                 r#""sidebar_width_px":null,"theme_pack":"system","accent":"default","#,
                 r#""accent_chips":false,"motion":null,"alarm_tone":"chime","#,
-                r#""planning_style":"suggest","drag_step_min":5,"clock_24h":true,"setup":null}"#
+                r#""planning_style":"suggest","drag_step_min":5,"clock_24h":false,"setup":null}"#
             )
         );
     }

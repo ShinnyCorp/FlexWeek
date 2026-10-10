@@ -457,14 +457,53 @@ def test_the_icon_gives_way_before_a_name_is_left_with_fewer_than_three_letters(
 
     title, small = BlockPainter(resolved_palette("system", False, None)).fonts(QFont("Inter", 12))
     tm, sm = QFontMetricsF(title), QFontMetricsF(small)
-    drawn = Drawn("school", "School", "class", False, Span(1, 9 * 60, 10 * 60), 0, 1)
-    icon = round(tm.ascent()) + 3
+    drawn = Drawn("school", "Schoolwork", "class", False, Span(1, 9 * 60, 10 * 60), 0, 1)
+    icon = 16 + 3
     room = (tm.horizontalAdvance("Sch…"), icon + tm.horizontalAdvance("Sch"), sm.horizontalAdvance("09:00"))
     width = max(room) + 0.5
     assert width < icon + tm.horizontalAdvance("Sch…"), "room for the icon and three letters, not the dots"
     lay = block_layout(drawn, title, small, QRectF(0, 0, width, tm.lineSpacing() * 4), book=True)
     assert [(line.text, line.book) for line in lay if line.title] == [("Sch…", False)]
     assert "09:00" in [line.text for line in lay]
+
+
+def test_a_category_icon_is_16_px_and_stays_inside_the_smallest_block_that_draws_one(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#60: the icon was 11 px, a smudge beside the words. At 16 px it must still sit inside the block
+    at every height that draws one, not poke out of a short block."""
+    from desktop.native import icons
+
+    sizes: list[int] = []
+    original = icons.pixmap
+
+    def record(name, colour, size, *args):
+        sizes.append(size)
+        return original(name, colour, size, *args)
+
+    monkeypatch.setattr(icons, "pixmap", record)
+    painter = BlockPainter(resolved_palette("system", False, None))
+    drawn = Drawn("school", "School", "class", False, Span(0, 480, 660), 0, 1)
+    fill, ink, _outline, edge = painter.fills(drawn)
+    drawing = []
+    for height in (14 + step / 4 for step in range(0, 300)):
+        sizes.clear()
+        rect = QRectF(0, 0, 260, height)
+        image = QImage(300, 120, QImage.Format.Format_ARGB32)
+        image.fill(fill)
+        paint = QPainter(image)
+        paint.setFont(QFont("Inter", 12))
+        try:
+            written = painter.words(paint, rect, drawn, ink, QRectF(0, 0, 300, 120), fill, edge)
+        finally:
+            paint.end()
+        if not sizes:
+            continue
+        drawing.append(height)
+        assert set(sizes) == {16}, (height, sizes)
+        icon = next(box for box in written if box.width() == box.height() == 16)
+        assert icon.top() >= 0 and icon.bottom() <= height, (height, icon)
+    assert drawing, "some height draws the icon"
 
 
 def painted(drawn: Drawn, rect: QRectF) -> QImage:

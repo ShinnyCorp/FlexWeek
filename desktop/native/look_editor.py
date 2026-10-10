@@ -17,7 +17,6 @@ from pathlib import Path
 from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QKeyEvent, QPainter, QPalette, QPen, QPixmap, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -57,12 +56,14 @@ from desktop.native.custom_look import (
 )
 from desktop.native.hours.canvas import EDGE_WIDTH
 from desktop.native.look import (
+    AA_TEXT,
     ACCENT_COLORS,
     ACCENTS,
     BASE_LABELS,
     CUSTOM_COLOURS,
     CUSTOM_RANGES,
     FONT_FAMILIES,
+    LOOK_BASES,
     NAME_MAX,
     OWN_ACCENT,
     PRESET_PALETTES,
@@ -77,13 +78,18 @@ from desktop.native.look import (
     sanitize_custom,
     sanitize_look,
 )
+from desktop.native.look_preview import SAVED_PREFIX, look_choice, look_preview
 from desktop.native.motion import switch_page
 from desktop.native.previews import CANVAS, system_dark
 from desktop.native.previews import render as render_preview
-from desktop.native.tokens import MARK, SPACING, mix, oklch, oklch_of
+from desktop.native.tokens import MARK, SPACING, fit_lightness, mix, oklch, oklch_of
 from desktop.native.widgets import (
+    CARD_WIDTH_PAD,
     SHEET_LIST,
     SHEET_PAD,
+    SHEET_PREVIEW,
+    CardGrid,
+    ChoiceCard,
     ConfirmSheet,
     Dialog,
     Segmented,
@@ -102,6 +108,9 @@ from desktop.native.widgets import (
 
 TITLE = "Look editor"
 START_FROM = "Start from"
+START_NOTE = "Pick a look to start your own from. What you have not saved is left behind."
+START_YOURS = "Your look"
+START_TILE = 112
 NAME = "Name"
 LOOKS = "Looks"
 YOUR_LOOKS = "Your looks"
@@ -140,8 +149,8 @@ LEAVE_NEW = "Save your look as {name}?"
 LEAVE_NOTE = "Keep without saving leaves the changes on until you choose another look."
 SAVE, KEEP, DISCARD = "Save", "Keep without saving", "Discard changes"
 CANCEL = "Cancel"
-# Four answers in one row, which take the list's width between the card's margins.
-LEAVE_WIDTH = SHEET_LIST + 2 * SHEET_PAD
+# Wide enough for its four answers in one row at their roomy sizes, which a plain list's width was not.
+LEAVE_WIDTH = SHEET_LIST + 2 * SHEET_PAD + 24
 DELETE_TITLE = "Delete look"
 DELETE_QUESTION = "Delete {name}? This can't be undone."
 EXPORT_TITLE, IMPORT_TITLE = "Export look", "Import look"
@@ -273,7 +282,12 @@ def problem_rows(problems: list[Problem]) -> list[Row]:
     blocks = [problem for problem in problems if problem.field[0] == "categories"]
     together = len(blocks) >= 3
     rows = [
-        Row(f"{problem.words} is {ratio_words(problem.ratio)}:1", problem.ink, problem.ground, (problem,))
+        Row(
+            f"{problem.words} {'are' if problem.plural else 'is'} {ratio_words(problem.ratio)}:1",
+            problem.ink,
+            problem.ground,
+            (problem,),
+        )
         for problem in problems
         if not (together and problem in blocks)
     ]
@@ -285,11 +299,15 @@ def problem_rows(problems: list[Problem]) -> list[Row]:
 
 
 def fix_all(custom: dict, dark: bool) -> dict:
+    """Every problem fixed, not the first only: each round applies the Fix of one problem for each colour
+    that has any (two rows of the accent share one), then looks again, since a moved colour can change
+    what another reads on."""
     for _round in range(FIX_ALL_ROUNDS):
         found = readability(custom, dark)
         if not found:
             break
-        custom = apply_fix(custom, found[0])
+        for problem in {problem.field: problem for problem in reversed(found)}.values():
+            custom = apply_fix(custom, problem)
     return custom
 
 
@@ -315,6 +333,8 @@ def editor_rules(palette: dict, radius: int) -> str:
     contrast_look = palette.get("family") == "contrast"
     tint = "transparent" if contrast_look else mix(accent, panel, 0.12)
     tag_edge = f"1px solid {accent}" if contrast_look else "none"
+    # The plain accent is 2.3 to 1 on its own tint when pale (#94): its hue, moved only as far as 4.5 takes.
+    tag_words = fit_lightness(accent, (panel if contrast_look else tint,), AA_TEXT)
     hover = mix(text, panel, 0.06)
     light, chroma = MARK[palette.get("family", "light")]
     stops = ", ".join(f"stop:{step / 8:.3f} {oklch(light, chroma, step * 45)}" for step in range(9))
@@ -328,7 +348,7 @@ def editor_rules(palette: dict, radius: int) -> str:
         "QScrollArea#lookPicture { background: transparent; border: none; border-radius: 0; padding: 0; }"
         "QLabel#lookInlineLabel, QLabel#lookNote, QLabel#lookOut, QLabel#lookEditorState, "
         f'QLabel#lookEverythingReads, QCheckBox[exact="true"] {{ color: {muted}; }}'
-        f"QLabel#lookTag {{ background: {tint}; color: {accent}; border: {tag_edge}; border-radius: 10px; "
+        f"QLabel#lookTag {{ background: {tint}; color: {tag_words}; border: {tag_edge}; border-radius: 10px; "
         "padding: 2px 6px; }"
         f"QWidget#lookGroupLine {{ background: {line}; }}"
         f"QPushButton#lookGroupToggle {{ background: transparent; border: 2px solid transparent; "
@@ -602,6 +622,75 @@ class ColourField(QWidget):
         chooser.deleteLater()
 
 
+class StartGrid(CardGrid):
+    """The looks to start from, as cards in rows. The arrow keys move between the cards, Home and End go
+    to the first and last, and a card takes Space or Enter itself."""
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        columns = max(self.columns(), 1)
+        key = event.key()
+        at = next((index for index, card in enumerate(self.cards) if card.hasFocus()), None)
+        steps = {Qt.Key.Key_Left: -1, Qt.Key.Key_Right: 1, Qt.Key.Key_Up: -columns, Qt.Key.Key_Down: columns}
+        if at is None or (key not in steps and key not in (Qt.Key.Key_Home, Qt.Key.Key_End)):
+            super().keyPressEvent(event)
+            return
+        if key == Qt.Key.Key_Home:
+            target = 0
+        elif key == Qt.Key.Key_End:
+            target = len(self.cards) - 1
+        else:
+            target = at + steps[key]
+        if 0 <= target < len(self.cards):
+            self.cards[target].setFocus(Qt.FocusReason.TabFocusReason)
+        event.accept()
+
+
+class StartSheet(Dialog):
+    """Start from: a small picture of every look, the ten as they come and then the student's own, as a
+    sheet over the editor. The look worn now is ringed. Choosing a card closes the sheet with its token
+    ("base:dark", "saved:Mine"); Esc and the close button leave the look as it was."""
+
+    def __init__(self, parent: QWidget, token: str, saved: list[dict]) -> None:
+        super().__init__(parent, sheet=True)
+        self.setObjectName("startSheet")
+        self._token = ""
+        box = self.card_body(START_FROM, SHEET_PREVIEW)
+        box.addWidget(sheet_note(START_NOTE))
+        cards = []
+        for base, words in BASE_LABELS.items():
+            pack, preset = LOOK_BASES[base]
+            look = {} if preset == "default" else {"preset": preset}
+            cards.append(self._card(words, "", f"base:{base}", pack, look))
+        for entry in saved:
+            pack, look = look_choice(SAVED_PREFIX + entry["name"], saved)
+            cards.append(self._card(entry["name"], START_YOURS, f"saved:{entry['name']}", pack, look))
+        for card in cards:
+            card.select(card.property("token") == token)
+        self.looks = StartGrid(START_TILE + CARD_WIDTH_PAD)
+        self.looks.setAccessibleName(START_FROM)
+        self.looks.set_cards(cards)
+        box.addWidget(self.looks)
+
+    def _card(self, words: str, note: str, token: str, pack: str, look: dict) -> ChoiceCard:
+        card = ChoiceCard(words, note, START_TILE)
+        card.setProperty("token", token)
+        card.set_picture(look_preview(pack, look, START_TILE))
+        card.chosen.connect(self._chose)
+        return card
+
+    def token(self) -> str:
+        return self._token
+
+    def _chose(self) -> None:
+        self._token = str(self.sender().property("token"))
+        self.accept()
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802
+        super().showEvent(event)
+        worn = next((card for card in self.looks.cards if card.is_selected()), self.looks.cards[0])
+        worn.setFocus(Qt.FocusReason.PopupFocusReason)
+
+
 class CategoryRow(QWidget):
     """A category's colour: a hue on the family's lightness, which always reads, or an exact colour. Its
     sample block is drawn as the week draws the category's blocks."""
@@ -833,7 +922,6 @@ class LookEditor(QWidget):
         self._chrome: dict = {}
         self._dressed: tuple | None = None
         self._rows_shown: tuple | None = None
-        self._from_items: tuple | None = None
         self._wear_pending = False
         self._worn_any = False
         self._fit = True
@@ -877,11 +965,9 @@ class LookEditor(QWidget):
         line.addWidget(_label(TITLE, "lookEditorTitle"))
         line.addSpacing(SPACING[1])
         line.addWidget(_label(START_FROM, "lookInlineLabel"))
-        self.start_from = QComboBox()
-        self.start_from.setObjectName("lookEditorFrom")
-        self.start_from.setAccessibleName(START_FROM)
+        self.start_from = _button("", "lookEditorFrom", None, "secondary")
         self.start_from.setMinimumWidth(200)
-        self.start_from.activated.connect(self._start_from)
+        self.start_from.clicked.connect(self._choose_start)
         line.addWidget(self.start_from)
         line.addWidget(_label(NAME, "lookInlineLabel"))
         self.name = QLineEdit()
@@ -1021,11 +1107,12 @@ class LookEditor(QWidget):
         self.accent_box.setSpacing(SPACING[1])
         any_line = QHBoxLayout()
         any_line.addWidget(_label(ANY_COLOUR, "lookNote"))
+        # Its swatch and code box end where the other colours' do, so the column reads as one.
+        any_line.addStretch(1)
         self.any_accent = ColourField("Accent")
         self.any_accent.setObjectName("lookColour-accent")
         self.any_accent.picked.connect(lambda colour: self._set(("accent",), colour))
         any_line.addWidget(self.any_accent)
-        any_line.addStretch(1)
         self.accent_box.addLayout(any_line)
         self._field(fields, "Accent", accent, "accent")
         for key, words in (("page", "Page"), ("card", "Cards"), ("text", "Text"), ("line", "Lines")):
@@ -1131,11 +1218,11 @@ class LookEditor(QWidget):
         line = QHBoxLayout(foot)
         line.setContentsMargins(SPACING[2], SPACING[1], SPACING[3], SPACING[1])
         line.setSpacing(SPACING[1])
-        self.reset_all = _button(RESET_ALL, "lookResetAll", "rotate-ccw", "quiet")
+        self.reset_all = _button(RESET_ALL, "lookResetAll", "rotate-ccw", "outlined")
         self.reset_all.clicked.connect(lambda: self._change(replace(self._draft, look=self._named_start())))
-        export = _button(EXPORT, "lookExport", "download", "quiet")
+        export = _button(EXPORT, "lookExport", "download", "outlined")
         export.clicked.connect(self._export)
-        load = _button(IMPORT, "lookImport", "upload", "quiet")
+        load = _button(IMPORT, "lookImport", "upload", "outlined")
         load.clicked.connect(self._import)
         for button in (self.reset_all, export, load):
             line.addWidget(button)
@@ -1307,29 +1394,17 @@ class LookEditor(QWidget):
             self.name.setText(saved_as or str(custom.get("name") or UNNAMED))
         self._show_start_from()
 
-    def _show_start_from(self) -> None:
-        names = tuple(entry["name"] for entry in self._saved)
-        if names != self._from_items:
-            self._from_items = names
-            groups = [(LOOKS, "base", tuple(BASE_LABELS.items()))]
-            if names:
-                groups.append((YOUR_LOOKS, "saved", tuple((name, name) for name in names)))
-            self.start_from.blockSignals(True)
-            self.start_from.clear()
-            for heading, kind, items in groups:
-                self.start_from.addItem(heading)
-                # A heading of the list, not a choice.
-                self.start_from.model().item(self.start_from.count() - 1).setEnabled(False)
-                for value, words in items:
-                    self.start_from.addItem(words, f"{kind}:{value}")
-            self.start_from.blockSignals(False)
+    def _start_token(self) -> str:
         if self._draft.saved_as:
-            token = f"saved:{self._draft.saved_as}"
-        else:
-            token = f"base:{self._draft.look['base']}"
-        self.start_from.blockSignals(True)
-        self.start_from.setCurrentIndex(self.start_from.findData(token))
-        self.start_from.blockSignals(False)
+            return f"saved:{self._draft.saved_as}"
+        return f"base:{self._draft.look['base']}"
+
+    def _show_start_from(self) -> None:
+        """The button names the look this one is, or started from."""
+        kind, _sep, value = self._start_token().partition(":")
+        name = BASE_LABELS.get(value, value) if kind == "base" else value
+        self.start_from.setText(name)
+        self.start_from.setAccessibleName(f"{START_FROM}: {name}")
 
     def _show_rows(self) -> None:
         rows = problem_rows(readability(self._draft.look, self._dark))
@@ -1453,10 +1528,16 @@ class LookEditor(QWidget):
     def _fix_all(self) -> None:
         self._change(replace(self._draft, look=fix_all(self._draft.look, self._dark)))
 
-    def _start_from(self, index: int) -> None:
+    def _choose_start(self) -> None:
+        """The sheet of pictures; a card chosen starts the look from it."""
+        sheet = StartSheet(self, self._start_token(), self._saved)
+        if sheet.exec() == QDialog.DialogCode.Accepted:
+            self._start_from(sheet.token())
+        sheet.deleteLater()
+
+    def _start_from(self, token: str) -> None:
         """Another look to start from: one of the ten as it comes, under the name given so far, or a
         saved look to change. As the mock-up draws it, what was not saved is left behind."""
-        token = str(self.start_from.itemData(index) or "")
         kind, _sep, value = token.partition(":")
         self._unsay()
         if kind == "saved":

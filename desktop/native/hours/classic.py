@@ -60,6 +60,8 @@ AGENDA_PX = 288
 WEEKEND = (5, 6)
 EMPTY_SHARE = 0.6
 EMPTY_MIN_PX = 96
+# The other designs' week columns are narrower than this, so their empty weekend days keep less.
+EMPTY_MIN_NARROW_PX = 40
 # How much of the accent the time now's line across the rest of the week takes.
 NOW_ACROSS = 0.45
 
@@ -97,7 +99,6 @@ class ClassicPainter(BlockPainter):
     the gutter where the hour labels are."""
 
     now_in_gutter = True
-    end_label = False
 
     def background(self, painter: QPainter, rect: QRectF) -> None:
         painter.fillRect(rect, self.c("panel") if "panel" in self.colours else self.c("window"))
@@ -166,6 +167,8 @@ class DayName(QLabel):
         self.name, self.date, self.homework = DAYS[day], "", 0
         self.colours = Colours()
         self.look: dict | None = None
+        # Day's "Hours" is a heading as "Agenda" is: the heading size, the text colour, today or not.
+        self.heading = False
         self.setProperty("today", False)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setText(self.name)
@@ -182,8 +185,9 @@ class DayName(QLabel):
         self.update()
 
     def _fonts(self) -> tuple[QFont, QFont, QFont]:
-        body = _scaled(self.font(), "body", self.look)
-        strong = _scaled(self.font(), "body", self.look, QFont.Weight.DemiBold)
+        role = "heading" if self.heading else "body"
+        strong = _scaled(self.font(), role, self.look, QFont.Weight.DemiBold)
+        body = strong if self.heading else _scaled(self.font(), role, self.look)
         small = time_font(_scaled(self.font(), "caption", self.look))
         return body, strong, small
 
@@ -220,7 +224,8 @@ class DayName(QLabel):
         x = float(SPACING[2])
         name_font = strong if today else body
         painter.setFont(name_font)
-        painter.setPen(QColor(colours.accent_text if today else colours.muted))
+        ink = colours.text if self.heading else colours.accent_text if today else colours.muted
+        painter.setPen(QColor(ink))
         name_width = QFontMetricsF(name_font).horizontalAdvance(self.name)
         painter.drawText(QRectF(x, y, name_width + 1, top), Qt.AlignmentFlag.AlignVCenter, self.name)
         x += name_width + SPACING[0]
@@ -262,19 +267,22 @@ class DayName(QLabel):
         super().mousePressEvent(event)
 
 
-def column_widths(total: float, empty: frozenset[int]) -> list[float]:
-    """The seven days' widths over `total` pixels: equal, except that an empty weekend day is narrower
-    (see EMPTY_SHARE) and the days with something in them share what that leaves, equally."""
-    share = total / 7
-    quiet = [day for day in WEEKEND if day in empty]
-    if not quiet:
-        return [share] * 7
-    narrow = min(share, max(EMPTY_MIN_PX, share * EMPTY_SHARE))
-    full = (total - narrow * len(quiet)) / (7 - len(quiet))
-    return [narrow if day in quiet else full for day in range(7)]
+def column_widths(
+    total: float, empty: frozenset[int], days: tuple[int, ...] = tuple(range(7)), floor: int = EMPTY_MIN_PX
+) -> list[float]:
+    """The widths of `days` over `total` pixels: equal, except that an empty weekend day is narrower
+    (see EMPTY_SHARE, and `floor`, the least it keeps) and the days with something in them share what
+    that leaves, equally. The other designs' narrower columns pass a smaller `floor`."""
+    share = total / len(days)
+    quiet = [day for day in WEEKEND if day in empty and day in days]
+    if not quiet or len(quiet) == len(days):
+        return [share] * len(days)
+    narrow = min(share, max(floor, share * EMPTY_SHARE))
+    full = (total - narrow * len(quiet)) / (len(days) - len(quiet))
+    return [narrow if day in quiet else full for day in days]
 
 
-def _empty_days(week: WeekModel) -> frozenset[int]:
+def empty_days(week: WeekModel) -> frozenset[int]:
     return frozenset(day for day in range(7) if not week.on_day(day))
 
 
@@ -347,7 +355,7 @@ class ClassicWeek(QFrame):
 
     def set_week(self, week: WeekModel, today: int | None, now_min: int | None) -> None:
         self.week_start = week.week_start
-        empty = _empty_days(week)
+        empty = empty_days(week)
         if empty != self._empty:
             # Laid out for the new widths before the blocks arrive, so none slides for a change of width.
             self._empty = empty
@@ -720,6 +728,7 @@ class ClassicDay(QFrame):
         row = QHBoxLayout(names)
         row.setContentsMargins(0, 0, 0, 0)
         self.name = DayName(0)
+        self.name.heading = True
         self.name.setObjectName("dayName")
         self.name.setCursor(Qt.CursorShape.ArrowCursor)
         row.addWidget(self.name, 1)

@@ -93,7 +93,7 @@
  {
   "file": "engine/engine/src/desk/custom_look.rs",
   "name": "a pale accent's fix that does not move it",
-  "old": "                fit_lightness(\n                    &palette.accent,\n                    &grounds_of(&[surfaces[0], surfaces[1], surfaces[2], tint.as_str()]),\n                    need,\n                )?\n",
+  "old": "                fit_accent(&palette.accent, &surfaces, &palette.window)?\n",
   "new": "                palette.accent.clone()\n",
   "test": "desktop/tests/test_custom_look.py::test_a_colour_of_the_students_own_as_the_accent"
  },

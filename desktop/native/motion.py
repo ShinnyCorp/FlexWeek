@@ -42,9 +42,11 @@ class Level:
 
 # The stored ids (look.MOTION_LEVELS), which saved preferences and custom looks use. "extra" is
 # shown as More. Reduce keeps the fades and nothing travels: no slide, rise, drift, zoom or lift.
+# More is 2.5 times as slow, so the standard ease of 180 ms is 450 ms: at 1.45 it was only 260 ms and
+# hard to tell from Normal.
 LEVELS = {
     "normal": Level(1.0, 1.0),
-    "extra": Level(1.45, 4 / 3),
+    "extra": Level(2.5, 4 / 3),
     "reduce": Level(1.0, 0.0),
     "off": Level(0.0, 0.0),
 }
@@ -208,6 +210,16 @@ class Shift(QGraphicsEffect):
         painter.restore()
 
 
+_started = QElapsedTimer()
+_started.start()
+
+
+def now_ms() -> int:
+    """The time every Clock reads, in milliseconds from any fixed start. Tests put their own over this
+    name, so an animation can be moved to an exact moment instead of waited for."""
+    return int(_started.elapsed())
+
+
 # Every clock still running, so slow work can wait until nothing is moving.
 _RUNNING: weakref.WeakSet[Clock] = weakref.WeakSet()
 
@@ -246,7 +258,8 @@ class Clock(QObject):
         self._stopped = False
         self._done = False
         self._paused = False
-        self._elapsed = QElapsedTimer()
+        # When this stretch of the animation began on now_ms's time; None before it first starts.
+        self._since: int | None = None
         self._timer = QTimer(self)
         self._timer.setTimerType(Qt.TimerType.PreciseTimer)
         self._timer.timeout.connect(self._tick)
@@ -259,7 +272,7 @@ class Clock(QObject):
         self._stopped = False
         self._done = False
         self._paused = False
-        self._elapsed.start()
+        self._since = now_ms()
         self._retarget()
         _RUNNING.add(self)
         self._timer.start()
@@ -273,7 +286,7 @@ class Clock(QObject):
     def pause(self) -> None:
         if self._paused or self._done or self._stopped or not self._timer.isActive():
             return
-        self._base += self._elapsed.elapsed()
+        self._base += self._gone()
         self._paused = True
         self._timer.stop()
 
@@ -281,16 +294,16 @@ class Clock(QObject):
         if not self._paused or self._done or self._stopped:
             return
         self._paused = False
-        self._elapsed.restart()
+        self._since = now_ms()
         self._timer.start()
 
     def duration(self) -> int:
         return self._total
 
     def currentTime(self) -> int:  # noqa: N802
-        if self._paused or not self._elapsed.isValid():
+        if self._paused or self._since is None:
             return min(self._base, self._total)
-        return min(self._base + self._elapsed.elapsed(), self._total)
+        return min(self._base + self._gone(), self._total)
 
     def state(self) -> QAbstractAnimation.State:
         if self._paused:
@@ -302,11 +315,14 @@ class Clock(QObject):
     def setCurrentTime(self, ms: int) -> None:  # noqa: N802
         """Jump to `ms` milliseconds in, and finish when that is the end."""
         self._base = ms
-        self._elapsed.restart()
+        self._since = now_ms()
         self._apply(self._base)
 
     def interval(self) -> int:
         return self._timer.interval()
+
+    def _gone(self) -> int:
+        return 0 if self._since is None else now_ms() - self._since
 
     def _dropped(self) -> None:
         _RUNNING.discard(self)
@@ -321,7 +337,7 @@ class Clock(QObject):
         if self._stopped or self._done:
             return
         self._retarget()
-        self._apply(self._base + self._elapsed.elapsed())
+        self._apply(self._base + self._gone())
 
     def _apply(self, ms: int) -> None:
         if self._done or self._step is None:
@@ -419,6 +435,15 @@ def clear_fades(host: QWidget) -> None:
     ):
         leftover.hide()
         leftover.deleteLater()
+
+
+def raise_pictures(host: QWidget) -> None:
+    """Put the pictures and dims over `host` back on top, in the order they were. A widget given a new
+    parent, or raised, lands above them and was drawn over the picture that is meant to cover it."""
+    for child in host.children():
+        picture = isinstance(child, QLabel) and child.objectName() in (FADE_NAME, SLIDE_NAME)
+        if picture or isinstance(child, Dim):
+            child.raise_()
 
 
 def hold_picture(

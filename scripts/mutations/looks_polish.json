@@ -79,8 +79,8 @@
   {
     "name": "Plan pale accent drops out of Readability",
     "file": "engine/engine/src/desk/custom_look.rs",
-    "old": "            \"Plan button words\",\n            palette.accent.as_str(),\n            tint.as_str(),\n            \"accent\",\n",
-    "new": "            \"Plan button words\",\n            palette.text.as_str(),\n            tint.as_str(),\n            \"accent\",\n",
+    "old": "            \"The Plan button's words\",\n            palette.accent.as_str(),\n            tint.as_str(),\n            \"accent\",\n",
+    "new": "            \"The Plan button's words\",\n            palette.text.as_str(),\n            tint.as_str(),\n            \"accent\",\n",
     "test": "desktop/tests/test_looks_polish.py::test_readability_names_each_use_of_a_pale_accent_and_fixes_them"
   },
   {
@@ -142,23 +142,23 @@
   {
     "name": "Icons are drawn in the text ink again",
     "file": "desktop/native/hours/canvas.py",
-    "old": "        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_GRAPHIC))\n",
+    "old": "        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_TEXT))\n",
     "new": "        return ink\n",
-    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_3_to_1_on_each_block_style"
+    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_4_5_to_1_on_each_block_style"
   },
   {
-    "name": "Icons are fitted to 4.5 to 1 again",
+    "name": "Icons are fitted to only 3 to 1 again",
     "file": "desktop/native/hours/canvas.py",
-    "old": "        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_GRAPHIC))\n",
-    "new": "        return QColor(fit_lightness(edge.name(), (paper.name(),), 4.5))\n",
-    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_3_to_1_on_each_block_style"
+    "old": "        return QColor(fit_lightness(edge.name(), (paper.name(),), AA_TEXT))\n",
+    "new": "        return QColor(fit_lightness(edge.name(), (paper.name(),), 3.0))\n",
+    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_4_5_to_1_on_each_block_style"
   },
   {
     "name": "Free time gets its icon back",
     "file": "engine/engine/src/desk/calendar.rs",
     "old": "        \"free\",\n        CategoryInfo {\n            icon: None,\n",
     "new": "        \"free\",\n        CategoryInfo {\n            icon: Some(\"wind\"),\n",
-    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_3_to_1_on_each_block_style"
+    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_4_5_to_1_on_each_block_style"
   },
   {
     "name": "Look preview puts Soccer back in Activity",

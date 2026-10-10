@@ -358,11 +358,11 @@ def test_a_block_on_the_narrowest_weekend_day_keeps_the_start_of_its_name_and_it
     assert any(text.startswith("16:00") for text in said), said
 
 
-def test_the_hours_end_at_23_00_with_no_24_00_label(
+def test_the_hours_end_with_their_end_label_and_keep_the_room_below_it(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Midnight at the end of the day is not labelled "24:00" on Today's app's Week or Day. The rule
-    is still drawn, and the room below it is kept so 23:00 is never cut."""
+    """Today's app's Week or Day labels the end of the day as every design does: "24:00", or "12:00 AM"
+    on the 12-hour clock. The room below the last rule is kept so the label is never cut."""
     monkeypatch.setattr(canvas_module, "QPainter", Said)
     view = week_view(qapp, (SCHOOL,))
     view.hours.reveal(3, LAST - 60, LAST)
@@ -370,15 +370,15 @@ def test_the_hours_end_at_23_00_with_no_24_00_label(
     Said.words = []
     view.hours.repaint()
     labels = [text for text, _where in Said.words if text.endswith(":00") and len(text) == 5]
-    assert "23:00" in labels, labels
-    assert "24:00" not in labels, labels
+    assert "23:00" in labels and "24:00" in labels, labels
     track = view.hours.track_for(3)
     assert track.last == LAST and view.hours.height() - track.area.bottom() >= 12, "the room below was lost"
 
 
 def test_a_focus_row_cuts_a_homework_title_only_when_the_row_has_no_room_for_it(qapp: QApplication) -> None:
     """The rail is 280 pixels wide, and "Math worksheet" beside today's "Today 16:15" has room in it,
-    so it is said whole; a narrower row still cuts it, and says the day and time whole."""
+    so it is said whole; a row too narrow for both beside each other puts the time under the name; a row with
+    no room for the name cuts it, and says the day and time whole."""
     from desktop.native.hours.rail import RAIL_PX, Rail
 
     load_fonts()
@@ -404,5 +404,13 @@ def test_a_focus_row_cuts_a_homework_title_only_when_the_row_has_no_room_for_it(
 
     wide = said(rail.tasks.viewport().width())
     assert wide[0] == "Today 16:15" and "Math worksheet" in " ".join(wide[1:])
+    # Too narrow for the time beside the name, the name takes the row whole and the time drops under it.
     narrow = said(200)
-    assert narrow[0] == "Today 16:15" and narrow[-1].endswith("…"), narrow
+    assert narrow[0] == "Today 16:15" and "Math worksheet" in " ".join(narrow[1:]), narrow
+    # A single word wider than the whole row is the only thing still cut, and the time is said whole.
+    long_word = "Supercalifragilisticexpialidocious"
+    rail.set_tasks([{"id": "long", "title": long_word, "day": 3, "start": "16:15"}], 3)
+    qapp.processEvents()
+    index = rail.tasks.indexFromItem(rail.tasks.item(0))
+    cut = said(200)
+    assert cut[0] == "Today 16:15" and cut[-1].endswith("…"), cut

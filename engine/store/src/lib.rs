@@ -7,7 +7,7 @@ use flexweek_engine::plan;
 use flexweek_engine::snapshot::canonical;
 use rusqlite::{Connection, OptionalExtension, params};
 use scrypt::{Params, scrypt};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 const PREFERENCES_TABLE: &str = r#"
@@ -441,7 +441,42 @@ pub fn upgrade_preferences(db: &Connection) -> StoreResult<()> {
         "UPDATE preferences SET reminders_enabled = 1, prefs_version = 1 WHERE prefs_version < 1",
         [],
     )?;
+    keep_24_hour_clock(db)?;
     db.execute_batch("COMMIT")?;
+    Ok(())
+}
+
+/// Version 2 (0.18.5): a new account's clock is 12-hour, and a missing clock key now reads as
+/// that. Until then a 24-hour clock was the default and was never stored, so each older account
+/// that never chose gets 24-hour written down once. Saving Settings writes every comfort key, so an
+/// account with the key has chosen.
+fn keep_24_hour_clock(db: &Connection) -> StoreResult<()> {
+    let rows = db
+        .prepare("SELECT user_id, comfort_json FROM preferences WHERE prefs_version < 2")?
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    for (user_id, text) in rows {
+        let comfort = if text.is_empty() {
+            Some(json!({}))
+        } else {
+            serde_json::from_str::<Value>(&text).ok()
+        };
+        if let Some(Value::Object(mut comfort)) = comfort
+            && !comfort.contains_key("clock_24h")
+        {
+            comfort.insert("clock_24h".into(), Value::Bool(true));
+            db.execute(
+                "UPDATE preferences SET comfort_json = ?1 WHERE user_id = ?2",
+                params![Value::Object(comfort).to_string(), user_id],
+            )?;
+        }
+    }
+    db.execute(
+        "UPDATE preferences SET prefs_version = 2 WHERE prefs_version < 2",
+        [],
+    )?;
     Ok(())
 }
 
@@ -675,6 +710,54 @@ mod tests {
             )
             .unwrap();
         assert_eq!(renamed, 0);
+    }
+
+    #[test]
+    fn upgrade_stamps_24_hour_on_accounts_that_never_chose_and_only_once() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY);
+            INSERT INTO users(id) VALUES (1), (2), (3), (4);",
+        )
+        .unwrap();
+        db.execute_batch(PREFERENCES_TABLE).unwrap();
+        for (user, version, comfort) in [
+            (1, 1, "{}"),
+            (2, 1, r#"{"clock_24h":false,"end_chime":true}"#),
+            (3, 1, r#"{"clock_24h":true}"#),
+            (4, 2, "{}"),
+        ] {
+            db.execute(
+                "INSERT INTO preferences(user_id, prefs_version, comfort_json) VALUES (?1, ?2, ?3)",
+                params![user, version, comfort],
+            )
+            .unwrap();
+        }
+        let comfort_of = |user: i64| -> Value {
+            let text: String = db
+                .query_row(
+                    "SELECT comfort_json FROM preferences WHERE user_id = ?1",
+                    [user],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            serde_json::from_str(&text).unwrap()
+        };
+        upgrade_preferences(&db).unwrap();
+        assert_eq!(comfort_of(1), json!({"clock_24h": true}));
+        assert_eq!(
+            comfort_of(2),
+            json!({"clock_24h": false, "end_chime": true})
+        );
+        assert_eq!(comfort_of(3), json!({"clock_24h": true}));
+        assert_eq!(comfort_of(4), json!({}));
+        db.execute(
+            "UPDATE preferences SET comfort_json = '{}' WHERE user_id = 1",
+            [],
+        )
+        .unwrap();
+        upgrade_preferences(&db).unwrap();
+        assert_eq!(comfort_of(1), json!({}));
     }
 
     #[test]

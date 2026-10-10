@@ -1,15 +1,15 @@
 [
   {
     "name": "Week goes back to full month names",
-    "file": "engine/engine/src/desk/reuse.rs",
-    "old": "    let end = crate::stored::add_days(start, 6)?;\n    Ok(if start.month() == end.month() {\n        format!(\n            \"{} – {} {}\",\n            start.day(),\n            end.day(),\n            name(&MONTHS, start.month0() as usize, true)\n        )\n    } else {\n        format!(\n            \"{} {} – {} {}\",\n            start.day(),\n            name(&MONTHS, start.month0() as usize, true),\n            end.day(),\n            name(&MONTHS, end.month0() as usize, true)\n        )\n    })\n",
-    "new": "    let end = crate::stored::add_days(start, 6)?;\n    Ok(if start.month() == end.month() {\n        format!(\n            \"{} – {} {}\",\n            start.day(),\n            end.day(),\n            name(&MONTHS, start.month0() as usize, false)\n        )\n    } else {\n        format!(\n            \"{} {} – {} {}\",\n            start.day(),\n            name(&MONTHS, start.month0() as usize, false),\n            end.day(),\n            name(&MONTHS, end.month0() as usize, false)\n        )\n    })\n",
+    "file": "engine/engine/src/desk/datetext.rs",
+    "old": "    let last = format!(\"{} {}\", end.day(), month_name(end, true));\n",
+    "new": "    let last = format!(\"{} {}\", end.day(), month_name(end, false));\n",
     "test": "desktop/tests/test_time_numbers.py::test_the_week_title_uses_the_same_short_date_at_every_width[default-classic]"
   },
   {
     "name": "Retro keeps its old internal week range",
     "file": "desktop/native/layouts/retro.py",
-    "old": "        return f\"Week.exe - {planner_title(week, 'week')}\"",
+    "old": "        return f\"Week.exe - {week_range(week.week_start)}\"",
     "new": "        return \"Week.exe - 28 September to 4 October\"",
     "test": "desktop/tests/test_time_numbers.py::test_the_week_title_uses_the_same_short_date_at_every_width[default-retro]"
   },
@@ -93,8 +93,8 @@
   {
     "name": "Clay's now line runs through its words",
     "file": "desktop/native/layouts/clay.py",
-    "old": "        if too_short or width < least:\n            return []\n",
-    "new": "        return []\n        if too_short or width < least:\n            return []\n",
+    "old": "        if self._too_short(rect, scale) or width < least:\n",
+    "new": "        return []\n        if self._too_short(rect, scale) or width < least:\n",
     "test": "desktop/tests/test_time_numbers.py::test_the_now_line_runs_under_a_blocks_words_without_a_gap[clay]"
   },
   {

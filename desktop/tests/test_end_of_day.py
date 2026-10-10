@@ -68,7 +68,7 @@ def test_the_block_editor_still_refuses_an_end_before_its_start(qapp: QApplicati
     type_over(dialog.end, "21:00")
     dialog.accept()
     assert dialog.result() != dialog.DialogCode.Accepted
-    assert dialog.duration_line.text() == "End must be after Start."
+    assert dialog.duration_line.text() == "End needs to be later than Start (22:00)."
 
 
 @CLOCKS
@@ -187,5 +187,7 @@ def test_a_start_box_keeps_00_00_as_midnight_and_refuses_24_00(
     QTest.keyClicks(field, "24:00")
     field.clearFocus()
     assert field.time() == QTime(0, 0)
-    assert line_of(field).text() == "00:00"
+    # Refused with a line, the text left as typed.
+    assert line_of(field).text() == "24:00"
+    assert field.problem()
     free(field)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 
 NONFINITE = "\u0000float"
 # U+D800..U+DFFF as U+10F800..U+10FFFF: the last planes' private-use block, which no real text uses.
@@ -34,8 +35,26 @@ def _clean(value: object) -> object:
     return value
 
 
+# Text json.dumps made holds a lone surrogate as an escape, `\ud8xx` to `\udfxx`. A real emoji is a
+# pair of them, so it takes the walk too, which only costs time.
+_SURROGATE_ESCAPE = re.compile(r"\\u[dD][89a-fA-F]")
+# What the engine sent back that `restore` has work for: the marker (as serde_json writes the NUL, or as
+# the character itself), a mapped character raw, or either written as an escape.
+_NEEDS_RESTORE = re.compile(
+    r"\\u0000float|\x00float|[\U0010f800-\U0010ffff]|\\u[dD][89a-fA-F]", re.IGNORECASE
+)
+
+
 def plain(value: object) -> str:
-    return json.dumps(_clean(value))
+    """Most values hold none of the three, and are written as they are; json.dumps itself refuses NaN
+    and infinity, and the text shows a lone surrogate, so the walk runs only for those."""
+    try:
+        text = json.dumps(value, allow_nan=False)
+    except ValueError:
+        return json.dumps(_clean(value))
+    if _SURROGATE_ESCAPE.search(text):
+        return json.dumps(_clean(value))
+    return text
 
 
 def restore(value: object) -> object:
@@ -49,3 +68,9 @@ def restore(value: object) -> object:
     if isinstance(value, list):
         return [restore(item) for item in value]
     return value
+
+
+def restored(text: str) -> object:
+    """`restore(json.loads(text))`, without the walk when the text holds nothing to turn back."""
+    value = json.loads(text)
+    return restore(value) if _NEEDS_RESTORE.search(text) else value

@@ -17,9 +17,11 @@ import json
 import math
 import re
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from functools import lru_cache
+from types import MappingProxyType
+from typing import Any
 
 import flexweek_engine  # type: ignore[import-untyped]
 
@@ -51,7 +53,7 @@ from desktop.native.tokens import (
     oklch_of,
     type_pt,
 )
-from desktop.native.wire import plain, restore
+from desktop.native.wire import plain, restore, restored
 
 # The knobs of 0.17 (plan, "The knobs"), each value in the order Settings offers them. Round's id is
 # "rounded" because "round" was 0.16's name for what is now Soft; a look saved then still opens as it
@@ -418,6 +420,9 @@ PRESET_PALETTES = {
         muted="#5c5750",
         hairline="#e6e0d6",
         hairline_strong="#cfc7b9",
+        # Page, card and raised card are within 1.1 to 1 of each other, so a card is told from the page
+        # by a 1 px edge at 3 to 1 (#60): the strong hairline with only its lightness moved.
+        card_edge="#8f877a",
         error="#9b1b30",
         block_locked="#f6f1e8",
         block_locked_ink="#1a1a1a",
@@ -438,6 +443,7 @@ PRESET_PALETTES = {
         muted="#b3ab9c",
         hairline="#3a3833",
         hairline_strong="#4a4740",
+        card_edge="#706c65",
         rule=mix("#f3eee3", "#1c1b19", 0.08),
         error="#ff8a7a",
         block_locked="#2c2a26",
@@ -592,7 +598,9 @@ HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
 _LOOK_JSON_CACHE: OrderedDict[str, str] = OrderedDict()
 _LOOK_JSON_CACHE_MAX = 128
-_LOOK_MEASURES_CACHE: OrderedDict[str, dict] = OrderedDict()
+_LOOK_MEASURES_CACHE: OrderedDict[str, Mapping[str, Any]] = OrderedDict()
+# By the look object's identity, with the object itself kept so the identity stays its own.
+_LOOK_MEASURES_BY_OBJECT: OrderedDict[int, tuple[dict | None, Mapping[str, Any]]] = OrderedDict()
 _LOOK_MEASURES_CACHE_MAX = 128
 
 
@@ -631,7 +639,7 @@ def sanitize_look(raw: object) -> dict:
     custom look when the student made one."""
     key = _look_json_key(raw)
     text = _cached_look_json("sanitize_look", key, lambda: flexweek_engine.look_sanitize_look(key))
-    return restore(json.loads(text))
+    return restored(text)
 
 
 def effective_look(choice: dict | None) -> dict:
@@ -639,7 +647,7 @@ def effective_look(choice: dict | None) -> dict:
     knob, such as setup's chips, still reads something true."""
     key = _look_json_key(choice)
     text = _cached_look_json("effective_look", key, lambda: flexweek_engine.look_effective_look(key))
-    return restore(json.loads(text))
+    return restored(text)
 
 
 def _look_measures_uncached(choice: dict | None) -> dict:
@@ -675,20 +683,31 @@ def _look_measures_uncached(choice: dict | None) -> dict:
     }
 
 
-def look_measures(choice: dict | None) -> dict:
+def look_measures(choice: dict | None) -> Mapping[str, Any]:
     """What a look draws that is not a colour, worked out from its knobs and any custom measures: the
     corners of controls and cards, the text size in points, the body and heading faces, and how blocks
-    and the grid are drawn. `edge_width` None is the painter's own."""
+    and the grid are drawn. `edge_width` None is the painter's own.
+
+    Asked for on every paint, so a look dict seen before is found by its identity. That holds because
+    the window replaces its look when it changes and never edits one; the dict is kept in the cache so
+    its identity cannot be given to another. The answer is shared and read-only."""
+    seen = _LOOK_MEASURES_BY_OBJECT.get(id(choice))
+    if seen is not None and seen[0] is choice:
+        _LOOK_MEASURES_BY_OBJECT.move_to_end(id(choice))
+        return seen[1]
     key = _look_json_key(choice)
     hit = _LOOK_MEASURES_CACHE.get(key)
-    if hit is not None:
+    if hit is None:
+        hit = MappingProxyType(_look_measures_uncached(choice))
+        _LOOK_MEASURES_CACHE[key] = hit
+        if len(_LOOK_MEASURES_CACHE) > _LOOK_MEASURES_CACHE_MAX:
+            _LOOK_MEASURES_CACHE.popitem(last=False)
+    else:
         _LOOK_MEASURES_CACHE.move_to_end(key)
-        return deepcopy(hit)
-    hit = _look_measures_uncached(choice)
-    _LOOK_MEASURES_CACHE[key] = hit
-    if len(_LOOK_MEASURES_CACHE) > _LOOK_MEASURES_CACHE_MAX:
-        _LOOK_MEASURES_CACHE.popitem(last=False)
-    return deepcopy(hit)
+    _LOOK_MEASURES_BY_OBJECT[id(choice)] = (choice, hit)
+    if len(_LOOK_MEASURES_BY_OBJECT) > _LOOK_MEASURES_CACHE_MAX:
+        _LOOK_MEASURES_BY_OBJECT.popitem(last=False)
+    return hit
 
 
 def text_scale(choice: dict | None) -> float:
@@ -934,12 +953,16 @@ def block_time_colour(ink: str, fill: str) -> str:
 def _depth_rules(depth: str, palette: dict) -> str:
     # Qt stylesheets have no shadows. Depth is drawn with edges instead: a hairline for Soft, nothing
     # for None, and for Bold a heavy bottom and right edge, which reads as Poster's offset shadow.
-    if depth == "none":
-        return "border: none;"
+    # Paper and Ink name a card edge: their cards sit too near the page to be told apart by a tint.
+    edge = palette.get("card_edge")
     if depth == "bold":
         strong = palette["hairline_strong"]
         heavy = f"4px solid {strong}"
         return f"border: 2px solid {strong}; border-bottom: {heavy}; border-right: {heavy};"
+    if edge:
+        return f"border: 1px solid {edge};"
+    if depth == "none":
+        return "border: none;"
     return f"border: 1px solid {palette['hairline']};"
 
 
@@ -1094,6 +1117,10 @@ def control_rules(palette: dict, radius: int, text: float | str, art: dict[str, 
         f"QProgressBar::chunk {{ background: {palette['accent']}; border-radius: 4px; }}"
         f"QLineEdit:focus, QComboBox:focus, QAbstractSpinBox:focus, QPlainTextEdit:focus {{ "
         f"border: 1px solid {palette['accent']}; }}"
+        # The line under a time box whose text says no time.
+        f"QFrame#clockError {{ background: {palette['panel']}; border: 1px solid {palette['error']}; "
+        f"border-radius: {radius}px; }}"
+        f"QLabel#clockErrorText {{ color: {palette['error']}; }}"
         # A switch is a check box whose box is a pill with a knob, drawn whole by `control_art`.
         'QCheckBox[switch="true"] { spacing: 10px; }'
         'QCheckBox[switch="true"]::indicator { width: 34px; height: 20px; border: none; '
@@ -1189,6 +1216,11 @@ CONFLICT_FILL, CONFLICT_TEXT = "#fff4d6", "#6b4a00"
 ROOMY_PAD, ROOMY_SIDE, ROOMY_MIN, ROOMY_MIN_LARGE = 8, 20, 36, 40
 
 
+def roomy_height(large: bool) -> int:
+    """The `min-height` of a roomy button's words box, inside its padding and its 2 px border."""
+    return (ROOMY_MIN_LARGE if large else ROOMY_MIN) - 2 * (ROOMY_PAD + 2)
+
+
 def dialog_rules(palette: dict, card_radius: int, depth: str, quiet_edge: str, text: float | str) -> str:
     """Dialogs (decision 23 of 0.17): the body is the card, a sheet's card is rounded as a sheet, and a
     button that cannot be pressed yet keeps its shape at 40 %, not a grey slab that looked broken.
@@ -1245,7 +1277,10 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
     strong = f"font-weight: {WEIGHT_STRONG};"
     heading = f"font-size: {type_pt('heading', text)}pt; {strong}"
     card_radius = max(radius, 10)
-    ring = "transparent" if depth == "none" else mix(palette["hairline_strong"], palette["panel"], 0.6)
+    if palette.get("card_edge"):
+        ring = palette["card_edge"]
+    else:
+        ring = "transparent" if depth == "none" else mix(palette["hairline_strong"], palette["panel"], 0.6)
     # A tag is a label, not a control: one hairline, or none in a flat look like everything else.
     tag_edge = "border: none;" if depth == "none" else f"border: 1px solid {palette['hairline_strong']};"
     # A card is larger than a control, so it is lifted with the text colour, never the accent.
@@ -1287,8 +1322,6 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         # A margin on a label turns on its indent, which set each section 5 pixels right of the title.
         f"QLabel#setupSection {{ {heading} margin-top: {SPACING[1]}px; qproperty-indent: 0; }}"
         f"QLabel#setupError {{ color: {palette['error']}; {strong} }}"
-        # An example in a box is not an answer: the muted colour, and "e.g." in the words.
-        f"QWidget#setupPage QLineEdit {{ placeholder-text-color: {palette['muted']}; }}"
         f"QLabel#setupSummaryName {{ {strong} }}"
         f"QFrame#setupChoice {{ background: {palette['panel']}; border: 2px solid {ring}; "
         f"border-radius: {card_radius}px; padding: 0; }}"
@@ -1332,7 +1365,7 @@ def setup_rules(palette: dict, radius: int, text: float | str, pad: int, depth: 
         f"color: {mix(palette['text'], palette['field'], 0.5)}; }}"
         f"{day}:checked:disabled {{ background: {mix(palette['accent'], palette['field'], 0.6)}; "
         f"color: {palette['accent_ink']}; }}"
-        f"{quiet_rule} {{ background: transparent; color: {palette['accent']}; border: none; "
+        f"{quiet_rule} {{ background: transparent; color: {accent_words(palette)}; border: none; "
         f"padding: {pad}px 2px; font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
         f"{quiet_hover} {{ color: {palette['text']}; text-decoration: underline; }}"
         f"QPushButton#setupAddActivity:disabled, QPushButton#setupAddHomework:disabled {{ "
@@ -1361,6 +1394,13 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
     title = f"font-size: {type_pt('title', text)}pt; font-weight: {WEIGHT_STRONG};"
     sheet = RADIUS_SHEET if card_radius else 0
     ring = mix(palette["accent"], palette["field"], 0.4)
+    # Only a look that draws soft hairlines: a flat look draws none, and a bold one its own heavy ones.
+    field_rules = (
+        f"QWidget#authCard QLineEdit {{ border: 1px solid {readable_edge(palette)}; }}"
+        f"QWidget#authCard QLineEdit:focus {{ border: 1px solid {palette['accent']}; }}"
+        if knobs["depth"] == "soft"
+        else ""
+    )
     links = "QPushButton#authSwitch, QPushButton#forgotPassword"
     # Still the accent, a step toward the text colour: it stays a link instead of going near-black.
     deeper = mix(palette["accent"], palette["text"], 0.7)
@@ -1372,7 +1412,7 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         f"QLabel#authHeading {{ {title} }}"
         f"QLabel#authNote {{ color: {palette['muted']}; }}"
         f"QLabel#authErrorText {{ color: {palette['error']}; }}"
-        f"QPushButton#authWhy {{ background: transparent; color: {palette['accent']}; border: none; "
+        f"QPushButton#authWhy {{ background: transparent; color: {accent_words(palette)}; border: none; "
         f"padding: {SPACING[0]}px 0; min-height: 0; text-align: left; font-weight: {WEIGHT_REGULAR}; }}"
         f"QPushButton#authWhy:hover, QPushButton#authWhy[keyfocus=\"true\"]:focus "
         f"{{ color: {deeper}; text-decoration: underline; }}"
@@ -1381,13 +1421,16 @@ def auth_rules(palette: dict, knobs: dict, radius: int, card_radius: int) -> str
         f"QLabel#recoveryList {{ font-family: {FONT_FAMILIES['mono']}; "
         f"background: {mix(palette['text'], palette['panel'], 0.05)}; "
         f"border-radius: {radius}px; padding: {SPACING[2]}px {SPACING[3]}px; letter-spacing: 0.5px; }}"
+        # The sign-in fields' edge reads at 3 to 1 on the field and the card (#74): the look's own where
+        # it does, else the text colour thinned only as far as that takes.
+        f"{field_rules}"
         f"QToolButton#passwordReveal {{ background: transparent; border: none; padding: 0; "
         f"border-radius: {radius}px; }}"
         f"QToolButton#passwordReveal:hover {{ background: {palette['hairline']}; }}"
         f"QToolButton#passwordReveal:focus {{ border: 2px solid {ring}; }}"
         # Creating an account is the way in for most students on a first run, so it is the link that
         # carries weight and Forgot password sits quieter under it.
-        f"{links} {{ background: transparent; color: {palette['accent']}; border: none; "
+        f"{links} {{ background: transparent; color: {accent_words(palette)}; border: none; "
         f"padding: {SPACING[0]}px 0; min-height: 0; font-weight: {WEIGHT_REGULAR}; }}"
         f"QPushButton#authSwitch {{ font-weight: {WEIGHT_STRONG}; }}"
         f"{reached} {{ color: {deeper}; text-decoration: underline; }}"
@@ -1419,6 +1462,28 @@ def _veil(colour: str, amount: float) -> str:
     """`colour` at `amount` opacity, laid over whatever the control sits on."""
     red, green, blue = _channels(colour)
     return f"rgba({red}, {green}, {blue}, {round(amount * 255)})"
+
+
+def accent_words(palette: dict) -> str:
+    """The accent as words: itself where it reads at 4.5 to 1 on the page, the cards and the calendar, else
+    its lightness moved as far as that takes. A typed accent stays as typed for fills and lines, and
+    Readability offers its fix; words in it are drawn darker until then (0.17.2)."""
+    grounds = (palette["window"], palette["panel"], palette.get("grid", palette["panel"]))
+    return fit_lightness(palette["accent"], grounds, AA_TEXT)
+
+
+def readable_edge(palette: dict) -> str:
+    """An edge that reads at 3 to 1 on the field and on the card: the look's strong hairline, or the
+    card edge where it has one, else the text colour laid thicker over the field until it does."""
+    grounds = (palette["field"], palette["panel"])
+    for edge in (palette.get("card_edge"), palette["hairline_strong"]):
+        if edge and min(contrast(edge, ground) for ground in grounds) >= AA_GRAPHIC:
+            return edge
+    for share in range(30, 101, 5):
+        edge = mix(palette["text"], palette["field"], share / 100)
+        if min(contrast(edge, ground) for ground in grounds) >= AA_GRAPHIC:
+            return edge
+    return palette["text"]
 
 
 def outline_edge(palette: dict) -> str:
@@ -1532,10 +1597,17 @@ def button_rules(
     ]
     # Roomy: an answer sitting in a row of text, sized to its words with room above and below them
     # (#79); a filled, tonal or outlined button takes the same height, the outline's border being 1 px.
+    # Every button in a sheet is roomy; the kinds that name their own padding (a step, a segment, a pill,
+    # a chip, the sheet's close and small buttons) have a rule of their own that is more specific than
+    # `QDialog QPushButton`, so they keep it. A button outside a sheet asks with `roomy`.
+    room = f"padding: {ROOMY_PAD}px {ROOMY_SIDE}px; min-height: {roomy_height(large)}px;"
+    wider = f"padding: {ROOMY_PAD + 1}px {ROOMY_SIDE + 1}px;"
     rules += [
-        f'QPushButton[roomy="true"] {{ padding: {ROOMY_PAD}px {ROOMY_SIDE}px; '
-        f"min-height: {(ROOMY_MIN_LARGE if large else ROOMY_MIN) - 2 * (ROOMY_PAD + 2)}px; }}",
-        f'QPushButton[roomy="true"][outlined="true"] {{ padding: {ROOMY_PAD + 1}px {ROOMY_SIDE + 1}px; }}',
+        f'QPushButton[roomy="true"] {{ {room} }}',
+        f'QPushButton[roomy="true"][outlined="true"], QPushButton[roomy="true"][outline="true"] '
+        f"{{ {wider} }}",
+        f"QDialog QPushButton {{ {room} }}",
+        f'QDialog QPushButton[outlined="true"], QDialog QPushButton[outline="true"] {{ {wider} }}',
     ]
     rules += [
         f'QPushButton[quiet="true"] {{ background: transparent; color: {text}; '
@@ -1549,17 +1621,32 @@ def button_rules(
 
 
 VIEW_BUTTONS = ("viewDay", "viewWeek", "viewMonth", "viewMyDay")
-BAR_BUTTONS = ", ".join(
-    f"QPushButton#{name}"
-    for name in (
-        "prevWeek", "nextWeek", "todayWeek", "addButton", "addArrow", "solveButton", "retrySave",
-        "moreButton", "settingsGear",
-    )
+BAR_BUTTON_NAMES = (
+    "prevWeek", "nextWeek", "todayWeek", "addButton", "addArrow", "solveButton", "retrySave",
+    "moreButton", "settingsGear",
 )
+BAR_BUTTONS = ", ".join(f"QPushButton#{name}" for name in BAR_BUTTON_NAMES)
+BAR_WORDS = ", ".join(
+    f"QPushButton#{name}" for name in ("todayWeek", "addButton", "solveButton", "retrySave", "moreButton")
+)
+# Every button of the top bar wears the keyboard focus ring `widgets.FocusRing` draws round it (#92).
+RING_BUTTONS = (*BAR_BUTTON_NAMES, *VIEW_BUTTONS)
+FOCUS_RING_PX = 2
+FOCUS_GAP_PX = 2
 ZOOM_PILL_PX = 24
 
 
-def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | None) -> str:
+def focus_ring(palette: dict) -> str:
+    """The keyboard focus ring: the accent itself where it reads 3 to 1 on the page, else moved in
+    lightness only as far as that takes. High contrast's accent is its yellow and stays."""
+    if palette.get("family") == "contrast":
+        return palette["accent"]
+    return fit_lightness(palette["accent"], (palette["window"],), AA_GRAPHIC)
+
+
+def top_bar_rules(
+    palette: dict, pad: int, depth: str, art: dict[str, str] | None, large: bool = False
+) -> str:
     """Decision 11's top bar, as the mock-up draws it. The arrows, Today, More and the gear are quiet
     buttons in the text colour. Add and its chevron are one pill split by a line of the accent's ink.
     The view control is a pill track with the chosen view raised on it by the small shadow, painted by
@@ -1569,6 +1656,7 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
     text, muted, page = palette["text"], palette["muted"], palette["window"]
     contrast_look = palette.get("family") == "contrast"
     ring = palette["accent"] if contrast_look else mix(palette["accent"], page, 0.4)
+    ring_names = ", ".join(f'QPushButton#{name}[keyfocus="true"]:focus' for name in RING_BUTTONS)
     track = page if contrast_look else mix(text, page, 0.06)
     dark = palette.get("axis") == "dark"
     chosen = palette["accent"] if contrast_look else palette["hairline_strong"] if dark else palette["panel"]
@@ -1585,12 +1673,11 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
     def views(state: str = "") -> str:
         return ", ".join(f"QPushButton#{name}{state}" for name in VIEW_BUTTONS)
 
-    focused = views('[keyfocus="true"]:focus')
     menu = (
         # The chevron's room is added to the width by Qt; the padding only keeps it off the word.
-        f"QPushButton#moreButton {{ padding-right: {pad + 14}px; }}"
+        f"QPushButton#moreButton {{ padding-right: {ROOMY_SIDE + 14}px; }}"
         f"QPushButton#moreButton::menu-indicator {{ image: url({more}); subcontrol-origin: padding; "
-        f"subcontrol-position: center right; width: 14px; height: 14px; right: {pad}px; }}"
+        f"subcontrol-position: center right; width: 14px; height: 14px; right: {ROOMY_SIDE}px; }}"
         if more
         else ""
     )
@@ -1601,22 +1688,23 @@ def top_bar_rules(palette: dict, pad: int, depth: str, art: dict[str, str] | Non
         f"{views()} {{ background: transparent; color: {quiet_ink}; font-weight: {WEIGHT_REGULAR}; "
         # Inside a track 3 pixels in from the bar's other controls: a view's own padding is that much
         # less, or the track squeezed it and cut the tails off "Day" and "My day".
-        f"border: 2px solid transparent; padding: {max(pad - 7, 0)}px {pad + 2}px; min-height: 0; }}"
+        f"border: 2px solid transparent; padding: {max(pad - 7, 0)}px {pad}px; min-height: 0; }}"
         f"{views(':hover')} {{ background: transparent; color: {text}; }}"
         f"{views(':checked')} {{ background: transparent; color: {chosen_words}; "
         f"font-weight: {WEIGHT_STRONG}; }}"
-        f"{focused} {{ border-color: {ring}; }}"
-        # The bar's controls are 32 pixels tall at Normal, as the mock-up's, not a dialog's 40.
-        f"{BAR_BUTTONS} {{ padding-top: {max(pad - 4, 1)}px; padding-bottom: {max(pad - 4, 1)}px; }}"
+        # The ring is drawn outside the button by widgets.FocusRing, so the button's own edge stays clear.
+        f"{ring_names} {{ border-color: transparent; }}"
+        f"QWidget#barFocusRing {{ background: transparent; border: none; padding: 0; "
+        f"qproperty-colour: {focus_ring(palette)}; }}"
+        # The bar's buttons are as roomy as a sheet's: 36 pixels tall (40 at Large) and 20 at each side of
+        # their words. The icon buttons take the same height so the row stays level.
+        f"{BAR_BUTTONS} {{ padding-top: {ROOMY_PAD}px; padding-bottom: {ROOMY_PAD}px; "
+        f"min-height: {roomy_height(large)}px; }}"
         "QPushButton#prevWeek, QPushButton#nextWeek, QPushButton#settingsGear { "
         f"padding-left: {max(pad - 2, 2)}px; padding-right: {max(pad - 2, 2)}px; }}"
-        # Words-only controls sit as close to their words as the mock-up's: a filled button's
-        # padding made More 108 pixels wide and pushed a two-month title into its short form.
-        f"QPushButton#todayWeek, QPushButton#moreButton {{ padding-left: {pad}px; }}"
-        f"QPushButton#todayWeek {{ padding-right: {pad}px; }}"
-        "QPushButton#addButton { border-top-right-radius: 0; border-bottom-right-radius: 0; "
-        f"padding-right: {pad + 2}px; }}"
-        f"QPushButton#addArrow {{ padding: {pad}px {pad // 2 + 2}px; border-top-left-radius: 0; "
+        f"{BAR_WORDS} {{ padding-left: {ROOMY_SIDE}px; padding-right: {ROOMY_SIDE}px; }}"
+        "QPushButton#addButton { border-top-right-radius: 0; border-bottom-right-radius: 0; }"
+        f"QPushButton#addArrow {{ padding: {ROOMY_PAD}px {pad // 2 + 2}px; border-top-left-radius: 0; "
         f"border-bottom-left-radius: 0; border-left-width: 1px; border-left-color: {divider}; }}"
         "QPushButton#addArrow::menu-indicator { image: none; width: 0; }"
         f"{menu}"
@@ -1652,6 +1740,9 @@ def pack_stylesheet(
     family = measures["body"]
     radius, card_radius = measures["radius"], measures["card_radius"]
     edges = _depth_rules(knobs["depth"], palette)
+    serif = measures["heading"] == FONT_FAMILIES["serif"]
+    timer_face = FONT_FAMILIES["serif"] if serif else MONO_FAMILY
+    timer_ring = f"QWidget#countdownRing {{ font-family: {FONT_FAMILIES['serif']}; }}" if serif else ""
     item_h = 36 if knobs["text"] == "large" else 22
     button_min = f" min-height: {item_h}px;" if knobs["text"] == "large" else ""
     field_min = FIELD_MIN_PX[knobs["text"]]
@@ -1671,11 +1762,19 @@ def pack_stylesheet(
         # frame line, over the first row of what it names.
         f"QGroupBox {{ margin-top: {round(type_pt('body', knobs['text']) * 1.9) + 4}px; }}"
         f"QGroupBox::title {{ subcontrol-origin: margin; left: {card + 4}px; padding: 0 4px; }}"
+        # Qt draws an example in a box at half the text colour, about 3.5 to 1 on white (#95): the muted
+        # colour, moved only as far as 4.5 to 1 on the field and the card takes.
+        f"QLineEdit, QPlainTextEdit {{ placeholder-text-color: "
+        f"{fit_lightness(palette['muted'], (palette['field'], palette['panel']), AA_TEXT)}; }}"
         f"QLineEdit, QComboBox, QSpinBox, QTimeEdit, QDateTimeEdit {{ background: {palette['field']}; "
         f"color: {palette['text']}; padding: {pad}px; border-radius: {radius}px; "
         f"min-height: {field_min}px; {edges} }}"
         # A typed time and a stepped number have no arrows inside, so no room kept for them.
         f'QAbstractSpinBox[typed="true"], QAbstractSpinBox[stepped="true"] {{ padding-right: {pad}px; }}'
+        # A typed time that says no time: a 2 px outline in the error colour, over the focus outline, with
+        # a pixel less padding so the box keeps its size.
+        f'QAbstractSpinBox[invalid="true"], QAbstractSpinBox[invalid="true"]:focus {{ '
+        f"border: 2px solid {palette['error']}; padding: {max(pad - 1, 0)}px; }}"
         f"QPlainTextEdit {{ background: {palette['field']}; color: {palette['text']}; "
         f"padding: {pad}px; border-radius: {radius}px; {edges} }}"
         f"QTableWidget {{ gridline-color: {palette['hairline']}; "
@@ -1716,7 +1815,9 @@ def pack_stylesheet(
         f"QLabel#nowNext {{ font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#focusTask {{ font-weight: {WEIGHT_STRONG}; }}"
         f"QLabel#focusPhase {{ color: {palette['muted']}; }}"
-        f"QLabel#focusTime {{ font-family: {MONO_FAMILY}; font-weight: {WEIGHT_STRONG}; }}"
+        # A serif look writes its timers in its own face (#60), the figures set to one width in code.
+        f"QLabel#focusTime {{ font-family: {timer_face}; font-weight: {WEIGHT_STRONG}; }}"
+        f"{timer_ring}"
         f"QLabel#recoveryStatus {{ color: {palette['error']}; }}"
         # How many recovery codes are left is an ordinary fact until none are.
         f"QLabel#recoveryCount {{ color: {palette['muted']}; }}"
@@ -1738,13 +1839,13 @@ def pack_stylesheet(
         f"QLabel#blockDurationLine[problem=\"true\"] {{ color: {palette['error']}; "
         f"font-weight: {WEIGHT_STRONG}; }}"
         + help_rules(palette, scale, radius, knobs["depth"])
-        + top_bar_rules(palette, pad, knobs["depth"], art)
+        + top_bar_rules(palette, pad, knobs["depth"], art, knobs["text"] == "large")
         + setup_rules(palette, radius, scale, pad, knobs["depth"])
         + settings_rules(palette, radius, scale, pad, knobs["depth"])
         + auth_rules(palette, knobs, radius, card_radius)
         + dialog_rules(palette, card_radius, knobs["depth"], quiet_edge, scale)
         + f"QPushButton#updateSkip {{ background: transparent; "
-        f"color: {palette['accent']}; border: none; padding: {pad}px 0; "
+        f"color: {accent_words(palette)}; border: none; padding: {pad}px 0; "
         f"font-size: {pt['caption']}; text-align: left; min-height: 0; }}"
         f"QPushButton#updateSkip:hover {{ color: {palette['text']}; text-decoration: underline; }}"
         # A ringing alarm is the one thing in the app that has to be read from across a room.
@@ -1870,7 +1971,7 @@ def planner_rules(
     links."""
     caption, body, heading = (f"{type_pt(role, text)}pt" for role in ("caption", "body", "heading"))
     link = (
-        f"background: transparent; color: {palette['accent']}; border: none; "
+        f"background: transparent; color: {accent_words(palette)}; border: none; "
         f"padding: 2px {pad // 2}px; min-height: 0; font-weight: {WEIGHT_STRONG};"
     )
     bare = "background: transparent; border: none; padding: 0; border-radius: 0;"

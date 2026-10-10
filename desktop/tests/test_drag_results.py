@@ -282,10 +282,10 @@ def test_a_move_a_resize_a_create_and_a_placing_each_say_what_they_did_with_undo
     settled(qapp, window)
     said.append(notice(window))
     assert said == [
-        (True, "Moved History essay to Fri 18:00.", "Undo"),
-        (True, "History essay now ends at 19:30.", "Undo"),
-        (True, "Added Club on Sat 10:00.", "Undo"),
-        (True, "Placed Math worksheet on Thu 18:00.", "Undo"),
+        (True, "Moved History essay to Fri 6:00 PM.", "Undo"),
+        (True, "History essay now ends at 7:30 PM.", "Undo"),
+        (True, "Added Club on Sat 10:00 AM.", "Undo"),
+        (True, "Placed Math worksheet on Thu 6:00 PM.", "Undo"),
     ]
 
     QTest.mouseClick(window.findChild(QPushButton, "toastButton"), LEFT)
@@ -326,8 +326,8 @@ def test_the_notice_waits_for_the_pointer_and_goes_once_its_change_is_no_longer_
     settled(qapp, window)
     assert (held, let_go, after_piano, notice(window)) == (
         (False, "", ""),
-        (True, "Moved History essay to Thu 20:00.", "Undo"),
-        (True, "Moved Piano to Thu 17:30.", "Undo"),
+        (True, "Moved History essay to Thu 8:00 PM.", "Undo"),
+        (True, "Moved Piano to Thu 5:30 PM.", "Undo"),
         (False, "", ""),
     )
 
@@ -345,7 +345,7 @@ def test_a_move_in_a_design_says_what_it_did_too(qapp: QApplication, window: Nat
     drag(qapp, hours, hours, hours.point_for(3, 19 * 60 + 30), hours.point_for(4, 18 * 60 + 30))
     wait_until(qapp, lambda: session_of(window, "essay")["days"] == [4])
     settled(qapp, window)
-    assert notice(window) == (True, "Moved History essay to Fri 18:00.", "Undo")
+    assert notice(window) == (True, "Moved History essay to Fri 6:00 PM.", "Undo")
 
 
 def test_a_chip_carried_on_month_says_what_it_did(qapp: QApplication, window: NativeWindow) -> None:
@@ -548,13 +548,16 @@ def test_the_toast_belongs_to_the_page_it_was_said_on(qapp: QApplication, window
     assert window.toast.isVisible(), "the page it is on, asked for again, is not leaving"
 
 
-def test_a_view_switch_takes_the_toast_away(qapp: QApplication, window: NativeWindow) -> None:
+def test_a_view_switch_keeps_the_toast_and_its_undo(qapp: QApplication, window: NativeWindow) -> None:
+    """0.18.5 #97: the Undo toast vanished on the first view switch. It stays through Day, Month, Week
+    and My day, until it times out or is used."""
     window._set_notice("Moved History essay to Fri 18:00.", "Undo", lambda: None)
     qapp.processEvents()
     assert window.toast.isVisible()
-    QTest.mouseClick(window.findChild(QPushButton, "viewMonth"), LEFT)
-    settled(qapp, window)
-    assert not window.toast.isVisible() and not window.toast.button.isVisible()
+    for name in ("viewMonth", "viewDay", "viewWeek", "viewMyDay", "viewWeek"):
+        QTest.mouseClick(window.findChild(QPushButton, name), LEFT)
+        settled(qapp, window)
+        assert window.toast.isVisible() and window.toast.button.isVisible(), name
 
 
 def test_a_routine_save_says_nothing_and_a_refusal_says_why(qapp: QApplication, window: NativeWindow) -> None:

@@ -88,6 +88,13 @@ pub fn run(backend_only: bool, workers: Option<u32>, python: Option<&Path>) -> u
     let junit = report_dir.join("pytest.xml");
     let timeout = step_timeout_secs();
     for (name, command) in steps(&python, workers, backend_only, &junit, &base) {
+        if name == "Python behavior"
+            && let Err(message) = mutation_patterns(&checkout)
+        {
+            eprintln!("FAILED: Mutation patterns:\n{message}");
+            let _ = std::fs::remove_dir_all(&report_dir);
+            return 1;
+        }
         println!("\n{name}");
         let _ = std::io::Write::flush(&mut std::io::stdout());
         let code = match session.run_in(&command, Some(timeout), &checkout) {
@@ -126,6 +133,22 @@ pub fn run(backend_only: bool, workers: Option<u32>, python: Option<&Path>) -> u
     let _ = std::fs::remove_dir_all(&report_dir);
     println!("{}", verified_line(backend_only));
     0
+}
+
+/// Every mutation case's old text still occurs once in its source file. Edits near a case break it,
+/// and finding that out in the long test step, or in a later mutation run, wastes the wait. A
+/// checkout with no `scripts/mutations` has nothing to check.
+fn mutation_patterns(checkout: &Path) -> Result<(), String> {
+    println!("\nMutation patterns");
+    if !checkout.join("scripts/mutations").is_dir() {
+        println!("no scripts/mutations here; nothing to check");
+        return Ok(());
+    }
+    let misses = crate::mutate::pattern_misses(checkout)?;
+    if misses.is_empty() {
+        return Ok(());
+    }
+    Err(misses.join("\n"))
 }
 
 pub fn steps(

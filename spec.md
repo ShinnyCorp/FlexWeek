@@ -147,8 +147,11 @@ Contract for the finished app:
   new homework as it is saved, in the same Undo step, and `manual` leaves it to
   the student, with the button reading Suggest times. Homework dragged onto a
   time, or given one with Choose a time, is `pinned`: every plan, Replan all
-  included, keeps it where the student put it, even beside a fixed block. Details live
-  in `docs/stage2-contract.md`.
+  included, keeps it where the student put it, even beside a fixed block. The
+  planner places homework at the earliest times that fit; after a plan, the
+  review names each day with more than 3 hours of homework on it ("Thursday has
+  5 h 30 min of homework.") and moves nothing itself. Details live in
+  `docs/stage2-contract.md`.
 - Running late is a solve preview of a 15, 30 or 60 minute delay from a
   15-minute cutoff on one day of the open week. Fixed commitments and sleep stay
   put, and work that no longer fits stays unplaced rather than being dropped.
@@ -247,9 +250,11 @@ JavaScript, no npm, no build step, no framework.** There is no browser client:
 the web app was retired in September 2026 and `frontend/` deleted.
 
 First paint with no session is Sign in, with creating an account offered as a
-line of small print that switches the same card over. It says "Welcome to
-FlexWeek" until someone has signed in on this computer, and "Welcome back"
-after. The card offers "Keep me
+line of small print that switches the same card over. Its heading is "Sign in"
+on the first launch and every later one; the wordmark and the card's top stay
+put when the card switches, and the page wears this computer's own look (the
+System pack, light or dark with the computer), not the last account's. The card
+offers "Keep me
 signed in on this computer", on by default. A kept session opens the week at
 the next launch until the server ends it (seven days after sign-in) or the
 student logs out.
@@ -269,7 +274,10 @@ off the calendar.
 The top bar is the week's arrows, Today and the title on the left; on the right, Day,
 Week, Month and My day as one segmented control, then Add, the one filled
 button (a click adds homework; its arrow offers a fixed time, School hours and
-the type the next drag makes), Plan my homework, More and the gear. Ctrl+K opens
+the type the next drag makes), Plan my homework (the one tinted button: the
+accent at 14 % behind accent words, as is its "Plan here" twin in rows), More
+and the gear. Secondary actions are outlined, and a button that only
+dismisses (Close) is plain text. Ctrl+K opens
 a command bar that adds, goes to any view or opens any homework by typing a few
 letters of it. Today's app has a rail left of Day and Week: a small month that
 folds away, what is next, Not placed yet, and the homework a focus timer can
@@ -428,8 +436,15 @@ out in OKLCH, every fill at one lightness and every mark at another, so no
 category outweighs the rest. Homework's mark is darker, so it stays apart from
 Exercise for a student who cannot tell red from green, and homework carries a
 book. On a dark look a block is its category sunk into the card, written in
-the look's text colour. `clock_24h` (default true) chooses 16:00 or 4:00 PM for
-every time written on screen; times are still sent and saved as HH:MM.
+the look's text colour. `clock_24h` chooses 16:00 or 4:00 PM for every time
+written on screen; times are still sent and saved as HH:MM. Setup's week page
+asks for it, with 12-hour chosen; a new account is 12-hour (`clock_24h` false),
+and accounts from before 0.18.5 that never chose were stamped 24-hour once.
+Dates have one short form ("Thu 1 Oct") and one long form ("Thursday 1
+October"), both made by the engine; the year shows only outside the current
+year, a week across New Year puts it on its end date ("28 Dec – 3 Jan 2027"),
+and a month title always has it. Week-grid column heads and weekday-only labels
+keep their own form.
 Settings is a page of the window, not a dialog: its sections on the left and
 cards on the right, a switch for each on or off, side-by-side segments for two
 or three choices, and pictures for the main view and day screen. Every dialog
@@ -475,8 +490,10 @@ shown, deadline radar, Supporting tiles or Week cards, is dropped when read,
 and the rest of the design's settings are kept.
 
 Customise… under Look opens the look editor over Settings. Its header has Back,
-Start from, the look's name, Duplicate and Delete for a saved look, and whether
-the look is saved. On the left are folding cards (Readability, Colours,
+a Start from button named for the look in hand, the look's name, Duplicate and
+Delete for a saved look, and whether the look is saved. Start from opens a sheet
+with a picture card for each built-in look and then the student's own; the arrow
+keys move between cards, Enter or Space chooses, and Esc keeps the look as it was. On the left are folding cards (Readability, Colours,
 Categories, Shape, Type, Blocks, Grid and Motion), each with its own Reset; on
 the right is the window's own week page as the look dresses it, fitted or at
 its real size; the foot has Reset all, Export, Import, Save as new and Done.
@@ -662,6 +679,9 @@ tools/fwtest/target/release/fwtest gate
 ```
 
 `--backend-only` omits desktop tests and reports desktop as unverified.
+Before the test step the gate checks that every case in `scripts/mutations/`
+still finds its `old` text exactly once in its file, and fails naming any that
+do not.
 `fwtest mutate [SPEC]` runs the mutation specs in `scripts/mutations/`,
 `fwtest rig ...` runs `scripts/rig/drive.py`, `fwtest run -- CMD` runs any
 other suite or script, and `fwtest clean` stops what a killed run left.

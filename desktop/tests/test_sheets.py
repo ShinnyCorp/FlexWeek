@@ -6,13 +6,14 @@ Each of the seven opens inside its window as a sheet, Esc closes it, and focus g
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 
 import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPoint, QRect, Qt, QTimer
+from PySide6.QtCore import QEvent, QPoint, QRect, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
@@ -760,3 +761,21 @@ def test_the_unfinished_rows_are_measured_again_when_the_look_reaches_them(
     assert row.rect().contains(QRect(button.mapTo(row, QPoint(0, 0)), button.size())), "inside its row"
     free(parent)
     free(looks)
+
+
+def test_a_dialog_deleted_before_its_refit_runs_raises_nothing(
+    qapp: QApplication,  # noqa: F811
+) -> None:
+    """refit() asks for the resize on the next turn of the event loop; a dialog deleted before that
+    turn used to be called on, and the error only reached sys.excepthook."""
+    raised: list[BaseException] = []
+    previous, sys.excepthook = sys.excepthook, lambda _kind, error, _trace: raised.append(error)
+    try:
+        dialog = Dialog()
+        dialog.refit()
+        dialog.deleteLater()
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        QTest.qWait(20)
+    finally:
+        sys.excepthook = previous
+    assert raised == []

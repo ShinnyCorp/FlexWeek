@@ -6,6 +6,7 @@
 
 mod common;
 
+use chrono::NaiveDate;
 use common::desk::{clock_lock, with};
 use flexweek_engine::desk::focus::{now_and_next, now_next_line};
 use flexweek_engine::desk::planning::late_locked_line;
@@ -57,10 +58,16 @@ fn test_time_boxes_take_the_12_hour_form() {
 fn test_the_week_model_words() {
     let _clock = clock_lock();
     set_clock_24h(false);
-    let due = |text: &str| due_label(&json!(text)).expect("words");
+    let today = NaiveDate::from_ymd_opt(2026, 9, 17).expect("a date");
+    let due = |text: &str| due_label(&json!(text), today).expect("words");
     assert_eq!(hhmm_text("16:00").expect("words"), "4:00 PM");
     assert_eq!(due("2026-09-24T21:00"), "Thu 24 Sep, 9:00 PM");
     assert_eq!(due("2026-09-24"), "Thu 24 Sep");
+    assert_eq!(due("2027-01-08T09:30"), "Fri 8 Jan 2027, 9:30 AM");
+    set_clock_24h(true);
+    assert_eq!(due("2026-09-24T21:00"), "Thu 24 Sep, 21:00");
+    assert_eq!(due("2027-01-08T09:30"), "Fri 8 Jan 2027, 09:30");
+    set_clock_24h(false);
     assert_eq!(
         added_words(&block()).expect("words"),
         "Added Soccer practice on Thu 4:00 PM."

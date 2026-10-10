@@ -49,7 +49,12 @@ from desktop.native.hours.canvas import (
     fit_lines,
 )
 from desktop.native.hours.chips import TrayChip
-from desktop.native.hours.classic import day_shares, open_hours
+from desktop.native.hours.classic import (
+    column_widths,
+    day_shares,
+    empty_days,
+    open_hours,
+)
 from desktop.native.hours.geometry import FIRST, LAST, LinearTrack
 from desktop.native.hours.hand import Hand
 from desktop.native.hours.zoom import HoursScroll, Scale
@@ -134,19 +139,24 @@ def _run(days: tuple[int, ...]) -> str:
     return first if first == last else f"{first}–{last}"
 
 
-def _spread(inner: float, left: int, area: QRectF) -> list[LinearTrack]:
+# An empty weekend day keeps room for its short name and date over the column.
+EMPTY_DAY_PX = 64
+
+
+def _spread(inner: float, left: int, empty: frozenset[int], area: QRectF) -> list[LinearTrack]:
     """The first `left` days on the left page, right of the hour labels, and the rest on the right,
-    `inner` clear of the fold on either side. Each page's days share its width equally."""
+    `inner` clear of the fold on either side. Each page's days share its width equally, but an empty
+    weekend day takes less of it."""
     fold = fold_at(left, area.right())
     top, tall = area.top() + END_ROOM / 2, area.height() - END_ROOM
     tracks = []
     for days, (start, end) in zip(
         pages_of(left), ((area.left(), fold - inner), (fold + inner, area.right())), strict=True
     ):
-        wide = (end - start) / len(days)
-        tracks += [
-            LinearTrack(day, QRectF(start + at * wide, top, wide, tall)) for at, day in enumerate(days)
-        ]
+        at = start
+        for day, wide in zip(days, column_widths(end - start, empty, days, EMPTY_DAY_PX), strict=True):
+            tracks.append(LinearTrack(day, QRectF(at, top, wide, tall)))
+            at += wide
     return tracks
 
 
@@ -222,7 +232,7 @@ def _due_words(due: str | None) -> str:
     """When homework is due: "due Sun 4 Oct", without a clock so it is not read as a placed time."""
     if not due:
         return ""
-    words = due_label(due, "")
+    words = due_label(due)
     return f"due {words.split(',')[0]}" if words else ""
 
 
@@ -1086,7 +1096,7 @@ class TimelineView(LayoutView):
         left = int(scene.options.get("fold", FOLD))
         pages_now = pages_of(left)
         canvas.split = (left, inner)
-        canvas._lay_out = partial(_spread, inner, left)
+        canvas._lay_out = partial(_spread, inner, left, empty_days(scene.week))
         spine = 2 * inner if scene.today in pages_now[1] else 0
         # A hairline down each day's start edge, but the first on the right page, which is the fold's.
         edged = frozenset(range(7)) - {left}
