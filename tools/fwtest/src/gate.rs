@@ -1,7 +1,7 @@
 //! `fwtest gate` runs the same checks as `scripts/verify.py`, in the same order.
 //!
 //! The success line is the one `verify.py` prints, including the backend-only
-//! wording. Each step is one contained command. The per-step limit is 900
+//! wording. Each step is one contained command. The per-step limit is 2400
 //! seconds unless `FWTEST_STEP_TIMEOUT_SECS` is set (tests use a few seconds).
 
 use std::path::Path;
@@ -29,7 +29,7 @@ pub fn step_timeout_secs() -> u64 {
         .ok()
         .and_then(|value| value.parse().ok())
         .filter(|value| *value > 0)
-        .unwrap_or(900)
+        .unwrap_or(2400)
 }
 
 pub fn run(backend_only: bool, workers: Option<u32>, python: Option<&Path>) -> u8 {

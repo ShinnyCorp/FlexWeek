@@ -162,7 +162,7 @@ fn gate_uses_half_the_cores_and_at_least_two_workers() {
     let needle = format!("-n {}", default_workers());
     assert!(pytest.contains(&needle), "{pytest} wanted {needle}");
     assert!(default_workers() >= 2);
-    assert_eq!(fwtest::gate::step_timeout_secs(), 900);
+    assert_eq!(fwtest::gate::step_timeout_secs(), 2400);
     let _ = fs::remove_dir_all(home);
 }
 
