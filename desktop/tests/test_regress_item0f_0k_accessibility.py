@@ -330,3 +330,19 @@ def test_0k_week_shortcut_and_mini_month_have_accessible_names(qapp, window) -> 
     month = window.findChild(MonthCard).dates
     assert month.accessibleName().startswith("Month, ")
     assert "week beginning" in month.accessibleDescription().lower()
+
+
+def test_0k_the_week_list_takes_no_room_until_the_keyboard_reaches_it(qapp, window) -> None:
+    # The list is for keyboard and screen-reader use: the week keeps its room until then.
+    settled(qapp, window)
+    listing = window.week_access_list
+    assert listing.isVisible() and listing.height() == 0
+    window.week_table.hours.setFocus(Qt.FocusReason.OtherFocusReason)
+    mods = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+    press(window.week_table.hours, Qt.Key.Key_L, mods)
+    settled(qapp, window)
+    assert QApplication.focusWidget() is listing
+    assert listing.height() >= 100
+    window.week_table.hours.setFocus(Qt.FocusReason.OtherFocusReason)
+    settled(qapp, window)
+    assert listing.height() == 0

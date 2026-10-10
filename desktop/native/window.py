@@ -254,6 +254,9 @@ BUSY_BUTTONS = (
 )
 # The views in the order the top bar's segments show them, which a change of view slides along.
 VIEW_ORDER = ("day", "week", "month")
+# The week list for screen readers: its height while the keyboard is on it, and folded away otherwise.
+WEEK_LIST_OPEN = 132
+WEEK_LIST_FOLDED = 0
 PLAN_LABEL = "Plan my homework"
 SUGGEST_LABEL = "Suggest times"
 PLAN_TIP = (
@@ -1433,7 +1436,9 @@ class NativeWindow(QMainWindow):
         self.week_access_list.setObjectName("weekAccessList")
         self.week_access_list.setAccessibleName("This week's blocks")
         self.week_access_list.setAccessibleDescription("A list of each day and its blocks in time order.")
-        self.week_access_list.setMaximumHeight(132)
+        # Folded to nothing until the keyboard reaches it: screen readers and Tab still find it, and the
+        # week keeps its room for everyone who reads the grid.
+        self.week_access_list.setMaximumHeight(WEEK_LIST_FOLDED)
         self.week_access_list.itemActivated.connect(self._week_access_activate)
         self.week_access_list.installEventFilter(self)
         self._week_list_shortcut = QShortcut(QKeySequence("Ctrl+Shift+L"), self)
@@ -4660,6 +4665,9 @@ class NativeWindow(QMainWindow):
         super().keyPressEvent(event)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self.week_access_list and event.type() in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
+            opened = event.type() == QEvent.Type.FocusIn
+            self.week_access_list.setMaximumHeight(WEEK_LIST_OPEN if opened else WEEK_LIST_FOLDED)
         if watched is self.week_access_list and event.type() == QEvent.Type.KeyPress:
             key = event.key()
             if key == Qt.Key.Key_Menu or (
