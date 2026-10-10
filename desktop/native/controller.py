@@ -1824,7 +1824,12 @@ class NativeSession(QObject):
             self.blocks, self.assignments, self.week_start, everything=everything, only=only, not_before=start
         )
         if not targets:
-            self._say("All your homework already has a time.")
+            # The window keeps a visible Undo toast when this is only Plan finding nothing new.
+            self._plan_idle = True
+            try:
+                self._say("All your homework already has a time.")
+            finally:
+                self._plan_idle = False
             return
         ticket = self._begin(planning=True)
         self._say("Planning…")

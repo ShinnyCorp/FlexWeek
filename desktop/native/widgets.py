@@ -27,11 +27,13 @@ from PySide6.QtCore import (
     Qt,
     QTime,
     QTimer,
+    QVariantAnimation,
     Signal,
 )
 from PySide6.QtGui import (
     QAction,
     QColor,
+    QCursor,
     QFontMetrics,
     QHideEvent,
     QIcon,
@@ -59,6 +61,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -673,6 +676,12 @@ def fit_scroll_dialog(dialog: QDialog, *, min_height: int = DIALOG_USABLE_HEIGHT
 
 
 TOAST_MS = 6000
+# A toast with a button stays long enough to reach. Twice the plain 6s is 12s, past the 10s floor.
+ACTION_TOAST_MS = TOAST_MS * 2
+# Leaving the toast starts its clock again with at least this long still to go.
+TOAST_RESUME_MS = 4000
+# The card fades this long when the same notice is kept. Off skips it; Reduce still fades.
+TOAST_FLASH_MS = 150
 TOAST_MARGIN = 24
 TOAST_MIN_WIDTH = 280
 TOAST_MAX_WIDTH = 420
@@ -928,6 +937,32 @@ class EndsLayout(QLayout):
         return top + self._gap + below + margins.top() + margins.bottom()
 
 
+class ToastProgress(QWidget):
+    """A thin line along the bottom of a toast, as long as the time the toast has left."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setObjectName("toastProgress")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setFixedHeight(2)
+        self._colour = QColor("#a1bbe4")
+        self._colour.setAlphaF(0.6)
+
+    def set_colour(self, hex_colour: str) -> None:
+        colour = QColor(hex_colour)
+        colour.setAlphaF(0.6)
+        self._colour = colour
+        self.update()
+
+    def colour(self) -> QColor:
+        return QColor(self._colour)
+
+    def paintEvent(self, _event: object) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self._colour)
+        painter.end()
+
+
 class Toast(QWidget):
     """One notice at a time, bottom right of the page it was said on, with at most one button.
 
@@ -971,6 +1006,22 @@ class Toast(QWidget):
         self._timer.setSingleShot(True)
         self._timer.setInterval(TOAST_MS)
         self._timer.timeout.connect(self._go)
+        # How long this notice was given, and how much was left when the pointer or keyboard held it.
+        self._limit = TOAST_MS
+        self._held_ms = TOAST_MS
+        self._paused = False
+        self._pointer = False
+        self._keys = False
+        self._progress = ToastProgress(self.card)
+        self._progress.hide()
+        self._tick = QTimer(self)
+        self._tick.setInterval(50)
+        self._tick.timeout.connect(self.sync_progress)
+        # The card lets the pointer through, so the window's events say whether it is over the card.
+        self.button.installEventFilter(self)
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
         # The window's Animations level. A notice rises into place and fades when it goes.
         self.motion = "normal"
         self.hide()
@@ -1020,7 +1071,15 @@ class Toast(QWidget):
             appear(self, self.motion, rise=True)
             appear(self.button, self.motion, rise=True)
         # One with something to press stays long enough to reach for it.
-        self._timer.start(TOAST_MS * 2 if button else TOAST_MS)
+        self._limit = ACTION_TOAST_MS if button else TOAST_MS
+        self._paused = False
+        self._keys = self.button.hasFocus()
+        self._pointer = False
+        self._timer.start(self._limit)
+        self._progress.set_colour(self._action_colour)
+        self.sync_progress()
+        self._pointer = self._cursor_over()
+        self._sync_pause()
 
     def _dress_button(self) -> None:
         # Undo is the one button with a picture: the arrow back, in the button's own colour.
@@ -1061,13 +1120,17 @@ class Toast(QWidget):
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._place_button()
+        self.sync_progress()
 
     def hideEvent(self, event: QHideEvent) -> None:  # noqa: N802
         super().hideEvent(event)
         # Not when the window is: this notice comes back with it.
         if self.isHidden():
             self._timer.stop()
+            self._tick.stop()
+            self._paused = False
             self.button.hide()
+            self._progress.hide()
 
     def _place_button(self) -> None:
         inside = self.card.contentsRect().translated(self.card.pos())
@@ -1078,6 +1141,128 @@ class Toast(QWidget):
             size.width(),
             size.height(),
         )
+
+    def bump(self) -> None:
+        """The same notice again: its time starts over, and the card fades once when animations are on."""
+        # The rise from when it first appeared is still on this widget. Replacing it mid-fade deletes
+        # the effect the clock is still painting.
+        settle(self)
+        self._limit = ACTION_TOAST_MS if self.button.text() else TOAST_MS
+        self._paused = False
+        self._keys = self.button.hasFocus()
+        self._pointer = self._cursor_over()
+        if self._pointer or self._keys:
+            self._held_ms = self._limit
+            self._paused = True
+            self._timer.stop()
+            self._tick.stop()
+        else:
+            self._timer.start(self._limit)
+            self.sync_progress()
+        self._flash()
+
+    def sync_progress(self) -> None:
+        """The line matches the time left. It is hidden when animations are off or reduced, and it
+        stays put while the toast is paused."""
+        show = self.isVisible() and self.motion not in ("off", "reduce") and self._limit > 0
+        self._progress.setVisible(show)
+        if not show:
+            self._tick.stop()
+            return
+        width = self.card.width()
+        span = round(width * self._fraction())
+        self._progress.setGeometry(0, max(0, self.card.height() - 2), max(span, 0), 2)
+        self._progress.raise_()
+        if self._paused:
+            self._tick.stop()
+        elif not self._tick.isActive():
+            self._tick.start()
+
+    def _fraction(self) -> float:
+        if self._limit <= 0:
+            return 0.0
+        return max(0.0, min(1.0, self._left_ms() / self._limit))
+
+    def _left_ms(self) -> int:
+        if self._paused:
+            return self._held_ms
+        left = self._timer.remainingTime()
+        return left if left >= 0 else 0
+
+    def _sync_pause(self) -> None:
+        hold = self.isVisible() and (self._pointer or self._keys)
+        if hold and not self._paused:
+            left = self._timer.remainingTime()
+            self._held_ms = left if left >= 0 else self._limit
+            self._timer.stop()
+            self._tick.stop()
+            self._paused = True
+            return
+        if not hold and self._paused:
+            self._paused = False
+            self._timer.start(max(self._held_ms, TOAST_RESUME_MS))
+            self.sync_progress()
+
+    def _cursor_over(self) -> bool:
+        if not self.isVisible():
+            return False
+        return self._over_point(QCursor.pos())
+
+    def _over_point(self, pos: QPoint) -> bool:
+        on_card = self.card.rect().contains(self.card.mapFromGlobal(pos))
+        on_button = self.button.isVisible() and self.button.rect().contains(self.button.mapFromGlobal(pos))
+        return on_card or on_button
+
+    def _global_point(self, event: QEvent) -> QPoint | None:
+        point = getattr(event, "globalPosition", None)
+        if not callable(point):
+            return None
+        return point().toPoint()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        kind = event.type()
+        if watched is self.button and kind == QEvent.Type.FocusIn:
+            self._keys = True
+            self._sync_pause()
+        elif watched is self.button and kind == QEvent.Type.FocusOut:
+            self._keys = False
+            self._sync_pause()
+        elif watched is self.button and kind == QEvent.Type.Enter:
+            self._pointer = True
+            self._sync_pause()
+        elif watched is self.button and kind == QEvent.Type.Leave:
+            point = self._global_point(event)
+            self._pointer = self._over_point(point) if point is not None else False
+            self._sync_pause()
+        elif self.isVisible() and kind in (QEvent.Type.MouseMove, QEvent.Type.HoverMove):
+            point = self._global_point(event)
+            if point is not None:
+                over = self._over_point(point)
+                if over != self._pointer:
+                    self._pointer = over
+                    self._sync_pause()
+        return False
+
+    def _flash(self) -> None:
+        ms = duration(TOAST_FLASH_MS, self.motion)
+        if ms <= 0:
+            return
+        effect = QGraphicsOpacityEffect(self)
+        effect.setOpacity(1.0)
+        self.setGraphicsEffect(effect)
+        anim = QVariantAnimation(self)
+        anim.setDuration(ms)
+        anim.setStartValue(1.0)
+        anim.setKeyValueAt(0.4, 0.55)
+        anim.setEndValue(1.0)
+        anim.valueChanged.connect(effect.setOpacity)
+
+        def done() -> None:
+            if self.graphicsEffect() is effect:
+                self.setGraphicsEffect(None)
+
+        anim.finished.connect(done)
+        anim.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _pressed(self) -> None:
         callback = self._callback

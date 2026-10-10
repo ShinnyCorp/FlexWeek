@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import time
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import replace
@@ -2151,8 +2152,29 @@ class NativeWindow(QMainWindow):
         if self.toast.isVisible() and self.toast.text() == message:
             # Said again as its save lands: the toast already says it, perhaps with its Undo.
             return
+        if self._keeps_undo(message):
+            self.toast.bump()
+            return
         self._notice_step = None
         self.toast.show_message(message)
+
+    def _keeps_undo(self, message: str) -> bool:
+        """Plan finding nothing new leaves a visible Undo toast. So does a plain repeat from the
+        same button in the first second. An error or a reminder still replaces it."""
+        if not self._toast_offers_undo():
+            return False
+        if getattr(self.session, "_plan_idle", False):
+            return True
+        shown = getattr(self, "_undo_at", None)
+        button = getattr(self, "_undo_button", "")
+        if shown is None or not button or time.monotonic() - shown > 1:
+            return False
+        focus = QApplication.focusWidget()
+        if focus is None or focus.objectName() != button:
+            return False
+        if message == self._reminder_said:
+            return False
+        return not any(part in message for part in ("Try again", "Wait a moment", "could not", "Couldn't"))
 
     def _reminder_handled(self) -> None:
         """Got it on a reminder left on screen: the toast saying the same goes too."""
@@ -2775,6 +2797,10 @@ class NativeWindow(QMainWindow):
         """Words with one thing to do about them, such as Undo, in the toast."""
         self._notice_step = None
         self.toast.show_message(text, button, callback)
+        if button == "Undo":
+            self._undo_at = time.monotonic()
+            focus = QApplication.focusWidget()
+            self._undo_button = focus.objectName() if focus is not None else ""
 
     def _first_placed(self) -> tuple[str, int, int] | None:
         """The block the plan placed first: its id, the day it is on and where it starts."""
@@ -2817,9 +2843,18 @@ class NativeWindow(QMainWindow):
         # The answer to Plan my homework, so no later status is taken for it.
         self._telling = False
         self._set_notice(said, "Undo", self._undo_from_notice)
+        # Plan caused this Undo, even when the click has already moved the keyboard.
+        self._undo_button = "solveButton"
+        self._undo_at = time.monotonic()
         self._sync_undo_enabled()
         self._notice_step = self.session.last_step()
-        self._focus_week(self._first_placed())
+        # The week redraws in this same turn and can take the keyboard (a Clay day header, or More
+        # on Dial). Focusing on the next turn lands after that.
+        self._focus_placed = self._first_placed()
+        QTimer.singleShot(0, self, self._focus_after_plan)
+
+    def _focus_after_plan(self) -> None:
+        self._focus_week(getattr(self, "_focus_placed", None))
 
     def _on_plan_conflicts(self, lost: list) -> None:
         if not lost:
@@ -4302,11 +4337,13 @@ class NativeWindow(QMainWindow):
             return
         super().closeEvent(event)
 
-    def _week_surfaces(self) -> list[HoursCanvas]:
+    def _week_surfaces(self) -> list:
         page = self.planner.currentWidget()
         if page is None or self._stack.currentWidget() is not self._week_page:
             return []
-        return [hours for hours in page.findChildren(HoursCanvas) if hours.isVisible()]
+        # The design's own order: Clay's front card first, and Dial's ring, which is not an hours canvas.
+        found = page.hours_surfaces() if hasattr(page, "hours_surfaces") else page.findChildren(HoursCanvas)
+        return [hours for hours in found if hours.isVisible() and hasattr(hours, "take_focus")]
 
     def _focus_week(self, placed: tuple[str, int, int] | None = None) -> None:
         """Keyboard focus back on the week: on `placed` (a block's id, day and start) when it is shown,
