@@ -323,6 +323,24 @@ fn focus_phase_ms(phase: &str, prefs: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
+fn focus_work_minutes(state: &str, prefs: &str) -> PyResult<String> {
+    let (state, prefs) = (parse(state)?, parse(prefs)?);
+    guard(|| {
+        let found = focus::work_minutes(&state, &prefs).map_err(crate::raise)?;
+        Ok(found.to_string())
+    })
+}
+
+#[pyfunction]
+fn focus_phase_total_ms(state: &str, prefs: &str) -> PyResult<String> {
+    let (state, prefs) = (parse(state)?, parse(prefs)?);
+    guard(|| {
+        let found = focus::phase_total_ms(&state, &prefs).map_err(crate::raise)?;
+        Ok(found.to_string())
+    })
+}
+
+#[pyfunction]
 fn focus_countdown(milliseconds: i64) -> PyResult<String> {
     guard(|| Ok(focus::format_countdown(milliseconds)))
 }
@@ -1307,6 +1325,8 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         calendar_span_clash,
         calendar_category_icon,
         focus_phase_ms,
+        focus_work_minutes,
+        focus_phase_total_ms,
         focus_countdown,
         focus_remaining,
         focus_now,
