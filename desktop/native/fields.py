@@ -764,3 +764,17 @@ class Stepper(QWidget):
         if watched is self.box and event.type() == QEvent.Type.EnabledChange:
             self._follow()
         return False
+
+
+def held_on_problem(*roots: QWidget) -> bool:
+    """True when a shown time box in `roots` still says its text is no time, with the keyboard moved to
+    the first such box. The box holds its last good time while it shows the problem, so a Save or Add
+    that read it would save a time other than the one on screen."""
+    for root in roots:
+        boxes = [root] if isinstance(root, ClockField) else root.findChildren(ClockField)
+        for box in boxes:
+            if box.isVisible() and box.problem():
+                box.setFocus(Qt.FocusReason.OtherFocusReason)
+                box.lineEdit().selectAll()
+                return True
+    return False

@@ -57,7 +57,7 @@ from desktop.native import autostart
 from desktop.native.calendar import DAY_FULL
 from desktop.native.controller import ROUTINE_STATUS
 from desktop.native.custom_look import UNNAMED, sanitize_saved, wear
-from desktop.native.fields import ClockField, DayPicker, Stepper
+from desktop.native.fields import ClockField, DayPicker, Stepper, held_on_problem
 from desktop.native.focus import FOCUS_PHASE_LABEL, format_countdown, more_time_choices, remaining_ms
 from desktop.native.fonts import time_font
 from desktop.native.hours.geometry import drag_step
@@ -1407,7 +1407,7 @@ class SettingsPage(QWidget):
             self.alarm_list.setCurrentRow(0)
 
     def _add_alarm(self) -> None:
-        if len(self._alarms) >= 20:
+        if len(self._alarms) >= 20 or held_on_problem(self.alarm_time):
             return
         days = [index for index, box in enumerate(self.alarm_days) if box.isChecked()]
         if not days:

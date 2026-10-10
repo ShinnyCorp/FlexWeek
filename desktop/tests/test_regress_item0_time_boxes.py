@@ -598,3 +598,31 @@ def test_a_time_outside_the_limits_stays_with_a_line_naming_them(qapp) -> None:
     finally:
         top.hide()
         free(top)
+
+
+# Save, Enter and Add do not save the old time while a box says its text is no time ---------------
+
+DIALOGS = ("school-hours-start", "school-hours-end", "block-editor-start", "block-editor-end",
+           "homework-due-time", "do-it-at", "choose-a-time")
+
+
+def _saved_anything(name: str, box: Box) -> bool:
+    if name in DIALOGS:
+        return box.top.result() == QDialog.DialogCode.Accepted or not box.top.isVisible()
+    if name.startswith("study-hours"):
+        return bool(box.top.work_windows())
+    return bool(box.top.findChild(SettingsPage).updates()["alarms"])
+
+
+@pytest.mark.parametrize("way", ["next", "enter"])
+@pytest.mark.parametrize("name", [*DIALOGS, "study-hours-start", "study-hours-end", "alarm-time"])
+def test_save_with_an_unreadable_time_saves_nothing_and_goes_back_to_the_box(opened, name, way) -> None:
+    if way == "enter" and name not in DIALOGS:
+        pytest.skip("Enter in a picker or Settings box presses no Add button")
+    box = opened(name)
+    enter(box.field, "tab-in")
+    type_text(box.field, "25:00")
+    leave(box, way)
+    assert not _saved_anything(name, box), "the box's last good time was saved under a box saying 25:00"
+    assert box.field.hasFocus() or box.field.lineEdit().hasFocus(), "the keyboard did not go back to the box"
+    assert box.field.problem()

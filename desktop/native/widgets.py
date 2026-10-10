@@ -113,7 +113,15 @@ from desktop.native.calendar import (
     span_problem,
 )
 from desktop.native.elevation import lift
-from desktop.native.fields import QUICK_LENGTHS, ClockField, DateField, DayPicker, Stepper, announce
+from desktop.native.fields import (
+    QUICK_LENGTHS,
+    ClockField,
+    DateField,
+    DayPicker,
+    Stepper,
+    announce,
+    held_on_problem,
+)
 from desktop.native.fonts import caption, time_font, weighted
 from desktop.native.hours.geometry import next_slot
 from desktop.native.icons import pixmap as icon_pixmap
@@ -2961,6 +2969,8 @@ class BlockDialog(Dialog):
         if self._deleted:
             super().accept()
             return
+        if held_on_problem(self):
+            return
         if self._span_problem():
             self.end.setFocus()
             return
@@ -3045,6 +3055,8 @@ class SchoolHoursDialog(Dialog):
         self.hint.setVisible(not self.days.days())
 
     def accept(self) -> None:
+        if held_on_problem(self):
+            return
         days = self.days.days()
         start, minutes = self.times.span()
         if not days:
@@ -3816,6 +3828,8 @@ class HomeworkDialog(Dialog):
         self.due.show_problem("")
 
     def accept(self) -> None:
+        if held_on_problem(self):
+            return
         if self._say_length():
             self.estimate.setFocus()
             return
@@ -4440,6 +4454,11 @@ class ChooseTimeDialog(Dialog):
         self.start.timeChanged.connect(self._check)
         self.length.valueChanged.connect(self._length_changed)
         self._check()
+
+    def accept(self) -> None:
+        if held_on_problem(self):
+            return
+        super().accept()
 
     def choice(self) -> tuple[int, int]:
         """The day and the start, to the minute the student picked."""
@@ -5119,6 +5138,8 @@ class AvailabilityDialog(Dialog):
 
     def _add_picked(self) -> None:
         if self._picking is None:
+            return
+        if held_on_problem(self.picker_start, self.picker_end):
             return
         kind, day = self._picking
         start, end = self.picker_start.minutes(), self.picker_end.minutes()
