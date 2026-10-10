@@ -286,6 +286,8 @@ class NativeSession(QObject):
         self.recovery_remaining: int | None = None
         self.split_preview: dict | None = None
         self._drafts: dict[str, dict] = {}
+        # The week Plan was last asked for in: its answer may show homework left in an earlier week.
+        self.plan_asked_week: str | None = None
         # School and activities to stand in every week from a week on, sent with that week's next save.
         self._standing: dict | None = None
         self._reminder_ticket = 0
@@ -1824,6 +1826,7 @@ class NativeSession(QObject):
         if self.pending_save is not None or self.conflict:
             self._say("Wait a moment: your last change is still saving. Then plan again.")
             return
+        self.plan_asked_week = self.week_start
         start = plan_start(self.week_start, datetime.fromtimestamp(self.now_ms() / 1000))
         if start is not None and start[0] > 6:
             self._say(WEEK_OVER)
@@ -1833,6 +1836,8 @@ class NativeSession(QObject):
         )
         if not targets:
             self._say("All your homework already has a time.")
+            # Homework left in an earlier week is not this plan's to move; the window offers it.
+            self.week_changed.emit()
             return
         ticket = self._begin(planning=True)
         self._say("Planning…")
@@ -2396,6 +2401,44 @@ class NativeSession(QObject):
                 "original_duration": minutes,
             }
         ]
+
+    def left_unfinished(self) -> list[dict]:
+        """Homework whose time was in an earlier week and was never ticked done, so nothing from this
+        week on covers it, whether or not it is due yet. Only asked of the week the clock is in: from a
+        later week, this week's own times would look left behind."""
+        today = datetime.fromtimestamp(self.now_ms() / 1000).date()
+        if monday_of(today.isoformat()) != self.week_start:
+            return []
+        return self.unfinished()
+
+    def plan_left(self, assignment_ids: list[str]) -> None:
+        """"Plan them": each one gets a session in this week for the time it has left, and Plan finds
+        those times as it does any homework's. The time left in the earlier week stays where it was."""
+        today = datetime.fromtimestamp(self.now_ms() / 1000).date()
+        made: set[str] = set()
+        for assignment_id in assignment_ids:
+            item = self.assignments.get(assignment_id)
+            minutes = self.remaining_for(assignment_id)
+            if item is None or minutes < 15:
+                continue
+            days = days_through(
+                due_day_in_week(item.get("due"), self.week_start), first_plannable_day(self.week_start, today)
+            )
+            block = copied_homework_block(item, days[0] if days else 0, minutes, str(uuid4()))
+            block["days"] = days or [0]
+            self.blocks = [*self.blocks, block]
+            made.add(block["id"])
+        if not made:
+            return
+        self._touch("planning homework from last week")
+        self.solve(only=made)
+
+    def did_these(self, assignment_ids: list[str]) -> None:
+        """"I did these": the student finished them after all, as one Undo step."""
+        for assignment_id in assignment_ids:
+            if assignment_id in self.assignments:
+                self.complete_homework(assignment_id)
+        self.save()
 
     def recover_missed(self, block_id: str, day: int) -> None:
         block = next((item for item in self.blocks if item["id"] == block_id), None)

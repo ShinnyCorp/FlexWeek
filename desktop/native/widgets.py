@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from copy import deepcopy
 from datetime import date, datetime, time, timedelta
 from functools import partial
@@ -4114,8 +4114,13 @@ class UnfinishedPanel(QWidget):
         self.collapsed.emit()
         self.hide()
 
-    def set_items(self, items: list[dict], now: datetime | None = None) -> None:
-        items = overdue_unfinished(items, now)
+    def set_items(
+        self, items: list[dict], now: datetime | None = None, left: Collection[str] = ()
+    ) -> None:
+        """Late homework, and the homework in `left`: its time was in an earlier week and never
+        ticked done, so it shows whether or not it is due yet."""
+        late = {item["id"] for item in overdue_unfinished(items, now)}
+        items = [item for item in items if item["id"] in late or item["id"] in left]
         self.list.clear()
         for item in items:
             row = QWidget()
