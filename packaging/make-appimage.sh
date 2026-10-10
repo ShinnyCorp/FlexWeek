@@ -58,9 +58,31 @@ chmod +x "$APPDIR/usr/bin/FlexWeek"
 # AppRun: entry point when the AppImage is executed. The bundled qt6.conf
 # next to the binary already points Qt at the bundle's own plugins, so no
 # QT_PLUGIN_PATH override is needed or wanted here.
+# AppRun also checks for libEGL before the app starts. Without it the dynamic
+# loader fails with a message that does not say what to install.
 cat > "$APPDIR/AppRun" << 'EOF'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "$0")")"
+
+# ldconfig lives in /sbin or /usr/sbin on some systems, which a PATH may leave out.
+export PATH="$PATH:/usr/sbin:/sbin"
+have_library() {
+  # The cache listing is read whole; stopping early would end the pipe with SIGPIPE.
+  case "$(ldconfig -p 2>/dev/null)" in
+    *[[:space:]]"$1 ("*) return 0 ;;
+  esac
+  local dir
+  while IFS= read -r dir; do
+    [[ -n "$dir" && -e "$dir/$1" ]] && return 0
+  done < <(printf '%s\n' "${LD_LIBRARY_PATH:-}" | tr ':' '\n')
+  return 1
+}
+
+if ! have_library libEGL.so.1; then
+  echo 'FlexWeek cannot start: the system library libEGL.so.1 is not installed. See the "Linux libraries" section of the README for what to install.' >&2
+  exit 1
+fi
+
 exec "$HERE/usr/lib/FlexWeek/FlexWeek" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
