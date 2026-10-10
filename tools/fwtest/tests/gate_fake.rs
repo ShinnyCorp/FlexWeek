@@ -268,8 +268,13 @@ fn add_mutation_spec(repo: &Path, old: &str) {
     fs::write(
         dir.join("greeting.json"),
         format!(
-            r#"[{{"name": "greeting is cut", "file": "README", "old": "{old}", "new": "bye", "test": "t"}}]"#
+            r#"[{{"name": "greeting is cut", "file": "README", "old": "{old}", "new": "bye", "test": "test_greeting.py::test_greeting"}}]"#
         ),
+    )
+    .unwrap();
+    fs::write(
+        repo.join("test_greeting.py"),
+        "def test_greeting():\n    pass\n",
     )
     .unwrap();
 }
@@ -315,5 +320,33 @@ fn mutation_cases_that_match_once_let_the_gate_go_on() {
         "stdout:\n{stdout}\nstderr:\n{stderr}"
     );
     assert!(stdout.contains("Mutation patterns"), "{stdout}");
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
+fn a_mutation_case_whose_test_was_renamed_fails_the_gate_before_the_tests() {
+    let home = scratch();
+    let (repo, python) = fake_checkout(&home);
+    add_mutation_spec(&repo, "hello");
+    fs::write(
+        repo.join("test_greeting.py"),
+        "def test_salutation():\n    pass\n",
+    )
+    .unwrap();
+    let output = fwtest(&home, &repo, &python)
+        .args(["gate", "--backend-only", "--workers", "2"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("greeting: greeting is cut test test_greeting.py::test_greeting has no function test_greeting in test_greeting.py"),
+        "{stderr}"
+    );
+    let log = fs::read_to_string(home.join("calls.log")).unwrap();
+    assert!(
+        !log.lines().any(|line| line.contains("pytest")),
+        "the tests ran after a renamed test:\n{log}"
+    );
     let _ = fs::remove_dir_all(home);
 }

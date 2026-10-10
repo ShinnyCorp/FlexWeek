@@ -43,7 +43,10 @@ fwtest clean
 - `gate` runs the checks `scripts/verify.py` runs, in the same order: ruff, mypy over `backend`,
   pytest, then `git diff --check` on the working tree, the index, and the committed range from the
   diff base. The diff base is `$VERIFY_BASE_SHA`, then `main`, then `origin/main`, then `HEAD^`,
-  skipping any value of all zeroes. pytest gets `-n N` where N is `--workers`, or half the cores
+  skipping any value of all zeroes. Before the Python behavior step, the gate checks every case in
+  `scripts/mutations/` that its `old` text occurs exactly once and that its `test` exists (a Python
+  `path::function`, or a Rust `cargo:` test in an `engine/**/tests/` file). A miss fails the gate
+  before any tests run. pytest gets `-n N` where N is `--workers`, or half the cores
   and at least 2. It prints `VERIFIED: Backend and desktop. Packaged binaries and other platforms
   need separate checks.` (or `VERIFIED: Backend.` with `--backend-only`) only when every step
   passed, as `verify.py` does. The per-step timeout is 900 seconds.
