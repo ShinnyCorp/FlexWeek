@@ -767,9 +767,12 @@ def test_save_when_the_server_is_unreachable_says_changes_are_kept(
     }]
     session.dirty = True
     fail_once(session, "POST", "/api/changes", 0)
+    said: list[str] = []
+    session.status.connect(said.append)
     session.save()
-    wait_until(qapp, lambda: not session.busy)
-    assert session.message == SAVE_UNREACHABLE
+    # The autosave retry may already have saved by the time a busy test looks, so this reads what
+    # the failed save said when it said it, not the latest line.
+    wait_until(qapp, lambda: SAVE_UNREACHABLE in said)
 
 
 def test_the_rail_and_the_plan_panel_count_the_same_homework_without_a_time(
