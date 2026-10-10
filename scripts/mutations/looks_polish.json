@@ -158,7 +158,7 @@
     "file": "engine/engine/src/desk/calendar.rs",
     "old": "        \"free\",\n        CategoryInfo {\n            icon: None,\n",
     "new": "        \"free\",\n        CategoryInfo {\n            icon: Some(\"wind\"),\n",
-    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_3_to_1_on_each_block_style"
+    "test": "desktop/tests/test_looks_polish.py::test_category_icons_are_their_marks_at_4_5_to_1_on_each_block_style"
   },
   {
     "name": "Look preview puts Soccer back in Activity",
