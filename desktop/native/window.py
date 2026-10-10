@@ -373,6 +373,9 @@ LAYOUT_TICK_MS = 20_000
 # How long Settings waits after the last change before saving it to the account. Long enough that
 # typing a number or clicking through a menu is one save.
 SETTINGS_SAVE_MS = 600
+# Leaving the app waits this long, checking this often, for what is unsaved to reach the server.
+LEAVE_WAIT_MS = 5000
+LEAVE_POLL_MS = 100
 LOGO = Path(__file__).resolve().parents[1] / "assets" / "logo.png"
 LOGO_PX = 28
 RECOVERY_COPY = "Copy"
@@ -527,7 +530,12 @@ class NativeWindow(QMainWindow):
         # Settings while it is on screen, and what closing it has to save.
         self._settings: SettingsPage | None = None
         self._settings_finish: Callable[[bool], None] | None = None
+        # Send a changed Settings page now, and say whether the server still lacks something on it.
+        self._settings_save: Callable[[], None] | None = None
+        self._settings_unsaved: Callable[[], bool] | None = None
         self._settings_prepare_scheduled = False
+        self._leaving: QTimer | None = None
+        self._saved_to_leave = False
         # A block let go while a save is under way, moved once it is done: the save's reply replaces
         # the week, so a move made before it arrived would be lost.
         self._move_waiting: tuple[str, int, int, int, int] | None = None
@@ -3873,6 +3881,10 @@ class NativeWindow(QMainWindow):
             if keep:
                 save()
 
+        def save_now() -> None:
+            saver.stop()
+            save()
+
         saver = QTimer(page)
         saver.setSingleShot(True)
         saver.setInterval(SETTINGS_SAVE_MS)
@@ -3880,6 +3892,8 @@ class NativeWindow(QMainWindow):
         page.changed.connect(apply)
         self._settings = page
         self._settings_finish = finish
+        self._settings_save = save_now
+        self._settings_unsaved = lambda: page.updates() != stored
         self._stack.addWidget(page)
         ctx = current()
         if ctx is not None:
@@ -3913,6 +3927,7 @@ class NativeWindow(QMainWindow):
         if page is None:
             return
         self._settings, self._settings_finish = None, None
+        self._settings_save = self._settings_unsaved = None
         if finish is not None:
             finish(False)
         self._stack.removeWidget(page)
@@ -4262,10 +4277,86 @@ class NativeWindow(QMainWindow):
         self.activateWindow()
 
     def quit_app(self) -> None:
+        if self._save_before_leaving(self._quit_now):
+            self._quit_now()
+
+    def _quit_now(self) -> None:
         self._quitting = True
         if self._tray_icon is not None:
             self._tray_icon.hide()
         QApplication.quit()
+
+    def _settings_unsent(self) -> bool:
+        """Settings are open with a change the server does not have yet."""
+        page = self._settings
+        if page is None or self._stack.currentWidget() is not page or self._settings_unsaved is None:
+            return False
+        return self._settings_unsaved()
+
+    def _save_before_leaving(self, leave: Callable[[], None]) -> bool:
+        """Leave once what is unsaved has reached the server. Returns True when there was nothing to
+        wait for and `leave` has not been called; otherwise it saves in the background and calls
+        `leave` when done, or stays open and says so when the save fails or takes too long."""
+        session = self.session
+        if self._leaving is not None:
+            return False
+        if session.account is None or not (
+            self._settings_unsent() or session._held() or session.parked_unsaved_week()
+        ):
+            return True
+        timer = QTimer(self)
+        timer.setInterval(LEAVE_POLL_MS)
+        self._leaving = timer
+        tried = {"settings": False, "week": False}
+        waited = 0
+
+        def stop() -> None:
+            timer.stop()
+            timer.deleteLater()
+            self._leaving = None
+
+        def give_up() -> None:
+            stop()
+            session._say("Not saved, so FlexWeek is still open. Your changes are still here.")
+            self.restore_window()
+
+        def poll() -> None:
+            nonlocal waited
+            waited += LEAVE_POLL_MS
+            if waited > LEAVE_WAIT_MS:
+                give_up()
+                return
+            if session.busy:
+                return
+            if self._settings_unsent():
+                if tried["settings"] or self._settings_save is None:
+                    give_up()
+                    return
+                tried["settings"] = True
+                self._settings_save()
+                return
+            if session._held():
+                if tried["week"]:
+                    give_up()
+                    return
+                tried["week"] = True
+                session.save()
+                return
+            parked = session.parked_unsaved_week()
+            if parked is not None:
+                tried["week"] = False
+                session.load_week(parked)
+                return
+            stop()
+            self._saved_to_leave = True
+            try:
+                leave()
+            finally:
+                self._saved_to_leave = False
+
+        timer.timeout.connect(poll)
+        timer.start()
+        return False
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802
         """Qt gives a right-click's context menu to the widget under the pointer only when the pointer
@@ -4302,6 +4393,9 @@ class NativeWindow(QMainWindow):
                     QSystemTrayIcon.MessageIcon.Information,
                     4000,
                 )
+            return
+        if not self._saved_to_leave and not self._save_before_leaving(self.close):
+            event.ignore()
             return
         super().closeEvent(event)
 

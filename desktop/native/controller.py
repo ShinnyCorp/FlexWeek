@@ -423,6 +423,13 @@ class NativeSession(QObject):
     def _held(self) -> bool:
         return bool(self.dirty or self.dirty_assignments or self.pending_save)
 
+    def parked_unsaved_week(self) -> str | None:
+        """The Monday of a week set aside with changes the server does not have yet, if any."""
+        for week_start, parked in self._drafts.items():
+            if parked["dirty"] or parked["dirty_assignments"] or parked["pending_save"]:
+                return week_start
+        return None
+
     def _week_snapshot(self) -> dict:
         return {
             "week_start": self.week_start,
