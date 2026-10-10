@@ -983,6 +983,18 @@ def test_a_clock_tried_and_skipped_on_the_page_is_put_back(qapp: QApplication) -
     setup.deleteLater()
 
 
+def test_a_clock_tried_and_then_skip_setup_is_put_back(qapp: QApplication) -> None:
+    """Skip setup keeps nothing, so the 24-hour clock tried on the Week page must not stay on screen."""
+    setup = SetupPage()
+    state = SetupState("system", sanitize_look(None), sanitize_layout(None), {}, [], "")
+    setup.open(state, WEEK)
+    setup.clock_buttons[True].setChecked(True)
+    assert clock_text(15 * 60) == "15:00"
+    setup.skip_all.click()
+    assert clock_text(15 * 60) == "3:00 PM"
+    setup.deleteLater()
+
+
 def test_an_account_from_before_the_clock_choice_that_never_chose_stays_on_24_hour(
     qapp: QApplication, tmp_path: Path
 ) -> None:

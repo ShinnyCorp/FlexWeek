@@ -710,22 +710,31 @@ class NativeWindow(QMainWindow):
         self.recover_button.setDefault(mode == RESET)
 
     def _pin_auth_height(self) -> None:
-        """Hold the sign-in page's wordmark and card top where the tallest page, Create, puts them, so
-        nothing jumps between pages (#74): the card sits at the top of a holder that is always as tall
-        as the Create card, and the pages that are shorter simply end sooner."""
+        """Hold the sign-in page's wordmark and card top where the tallest page, Create or Reset, puts
+        them, so nothing jumps between pages (#74): the card sits at the top of a holder that is always as
+        tall as that card, and the pages that are shorter simply end sooner."""
         holder, card = self._auth_holder, self._auth_card
         if holder is None or card is None:
             return
         shown = self._auth_mode_shown or SIGN_IN
-        self._lay_mode(CREATE)
-        card.layout().activate()
-        # What the layout will ask of the holder, which a wrapped label's minimum makes taller than the
-        # card is drawn.
-        tallest = max(
-            card.sizeHint().height(), card.minimumSizeHint().height(), card.heightForWidth(card.width())
-        )
+        # Laying out another page hides the widget that has focus, and Qt does not give it back.
+        focused = self.focusWidget()
+        tallest = 0
+        for mode in (CREATE, RESET):
+            self._lay_mode(mode)
+            card.layout().activate()
+            # What the layout will ask of the holder, which a wrapped label's minimum makes taller than
+            # the card is drawn.
+            tallest = max(
+                tallest,
+                card.sizeHint().height(),
+                card.minimumSizeHint().height(),
+                card.heightForWidth(card.width()),
+            )
         self._lay_mode(shown)
         card.layout().activate()
+        if focused is not None:
+            focused.setFocus(Qt.FocusReason.OtherFocusReason)
         holder.setMinimumHeight(tallest + AUTH_SHADOW_ABOVE + AUTH_SHADOW_BELOW)
 
     def listen_for_instances(self, name: str) -> bool:
