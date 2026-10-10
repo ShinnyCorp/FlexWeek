@@ -146,7 +146,6 @@ pub fn import_head(empty: bool, readable: bool, data: Option<&Value>) -> EngineR
         return Ok(refused("Invalid FlexWeek export."));
     }
     let format = get(data, "format")?.unwrap_or(&Value::Null);
-    hashable(format, "set element")?;
     let known = format
         .as_str()
         .filter(|name| *name == EXPORT_FORMAT || *name == DAY_FORMAT);
@@ -680,6 +679,15 @@ mod tests {
         assert!(failure.is_none());
         assert_eq!(inputs.len(), 1);
         assert_eq!(inputs[0]["id"], "a");
+    }
+
+    #[test]
+    fn a_format_that_is_not_text_is_refused_not_raised() {
+        for format in [json!([]), json!({}), json!(5), Value::Null] {
+            let data = json!({"format": format, "version": 2, "blocks": [], "assignments": []});
+            let head = import_head(false, true, Some(&data)).expect("a refusal, not an error");
+            assert_eq!(head["error"], "Unrecognized export format.");
+        }
     }
 
     #[test]
