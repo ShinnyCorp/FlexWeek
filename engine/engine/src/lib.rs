@@ -11,6 +11,7 @@ pub mod plan;
 pub mod pyprint;
 pub mod snapshot;
 pub mod solver;
+pub mod standing;
 pub mod stored;
 pub mod time;
 pub mod wide_snap;

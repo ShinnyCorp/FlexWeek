@@ -264,6 +264,8 @@ def test_unfinished_is_greyed_when_every_item_is_not_yet_overdue(
     monkeypatch.setattr(widgets_module, "datetime", Clock)
     monkeypatch.setattr(window_module, "datetime", Clock)
     session = window.session
+    # Item 1b: the window asks with the session's own clock.
+    monkeypatch.setattr(session, "now_ms", lambda: int(now.timestamp() * 1000))
     week = date.fromisoformat(session.week_start)
     session.add_block({"id": "school", "title": "School", "kind": "locked", "start": "08:00",
                        "duration_min": 390, "days": [0, 1, 2, 3, 4]})

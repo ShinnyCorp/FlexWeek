@@ -481,6 +481,35 @@ fn reuse_session_days(week_start: &str, due: &str) -> PyResult<Vec<i64>> {
 }
 
 #[pyfunction]
+fn reuse_fair_share(
+    blocks: &str,
+    assignments: &str,
+    committed: &str,
+    week_start: &str,
+    first_day: i64,
+    targets: Vec<String>,
+) -> PyResult<(String, String)> {
+    let (blocks, assignments, committed) = (parse(blocks)?, parse(assignments)?, parse(committed)?);
+    guard(|| {
+        let blocks = blocks.as_array().cloned().unwrap_or_default();
+        let assignments = assignments.as_object().cloned().unwrap_or_default();
+        let (week, notes) = planning::fair_share(
+            &blocks,
+            &assignments,
+            &committed,
+            week_start,
+            first_day,
+            &targets,
+        )
+        .map_err(crate::raise)?;
+        Ok((
+            serde_json::Value::Array(week).to_string(),
+            serde_json::Value::Array(notes).to_string(),
+        ))
+    })
+}
+
+#[pyfunction]
 fn reuse_planned(block: &str) -> PyResult<bool> {
     let block = parse(block)?;
     guard(|| planning::is_planned(&block).map_err(crate::raise))
@@ -1297,6 +1326,7 @@ pub fn add(module: &Bound<'_, PyModule>) -> PyResult<()> {
         reuse_floor_slot,
         reuse_homework,
         reuse_session_days,
+        reuse_fair_share,
         reuse_planned,
         reuse_planning_days,
         reuse_apply_plan,

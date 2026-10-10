@@ -532,3 +532,73 @@ fn test_already_linked_sessions_and_existing_assignments_are_left_alone() {
     assert_eq!(by_id["quiz"]["assignment_id"], assignment_id(WEEK, "quiz"));
     assert_eq!(assignments[&assignment_id(WEEK, "quiz")].1, 1);
 }
+
+// Audit finding 3: an assignment's estimate is a positive multiple of 15 minutes, at most a day,
+// and its focus totals have the schema's ceilings, but a block may hold any minute. A block (or a
+// Pomodoro group) whose assignment would break those rules is left exactly as it was, never rounded.
+#[test]
+fn test_a_block_no_valid_assignment_can_be_made_from_stays_as_it_was() {
+    let odd = flex("b17", json!({"title": "Reading", "duration_min": 17}));
+    let too_long = flex(
+        "marathon",
+        json!({"title": "Marathon", "duration_min": 1455}),
+    );
+    let pomodoro = |id: &str, index: i64, start: &str, focus: i64| {
+        locked(
+            id,
+            json!({
+                "title": "Lab",
+                "duration_min": 25,
+                "start": start,
+                "focus_minutes": focus,
+                "pomodoro_parent_id": "lab",
+                "pomodoro_role": "work",
+                "pomodoro_index": index
+            }),
+        )
+    };
+    let lab = [
+        pomodoro("lab-1", 1, "16:00", 0),
+        pomodoro("lab-2", 2, "16:30", 0),
+    ];
+    // Each chunk's focus is within a block's ceiling; together they pass the assignment's.
+    let busy = [
+        locked(
+            "busy-1",
+            json!({"title": "Busy", "duration_min": 30, "start": "18:00", "focus_minutes": 40000,
+                   "pomodoro_parent_id": "busy", "pomodoro_role": "work", "pomodoro_index": 1}),
+        ),
+        locked(
+            "busy-2",
+            json!({"title": "Busy", "duration_min": 30, "start": "18:45", "focus_minutes": 40000,
+                   "pomodoro_parent_id": "busy", "pomodoro_role": "work", "pomodoro_index": 2}),
+        ),
+    ];
+    let fine = flex("fine", json!({"title": "Fine", "duration_min": 30}));
+    let mut blocks = vec![odd, too_long, fine];
+    blocks.extend(lab);
+    blocks.extend(busy);
+    let path = seed_week("invalid-estimates", &blocks, 3);
+    initialize(&path, WEEK).unwrap();
+    initialize(&path, WEEK).unwrap();
+    let (saved, revision) = load_week(&path);
+    let assignments = load_assignments(&path);
+    let kept: Vec<&Value> = saved.iter().filter(|block| block["id"] != "fine").collect();
+    let seeded: Vec<&Value> = blocks
+        .iter()
+        .filter(|block| block["id"] != "fine")
+        .collect();
+    assert_eq!(kept, seeded);
+    for source in ["b17", "marathon", "lab", "busy"] {
+        assert!(
+            !assignments.contains_key(&assignment_id(WEEK, source)),
+            "{source}"
+        );
+    }
+    let fine_id = assignment_id(WEEK, "fine");
+    assert_eq!(assignments.len(), 1);
+    assert_eq!(assignments[&fine_id].0["estimate_min"], 30);
+    let fine = saved.iter().find(|block| block["id"] == "fine").unwrap();
+    assert_eq!(fine["assignment_id"], fine_id);
+    assert_eq!(revision, 3);
+}

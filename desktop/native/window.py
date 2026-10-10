@@ -56,6 +56,7 @@ from desktop.native.calendar import (
     FLEX_CATEGORIES,
     date_for_day,
     is_series,
+    is_setup_block,
     monday_of,
     span_clash,
     sunday_due,
@@ -1328,6 +1329,26 @@ class NativeWindow(QMainWindow):
         self.unfinished_panel.collapsed.connect(self._collapse_unfinished)
         column.addWidget(self.unfinished_panel)
         column.addWidget(self.unfinished_badge)
+        # Item 1b: after Plan, homework whose time was in an earlier week and never ticked done. Plan
+        # never moves it on its own; the student says which.
+        self.left_chip = QFrame()
+        self.left_chip.setObjectName("leftChip")
+        chip_row = QHBoxLayout(self.left_chip)
+        self.left_chip_text = QLabel()
+        self.left_chip_text.setObjectName("leftChipText")
+        chip_row.addWidget(self.left_chip_text, 1)
+        plan_them = QPushButton("Plan them")
+        plan_them.setObjectName("leftPlan")
+        plan_them.setProperty("tonal", True)
+        plan_them.clicked.connect(self._plan_left)
+        chip_row.addWidget(plan_them)
+        did_these = QPushButton("I did these")
+        did_these.setObjectName("leftDone")
+        did_these.setProperty("outlined", True)
+        did_these.clicked.connect(self._did_left)
+        chip_row.addWidget(did_these)
+        self.left_chip.hide()
+        column.addWidget(self.left_chip)
         self.plan_review = PlanReview()
         self.plan_review.replan_requested.connect(lambda: self.session.solve(everything=True))
         self.alert_strip = AlertStrip()
@@ -2006,7 +2027,8 @@ class NativeWindow(QMainWindow):
             self.toast.hide()
         if self.unfinished_panel.isVisible():
             # A row deleted, planned or finished leaves the list, and an Undo brings it back.
-            self.unfinished_panel.set_items(overdue_unfinished(self.session.unfinished()))
+            self._fill_unfinished(self._unfinished_items())
+        self._sync_left_chip()
         if self.session.dirty:
             # Every change reaches here, so this is where the clock on "stopped changing" restarts.
             self._changed_ms = self.session.now_ms()
@@ -2113,18 +2135,18 @@ class NativeWindow(QMainWindow):
                 paste.setText("Paste into a selected day")
             else:
                 paste.setText("Paste into " + DAY_FULL[destination[0]])
-        items = overdue_unfinished(self.session.unfinished())
+        items = self._unfinished_items()
         unfinished = self.findChild(QPushButton, "unfinishedOpen")
         if unfinished is not None:
             unfinished.setEnabled(bool(items))
-        prompt = overdue_unfinished(self.session.consume_unfinished())
+        prompt = self._unfinished_items(self.session.consume_unfinished())
         if prompt:
-            self.unfinished_panel.set_items(prompt)
+            self._fill_unfinished(prompt)
             self._unfinished_introduced = True
             self.unfinished_badge.hide()
         elif items and self._unfinished_introduced:
             if self._unfinished_opened and not self.unfinished_panel.isHidden():
-                self.unfinished_panel.set_items(items)
+                self._fill_unfinished(items)
             else:
                 self._unfinished_opened = False
                 self.unfinished_panel.hide()
@@ -2224,14 +2246,15 @@ class NativeWindow(QMainWindow):
         if unfinished is not None:
             # Worked out as the menu opens: the busy flag turns every action back on when a save
             # ends, and left to that "Unfinished" was pressable with nothing to show.
-            unfinished.setEnabled(
-                not self.session.busy and bool(overdue_unfinished(self.session.unfinished()))
-            )
+            unfinished.setEnabled(not self.session.busy and bool(self._unfinished_items()))
+        count = len(self._unfinished_items())
         for action, button in self._more_pairs:
             action.setEnabled(button.isEnabled())
             tip = self._more_tip(button.objectName(), button.isEnabled())
             # Greyed with nothing to show, Unfinished says so on its row, not only in a tooltip (T23).
             said = f"\t{NONE_UNFINISHED}" if tip == NOTHING_UNFINISHED else ""
+            if button.objectName() == "unfinishedOpen" and count:
+                said = f"\t{count} left"
             action.setText(button.text() + said)
             action.setToolTip(tip)
         if self._spotify_action is not None:
@@ -2588,11 +2611,36 @@ class NativeWindow(QMainWindow):
             self._sheet(lambda: HomeworkDialog(self, today=self._today(), category=category, due=due))
         )
 
-    def _delete_block(self, block: dict, scope: str, day: int | None) -> None:
-        self.session.delete_block(block["id"], scope=scope, day=day)
+    def _delete_block(
+        self, block: dict, scope: str, day: int | None, every_week: bool | None = None
+    ) -> None:
+        title = block.get("title") or "the event"
+        whole = scope != "occurrence" or len(block.get("days") or []) <= 1
+        if every_week is None and whole and is_setup_block(block):
+            # School and Setup's activities are in every week, so taking one out asks which.
+            sheet = ConfirmSheet(
+                self,
+                "Remove " + title,
+                f"Remove {title} from this week only, or from this week and every week after it?",
+                (
+                    ("stay", "Cancel", "outlined"),
+                    ("week", "Just this week", ""),
+                    ("every", "Every week", "danger"),
+                ),
+                default="stay",
+            )
+            sheet.exec()
+            if sheet.answer not in ("week", "every"):
+                return
+            every_week = sheet.answer == "every"
+        self.session.delete_block(block["id"], scope=scope, day=day, every_week=bool(every_week))
         self.session.save()
+        if every_week:
+            # Undo takes back this week only, so the toast offers none.
+            self._set_notice(f"Removed {title} from this week and every week after it.", "", None)
+            return
         # The question before deleting promised an undo; this is where it is.
-        self._set_notice(f"Deleted {block.get('title') or 'the event'}.", "Undo", self._undo_from_notice)
+        self._set_notice(f"Deleted {title}.", "Undo", self._undo_from_notice)
 
     def _school_hours(self) -> None:
         """School's days and times, asked as setup asks them: the student's School if they have one,
@@ -2608,9 +2656,10 @@ class NativeWindow(QMainWindow):
         made = dialog.block()
         if made is not None:
             self.session.add_block(made)
+            self.session.stand_open_week()
             self.session.save()
         elif school is not None:
-            self._delete_block(school, "series", None)
+            self._delete_block(school, "series", None, every_week=True)
 
     def _add_now(self) -> None:
         """Add adds homework, or the type picked in its menu for a drag, which the button then names."""
@@ -3130,6 +3179,10 @@ class NativeWindow(QMainWindow):
     def _delete_from_block_menu(self, block: dict, assignment: dict | None, on: int | None) -> None:
         if assignment is None:
             one_day = is_series(block) and on is not None
+            if is_setup_block(block) and not (one_day and len(block.get("days") or []) > 1):
+                # _delete_block asks this week or every week.
+                self._delete_block(block, "occurrence" if one_day else "series", on)
+                return
             name = (block.get("title") or "this event") + (f" on {DAY_FULL[on]}" if one_day else "")
             if confirm(self, "Delete event", f"Delete {name}? You can undo this.", "Delete"):
                 self._delete_block(block, "occurrence" if one_day else "series", on)
@@ -3329,18 +3382,52 @@ class NativeWindow(QMainWindow):
     def _collapse_unfinished(self) -> None:
         self._unfinished_introduced = True
         self._unfinished_opened = False
-        items = self.session.unfinished()
+        items = self._unfinished_items()
         if items:
             self._sync_unfinished_badge(items)
 
     def _open_unfinished_from_badge(self) -> None:
-        items = self.session.unfinished()
+        items = self._unfinished_items()
         if not items:
             self.unfinished_badge.hide()
             return
         self.unfinished_badge.hide()
-        self.unfinished_panel.set_items(items)
+        self._fill_unfinished(items)
         self._unfinished_opened = True
+
+    def _unfinished_items(self, items: list[dict] | None = None) -> list[dict]:
+        """Unfinished homework: late, or left in an earlier week whether or not it is due yet (1b).
+        Asked with the session's own clock, so the app and its tests agree."""
+        found = self.session.unfinished() if items is None else items
+        now = datetime.fromtimestamp(self.session.now_ms() / 1000)
+        keep = {item["id"] for item in overdue_unfinished(found, now)}
+        keep |= {item["id"] for item in self.session.left_unfinished()}
+        return [item for item in found if item["id"] in keep]
+
+    def _fill_unfinished(self, items: list[dict]) -> None:
+        self.unfinished_panel.set_items(
+            items, datetime.fromtimestamp(self.session.now_ms() / 1000), {item["id"] for item in items}
+        )
+
+    def _sync_left_chip(self) -> None:
+        """Shown once Plan was asked for in this week, while homework from an earlier week waits."""
+        asked = self.session.plan_asked_week == self.session.week_start
+        left = self.session.left_unfinished() if asked else []
+        words = f"{len(left)} unfinished from last week"
+        self.left_chip_text.setText(words)
+        self.left_chip.setAccessibleName(words)
+        self.left_chip.setVisible(bool(left))
+
+    def _plan_left(self) -> None:
+        self.session.plan_left([item["id"] for item in self.session.left_unfinished()])
+
+    def _did_left(self) -> None:
+        left = self.session.left_unfinished()
+        if not left:
+            return
+        self.session.did_these([item["id"] for item in left])
+        words = left[0]["title"] if len(left) == 1 else f"{len(left)} homework"
+        self._set_notice(f"Marked {words} finished.", "Undo", self._undo_from_notice)
 
     def _copy_last_week_fixed(self) -> None:
         def offer(rows: list[dict] | None) -> None:
@@ -3357,11 +3444,11 @@ class NativeWindow(QMainWindow):
         self.session.copy_last_week_fixed_rows(offer)
 
     def _show_unfinished(self) -> None:
-        items = overdue_unfinished(self.session.unfinished())
+        items = self._unfinished_items()
         if not items:
             self.session._say(NOTHING_UNFINISHED)
         self.unfinished_badge.hide()
-        self.unfinished_panel.set_items(items)
+        self._fill_unfinished(items)
         self._unfinished_opened = bool(items)
 
     def _plan_unfinished(self, assignment_id: str) -> None:

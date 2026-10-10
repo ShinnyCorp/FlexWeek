@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from copy import deepcopy
 from datetime import date, datetime, time, timedelta
 from functools import partial
@@ -4387,8 +4387,13 @@ class UnfinishedPanel(QWidget):
         self.collapsed.emit()
         self.hide()
 
-    def set_items(self, items: list[dict], now: datetime | None = None) -> None:
-        items = overdue_unfinished(items, now)
+    def set_items(
+        self, items: list[dict], now: datetime | None = None, left: Collection[str] = ()
+    ) -> None:
+        """Late homework, and the homework in `left`: its time was in an earlier week and never
+        ticked done, so it shows whether or not it is due yet."""
+        late = {item["id"] for item in overdue_unfinished(items, now)}
+        items = [item for item in items if item["id"] in late or item["id"] in left]
         self.list.clear()
         for item in items:
             row = QWidget()
@@ -4614,6 +4619,11 @@ class PlanReview(QFrame):
                 said.append(f"{titles.get(item['block_id'], 'Homework')}: {item['message']}")
         for day, total in overfull_days(trace):
             said.append(f"{DAY_FULL[day]} has {length_label(total)} of homework.")
+        for share in trace.get("shares") or []:
+            said.append(
+                f"{share['title']}: {length_label(share['this_week_min'])} this week, "
+                f"{length_label(share['left_min'])} left for next week"
+            )
         return said
 
     def set_trace(

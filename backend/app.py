@@ -5,6 +5,7 @@ import secrets
 import sqlite3
 import time
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
@@ -70,6 +71,8 @@ from backend.weeks import (
     is_month_label,
     is_week_start,
     monday_of,
+    month_grid,
+    parse_month,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -168,6 +171,24 @@ def dump_blocks(blocks: list[TimeBlock]) -> list[dict]:
 def list_account_weeks(db: Connection, user_id: int) -> list[tuple[str, list[dict]]]:
     rows = db.list_account_weeks(user_id)
     return [(row[0], json.loads(row[1])) for row in rows]
+
+
+def week_with_standing(db: Connection, user_id: int, week_start: str, stored: str | None) -> list[dict]:
+    """A week as the student sees it: its own blocks and the School and activities standing in it."""
+    merged: list[dict] = json.loads(db.week_with_standing(user_id, week_start, stored or "[]"))
+    return merged
+
+
+def month_weeks(db: Connection, user_id: int, month: str) -> list[tuple[str, list[dict]]]:
+    """Every saved week, with the weeks the month's grid shows as the student sees them."""
+    saved = dict(db.list_account_weeks(user_id))
+    first, last = parse_month(month)
+    grid_start, grid_end = month_grid(first, last)
+    monday = grid_start
+    while monday <= grid_end:
+        saved.setdefault(monday.isoformat(), "[]")
+        monday += timedelta(days=7)
+    return [(start, week_with_standing(db, user_id, start, text)) for start, text in saved.items()]
 
 
 def assignment_view(body: dict, revision: int, planned: int) -> dict:
@@ -357,6 +378,60 @@ class SavedWeek(WeekRequest):
         return value
 
 
+def a_week_start(value: str) -> str:
+    if not is_week_start(value):
+        raise ValueError(WEEK_START_RULE)
+    return value
+
+
+# Setup's School and up to eight activities.
+MAX_STANDING = 9
+STANDING_RULE = (
+    "Only School and Setup's activities stand in every week, each with a start time and an id of its own"
+)
+
+
+class StandingWeek(BaseModel):
+    """The School and activities that stand in every week from `week_start` on."""
+
+    model_config = ConfigDict(extra="forbid")
+    week_start: str
+    blocks: list[TimeBlock] = Field(max_length=MAX_STANDING)
+
+    _week_start = field_validator("week_start")(a_week_start)
+
+    @model_validator(mode="after")
+    def blocks_are_setups(self) -> StandingWeek:
+        ids = [block.id for block in self.blocks]
+        if len(set(ids)) != len(ids) or not all(
+            block.kind == "locked"
+            and block.start
+            and flexweek_engine.calendar_setup_block(json.dumps(block.model_dump()))
+            for block in self.blocks
+        ):
+            raise ValueError(STANDING_RULE)
+        return self
+
+
+class StandingRow(BaseModel):
+    """One row of the standing week in an export: a block standing from `from_week` on, or, with no body,
+    stopping there."""
+
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1, max_length=80)
+    from_week: str
+    position: int = Field(ge=0, le=MAX_STANDING)
+    body: TimeBlock | None
+
+    _from_week = field_validator("from_week")(a_week_start)
+
+    @model_validator(mode="after")
+    def body_is_the_rows_block(self) -> StandingRow:
+        if self.body is not None and (self.body.id != self.id or self.body.kind != "locked"):
+            raise ValueError(STANDING_RULE)
+        return self
+
+
 class AssignmentChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(min_length=1, max_length=80)
@@ -370,6 +445,8 @@ class ChangesRequest(BaseModel):
     assignments: list[AssignmentChange] = Field(default_factory=list)
     operation_id: str | None = Field(default=None, min_length=1, max_length=80)
     snapshot_label: str | None = Field(default=None, min_length=1, max_length=80)
+    # Setup or School hours changed School and activities for every week from the open week on.
+    standing: StandingWeek | None = None
 
 
 class RestoreCreate(BaseModel):
@@ -604,6 +681,8 @@ class TransferSnapshot(BaseModel):
     assignments: list[TransferAssignment] = Field(max_length=1000)
     preferences: Preferences
     routines: list[TransferRoutine] = Field(max_length=50)
+    # None in a file from before 0.19.0: the import builds the standing week from its weeks.
+    standing: list[StandingRow] | None = Field(default=None, max_length=5000)
 
     _exported_at = field_validator("exported_at")(valid_naive_stamp)
 
@@ -674,6 +753,9 @@ def apply_transfer(db: Connection, user_id: int, snapshot: TransferSnapshot) -> 
             ]
         ),
     )
+    db.replace_standing(
+        user_id, json.dumps([row.model_dump() for row in snapshot.standing or []])
+    )
     replaced = replace_account(
         db,
         user_id,
@@ -692,6 +774,8 @@ def apply_transfer(db: Connection, user_id: int, snapshot: TransferSnapshot) -> 
             ],
         },
     )
+    if snapshot.standing is None:
+        db.adopt_standing(user_id)
     return {
         **replaced,
         "preferences": snapshot.preferences.model_dump(),
@@ -764,6 +848,7 @@ def capture_transfer(db: Connection, user_id: int) -> dict:
         **snapshot,
         "preferences": preferences_from_row(json.loads(raw)),
         "routines": routines,
+        "standing": json.loads(db.standing_rows(user_id)),
     }
 
 
@@ -910,6 +995,12 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 raise HTTPException(401, "Incorrect username or password")
             user_id = found[0]
             with connect(path) as db:
+                # scrypt ran outside the lock; a recovery or password change may have rotated the
+                # hash and signed every session out meanwhile, so the session is only opened if the
+                # hash just checked is still the account's, in the same write transaction.
+                db.begin_immediate()
+                if db.password_hash_of(user_id) != encoded:
+                    raise HTTPException(401, "Incorrect username or password")
                 token = create_session(db, user_id)
         with connect(path) as db:
             db.delete_session(digest(request.cookies.get(COOKIE, "")))
@@ -1033,7 +1124,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             raise HTTPException(422, WEEK_START_RULE)
         with connect(path) as db:
             row = db.read_week(account["id"], start)
-            blocks = json.loads(row[0]) if row else []
+            blocks = week_with_standing(db, account["id"], start, row[0] if row else None)
             owned = load_assignment_bodies(
                 db,
                 account["id"],
@@ -1058,8 +1149,9 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             raise HTTPException(422, DATE_RULE)
         week_start = monday_of(date)
         with connect(path) as db:
-            stored = db.week_blocks(account["id"], week_start)
-            blocks = json.loads(stored) if stored is not None else []
+            blocks = week_with_standing(
+                db, account["id"], week_start, db.week_blocks(account["id"], week_start)
+            )
             owned = load_assignment_bodies(
                 db,
                 account["id"],
@@ -1079,7 +1171,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             assignment_rows = [
                 (json.loads(body), int(revision)) for body, revision in db.assignment_bodies(account["id"])
             ]
-            weeks = list_account_weeks(db, account["id"])
+            weeks = month_weeks(db, account["id"], month)
         return build_month(month, assignment_rows, weeks)
 
     @app.put("/api/week")
@@ -1090,6 +1182,7 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
             owned = require_own_assignments(db, account["id"], assignment_ids_of(incoming))
             blocks = dump_blocks(rewrite_blocks(incoming, owned))
             stored_blocks, revision = save_week_row(db, account["id"], week.week_start, blocks, week.revision)
+            stored_blocks = week_with_standing(db, account["id"], week.week_start, json.dumps(stored_blocks))
         return {"week_start": week.week_start, "blocks": stored_blocks, "revision": revision}
 
     @app.get("/api/assignments")
@@ -1211,7 +1304,22 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 week_results.append(
                     {"week_start": week.week_start, "blocks": stored_blocks, "revision": revision}
                 )
-            result = {"weeks": week_results, "assignments": assignment_results}
+            changed_weeks: list[str] = []
+            if batch.standing is not None:
+                # Saved weeks after the open one take the change here; the open week is in `weeks`,
+                # so Undo takes back its part only.
+                changed_weeks = db.set_standing(
+                    account["id"],
+                    batch.standing.week_start,
+                    json.dumps(dump_blocks(batch.standing.blocks)),
+                )
+            for entry in week_results:
+                entry["blocks"] = week_with_standing(
+                    db, account["id"], entry["week_start"], json.dumps(entry["blocks"])
+                )
+            result: dict = {"weeks": week_results, "assignments": assignment_results}
+            if batch.standing is not None:
+                result["standing_changed_weeks"] = changed_weeks
             if batch.operation_id is not None:
                 remember_operation(db, account["id"], batch.operation_id, digest_value, result)
         return result
@@ -1407,6 +1515,9 @@ def create_app(database: Path | None = None, origin: str | None = None) -> FastA
                 db, account["id"], f"Before restore — {stamp}", keep_ids={point_id}
             )
             replaced = replace_account(db, account["id"], stored)
+            # A point made before 0.19.0 has no standing week, so the current one stays.
+            if "standing" in stored:
+                db.replace_standing(account["id"], json.dumps(stored["standing"]))
             result = {"id": point_id, "recovery_id": recovery["id"], **replaced}
             remember_operation(db, account["id"], payload.operation_id, digest_value, result)
         return result

@@ -6,6 +6,7 @@ use std::sync::LazyLock;
 use chrono::{Datelike, Duration, NaiveDate};
 use serde_json::{Map, Value, json};
 
+use crate::desk::focus::{MAX_ESTIMATE_MIN, MAX_FOCUS_MINUTES, MAX_FOCUS_SESSIONS};
 use crate::error::{EngineError, EngineResult};
 use crate::model::{LAST_DAY_ISO, due_sort_key, parse_due};
 use crate::stored::{self, Dict};
@@ -747,6 +748,9 @@ pub fn migrate_blocks(week_start: &str, blocks: &Value) -> EngineResult<(Value, 
                 stored::int_or_zero(block.get("focus_sessions"))?,
             )?;
         }
+        if !fits_an_assignment(estimate_min, focus_minutes, focus_sessions) {
+            continue;
+        }
         created.push(assignment_body(
             &aid,
             work[0],
@@ -777,6 +781,9 @@ pub fn migrate_blocks(week_start: &str, blocks: &Value) -> EngineResult<(Value, 
         let estimate_min = stored::py_int(stored::item(block, "duration_min")?)?;
         let focus_minutes = stored::int_or_zero(block.get("focus_minutes"))?;
         let focus_sessions = stored::int_or_zero(block.get("focus_sessions"))?;
+        if !fits_an_assignment(estimate_min, focus_minutes, focus_sessions) {
+            continue;
+        }
         let completed_at = if completed {
             Some(completed_at_for_block(
                 week_start,
@@ -803,6 +810,18 @@ pub fn migrate_blocks(week_start: &str, blocks: &Value) -> EngineResult<(Value, 
         other => other.clone(),
     };
     Ok((updated, created))
+}
+
+/// Whether homework made from a block passes the app's assignment rules where a block's own may
+/// not: a block keeps any minute the student typed, homework is whole quarter hours up to a day,
+/// and a Pomodoro group's focus totals can pass the ceilings each chunk is under. A block that
+/// fails stays as it was rather than being rounded or stored as homework the app then refuses.
+fn fits_an_assignment(estimate_min: i64, focus_minutes: i64, focus_sessions: i64) -> bool {
+    estimate_min > 0
+        && estimate_min % SLOT_MIN == 0
+        && i128::from(estimate_min) <= MAX_ESTIMATE_MIN
+        && (0..=MAX_FOCUS_MINUTES).contains(&i128::from(focus_minutes))
+        && (0..=MAX_FOCUS_SESSIONS).contains(&i128::from(focus_sessions))
 }
 
 /// Python's `sum` of ints, which has no ceiling; past 64 bits this raises instead.

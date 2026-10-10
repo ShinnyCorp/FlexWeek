@@ -1122,6 +1122,46 @@ def test_week_file_round_trip_replaces_the_open_week(qapp: QApplication, server:
     wait_until(qapp, lambda: not session.busy and any(block["id"] == "soccer" for block in session.blocks))
 
 
+def test_reimporting_changed_homework_gets_its_own_homework(qapp: QApplication, server: LocalServer) -> None:
+    """Audit finding 7: the second file's Essay has a new title and due date. Its sessions must not
+    be attached to the homework the first import made, which keeps the old title and due date."""
+    source = signed_in(qapp, server.origin, "alice", create=True)
+    monday = date.fromisoformat(source.week_start)
+    first_due = (monday + timedelta(days=3)).isoformat() + "T21:00"
+    later_due = (monday + timedelta(days=4)).isoformat() + "T21:00"
+    source.add_homework(
+        {"id": "essay", "title": "Essay draft", "due": first_due, "estimate_min": 60, "revision": 0}
+    )
+    source.save()
+    wait_until(qapp, lambda: not source.busy and not source.dirty and "essay" in source.assignments)
+    first = json.dumps(source.week_file())
+    source.add_homework({**source.assignments["essay"], "title": "Final essay", "due": later_due})
+    source.save()
+    wait_until(qapp, lambda: not source.busy and not source.dirty)
+    second = json.dumps(source.week_file())
+    source.logout()
+    wait_until(qapp, lambda: source.account is None and not source.busy, HASHING_WAIT)
+
+    target = signed_in(qapp, server.origin, "bob", create=True)
+
+    def imported(raw: str) -> set[str]:
+        assert target.import_week_file(raw, replace=True) is True
+        wait_until(qapp, lambda: not target.busy and not target.dirty)
+        target.reload()
+        wait_until(qapp, lambda: not target.busy and bool(target.blocks))
+        return {block["assignment_id"] for block in target.blocks if block.get("assignment_id")}
+
+    [old_id] = imported(first)
+    [new_id] = imported(second)
+    assert new_id != old_id
+    held = {key: (item["title"], item["due"]) for key, item in target.assignments.items()}
+    assert held == {old_id: ("Essay draft", first_due), new_id: ("Final essay", later_due)}
+    assert {block["title"] for block in target.blocks if block.get("assignment_id")} == {"Final essay"}
+    # The same file again lands on the same homework and makes no third one.
+    assert imported(second) == {new_id}
+    assert len(target.assignments) == 2
+
+
 def test_stale_restore_preview_is_refused(qapp: QApplication, server: LocalServer) -> None:
     session = signed_in(qapp, server.origin, "alice", create=True)
     session.add_block(soccer())
