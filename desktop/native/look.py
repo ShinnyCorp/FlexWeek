@@ -1189,8 +1189,11 @@ def settings_rules(palette: dict, radius: int, text: float | str, pad: int, dept
         f'QRadioButton[segment="true"] {{ background: transparent; color: {palette["muted"]}; border: none; '
         # One weight whether chosen or not: a bolder chosen segment was wider than the room it was given.
         f"border-radius: {max(radius, 6)}px; padding: {max(pad - 2, 3)}px {pad + 8}px; "
-        f"font-weight: {WEIGHT_STRONG}; min-height: 0; }}"
-        'QRadioButton[segment="true"]::indicator { width: 0; height: 0; }'
+        f"font-weight: {WEIGHT_STRONG}; min-height: 0; spacing: 0; }}"
+        # The radio dot is for screen readers only: no room for it in any state, as the push button had none.
+        'QRadioButton[segment="true"]::indicator, QRadioButton[segment="true"]::indicator:checked, '
+        'QRadioButton[segment="true"]::indicator:hover, QRadioButton[segment="true"]::indicator:disabled '
+        "{ width: 0; height: 0; border: none; margin: 0; padding: 0; background: transparent; }"
         f'QRadioButton[segment="true"]:hover {{ color: {palette["text"]}; }}'
         f'QRadioButton[segment="true"]:checked {{ background: {palette["field"]}; color: {palette["text"]}; '
         f"border: {chosen_edge}; }}"
@@ -1800,6 +1803,9 @@ def pack_stylesheet(
         f"border: 2px solid {palette['error']}; padding: {max(pad - 1, 0)}px; }}"
         f"QPlainTextEdit {{ background: {palette['field']}; color: {palette['text']}; "
         f"padding: {pad}px; border-radius: {radius}px; border: 1px solid {field_edge}; }}"
+        # The focused edge is 2 px on a 1 px resting one, so a pixel less padding keeps the box's size.
+        f"QLineEdit:focus, QComboBox:focus, QAbstractSpinBox:focus, QPlainTextEdit:focus "
+        f"{{ padding: {max(pad - 1, 0)}px; }}"
         f"QTableWidget {{ gridline-color: {palette['hairline']}; "
         f"selection-background-color: {palette['accent']}; selection-color: {palette['accent_ink']}; }}"
         # Headers and the view stack are QFrames too. Left to the panel rule, each header is padded and
